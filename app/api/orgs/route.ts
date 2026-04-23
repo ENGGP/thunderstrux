@@ -31,20 +31,6 @@ export async function GET() {
     const memberships = await getOrganisationMembershipsForUser(user.id);
     const organisations = mapMembershipsToOrganisations(memberships);
 
-    console.log("GET /api/orgs user", {
-      userId: user.id,
-      email: user.email
-    });
-    console.log(
-      "GET /api/orgs memberships",
-      memberships.map((membership) => ({
-        role: membership.role,
-        organisationId: membership.organisation.id,
-        organisationName: membership.organisation.name,
-        organisationSlug: membership.organisation.slug
-      }))
-    );
-
     return NextResponse.json({ organisations });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {

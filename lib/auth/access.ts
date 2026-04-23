@@ -57,20 +57,6 @@ export async function getMemberOrganisations() {
     }
   });
 
-  console.log("getMemberOrganisations user", {
-    userId: user.id,
-    email: user.email
-  });
-  console.log(
-    "getMemberOrganisations memberships",
-    memberships.map((membership) => ({
-      role: membership.role,
-      organisationId: membership.organisation.id,
-      organisationName: membership.organisation.name,
-      organisationSlug: membership.organisation.slug
-    }))
-  );
-
   return memberships.map((membership) => ({
     ...membership.organisation,
     role: membership.role as OrganisationRole

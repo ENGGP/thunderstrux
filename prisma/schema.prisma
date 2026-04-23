@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      String               @id @default(cuid())
+  email                   String               @unique
+  password                String
+  createdAt               DateTime             @default(now())
+  organisationMemberships OrganisationMember[]
+  orders                  Order[]
+}
+
+model Organisation {
+  id                  String               @id @default(cuid())
+  name                String
+  slug                String               @unique
+  stripeAccountId     String?
+  stripeAccountStatus String?
+  stripeChargesEnabled Boolean              @default(false)
+  stripePayoutsEnabled Boolean              @default(false)
+  stripeDetailsSubmitted Boolean            @default(false)
+  createdAt           DateTime             @default(now())
+  members             OrganisationMember[]
+  events              Event[]
+  orders              Order[]
+  tickets             Ticket[]
+
+  @@index([stripeAccountId])
+}
+
+model OrganisationMember {
+  id             String           @id @default(cuid())
+  userId         String
+  organisationId String
+  role           OrganisationRole
+  createdAt      DateTime         @default(now())
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organisation   Organisation     @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organisationId])
+  @@index([organisationId])
+  @@index([userId])
+}
+
+model Event {
+  id             String      @id @default(cuid())
+  organisationId String
+  title          String
+  description    String
+  startTime      DateTime
+  endTime        DateTime
+  location       String
+  status         EventStatus @default(draft)
+  createdAt      DateTime    @default(now())
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  ticketTypes    TicketType[]
+  tickets        Ticket[]
+  orders         Order[]
+
+  @@index([organisationId])
+  @@index([organisationId, status])
+}
+
+model TicketType {
+  id        String   @id @default(cuid())
+  eventId   String
+  name      String
+  price     Int
+  quantity  Int
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets   Ticket[]
+  orders    Order[]
+
+  @@index([eventId])
+}
+
+model Order {
+  id              String       @id @default(cuid())
+  organisationId  String
+  eventId         String
+  ticketTypeId    String
+  userId          String?
+  status          OrderStatus  @default(pending)
+  quantity        Int
+  unitPrice       Int
+  totalAmount     Int
+  stripeSessionId String?      @unique
+  createdAt       DateTime     @default(now())
+  organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tickets         Ticket[]
+
+  @@index([organisationId])
+  @@index([eventId])
+  @@index([ticketTypeId])
+  @@index([userId])
+}
+
+model Ticket {
+  id             String       @id @default(cuid())
+  orderId        String
+  eventId        String
+  ticketTypeId   String
+  organisationId String
+  createdAt      DateTime     @default(now())
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  ticketType     TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([eventId])
+  @@index([ticketTypeId])
+  @@index([organisationId])
+}
+
+enum OrganisationRole {
+  org_owner
+  org_admin
+  event_manager
+  finance_manager
+  content_manager
+  member
+}
+
+enum EventStatus {
+  draft
+  published
+}
+
+enum OrderStatus {
+  pending
+  paid
+  failed
+}

@@ -1,0 +1,200 @@
+{
+  "main": {
+    "id": "0c8fe6f5aab16ac8",
+    "type": "split",
+    "children": [
+      {
+        "id": "51a0017eae1bb3e7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "cbad8e0152342c4d",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Frontend and Backend Flow.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Frontend and Backend Flow"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "84eb39997b768a7d",
+    "type": "split",
+    "children": [
+      {
+        "id": "7401747778756743",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9d9657067d65727d",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "1ada1ac4209a141a",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "29eb02ceabda1b77",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "fb96a21e211a05a1",
+    "type": "split",
+    "children": [
+      {
+        "id": "a756c3a546072a98",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "65407c12d2b16011",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Frontend and Backend Flow.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Frontend and Backend Flow"
+            }
+          },
+          {
+            "id": "dfce44ca8dd3f1b4",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Frontend and Backend Flow.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Frontend and Backend Flow"
+            }
+          },
+          {
+            "id": "cf4a19e53827ab8b",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "70144739a3861ade",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "772cae74665c2405",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Frontend and Backend Flow.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Frontend and Backend Flow"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "cbad8e0152342c4d",
+  "lastOpenFiles": [
+    "Event Lifecycle.md",
+    "Development Workflow.md",
+    "Database and Multi Tenancy.md",
+    "Architecture Overview.md",
+    "Frontend and Backend Flow.md",
+    "Thunderstrux Codebase Map.md",
+    "Stripe Payments and Connect.md",
+    "Troubleshooting.md",
+    "API Reference.md",
+    "2026-04-23.md",
+    "Untitled.canvas"
+  ]
+}

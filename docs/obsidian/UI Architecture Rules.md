@@ -81,6 +81,18 @@ Examples:
 - Page content shows `View events`.
 - Page content must not show `Open settings`.
 
+## Current Dashboard Styling
+
+Current dashboard styling is intentionally high-contrast while the UI upgrade is being verified:
+
+- Dashboard pages use a neutral grey page background.
+- Main content uses centered containers with generous padding.
+- Sections are white cards with rounded corners, borders, and visible shadows.
+- Primary actions use black buttons with white text.
+- DashboardShell owns the shared organisation nav and applies spacing, border, and active/inactive link styles.
+
+Temporary verification markers belong only in page content while debugging Tailwind or stale rendering. Remove them once the visual update is confirmed.
+
 ## Debugging UI Duplication
 
 If an old button appears in the browser but not in source:
@@ -91,4 +103,3 @@ If an old button appears in the browser but not in source:
 4. Restart the Docker app container.
 
 See [[Troubleshooting]] for the full stale-build playbook.
-

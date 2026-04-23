@@ -78,6 +78,8 @@ prisma/
 
 docs/obsidian/
   *.md                               Internal project documentation
+
+tailwind.config.js                   Tailwind CSS v4 content configuration
 ```
 
 ## High-Value Rules
@@ -89,4 +91,4 @@ docs/obsidian/
 - Public APIs expose only published, public-safe event data.
 - Payment fulfilment happens only from Stripe webhooks.
 - Development data can be restored with `docker compose exec app pnpm seed`.
-
+- Tailwind v4 must be loaded through `@import "tailwindcss"` in `app/globals.css`.

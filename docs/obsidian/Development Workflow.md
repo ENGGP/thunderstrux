@@ -65,6 +65,46 @@ Reason:
 - Turbopack has repeatedly served stale compiled dashboard UI in this Docker setup.
 - Webpack plus polling has produced reliable file-change detection.
 
+## Tailwind CSS Setup
+
+This project uses Tailwind CSS v4.
+
+Config:
+
+```text
+tailwind.config.js
+```
+
+Required content paths:
+
+```js
+content: [
+  "./app/**/*.{js,ts,jsx,tsx}",
+  "./components/**/*.{js,ts,jsx,tsx}"
+]
+```
+
+Global CSS entrypoint:
+
+```text
+app/globals.css
+```
+
+Required Tailwind v4 directives:
+
+```css
+@config "../tailwind.config.js";
+@import "tailwindcss";
+```
+
+`app/layout.tsx` must import the global stylesheet:
+
+```ts
+import "./globals.css";
+```
+
+If Tailwind class names are present in rendered HTML but the page is visually unstyled, verify the compiled CSS contains the exact utilities being used.
+
 ## Common Commands
 
 Run migrations:
@@ -127,6 +167,16 @@ curl http://localhost:3000/
 ```
 
 Remove the marker immediately after confirming the active render source.
+
+For Tailwind-specific verification, use a visibly styled marker with temporary text:
+
+```tsx
+<div className="bg-red-500 text-white p-10 text-2xl">
+  Tailwind visual test
+</div>
+```
+
+If the block is not red with large white text and heavy padding, Tailwind is not compiling or loading correctly. Check [[Troubleshooting]] before changing page logic.
 
 ## When To Restart Docker
 
@@ -201,4 +251,3 @@ STRIPE_CONNECT_WEBHOOK_SECRET=
 ```
 
 The app binds to `0.0.0.0` inside Docker, but browser-facing URLs should use `localhost`.
-

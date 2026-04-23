@@ -13,9 +13,10 @@ export default async function OrganisationDashboardLayout({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  let organisation: Awaited<ReturnType<typeof requireOrganisationMembershipBySlug>>;
 
   try {
-    await requireOrganisationMembershipBySlug(orgSlug);
+    organisation = await requireOrganisationMembershipBySlug(orgSlug);
   } catch (error) {
     if (error instanceof OrganisationAccessError) {
       notFound();
@@ -24,5 +25,9 @@ export default async function OrganisationDashboardLayout({
     throw error;
   }
 
-  return <DashboardShell orgSlug={orgSlug}>{children}</DashboardShell>;
+  return (
+    <DashboardShell orgName={organisation.name} orgSlug={orgSlug}>
+      {children}
+    </DashboardShell>
+  );
 }

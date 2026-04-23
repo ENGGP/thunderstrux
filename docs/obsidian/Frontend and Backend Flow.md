@@ -84,6 +84,7 @@ With memberships:
 - Shows dashboard heading.
 - Shows `New organisation`.
 - Shows organisation cards with `Open dashboard`.
+- Uses a card-based dashboard layout with visible spacing, shadows, and black primary buttons.
 
 The dashboard root does not render a card-level Settings button.
 
@@ -146,6 +147,7 @@ The page content renders:
 - `Organisation dashboard`
 - `Manage events for this organisation.`
 - `View events`
+- Temporary Tailwind/debug markers may be present while verifying styling.
 
 The page must not render page-level Settings navigation. See [[UI Architecture Rules]].
 
@@ -222,4 +224,3 @@ Settings page receives orgSlug
 ```
 
 Only `org_owner` and `finance_manager` can start onboarding.
-

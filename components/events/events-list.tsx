@@ -215,7 +215,7 @@ export function EventsList({ orgSlug }: { orgSlug: string }) {
         </div>
         <Link
           href={`/dashboard/${orgSlug}/events/new`}
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+          className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
         >
           New event
         </Link>

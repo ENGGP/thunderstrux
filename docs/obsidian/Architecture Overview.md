@@ -11,7 +11,7 @@
 - Stripe Checkout
 - Stripe Connect Express
 - Zod validation
-- Tailwind CSS
+- Tailwind CSS v4
 - Docker Compose
 - pnpm
 
@@ -110,6 +110,36 @@ Pages own route-specific content:
 
 Do not duplicate shared navigation in page files. See [[UI Architecture Rules]].
 
+## Styling Pipeline
+
+Tailwind is loaded globally from:
+
+```text
+app/globals.css
+```
+
+Current Tailwind v4 entrypoint:
+
+```css
+@config "../tailwind.config.js";
+@import "tailwindcss";
+```
+
+Tailwind scans:
+
+```text
+app/**/*.{js,ts,jsx,tsx}
+components/**/*.{js,ts,jsx,tsx}
+```
+
+The config file is:
+
+```text
+tailwind.config.js
+```
+
+Do not restore the legacy Tailwind v3 directives unless the project is downgraded to Tailwind v3. In Tailwind v4, using only `@tailwind base`, `@tailwind components`, and `@tailwind utilities` caused partial CSS output where structural utilities compiled but color, spacing, radius, and shadow utilities did not appear.
+
 ## Backend Boundaries
 
 Route handlers live under `app/api`.
@@ -128,4 +158,3 @@ Private dashboard APIs require an authenticated session and organisation members
 Public APIs do not require authentication but only return published, public-safe data.
 
 Payment APIs resolve trusted organisation context server-side and rely on webhooks for fulfilment.
-

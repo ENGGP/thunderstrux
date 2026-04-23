@@ -7,35 +7,22 @@ export default function Navbar() {
   const { data: session, status } = useSession();
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "60px",
-        background: "white",
-        color: "#111",
-        zIndex: 9999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 20px",
-        borderBottom: "1px solid #ccc",
-        boxSizing: "border-box"
-      }}
-    >
-      <Link href="/" style={{ color: "#111", fontWeight: 600, textDecoration: "none" }}>
+    <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between border-b border-neutral-200 bg-white px-6 shadow-sm">
+      <Link href="/" className="text-sm font-semibold text-neutral-950">
         Thunderstrux
       </Link>
 
-      <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+      <div className="flex items-center gap-6">
         {session ? (
           <>
-            <Link href="/dashboard" style={{ color: "#111" }}>
+            <Link
+              href="/dashboard"
+              className="text-sm font-medium text-neutral-700 transition hover:text-neutral-950"
+            >
               Dashboard
             </Link>
             <button
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-950"
               onClick={() => signOut({ callbackUrl: "http://localhost:3000/" })}
               type="button"
             >
@@ -43,11 +30,14 @@ export default function Navbar() {
             </button>
           </>
         ) : (
-          <Link href="/login" style={{ color: "#111" }}>
+          <Link
+            href="/login"
+            className="text-sm font-medium text-neutral-700 transition hover:text-neutral-950"
+          >
             Sign in
           </Link>
         )}
       </div>
-    </div>
+    </header>
   );
 }

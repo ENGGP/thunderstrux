@@ -33,15 +33,9 @@ export default async function DashboardOrganisationsPage() {
   return (
     <main className="min-h-screen bg-neutral-100">
       <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="mb-6 rounded-xl bg-red-500 p-10 text-2xl font-semibold text-white shadow-md">
-          TAILWIND WORKING TEST
-        </div>
-        <div className="mb-6 rounded-xl bg-blue-600 p-5 text-lg font-semibold text-white shadow-md">
-          UI UPGRADE ACTIVE
-        </div>
         {organisations.length === 0 ? (
           <section className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center justify-center">
-            <div className="w-full rounded-xl border border-neutral-200 bg-white p-8 shadow-md">
+            <div className="w-full rounded-xl border border-neutral-200 bg-white p-8 shadow-sm">
               <div className="space-y-6 text-center">
                 <div className="space-y-3">
                   <h1 className="text-3xl font-semibold text-neutral-950">
@@ -52,7 +46,7 @@ export default async function DashboardOrganisationsPage() {
                   </p>
                 </div>
                 <Link
-                  className="inline-flex items-center justify-center rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
+                  className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
                   href="/dashboard/create"
                 >
                   Create Organisation
@@ -62,7 +56,7 @@ export default async function DashboardOrganisationsPage() {
           </section>
         ) : (
           <div className="space-y-6">
-            <header className="rounded-xl border border-neutral-200 bg-white p-6 shadow-md">
+            <header className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-end justify-between gap-6">
                 <div className="space-y-3">
                   <h1 className="text-3xl font-semibold text-neutral-950">
@@ -73,7 +67,7 @@ export default async function DashboardOrganisationsPage() {
                   </p>
                 </div>
                 <Link
-                  className="inline-flex items-center justify-center rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
+                  className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
                   href="/dashboard/create"
                 >
                   New organisation
@@ -81,7 +75,7 @@ export default async function DashboardOrganisationsPage() {
               </div>
             </header>
 
-            <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-md">
+            <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
               <div className="space-y-6">
                 <div className="space-y-2">
                   <h2 className="text-lg font-medium text-neutral-950">
@@ -96,7 +90,7 @@ export default async function DashboardOrganisationsPage() {
                   {organisations.map((organisation) => (
                     <article
                       key={organisation.id}
-                      className="rounded-xl border border-neutral-200 bg-white p-6 shadow-md"
+                      className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
                     >
                       <div className="flex min-h-44 flex-col justify-between gap-6">
                         <div className="space-y-2">
@@ -110,7 +104,7 @@ export default async function DashboardOrganisationsPage() {
                         <div className="flex flex-wrap gap-3">
                           <Link
                             href={`/dashboard/${organisation.slug}`}
-                            className="inline-flex items-center justify-center rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
+                            className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
                           >
                             Open dashboard
                           </Link>

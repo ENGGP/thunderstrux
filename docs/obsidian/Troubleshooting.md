@@ -44,6 +44,74 @@ if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -For
 docker compose up --build --force-recreate -d
 ```
 
+## Tailwind Classes Present But Not Styled
+
+Observed issue:
+
+- JSX contained classes such as `bg-red-500`, `p-10`, `text-2xl`, `rounded-xl`, and `shadow-md`.
+- Rendered HTML contained those class names.
+- The browser did not show the expected colors, spacing, radius, or shadows.
+- Compiled CSS contained some structural utilities such as `flex` and `grid`, but not the expected color and spacing utilities.
+
+Root cause:
+
+- The project uses Tailwind CSS v4.
+- `app/globals.css` was still using the legacy v3 style directives:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+Current fix:
+
+```css
+@config "../tailwind.config.js";
+@import "tailwindcss";
+```
+
+The active config file is:
+
+```text
+tailwind.config.js
+```
+
+Expected config paths:
+
+```js
+content: [
+  "./app/**/*.{js,ts,jsx,tsx}",
+  "./components/**/*.{js,ts,jsx,tsx}"
+]
+```
+
+Diagnosis:
+
+1. Add a temporary marker:
+
+```tsx
+<div className="bg-red-500 text-white p-10 text-2xl">
+  Tailwind visual test
+</div>
+```
+
+2. Build or let the dev server compile.
+3. Inspect generated CSS inside Docker:
+
+```bash
+docker compose exec app sh -lc 'find .next -name "*.css" -type f | xargs grep -h "bg-red-500" | head'
+```
+
+If `bg-red-500` is missing from compiled CSS, Tailwind is not scanning or processing correctly. If it exists but the page is not red, CSS is not loading or the browser is serving stale assets.
+
+Fix order:
+
+1. Confirm `app/layout.tsx` imports `./globals.css`.
+2. Confirm `app/globals.css` uses the Tailwind v4 import.
+3. Confirm `tailwind.config.js` content paths include `app` and `components`.
+4. Clear `.next` and rebuild containers if stale CSS persists.
+
 ## Stale Next.js Build Output
 
 Observed issue:
@@ -142,6 +210,19 @@ Invalid stale buttons:
 
 If these appear but are absent from source, search `.next`, clear it, and restart Docker.
 
+## Temporary Dashboard UI Markers
+
+Dashboard pages may temporarily include visual markers to prove that Tailwind and the active route are working.
+
+Locations:
+
+```text
+app/(dashboard)/dashboard/page.tsx
+app/(dashboard)/dashboard/[orgSlug]/page.tsx
+```
+
+Remove any temporary markers after visual verification is complete. They are not product features.
+
 ## Data Missing After Reset
 
 Cause:
@@ -186,4 +267,3 @@ Fix:
 Local limitation:
 
 - Without real/test Stripe keys and webhook forwarding, onboarding and checkout cannot complete end-to-end.
-

@@ -21,7 +21,7 @@ export default async function RootLayout({
       <body>
         <AuthSessionProvider session={session}>
           <Navbar />
-          <div style={{ marginTop: "60px" }}>{children}</div>
+          <div className="pt-16">{children}</div>
         </AuthSessionProvider>
       </body>
     </html>

@@ -79,7 +79,6 @@ export default async function EditEventPage({
 
   return (
     <div className="grid gap-4">
-      <h1 className="text-2xl font-semibold text-neutral-950">Edit Event</h1>
       <CreateEventForm
         eventId={eventId}
         initialEvent={initialEvent}

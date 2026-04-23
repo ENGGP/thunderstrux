@@ -1,80 +1,92 @@
 # Thunderstrux Codebase Map
 
-This folder is an Obsidian-friendly set of notes for the Thunderstrux codebase.
+Thunderstrux is a Docker-based Next.js App Router SaaS foundation for student societies.
 
 ## Start Here
 
 - [[Architecture Overview]]
-- [[Frontend and Backend Flow]]
-- [[API Reference]]
-- [[Database and Multi Tenancy]]
-- [[Stripe Payments and Connect]]
-- [[Event Lifecycle]]
-- [[Authentication and Dashboard Access]]
 - [[Development Workflow]]
 - [[Troubleshooting]]
+- [[Database and Multi Tenancy]]
+- [[Seeding and Data]]
+- [[UI Architecture Rules]]
+- [[Event Lifecycle]]
+- [[Stripe Payments and Connect]]
+- [[Authentication and Dashboard Access]]
+- [[API Reference]]
 
-## Project Summary
+## Implemented Product Scope
 
-Thunderstrux is a Docker-based Next.js SaaS foundation for student societies.
+Currently implemented:
 
-The current product supports:
+- Email/password signup and login with Auth.js credentials.
+- Multi-tenant organisations.
+- Organisation membership roles.
+- Dashboard organisation selection at `/dashboard`.
+- Organisation dashboard routes under `/dashboard/[orgSlug]`.
+- Organisation event management.
+- Draft and published event lifecycle.
+- Public event discovery at `/`.
+- Public event detail pages at `/events/[eventId]`.
+- Stripe Checkout ticket purchase flow.
+- Stripe Connect Express onboarding/status for organisations.
+- Webhook-driven order reconciliation, ticket issuance, and inventory reduction.
+- Idempotent development seed data.
 
-- Multi-tenant organisations
-- Email/password authentication for dashboard access
-- Dashboard pages for organisation event management
-- Public event discovery
-- Public event detail pages
-- Stripe Checkout ticket purchase flow
-- Stripe Connect onboarding for organisations
-- Explicit draft/published event lifecycle controls
-- Webhook-driven payment fulfilment
-- Ticket issuance and inventory reduction
+Not implemented:
 
-The system is intentionally incremental. Email verification, password reset, file storage, AI agents, and advanced Stripe Connect payout logic are not implemented yet.
+- Email verification.
+- Password reset.
+- Invites or join requests.
+- File uploads.
+- AI agent APIs.
+- Refund management UI.
+- Ticket QR codes or attendee check-in.
 
 ## Key Directories
 
 ```text
 app/
-  page.tsx                         Public homepage: Discover Events
-  (public)/events/[eventId]/       Public event detail page
-  (dashboard)/dashboard/           Dashboard org selection and onboarding
-  (dashboard)/dashboard/create/    Create organisation page
-  (dashboard)/dashboard/[orgSlug]/ Dashboard pages
-  api/                             Backend route handlers
+  layout.tsx                         Root layout, auth session provider, navbar
+  page.tsx                           Public homepage: Discover Events
+  (public)/events/[eventId]/         Public event detail route
+  (dashboard)/dashboard/             Dashboard route group
+  api/                               Backend route handlers
 
 components/
-  events/                          Event list, create form, public ticket purchase
-  layout/                          Global navbar, session provider, dashboard shell
-  orgs/                            Organisation create form
-  settings/                        Stripe Connect settings UI
-  ui/                              Small reusable UI primitives
+  auth/                              Login and signup forms
+  events/                            Event list, event form, public checkout UI
+  layout/                            Navbar, session provider, DashboardShell
+  orgs/                              Organisation creation form
+  settings/                          Stripe Connect settings UI
+  ui/                                Small reusable UI primitives
 
 lib/
-  auth/                            Session and organisation access helpers
-  api/                             Error/request helpers
-  client/                          Frontend fetch/date/role helpers
-  db/                              Prisma client and org scoping helpers
-  permissions/                     Role permission helpers
-  stripe/                          Stripe SDK, Connect, fee helpers
-  validators/                      Zod schemas and validation helpers
+  auth/                              Session and organisation access helpers
+  api/                               Request parsing and API error helpers
+  client/                            Frontend fetch/date/role helpers
+  db/                                Prisma client and scoping helpers
+  events/                            Shared public event loaders
+  permissions/                       Role permission helpers
+  stripe/                            Stripe SDK, Connect, fee helpers
+  validators/                        Zod schemas
 
 prisma/
-  schema.prisma                    Database schema
-  migrations/                      Applied schema migrations
+  schema.prisma                      Database schema
+  seed.mjs                           Idempotent local development seed
+  migrations/                        Applied schema migrations
+
+docs/obsidian/
+  *.md                               Internal project documentation
 ```
 
-## Important Rule Of Thumb
+## High-Value Rules
 
-Organisation-scoped private/dashboard APIs require tenant scoping. Public discovery APIs only return published, public-safe data.
+- Dashboard navigation for `/dashboard/[orgSlug]` belongs in `components/layout/dashboard-shell.tsx`.
+- Page files render page-specific content only.
+- Private APIs must derive access from the authenticated session and database membership rows.
+- Frontend-provided organisation IDs are inputs, not authority.
+- Public APIs expose only published, public-safe event data.
+- Payment fulfilment happens only from Stripe webhooks.
+- Development data can be restored with `docker compose exec app pnpm seed`.
 
-Checkout no longer trusts the frontend for `organisationId`. It resolves the event and organisation server-side from `eventId`.
-
-Dashboard event lists expect `GET /api/events` to include `ticketTypes`. The frontend is also defensive and treats missing `ticketTypes` as an empty array.
-
-Dashboard access is session-backed. Organisation dashboard APIs use `OrganisationMember` roles from the authenticated user, not frontend `x-org-id` or `x-user-role` headers.
-
-The dashboard root `/dashboard` is the organisation selection and onboarding entry point. Users with no memberships see a create-organisation call to action, and `/dashboard/create` creates an organisation plus an `org_owner` membership for the signed-in user.
-
-Event status is not edited through the general event form. Dashboard publish/unpublish actions call `PATCH /api/events/[eventId]/publish`, which validates ticket readiness before publishing and blocks unpublishing once orders exist.

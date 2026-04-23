@@ -15,6 +15,8 @@ type EventsState =
   | { status: "loaded"; events: PublicEventListItem[] }
   | { status: "error"; message: string };
 
+export const dynamic = "force-dynamic";
+
 function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }

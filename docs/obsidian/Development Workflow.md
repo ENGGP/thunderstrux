@@ -1,11 +1,17 @@
 # Development Workflow
 
-## Running The App
+## Standard Local Setup
 
-Start the full Docker environment:
+Start the stack:
 
 ```bash
 docker compose up
+```
+
+Detached mode:
+
+```bash
+docker compose up -d
 ```
 
 App:
@@ -20,96 +26,165 @@ PostgreSQL:
 localhost:5432
 ```
 
+## Docker Configuration
+
+`docker-compose.yml` mounts the host project into the app container:
+
+```yaml
+volumes:
+  - .:/app
+  - /app/node_modules
+```
+
+The anonymous `/app/node_modules` volume prevents host/container dependency conflicts.
+
+PostgreSQL data lives in:
+
+```yaml
+postgres_data:/var/lib/postgresql/data
+```
+
+The app service also enables polling for reliable file watching inside Docker:
+
+```yaml
+environment:
+  WATCHPACK_POLLING: "true"
+  CHOKIDAR_USEPOLLING: "true"
+```
+
+## Next Dev Server
+
+The development script intentionally disables Turbopack:
+
+```json
+"dev": "next dev --webpack --hostname 0.0.0.0"
+```
+
+Reason:
+
+- Turbopack has repeatedly served stale compiled dashboard UI in this Docker setup.
+- Webpack plus polling has produced reliable file-change detection.
+
 ## Common Commands
 
-Run Prisma migrations inside Docker:
+Run migrations:
 
 ```bash
-docker compose run --rm app pnpm prisma:migrate
+docker compose exec app pnpm prisma:migrate
 ```
 
 Generate Prisma Client:
 
 ```bash
-docker compose run --rm app pnpm prisma:generate
+docker compose exec app pnpm prisma:generate
 ```
 
-Apply migrations in an existing Docker database:
+Seed development data:
 
 ```bash
-docker compose run --rm app pnpm exec prisma migrate deploy
+docker compose exec app pnpm seed
 ```
 
-Seed MVP demo users, organisations, memberships, and published events:
+Build:
 
 ```bash
-docker compose run --rm app pnpm prisma:seed
+docker compose exec app pnpm build
 ```
 
-Seeded credentials:
-
-```text
-user1@example.com / password123
-user2@example.com / password123
-```
-
-Build the app:
-
-```bash
-docker compose run --rm app pnpm build
-```
-
-Restart the app container:
+Restart app only:
 
 ```bash
 docker compose restart app
 ```
 
-## Docker Notes
+View app logs:
 
-The app service mounts the project into `/app` for live reload.
+```bash
+docker compose logs -f app
+```
 
-Important volumes:
+## Normal Change Workflow
 
-- `.:/app`
-- `/app/node_modules`
-- `postgres_data:/var/lib/postgresql/data`
+1. Edit source files on the host.
+2. Let the Docker app container hot reload.
+3. Refresh the browser if the route is server-rendered.
+4. Confirm the HTML or UI reflects the source change.
 
-If the browser shows stale content, restart the app container:
+For server-rendered App Router pages, a browser refresh is often enough after the dev server recompiles.
+
+## Verifying UI Changes
+
+Use a visible temporary marker only when debugging stale output:
+
+```tsx
+<div style={{ color: "red" }}>DEBUG: PAGE ACTIVE</div>
+```
+
+Then verify:
+
+```bash
+curl http://localhost:3000/
+```
+
+Remove the marker immediately after confirming the active render source.
+
+## When To Restart Docker
+
+Restart the app container when:
+
+- Source is correct but the browser still shows old UI.
+- The dev server logs look stuck.
+- A route keeps serving stale compiled output.
 
 ```bash
 docker compose restart app
 ```
 
-If a runtime stack trace still points to code that has already been changed, the Next dev server is probably serving stale compiled output. Restart the app service first:
+## When To Clear `.next`
+
+Clear `.next` when:
+
+- Restarting the app container does not fix stale output.
+- Runtime HTML contains code that no longer exists in source.
+- `.next` search finds old strings that should not be present.
+
+PowerShell:
+
+```powershell
+docker compose down
+if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -Force }
+docker compose up --build --force-recreate -d
+```
+
+Bash:
 
 ```bash
-docker compose restart app
+docker compose down
+rm -rf .next
+docker compose up --build --force-recreate -d
 ```
 
-Then hard refresh the browser:
+## When To Use `down -v`
 
-```text
-Ctrl + F5
-```
-
-If the stale issue persists, clear the Next build cache and restart:
+Only use this when you intentionally want to wipe local database data:
 
 ```bash
-docker compose stop app
+docker compose down -v
 ```
 
-Then delete `.next` from the project folder and start again:
+After `down -v`, restore the database:
 
 ```bash
-docker compose up app
+docker compose up --build --force-recreate -d
+docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm seed
 ```
 
-Do not delete database volumes unless you intentionally want to wipe local data.
+See [[Seeding and Data]] for seeded users and organisations.
 
 ## Environment Variables
 
-Important env values:
+Important local values:
 
 ```text
 DATABASE_URL=
@@ -117,56 +192,13 @@ POSTGRES_USER=
 POSTGRES_PASSWORD=
 POSTGRES_DB=
 AUTH_SECRET=
-AUTH_URL=
-NEXTAUTH_URL=
+AUTH_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_CONNECT_WEBHOOK_SECRET=
-NEXT_PUBLIC_APP_URL=
 ```
 
-For local development, `NEXT_PUBLIC_APP_URL` should usually be:
+The app binds to `0.0.0.0` inside Docker, but browser-facing URLs should use `localhost`.
 
-```text
-http://localhost:3000
-```
-
-Auth.js browser-facing URLs should also use localhost:
-
-```text
-AUTH_URL=http://localhost:3000
-NEXTAUTH_URL=http://localhost:3000
-```
-
-The app may bind the server to `0.0.0.0` inside Docker, but browser redirects and Auth.js callbacks must not use `0.0.0.0`.
-
-## Creating A Public Purchase Test Flow
-
-1. Create an organisation.
-2. Connect Stripe in dashboard settings.
-3. Ensure the connected account has charges enabled.
-4. Create a published event.
-5. Create at least one ticket type.
-6. Visit `/`.
-7. Click `View Event`.
-8. Select ticket quantity.
-9. Click `Buy Ticket`.
-10. Complete Stripe Checkout.
-11. Let the webhook mark the order paid and issue tickets.
-
-## Authentication Model
-
-Dashboard access uses Auth.js credentials login. Private dashboard APIs derive the user from `session.user.id` and enforce organisation access through `OrganisationMember`.
-
-## Things Not Implemented Yet
-
-- Email verification and password reset
-- Membership purchase flow
-- File storage
-- AI agent API endpoints
-- Stripe Connect platform fee configuration UI
-- Refunds
-- Order management UI
-- Ticket QR codes or attendee check-in
-
-These should be added incrementally.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ClientApiError, fetchJson } from "@/lib/client/api";
@@ -11,6 +11,7 @@ import {
 
 type ConnectStatus = {
   connected: boolean;
+  ready?: boolean;
   charges_enabled: boolean;
   payouts_enabled: boolean;
   details_submitted: boolean;
@@ -24,16 +25,57 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [isStartingOnboarding, setIsStartingOnboarding] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
+  const checkStatus = useCallback(
+    async (targetOrganisation: Organisation, showMessage = false) => {
+      setIsCheckingStatus(true);
+
+      if (showMessage) {
+        setMessage(null);
+      }
+
+      try {
+        const data = await fetchJson<ConnectStatus>(
+          `/api/stripe/connect/status?organisationId=${targetOrganisation.id}`
+        );
+
+        setStatus(data);
+
+        if (showMessage) {
+          setMessage(
+            data.ready
+              ? "Stripe connected and ready for ticket sales."
+              : data.connected
+                ? "Complete onboarding in Stripe before selling tickets."
+                : "Stripe is not connected yet."
+          );
+        }
+      } catch (error) {
+        if (showMessage) {
+          setMessage(
+            error instanceof ClientApiError
+              ? error.message
+              : "Unable to check Stripe status."
+          );
+        }
+      } finally {
+        setIsCheckingStatus(false);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     let isActive = true;
 
-    async function loadOrganisation() {
+    async function loadOrganisationAndStatus() {
       try {
         const loadedOrganisation = await fetchOrganisationBySlug(orgSlug);
 
         if (isActive) {
           setOrganisation(loadedOrganisation);
         }
+
+        await checkStatus(loadedOrganisation);
       } catch {
         if (isActive) {
           setMessage("Unable to load organisation.");
@@ -45,38 +87,30 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       }
     }
 
-    loadOrganisation();
+    loadOrganisationAndStatus();
 
     return () => {
       isActive = false;
     };
-  }, [orgSlug]);
+  }, [checkStatus, orgSlug]);
 
-  async function checkStatus() {
+  useEffect(() => {
     if (!organisation) {
       return;
     }
 
-    setIsCheckingStatus(true);
-    setMessage(null);
+    const refreshStatus = () => {
+      void checkStatus(organisation);
+    };
 
-    try {
-      const data = await fetchJson<ConnectStatus>(
-        `/api/stripe/connect/status?organisationId=${organisation.id}`
-      );
+    window.addEventListener("focus", refreshStatus);
+    document.addEventListener("visibilitychange", refreshStatus);
 
-      setStatus(data);
-      setMessage(data.details_submitted ? "Onboarding complete." : "Onboarding is not complete yet.");
-    } catch (error) {
-      setMessage(
-        error instanceof ClientApiError
-          ? error.message
-          : "Unable to check Stripe status."
-      );
-    } finally {
-      setIsCheckingStatus(false);
-    }
-  }
+    return () => {
+      window.removeEventListener("focus", refreshStatus);
+      document.removeEventListener("visibilitychange", refreshStatus);
+    };
+  }, [checkStatus, organisation]);
 
   async function startOnboarding() {
     if (!organisation) {
@@ -129,6 +163,25 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           </p>
         </div>
 
+        {status ? (
+          <div
+            className={
+              status.ready
+                ? "rounded-md border border-green-200 bg-green-50 px-3 py-3 text-sm text-green-800"
+                : "rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800"
+            }
+          >
+            <p className="font-medium">
+              {status.ready ? "Stripe connected" : "Complete onboarding"}
+            </p>
+            <p className="mt-1">
+              {status.ready
+                ? "This organisation can accept ticket payments."
+                : "You must connect Stripe before selling tickets."}
+            </p>
+          </div>
+        ) : null}
+
         {message ? (
           <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
             {message}
@@ -137,6 +190,10 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
 
         {status ? (
           <dl className="grid gap-2 text-sm text-neutral-700">
+            <div className="flex justify-between gap-4">
+              <dt>Stripe account</dt>
+              <dd>{status.connected ? "Connected" : "Not connected"}</dd>
+            </div>
             <div className="flex justify-between gap-4">
               <dt>Charges enabled</dt>
               <dd>{status.charges_enabled ? "Yes" : "No"}</dd>
@@ -153,20 +210,22 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         ) : null}
 
         <div className="flex flex-wrap gap-3">
-          <Button
-            disabled={isStartingOnboarding}
-            onClick={startOnboarding}
-            type="button"
-          >
-            {isStartingOnboarding ? "Redirecting..." : "Connect Stripe Account"}
-          </Button>
+          {!status?.connected ? (
+            <Button
+              disabled={isStartingOnboarding}
+              onClick={startOnboarding}
+              type="button"
+            >
+              {isStartingOnboarding ? "Redirecting..." : "Connect Stripe Account"}
+            </Button>
+          ) : null}
           <Button
             disabled={isCheckingStatus}
-            onClick={checkStatus}
+            onClick={() => organisation && void checkStatus(organisation, true)}
             type="button"
             variant="secondary"
           >
-            {isCheckingStatus ? "Checking..." : "Check Status"}
+            {isCheckingStatus ? "Refreshing..." : "Refresh Status"}
           </Button>
         </div>
       </div>

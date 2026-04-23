@@ -3,100 +3,129 @@
 ## Stack
 
 - Next.js App Router
+- React Server Components and client components where needed
 - TypeScript
 - Prisma ORM
 - PostgreSQL
+- Auth.js / NextAuth Credentials provider
 - Stripe Checkout
 - Stripe Connect Express
-- Auth.js / NextAuth Credentials provider
 - Zod validation
 - Tailwind CSS
 - Docker Compose
 - pnpm
 
-## High-Level Layers
+## Runtime Shape
 
 ```text
 Browser
-  |
-  | visits pages and calls APIs
-  v
-Next.js App Router
-  |
-  | page.tsx files render UI
-  | route.ts files implement backend APIs
-  v
-lib/
-  |
-  | validation, permissions, Prisma, Stripe helpers
-  v
-PostgreSQL + Stripe
+  -> Next.js App Router pages and layouts
+  -> Client components submit forms and call APIs
+  -> Route handlers validate input and enforce auth/tenancy
+  -> Prisma reads/writes PostgreSQL
+  -> Stripe APIs and webhooks handle payment side effects
 ```
 
-## Runtime Split
+## App Router Structure
 
-### Frontend
+Route groups are filesystem-only. The `(dashboard)` and `(public)` folders do not appear in URLs.
 
-The frontend lives mainly in:
+```text
+app/
+  layout.tsx
+  page.tsx
+  (public)/
+    events/[eventId]/page.tsx
+  (dashboard)/
+    dashboard/
+      page.tsx
+      create/page.tsx
+      [orgSlug]/
+        layout.tsx
+        page.tsx
+        events/page.tsx
+        events/new/page.tsx
+        events/[eventId]/edit/page.tsx
+        settings/page.tsx
+  api/
+```
 
-- `app/page.tsx`
-- `app/(public)/events/[eventId]/page.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/*`
-- `components/*`
+## Public Routes
 
-Frontend responsibilities:
+- `/` renders public event discovery.
+- `/events/[eventId]` renders a public event detail page.
+- Public pages only expose published events.
+- Public event detail uses `GET /api/public/events/[eventId]`.
 
-- Render pages
-- Fetch public or dashboard data from APIs
-- Submit forms
-- Start checkout by calling the checkout API
-- Redirect users to Stripe Checkout
+## Dashboard Routes
 
-Frontend does not decide payment status. Payment fulfilment is handled by Stripe webhooks.
+### `/dashboard`
 
-### Backend
+File:
 
-Backend route handlers live in:
+```text
+app/(dashboard)/dashboard/page.tsx
+```
 
-- `app/api/events`
+Responsibilities:
+
+- Load the signed-in user's organisations through `GET /api/orgs`.
+- Show onboarding if the user has no memberships.
+- Show organisation cards if the user has memberships.
+- Provide `Open dashboard` links to `/dashboard/[orgSlug]`.
+
+The dashboard root does not render a Settings action for organisation cards.
+
+### `/dashboard/[orgSlug]`
+
+Files:
+
+```text
+app/(dashboard)/dashboard/[orgSlug]/layout.tsx
+app/(dashboard)/dashboard/[orgSlug]/page.tsx
+components/layout/dashboard-shell.tsx
+```
+
+Responsibilities:
+
+- The layout validates the signed-in user's membership for `orgSlug`.
+- The layout renders `DashboardShell`.
+- `DashboardShell` owns shared organisation navigation.
+- The page renders only overview content and a `View events` action.
+
+## Layout vs Page Responsibilities
+
+Layouts own shared structure:
+
+- Root layout owns app-wide session provider and global navbar.
+- Organisation dashboard layout owns membership gating and `DashboardShell`.
+- `DashboardShell` owns organisation dashboard navigation.
+
+Pages own route-specific content:
+
+- `/dashboard` owns organisation selection/onboarding content.
+- `/dashboard/[orgSlug]` owns the organisation dashboard overview card.
+- `/dashboard/[orgSlug]/events` owns event list content through `EventsList`.
+- `/dashboard/[orgSlug]/settings` owns Stripe Connect settings content.
+
+Do not duplicate shared navigation in page files. See [[UI Architecture Rules]].
+
+## Backend Boundaries
+
+Route handlers live under `app/api`.
+
+Main API groups:
+
+- `app/api/auth`
 - `app/api/orgs`
+- `app/api/events`
 - `app/api/public/events`
 - `app/api/payments`
 - `app/api/stripe/connect`
 
-Backend responsibilities:
+Private dashboard APIs require an authenticated session and organisation membership. They should not trust frontend role headers or frontend organisation scope as authority.
 
-- Validate request bodies
-- Enforce tenant scoping for private routes through authenticated membership
-- Resolve trusted server-side IDs
-- Create Stripe Checkout Sessions
-- Process Stripe webhooks
-- Create orders and tickets
-- Persist Stripe Connect status
+Public APIs do not require authentication but only return published, public-safe data.
 
-## Important Boundaries
+Payment APIs resolve trusted organisation context server-side and rely on webhooks for fulfilment.
 
-### Public APIs
-
-Public APIs do not require auth or `x-org-id`.
-
-Current public APIs:
-
-- `GET /api/public/events`
-- `GET /api/public/events/[eventId]`
-
-They only return published event data and public-safe fields.
-
-### Private/Dashboard APIs
-
-Private/dashboard APIs require an authenticated session.
-
-Organisation access is checked through `OrganisationMember` rows for the signed-in user. Role-sensitive actions use the member role stored in the database.
-
-Frontend dashboard code should not send trusted `x-org-id` or `x-user-role` headers.
-
-### Payment APIs
-
-Checkout is public-facing, but secure because it does not trust frontend organisation data. It resolves the organisation through the published event.
-
-Webhook fulfilment is the source of truth for paid orders and ticket issuance.

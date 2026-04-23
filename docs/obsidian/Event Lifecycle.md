@@ -2,84 +2,104 @@
 
 ## Statuses
 
-Events use two statuses:
+Events use:
 
 - `draft`
 - `published`
 
-Draft events are organisation-internal. Published events are public-safe and can appear in public discovery and public event detail pages.
+Draft events are visible only in the organisation dashboard. Published events can appear on public discovery and public event detail pages.
 
-## Dashboard Controls
+## Creation Flow
 
-Dashboard event status is controlled from:
-
-- `components/events/events-list.tsx`
-
-The dashboard shows:
-
-- Colour-coded `Draft` and `Published` badges
-- `Publish` for draft events
-- `Unpublish` for published events
-- `View Event` only for published events
-
-Draft events do not link to the public event page because public APIs intentionally return only published events.
-
-## Publish API
-
-Endpoint:
+Route:
 
 ```text
-PATCH /api/events/[eventId]/publish
+/dashboard/[orgSlug]/events/new
 ```
 
-Allowed roles are the normal event-management roles:
+Main files:
+
+- `app/(dashboard)/dashboard/[orgSlug]/events/new/page.tsx`
+- `components/events/create-event-form.tsx`
+- `app/api/events/route.ts`
+
+Flow:
+
+```text
+Create event form
+  -> resolves organisation by slug
+  -> POST /api/events
+  -> API validates authenticated membership and role
+  -> API creates Event and TicketType rows
+```
+
+Allowed roles:
 
 - `org_owner`
 - `org_admin`
 - `event_manager`
 
-Behaviour:
+## Ticket Types
 
-- If the event is `draft`, the endpoint attempts to publish it.
-- If the event is `published`, the endpoint attempts to unpublish it.
+Ticket types belong to events.
 
-## Publish Validation
+Rules:
 
-A draft event can only be published when:
+- `price` is integer cents.
+- `price` must be non-negative.
+- `quantity` must be greater than zero when creating.
+- Public checkout validates requested quantity against remaining inventory.
+- Webhook fulfilment reduces inventory after payment is confirmed.
 
-- The signed-in user has event-management access to the event's organisation
-- The event has at least one ticket type
-- Total ticket quantity across ticket types is greater than zero
+## Publish And Unpublish
 
-If validation fails, the endpoint returns a `BAD_REQUEST` response with a clear message.
-
-## Unpublish Validation
-
-A published event cannot be unpublished after orders exist.
-
-This keeps purchased event links and order history stable.
-
-## Edit Form Boundary
-
-The event edit form does not directly control `status`.
-
-Normal event editing uses:
+Dashboard controls live in:
 
 ```text
-PATCH /api/events/[eventId]
+components/events/events-list.tsx
 ```
 
-That endpoint updates event fields and synchronises ticket types, but status transitions are handled only by:
+Status changes call:
 
 ```text
 PATCH /api/events/[eventId]/publish
 ```
 
-## Public API Boundary
+Publishing requires:
 
-Public APIs continue to expose only published events:
+- Authenticated user.
+- Event-management role in the event organisation.
+- At least one ticket type.
+- Total ticket quantity greater than zero.
+
+Unpublishing is blocked once orders exist.
+
+## Edit Boundary
+
+General event editing uses:
+
+```text
+PATCH /api/events/[eventId]
+```
+
+The edit endpoint updates event fields and synchronises ticket types. It does not own the publish/unpublish lifecycle.
+
+## Public Event APIs
+
+Public APIs:
 
 - `GET /api/public/events`
 - `GET /api/public/events/[eventId]`
 
-This behaviour must not be changed to support dashboard previews.
+Rules:
+
+- Return only `published` events.
+- Do not require auth.
+- Do not support dashboard previews.
+
+## Public Demo Event Loader
+
+`lib/events/public-events.ts` ensures public discovery has demo events if there are no published events.
+
+This is separate from `prisma/seed.mjs`. The seed is the preferred way to restore a full development database because it also creates users and memberships.
+

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { Card } from "@/components/ui/card";
 
 type Organisation = {
   id: string;
@@ -32,57 +31,97 @@ export default async function DashboardOrganisationsPage() {
   const organisations = await getOrganisations();
 
   return (
-    <main className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-5xl gap-6">
+    <main className="min-h-screen bg-neutral-100">
+      <div className="mx-auto max-w-5xl px-6 py-10">
+        <div className="mb-6 rounded-xl bg-red-500 p-10 text-2xl font-semibold text-white shadow-md">
+          TAILWIND WORKING TEST
+        </div>
+        <div className="mb-6 rounded-xl bg-blue-600 p-5 text-lg font-semibold text-white shadow-md">
+          UI UPGRADE ACTIVE
+        </div>
         {organisations.length === 0 ? (
-          <section className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center text-center">
-            <h1 className="text-3xl font-semibold text-neutral-950">
-              You don&apos;t have an organisation yet
-            </h1>
-            <p className="mt-3 text-sm text-neutral-600">
-              Create your first organisation to start managing events
-            </p>
-            <Link
-              className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700"
-              href="/dashboard/create"
-            >
-              Create Organisation
-            </Link>
+          <section className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center justify-center">
+            <div className="w-full rounded-xl border border-neutral-200 bg-white p-8 shadow-md">
+              <div className="space-y-6 text-center">
+                <div className="space-y-3">
+                  <h1 className="text-3xl font-semibold text-neutral-950">
+                    You don&apos;t have an organisation yet
+                  </h1>
+                  <p className="text-sm text-neutral-500">
+                    Create your first organisation to start managing events
+                  </p>
+                </div>
+                <Link
+                  className="inline-flex items-center justify-center rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
+                  href="/dashboard/create"
+                >
+                  Create Organisation
+                </Link>
+              </div>
+            </div>
           </section>
         ) : (
-          <>
-            <header className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h1 className="text-3xl font-semibold text-neutral-950">
-                  Dashboard
-                </h1>
-                <p className="mt-1 text-sm text-neutral-500">
-                  Select an organisation to manage.
-                </p>
+          <div className="space-y-6">
+            <header className="rounded-xl border border-neutral-200 bg-white p-6 shadow-md">
+              <div className="flex flex-wrap items-end justify-between gap-6">
+                <div className="space-y-3">
+                  <h1 className="text-3xl font-semibold text-neutral-950">
+                    Dashboard
+                  </h1>
+                  <p className="text-sm text-neutral-500">
+                    Select an organisation to manage.
+                  </p>
+                </div>
+                <Link
+                  className="inline-flex items-center justify-center rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
+                  href="/dashboard/create"
+                >
+                  New organisation
+                </Link>
               </div>
-              <Link
-                className="inline-flex h-10 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700"
-                href="/dashboard/create"
-              >
-                New organisation
-              </Link>
             </header>
 
-            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {organisations.map((organisation) => (
-                <Link href={`/dashboard/${organisation.slug}`} key={organisation.id}>
-                  <Card>
-                    <h2 className="text-lg font-semibold text-neutral-950">
-                      {organisation.name}
-                    </h2>
-                    <p className="mt-2 text-sm text-neutral-500">
-                      Manage events, tickets, and settings.
-                    </p>
-                  </Card>
-                </Link>
-              ))}
+            <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-md">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <h2 className="text-lg font-medium text-neutral-950">
+                    Your organisations
+                  </h2>
+                  <p className="text-sm text-neutral-500">
+                    Open a dashboard to manage events, tickets, and settings.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {organisations.map((organisation) => (
+                    <article
+                      key={organisation.id}
+                      className="rounded-xl border border-neutral-200 bg-white p-6 shadow-md"
+                    >
+                      <div className="flex min-h-44 flex-col justify-between gap-6">
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-medium text-neutral-950">
+                            {organisation.name}
+                          </h3>
+                          <p className="text-sm text-neutral-500">
+                            Manage events, tickets, and settings for this organisation.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <Link
+                            href={`/dashboard/${organisation.slug}`}
+                            className="inline-flex items-center justify-center rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800"
+                          >
+                            Open dashboard
+                          </Link>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
             </section>
-          </>
+          </div>
         )}
       </div>
     </main>

@@ -45,6 +45,42 @@ async function ensureMembership(userId, organisationId, role) {
   });
 }
 
+async function ensureTicketType({
+  eventId,
+  name,
+  price,
+  quantity
+}) {
+  const existingTicketType = await prisma.ticketType.findFirst({
+    where: {
+      eventId,
+      name
+    },
+    select: { id: true }
+  });
+
+  if (existingTicketType) {
+    await prisma.ticketType.update({
+      where: { id: existingTicketType.id },
+      data: {
+        price,
+        quantity
+      }
+    });
+
+    return;
+  }
+
+  await prisma.ticketType.create({
+    data: {
+      eventId,
+      name,
+      price,
+      quantity
+    }
+  });
+}
+
 async function ensurePublishedEvent({
   organisationId,
   title,
@@ -62,13 +98,11 @@ async function ensurePublishedEvent({
       title
     },
     select: {
-      id: true,
-      ticketTypes: {
-        select: { id: true },
-        take: 1
-      }
+      id: true
     }
   });
+
+  let eventId = existingEvent?.id;
 
   if (existingEvent) {
     await prisma.event.update({
@@ -81,38 +115,28 @@ async function ensurePublishedEvent({
         status: "published"
       }
     });
+  } else {
+    const event = await prisma.event.create({
+      data: {
+        organisationId,
+        title,
+        description,
+        startTime,
+        endTime,
+        location,
+        status: "published"
+      },
+      select: { id: true }
+    });
 
-    if (existingEvent.ticketTypes.length === 0) {
-      await prisma.ticketType.create({
-        data: {
-          eventId: existingEvent.id,
-          name: ticketName,
-          price: ticketPrice,
-          quantity: ticketQuantity
-        }
-      });
-    }
-
-    return;
+    eventId = event.id;
   }
 
-  await prisma.event.create({
-    data: {
-      organisationId,
-      title,
-      description,
-      startTime,
-      endTime,
-      location,
-      status: "published",
-      ticketTypes: {
-        create: {
-          name: ticketName,
-          price: ticketPrice,
-          quantity: ticketQuantity
-        }
-      }
-    }
+  await ensureTicketType({
+    eventId,
+    name: ticketName,
+    price: ticketPrice,
+    quantity: ticketQuantity
   });
 }
 

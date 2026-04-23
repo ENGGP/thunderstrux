@@ -5,6 +5,9 @@ services:
       dockerfile: docker/Dockerfile
     env_file:
       - .env
+    environment:
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     ports:
       - "3000:3000"
     volumes:

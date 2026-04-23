@@ -1,46 +1,100 @@
 # Stripe Payments and Connect
 
-## Payment Design Principles
+## Design Principles
 
-- Use Stripe Checkout hosted pages
-- Do not trust frontend success redirects
-- Fulfil only from webhooks
-- Keep local order records for reconciliation
-- Keep ticket issuance atomic with inventory reduction
-- Route payments to connected accounts using one Connect pattern
+- Use Stripe Checkout hosted pages.
+- Do not trust frontend success redirects.
+- Fulfil orders only from Stripe webhooks.
+- Keep local `Order` records for reconciliation.
+- Reduce inventory and issue tickets atomically.
+- Resolve organisation context server-side.
 
 ## Checkout Flow
 
 Files:
 
 - `app/api/payments/checkout/event/route.ts`
-- `lib/validators/payments.ts`
-- `lib/stripe/fees.ts`
+- `components/events/public-ticket-purchase.tsx`
 - `lib/stripe/connect.ts`
+- `lib/stripe/fees.ts`
 
 Flow:
 
 ```text
-Public page sends eventId, ticketTypeId, quantity
-  -> checkout API validates body with Zod
-  -> API fetches published event
+Public event page submits eventId, ticketTypeId, quantity
+  -> API requires authenticated session
+  -> API validates published event
   -> API verifies ticket type belongs to event
-  -> API derives organisationId from event
-  -> API verifies organisation Stripe readiness
-  -> API calculates total amount
-  -> API calculates platform fee
+  -> API resolves organisation from event
+  -> API verifies remaining inventory
+  -> API verifies Stripe Connect readiness
   -> API creates Stripe Checkout Session
   -> API creates local pending Order
-  -> API returns Checkout URL
+  -> frontend redirects to Stripe Checkout
 ```
 
-The frontend never sends trusted organisation data for checkout.
+The frontend does not send trusted organisation data.
 
-## Stripe Connect Destination Charge Pattern
+## Required Conditions For Checkout
 
-Checkout uses destination charges.
+Checkout requires:
 
-Stripe Checkout Session includes:
+- Signed-in user.
+- Published event.
+- Valid ticket type belonging to the event.
+- Requested quantity within available inventory.
+- Organisation Stripe Connect account ready for charges.
+- Stripe environment variables configured.
+
+## Why `Stripe not connected` Happens
+
+The checkout API returns this when the organisation is not Stripe-ready.
+
+Stripe-ready means:
+
+- `stripeAccountId` exists.
+- `stripeChargesEnabled === true`.
+
+Common local causes:
+
+- Organisation has not started Connect onboarding.
+- Onboarding was started but not completed.
+- Stripe webhook/status refresh has not updated local readiness flags.
+- Local Stripe keys or webhook secrets are missing.
+
+## Stripe Connect Onboarding
+
+Files:
+
+- `app/(dashboard)/dashboard/[orgSlug]/settings/page.tsx`
+- `components/settings/stripe-connect-settings.tsx`
+- `app/api/stripe/connect/onboard/route.ts`
+- `app/api/stripe/connect/status/route.ts`
+- `app/api/stripe/connect/webhook/route.ts`
+
+Flow:
+
+```text
+Settings page
+  -> resolves organisation by slug
+  -> checks GET /api/stripe/connect/status
+  -> user clicks Connect Stripe Account
+  -> POST /api/stripe/connect/onboard
+  -> API creates Express account
+  -> API stores stripeAccountId
+  -> API returns onboarding URL
+  -> user completes onboarding on Stripe
+  -> Connect status endpoint/webhook persists readiness flags
+```
+
+Allowed onboarding roles:
+
+- `org_owner`
+- `finance_manager`
+
+## Destination Charge Pattern
+
+Checkout uses destination charges:
 
 ```ts
 payment_intent_data: {
@@ -52,125 +106,54 @@ payment_intent_data: {
 }
 ```
 
-Important:
-
-- The Checkout Session is created on the platform account.
-- The code does not pass a separate `stripeAccount` request option.
-- This avoids mixing Connect patterns.
+The Checkout Session is created on the platform account. The code does not pass a separate `stripeAccount` request option.
 
 ## Platform Fee
 
 File:
 
-- `lib/stripe/fees.ts`
+```text
+lib/stripe/fees.ts
+```
 
 Current fee:
 
-- 10 percent of `totalAmount`
-- Rounded to integer cents
-- Capped so it cannot exceed `totalAmount`
-
-## Local Order Creation
-
-After creating the Checkout Session, the API creates an `Order` with:
-
-- `organisationId`
-- `eventId`
-- `ticketTypeId`
-- `quantity`
-- `unitPrice`
-- `totalAmount`
-- `stripeSessionId`
-- `status = pending`
-
-This data is later used for webhook reconciliation.
+- 10 percent of `totalAmount`.
+- Rounded to integer cents.
+- Capped so it cannot exceed `totalAmount`.
 
 ## Payment Webhook
 
 File:
 
-- `app/api/payments/webhook/route.ts`
+```text
+app/api/payments/webhook/route.ts
+```
 
 Handles:
 
 - `checkout.session.completed`
 
-Webhook responsibilities:
+Responsibilities:
 
-- Verify Stripe webhook signature
-- Find the local order by `stripeSessionId`
-- Exit idempotently if already paid
-- Verify the order is pending
-- Verify session amount matches order total
-- Verify currency
-- Verify metadata matches local order fields
-- Use local order quantity as source of truth
-- Check remaining ticket inventory
-- Reduce inventory
-- Create one `Ticket` row per purchased ticket
-- Mark order paid
+- Verify Stripe signature.
+- Find local order by `stripeSessionId`.
+- Exit idempotently if already paid.
+- Verify amount, currency, and metadata.
+- Check remaining inventory.
+- Reduce inventory.
+- Create one `Ticket` row per purchased ticket.
+- Mark order paid.
 
-Frontend success page does not mark orders as paid.
+## Local Testing Limitations
 
-## Inventory Control
+Full payment testing requires:
 
-Inventory is reduced in the webhook transaction.
+- Stripe test secret key.
+- Stripe Checkout webhook secret.
+- Stripe Connect webhook secret.
+- Webhook forwarding to the local app.
+- A test connected account that can become charges-enabled.
 
-This protects against:
+Without these, public event discovery still works, but checkout will stop at Stripe readiness or Stripe API calls.
 
-- User closing checkout early
-- Fake success redirects
-- Frontend tampering
-- Duplicate webhook delivery
-- Concurrent purchases overselling the same ticket type
-
-## Stripe Connect Onboarding
-
-Files:
-
-- `app/api/stripe/connect/onboard/route.ts`
-- `app/api/stripe/connect/status/route.ts`
-- `app/api/stripe/connect/webhook/route.ts`
-- `lib/stripe/connect.ts`
-- `components/settings/stripe-connect-settings.tsx`
-
-Flow:
-
-```text
-Dashboard settings page
-  -> user clicks Connect Stripe Account
-  -> POST /api/stripe/connect/onboard
-  -> API checks authenticated membership and role
-  -> API creates Express account
-  -> API stores stripeAccountId
-  -> API returns Stripe onboarding URL
-```
-
-Only these organisation roles can start onboarding:
-
-- `org_owner`
-- `finance_manager`
-
-## Stripe Readiness
-
-Helper:
-
-- `isOrganisationStripeReady(organisation)`
-
-Returns true only when:
-
-- `stripeAccountId` exists
-- `stripeChargesEnabled === true`
-
-Checkout requires readiness before creating a payment session.
-
-## Connect Status Persistence
-
-Status endpoint and Connect webhook persist:
-
-- `stripeChargesEnabled`
-- `stripePayoutsEnabled`
-- `stripeDetailsSubmitted`
-- `stripeAccountStatus`
-
-This means checkout can use local readiness flags instead of calling Stripe on every request.

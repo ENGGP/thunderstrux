@@ -90,10 +90,15 @@ export function PublicTicketPurchase({
       window.location.href = data.url;
     } catch (checkoutError) {
       setActiveTicketTypeId(null);
-      setError(
+      const message =
         checkoutError instanceof Error
           ? checkoutError.message
-          : "Unable to start checkout. Please try again."
+          : "Unable to start checkout. Please try again.";
+
+      setError(
+        message === "Stripe not connected"
+          ? "The organiser must complete Stripe onboarding before ticket sales can start."
+          : message
       );
     }
   }

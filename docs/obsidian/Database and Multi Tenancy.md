@@ -1,42 +1,44 @@
 # Database and Multi Tenancy
 
-## Core Multi-Tenant Model
+## Core Model
 
-The core tenant entity is `Organisation`.
+Thunderstrux is multi-tenant by organisation.
 
-Most important resources belong directly or indirectly to an organisation:
+```text
+User
+  -> OrganisationMember
+  -> Organisation
+       -> Event
+            -> TicketType
+       -> Order
+       -> Ticket
+```
 
-- `OrganisationMember`
-- `Event`
-- `Order`
-- `Ticket`
-- `TicketType` through `Event`
+The tenant boundary is `Organisation`. Dashboard access is granted by `OrganisationMember` rows.
 
-## Prisma Models
+## Users
 
-### User
+`User` represents a local credentials account.
 
-Represents a platform user.
-
-Fields:
+Important fields:
 
 - `id`
 - `email`
 - `password`
 - `createdAt`
 
-Relations:
+Rules:
 
-- Organisation memberships
-- Orders
+- `email` is unique.
+- `password` stores a bcrypt hash.
+- Auth.js sessions include `session.user.id`.
+- Membership checks use the database user ID, not email.
 
-Authentication uses Auth.js credentials login. `password` stores a bcrypt hash, never a plain password.
+## Organisations
 
-### Organisation
+`Organisation` represents a society or tenant.
 
-Represents a society or tenant.
-
-Fields:
+Important fields:
 
 - `id`
 - `name`
@@ -48,34 +50,23 @@ Fields:
 - `stripeDetailsSubmitted`
 - `createdAt`
 
-Relations:
+`slug` is the stable dashboard URL identifier used by `/dashboard/[orgSlug]`.
 
-- Members
-- Events
-- Orders
-- Tickets
+## Organisation Members
 
-Stripe Connect status lives here because each organisation will receive payments independently.
+`OrganisationMember` joins users to organisations.
 
-### OrganisationMember
+Important fields:
 
-Joins users to organisations with a role.
-
-Fields:
-
-- `id`
 - `userId`
 - `organisationId`
 - `role`
-- `createdAt`
 
-Constraints:
+Constraint:
 
-- Unique on `userId + organisationId`
-- Indexed by `userId`
-- Indexed by `organisationId`
-
-### OrganisationRole
+```text
+unique(userId, organisationId)
+```
 
 Current roles:
 
@@ -86,121 +77,64 @@ Current roles:
 - `content_manager`
 - `member`
 
-Roles are enforced from `OrganisationMember` rows for the authenticated `session.user.id`.
+Role checks come from the membership row for the authenticated user.
 
-### Event
+## orgSlug Routing
 
-Represents an organisation event.
+The browser route uses the slug:
 
-Fields:
+```text
+/dashboard/engineering-society
+```
 
-- `id`
-- `organisationId`
-- `title`
-- `description`
-- `startTime`
-- `endTime`
-- `location`
-- `status`
-- `createdAt`
+The route file receives:
 
-Rules:
+```ts
+params: Promise<{ orgSlug: string }>
+```
 
-- Belongs to exactly one organisation
-- Public APIs only return `published` events
-- Dashboard APIs must scope by organisation
+The organisation dashboard layout calls `requireOrganisationMembershipBySlug(orgSlug)`. If the user is not a member, the route resolves as not found.
 
-### TicketType
+## Security Model
 
-Represents a purchasable ticket category for an event.
+Trusted source of access:
 
-Fields:
+- Auth.js session
+- `session.user.id`
+- `OrganisationMember` rows
+- Server-side Prisma queries
 
-- `id`
-- `eventId`
-- `name`
-- `price`
-- `quantity`
-- `createdAt`
+Untrusted inputs:
 
-Rules:
+- Frontend role state
+- Frontend `organisationId`
+- Request headers such as `x-org-id` or `x-user-role`
 
-- `price` is integer cents
-- Validation requires non-negative price
-- Validation requires quantity greater than zero when creating
-- Checkout and webhook enforce inventory availability
+Private APIs may accept IDs as parameters, but they must verify membership and ownership server-side before reading or mutating data.
 
-### Order
+## Helper Files
 
-Represents a Stripe Checkout purchase attempt.
+- `lib/auth/access.ts` resolves authenticated users, memberships, and role-specific access.
+- `lib/db/organisation-scope.ts` contains organisation scoping helpers and event ownership assertions.
+- `lib/permissions/index.ts` maps roles to capabilities.
 
-Fields:
-
-- `id`
-- `organisationId`
-- `eventId`
-- `ticketTypeId`
-- `userId`
-- `status`
-- `quantity`
-- `unitPrice`
-- `totalAmount`
-- `stripeSessionId`
-- `createdAt`
-
-Purpose:
-
-- Store enough local data for webhook reconciliation
-- Avoid trusting Stripe metadata alone
-- Support idempotent fulfilment
-
-### Ticket
-
-Represents an issued ticket after webhook-confirmed payment.
-
-Fields:
-
-- `id`
-- `orderId`
-- `eventId`
-- `ticketTypeId`
-- `organisationId`
-- `createdAt`
-
-Tickets are created only in the webhook after successful reconciliation.
-
-## Multi-Tenancy Helpers
-
-File:
-
-- `lib/db/organisation-scope.ts`
-- `lib/auth/access.ts`
-
-Responsibilities:
-
-- Require organisation IDs where needed
-- Resolve authenticated users from Auth.js sessions
-- Load organisation memberships and roles from `OrganisationMember`
-- Build organisation-scoped Prisma query filters
-- Assert that an event belongs to an organisation before mutation
-
-## Public vs Private Tenancy Rules
-
-Private/dashboard routes:
-
-- Require authentication
-- Require organisation membership
-- Use `OrganisationMember.role` for permissions
-- Do not trust frontend role or organisation headers
+## Public vs Private Data
 
 Public routes:
 
-- Do not require auth or `x-org-id`
-- Only expose public-safe data
-- Only expose published events
+- Do not require auth.
+- Return only published events.
+- Do not expose internal organisation IDs unless needed for a public-safe response.
+
+Private dashboard routes:
+
+- Require auth.
+- Require organisation membership.
+- Use membership roles for permissions.
 
 Checkout:
 
-- Does not require frontend `organisationId`
-- Resolves organisation from the published event server-side
-- Still records `organisationId` on the order for reconciliation
+- Accepts `eventId`, `ticketTypeId`, and `quantity`.
+- Resolves organisation from the published event server-side.
+- Creates local orders with trusted server-side IDs.
+

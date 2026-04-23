@@ -1,289 +1,189 @@
 # Troubleshooting
 
-## Dashboard Dynamic Route 404
+## UI Change Not Visible
 
-Expected route:
+Most likely causes:
 
-```text
-/dashboard/[orgSlug]/events
+- Browser cache.
+- Next dev server did not detect the file change.
+- Stale `.next` compiled output.
+- Docker container is not seeing the host file.
+
+Diagnosis:
+
+1. Search source for the visible stale text.
+2. Search generated output too:
+
+```bash
+rg -n --hidden --no-ignore "Exact stale text" .
 ```
 
-Actual file:
+3. Compare host and container source:
+
+```bash
+docker compose exec app cat 'app/(dashboard)/dashboard/[orgSlug]/page.tsx'
+```
+
+4. Add a temporary visible debug marker to the suspected page.
+5. Use `curl http://localhost:3000/...` to inspect server HTML.
+
+Fix order:
+
+1. Hard refresh the browser.
+2. Restart app container:
+
+```bash
+docker compose restart app
+```
+
+3. Clear `.next` and recreate containers:
+
+```powershell
+docker compose down
+if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -Force }
+docker compose up --build --force-recreate -d
+```
+
+## Stale Next.js Build Output
+
+Observed issue:
+
+- Source files were correct.
+- Browser still showed old dashboard buttons.
+- `.next/dev/server/chunks/ssr/*.js` still contained old JSX.
+
+Root cause:
+
+- Stale Next.js compiled output in the Docker dev environment.
+- Turbopack was unreliable for this setup.
+
+Current mitigation:
+
+- `package.json` uses `next dev --webpack`.
+- `docker-compose.yml` enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`.
+
+## Docker File Sync
+
+Expected app volumes:
+
+```yaml
+volumes:
+  - .:/app
+  - /app/node_modules
+```
+
+Verify Docker sees current code:
+
+```bash
+docker compose exec app cat 'app/(dashboard)/dashboard/[orgSlug]/page.tsx'
+```
+
+If the container file differs from the host file, inspect Docker Desktop file sharing and restart Docker.
+
+## Hydration Mismatch On `<body>`
+
+Warning attributes:
+
+```text
+data-new-gr-c-s-check-loaded
+data-gr-ext-installed
+data-gr-ext-disabled
+```
+
+Root cause:
+
+- Browser extensions such as Grammarly inject attributes into `<body>` before React hydrates.
+
+Why this is not an app bug:
+
+- These attributes are not present in source.
+- `app/layout.tsx` renders a plain `<body>`.
+- The mismatch only appears in browsers with the extension active.
+
+Fix:
+
+- No code change is required.
+- Disable the extension for `localhost` if the warning is distracting.
+
+## Dashboard Route 404
+
+Correct file:
 
 ```text
 app/(dashboard)/dashboard/[orgSlug]/events/page.tsx
 ```
 
-This is correct for the Next.js App Router.
-
-The route group `(dashboard)` is ignored in the URL. It is only used for organising files.
-
-## Do Not Use Literal Placeholders
-
-This URL is a documentation placeholder:
+Correct URL:
 
 ```text
-http://localhost:3000/dashboard/[orgSlug]/events
+/dashboard/engineering-society/events
 ```
 
-Use a real organisation slug instead:
+Do not use literal placeholders in the browser:
 
 ```text
-http://localhost:3000/dashboard/my-society/events
+/dashboard/[orgSlug]/events
 ```
 
-If the route loads but says `Organisation not found`, the route exists but the slug is not in the database.
+If the route exists but returns not found, the signed-in user is probably not an `OrganisationMember` for that slug.
 
-## Confirm Route Files
+## Old Dashboard Buttons
 
-Dashboard events route should look like this:
+Current intended structure:
 
-```text
-app/
-  (dashboard)/
-    dashboard/
-      [orgSlug]/
-        layout.tsx
-        page.tsx
-        events/
-          page.tsx
-          new/
-            page.tsx
-        settings/
-          page.tsx
-```
+- `DashboardShell` renders `Dashboard`, `Events`, `Settings`.
+- `/dashboard/[orgSlug]/page.tsx` renders page content and `View events`.
+- `/dashboard` organisation cards render `Open dashboard`.
 
-`events/page.tsx` should have a default export:
+Invalid stale buttons:
 
-```tsx
-import { EventsList } from "@/components/events/events-list";
+- Page-level `Open settings` on `/dashboard/[orgSlug]`.
+- Card-level `Settings` on `/dashboard`.
 
-export default async function EventsPage({
-  params
-}: {
-  params: Promise<{ orgSlug: string }>;
-}) {
-  const { orgSlug } = await params;
+If these appear but are absent from source, search `.next`, clear it, and restart Docker.
 
-  return <EventsList orgSlug={orgSlug} />;
-}
-```
-
-## Stale Next Or Docker Cache
-
-If the code is correct but the browser still shows old behavior, restart the app container:
-
-```bash
-docker compose restart app
-```
-
-Then hard refresh:
-
-```text
-Ctrl + F5
-```
-
-If the stale compiled output still appears, stop the app, delete `.next`, and restart:
-
-```bash
-docker compose stop app
-docker compose up app
-```
-
-## Dashboard Shows Old No Organisations Text
-
-Expected empty dashboard onboarding:
-
-```text
-You don't have an organisation yet
-Create Organisation
-```
-
-Active file for `/dashboard`:
-
-```text
-app/(dashboard)/dashboard/page.tsx
-```
-
-If the browser shows old text such as:
-
-```text
-No organisations have been created yet.
-```
-
-but that text does not exist in the current source, the running Docker or Next.js output is stale.
-
-To prove the active render source, temporarily add this at the top of the dashboard page component:
-
-```ts
-console.log("DASHBOARD PAGE RENDERED - NEW VERSION");
-```
-
-Also temporarily render visible debug text:
-
-```tsx
-<div style={{ color: "red" }}>DEBUG: NEW DASHBOARD CODE ACTIVE</div>
-```
-
-Then hard reset the local Docker environment.
-
-PowerShell:
-
-```powershell
-docker compose down
-docker volume prune -f
-if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -Force }
-docker compose up --build --force-recreate -d
-docker compose run --rm app pnpm exec prisma migrate deploy
-```
-
-Bash:
-
-```bash
-docker compose down
-docker volume prune -f
-rm -rf .next
-docker compose up --build --force-recreate -d
-docker compose run --rm app pnpm exec prisma migrate deploy
-```
-
-Important:
-
-- `docker volume prune -f` can wipe the local database volume.
-- Run Prisma migrations again after pruning volumes.
-- Remove debug logs and debug text after confirming the new page is active.
-
-## `event.ticketTypes.length` Runtime Error
-
-Error:
-
-```text
-Cannot read properties of undefined (reading 'length')
-```
+## Data Missing After Reset
 
 Cause:
 
-- The dashboard events component expected `event.ticketTypes`.
-- Older `GET /api/events` responses did not include `ticketTypes`.
-- Or the browser/dev server was using stale compiled code.
-
-Fix in API:
-
-- `GET /api/events` returns `ticketTypes` for each event.
-
-Fix in frontend:
-
-```ts
-event.ticketTypes?.[0]
-(event.ticketTypes?.length ?? 0)
+```bash
+docker compose down -v
 ```
 
-This means:
+This deletes the PostgreSQL volume.
 
-- Missing `ticketTypes` is treated like an empty list.
-- Events with no ticket types render safely.
-- The Buy Ticket button is disabled when there are no ticket types.
-
-## Homepage Still Shows Old Placeholder
-
-Expected homepage:
-
-```text
-Discover Events
-```
-
-If the old starter content appears:
-
-```text
-Thunderstrux
-Student society SaaS foundation
-```
-
-The running app is stale. Restart Docker:
+Restore:
 
 ```bash
-docker compose restart app
+docker compose up --build --force-recreate -d
+docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm seed
 ```
 
-Then hard refresh the browser.
+See [[Seeding and Data]].
 
-## Navbar Not Visible
+## Stripe Not Connected
 
-The global navbar should be mounted from:
+Checkout can fail with:
 
 ```text
-app/layout.tsx
+Stripe not connected
 ```
 
-Current layout tree:
+Meaning:
 
-```text
-app/layout.tsx
-app/(dashboard)/dashboard/[orgSlug]/layout.tsx
-```
+- The event exists and can be purchased.
+- The organisation does not have a ready Stripe Connect account.
+- `stripeAccountId` is missing or `stripeChargesEnabled` is false.
 
-There is no `app/(public)/layout.tsx` and no `app/(dashboard)/layout.tsx`.
+Fix:
 
-If the navbar is missing:
+- Sign in as a user with `org_owner` or `finance_manager`.
+- Go to `/dashboard/[orgSlug]/settings`.
+- Start Stripe Connect onboarding.
+- Use valid local Stripe keys and webhooks for full local testing.
 
-1. Confirm `app/layout.tsx` logs:
+Local limitation:
 
-```ts
-console.log("LAYOUT HIT:", __filename);
-```
+- Without real/test Stripe keys and webhook forwarding, onboarding and checkout cannot complete end-to-end.
 
-2. Confirm the served HTML contains `components/layout/navbar.tsx` or the visible navbar markup.
-3. Restart Docker if Turbopack is stale:
-
-```bash
-docker compose restart app
-```
-
-4. If generated types or layout output are corrupted, delete `.next` and restart:
-
-```bash
-docker compose stop app
-```
-
-Then delete `.next` from the project folder and run:
-
-```bash
-docker compose up app
-```
-
-Implementation note:
-
-- `app/layout.tsx` calls `auth()`.
-- The session is passed into `AuthSessionProvider`.
-- `Navbar` uses `useSession()`.
-
-Passing the initial server session prevents the navbar from staying blank while the client session is loading.
-
-## Sign Out Redirects To 0.0.0.0
-
-Symptom:
-
-```text
-http://0.0.0.0:3000/
-```
-
-Cause:
-
-- The Next.js dev server binds to `0.0.0.0` inside Docker.
-- Browser-facing Auth.js URLs were not explicitly set to `localhost`.
-
-Fix local environment values:
-
-```text
-AUTH_URL=http://localhost:3000
-NEXTAUTH_URL=http://localhost:3000
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-Keep Docker bind hosts as `0.0.0.0` if needed, but never use `0.0.0.0` as a browser callback URL.
-
-The navbar sign-out action should use:
-
-```ts
-signOut({ callbackUrl: "http://localhost:3000/" })
-```

@@ -2,9 +2,7 @@
 
 ## Auth Provider
 
-Dashboard authentication uses Auth.js / NextAuth with the Credentials provider.
-
-Users sign up and sign in with email and password. Passwords are hashed with `bcryptjs` before storage and are never stored as plain text.
+Thunderstrux uses Auth.js / NextAuth with a Credentials provider.
 
 Main files:
 
@@ -12,51 +10,30 @@ Main files:
 - `app/api/auth/[...nextauth]/route.ts`
 - `app/api/auth/signup/route.ts`
 - `middleware.ts`
-- `components/layout/auth-session-provider.tsx`
-- `components/layout/navbar.tsx`
-- `app/login/page.tsx`
-- `app/signup/page.tsx`
 - `components/auth/credentials-login-form.tsx`
 - `components/auth/signup-form.tsx`
-- `lib/validators/auth.ts`
 
-Required environment variables:
+## Users And Passwords
 
-```text
-AUTH_SECRET=
-AUTH_URL=http://localhost:3000
-NEXTAUTH_URL=http://localhost:3000
-```
+Users sign up and sign in with email/password.
 
-`AUTH_URL` and `NEXTAUTH_URL` are browser-facing canonical URLs. In local Docker development they should use `localhost`, not the server bind address `0.0.0.0`.
+Rules:
 
-## Login Flow
-
-Unauthenticated dashboard users are redirected to:
-
-```text
-/login
-```
-
-The login page shows an email/password form and calls `signIn("credentials")`. After sign-in, the client redirects back to the original dashboard URL when a safe relative `callbackUrl` is present.
-
-## Signup Flow
-
-Users can create an account at:
-
-```text
-/signup
-```
-
-The signup page posts to `POST /api/auth/signup`.
-
-Signup rules:
-
-- Email is normalised to lowercase.
+- Email is normalised to lowercase on signup.
 - Email must be unique.
 - Password must be 8-200 characters.
-- Password is hashed with bcrypt before `User` creation.
-- Duplicate emails return a structured validation error.
+- Passwords are hashed with `bcryptjs`.
+- Plain passwords are never stored.
+
+## Session
+
+The Auth.js session includes:
+
+```ts
+session.user.id
+```
+
+This ID is used for all dashboard membership checks.
 
 ## Protected Routes
 
@@ -67,43 +44,50 @@ Middleware protects:
 /dashboard/:path*
 ```
 
-Unauthenticated access redirects to `/login`.
+Unauthenticated users are redirected to `/login`.
 
-## User Records
+## Login And Signup
 
-User records are local credentials accounts.
+Login route:
 
-The Prisma `User` model stores:
-
-- `email` as a unique identifier
-- `password` as a bcrypt hash
-
-The session receives:
-
-```ts
-session.user.id
+```text
+/login
 ```
 
-This local user ID is used for membership checks.
+Signup route:
+
+```text
+/signup
+```
+
+After login, a safe relative `callbackUrl` can redirect the user back to the dashboard route they attempted to access.
 
 ## Global Navbar
 
-The global navbar is mounted in `app/layout.tsx`.
+Root layout:
 
-Important details:
+```text
+app/layout.tsx
+```
 
-- `app/layout.tsx` calls `auth()` on the server.
-- The resulting session is passed into `AuthSessionProvider`.
-- `components/layout/navbar.tsx` uses `useSession()`.
+Navbar files:
+
+- `components/layout/auth-session-provider.tsx`
+- `components/layout/navbar.tsx`
+
+Behaviour:
+
 - Logged-out users see `Sign in`.
 - Logged-in users see `Dashboard` and `Sign out`.
-- Sign out calls `signOut({ callbackUrl: "http://localhost:3000/" })` in local development so Auth.js does not resolve redirects against the Docker bind host.
+- Sign out redirects to `http://localhost:3000/` in local development.
+
+`app/layout.tsx` calls `auth()` on the server and passes the session into `AuthSessionProvider`. This prevents the navbar from disappearing while the client session is loading.
 
 ## Organisation Access
 
-Dashboard organisation access uses `OrganisationMember`.
+Organisation access is stored in `OrganisationMember`.
 
-Helpers live in:
+Access helpers:
 
 ```text
 lib/auth/access.ts
@@ -116,27 +100,36 @@ Important helpers:
 - `requireOrganisationMembershipBySlug`
 - `requireOrganisationMembershipById`
 - `requireEventManagementAccess`
+- `requireFinanceAccess`
 - `requireStripeConnectAccess`
 
-## API Rules
+## Dashboard Access Layers
 
-`GET /api/orgs` returns only organisations where the authenticated user is a member.
+Direct access to `/dashboard/[orgSlug]/*` is protected by:
 
-`GET /api/orgs/[orgSlug]` returns an organisation only if the authenticated user is a member.
+1. Middleware authentication.
+2. `app/(dashboard)/dashboard/[orgSlug]/layout.tsx` membership check.
 
-Dashboard event APIs no longer trust frontend `x-org-id` or `x-user-role` headers. They use the authenticated session and `OrganisationMember.role`.
-
-## Direct URL Protection
-
-Direct URL access to `/dashboard/[orgSlug]/*` is blocked in two layers:
-
-- Middleware requires authentication.
-- The dashboard layout checks membership for `orgSlug`.
-
-If the signed-in user is not a member of the organisation, the dashboard route resolves as not found.
+If the signed-in user is not a member of the organisation, the route resolves as not found.
 
 ## Organisation Creation
 
 `POST /api/orgs` requires authentication.
 
-The creator is added as an `org_owner` member in the same transaction as organisation creation.
+The creator is added as `org_owner` in the same transaction as organisation creation.
+
+## API Access Rules
+
+Dashboard APIs:
+
+- Require authentication.
+- Use `session.user.id`.
+- Load `OrganisationMember` rows.
+- Use database roles for permission checks.
+
+Do not trust frontend role state, `x-org-id`, or `x-user-role` as authority.
+
+## Dashboard Navigation
+
+Organisation dashboard navigation is documented in [[UI Architecture Rules]].
+

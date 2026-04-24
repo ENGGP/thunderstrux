@@ -13,81 +13,81 @@ Main files:
 - `components/auth/credentials-login-form.tsx`
 - `components/auth/signup-form.tsx`
 
-## Users And Passwords
+## User Model
 
-Users sign up and sign in with email/password.
+Users authenticate with:
+
+- `email`
+- `password`
 
 Rules:
 
-- Email is normalised to lowercase on signup.
-- Email must be unique.
-- Password must be 8-200 characters.
-- Passwords are hashed with `bcryptjs`.
-- Plain passwords are never stored.
+- Passwords are hashed with bcrypt before storage.
+- Auth lookup normalises email to lowercase during credentials authorization.
+- Signup validation is handled by Zod in `lib/validators/auth.ts`.
 
-## Session
+## Session Shape
 
-The Auth.js session includes:
+Important session field:
 
 ```ts
 session.user.id
 ```
 
-This ID is used for all dashboard membership checks.
+This is the value used for all dashboard access checks.
 
 ## Protected Routes
 
-Middleware protects:
+`middleware.ts` protects:
 
 ```text
-/dashboard
 /dashboard/:path*
 ```
 
-Unauthenticated users are redirected to `/login`.
+Behavior:
 
-## Login And Signup
+- If no token exists, user is redirected to `/login`
+- Relative callback URL is preserved in the query string
 
-Login route:
+## Login and Signup Flow
+
+Login:
 
 ```text
 /login
 ```
 
-Signup route:
+- Uses `signIn("credentials")`
+- On success, redirects to `callbackUrl`
+
+Signup:
 
 ```text
 /signup
 ```
 
-After login, a safe relative `callbackUrl` can redirect the user back to the dashboard route they attempted to access.
+- POSTs to `/api/auth/signup`
+- On successful user creation, immediately signs in with credentials
+- Redirects to `callbackUrl`
 
-## Global Navbar
+## Navbar Behavior
 
-Root layout:
+Files:
 
-```text
-app/layout.tsx
-```
-
-Navbar files:
-
+- `app/layout.tsx`
 - `components/layout/auth-session-provider.tsx`
 - `components/layout/navbar.tsx`
 
-Behaviour:
+Current behavior:
 
-- Logged-out users see `Sign in`.
-- Logged-in users see `Dashboard` and `Sign out`.
-- Sign out redirects to `http://localhost:3000/` in local development.
+- Navbar is fixed globally at the top
+- Logged-out users see `Sign in`
+- Logged-in users see `Dashboard` and `Sign out`
+- Sign out currently redirects to `http://localhost:3000/`
 
-`app/layout.tsx` calls `auth()` on the server and passes the session into `AuthSessionProvider`. This prevents the navbar from disappearing while the client session is loading.
+## Organisation Access Helpers
 
-## Organisation Access
-
-Organisation access is stored in `OrganisationMember`.
-
-Access helpers:
+File:
 
 ```text
 lib/auth/access.ts
@@ -105,31 +105,53 @@ Important helpers:
 
 ## Dashboard Access Layers
 
-Direct access to `/dashboard/[orgSlug]/*` is protected by:
+Dashboard protection is layered:
 
-1. Middleware authentication.
-2. `app/(dashboard)/dashboard/[orgSlug]/layout.tsx` membership check.
+1. Middleware blocks unauthenticated users from `/dashboard/*`
+2. Route-level layout checks organisation membership
+3. API handlers verify membership and role again on mutations
 
-If the signed-in user is not a member of the organisation, the route resolves as not found.
+`/dashboard/[orgSlug]/*` is ultimately authorized by:
 
-## Organisation Creation
+- session user id
+- database membership row
+- server-side role checks
 
-`POST /api/orgs` requires authentication.
+If membership is missing, the org dashboard layout resolves as `notFound()`.
 
-The creator is added as `org_owner` in the same transaction as organisation creation.
+## Current Role Capabilities
 
-## API Access Rules
+Event management:
 
-Dashboard APIs:
+- `org_owner`
+- `org_admin`
+- `event_manager`
 
-- Require authentication.
-- Use `session.user.id`.
-- Load `OrganisationMember` rows.
-- Use database roles for permission checks.
+Finance management:
 
-Do not trust frontend role state, `x-org-id`, or `x-user-role` as authority.
+- `org_owner`
+- `org_admin`
+- `finance_manager`
 
-## Dashboard Navigation
+Stripe Connect onboarding:
 
-Organisation dashboard navigation is documented in [[UI Architecture Rules]].
+- `org_owner`
+- `finance_manager`
 
+## Trust Model
+
+Trusted:
+
+- Auth.js session
+- `session.user.id`
+- `OrganisationMember` row
+- server-side Prisma query results
+
+Not trusted as authority:
+
+- Frontend role state
+- frontend `organisationId`
+- request headers such as `x-user-role`
+- request headers such as `x-org-id`
+
+Some helper functions exist for organisation header matching, but access decisions still need the database membership check.

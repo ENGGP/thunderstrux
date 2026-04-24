@@ -5,134 +5,152 @@
 Most likely causes:
 
 - Browser cache.
-- Next dev server did not detect the file change.
-- Stale `.next` compiled output.
-- Docker container is not seeing the host file.
+- Docker dev server did not detect the file change.
+- Stale `.next` output.
+- The container is not seeing the host file.
 
-Diagnosis:
+Diagnosis order:
 
-1. Search source for the visible stale text.
-2. Search generated output too:
+1. Search the source for the exact visible stale text.
+2. Compare host and container copies of the file.
+3. Search `.next` for the stale text.
+4. Refresh the route and inspect runtime HTML.
+
+Useful commands:
 
 ```bash
 rg -n --hidden --no-ignore "Exact stale text" .
-```
-
-3. Compare host and container source:
-
-```bash
 docker compose exec app cat 'app/(dashboard)/dashboard/[orgSlug]/page.tsx'
 ```
 
-4. Add a temporary visible debug marker to the suspected page.
-5. Use `curl http://localhost:3000/...` to inspect server HTML.
-
-Fix order:
-
-1. Hard refresh the browser.
-2. Restart app container:
-
-```bash
-docker compose restart app
-```
-
-3. Clear `.next` and recreate containers:
-
-```powershell
-docker compose down
-if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -Force }
-docker compose up --build --force-recreate -d
-```
-
-## Tailwind Classes Present But Not Styled
+## Stale Next.js Output In Docker
 
 Observed issue:
 
-- JSX contained classes such as `bg-red-500`, `p-10`, `text-2xl`, `rounded-xl`, and `shadow-md`.
-- Rendered HTML contained those class names.
-- The browser did not show the expected colors, spacing, radius, or shadows.
-- Compiled CSS contained some structural utilities such as `flex` and `grid`, but not the expected color and spacing utilities.
+- Source was correct.
+- Browser still showed old dashboard UI.
+- Old JSX remained in `.next` output.
 
-Root cause:
+Current mitigation:
 
-- The project uses Tailwind CSS v4.
-- `app/globals.css` was still using the legacy v3 style directives:
+- `pnpm dev` runs `next dev --webpack --hostname 0.0.0.0`
+- Docker enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`
 
-```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-```
+Fix order:
 
-Current fix:
+1. Hard refresh browser.
+2. `docker compose restart app`
+3. Clear `.next`
+4. Recreate containers
+
+## Tailwind Classes Exist But Styling Does Not Apply
+
+Observed issue:
+
+- JSX contained classes such as `bg-red-500`, `rounded-xl`, `shadow-md`, and `text-white`
+- Rendered output did not show expected Tailwind styling
+
+Root cause that previously existed:
+
+- Tailwind v4 project was still using legacy v3-style CSS directives
+
+Correct setup:
 
 ```css
 @config "../tailwind.config.js";
 @import "tailwindcss";
 ```
 
-The active config file is:
+Files:
 
 ```text
+app/globals.css
 tailwind.config.js
 ```
 
-Expected config paths:
-
-```js
-content: [
-  "./app/**/*.{js,ts,jsx,tsx}",
-  "./components/**/*.{js,ts,jsx,tsx}"
-]
-```
-
-Diagnosis:
-
-1. Add a temporary marker:
-
-```tsx
-<div className="bg-red-500 text-white p-10 text-2xl">
-  Tailwind visual test
-</div>
-```
-
-2. Build or let the dev server compile.
-3. Inspect generated CSS inside Docker:
-
-```bash
-docker compose exec app sh -lc 'find .next -name "*.css" -type f | xargs grep -h "bg-red-500" | head'
-```
-
-If `bg-red-500` is missing from compiled CSS, Tailwind is not scanning or processing correctly. If it exists but the page is not red, CSS is not loading or the browser is serving stale assets.
-
-Fix order:
+Verification:
 
 1. Confirm `app/layout.tsx` imports `./globals.css`.
-2. Confirm `app/globals.css` uses the Tailwind v4 import.
-3. Confirm `tailwind.config.js` content paths include `app` and `components`.
-4. Clear `.next` and rebuild containers if stale CSS persists.
+2. Confirm compiled CSS contains `text-white`, `bg-neutral-900`, and similar utilities.
+3. Confirm no late custom CSS overrides utility colors.
 
-## Stale Next.js Build Output
+Important current lesson:
+
+- A global `a { color: inherit; }` rule can override Tailwind text color utilities on `Link` elements if it lands after utilities.
+- The current fix is that the app-level anchor rule only removes underline, not color.
+
+## Button Text Is Invisible On Dark Buttons
 
 Observed issue:
 
-- Source files were correct.
-- Browser still showed old dashboard buttons.
-- `.next/dev/server/chunks/ssr/*.js` still contained old JSX.
+- `View events` and `New event` showed dark text on dark background
 
-Root cause:
+Real root cause:
 
-- Stale Next.js compiled output in the Docker dev environment.
-- Turbopack was unreliable for this setup.
+- Global anchor color override was winning over `text-white`
 
-Current mitigation:
+Current safe pattern for primary links/buttons:
 
-- `package.json` uses `next dev --webpack`.
-- `docker-compose.yml` enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`.
+```text
+bg-neutral-900 text-white hover:bg-neutral-700
+```
+
+If a dark link button shows dark text again, inspect `app/globals.css` before changing the button component.
+
+## Dashboard Layout Overlap
+
+Observed issue:
+
+- Fixed global header overlapped dashboard sidebar content
+- Slug/title content was hidden under the top bar
+
+Current layout structure:
+
+- Global `Navbar` is fixed at `h-16`
+- Root layout offsets content with `pt-16`
+- Dashboard sidebar uses `top-16`
+- Dashboard main content uses `md:ml-64`
+
+If overlap returns, inspect:
+
+- `app/layout.tsx`
+- `components/layout/navbar.tsx`
+- `components/layout/dashboard-shell.tsx`
+
+## Duplicate Dashboard Controls
+
+Current intended structure:
+
+- `DashboardShell` owns `Dashboard`, `Events`, `Settings`
+- `/dashboard/[orgSlug]` page body renders only overview content and `View events`
+- `/dashboard` organisation cards render only `Open dashboard`
+
+If stale or duplicate buttons appear:
+
+1. Search exact string across the repo.
+2. Search `.next`.
+3. Compare runtime HTML with source.
+4. Restart app / clear `.next`.
+
+## Duplicate Event Titles
+
+Recent issue:
+
+- Edit event route showed both `Edit Event` and `Edit event`
+
+Current correct state:
+
+- The route-level page no longer renders the top `Edit Event` heading
+- The single remaining title comes from `CreateEventForm` in edit mode
+
+If duplicate titles reappear, inspect:
+
+- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
+- `components/events/create-event-form.tsx`
 
 ## Docker File Sync
 
-Expected app volumes:
+Expected volumes:
 
 ```yaml
 volumes:
@@ -140,13 +158,13 @@ volumes:
   - /app/node_modules
 ```
 
-Verify Docker sees current code:
+Verify container sees latest file:
 
 ```bash
 docker compose exec app cat 'app/(dashboard)/dashboard/[orgSlug]/page.tsx'
 ```
 
-If the container file differs from the host file, inspect Docker Desktop file sharing and restart Docker.
+If host and container differ, inspect Docker Desktop file sharing and restart Docker.
 
 ## Hydration Mismatch On `<body>`
 
@@ -160,88 +178,9 @@ data-gr-ext-disabled
 
 Root cause:
 
-- Browser extensions such as Grammarly inject attributes into `<body>` before React hydrates.
+- Browser extensions such as Grammarly inject attributes into `<body>` before React hydrates
 
-Why this is not an app bug:
-
-- These attributes are not present in source.
-- `app/layout.tsx` renders a plain `<body>`.
-- The mismatch only appears in browsers with the extension active.
-
-Fix:
-
-- No code change is required.
-- Disable the extension for `localhost` if the warning is distracting.
-
-## Dashboard Route 404
-
-Correct file:
-
-```text
-app/(dashboard)/dashboard/[orgSlug]/events/page.tsx
-```
-
-Correct URL:
-
-```text
-/dashboard/engineering-society/events
-```
-
-Do not use literal placeholders in the browser:
-
-```text
-/dashboard/[orgSlug]/events
-```
-
-If the route exists but returns not found, the signed-in user is probably not an `OrganisationMember` for that slug.
-
-## Old Dashboard Buttons
-
-Current intended structure:
-
-- `DashboardShell` renders `Dashboard`, `Events`, `Settings`.
-- `/dashboard/[orgSlug]/page.tsx` renders page content and `View events`.
-- `/dashboard` organisation cards render `Open dashboard`.
-
-Invalid stale buttons:
-
-- Page-level `Open settings` on `/dashboard/[orgSlug]`.
-- Card-level `Settings` on `/dashboard`.
-
-If these appear but are absent from source, search `.next`, clear it, and restart Docker.
-
-## Temporary Dashboard UI Markers
-
-Dashboard pages may temporarily include visual markers to prove that Tailwind and the active route are working.
-
-Locations:
-
-```text
-app/(dashboard)/dashboard/page.tsx
-app/(dashboard)/dashboard/[orgSlug]/page.tsx
-```
-
-Remove any temporary markers after visual verification is complete. They are not product features.
-
-## Data Missing After Reset
-
-Cause:
-
-```bash
-docker compose down -v
-```
-
-This deletes the PostgreSQL volume.
-
-Restore:
-
-```bash
-docker compose up --build --force-recreate -d
-docker compose exec app pnpm prisma:migrate
-docker compose exec app pnpm seed
-```
-
-See [[Seeding and Data]].
+This is not currently an app code bug.
 
 ## Stripe Not Connected
 
@@ -253,17 +192,31 @@ Stripe not connected
 
 Meaning:
 
-- The event exists and can be purchased.
-- The organisation does not have a ready Stripe Connect account.
-- `stripeAccountId` is missing or `stripeChargesEnabled` is false.
+- Event exists
+- Ticket type exists
+- Event is published
+- Connected Stripe account is missing or not charges-enabled
 
 Fix:
 
-- Sign in as a user with `org_owner` or `finance_manager`.
-- Go to `/dashboard/[orgSlug]/settings`.
-- Start Stripe Connect onboarding.
-- Use valid local Stripe keys and webhooks for full local testing.
+- Sign in as `org_owner` or `finance_manager`
+- Go to `/dashboard/[orgSlug]/settings`
+- Complete Stripe Connect onboarding
 
-Local limitation:
+## Data Missing After Reset
 
-- Without real/test Stripe keys and webhook forwarding, onboarding and checkout cannot complete end-to-end.
+Cause:
+
+```bash
+docker compose down -v
+```
+
+This removes the Postgres volume.
+
+Restore:
+
+```bash
+docker compose up --build --force-recreate -d
+docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm seed
+```

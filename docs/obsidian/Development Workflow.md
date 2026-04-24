@@ -28,7 +28,7 @@ localhost:5432
 
 ## Docker Configuration
 
-`docker-compose.yml` mounts the host project into the app container:
+`docker-compose.yml` mounts the project into the app container:
 
 ```yaml
 volumes:
@@ -36,15 +36,26 @@ volumes:
   - /app/node_modules
 ```
 
-The anonymous `/app/node_modules` volume prevents host/container dependency conflicts.
+Why:
 
-PostgreSQL data lives in:
+- `.:/app` keeps source live-mounted into the container.
+- `/app/node_modules` avoids host/container dependency conflicts.
+
+Database data lives in the named volume:
 
 ```yaml
 postgres_data:/var/lib/postgresql/data
 ```
 
-The app service also enables polling for reliable file watching inside Docker:
+## Dev Server Configuration
+
+Current `package.json` dev script:
+
+```json
+"dev": "next dev --webpack --hostname 0.0.0.0"
+```
+
+The app container also sets:
 
 ```yaml
 environment:
@@ -52,30 +63,32 @@ environment:
   CHOKIDAR_USEPOLLING: "true"
 ```
 
-## Next Dev Server
-
-The development script intentionally disables Turbopack:
-
-```json
-"dev": "next dev --webpack --hostname 0.0.0.0"
-```
+This is intentional.
 
 Reason:
 
-- Turbopack has repeatedly served stale compiled dashboard UI in this Docker setup.
-- Webpack plus polling has produced reliable file-change detection.
+- Turbopack was unreliable in this Docker setup and repeatedly served stale UI.
+- Webpack plus polling has been the stable configuration.
 
-## Tailwind CSS Setup
+## Tailwind Setup
 
-This project uses Tailwind CSS v4.
+Thunderstrux currently uses Tailwind CSS v4.
 
-Config:
+Files:
 
 ```text
 tailwind.config.js
+app/globals.css
 ```
 
-Required content paths:
+Required CSS entrypoint:
+
+```css
+@config "../tailwind.config.js";
+@import "tailwindcss";
+```
+
+Tailwind content paths:
 
 ```js
 content: [
@@ -84,26 +97,7 @@ content: [
 ]
 ```
 
-Global CSS entrypoint:
-
-```text
-app/globals.css
-```
-
-Required Tailwind v4 directives:
-
-```css
-@config "../tailwind.config.js";
-@import "tailwindcss";
-```
-
-`app/layout.tsx` must import the global stylesheet:
-
-```ts
-import "./globals.css";
-```
-
-If Tailwind class names are present in rendered HTML but the page is visually unstyled, verify the compiled CSS contains the exact utilities being used.
+Do not revert to the legacy `@tailwind base/components/utilities` entrypoint unless the project is intentionally downgraded to Tailwind v3.
 
 ## Common Commands
 
@@ -113,7 +107,7 @@ Run migrations:
 docker compose exec app pnpm prisma:migrate
 ```
 
-Generate Prisma Client:
+Generate Prisma client:
 
 ```bash
 docker compose exec app pnpm prisma:generate
@@ -131,13 +125,13 @@ Build:
 docker compose exec app pnpm build
 ```
 
-Restart app only:
+Restart only the app container:
 
 ```bash
 docker compose restart app
 ```
 
-View app logs:
+Show app logs:
 
 ```bash
 docker compose logs -f app
@@ -146,45 +140,17 @@ docker compose logs -f app
 ## Normal Change Workflow
 
 1. Edit source files on the host.
-2. Let the Docker app container hot reload.
-3. Refresh the browser if the route is server-rendered.
-4. Confirm the HTML or UI reflects the source change.
-
-For server-rendered App Router pages, a browser refresh is often enough after the dev server recompiles.
-
-## Verifying UI Changes
-
-Use a visible temporary marker only when debugging stale output:
-
-```tsx
-<div style={{ color: "red" }}>DEBUG: PAGE ACTIVE</div>
-```
-
-Then verify:
-
-```bash
-curl http://localhost:3000/
-```
-
-Remove the marker immediately after confirming the active render source.
-
-For Tailwind-specific verification, use a visibly styled marker with temporary text:
-
-```tsx
-<div className="bg-red-500 text-white p-10 text-2xl">
-  Tailwind visual test
-</div>
-```
-
-If the block is not red with large white text and heavy padding, Tailwind is not compiling or loading correctly. Check [[Troubleshooting]] before changing page logic.
+2. Let Docker hot reload the app.
+3. Refresh the browser for server-rendered pages.
+4. Verify the rendered route actually reflects the source change.
 
 ## When To Restart Docker
 
 Restart the app container when:
 
-- Source is correct but the browser still shows old UI.
-- The dev server logs look stuck.
-- A route keeps serving stale compiled output.
+- Source code is correct but the browser still shows old UI.
+- The dev server logs are not recompiling.
+- A route appears stale after multiple refreshes.
 
 ```bash
 docker compose restart app
@@ -196,7 +162,7 @@ Clear `.next` when:
 
 - Restarting the app container does not fix stale output.
 - Runtime HTML contains code that no longer exists in source.
-- `.next` search finds old strings that should not be present.
+- Old strings still appear inside `.next`.
 
 PowerShell:
 
@@ -216,21 +182,19 @@ docker compose up --build --force-recreate -d
 
 ## When To Use `down -v`
 
-Only use this when you intentionally want to wipe local database data:
+Only do this when you intentionally want to wipe the local Postgres volume:
 
 ```bash
 docker compose down -v
 ```
 
-After `down -v`, restore the database:
+After `down -v`, restore:
 
 ```bash
 docker compose up --build --force-recreate -d
 docker compose exec app pnpm prisma:migrate
 docker compose exec app pnpm seed
 ```
-
-See [[Seeding and Data]] for seeded users and organisations.
 
 ## Environment Variables
 
@@ -250,4 +214,4 @@ STRIPE_WEBHOOK_SECRET=
 STRIPE_CONNECT_WEBHOOK_SECRET=
 ```
 
-The app binds to `0.0.0.0` inside Docker, but browser-facing URLs should use `localhost`.
+Browser-facing URLs should use `localhost`, even though the app binds to `0.0.0.0` inside Docker.

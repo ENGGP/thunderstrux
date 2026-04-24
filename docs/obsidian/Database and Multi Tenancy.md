@@ -1,8 +1,10 @@
 # Database and Multi Tenancy
 
-## Core Model
+## Tenant Boundary
 
-Thunderstrux is multi-tenant by organisation.
+The tenant boundary is `Organisation`.
+
+Core model:
 
 ```text
 User
@@ -14,35 +16,44 @@ User
        -> Ticket
 ```
 
-The tenant boundary is `Organisation`. Dashboard access is granted by `OrganisationMember` rows.
+Dashboard access is granted by `OrganisationMember` rows.
+
+## Schema Snapshot
+
+Main models in `prisma/schema.prisma`:
+
+- `User`
+- `Organisation`
+- `OrganisationMember`
+- `Event`
+- `TicketType`
+- `Order`
+- `Ticket`
+
+Enums:
+
+- `OrganisationRole`
+- `EventStatus`
+- `OrderStatus`
 
 ## Users
-
-`User` represents a local credentials account.
 
 Important fields:
 
 - `id`
-- `email`
+- `email` unique
 - `password`
 - `createdAt`
 
-Rules:
-
-- `email` is unique.
-- `password` stores a bcrypt hash.
-- Auth.js sessions include `session.user.id`.
-- Membership checks use the database user ID, not email.
+`password` stores the bcrypt hash, not the raw password.
 
 ## Organisations
-
-`Organisation` represents a society or tenant.
 
 Important fields:
 
 - `id`
 - `name`
-- `slug`
+- `slug` unique
 - `stripeAccountId`
 - `stripeAccountStatus`
 - `stripeChargesEnabled`
@@ -50,19 +61,24 @@ Important fields:
 - `stripeDetailsSubmitted`
 - `createdAt`
 
-`slug` is the stable dashboard URL identifier used by `/dashboard/[orgSlug]`.
+`slug` is the stable tenant-facing identifier used in dashboard routes.
+
+Example:
+
+```text
+/dashboard/engineering-society
+```
 
 ## Organisation Members
 
-`OrganisationMember` joins users to organisations.
-
-Important fields:
+Fields:
 
 - `userId`
 - `organisationId`
 - `role`
+- `createdAt`
 
-Constraint:
+Constraints:
 
 ```text
 unique(userId, organisationId)
@@ -77,64 +93,101 @@ Current roles:
 - `content_manager`
 - `member`
 
-Role checks come from the membership row for the authenticated user.
+## Events
 
-## orgSlug Routing
+Fields:
 
-The browser route uses the slug:
+- `organisationId`
+- `title`
+- `description`
+- `startTime`
+- `endTime`
+- `location`
+- `status`
+
+Current statuses:
+
+- `draft`
+- `published`
+
+## Ticket Types
+
+Fields:
+
+- `eventId`
+- `name`
+- `price` in integer cents
+- `quantity`
+
+Current rule:
+
+- quantity must be positive on creation
+
+## Orders and Tickets
+
+`Order` is the checkout and reconciliation record.
+
+Important fields:
+
+- `organisationId`
+- `eventId`
+- `ticketTypeId`
+- `userId`
+- `status`
+- `quantity`
+- `unitPrice`
+- `totalAmount`
+- `stripeSessionId` unique
+
+`Ticket` is the issued unit created after a paid webhook reconciliation.
+
+One paid order creates `quantity` ticket rows.
+
+## Multi-Tenant Access Pattern
+
+The backend resolves tenant access through:
+
+- authenticated user
+- organisation membership
+- role-specific checks
+
+Common patterns:
+
+- `requireOrganisationMembershipBySlug(orgSlug)`
+- `requireOrganisationMembershipById(organisationId)`
+- `requireEventManagementAccess(organisationId)`
+
+## Organisation Scope Helpers
+
+File:
 
 ```text
-/dashboard/engineering-society
+lib/db/organisation-scope.ts
 ```
 
-The route file receives:
+Important helpers:
 
-```ts
-params: Promise<{ orgSlug: string }>
-```
+- `requireOrganisationId`
+- `requireOrganisationHeader`
+- `requireMatchingOrganisationScope`
+- `scopedByOrganisation`
+- `assertEventBelongsToOrganisation`
 
-The organisation dashboard layout calls `requireOrganisationMembershipBySlug(orgSlug)`. If the user is not a member, the route resolves as not found.
+Current note:
 
-## Security Model
-
-Trusted source of access:
-
-- Auth.js session
-- `session.user.id`
-- `OrganisationMember` rows
-- Server-side Prisma queries
-
-Untrusted inputs:
-
-- Frontend role state
-- Frontend `organisationId`
-- Request headers such as `x-org-id` or `x-user-role`
-
-Private APIs may accept IDs as parameters, but they must verify membership and ownership server-side before reading or mutating data.
-
-## Helper Files
-
-- `lib/auth/access.ts` resolves authenticated users, memberships, and role-specific access.
-- `lib/db/organisation-scope.ts` contains organisation scoping helpers and event ownership assertions.
-- `lib/permissions/index.ts` maps roles to capabilities.
+- The helper layer supports validating `x-org-id`, but the important security boundary is still the server-side membership and role check.
 
 ## Public vs Private Data
 
-Public routes:
+Public APIs:
 
-- Do not require auth.
-- Return only published events.
-- Do not expose internal organisation IDs unless needed for a public-safe response.
+- return published event data only
+- do not require authentication
 
-Private dashboard routes:
+Private APIs:
 
-- Require auth.
-- Require organisation membership.
-- Use membership roles for permissions.
+- require authentication
+- require organisation membership
+- require management roles for mutations
 
-Checkout:
-
-- Accepts `eventId`, `ticketTypeId`, and `quantity`.
-- Resolves organisation from the published event server-side.
-- Creates local orders with trusted server-side IDs.
-
+Checkout is public-facing in URL shape, but still requires an authenticated user and server-side event resolution.

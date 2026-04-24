@@ -2,12 +2,12 @@
 
 ## Stack
 
-- Next.js App Router
-- React Server Components and client components where needed
+- Next.js 16 App Router
+- React 19
 - TypeScript
 - Prisma ORM
-- PostgreSQL
-- Auth.js / NextAuth Credentials provider
+- PostgreSQL 16
+- Auth.js / NextAuth credentials provider
 - Stripe Checkout
 - Stripe Connect Express
 - Zod validation
@@ -20,20 +20,25 @@
 ```text
 Browser
   -> Next.js App Router pages and layouts
-  -> Client components submit forms and call APIs
+  -> Client components submit forms and call route handlers
   -> Route handlers validate input and enforce auth/tenancy
-  -> Prisma reads/writes PostgreSQL
-  -> Stripe APIs and webhooks handle payment side effects
+  -> Prisma reads and writes PostgreSQL
+  -> Stripe APIs create checkout sessions and onboarding links
+  -> Stripe webhooks reconcile payments and sync account readiness
 ```
 
 ## App Router Structure
 
-Route groups are filesystem-only. The `(dashboard)` and `(public)` folders do not appear in URLs.
+Route groups are filesystem-only. `(dashboard)` and `(public)` do not appear in URLs.
 
 ```text
 app/
   layout.tsx
   page.tsx
+  login/page.tsx
+  signup/page.tsx
+  success/page.tsx
+  cancel/page.tsx
   (public)/
     events/[eventId]/page.tsx
   (dashboard)/
@@ -50,71 +55,72 @@ app/
   api/
 ```
 
-## Public Routes
+## Layout Responsibilities
 
-- `/` renders public event discovery.
-- `/events/[eventId]` renders a public event detail page.
-- Public pages only expose published events.
-- Public event detail uses `GET /api/public/events/[eventId]`.
+`app/layout.tsx`
 
-## Dashboard Routes
+- Loads the auth session on the server.
+- Wraps the tree in `AuthSessionProvider`.
+- Renders the fixed global `Navbar`.
+- Offsets page content with `pt-16` so content does not sit under the fixed header.
 
-### `/dashboard`
+`app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
 
-File:
+- Resolves `orgSlug`.
+- Calls `requireOrganisationMembershipBySlug(orgSlug)`.
+- Uses `notFound()` when membership is missing.
+- Passes the organisation name and slug into `DashboardShell`.
 
-```text
-app/(dashboard)/dashboard/page.tsx
-```
+`components/layout/dashboard-shell.tsx`
 
-Responsibilities:
+- Renders the fixed left sidebar below the global header.
+- Renders the organisation heading row.
+- Owns shared organisation dashboard nav.
+- Must remain the single source of dashboard navigation.
 
-- Load the signed-in user's organisations through `GET /api/orgs`.
-- Show onboarding if the user has no memberships.
-- Show organisation cards if the user has memberships.
-- Provide `Open dashboard` links to `/dashboard/[orgSlug]`.
+## Page Responsibilities
 
-The dashboard root does not render a Settings action for organisation cards.
+`/dashboard`
 
-### `/dashboard/[orgSlug]`
+- Loads the signed-in user’s organisations through `GET /api/orgs`.
+- Shows empty-state onboarding when there are no memberships.
+- Shows organisation cards with `Open dashboard` when memberships exist.
 
-Files:
+`/dashboard/[orgSlug]`
 
-```text
-app/(dashboard)/dashboard/[orgSlug]/layout.tsx
-app/(dashboard)/dashboard/[orgSlug]/page.tsx
-components/layout/dashboard-shell.tsx
-```
+- Renders overview content only.
+- Shows `View events`.
+- Must not duplicate `Settings` navigation.
 
-Responsibilities:
+`/dashboard/[orgSlug]/events`
 
-- The layout validates the signed-in user's membership for `orgSlug`.
-- The layout renders `DashboardShell`.
-- `DashboardShell` owns shared organisation navigation.
-- The page renders only overview content and a `View events` action.
+- Renders the events list via `components/events/events-list.tsx`.
 
-## Layout vs Page Responsibilities
+`/dashboard/[orgSlug]/settings`
 
-Layouts own shared structure:
+- Renders Stripe Connect settings UI.
 
-- Root layout owns app-wide session provider and global navbar.
-- Organisation dashboard layout owns membership gating and `DashboardShell`.
-- `DashboardShell` owns organisation dashboard navigation.
+## Authentication Model
 
-Pages own route-specific content:
+- Auth uses the Credentials provider in `auth.ts`.
+- Passwords are stored hashed with bcrypt.
+- JWT callback stores `userId` in the token.
+- Session callback exposes `session.user.id`.
+- Custom sign-in page is `/login`.
 
-- `/dashboard` owns organisation selection/onboarding content.
-- `/dashboard/[orgSlug]` owns the organisation dashboard overview card.
-- `/dashboard/[orgSlug]/events` owns event list content through `EventsList`.
-- `/dashboard/[orgSlug]/settings` owns Stripe Connect settings content.
+## Multi-Tenancy Model
 
-Do not duplicate shared navigation in page files. See [[UI Architecture Rules]].
+- A user can belong to many organisations.
+- `Organisation.slug` is the stable route identifier.
+- Dashboard access is always resolved from the authenticated session plus the database membership row.
+- The frontend may send `organisationId`, but backend permission checks must still verify membership and role.
 
 ## Styling Pipeline
 
-Tailwind is loaded globally from:
+Tailwind is configured with:
 
 ```text
+tailwind.config.js
 app/globals.css
 ```
 
@@ -125,36 +131,17 @@ Current Tailwind v4 entrypoint:
 @import "tailwindcss";
 ```
 
-Tailwind scans:
+Content paths:
 
-```text
-app/**/*.{js,ts,jsx,tsx}
-components/**/*.{js,ts,jsx,tsx}
+```js
+content: [
+  "./app/**/*.{js,ts,jsx,tsx}",
+  "./components/**/*.{js,ts,jsx,tsx}"
+]
 ```
 
-The config file is:
+Important historical context:
 
-```text
-tailwind.config.js
-```
-
-Do not restore the legacy Tailwind v3 directives unless the project is downgraded to Tailwind v3. In Tailwind v4, using only `@tailwind base`, `@tailwind components`, and `@tailwind utilities` caused partial CSS output where structural utilities compiled but color, spacing, radius, and shadow utilities did not appear.
-
-## Backend Boundaries
-
-Route handlers live under `app/api`.
-
-Main API groups:
-
-- `app/api/auth`
-- `app/api/orgs`
-- `app/api/events`
-- `app/api/public/events`
-- `app/api/payments`
-- `app/api/stripe/connect`
-
-Private dashboard APIs require an authenticated session and organisation membership. They should not trust frontend role headers or frontend organisation scope as authority.
-
-Public APIs do not require authentication but only return published, public-safe data.
-
-Payment APIs resolve trusted organisation context server-side and rely on webhooks for fulfilment.
+- Tailwind previously appeared “partially broken” because the project was using legacy `@tailwind base/components/utilities` directives under Tailwind v4.
+- The broken symptom was: structural utilities compiled, but color/spacing/radius/shadow utilities did not.
+- The current v4 import setup fixes that.

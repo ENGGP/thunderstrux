@@ -8,7 +8,7 @@ Organisation dashboard navigation must live in:
 components/layout/dashboard-shell.tsx
 ```
 
-Current shared nav items:
+Current nav items:
 
 - `Dashboard`
 - `Events`
@@ -16,90 +16,91 @@ Current shared nav items:
 
 Do not duplicate these links in page files.
 
+## Global Header Rule
+
+Global top navigation belongs in:
+
+```text
+components/layout/navbar.tsx
+```
+
+Current header behavior:
+
+- Fixed at the top
+- Height `h-16`
+- Left side: `Thunderstrux`
+- Right side when signed in: `Dashboard`, `Sign out`
+
 ## Layout Responsibilities
 
-Root layout:
+`app/layout.tsx`
 
-```text
-app/layout.tsx
-```
+- Imports `globals.css`
+- Renders the session provider
+- Renders the fixed navbar
+- Offsets content below the header with `pt-16`
 
-Responsibilities:
+`app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
 
-- Load the initial auth session.
-- Render `AuthSessionProvider`.
-- Render the global `Navbar`.
-- Render page content.
+- Resolves org membership and organisation name
+- Passes name and slug into `DashboardShell`
 
-Organisation dashboard layout:
+`components/layout/dashboard-shell.tsx`
 
-```text
-app/(dashboard)/dashboard/[orgSlug]/layout.tsx
-```
-
-Responsibilities:
-
-- Resolve `orgSlug`.
-- Require organisation membership.
-- Render `DashboardShell`.
-
-Dashboard shell:
-
-```text
-components/layout/dashboard-shell.tsx
-```
-
-Responsibilities:
-
-- Render shared organisation navigation.
-- Render shared dashboard header.
-- Render children content.
+- Renders the fixed left sidebar below the global header
+- Renders the organisation heading row
+- Renders page children
 
 ## Page Responsibilities
 
-Pages should render only route-specific content and actions.
+`/dashboard`
 
-Examples:
+- Renders organisation selection and onboarding
 
-- `/dashboard` renders organisation selection and onboarding.
-- `/dashboard/[orgSlug]` renders overview content and `View events`.
-- `/dashboard/[orgSlug]/events` renders the event list.
-- `/dashboard/[orgSlug]/settings` renders Stripe Connect settings.
+`/dashboard/[orgSlug]`
+
+- Renders overview content and `View events`
+- Must not render `Open settings`
+
+`/dashboard/[orgSlug]/events`
+
+- Renders event list content
+
+`/dashboard/[orgSlug]/settings`
+
+- Renders Stripe Connect settings
 
 ## Current Button Rules
 
-`/dashboard`:
+`/dashboard`
 
-- Shows `New organisation`.
-- Shows organisation cards.
-- Organisation cards show `Open dashboard`.
-- Organisation cards do not show `Settings`.
+- Shows `New organisation`
+- Organisation cards show `Open dashboard`
+- Organisation cards do not show `Settings`
 
-`/dashboard/[orgSlug]`:
+`/dashboard/[orgSlug]`
 
-- Shared nav shows `Dashboard`, `Events`, `Settings`.
-- Page content shows `View events`.
-- Page content must not show `Open settings`.
+- Sidebar shows `Dashboard`, `Events`, `Settings`
+- Page content shows `View events`
+- Page content must not show `Open settings`
 
-## Current Dashboard Styling
+## Current Heading Rules
 
-Current dashboard styling is intentionally high-contrast while the UI upgrade is being verified:
+- The organisation name appears in the dashboard header area, not in the sidebar body.
+- The edit event route should render only one edit title: `Edit event` from the form.
 
-- Dashboard pages use a neutral grey page background.
-- Main content uses centered containers with generous padding.
-- Sections are white cards with rounded corners, borders, and visible shadows.
-- Primary actions use black buttons with white text.
-- DashboardShell owns the shared organisation nav and applies spacing, border, and active/inactive link styles.
+## Styling Rules
 
-Temporary verification markers belong only in page content while debugging Tailwind or stale rendering. Remove them once the visual update is confirmed.
+Current shared visual direction:
 
-## Debugging UI Duplication
+- Neutral grey page background
+- White cards
+- `rounded-xl`
+- `border border-neutral-200`
+- `shadow-sm`
+- Primary buttons use `bg-neutral-900 text-white hover:bg-neutral-700`
 
-If an old button appears in the browser but not in source:
+## Known UI Inconsistencies
 
-1. Search the whole codebase, including `.next`, for the exact text.
-2. Compare source and compiled output.
-3. Clear `.next`.
-4. Restart the Docker app container.
-
-See [[Troubleshooting]] for the full stale-build playbook.
+- `DashboardShell` does not yet compute the active nav item from the current route; `Dashboard` is always styled active.
+- New event route still shows a top page heading plus the form title.

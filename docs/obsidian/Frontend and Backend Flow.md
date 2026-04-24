@@ -2,36 +2,34 @@
 
 ## Public Homepage
 
-File:
+Files:
 
-```text
-app/page.tsx
-```
+- `app/page.tsx`
+- `app/api/public/events/route.ts`
+- `lib/events/public-events.ts`
 
 Flow:
 
 ```text
 User visits /
-  -> page renders Discover Events
-  -> server component loads published events through lib/events/public-events.ts
-  -> cards link to /events/[eventId]
+  -> page fetches GET /api/public/events with cache: no-store
+  -> API calls getPublishedEvents()
+  -> getPublishedEvents() ensures demo published events exist if there are zero published events
+  -> page renders public event cards
 ```
 
-The homepage displays:
+Important current behavior:
 
-- Organisation name
-- Event title
-- Date
-- Location
-- `View Event`
-
-The shared public loader creates demo public events only if no published events exist. Full development data should still be restored through [[Seeding and Data]].
+- `app/page.tsx` is `force-dynamic`.
+- Public homepage cards always link to `/events/[eventId]`.
+- If there are zero published events in the whole database, demo events are auto-created.
 
 ## Public Event Detail
 
 Files:
 
 - `app/(public)/events/[eventId]/page.tsx`
+- `app/api/public/events/[eventId]/route.ts`
 - `components/events/public-ticket-purchase.tsx`
 
 Flow:
@@ -39,87 +37,93 @@ Flow:
 ```text
 User visits /events/[eventId]
   -> page fetches GET /api/public/events/[eventId]
-  -> page renders event details and ticket types
-  -> user selects quantity
-  -> client component POSTs /api/payments/checkout/event
-  -> API returns Stripe Checkout URL
+  -> API returns only published events
+  -> page renders event details and ticketTypes
+  -> PublicTicketPurchase handles client-side checkout start
+```
+
+Checkout flow:
+
+```text
+User selects quantity
+  -> POST /api/payments/checkout/event
+  -> route validates event, ticket type, quantity, status, inventory, and Stripe readiness
+  -> Stripe Checkout session is created
+  -> local Order row is created with status=pending
   -> browser redirects to Stripe
 ```
 
-Checkout request sends only:
+## Login and Signup
 
-- `eventId`
-- `ticketTypeId`
-- `quantity`
+Files:
 
-## Dashboard Root
-
-Route:
-
-```text
-/dashboard
-```
-
-File:
-
-```text
-app/(dashboard)/dashboard/page.tsx
-```
+- `app/login/page.tsx`
+- `app/signup/page.tsx`
+- `components/auth/credentials-login-form.tsx`
+- `components/auth/signup-form.tsx`
+- `app/api/auth/signup/route.ts`
+- `app/api/auth/[...nextauth]/route.ts`
 
 Flow:
 
 ```text
-Page forwards request cookies to GET /api/orgs
-  -> API returns organisations for session.user.id
-  -> page renders onboarding or organisation cards
+User signs up
+  -> POST /api/auth/signup
+  -> User row created with hashed password
+  -> frontend signs in via credentials
+  -> browser redirects to callbackUrl
 ```
-
-No memberships:
-
-- Shows `You don't have an organisation yet`.
-- Shows `Create Organisation`.
-
-With memberships:
-
-- Shows dashboard heading.
-- Shows `New organisation`.
-- Shows organisation cards with `Open dashboard`.
-- Uses a card-based dashboard layout with visible spacing, shadows, and black primary buttons.
-
-The dashboard root does not render a card-level Settings button.
-
-## Create Organisation
-
-Route:
 
 ```text
-/dashboard/create
+User signs in
+  -> signIn("credentials")
+  -> auth.ts checks email/password against Prisma
+  -> session.user.id is exposed
+  -> browser redirects to callbackUrl
 ```
+
+## Dashboard Root
+
+Files:
+
+- `app/(dashboard)/dashboard/page.tsx`
+- `app/api/orgs/route.ts`
+
+Flow:
+
+```text
+Server page forwards request cookies to GET /api/orgs
+  -> API reads authenticated user from session
+  -> API loads organisation memberships and maps to organisation list
+  -> page renders empty state or organisation cards
+```
+
+Current UI:
+
+- Empty state shows `Create Organisation`.
+- Populated state shows `New organisation` and `Open dashboard`.
+- Root dashboard does not render a card-level `Settings` button.
+
+## Create Organisation
 
 Files:
 
 - `app/(dashboard)/dashboard/create/page.tsx`
 - `components/orgs/create-organisation-form.tsx`
+- `app/api/orgs/route.ts`
 
 Flow:
 
 ```text
 User submits organisation name
   -> POST /api/orgs
+  -> API normalises or generates slug
   -> API creates Organisation
-  -> API creates org_owner OrganisationMember
-  -> form redirects to /dashboard/[orgSlug]
+  -> API creates org_owner membership for current user
+  -> frontend redirects to /dashboard/[orgSlug]
 ```
 
-Invites and join requests are not implemented.
-
-## Organisation Dashboard
-
-Route:
-
-```text
-/dashboard/[orgSlug]
-```
+## Organisation Dashboard Overview
 
 Files:
 
@@ -132,95 +136,89 @@ Flow:
 ```text
 Layout receives orgSlug
   -> requireOrganisationMembershipBySlug(orgSlug)
-  -> render DashboardShell
-  -> page renders overview card
+  -> pass organisation.name + orgSlug into DashboardShell
+  -> page renders overview content
 ```
 
-Shared navigation:
+Current UI:
 
-- `Dashboard`
-- `Events`
-- `Settings`
+- Sidebar navigation: `Dashboard`, `Events`, `Settings`
+- Header shows the organisation name
+- Page body shows `View events`
+- Page body does not render `Open settings`
 
-The page content renders:
-
-- `Organisation dashboard`
-- `Manage events for this organisation.`
-- `View events`
-- Temporary Tailwind/debug markers may be present while verifying styling.
-
-The page must not render page-level Settings navigation. See [[UI Architecture Rules]].
-
-## Dashboard Events
-
-Route:
-
-```text
-/dashboard/[orgSlug]/events
-```
+## Events Dashboard
 
 Files:
 
 - `app/(dashboard)/dashboard/[orgSlug]/events/page.tsx`
 - `components/events/events-list.tsx`
 - `app/api/events/route.ts`
+- `app/api/events/[eventId]/route.ts`
+- `app/api/events/[eventId]/publish/route.ts`
 
 Flow:
 
 ```text
 Events page receives orgSlug
-  -> EventsList fetches organisation by slug
-  -> EventsList calls GET /api/events?orgId=...
-  -> API checks session and membership
-  -> API returns organisation-scoped events with ticketTypes
-  -> table renders draft/published controls
+  -> EventsList fetches organisation by slug via /api/orgs/[orgSlug]
+  -> EventsList fetches GET /api/events?orgId=...
+  -> API verifies membership for organisationId
+  -> events render with management actions
 ```
 
-The events list defensively handles missing `ticketTypes`:
+Supported actions:
 
-```ts
-event.ticketTypes?.[0]
-(event.ticketTypes?.length ?? 0)
-```
+- Create new event
+- Edit event
+- Publish draft event
+- Unpublish published event, but only if there are no orders
+- Delete event, but only if there are no orders or tickets
 
-## Create And Edit Event
+Important edit rules:
 
-Create route:
+- Ticket types with existing orders or issued tickets cannot be deleted.
+- Ticket types with existing orders or issued tickets cannot be modified.
+- Event deletion is blocked after orders or ticket issuance.
+
+## Create and Edit Event
+
+Files:
+
+- `app/(dashboard)/dashboard/[orgSlug]/events/new/page.tsx`
+- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
+- `components/events/create-event-form.tsx`
+
+Flow:
 
 ```text
-/dashboard/[orgSlug]/events/new
+CreateEventForm loads organisation by slug
+  -> create mode posts to /api/events
+  -> edit mode patches /api/events/[eventId]
+  -> on success, router.push(`/dashboard/${orgSlug}/events`)
 ```
 
-Edit route:
+Current UI note:
 
-```text
-/dashboard/[orgSlug]/events/[eventId]/edit
-```
+- Edit page now shows only one `Edit event` title.
+- New event page still has a top page heading `Create Event` and the form title `New event`.
 
-Both use dashboard APIs that validate authenticated membership and event-management roles.
-
-## Settings And Stripe Connect
-
-Route:
-
-```text
-/dashboard/[orgSlug]/settings
-```
+## Stripe Settings
 
 Files:
 
 - `app/(dashboard)/dashboard/[orgSlug]/settings/page.tsx`
 - `components/settings/stripe-connect-settings.tsx`
+- `app/api/stripe/connect/status/route.ts`
+- `app/api/stripe/connect/onboard/route.ts`
 
 Flow:
 
 ```text
 Settings page receives orgSlug
-  -> UI resolves organisation
-  -> GET /api/stripe/connect/status
+  -> client resolves organisation via /api/orgs/[orgSlug]
+  -> GET /api/stripe/connect/status?organisationId=...
   -> user may POST /api/stripe/connect/onboard
   -> browser redirects to Stripe onboarding
-  -> UI refreshes status on focus/visibility
+  -> status refreshes when window regains focus
 ```
-
-Only `org_owner` and `finance_manager` can start onboarding.

@@ -1,108 +1,87 @@
 # Seeding and Data
 
-## Purpose
+## Seed File
 
-`prisma/seed.mjs` restores useful local development data after database resets.
-
-It creates:
-
-- Users
-- Organisations
-- Organisation memberships
-- Published demo events
-- Ticket types
-
-## Seeded Credentials
+Primary seed script:
 
 ```text
-user1@example.com / password123
-user2@example.com / password123
+prisma/seed.mjs
 ```
 
-## Seeded Organisations
+Package scripts:
 
-```text
-Engineering Society
-slug: engineering-society
-
-Arts Society
-slug: arts-society
+```json
+"seed": "prisma db seed"
+"prisma:seed": "node prisma/seed.mjs"
 ```
 
-## Seeded Memberships
-
-```text
-user1@example.com -> Engineering Society -> org_owner
-user2@example.com -> Arts Society -> member
-```
-
-## Seeded Events And Tickets
-
-Each organisation has one published event:
-
-```text
-Engineering Society Launch Night
-Ticket: General Admission
-Price: 1000 cents
-Quantity: 50
-
-Arts Society Showcase
-Ticket: Standard Ticket
-Price: 1500 cents
-Quantity: 40
-```
-
-## Idempotent Strategy
-
-The seed is safe to run repeatedly.
-
-Matching rules:
-
-- Users match by `email`.
-- Organisations match by `slug`.
-- Memberships match by `userId + organisationId`.
-- Events match by `organisationId + title`.
-- Ticket types match by `eventId + name`.
-
-Existing rows are updated instead of duplicated.
-
-## Running Seed
-
-Preferred command inside Docker:
+Recommended command in Docker:
 
 ```bash
 docker compose exec app pnpm seed
 ```
 
-Equivalent command:
+## Seed Guarantees
 
-```bash
-docker compose exec app pnpm prisma db seed
-```
+The seed is intentionally idempotent.
 
-The project also keeps:
+Current behavior:
 
-```bash
-docker compose exec app pnpm prisma:seed
-```
+- Users are upserted by `email`
+- Organisations are upserted by `slug`
+- Memberships are upserted by `(userId, organisationId)`
+- Events are matched by `(organisationId, title)`
+- Ticket types are matched by `(eventId, name)`
 
-`pnpm prisma:seed` runs `node prisma/seed.mjs` directly. `pnpm seed` uses Prisma's configured seed command.
+Running the seed again updates core values instead of blindly duplicating rows.
 
-## Why Data Disappears
+## Seeded Users
 
-The PostgreSQL data is stored in the Docker volume:
+- `user1@example.com` / `password123`
+- `user2@example.com` / `password123`
 
-```text
-postgres_data:/var/lib/postgresql/data
-```
+## Seeded Organisations
 
-This command deletes the local database volume:
+- `Engineering Society` / `engineering-society`
+- `Arts Society` / `arts-society`
+
+## Seeded Memberships
+
+- `user1@example.com` -> `Engineering Society` -> `org_owner`
+- `user2@example.com` -> `Arts Society` -> `member`
+
+## Seeded Events
+
+The seed creates published demo events:
+
+- `Engineering Society Launch Night`
+- `Arts Society Showcase`
+
+Each gets at least one ticket type with positive quantity and a valid price.
+
+## Important Interaction With Demo Public Events
+
+`lib/events/public-events.ts` contains fallback logic:
+
+- If the database has zero published events, the public homepage auto-creates demo published events.
+
+This means:
+
+- Public pages can look populated even when you have not run the seed.
+- Dashboard memberships and users still require the seed.
+- The seed remains the correct way to restore full development state.
+
+## What `down -v` Removes
+
+This command wipes the Postgres volume:
 
 ```bash
 docker compose down -v
 ```
 
-After `down -v`, run migrations and seed again:
+After that, users, organisations, memberships, events, ticket types, orders, and tickets are gone.
+
+## Safe Restore Flow
 
 ```bash
 docker compose up --build --force-recreate -d
@@ -110,27 +89,17 @@ docker compose exec app pnpm prisma:migrate
 docker compose exec app pnpm seed
 ```
 
-## Verification
+## Quick Verification
 
-Expected minimum local data after seeding:
+After seeding:
 
-```text
-users: 2
-organisations: 2
-memberships: 2
-events: 2
-ticketTypes: 2
-```
+1. Sign in as `user1@example.com`
+2. Visit `/dashboard`
+3. Open `/dashboard/engineering-society`
+4. Visit homepage `/`
 
-Public homepage verification:
+Expected:
 
-- `/` should show `Engineering Society Launch Night`.
-- `/` should show `Arts Society Showcase`.
-
-Dashboard verification:
-
-- Sign in as `user1@example.com`.
-- Visit `/dashboard`.
-- Open `Engineering Society`.
-- The dashboard should resolve `/dashboard/engineering-society`.
-
+- Dashboard resolves the engineering organisation
+- Public homepage shows published events
+- Event detail pages load

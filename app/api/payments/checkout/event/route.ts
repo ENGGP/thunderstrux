@@ -24,6 +24,8 @@ export async function POST(request: Request) {
     return validationError(validation.details);
   }
 
+  let pendingOrderId: string | null = null;
+
   try {
     const user = await requireAuthenticatedUser();
     const event = await prisma.event.findFirst({
@@ -117,6 +119,21 @@ export async function POST(request: Request) {
     const platformFeeAmount = calculatePlatformFee(totalAmount);
     const stripe = getStripe();
     const appUrl = getAppUrl();
+    const pendingOrder = await prisma.order.create({
+      data: {
+        organisationId,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        quantity: validation.data.quantity,
+        unitPrice: ticketType.price,
+        status: "pending",
+        totalAmount,
+        userId: user.id
+      },
+      select: { id: true }
+    });
+
+    pendingOrderId = pendingOrder.id;
 
     const session = await stripe.checkout.sessions.create(
       {
@@ -143,6 +160,7 @@ export async function POST(request: Request) {
         success_url: `${appUrl}/success`,
         cancel_url: `${appUrl}/cancel`,
         metadata: {
+          orderId: pendingOrder.id,
           eventId: event.id,
           organisationId,
           ticketTypeId: ticketType.id,
@@ -152,19 +170,20 @@ export async function POST(request: Request) {
     );
 
     if (!session.url) {
+      await prisma.order.update({
+        where: { id: pendingOrder.id },
+        data: {
+          status: "failed",
+          failedAt: new Date(),
+          failureReason: "Stripe Checkout Session did not include a redirect URL"
+        }
+      });
       return internalError();
     }
 
-    await prisma.order.create({
+    await prisma.order.update({
+      where: { id: pendingOrder.id },
       data: {
-        organisationId,
-        eventId: event.id,
-        ticketTypeId: ticketType.id,
-        quantity: validation.data.quantity,
-        unitPrice: ticketType.price,
-        status: "pending",
-        totalAmount,
-        userId: user.id,
         stripeSessionId: session.id
       }
     });
@@ -173,6 +192,17 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
+    }
+
+    if (pendingOrderId) {
+      await prisma.order.update({
+        where: { id: pendingOrderId },
+        data: {
+          status: "failed",
+          failedAt: new Date(),
+          failureReason: "Failed to create Stripe Checkout Session"
+        }
+      });
     }
 
     console.error("Failed to create checkout session", {

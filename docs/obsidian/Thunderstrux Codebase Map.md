@@ -11,6 +11,8 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. Th
 - Stripe Checkout ticket purchase flow for published events.
 - Stripe Connect Express onboarding and readiness checks.
 - Webhook-driven order reconciliation, ticket issuance, and inventory reduction.
+- Buyer ticket history at `/tickets`.
+- Organiser order review at `/dashboard/[orgSlug]/orders`.
 - Idempotent development seed data.
 
 Not implemented:
@@ -88,7 +90,7 @@ docs/obsidian/
 - Global header is fixed at the top via `components/layout/navbar.tsx`.
 - Dashboard shell uses a fixed left sidebar below the global header and a content header that shows the organisation name.
 - `/dashboard/[orgSlug]` now shows the organisation name, not the slug.
-- Sidebar contains only `Dashboard`, `Events`, and `Settings`.
+- Sidebar contains `Dashboard`, `Events`, `Orders`, and `Settings`.
 - Primary dashboard buttons use `bg-neutral-900 text-white hover:bg-neutral-700`.
 
 ## Current Known Quirks

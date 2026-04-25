@@ -198,6 +198,32 @@ Responsibilities:
 - Reduce inventory.
 - Create tickets.
 - Mark order paid.
+- Store `paidAt` on success.
+- Store `failedAt` and `failureReason` on reconciliation failure.
+
+## Server-Rendered Order Views
+
+### `GET /tickets`
+
+Buyer-facing authenticated page.
+
+Rules:
+
+- Auth required.
+- Reads orders by `session.user.id`.
+- Shows paid, pending, and failed orders.
+- Shows ticket identifiers when tickets exist.
+
+### `GET /dashboard/[orgSlug]/orders`
+
+Organiser-facing authenticated dashboard page.
+
+Rules:
+
+- Auth required.
+- Organisation membership required.
+- Finance access required.
+- Reads orders scoped to the resolved organisation id.
 
 ## Stripe Connect
 
@@ -240,4 +266,3 @@ Responsibilities:
 
 - Verify signature.
 - Persist account status flags on the matching organisation.
-

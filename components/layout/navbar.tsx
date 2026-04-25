@@ -21,6 +21,12 @@ export default function Navbar() {
             >
               Dashboard
             </Link>
+            <Link
+              href="/tickets"
+              className="text-sm font-medium text-neutral-700 transition hover:text-neutral-950"
+            >
+              My tickets
+            </Link>
             <button
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-950"
               onClick={() => signOut({ callbackUrl: "http://localhost:3000/" })}

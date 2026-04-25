@@ -15,6 +15,8 @@ Core files:
 
 - `app/api/payments/checkout/event/route.ts`
 - `app/api/payments/webhook/route.ts`
+- `app/tickets/page.tsx`
+- `app/(dashboard)/dashboard/[orgSlug]/orders/page.tsx`
 - `app/api/stripe/connect/onboard/route.ts`
 - `app/api/stripe/connect/status/route.ts`
 - `app/api/stripe/connect/webhook/route.ts`
@@ -31,8 +33,10 @@ Public event page
   -> user selects ticket type + quantity
   -> POST /api/payments/checkout/event
   -> API validates auth, event, ticketType, quantity, inventory, Stripe readiness
-  -> Stripe Checkout Session created
   -> local pending Order created
+  -> Stripe Checkout Session created
+  -> Checkout Session metadata includes orderId, eventId, organisationId, ticketTypeId, and quantity
+  -> local Order is updated with stripeSessionId
   -> browser redirected to Stripe
 ```
 
@@ -137,17 +141,26 @@ Reconciliation checks:
 
 - Stripe signature valid
 - local order exists by `stripeSessionId`
+- Stripe metadata `orderId` resolves the local order
 - local order is still `pending`
 - session amount matches local total
 - currency matches expected `aud`
 - Stripe metadata matches local order
+- metadata quantity matches local order quantity
 - enough inventory still exists
 
 On success:
 
 - order marked `paid`
+- `paidAt` timestamp stored
 - ticket type inventory decremented
 - one `Ticket` row created per purchased ticket
+
+On reconciliation failure:
+
+- order marked `failed`
+- `failedAt` timestamp stored
+- `failureReason` stored for organiser debugging
 
 Transaction:
 
@@ -168,3 +181,41 @@ Without those:
 - public discovery still works
 - dashboard still works
 - Stripe onboarding and payment completion will not complete end-to-end
+
+## Local Stripe CLI Flow
+
+Use Stripe test mode keys in `.env`.
+
+Forward Checkout webhooks:
+
+```bash
+stripe listen --forward-to localhost:3000/api/payments/webhook
+```
+
+Set the printed secret as:
+
+```text
+STRIPE_WEBHOOK_SECRET=
+```
+
+Forward Connect webhooks in a second terminal if testing onboarding account updates:
+
+```bash
+stripe listen --forward-to localhost:3000/api/stripe/connect/webhook
+```
+
+Set the printed secret as:
+
+```text
+STRIPE_CONNECT_WEBHOOK_SECRET=
+```
+
+Minimum end-to-end local test:
+
+1. Sign in as `user1@example.com`.
+2. Complete or simulate Stripe Connect readiness for `Engineering Society`.
+3. Visit a published event detail page.
+4. Buy a ticket through Stripe Checkout.
+5. Confirm `/tickets` shows a paid order and ticket IDs.
+6. Confirm `/dashboard/engineering-society/orders` shows the order.
+7. Confirm ticket type inventory decreased.

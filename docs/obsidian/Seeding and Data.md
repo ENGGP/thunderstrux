@@ -103,3 +103,5 @@ Expected:
 - Dashboard resolves the engineering organisation
 - Public homepage shows published events
 - Event detail pages load
+
+Seed data does not create orders or tickets. Those are created only through checkout and webhook reconciliation.

@@ -13,6 +13,18 @@ function reconciliationError(message: string, details: Record<string, unknown>) 
   });
 }
 
+function parseMetadataQuantity(quantity: string | undefined) {
+  if (!quantity) {
+    return null;
+  }
+
+  const parsedQuantity = Number(quantity);
+
+  return Number.isInteger(parsedQuantity) && parsedQuantity > 0
+    ? parsedQuantity
+    : null;
+}
+
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
 
@@ -38,11 +50,13 @@ export async function POST(request: Request) {
 
     if (session.id) {
       const metadata = session.metadata;
+      const orderId = metadata?.orderId;
       const eventId = metadata?.eventId;
       const organisationId = metadata?.organisationId;
       const ticketTypeId = metadata?.ticketTypeId;
+      const metadataQuantity = parseMetadataQuantity(metadata?.quantity);
 
-      if (!eventId || !organisationId || !ticketTypeId) {
+      if (!orderId || !eventId || !organisationId || !ticketTypeId || !metadataQuantity) {
         reconciliationError("Stripe session missing required metadata", {
           stripeSessionId: session.id,
           metadata
@@ -53,7 +67,7 @@ export async function POST(request: Request) {
       await prisma.$transaction(
         async (tx) => {
           const order = await tx.order.findUnique({
-            where: { stripeSessionId: session.id },
+            where: { id: orderId },
             select: {
               id: true,
               status: true,
@@ -63,53 +77,104 @@ export async function POST(request: Request) {
               quantity: true,
               unitPrice: true,
               totalAmount: true,
-              stripeSessionId: true
+              stripeSessionId: true,
+              paidAt: true,
+              failedAt: true,
+              failureReason: true,
+              tickets: {
+                select: { id: true }
+              }
             }
           });
 
           if (!order) {
             reconciliationError("Local order not found for Stripe session", {
-              stripeSessionId: session.id
+              stripeSessionId: session.id,
+              metadataOrderId: orderId
             });
             return;
           }
 
-          if (order.status === "paid") {
+          const localOrder = order;
+
+          if (localOrder.status === "paid") {
+            if (localOrder.tickets.length !== localOrder.quantity) {
+              reconciliationError("Paid order ticket count does not match quantity", {
+                orderId: localOrder.id,
+                stripeSessionId: session.id,
+                expectedQuantity: localOrder.quantity,
+                issuedTickets: localOrder.tickets.length
+              });
+            }
+
             return;
           }
 
-          if (order.status !== "pending") {
+          if (localOrder.status === "failed") {
             reconciliationError("Order is not pending", {
-              orderId: order.id,
-              status: order.status,
+              orderId: localOrder.id,
+              status: localOrder.status,
+              stripeSessionId: session.id,
+              failureReason: localOrder.failureReason
+            });
+            return;
+          }
+
+          if (localOrder.status !== "pending") {
+            reconciliationError("Order is not pending", {
+              orderId: localOrder.id,
+              status: localOrder.status,
               stripeSessionId: session.id
             });
             return;
           }
 
-          if (order.stripeSessionId !== session.id) {
-            reconciliationError("Stripe session id does not match local order", {
-              orderId: order.id,
+          async function failOrder(reason: string, details: Record<string, unknown>) {
+            reconciliationError(reason, {
+              orderId: localOrder.id,
+              stripeSessionId: session.id,
+              ...details
+            });
+
+            await tx.order.update({
+              where: { id: localOrder.id },
+              data: {
+                status: "failed",
+                stripeSessionId: localOrder.stripeSessionId ?? session.id,
+                failedAt: new Date(),
+                failureReason: reason
+              }
+            });
+          }
+
+          if (
+            localOrder.stripeSessionId &&
+            localOrder.stripeSessionId !== session.id
+          ) {
+            await failOrder("Stripe session id does not match local order", {
               sessionId: session.id,
-              orderStripeSessionId: order.stripeSessionId
+              orderStripeSessionId: localOrder.stripeSessionId
             });
             return;
           }
 
-          if (session.amount_total !== order.totalAmount) {
-            reconciliationError("Stripe amount does not match local order", {
-              orderId: order.id,
-              stripeSessionId: session.id,
+          if (session.payment_status !== "paid") {
+            await failOrder("Stripe session is not paid", {
+              paymentStatus: session.payment_status
+            });
+            return;
+          }
+
+          if (session.amount_total !== localOrder.totalAmount) {
+            await failOrder("Stripe amount does not match local order", {
               stripeAmountTotal: session.amount_total,
-              orderTotalAmount: order.totalAmount
+              orderTotalAmount: localOrder.totalAmount
             });
             return;
           }
 
-          if (session.currency !== expectedCurrency) {
-            reconciliationError("Stripe currency does not match expected currency", {
-              orderId: order.id,
-              stripeSessionId: session.id,
+          if (session.currency?.toLowerCase() !== expectedCurrency) {
+            await failOrder("Stripe currency does not match expected currency", {
               stripeCurrency: session.currency,
               expectedCurrency
             });
@@ -117,29 +182,40 @@ export async function POST(request: Request) {
           }
 
           if (
-            order.eventId !== eventId ||
-            order.ticketTypeId !== ticketTypeId ||
-            order.organisationId !== organisationId
+            localOrder.id !== orderId ||
+            localOrder.eventId !== eventId ||
+            localOrder.ticketTypeId !== ticketTypeId ||
+            localOrder.organisationId !== organisationId ||
+            localOrder.quantity !== metadataQuantity
           ) {
-            reconciliationError("Stripe metadata does not match local order", {
-              orderId: order.id,
-              stripeSessionId: session.id,
-              orderEventId: order.eventId,
+            await failOrder("Stripe metadata does not match local order", {
+              orderId: localOrder.id,
+              metadataOrderId: orderId,
+              orderEventId: localOrder.eventId,
               metadataEventId: eventId,
-              orderTicketTypeId: order.ticketTypeId,
+              orderTicketTypeId: localOrder.ticketTypeId,
               metadataTicketTypeId: ticketTypeId,
-              orderOrganisationId: order.organisationId,
-              metadataOrganisationId: organisationId
+              orderOrganisationId: localOrder.organisationId,
+              metadataOrganisationId: organisationId,
+              orderQuantity: localOrder.quantity,
+              metadataQuantity
             });
             return;
           }
 
+          const paidAt = new Date();
           const claimedOrder = await tx.order.updateMany({
             where: {
-              id: order.id,
+              id: localOrder.id,
               status: "pending"
             },
-            data: { status: "paid" }
+            data: {
+              status: "paid",
+              stripeSessionId: session.id,
+              paidAt,
+              failedAt: null,
+              failureReason: null
+            }
           });
 
           if (claimedOrder.count === 0) {
@@ -148,29 +224,50 @@ export async function POST(request: Request) {
 
           const inventoryUpdate = await tx.ticketType.updateMany({
             where: {
-              id: order.ticketTypeId,
-              eventId: order.eventId,
+              id: localOrder.ticketTypeId,
+              eventId: localOrder.eventId,
               quantity: {
-                gte: order.quantity
+                gte: localOrder.quantity
               }
             },
             data: {
               quantity: {
-                decrement: order.quantity
+                decrement: localOrder.quantity
               }
             }
           });
 
           if (inventoryUpdate.count === 0) {
-            throw new Error("Insufficient ticket inventory for paid checkout session");
+            await tx.order.update({
+              where: { id: localOrder.id },
+              data: {
+                status: "failed",
+                stripeSessionId: localOrder.stripeSessionId ?? session.id,
+                paidAt: null,
+                failedAt: new Date(),
+                failureReason:
+                  "Insufficient ticket inventory for paid checkout session"
+              }
+            });
+
+            reconciliationError(
+              "Insufficient ticket inventory for paid checkout session",
+              {
+                orderId: localOrder.id,
+                stripeSessionId: session.id,
+                ticketTypeId: localOrder.ticketTypeId,
+                requestedQuantity: localOrder.quantity
+              }
+            );
+            return;
           }
 
           await tx.ticket.createMany({
-            data: Array.from({ length: order.quantity }, () => ({
-              orderId: order.id,
-              eventId: order.eventId,
-              ticketTypeId: order.ticketTypeId,
-              organisationId: order.organisationId
+            data: Array.from({ length: localOrder.quantity }, () => ({
+              orderId: localOrder.id,
+              eventId: localOrder.eventId,
+              ticketTypeId: localOrder.ticketTypeId,
+              organisationId: localOrder.organisationId
             }))
           });
         },

@@ -12,6 +12,7 @@ Current nav items:
 
 - `Dashboard`
 - `Events`
+- `Orders`
 - `Settings`
 
 Do not duplicate these links in page files.
@@ -66,6 +67,10 @@ Current header behavior:
 
 - Renders event list content
 
+`/dashboard/[orgSlug]/orders`
+
+- Renders organisation-scoped order review for finance-capable roles
+
 `/dashboard/[orgSlug]/settings`
 
 - Renders Stripe Connect settings
@@ -80,7 +85,7 @@ Current header behavior:
 
 `/dashboard/[orgSlug]`
 
-- Sidebar shows `Dashboard`, `Events`, `Settings`
+- Sidebar shows `Dashboard`, `Events`, `Orders`, `Settings`
 - Page content shows `View events`
 - Page content must not show `Open settings`
 

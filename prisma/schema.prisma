@@ -93,6 +93,9 @@ model Order {
   totalAmount     Int
   stripeSessionId String?      @unique
   createdAt       DateTime     @default(now())
+  paidAt          DateTime?
+  failedAt        DateTime?
+  failureReason   String?
   organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)

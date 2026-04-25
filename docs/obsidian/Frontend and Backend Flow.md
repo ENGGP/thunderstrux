@@ -31,6 +31,7 @@ Files:
 - `app/(public)/events/[eventId]/page.tsx`
 - `app/api/public/events/[eventId]/route.ts`
 - `components/events/public-ticket-purchase.tsx`
+- `app/tickets/page.tsx`
 
 Flow:
 
@@ -48,10 +49,20 @@ Checkout flow:
 User selects quantity
   -> POST /api/payments/checkout/event
   -> route validates event, ticket type, quantity, status, inventory, and Stripe readiness
-  -> Stripe Checkout session is created
   -> local Order row is created with status=pending
+  -> Stripe Checkout session is created
+  -> Order row is updated with stripeSessionId
   -> browser redirects to Stripe
+  -> payment webhook marks Order paid and issues Ticket rows
+  -> buyer sees the result at /tickets
 ```
+
+Buyer tickets page:
+
+- Requires authentication.
+- Reads orders by `session.user.id`.
+- Shows pending, paid, and failed orders.
+- Shows ticket identifiers once tickets have been issued.
 
 ## Login and Signup
 
@@ -142,7 +153,7 @@ Layout receives orgSlug
 
 Current UI:
 
-- Sidebar navigation: `Dashboard`, `Events`, `Settings`
+- Sidebar navigation: `Dashboard`, `Events`, `Orders`, `Settings`
 - Header shows the organisation name
 - Page body shows `View events`
 - Page body does not render `Open settings`
@@ -222,3 +233,25 @@ Settings page receives orgSlug
   -> browser redirects to Stripe onboarding
   -> status refreshes when window regains focus
 ```
+
+## Organiser Orders
+
+Files:
+
+- `app/(dashboard)/dashboard/[orgSlug]/orders/page.tsx`
+
+Flow:
+
+```text
+Page receives orgSlug
+  -> requireOrganisationMembershipBySlug(orgSlug)
+  -> requireFinanceAccess(organisation.id)
+  -> query orders scoped to organisation.id
+  -> render buyer, event, ticket type, quantity, total, status, and paidAt
+```
+
+Access:
+
+- `org_owner`
+- `org_admin`
+- `finance_manager`

@@ -244,6 +244,7 @@ Rules:
 - Organisation is resolved server-side from `organisationId`.
 - Existing `stripeAccountId` is reused and a fresh onboarding link is generated.
 - Returns structured Stripe errors instead of a generic 500.
+- Detects incomplete Stripe platform setup and returns `PLATFORM_NOT_READY` instead of raw Stripe text.
 
 Response:
 
@@ -252,6 +253,22 @@ Response:
   "url": "https://connect.stripe.com/setup/..."
 }
 ```
+
+Platform-not-ready response:
+
+```json
+{
+  "state": "PLATFORM_NOT_READY",
+  "message": "Stripe platform setup incomplete",
+  "actionRequired": "Complete Stripe Connect platform profile",
+  "actionUrl": "https://dashboard.stripe.com/settings/connect/platform-profile"
+}
+```
+
+Status:
+
+- `200` with `{ "url": "..." }` when onboarding can continue.
+- `409` with `PLATFORM_NOT_READY` payload when Stripe blocks account creation because platform setup/profile is incomplete.
 
 ### `GET /api/stripe/connect/status?organisationId=...`
 
@@ -268,6 +285,7 @@ Rules:
 Lifecycle states:
 
 - `NOT_CONNECTED`: no `stripeAccountId`.
+- `PLATFORM_NOT_READY`: Stripe platform profile is incomplete and Express account creation is blocked.
 - `CONNECTED_INCOMPLETE`: account exists but `details_submitted` is false.
 - `RESTRICTED`: details submitted but `charges_enabled` is false.
 - `READY`: `charges_enabled` is true.
@@ -310,6 +328,20 @@ Rules:
 - User must have Stripe Connect access.
 - Clears local Stripe fields on the organisation.
 - Does not delete or modify the account inside Stripe.
+- Also clears `PLATFORM_NOT_READY` back to `NOT_CONNECTED`.
+
+Response:
+
+```json
+{
+  "disconnected": true,
+  "status": {
+    "state": "NOT_CONNECTED",
+    "connected": false,
+    "ready": false
+  }
+}
+```
 
 ### `POST /api/stripe/connect/webhook`
 

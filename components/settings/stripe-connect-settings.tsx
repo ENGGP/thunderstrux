@@ -11,6 +11,7 @@ import {
 
 type StripeConnectState =
   | "NOT_CONNECTED"
+  | "PLATFORM_NOT_READY"
   | "CONNECTED_INCOMPLETE"
   | "RESTRICTED"
   | "READY"
@@ -28,6 +29,8 @@ type ConnectStatus = {
   eventually_due: string[];
   disabled_reason: string | null;
   dashboard_url: string | null;
+  actionUrl?: string;
+  actionRequired?: string;
   error?: string;
 };
 
@@ -38,6 +41,15 @@ function stateContent(status: ConnectStatus | null) {
       description:
         "Create a Stripe Express account for this organisation before accepting payments.",
       tone: "neutral"
+    };
+  }
+
+  if (status.state === "PLATFORM_NOT_READY") {
+    return {
+      title: "Stripe platform setup required",
+      description:
+        "You must complete your Stripe platform profile before connecting accounts.",
+      tone: "amber"
     };
   }
 
@@ -214,6 +226,31 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     try {
       await redirectToOnboarding("/api/stripe/connect/onboard");
     } catch (error) {
+      if (
+        error instanceof ClientApiError &&
+        error.payload?.state === "PLATFORM_NOT_READY"
+      ) {
+        setStatus({
+          accountId: null,
+          connected: false,
+          state: "PLATFORM_NOT_READY",
+          ready: false,
+          charges_enabled: false,
+          payouts_enabled: false,
+          details_submitted: false,
+          currently_due: [],
+          eventually_due: [],
+          disabled_reason: null,
+          dashboard_url: null,
+          actionUrl: error.payload.actionUrl,
+          actionRequired: error.payload.actionRequired,
+          error: error.payload.message
+        });
+        setMessage(null);
+        setIsStartingOnboarding(false);
+        return;
+      }
+
       setMessage(
         error instanceof ClientApiError
           ? error.message
@@ -283,6 +320,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const content = stateContent(status);
   const requirements = status?.currently_due ?? [];
   const isConnected = Boolean(status?.connected);
+  const isPlatformNotReady = status?.state === "PLATFORM_NOT_READY";
 
   return (
     <Card>
@@ -352,7 +390,29 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         ) : null}
 
         <div className="flex flex-wrap gap-3">
-          {!isConnected ? (
+          {isPlatformNotReady && status?.actionUrl ? (
+            <a
+              className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+              href={status.actionUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open Stripe Platform Settings
+            </a>
+          ) : null}
+
+          {isPlatformNotReady ? (
+            <Button
+              disabled={isStartingOnboarding}
+              onClick={startOnboarding}
+              type="button"
+              variant="secondary"
+            >
+              {isStartingOnboarding ? "Retrying..." : "Retry after completion"}
+            </Button>
+          ) : null}
+
+          {!isConnected && !isPlatformNotReady ? (
             <Button
               disabled={isStartingOnboarding}
               onClick={startOnboarding}
@@ -414,7 +474,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
             </a>
           ) : null}
 
-          {isConnected ? (
+          {isConnected || isPlatformNotReady ? (
             <Button
               disabled={isDisconnecting}
               onClick={disconnectStripe}

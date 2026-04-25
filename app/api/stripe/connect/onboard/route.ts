@@ -12,7 +12,11 @@ import {
   requireStripeConnectAccess
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
-import { createExpressAccount, createOnboardingLink } from "@/lib/stripe/connect";
+import {
+  createExpressAccount,
+  createOnboardingLink,
+  StripeConnectPlatformNotReadyError
+} from "@/lib/stripe/connect";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
@@ -70,6 +74,18 @@ export async function POST(request: Request) {
       });
       return serviceUnavailable(
         "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
+      );
+    }
+
+    if (error instanceof StripeConnectPlatformNotReadyError) {
+      return NextResponse.json(
+        {
+          state: error.state,
+          message: error.message,
+          actionRequired: error.actionRequired,
+          actionUrl: error.actionUrl
+        },
+        { status: 409 }
       );
     }
 

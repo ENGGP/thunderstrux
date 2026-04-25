@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
-import { getStripe, getStripeWebhookSecret } from "@/lib/stripe";
+import {
+  getStripe,
+  getStripeWebhookSecret,
+  StripeConfigurationError
+} from "@/lib/stripe";
 
 const expectedCurrency = "aud";
 const maxTransactionAttempts = 3;
@@ -102,8 +106,25 @@ export async function POST(request: Request) {
   }
 
   const rawBody = await request.text();
-  const stripe = getStripe();
-  const webhookSecret = getStripeWebhookSecret();
+  let stripe: Stripe;
+  let webhookSecret: string;
+
+  try {
+    stripe = getStripe();
+    webhookSecret = getStripeWebhookSecret();
+  } catch (error) {
+    if (error instanceof StripeConfigurationError) {
+      console.error("Stripe checkout webhook configuration error", {
+        message: error.message
+      });
+      return NextResponse.json(
+        { error: "Stripe webhook is not configured" },
+        { status: 503 }
+      );
+    }
+
+    throw error;
+  }
 
   let event: Stripe.Event;
 
@@ -113,6 +134,11 @@ export async function POST(request: Request) {
     console.error(error);
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
+
+  console.info("Stripe checkout webhook processing", {
+    stripeEventId: event.id,
+    eventType: event.type
+  });
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;

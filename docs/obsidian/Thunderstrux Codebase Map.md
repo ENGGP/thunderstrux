@@ -86,6 +86,7 @@ docs/obsidian/
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Docker development uses Webpack plus polling because Turbopack was unreliable in this setup.
 - Stripe Connect readiness is represented by lifecycle states, not by the word "connected" alone.
+- Current Stripe Connect states are `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
 
 ## Current UI State
 
@@ -94,11 +95,11 @@ docs/obsidian/
 - `/dashboard/[orgSlug]` now shows the organisation name, not the slug.
 - Sidebar contains `Dashboard`, `Events`, `Orders`, and `Settings`.
 - Primary dashboard buttons use `bg-neutral-900 text-white hover:bg-neutral-700`.
-- Stripe settings renders a state-based Connect panel with connect, continue onboarding, fix account, open dashboard, refresh status, and local disconnect controls.
+- Stripe settings renders a state-based Connect panel with connect, platform settings, retry, continue onboarding, fix account, open dashboard, refresh status, and local disconnect controls.
 
 ## Current Known Quirks
 
 - `DashboardShell` hardcodes the active nav item state, so `Dashboard` is always styled as active even when the user is on `Events` or `Settings`.
 - `/dashboard/[orgSlug]/events/new` still renders a page heading `Create Event` above the form title `New event`. This is a UI inconsistency, not a backend issue.
 - `app/page.tsx` uses `export const dynamic = "force-dynamic"` to avoid stale homepage output during development.
-- Stripe account disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the account in Stripe.
+- Stripe account disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the account in Stripe. Reconnecting the same old account requires manually restoring the old `acct_...` id in the DB.

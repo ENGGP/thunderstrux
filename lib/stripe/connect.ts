@@ -5,10 +5,14 @@ import { getAppUrl, getStripe } from "@/lib/stripe";
 
 export type StripeConnectState =
   | "NOT_CONNECTED"
+  | "PLATFORM_NOT_READY"
   | "CONNECTED_INCOMPLETE"
   | "RESTRICTED"
   | "READY"
   | "ERROR";
+
+export const stripePlatformProfileUrl =
+  "https://dashboard.stripe.com/settings/connect/platform-profile";
 
 export type StripeConnectStatus = {
   accountId: string | null;
@@ -22,6 +26,8 @@ export type StripeConnectStatus = {
   eventually_due: string[];
   disabled_reason: string | null;
   dashboard_url: string | null;
+  actionUrl?: string;
+  actionRequired?: string;
   error?: string;
 };
 
@@ -30,8 +36,24 @@ type ConnectOrganisation = Pick<
   "id" | "name" | "slug" | "stripeAccountId"
 >;
 
-function stripeDashboardUrl(accountId: string) {
-  return `https://dashboard.stripe.com/test/connect/accounts/${accountId}`;
+export class StripeConnectPlatformNotReadyError extends Error {
+  state = "PLATFORM_NOT_READY" as const;
+  actionRequired = "Complete Stripe Connect platform profile";
+  actionUrl = stripePlatformProfileUrl;
+
+  constructor(message = "Stripe platform setup incomplete") {
+    super(message);
+    this.name = "StripeConnectPlatformNotReadyError";
+  }
+}
+
+function isLiveStripeMode() {
+  return process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ?? false;
+}
+
+function stripeDashboardUrl(accountId: string, livemode = isLiveStripeMode()) {
+  const modeSegment = livemode ? "" : "test/";
+  return `https://dashboard.stripe.com/${modeSegment}connect/accounts/${accountId}`;
 }
 
 function settingsUrl(orgSlug: string) {
@@ -84,6 +106,48 @@ export function notConnectedStatus(): StripeConnectStatus {
   };
 }
 
+export function platformNotReadyStatus(): StripeConnectStatus {
+  return {
+    accountId: null,
+    connected: false,
+    state: "PLATFORM_NOT_READY",
+    ready: false,
+    charges_enabled: false,
+    payouts_enabled: false,
+    details_submitted: false,
+    currently_due: [],
+    eventually_due: [],
+    disabled_reason: null,
+    dashboard_url: null,
+    actionUrl: stripePlatformProfileUrl,
+    actionRequired: "Complete Stripe Connect platform profile",
+    error: "Stripe platform setup incomplete"
+  };
+}
+
+function isStripeConnectPlatformNotReadyError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  const stripeError = error as Error & {
+    type?: string;
+    rawType?: string;
+    code?: string;
+  };
+  const type = (stripeError.type ?? stripeError.rawType ?? "").toLowerCase();
+  const code = (stripeError.code ?? "").toLowerCase();
+
+  return (
+    message.includes("responsibilities of managing losses") ||
+    message.includes("signed up for connect") ||
+    message.includes("connect/platform-profile") ||
+    type.includes("connect") ||
+    code.includes("connect")
+  );
+}
+
 export function isOrganisationStripeReady(
   organisation: Pick<Organisation, "stripeAccountId" | "stripeChargesEnabled">
 ) {
@@ -117,9 +181,34 @@ export async function createExpressAccount(orgId: string) {
   }
 
   const stripe = getStripe();
-  const account = await stripe.accounts.create({
-    type: "express"
-  });
+  let account: Stripe.Account;
+
+  try {
+    account = await stripe.accounts.create({
+      type: "express"
+    });
+  } catch (error) {
+    if (isStripeConnectPlatformNotReadyError(error)) {
+      await prisma.organisation.update({
+        where: { id: organisation.id },
+        data: {
+          stripeAccountStatus: "PLATFORM_NOT_READY",
+          stripeChargesEnabled: false,
+          stripePayoutsEnabled: false,
+          stripeDetailsSubmitted: false
+        }
+      });
+
+      console.error("Stripe platform setup is incomplete", {
+        organisationId: organisation.id,
+        actionUrl: stripePlatformProfileUrl
+      });
+
+      throw new StripeConnectPlatformNotReadyError();
+    }
+
+    throw error;
+  }
 
   await prisma.organisation.update({
     where: { id: organisation.id },
@@ -162,6 +251,9 @@ export async function createOnboardingLink(accountId: string, orgSlug: string) {
 
 export async function getAccountStatus(accountId: string) {
   const stripe = getStripe();
+  console.info("Stripe account status fetch started", {
+    stripeAccountId: accountId
+  });
   const account = await stripe.accounts.retrieve(accountId);
   const status = statusFromAccount(account);
 
@@ -238,7 +330,10 @@ export async function markAccountStatusError(
   await prisma.organisation.update({
     where: { id: orgId },
     data: {
-      stripeAccountStatus: "ERROR"
+      stripeAccountStatus: "ERROR",
+      stripeChargesEnabled: false,
+      stripePayoutsEnabled: false,
+      stripeDetailsSubmitted: false
     }
   });
 

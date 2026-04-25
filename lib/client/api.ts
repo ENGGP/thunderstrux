@@ -1,4 +1,8 @@
 export type ApiErrorPayload = {
+  state?: string;
+  message?: string;
+  actionRequired?: string;
+  actionUrl?: string;
   error?: {
     code?: string;
     message?: string;
@@ -45,7 +49,9 @@ export async function fetchJson<T>(
   if (!response.ok) {
     const payload = data && typeof data === "object" ? (data as ApiErrorPayload) : null;
     throw new ClientApiError(
-      payload?.error?.message ?? "Request failed. Please try again.",
+      payload?.error?.message ??
+        payload?.message ??
+        "Request failed. Please try again.",
       response.status,
       payload
     );

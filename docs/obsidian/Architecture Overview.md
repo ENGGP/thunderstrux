@@ -100,7 +100,7 @@ app/
 `/dashboard/[orgSlug]/settings`
 
 - Renders Stripe Connect settings UI.
-- The UI is state-driven from the backend Connect lifecycle: `NOT_CONNECTED`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
+- The UI is state-driven from the backend Connect lifecycle: `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
 
 ## Authentication Model
 
@@ -153,8 +153,14 @@ Important historical context:
 Stripe Connect integration is split deliberately:
 
 - `lib/stripe/index.ts` owns Stripe SDK initialisation and webhook secret access.
-- `lib/stripe/connect.ts` owns Express account creation, onboarding link creation, status retrieval, lifecycle mapping, and local disconnect.
+- `lib/stripe/connect.ts` owns Express account creation, platform-readiness detection, onboarding link creation, status retrieval, lifecycle mapping, and local disconnect.
 - API routes own authentication, role checks, validation, and structured JSON responses.
 - `components/settings/stripe-connect-settings.tsx` owns the user guidance and action buttons.
 
 The platform owns the UX. Stripe owns compliance and sensitive onboarding data collection.
+
+`PLATFORM_NOT_READY` means the Stripe platform account behind `STRIPE_SECRET_KEY` cannot yet create Express accounts. It is shown before a connected account exists and links the operator to:
+
+```text
+https://dashboard.stripe.com/settings/connect/platform-profile
+```

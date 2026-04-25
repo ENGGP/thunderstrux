@@ -80,12 +80,24 @@ Stripe fields are local cache/control fields for Connect:
 Current lifecycle strings:
 
 - `NOT_CONNECTED`
+- `PLATFORM_NOT_READY`
 - `CONNECTED_INCOMPLETE`
 - `RESTRICTED`
 - `READY`
 - `ERROR`
 
 These values are stored as strings, not a Prisma enum.
+
+Meaning:
+
+- `NOT_CONNECTED`: no connected account is stored locally.
+- `PLATFORM_NOT_READY`: account creation was blocked because Stripe platform setup/profile is incomplete.
+- `CONNECTED_INCOMPLETE`: a Stripe account exists, but onboarding details are not submitted.
+- `RESTRICTED`: account details are submitted, but charges are not enabled.
+- `READY`: charges are enabled.
+- `ERROR`: an existing connected account could not be retrieved or synced.
+
+Disconnect is local-only and clears the organisation Stripe fields. It does not delete the Stripe account. Reconnecting to the same old account requires manually restoring the old `acct_...` value into `stripeAccountId` and refreshing status.
 
 ## Organisation Members
 

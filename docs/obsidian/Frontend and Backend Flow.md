@@ -232,8 +232,8 @@ Flow:
 Settings page receives orgSlug
   -> client resolves organisation via /api/orgs/[orgSlug]
   -> GET /api/stripe/connect/status?organisationId=...
-  -> backend maps account into NOT_CONNECTED / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
-  -> user may connect, continue onboarding, fix account, open dashboard, refresh status, or disconnect locally
+  -> backend maps account into NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
+  -> user may connect, open platform settings, retry onboarding, continue onboarding, fix account, open dashboard, refresh status, or disconnect locally
   -> browser redirects to Stripe-hosted onboarding when needed
   -> status refreshes when window regains focus
 ```
@@ -241,10 +241,17 @@ Settings page receives orgSlug
 Current UX by state:
 
 - `NOT_CONNECTED`: show `Connect Stripe Account`.
+- `PLATFORM_NOT_READY`: explain Stripe platform setup is required and show `Open Stripe Platform Settings`, `Retry after completion`, and `Disconnect Stripe account`.
 - `CONNECTED_INCOMPLETE`: explain onboarding is incomplete and show `Continue onboarding`.
 - `RESTRICTED`: explain Stripe requires more information and show `Fix account`.
 - `READY`: show that Stripe is ready and display charges/payout status.
 - `ERROR`: show the Stripe error, retry status check, dashboard link if available, and disconnect.
+
+Current disconnect behavior:
+
+- Disconnect clears local organisation Stripe fields only.
+- It does not delete the Stripe Express account.
+- Clicking `Connect Stripe Account` after disconnect creates a new account unless the old `acct_...` id is manually restored in the DB.
 
 Important security detail:
 

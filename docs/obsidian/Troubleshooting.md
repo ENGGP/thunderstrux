@@ -210,12 +210,13 @@ Do not treat `stripeAccountId` as payment-ready.
 Current lifecycle states:
 
 - `NOT_CONNECTED`: no account is stored locally.
+- `PLATFORM_NOT_READY`: Stripe platform profile/setup is incomplete and account creation is blocked.
 - `CONNECTED_INCOMPLETE`: account exists but onboarding details are not submitted.
 - `RESTRICTED`: details are submitted but Stripe has not enabled charges.
 - `READY`: charges are enabled.
 - `ERROR`: Stripe status refresh failed.
 
-Checkout requires `stripeChargesEnabled = true`, so `CONNECTED_INCOMPLETE` and `RESTRICTED` still block payment.
+Checkout requires `stripeAccountId` and `stripeChargesEnabled = true`, so `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, and `ERROR` all block payment.
 
 Fix:
 
@@ -258,6 +259,40 @@ Verify env inside Docker without printing secrets:
 docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
 ```
 
+## Stripe Platform Setup Required
+
+The settings page can show:
+
+```text
+Stripe platform setup required
+```
+
+API response:
+
+```json
+{
+  "state": "PLATFORM_NOT_READY",
+  "message": "Stripe platform setup incomplete",
+  "actionRequired": "Complete Stripe Connect platform profile",
+  "actionUrl": "https://dashboard.stripe.com/settings/connect/platform-profile"
+}
+```
+
+Meaning:
+
+- The platform account behind `STRIPE_SECRET_KEY` cannot create Express accounts yet.
+- No connected account was created.
+- `stripeAccountStatus` is stored as `PLATFORM_NOT_READY`.
+
+Fix:
+
+1. Open `https://dashboard.stripe.com/settings/connect/platform-profile`.
+2. Complete Stripe Connect platform profile/responsibilities.
+3. Return to `/dashboard/[orgSlug]/settings`.
+4. Click `Retry after completion`.
+
+You may also click `Disconnect Stripe account` in this state to clear the local status back to `NOT_CONNECTED`.
+
 ## Stripe Connect Is Not Enabled On The Stripe Account
 
 Exact Stripe error observed:
@@ -276,6 +311,25 @@ Fix:
 
 - Sign up for Stripe Connect on the Stripe account that owns `STRIPE_SECRET_KEY`.
 - Then retry `Connect Stripe Account`.
+
+## Reconnect To A Locally Disconnected Stripe Account
+
+Disconnect is local-only. It does not delete the Stripe account in Stripe, but it clears the local `stripeAccountId`.
+
+There is no UI flow to reconnect to that exact old account. To restore it manually, find the old `acct_...` id in Stripe Dashboard or logs and run:
+
+```sql
+UPDATE "Organisation"
+SET
+  "stripeAccountId" = 'acct_old_account_id',
+  "stripeAccountStatus" = 'CONNECTED_INCOMPLETE',
+  "stripeChargesEnabled" = false,
+  "stripePayoutsEnabled" = false,
+  "stripeDetailsSubmitted" = false
+WHERE slug = 'engineering-society';
+```
+
+Then open settings and click `Refresh status`.
 
 ## Data Missing After Reset
 

@@ -100,6 +100,7 @@ Current header behavior:
 The Stripe Connect settings card should render from backend lifecycle state:
 
 - `NOT_CONNECTED`: connect button only.
+- `PLATFORM_NOT_READY`: platform settings link, retry button, and local disconnect button.
 - `CONNECTED_INCOMPLETE`: continue onboarding.
 - `RESTRICTED`: fix account and show requirements if Stripe provides them.
 - `READY`: show readiness and cached flags.
@@ -114,6 +115,8 @@ Always show the readiness rows when status exists:
 - Details submitted
 
 Do not call an account "ready" just because `stripeAccountId` exists.
+
+`Disconnect Stripe account` is local-only. It may appear for connected states and `PLATFORM_NOT_READY`. It clears local organisation Stripe fields and does not delete the Stripe account in Stripe.
 
 ## Styling Rules
 

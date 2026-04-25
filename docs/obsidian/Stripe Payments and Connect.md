@@ -80,6 +80,7 @@ isOrganisationStripeReady({
 This means local failures are often caused by:
 
 - onboarding never started
+- Stripe platform profile/setup is incomplete
 - onboarding incomplete
 - Stripe keys missing
 - Connect webhook/status refresh not updating local flags yet
@@ -96,6 +97,7 @@ Thunderstrux uses strict internal lifecycle states:
 ```ts
 type StripeConnectState =
   | "NOT_CONNECTED"
+  | "PLATFORM_NOT_READY"
   | "CONNECTED_INCOMPLETE"
   | "RESTRICTED"
   | "READY"
@@ -105,6 +107,7 @@ type StripeConnectState =
 Mapping:
 
 - `NOT_CONNECTED`: no `stripeAccountId`.
+- `PLATFORM_NOT_READY`: Stripe platform profile/setup is incomplete and Express account creation is blocked before a connected account exists.
 - `CONNECTED_INCOMPLETE`: `details_submitted = false`.
 - `RESTRICTED`: details submitted but `charges_enabled = false`.
 - `READY`: `charges_enabled = true`.
@@ -114,6 +117,7 @@ Important:
 
 - `Connected` means an account exists.
 - `READY` means ticket payments can be accepted.
+- `PLATFORM_NOT_READY` means the platform account cannot create Express accounts yet. It is not a connected-account state.
 - Checkout only cares about payment readiness, not whether an account merely exists.
 
 ## Stripe Connect Service Layer
@@ -126,11 +130,12 @@ lib/stripe/connect.ts
 
 Responsibilities:
 
-- `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`.
+- `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`. If Stripe rejects account creation because platform setup is incomplete, stores `PLATFORM_NOT_READY` and throws `StripeConnectPlatformNotReadyError`.
 - `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid settings-page return and refresh URLs.
 - `getAccountStatus(accountId)`: retrieves the live Stripe account, maps it to a lifecycle state, and persists local readiness flags.
-- `disconnectAccount(orgId)`: clears the local Stripe fields so the organisation can reconnect.
+- `disconnectAccount(orgId)`: clears the local Stripe fields. It does not delete the Stripe account in Stripe.
 - `notConnectedStatus()`: returns the canonical no-account status payload.
+- `platformNotReadyStatus()`: returns the canonical platform setup block payload.
 - `markAccountStatusError(...)`: stores `ERROR` when status refresh cannot retrieve the account.
 
 The service layer does not decide whether the current user is allowed to perform an action. API routes perform auth and role checks before calling service functions.
@@ -143,7 +148,7 @@ Flow:
 Settings page
   -> resolve organisation by slug
   -> GET /api/stripe/connect/status?organisationId=...
-  -> UI renders one of NOT_CONNECTED / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
+  -> UI renders one of NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
   -> user clicks Connect Stripe Account, Continue onboarding, or Fix account
   -> POST /api/stripe/connect/onboard
   -> or POST /api/stripe/connect/continue
@@ -155,22 +160,58 @@ Settings page
   -> GET /api/stripe/connect/status refreshes local readiness flags
 ```
 
+If Stripe platform setup is incomplete:
+
+```text
+Settings page
+  -> POST /api/stripe/connect/onboard
+  -> stripe.accounts.create({ type: "express" }) fails
+  -> service maps known platform setup errors to PLATFORM_NOT_READY
+  -> API returns 409 with actionUrl
+  -> UI shows Open Stripe Platform Settings and Retry after completion
+```
+
 Control buttons:
 
 - `Connect Stripe Account`: shown for `NOT_CONNECTED`.
+- `Open Stripe Platform Settings` and `Retry after completion`: shown for `PLATFORM_NOT_READY`.
 - `Continue onboarding`: shown for `CONNECTED_INCOMPLETE`.
 - `Fix account`: shown for `RESTRICTED`.
 - `Retry status check`: shown for `ERROR`.
 - `Open in Stripe dashboard`: shown when an account id is available.
-- `Disconnect Stripe account`: shown when connected.
+- `Disconnect Stripe account`: shown when connected and also for `PLATFORM_NOT_READY` to clear the local blocked state.
 
-Stripe dashboard link format:
+Stripe connected-account dashboard link format:
 
 ```text
 https://dashboard.stripe.com/test/connect/accounts/{accountId}
+https://dashboard.stripe.com/connect/accounts/{accountId}
 ```
 
-Disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the Stripe connected account.
+The code chooses test vs live from `STRIPE_SECRET_KEY`.
+
+Platform profile link:
+
+```text
+https://dashboard.stripe.com/settings/connect/platform-profile
+```
+
+Disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the Stripe connected account. After disconnect, clicking `Connect Stripe Account` creates a new account unless the old `acct_...` value is restored manually.
+
+Manual reconnect to a previously disconnected account:
+
+```sql
+UPDATE "Organisation"
+SET
+  "stripeAccountId" = 'acct_old_account_id',
+  "stripeAccountStatus" = 'CONNECTED_INCOMPLETE',
+  "stripeChargesEnabled" = false,
+  "stripePayoutsEnabled" = false,
+  "stripeDetailsSubmitted" = false
+WHERE slug = 'engineering-society';
+```
+
+Then open settings and click `Refresh status`.
 
 ## Stripe Connect Status
 
@@ -180,7 +221,8 @@ Behavior:
 
 - verifies org membership
 - loads organisation from Prisma
-- if no connected account, returns `state: NOT_CONNECTED`
+- if no connected account and no stored platform setup block, returns `state: NOT_CONNECTED`
+- if no connected account and `stripeAccountStatus = PLATFORM_NOT_READY`, returns `state: PLATFORM_NOT_READY`
 - if account exists, retrieves live account state from Stripe
 - persists `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted`, `stripeAccountStatus`
 - returns requirements fields from Stripe where available:
@@ -196,6 +238,7 @@ This endpoint is both a status reader and a local state synchronizer.
 
 - Creates or reuses an Express account.
 - Returns a Stripe-hosted onboarding URL.
+- If platform setup is incomplete, returns `409` with `state`, `message`, `actionRequired`, and `actionUrl`.
 
 `POST /api/stripe/connect/continue`
 

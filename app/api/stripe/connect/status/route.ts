@@ -16,7 +16,8 @@ import { StripeConfigurationError } from "@/lib/stripe";
 import {
   getAccountStatus,
   markAccountStatusError,
-  notConnectedStatus
+  notConnectedStatus,
+  platformNotReadyStatus
 } from "@/lib/stripe/connect";
 
 export async function GET(request: Request) {
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
       where: { id: organisationId },
       select: {
         id: true,
+        stripeAccountStatus: true,
         stripeAccountId: true
       }
     });
@@ -38,6 +40,13 @@ export async function GET(request: Request) {
       return badRequest("Invalid organisationId", [
         { path: ["organisationId"], message: "Organisation does not exist" }
       ]);
+    }
+
+    if (
+      !organisation.stripeAccountId &&
+      organisation.stripeAccountStatus === "PLATFORM_NOT_READY"
+    ) {
+      return NextResponse.json(platformNotReadyStatus());
     }
 
     if (!organisation.stripeAccountId) {

@@ -123,6 +123,16 @@ export async function POST(request: Request) {
     const platformFeeAmount = calculatePlatformFee(totalAmount);
     const stripe = getStripe();
     const appUrl = getAppUrl();
+
+    console.info("Stripe checkout creation started", {
+      eventId: event.id,
+      organisationId,
+      ticketTypeId: ticketType.id,
+      quantity: validation.data.quantity,
+      totalAmount,
+      platformFeeAmount
+    });
+
     const pendingOrder = await prisma.order.create({
       data: {
         organisationId,
@@ -191,6 +201,14 @@ export async function POST(request: Request) {
       data: {
         stripeSessionId: session.id
       }
+    });
+
+    console.info("Stripe checkout session created", {
+      orderId: pendingOrder.id,
+      stripeSessionId: session.id,
+      eventId: event.id,
+      organisationId,
+      ticketTypeId: ticketType.id
     });
 
     return NextResponse.json({ url: session.url });

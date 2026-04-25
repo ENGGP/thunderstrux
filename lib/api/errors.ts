@@ -6,7 +6,8 @@ export type ApiErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "NOT_FOUND"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  | "SERVICE_UNAVAILABLE";
 
 export type ApiErrorDetail = {
   path?: Array<string | number>;
@@ -61,4 +62,8 @@ export function notFound(message: string) {
 
 export function internalError() {
   return apiError("INTERNAL_ERROR", "Internal server error", 500);
+}
+
+export function serviceUnavailable(message: string) {
+  return apiError("SERVICE_UNAVAILABLE", message, 503);
 }

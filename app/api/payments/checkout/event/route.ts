@@ -3,6 +3,7 @@ import {
   badRequest,
   internalError,
   notFound,
+  serviceUnavailable,
   unauthorized,
   validationError
 } from "@/lib/api/errors";
@@ -11,11 +12,12 @@ import {
   requireAuthenticatedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
-import { getAppUrl, getStripe } from "@/lib/stripe";
+import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee } from "@/lib/stripe/fees";
 import { validateJson } from "@/lib/validators";
 import { createEventCheckoutSchema } from "@/lib/validators/payments";
+import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 
 export async function POST(request: Request) {
   const validation = await validateJson(request, createEventCheckoutSchema);
@@ -28,6 +30,8 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireAuthenticatedUser();
+    await failStalePreCheckoutOrders({ userId: user.id });
+
     const event = await prisma.event.findFirst({
       where: {
         id: validation.data.eventId
@@ -138,6 +142,7 @@ export async function POST(request: Request) {
     const session = await stripe.checkout.sessions.create(
       {
         mode: "payment",
+        payment_method_types: ["card"],
         line_items: [
           {
             price_data: {
@@ -192,6 +197,15 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
+    }
+
+    if (error instanceof StripeConfigurationError) {
+      console.error("Stripe checkout configuration error", {
+        message: error.message
+      });
+      return serviceUnavailable(
+        "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
+      );
     }
 
     if (pendingOrderId) {

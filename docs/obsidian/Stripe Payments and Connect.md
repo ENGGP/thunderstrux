@@ -44,6 +44,7 @@ Current implementation details:
 
 - Currency is `aud`
 - Payment flow uses destination charges
+- Checkout is restricted to card payments so `checkout.session.completed` can require `payment_status = paid`
 - Platform fee is calculated by `calculatePlatformFee(totalAmount)`
 
 ## Required Conditions For Checkout
@@ -136,6 +137,7 @@ Responsibility:
 Handled event:
 
 - `checkout.session.completed`
+- `checkout.session.expired`
 
 Reconciliation checks:
 
@@ -162,6 +164,29 @@ On reconciliation failure:
 - `failedAt` timestamp stored
 - `failureReason` stored for organiser debugging
 
+Expired Checkout sessions:
+
+- The webhook resolves the local order with `metadata.orderId` first.
+- If `metadata.orderId` is missing or stale, it falls back to `stripeSessionId`.
+- If the order is still `pending`, it is marked `failed`.
+- If the order is already `paid`, the webhook logs the idempotency path and does nothing.
+- If the order is already `failed`, the webhook logs the idempotency path and does nothing.
+- No inventory is restored because Thunderstrux does not reserve inventory at checkout creation time. Inventory is decremented only after `checkout.session.completed` passes reconciliation.
+
+## Stale Pending Orders
+
+The app marks only pre-Checkout stale orders as failed:
+
+- `status = pending`
+- `stripeSessionId = null`
+- older than 30 minutes
+
+Design choice:
+
+- These rows represent checkout creation that did not reach Stripe.
+- Pending orders that already have a `stripeSessionId` are not expired by the local timer because a real Stripe Checkout Session may still complete and must be resolved by webhook delivery.
+- Cleanup runs opportunistically when starting checkout, viewing `/tickets`, or viewing organiser orders.
+
 Transaction:
 
 - Prisma transaction isolation level is `Serializable`
@@ -186,10 +211,16 @@ Without those:
 
 Use Stripe test mode keys in `.env`.
 
+Authenticate the CLI:
+
+```bash
+stripe login
+```
+
 Forward Checkout webhooks:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/payments/webhook
+stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:3000/api/payments/webhook
 ```
 
 Set the printed secret as:
@@ -197,6 +228,8 @@ Set the printed secret as:
 ```text
 STRIPE_WEBHOOK_SECRET=
 ```
+
+The `STRIPE_WEBHOOK_SECRET` must be the `whsec_...` printed by this exact `stripe listen` process. A Dashboard webhook secret and a Stripe CLI forwarding secret are different.
 
 Forward Connect webhooks in a second terminal if testing onboarding account updates:
 
@@ -219,3 +252,86 @@ Minimum end-to-end local test:
 5. Confirm `/tickets` shows a paid order and ticket IDs.
 6. Confirm `/dashboard/engineering-society/orders` shows the order.
 7. Confirm ticket type inventory decreased.
+
+Important: the real end-to-end test must start from the app checkout button. Generic `stripe trigger` events verify webhook plumbing, but they do not prove local order reconciliation because they usually do not contain this app's real `orderId`, `eventId`, `ticketTypeId`, and `quantity` metadata.
+
+Webhook plumbing smoke tests:
+
+```bash
+stripe trigger checkout.session.completed
+stripe trigger checkout.session.expired
+```
+
+Expected app logs for a real paid checkout:
+
+- `Stripe checkout webhook received`
+- `Stripe checkout order matched`
+- `Stripe checkout reconciliation validation passed`
+- `Stripe checkout inventory updated`
+- `Stripe checkout tickets created`
+
+Expired-session local test:
+
+1. Start forwarding:
+
+```bash
+stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:3000/api/payments/webhook
+```
+
+2. Create a real Checkout Session by starting checkout in the app.
+3. Let the Checkout Session expire in Stripe test mode, or expire it from Stripe tooling/Dashboard where available.
+4. Confirm the forwarded event type is `checkout.session.expired`.
+5. Confirm the matching local order becomes `failed`.
+6. Confirm `failedAt` is set.
+7. Confirm `failureReason` is `Stripe Checkout Session expired before payment`.
+8. Confirm ticket inventory is unchanged.
+
+Expected app logs for an expired checkout:
+
+- `Stripe checkout expired webhook received`
+- `Stripe checkout expired order matched`
+- `Stripe checkout expired order marked failed`
+
+Generic CLI trigger:
+
+```bash
+stripe trigger checkout.session.expired
+```
+
+The generic trigger verifies endpoint/signature plumbing, but it usually will not match a local order unless the payload metadata is customised to include a real local `orderId`.
+
+Duplicate delivery test:
+
+```bash
+stripe events resend evt_... --webhook-endpoint=we_...
+```
+
+Use a real event id from the Stripe Dashboard or CLI output and the webhook endpoint id from Stripe Workbench. This tests duplicate delivery of the same Stripe event. Triggering `checkout.session.completed` twice creates separate test events and is not a duplicate-delivery test.
+
+For a local-only CLI listener without a registered webhook endpoint, duplicate handling can still be validated at code level by replaying the same signed payload or by using a registered test webhook endpoint with Stripe Dashboard resend. The expected result is:
+
+- order remains `paid`
+- ticket count remains equal to `Order.quantity`
+- ticket type inventory is decremented once only
+- app logs show the paid/idempotent path rather than creating more tickets
+
+Runtime debugging:
+
+```bash
+stripe logs tail
+docker compose logs -f app
+```
+
+If webhook signature verification fails:
+
+- confirm `STRIPE_WEBHOOK_SECRET` starts with `whsec_`
+- confirm it came from the active `stripe listen` process
+- restart the Next.js container after changing `.env`
+- do not use a Dashboard endpoint secret for local CLI forwarding unless using that exact registered endpoint flow
+
+Useful debug commands:
+
+```bash
+docker compose logs -f app
+docker compose exec app pnpm build
+```

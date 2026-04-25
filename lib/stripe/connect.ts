@@ -16,14 +16,7 @@ export async function createConnectedAccount(
 
   const stripe = getStripe();
   const account = await stripe.accounts.create({
-    type: "express",
-    metadata: {
-      organisationId: organisation.id,
-      organisationSlug: organisation.slug
-    },
-    business_profile: {
-      name: organisation.name
-    }
+    type: "express"
   });
 
   await prisma.organisation.update({
@@ -69,17 +62,11 @@ export async function persistConnectedAccountStatus(account: {
   });
 }
 
-export async function generateAccountLink(accountId: string) {
-  const organisation = await prisma.organisation.findFirst({
-    where: { stripeAccountId: accountId },
-    select: { slug: true }
-  });
-
-  if (!organisation) {
-    throw new Error("Organisation not found for connected Stripe account");
-  }
-
-  const settingsUrl = `${getAppUrl()}/dashboard/${organisation.slug}/settings`;
+export async function generateAccountLink(accountId: string, orgSlug: string) {
+  const settingsUrl = new URL(
+    `/dashboard/${orgSlug}/settings`,
+    getAppUrl()
+  ).toString();
   const stripe = getStripe();
 
   const accountLink = await stripe.accountLinks.create({

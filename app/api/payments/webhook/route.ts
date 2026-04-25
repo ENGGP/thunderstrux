@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getStripe, getStripeWebhookSecret } from "@/lib/stripe";
 
 const expectedCurrency = "aud";
+const maxTransactionAttempts = 3;
 
 function reconciliationError(message: string, details: Record<string, unknown>) {
   console.error("Stripe checkout reconciliation failed", {
@@ -23,6 +24,74 @@ function parseMetadataQuantity(quantity: string | undefined) {
   return Number.isInteger(parsedQuantity) && parsedQuantity > 0
     ? parsedQuantity
     : null;
+}
+
+function isPrismaErrorCode(error: unknown, code: string) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === code
+  );
+}
+
+async function runSerializableTransaction(
+  operation: (tx: Prisma.TransactionClient) => Promise<void>
+) {
+  for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
+    try {
+      await prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+      });
+      return;
+    } catch (error) {
+      if (attempt < maxTransactionAttempts && isPrismaErrorCode(error, "P2034")) {
+        console.info("Retrying Stripe webhook transaction after write conflict", {
+          attempt
+        });
+        continue;
+      }
+
+      throw error;
+    }
+  }
+}
+
+async function findOrderForCheckoutSession(
+  session: Stripe.Checkout.Session,
+  tx: Prisma.TransactionClient
+) {
+  const orderId = session.metadata?.orderId;
+
+  if (orderId) {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        stripeSessionId: true,
+        failureReason: true
+      }
+    });
+
+    if (order) {
+      return order;
+    }
+  }
+
+  if (!session.id) {
+    return null;
+  }
+
+  return tx.order.findUnique({
+    where: { stripeSessionId: session.id },
+    select: {
+      id: true,
+      status: true,
+      stripeSessionId: true,
+      failureReason: true
+    }
+  });
 }
 
 export async function POST(request: Request) {
@@ -48,6 +117,12 @@ export async function POST(request: Request) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
+    console.info("Stripe checkout webhook received", {
+      stripeEventId: event.id,
+      stripeSessionId: session.id,
+      paymentStatus: session.payment_status
+    });
+
     if (session.id) {
       const metadata = session.metadata;
       const orderId = metadata?.orderId;
@@ -64,7 +139,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ received: true });
       }
 
-      await prisma.$transaction(
+      await runSerializableTransaction(
         async (tx) => {
           const order = await tx.order.findUnique({
             where: { id: orderId },
@@ -96,6 +171,11 @@ export async function POST(request: Request) {
           }
 
           const localOrder = order;
+          console.info("Stripe checkout order matched", {
+            orderId: localOrder.id,
+            stripeSessionId: session.id,
+            status: localOrder.status
+          });
 
           if (localOrder.status === "paid") {
             if (localOrder.tickets.length !== localOrder.quantity) {
@@ -151,7 +231,9 @@ export async function POST(request: Request) {
             localOrder.stripeSessionId &&
             localOrder.stripeSessionId !== session.id
           ) {
-            await failOrder("Stripe session id does not match local order", {
+            reconciliationError("Stripe session id does not match local order", {
+              orderId: localOrder.id,
+              stripeSessionId: session.id,
               sessionId: session.id,
               orderStripeSessionId: localOrder.stripeSessionId
             });
@@ -202,6 +284,13 @@ export async function POST(request: Request) {
             });
             return;
           }
+
+          console.info("Stripe checkout reconciliation validation passed", {
+            orderId: localOrder.id,
+            stripeSessionId: session.id,
+            quantity: localOrder.quantity,
+            totalAmount: localOrder.totalAmount
+          });
 
           const paidAt = new Date();
           const claimedOrder = await tx.order.updateMany({
@@ -262,6 +351,12 @@ export async function POST(request: Request) {
             return;
           }
 
+          console.info("Stripe checkout inventory updated", {
+            orderId: localOrder.id,
+            ticketTypeId: localOrder.ticketTypeId,
+            quantity: localOrder.quantity
+          });
+
           await tx.ticket.createMany({
             data: Array.from({ length: localOrder.quantity }, () => ({
               orderId: localOrder.id,
@@ -270,12 +365,92 @@ export async function POST(request: Request) {
               organisationId: localOrder.organisationId
             }))
           });
-        },
-        {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+
+          console.info("Stripe checkout tickets created", {
+            orderId: localOrder.id,
+            ticketCount: localOrder.quantity
+          });
         }
       );
     }
+  }
+
+  if (event.type === "checkout.session.expired") {
+    const session = event.data.object as Stripe.Checkout.Session;
+
+    console.info("Stripe checkout expired webhook received", {
+      stripeEventId: event.id,
+      stripeSessionId: session.id,
+      metadataOrderId: session.metadata?.orderId
+    });
+
+    await runSerializableTransaction(async (tx) => {
+      const order = await findOrderForCheckoutSession(session, tx);
+
+      if (!order) {
+        reconciliationError("Local order not found for expired Stripe session", {
+          stripeSessionId: session.id,
+          metadataOrderId: session.metadata?.orderId
+        });
+        return;
+      }
+
+      console.info("Stripe checkout expired order matched", {
+        orderId: order.id,
+        stripeSessionId: session.id,
+        status: order.status
+      });
+
+      if (order.status === "paid") {
+        console.info("Stripe checkout expired ignored for paid order", {
+          orderId: order.id,
+          stripeSessionId: session.id
+        });
+        return;
+      }
+
+      if (order.stripeSessionId && order.stripeSessionId !== session.id) {
+        reconciliationError("Expired Stripe session id does not match local order", {
+          orderId: order.id,
+          stripeSessionId: session.id,
+          orderStripeSessionId: order.stripeSessionId
+        });
+        return;
+      }
+
+      if (order.status === "failed") {
+        console.info("Stripe checkout expired ignored for failed order", {
+          orderId: order.id,
+          stripeSessionId: session.id,
+          failureReason: order.failureReason
+        });
+        return;
+      }
+
+      if (order.status !== "pending") {
+        reconciliationError("Expired Stripe session order is not pending", {
+          orderId: order.id,
+          stripeSessionId: session.id,
+          status: order.status
+        });
+        return;
+      }
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: "failed",
+          stripeSessionId: order.stripeSessionId ?? session.id,
+          failedAt: new Date(),
+          failureReason: "Stripe Checkout Session expired before payment"
+        }
+      });
+
+      console.info("Stripe checkout expired order marked failed", {
+        orderId: order.id,
+        stripeSessionId: session.id
+      });
+    });
   }
 
   return NextResponse.json({ received: true });

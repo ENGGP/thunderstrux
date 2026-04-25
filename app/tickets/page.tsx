@@ -5,6 +5,7 @@ import {
   requireAuthenticatedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat(undefined, {
@@ -48,6 +49,8 @@ export default async function MyTicketsPage() {
 
     throw error;
   }
+
+  await failStalePreCheckoutOrders({ userId: user.id });
 
   const orders = await prisma.order.findMany({
     where: { userId: user.id },

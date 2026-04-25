@@ -15,6 +15,7 @@ type ConnectStatus = {
   charges_enabled: boolean;
   payouts_enabled: boolean;
   details_submitted: boolean;
+  warning?: string;
 };
 
 export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
@@ -24,6 +25,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingOnboarding, setIsStartingOnboarding] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   const checkStatus = useCallback(
     async (targetOrganisation: Organisation, showMessage = false) => {
@@ -40,13 +42,18 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
 
         setStatus(data);
 
+        if (data.warning) {
+          setMessage(data.warning);
+        }
+
         if (showMessage) {
           setMessage(
-            data.ready
-              ? "Stripe connected and ready for ticket sales."
-              : data.connected
-                ? "Complete onboarding in Stripe before selling tickets."
-                : "Stripe is not connected yet."
+            data.warning ??
+              (data.ready
+                ? "Stripe connected and ready for ticket sales."
+                : data.connected
+                  ? "Complete onboarding in Stripe before selling tickets."
+                  : "Stripe is not connected yet.")
           );
         }
       } catch (error) {
@@ -143,6 +150,45 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     }
   }
 
+  async function disconnectStripe() {
+    if (!organisation) {
+      return;
+    }
+
+    setIsDisconnecting(true);
+    setMessage(null);
+
+    try {
+      await fetchJson<{ disconnected: boolean }>(
+        "/api/stripe/connect/onboard",
+        {
+          method: "DELETE",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ organisationId: organisation.id })
+        }
+      );
+
+      setStatus({
+        connected: false,
+        ready: false,
+        charges_enabled: false,
+        payouts_enabled: false,
+        details_submitted: false
+      });
+      setMessage("Stripe account disconnected.");
+    } catch (error) {
+      setMessage(
+        error instanceof ClientApiError
+          ? error.message
+          : "Unable to disconnect Stripe account."
+      );
+    } finally {
+      setIsDisconnecting(false);
+    }
+  }
+
   if (isLoading) {
     return <Card>Loading settings...</Card>;
   }
@@ -227,6 +273,16 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           >
             {isCheckingStatus ? "Refreshing..." : "Refresh Status"}
           </Button>
+          {status?.connected ? (
+            <Button
+              disabled={isDisconnecting}
+              onClick={disconnectStripe}
+              type="button"
+              variant="secondary"
+            >
+              {isDisconnecting ? "Disconnecting..." : "Disconnect Stripe Account"}
+            </Button>
+          ) : null}
         </div>
       </div>
     </Card>

@@ -5,6 +5,7 @@ import {
   requireOrganisationMembershipBySlug
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat(undefined, {
@@ -54,6 +55,8 @@ export default async function OrganisationOrdersPage({
 
     throw error;
   }
+
+  await failStalePreCheckoutOrders({ organisationId: organisation.id });
 
   const orders = await prisma.order.findMany({
     where: { organisationId: organisation.id },

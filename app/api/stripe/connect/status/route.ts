@@ -30,7 +30,9 @@ export async function GET(request: Request) {
       select: {
         id: true,
         stripeAccountId: true,
-        stripeChargesEnabled: true
+        stripeChargesEnabled: true,
+        stripePayoutsEnabled: true,
+        stripeDetailsSubmitted: true
       }
     });
 
@@ -50,7 +52,27 @@ export async function GET(request: Request) {
     }
 
     const stripe = getStripe();
-    const account = await stripe.accounts.retrieve(organisation.stripeAccountId);
+    let account;
+
+    try {
+      account = await stripe.accounts.retrieve(organisation.stripeAccountId);
+    } catch (error) {
+      console.error("Unable to refresh Stripe Connect account status", {
+        stripeAccountId: organisation.stripeAccountId,
+        error
+      });
+
+      return NextResponse.json({
+        connected: true,
+        ready: false,
+        charges_enabled: organisation.stripeChargesEnabled,
+        payouts_enabled: organisation.stripePayoutsEnabled,
+        details_submitted: organisation.stripeDetailsSubmitted,
+        warning:
+          "Unable to refresh Stripe status. Disconnect and reconnect if this account belongs to an old Stripe key."
+      });
+    }
+
     await persistConnectedAccountStatus(account);
 
     return NextResponse.json({

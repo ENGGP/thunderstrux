@@ -11,28 +11,12 @@ import {
   OrganisationAccessError,
   requireStripeConnectAccess
 } from "@/lib/auth/access";
+import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
-import { createExpressAccount, createOnboardingLink } from "@/lib/stripe/connect";
 import { StripeConfigurationError } from "@/lib/stripe";
+import { createOnboardingLink } from "@/lib/stripe/connect";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
-
-function stripeErrorResponse(error: unknown) {
-  console.error("Stripe Connect onboarding failed", { error });
-  const message =
-    error instanceof Error ? error.message : "Unknown Stripe onboarding error";
-
-  return NextResponse.json(
-    {
-      error: {
-        code: "STRIPE_ONBOARDING_ERROR",
-        message,
-        details: []
-      }
-    },
-    { status: 502 }
-  );
-}
 
 export async function POST(request: Request) {
   const validation = await validateJson(request, organisationConnectSchema);
@@ -45,8 +29,27 @@ export async function POST(request: Request) {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireStripeConnectAccess(organisationId);
 
-    const { accountId, orgSlug } = await createExpressAccount(organisationId);
-    const url = await createOnboardingLink(accountId, orgSlug);
+    const organisation = await prisma.organisation.findUnique({
+      where: { id: organisationId },
+      select: {
+        slug: true,
+        stripeAccountId: true
+      }
+    });
+
+    if (!organisation?.stripeAccountId) {
+      return badRequest("Stripe account is not connected", [
+        {
+          path: ["organisationId"],
+          message: "Connect a Stripe account before continuing onboarding"
+        }
+      ]);
+    }
+
+    const url = await createOnboardingLink(
+      organisation.stripeAccountId,
+      organisation.slug
+    );
 
     return NextResponse.json({ url });
   } catch (error) {
@@ -65,7 +68,7 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof StripeConfigurationError) {
-      console.error("Stripe Connect onboarding configuration error", {
+      console.error("Stripe Connect continue configuration error", {
         message: error.message
       });
       return serviceUnavailable(
@@ -73,6 +76,19 @@ export async function POST(request: Request) {
       );
     }
 
-    return stripeErrorResponse(error);
+    console.error("Stripe Connect continue onboarding failed", { error });
+    return NextResponse.json(
+      {
+        error: {
+          code: "STRIPE_CONTINUE_ONBOARDING_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to continue Stripe onboarding",
+          details: []
+        }
+      },
+      { status: 502 }
+    );
   }
 }

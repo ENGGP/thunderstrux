@@ -18,6 +18,8 @@ Core files:
 - `app/tickets/page.tsx`
 - `app/(dashboard)/dashboard/[orgSlug]/orders/page.tsx`
 - `app/api/stripe/connect/onboard/route.ts`
+- `app/api/stripe/connect/continue/route.ts`
+- `app/api/stripe/connect/disconnect/route.ts`
 - `app/api/stripe/connect/status/route.ts`
 - `app/api/stripe/connect/webhook/route.ts`
 - `lib/stripe/index.ts`
@@ -82,12 +84,58 @@ This means local failures are often caused by:
 - Stripe keys missing
 - Connect webhook/status refresh not updating local flags yet
 
-## Stripe Connect Onboarding
+## Stripe Connect Lifecycle
 
 Allowed roles:
 
 - `org_owner`
 - `finance_manager`
+
+Thunderstrux uses strict internal lifecycle states:
+
+```ts
+type StripeConnectState =
+  | "NOT_CONNECTED"
+  | "CONNECTED_INCOMPLETE"
+  | "RESTRICTED"
+  | "READY"
+  | "ERROR";
+```
+
+Mapping:
+
+- `NOT_CONNECTED`: no `stripeAccountId`.
+- `CONNECTED_INCOMPLETE`: `details_submitted = false`.
+- `RESTRICTED`: details submitted but `charges_enabled = false`.
+- `READY`: `charges_enabled = true`.
+- `ERROR`: Stripe API failure or account mismatch.
+
+Important:
+
+- `Connected` means an account exists.
+- `READY` means ticket payments can be accepted.
+- Checkout only cares about payment readiness, not whether an account merely exists.
+
+## Stripe Connect Service Layer
+
+File:
+
+```text
+lib/stripe/connect.ts
+```
+
+Responsibilities:
+
+- `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`.
+- `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid settings-page return and refresh URLs.
+- `getAccountStatus(accountId)`: retrieves the live Stripe account, maps it to a lifecycle state, and persists local readiness flags.
+- `disconnectAccount(orgId)`: clears the local Stripe fields so the organisation can reconnect.
+- `notConnectedStatus()`: returns the canonical no-account status payload.
+- `markAccountStatusError(...)`: stores `ERROR` when status refresh cannot retrieve the account.
+
+The service layer does not decide whether the current user is allowed to perform an action. API routes perform auth and role checks before calling service functions.
+
+## Stripe Connect Onboarding Flow
 
 Flow:
 
@@ -95,13 +143,34 @@ Flow:
 Settings page
   -> resolve organisation by slug
   -> GET /api/stripe/connect/status?organisationId=...
-  -> user clicks Connect Stripe Account
+  -> UI renders one of NOT_CONNECTED / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
+  -> user clicks Connect Stripe Account, Continue onboarding, or Fix account
   -> POST /api/stripe/connect/onboard
-  -> API creates Express account if none exists
-  -> API stores stripeAccountId and onboarding_pending status
+  -> or POST /api/stripe/connect/continue
+  -> API creates or reuses Express account
+  -> API stores stripeAccountId and lifecycle status
   -> API returns account onboarding link
   -> user completes onboarding on Stripe
+  -> user returns to settings
+  -> GET /api/stripe/connect/status refreshes local readiness flags
 ```
+
+Control buttons:
+
+- `Connect Stripe Account`: shown for `NOT_CONNECTED`.
+- `Continue onboarding`: shown for `CONNECTED_INCOMPLETE`.
+- `Fix account`: shown for `RESTRICTED`.
+- `Retry status check`: shown for `ERROR`.
+- `Open in Stripe dashboard`: shown when an account id is available.
+- `Disconnect Stripe account`: shown when connected.
+
+Stripe dashboard link format:
+
+```text
+https://dashboard.stripe.com/test/connect/accounts/{accountId}
+```
+
+Disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the Stripe connected account.
 
 ## Stripe Connect Status
 
@@ -111,11 +180,38 @@ Behavior:
 
 - verifies org membership
 - loads organisation from Prisma
-- if no connected account, returns `connected: false`
+- if no connected account, returns `state: NOT_CONNECTED`
 - if account exists, retrieves live account state from Stripe
 - persists `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted`, `stripeAccountStatus`
+- returns requirements fields from Stripe where available:
+  - `currently_due`
+  - `eventually_due`
+  - `disabled_reason`
 
 This endpoint is both a status reader and a local state synchronizer.
+
+## Stripe Connect API Routes
+
+`POST /api/stripe/connect/onboard`
+
+- Creates or reuses an Express account.
+- Returns a Stripe-hosted onboarding URL.
+
+`POST /api/stripe/connect/continue`
+
+- Requires an existing `stripeAccountId`.
+- Returns a fresh Stripe-hosted onboarding URL.
+
+`POST /api/stripe/connect/disconnect`
+
+- Clears the local Stripe account fields.
+- Returns canonical `NOT_CONNECTED` status.
+
+`GET /api/stripe/connect/status?organisationId=...`
+
+- Retrieves Stripe account status and maps it to the lifecycle state.
+
+All mutation routes require `org_owner` or `finance_manager`.
 
 ## Stripe Connect Webhook
 

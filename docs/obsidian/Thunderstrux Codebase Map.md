@@ -9,7 +9,7 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. Th
 - Event creation, editing, publishing, unpublishing, and deletion rules.
 - Public event discovery and public event detail pages.
 - Stripe Checkout ticket purchase flow for published events.
-- Stripe Connect Express onboarding and readiness checks.
+- Stripe Connect Express lifecycle with state-based onboarding UX.
 - Webhook-driven order reconciliation, ticket issuance, and inventory reduction.
 - Buyer ticket history at `/tickets`.
 - Organiser order review at `/dashboard/[orgSlug]/orders`.
@@ -37,6 +37,7 @@ Read these in order:
 7. [[Stripe Payments and Connect]]
 8. [[Seeding and Data]]
 9. [[UI Architecture Rules]]
+10. [[Current Handover]]
 
 ## Key Directories
 
@@ -84,6 +85,7 @@ docs/obsidian/
 - Payment fulfilment happens only from Stripe webhooks.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Docker development uses Webpack plus polling because Turbopack was unreliable in this setup.
+- Stripe Connect readiness is represented by lifecycle states, not by the word "connected" alone.
 
 ## Current UI State
 
@@ -92,9 +94,11 @@ docs/obsidian/
 - `/dashboard/[orgSlug]` now shows the organisation name, not the slug.
 - Sidebar contains `Dashboard`, `Events`, `Orders`, and `Settings`.
 - Primary dashboard buttons use `bg-neutral-900 text-white hover:bg-neutral-700`.
+- Stripe settings renders a state-based Connect panel with connect, continue onboarding, fix account, open dashboard, refresh status, and local disconnect controls.
 
 ## Current Known Quirks
 
 - `DashboardShell` hardcodes the active nav item state, so `Dashboard` is always styled as active even when the user is on `Events` or `Settings`.
 - `/dashboard/[orgSlug]/events/new` still renders a page heading `Create Event` above the form title `New event`. This is a UI inconsistency, not a backend issue.
 - `app/page.tsx` uses `export const dynamic = "force-dynamic"` to avoid stale homepage output during development.
+- Stripe account disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the account in Stripe.

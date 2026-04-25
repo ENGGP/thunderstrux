@@ -51,6 +51,7 @@ app/
         events/page.tsx
         events/new/page.tsx
         events/[eventId]/edit/page.tsx
+        orders/page.tsx
         settings/page.tsx
   api/
 ```
@@ -99,6 +100,7 @@ app/
 `/dashboard/[orgSlug]/settings`
 
 - Renders Stripe Connect settings UI.
+- The UI is state-driven from the backend Connect lifecycle: `NOT_CONNECTED`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
 
 ## Authentication Model
 
@@ -145,3 +147,14 @@ Important historical context:
 - Tailwind previously appeared “partially broken” because the project was using legacy `@tailwind base/components/utilities` directives under Tailwind v4.
 - The broken symptom was: structural utilities compiled, but color/spacing/radius/shadow utilities did not.
 - The current v4 import setup fixes that.
+
+## Stripe Connect Boundary
+
+Stripe Connect integration is split deliberately:
+
+- `lib/stripe/index.ts` owns Stripe SDK initialisation and webhook secret access.
+- `lib/stripe/connect.ts` owns Express account creation, onboarding link creation, status retrieval, lifecycle mapping, and local disconnect.
+- API routes own authentication, role checks, validation, and structured JSON responses.
+- `components/settings/stripe-connect-settings.tsx` owns the user guidance and action buttons.
+
+The platform owns the UX. Stripe owns compliance and sensitive onboarding data collection.

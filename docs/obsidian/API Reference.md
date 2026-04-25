@@ -190,6 +190,7 @@ Stripe Checkout webhook.
 Handles:
 
 - `checkout.session.completed`
+- `checkout.session.expired`
 
 Responsibilities:
 
@@ -229,7 +230,7 @@ Rules:
 
 ### `POST /api/stripe/connect/onboard`
 
-Creates a Stripe Express account and returns an onboarding link.
+Creates or reuses a Stripe Express account and returns an onboarding link.
 
 Allowed roles:
 
@@ -239,13 +240,38 @@ Allowed roles:
 Rules:
 
 - Auth required.
-- Organisation must exist.
-- User must have Stripe Connect access.
-- Existing `stripeAccountId` blocks creating another account.
+- User must have Stripe Connect access through organisation membership.
+- Organisation is resolved server-side from `organisationId`.
+- Existing `stripeAccountId` is reused and a fresh onboarding link is generated.
+- Returns structured Stripe errors instead of a generic 500.
+
+Response:
+
+```json
+{
+  "url": "https://connect.stripe.com/setup/..."
+}
+```
 
 ### `GET /api/stripe/connect/status?organisationId=...`
 
 Retrieves and persists connected account status.
+
+Rules:
+
+- Auth required.
+- Organisation membership required.
+- Calls `stripe.accounts.retrieve`.
+- Updates organisation Stripe flags.
+- Maps Stripe account fields into a Thunderstrux lifecycle state.
+
+Lifecycle states:
+
+- `NOT_CONNECTED`: no `stripeAccountId`.
+- `CONNECTED_INCOMPLETE`: account exists but `details_submitted` is false.
+- `RESTRICTED`: details submitted but `charges_enabled` is false.
+- `READY`: `charges_enabled` is true.
+- `ERROR`: Stripe API failure or account mismatch.
 
 Persists:
 
@@ -253,6 +279,37 @@ Persists:
 - `stripePayoutsEnabled`
 - `stripeDetailsSubmitted`
 - `stripeAccountStatus`
+
+### `POST /api/stripe/connect/continue`
+
+Creates a fresh onboarding link for an existing connected account.
+
+Allowed roles:
+
+- `org_owner`
+- `finance_manager`
+
+Rules:
+
+- Auth required.
+- User must have Stripe Connect access.
+- Organisation must already have `stripeAccountId`.
+
+### `POST /api/stripe/connect/disconnect`
+
+Disconnects the Stripe account locally.
+
+Allowed roles:
+
+- `org_owner`
+- `finance_manager`
+
+Rules:
+
+- Auth required.
+- User must have Stripe Connect access.
+- Clears local Stripe fields on the organisation.
+- Does not delete or modify the account inside Stripe.
 
 ### `POST /api/stripe/connect/webhook`
 

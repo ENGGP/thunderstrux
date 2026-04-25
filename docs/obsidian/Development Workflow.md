@@ -151,6 +151,7 @@ Restart the app container when:
 - Source code is correct but the browser still shows old UI.
 - The dev server logs are not recompiling.
 - A route appears stale after multiple refreshes.
+- `.env` changed and the running app needs new runtime variables.
 
 ```bash
 docker compose restart app
@@ -215,3 +216,16 @@ STRIPE_CONNECT_WEBHOOK_SECRET=
 ```
 
 Browser-facing URLs should use `localhost`, even though the app binds to `0.0.0.0` inside Docker.
+
+After editing `.env`, recreate containers rather than only refreshing the browser:
+
+```bash
+docker compose down
+docker compose up --build -d
+```
+
+Verify environment values are present without printing secrets:
+
+```powershell
+docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
+```

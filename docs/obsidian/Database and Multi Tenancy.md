@@ -69,6 +69,24 @@ Example:
 /dashboard/engineering-society
 ```
 
+Stripe fields are local cache/control fields for Connect:
+
+- `stripeAccountId`: Stripe connected account id, e.g. `acct_...`.
+- `stripeAccountStatus`: Thunderstrux lifecycle state string.
+- `stripeChargesEnabled`: cached Stripe `charges_enabled`.
+- `stripePayoutsEnabled`: cached Stripe `payouts_enabled`.
+- `stripeDetailsSubmitted`: cached Stripe `details_submitted`.
+
+Current lifecycle strings:
+
+- `NOT_CONNECTED`
+- `CONNECTED_INCOMPLETE`
+- `RESTRICTED`
+- `READY`
+- `ERROR`
+
+These values are stored as strings, not a Prisma enum.
+
 ## Organisation Members
 
 Fields:

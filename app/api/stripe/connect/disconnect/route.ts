@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   badRequest,
   forbidden,
-  serviceUnavailable,
   unauthorized,
   validationError
 } from "@/lib/api/errors";
@@ -12,27 +11,9 @@ import {
   requireStripeConnectAccess
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
-import { createExpressAccount, createOnboardingLink } from "@/lib/stripe/connect";
-import { StripeConfigurationError } from "@/lib/stripe";
+import { disconnectAccount, notConnectedStatus } from "@/lib/stripe/connect";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
-
-function stripeErrorResponse(error: unknown) {
-  console.error("Stripe Connect onboarding failed", { error });
-  const message =
-    error instanceof Error ? error.message : "Unknown Stripe onboarding error";
-
-  return NextResponse.json(
-    {
-      error: {
-        code: "STRIPE_ONBOARDING_ERROR",
-        message,
-        details: []
-      }
-    },
-    { status: 502 }
-  );
-}
 
 export async function POST(request: Request) {
   const validation = await validateJson(request, organisationConnectSchema);
@@ -44,11 +25,12 @@ export async function POST(request: Request) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireStripeConnectAccess(organisationId);
+    await disconnectAccount(organisationId);
 
-    const { accountId, orgSlug } = await createExpressAccount(organisationId);
-    const url = await createOnboardingLink(accountId, orgSlug);
-
-    return NextResponse.json({ url });
+    return NextResponse.json({
+      disconnected: true,
+      status: notConnectedStatus()
+    });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
@@ -64,15 +46,19 @@ export async function POST(request: Request) {
       ]);
     }
 
-    if (error instanceof StripeConfigurationError) {
-      console.error("Stripe Connect onboarding configuration error", {
-        message: error.message
-      });
-      return serviceUnavailable(
-        "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
-      );
-    }
-
-    return stripeErrorResponse(error);
+    console.error("Stripe Connect disconnect failed", { error });
+    return NextResponse.json(
+      {
+        error: {
+          code: "STRIPE_DISCONNECT_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to disconnect Stripe account",
+          details: []
+        }
+      },
+      { status: 500 }
+    );
   }
 }

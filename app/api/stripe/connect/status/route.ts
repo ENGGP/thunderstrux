@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   badRequest,
   forbidden,
-  internalError,
+  serviceUnavailable,
   unauthorized
 } from "@/lib/api/errors";
 import {
@@ -12,10 +12,11 @@ import {
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
-import { getStripe } from "@/lib/stripe";
+import { StripeConfigurationError } from "@/lib/stripe";
 import {
-  isOrganisationStripeReady,
-  persistConnectedAccountStatus
+  getAccountStatus,
+  markAccountStatusError,
+  notConnectedStatus
 } from "@/lib/stripe/connect";
 
 export async function GET(request: Request) {
@@ -29,10 +30,7 @@ export async function GET(request: Request) {
       where: { id: organisationId },
       select: {
         id: true,
-        stripeAccountId: true,
-        stripeChargesEnabled: true,
-        stripePayoutsEnabled: true,
-        stripeDetailsSubmitted: true
+        stripeAccountId: true
       }
     });
 
@@ -43,48 +41,37 @@ export async function GET(request: Request) {
     }
 
     if (!organisation.stripeAccountId) {
-      return NextResponse.json({
-        connected: false,
-        charges_enabled: false,
-        payouts_enabled: false,
-        details_submitted: false
-      });
+      return NextResponse.json(notConnectedStatus());
     }
 
-    const stripe = getStripe();
-    let account;
-
     try {
-      account = await stripe.accounts.retrieve(organisation.stripeAccountId);
+      return NextResponse.json(
+        await getAccountStatus(organisation.stripeAccountId)
+      );
     } catch (error) {
-      console.error("Unable to refresh Stripe Connect account status", {
+      console.error("Stripe Connect status refresh failed", {
+        organisationId,
         stripeAccountId: organisation.stripeAccountId,
         error
       });
 
-      return NextResponse.json({
-        connected: true,
-        ready: false,
-        charges_enabled: organisation.stripeChargesEnabled,
-        payouts_enabled: organisation.stripePayoutsEnabled,
-        details_submitted: organisation.stripeDetailsSubmitted,
-        warning:
-          "Unable to refresh Stripe status. Disconnect and reconnect if this account belongs to an old Stripe key."
-      });
+      if (error instanceof StripeConfigurationError) {
+        return serviceUnavailable(
+          "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
+        );
+      }
+
+      const message =
+        error instanceof Error ? error.message : "Unable to refresh Stripe status";
+
+      return NextResponse.json(
+        await markAccountStatusError(
+          organisationId,
+          organisation.stripeAccountId,
+          message
+        )
+      );
     }
-
-    await persistConnectedAccountStatus(account);
-
-    return NextResponse.json({
-      connected: true,
-      ready: isOrganisationStripeReady({
-        stripeAccountId: organisation.stripeAccountId,
-        stripeChargesEnabled: account.charges_enabled
-      }),
-      charges_enabled: account.charges_enabled,
-      payouts_enabled: account.payouts_enabled,
-      details_submitted: account.details_submitted
-    });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
@@ -101,7 +88,19 @@ export async function GET(request: Request) {
       ]);
     }
 
-    console.error(error);
-    return internalError();
+    console.error("Stripe Connect status endpoint failed", { error });
+    return NextResponse.json(
+      {
+        error: {
+          code: "STRIPE_STATUS_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to read Stripe account status",
+          details: []
+        }
+      },
+      { status: 500 }
+    );
   }
 }

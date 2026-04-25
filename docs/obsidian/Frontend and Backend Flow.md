@@ -222,6 +222,9 @@ Files:
 - `components/settings/stripe-connect-settings.tsx`
 - `app/api/stripe/connect/status/route.ts`
 - `app/api/stripe/connect/onboard/route.ts`
+- `app/api/stripe/connect/continue/route.ts`
+- `app/api/stripe/connect/disconnect/route.ts`
+- `lib/stripe/connect.ts`
 
 Flow:
 
@@ -229,10 +232,24 @@ Flow:
 Settings page receives orgSlug
   -> client resolves organisation via /api/orgs/[orgSlug]
   -> GET /api/stripe/connect/status?organisationId=...
-  -> user may POST /api/stripe/connect/onboard
-  -> browser redirects to Stripe onboarding
+  -> backend maps account into NOT_CONNECTED / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
+  -> user may connect, continue onboarding, fix account, open dashboard, refresh status, or disconnect locally
+  -> browser redirects to Stripe-hosted onboarding when needed
   -> status refreshes when window regains focus
 ```
+
+Current UX by state:
+
+- `NOT_CONNECTED`: show `Connect Stripe Account`.
+- `CONNECTED_INCOMPLETE`: explain onboarding is incomplete and show `Continue onboarding`.
+- `RESTRICTED`: explain Stripe requires more information and show `Fix account`.
+- `READY`: show that Stripe is ready and display charges/payout status.
+- `ERROR`: show the Stripe error, retry status check, dashboard link if available, and disconnect.
+
+Important security detail:
+
+- The frontend sends `organisationId` only as an input.
+- Every Connect mutation rechecks the authenticated user's organisation role on the server.
 
 ## Organiser Orders
 

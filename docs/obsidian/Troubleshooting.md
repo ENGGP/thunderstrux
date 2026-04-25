@@ -203,6 +203,80 @@ Fix:
 - Go to `/dashboard/[orgSlug]/settings`
 - Complete Stripe Connect onboarding
 
+## Stripe Connect Account Exists But Payments Still Blocked
+
+Do not treat `stripeAccountId` as payment-ready.
+
+Current lifecycle states:
+
+- `NOT_CONNECTED`: no account is stored locally.
+- `CONNECTED_INCOMPLETE`: account exists but onboarding details are not submitted.
+- `RESTRICTED`: details are submitted but Stripe has not enabled charges.
+- `READY`: charges are enabled.
+- `ERROR`: Stripe status refresh failed.
+
+Checkout requires `stripeChargesEnabled = true`, so `CONNECTED_INCOMPLETE` and `RESTRICTED` still block payment.
+
+Fix:
+
+1. Open `/dashboard/[orgSlug]/settings`.
+2. Click `Continue onboarding` or `Fix account`.
+3. Complete required Stripe steps.
+4. Click `Refresh status`.
+5. Confirm lifecycle state becomes `READY`.
+
+## Stripe API Key Changed
+
+Symptoms:
+
+- `.env` has a new `STRIPE_SECRET_KEY`.
+- Old organisations still have `stripeAccountId` from the previous Stripe account.
+- Status check may enter `ERROR`.
+
+Reason:
+
+- Stripe connected account IDs belong to the Stripe platform account that created them.
+- A new platform key may not be able to retrieve old connected accounts.
+
+Fix:
+
+1. Recreate Docker containers so env is reloaded:
+
+```bash
+docker compose down
+docker compose up --build -d
+```
+
+2. Open settings for the organisation.
+3. Click `Disconnect Stripe account`.
+4. Click `Connect Stripe Account` again.
+5. Complete onboarding with the new Stripe platform key.
+
+Verify env inside Docker without printing secrets:
+
+```powershell
+docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
+```
+
+## Stripe Connect Is Not Enabled On The Stripe Account
+
+Exact Stripe error observed:
+
+```text
+You can only create new accounts if you've signed up for Connect, which you can do at https://dashboard.stripe.com/connect.
+```
+
+Failing call:
+
+```ts
+stripe.accounts.create({ type: "express" })
+```
+
+Fix:
+
+- Sign up for Stripe Connect on the Stripe account that owns `STRIPE_SECRET_KEY`.
+- Then retry `Connect Stripe Account`.
+
 ## Data Missing After Reset
 
 Cause:

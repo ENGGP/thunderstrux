@@ -73,7 +73,8 @@ Current header behavior:
 
 `/dashboard/[orgSlug]/settings`
 
-- Renders Stripe Connect settings
+- Renders Stripe Connect settings.
+- State-specific Connect controls are allowed here because they are settings content, not dashboard navigation.
 
 ## Current Button Rules
 
@@ -93,6 +94,26 @@ Current header behavior:
 
 - The organisation name appears in the dashboard header area, not in the sidebar body.
 - The edit event route should render only one edit title: `Edit event` from the form.
+
+## Stripe Settings UI Rules
+
+The Stripe Connect settings card should render from backend lifecycle state:
+
+- `NOT_CONNECTED`: connect button only.
+- `CONNECTED_INCOMPLETE`: continue onboarding.
+- `RESTRICTED`: fix account and show requirements if Stripe provides them.
+- `READY`: show readiness and cached flags.
+- `ERROR`: show clear error and recovery actions.
+
+Always show the readiness rows when status exists:
+
+- Lifecycle state
+- Stripe account
+- Charges enabled
+- Payouts enabled
+- Details submitted
+
+Do not call an account "ready" just because `stripeAccountId` exists.
 
 ## Styling Rules
 

@@ -9,14 +9,92 @@ import {
   type Organisation
 } from "@/lib/client/orgs";
 
+type StripeConnectState =
+  | "NOT_CONNECTED"
+  | "CONNECTED_INCOMPLETE"
+  | "RESTRICTED"
+  | "READY"
+  | "ERROR";
+
 type ConnectStatus = {
+  accountId: string | null;
   connected: boolean;
-  ready?: boolean;
+  state: StripeConnectState;
+  ready: boolean;
   charges_enabled: boolean;
   payouts_enabled: boolean;
   details_submitted: boolean;
-  warning?: string;
+  currently_due: string[];
+  eventually_due: string[];
+  disabled_reason: string | null;
+  dashboard_url: string | null;
+  error?: string;
 };
+
+function stateContent(status: ConnectStatus | null) {
+  if (!status || status.state === "NOT_CONNECTED") {
+    return {
+      title: "Connect Stripe to sell tickets",
+      description:
+        "Create a Stripe Express account for this organisation before accepting payments.",
+      tone: "neutral"
+    };
+  }
+
+  if (status.state === "CONNECTED_INCOMPLETE") {
+    return {
+      title: "Complete onboarding to accept payments",
+      description:
+        "Stripe still needs account details before ticket payments can be enabled.",
+      tone: "amber"
+    };
+  }
+
+  if (status.state === "RESTRICTED") {
+    return {
+      title: "Stripe requires additional information",
+      description:
+        "The account exists, but Stripe has not enabled charges yet. Fix the account requirements in Stripe.",
+      tone: "amber"
+    };
+  }
+
+  if (status.state === "READY") {
+    return {
+      title: "Stripe is ready",
+      description: "This organisation can accept ticket payments.",
+      tone: "green"
+    };
+  }
+
+  return {
+    title: "Stripe status needs attention",
+    description:
+      status.error ??
+      "Thunderstrux could not refresh this Stripe account. Retry or disconnect and reconnect.",
+    tone: "red"
+  };
+}
+
+function statusBadgeClasses(tone: string) {
+  if (tone === "green") {
+    return "border-green-200 bg-green-50 text-green-800";
+  }
+
+  if (tone === "red") {
+    return "border-red-200 bg-red-50 text-red-800";
+  }
+
+  if (tone === "amber") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  return "border-neutral-200 bg-neutral-50 text-neutral-800";
+}
+
+function formatRequirement(requirement: string) {
+  return requirement.replaceAll("_", " ").replaceAll(".", " / ");
+}
 
 export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [organisation, setOrganisation] = useState<Organisation | null>(null);
@@ -24,6 +102,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingOnboarding, setIsStartingOnboarding] = useState(false);
+  const [isContinuingOnboarding, setIsContinuingOnboarding] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
@@ -42,18 +121,11 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
 
         setStatus(data);
 
-        if (data.warning) {
-          setMessage(data.warning);
-        }
-
         if (showMessage) {
           setMessage(
-            data.warning ??
-              (data.ready
-                ? "Stripe connected and ready for ticket sales."
-                : data.connected
-                  ? "Complete onboarding in Stripe before selling tickets."
-                  : "Stripe is not connected yet.")
+            data.state === "READY"
+              ? "Stripe connected and ready for ticket sales."
+              : "Stripe status refreshed."
           );
         }
       } catch (error) {
@@ -119,27 +191,28 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     };
   }, [checkStatus, organisation]);
 
-  async function startOnboarding() {
+  async function redirectToOnboarding(endpoint: string) {
     if (!organisation) {
       return;
     }
 
+    const data = await fetchJson<{ url: string }>(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ organisationId: organisation.id })
+    });
+
+    window.location.href = data.url;
+  }
+
+  async function startOnboarding() {
     setIsStartingOnboarding(true);
     setMessage(null);
 
     try {
-      const data = await fetchJson<{ url: string }>(
-        "/api/stripe/connect/onboard",
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({ organisationId: organisation.id })
-        }
-      );
-
-      window.location.href = data.url;
+      await redirectToOnboarding("/api/stripe/connect/onboard");
     } catch (error) {
       setMessage(
         error instanceof ClientApiError
@@ -147,6 +220,22 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           : "Unable to start Stripe onboarding."
       );
       setIsStartingOnboarding(false);
+    }
+  }
+
+  async function continueOnboarding() {
+    setIsContinuingOnboarding(true);
+    setMessage(null);
+
+    try {
+      await redirectToOnboarding("/api/stripe/connect/continue");
+    } catch (error) {
+      setMessage(
+        error instanceof ClientApiError
+          ? error.message
+          : "Unable to continue Stripe onboarding."
+      );
+      setIsContinuingOnboarding(false);
     }
   }
 
@@ -159,24 +248,18 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     setMessage(null);
 
     try {
-      await fetchJson<{ disconnected: boolean }>(
-        "/api/stripe/connect/onboard",
-        {
-          method: "DELETE",
-          headers: {
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({ organisationId: organisation.id })
-        }
-      );
-
-      setStatus({
-        connected: false,
-        ready: false,
-        charges_enabled: false,
-        payouts_enabled: false,
-        details_submitted: false
+      const data = await fetchJson<{
+        disconnected: boolean;
+        status: ConnectStatus;
+      }>("/api/stripe/connect/disconnect", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ organisationId: organisation.id })
       });
+
+      setStatus(data.status);
       setMessage("Stripe account disconnected.");
     } catch (error) {
       setMessage(
@@ -197,36 +280,34 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     return <Card>{message ?? "Organisation not found."}</Card>;
   }
 
+  const content = stateContent(status);
+  const requirements = status?.currently_due ?? [];
+  const isConnected = Boolean(status?.connected);
+
   return (
     <Card>
-      <div className="grid gap-5">
+      <div className="grid gap-6">
         <div>
           <h2 className="text-xl font-semibold text-neutral-950">
             Stripe Connect
           </h2>
           <p className="mt-1 text-sm text-neutral-600">
-            Connect an Express account for this organisation.
+            Thunderstrux guides the setup. Stripe handles compliance, identity
+            checks and payout requirements.
           </p>
         </div>
 
-        {status ? (
-          <div
-            className={
-              status.ready
-                ? "rounded-md border border-green-200 bg-green-50 px-3 py-3 text-sm text-green-800"
-                : "rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800"
-            }
-          >
-            <p className="font-medium">
-              {status.ready ? "Stripe connected" : "Complete onboarding"}
-            </p>
-            <p className="mt-1">
-              {status.ready
-                ? "This organisation can accept ticket payments."
-                : "You must connect Stripe before selling tickets."}
-            </p>
-          </div>
-        ) : null}
+        <div
+          className={`rounded-lg border px-4 py-4 text-sm ${statusBadgeClasses(
+            content.tone
+          )}`}
+        >
+          <p className="font-semibold">{content.title}</p>
+          <p className="mt-1">{content.description}</p>
+          {status?.disabled_reason ? (
+            <p className="mt-2">Stripe reason: {status.disabled_reason}</p>
+          ) : null}
+        </div>
 
         {message ? (
           <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
@@ -234,8 +315,23 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           </div>
         ) : null}
 
+        {requirements.length > 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-medium">Required by Stripe</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {requirements.map((requirement) => (
+                <li key={requirement}>{formatRequirement(requirement)}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {status ? (
-          <dl className="grid gap-2 text-sm text-neutral-700">
+          <dl className="grid gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+            <div className="flex justify-between gap-4">
+              <dt>Lifecycle state</dt>
+              <dd className="font-medium text-neutral-950">{status.state}</dd>
+            </div>
             <div className="flex justify-between gap-4">
               <dt>Stripe account</dt>
               <dd>{status.connected ? "Connected" : "Not connected"}</dd>
@@ -256,7 +352,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         ) : null}
 
         <div className="flex flex-wrap gap-3">
-          {!status?.connected ? (
+          {!isConnected ? (
             <Button
               disabled={isStartingOnboarding}
               onClick={startOnboarding}
@@ -265,22 +361,67 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
               {isStartingOnboarding ? "Redirecting..." : "Connect Stripe Account"}
             </Button>
           ) : null}
+
+          {status?.state === "CONNECTED_INCOMPLETE" ? (
+            <Button
+              disabled={isContinuingOnboarding}
+              onClick={continueOnboarding}
+              type="button"
+            >
+              {isContinuingOnboarding
+                ? "Redirecting..."
+                : "Continue onboarding"}
+            </Button>
+          ) : null}
+
+          {status?.state === "RESTRICTED" ? (
+            <Button
+              disabled={isContinuingOnboarding}
+              onClick={continueOnboarding}
+              type="button"
+            >
+              {isContinuingOnboarding ? "Redirecting..." : "Fix account"}
+            </Button>
+          ) : null}
+
+          {status?.state === "ERROR" ? (
+            <Button
+              disabled={isCheckingStatus}
+              onClick={() => organisation && void checkStatus(organisation, true)}
+              type="button"
+            >
+              {isCheckingStatus ? "Retrying..." : "Retry status check"}
+            </Button>
+          ) : null}
+
           <Button
             disabled={isCheckingStatus}
             onClick={() => organisation && void checkStatus(organisation, true)}
             type="button"
             variant="secondary"
           >
-            {isCheckingStatus ? "Refreshing..." : "Refresh Status"}
+            {isCheckingStatus ? "Refreshing..." : "Refresh status"}
           </Button>
-          {status?.connected ? (
+
+          {status?.dashboard_url ? (
+            <a
+              className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+              href={status.dashboard_url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open in Stripe dashboard
+            </a>
+          ) : null}
+
+          {isConnected ? (
             <Button
               disabled={isDisconnecting}
               onClick={disconnectStripe}
               type="button"
               variant="secondary"
             >
-              {isDisconnecting ? "Disconnecting..." : "Disconnect Stripe Account"}
+              {isDisconnecting ? "Disconnecting..." : "Disconnect Stripe account"}
             </Button>
           ) : null}
         </div>

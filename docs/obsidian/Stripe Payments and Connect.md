@@ -90,7 +90,12 @@ This means local failures are often caused by:
 Allowed roles:
 
 - `org_owner`
+- `org_admin`
+- `event_manager`
 - `finance_manager`
+- `content_manager`
+
+`member` cannot manage Stripe Connect.
 
 Thunderstrux uses strict internal lifecycle states:
 
@@ -254,7 +259,7 @@ This endpoint is both a status reader and a local state synchronizer.
 
 - Retrieves Stripe account status and maps it to the lifecycle state.
 
-All mutation routes require `org_owner` or `finance_manager`.
+All Stripe Connect mutation routes require an organisation role other than `member`.
 
 ## Stripe Connect Webhook
 

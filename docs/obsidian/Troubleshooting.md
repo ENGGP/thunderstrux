@@ -30,11 +30,13 @@ Observed issue:
 - Source was correct.
 - Browser still showed old dashboard UI.
 - Old JSX remained in `.next` output.
+- A nested App Router route existed in source and production manifests but returned 404 in dev because `.next/dev/server/app-paths-manifest.json` was stale.
 
 Current mitigation:
 
-- `pnpm dev` runs `next dev --webpack --hostname 0.0.0.0`
+- `pnpm dev` runs `next dev --turbopack --hostname 0.0.0.0`
 - Docker enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`
+- `next.config.ts` sends production build output to `.next-build` so `pnpm build` does not clobber live dev output under `.next`
 
 Fix order:
 
@@ -42,6 +44,148 @@ Fix order:
 2. `docker compose restart app`
 3. Clear `.next`
 4. Recreate containers
+
+## App Router Route Exists But Returns 404
+
+Observed with:
+
+```text
+/dashboard/engineering-society/events/[eventId]/edit
+```
+
+Also observed as browser console 404s such as:
+
+```text
+GET http://localhost:3000/dashboard/engineering-society/events/cmob9yf710002po0z781ua9qr/edit 404 (Not Found)
+```
+
+Source was correct:
+
+```text
+components/events/events-list.tsx
+app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
+```
+
+The generated production manifests contained the route, but the dev manifest did not:
+
+```text
+.next/dev/server/app-paths-manifest.json
+```
+
+Diagnosis:
+
+```bash
+docker compose exec app sh -lc "grep -n 'events/.*/edit\|events/\[eventId\]/edit\|events/new' .next/dev/server/app-paths-manifest.json .next/dev/types/routes.d.ts 2>/dev/null || true"
+```
+
+Permanent fixes now in code:
+
+- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx` exists as an explicit pass-through route boundary for nested event pages.
+- `package.json` uses `next dev --turbopack --hostname 0.0.0.0`.
+- `next.config.ts` uses `.next-build` for production builds and `.next` for dev output.
+- `.gitignore` ignores both `.next/` and `.next-build/`.
+
+If it happens again, first inspect the dev manifest:
+
+```bash
+docker compose exec app sh -lc "cat .next/dev/server/app-paths-manifest.json"
+```
+
+It must include:
+
+```text
+/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page
+/(dashboard)/dashboard/[orgSlug]/events/new/page
+/(dashboard)/dashboard/[orgSlug]/events/page
+```
+
+Recovery:
+
+```powershell
+docker compose down
+docker compose run --rm app sh -lc "rm -rf .next .next-build"
+docker compose up --build --force-recreate -d
+```
+
+Then recheck the route. If the route is registered but the page still 404s, inspect the page-level guards:
+
+- `app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
+- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
+- `requireOrganisationMembershipBySlug(orgSlug)`
+- event lookup by `eventId` and `organisationId`
+
+For a valid Engineering event and `user1@example.com`, the route should return `200`. For `user2@example.com`, direct Engineering edit URLs should return `404`.
+
+If clicking `Edit` navigates to `/dashboard/[orgSlug]/events/edit` without an event id, the source link or a stale client bundle is wrong. The correct source link is:
+
+```tsx
+href={`/dashboard/${orgSlug}/events/${event.id}/edit`}
+```
+
+It lives in:
+
+```text
+components/events/events-list.tsx
+```
+
+Check browser hard refresh and confirm `EDIT EVENT ID:` logs a real id.
+
+## Event Edit Saves But Reopens With Old Data
+
+Observed on:
+
+```text
+/dashboard/[orgSlug]/events/[eventId]/edit
+```
+
+Symptom:
+
+- User changes event fields or ticket types.
+- Clicks `Save event`.
+- Reopening shows old data.
+
+Root cause found:
+
+- Sold-out ticket types can legitimately have `quantity = 0`.
+- The edit form and `PATCH /api/events/[eventId]` validator used the create-time rule `quantity >= 1`.
+- The API returned `400 VALIDATION_ERROR` before auth and Prisma transaction.
+- Because the failure surfaced generically, it looked like a persistence failure.
+
+Current fix:
+
+- `createTicketTypeSchema` still requires `quantity >= 1`.
+- `updateTicketTypeSchema` allows `quantity >= 0`.
+- `components/events/create-event-form.tsx` allows zero quantity only in edit mode.
+- Sold/issued ticket rows are disabled in the edit form so event fields can still be saved without accidentally modifying protected ticket history.
+- Failed PATCH responses are logged with the raw response body.
+- Successful saves call `router.refresh()` before redirecting back to the events list.
+
+Expected behavior:
+
+- Event title, description, location, start time, and end time can be edited even after sales.
+- Ticket type name, price, quantity, and removal are locked once that ticket type has orders or issued tickets.
+- Unsold ticket types on the same event remain editable/removable.
+
+Trace logs now available:
+
+```text
+FORM SUBMIT DATA:
+PATCH PAYLOAD:
+PATCH EVENT HIT:
+REQUEST BODY:
+AUTH PASSED
+EXISTING TICKETS:
+INCOMING TICKETS:
+UPDATING EVENT:
+UPDATED EVENT RESULT:
+```
+
+Database verification examples:
+
+```bash
+docker compose exec db psql -U thunderstrux -d thunderstrux -c "SELECT id, title, description, location FROM \"Event\" WHERE id = 'event_id';"
+docker compose exec db psql -U thunderstrux -d thunderstrux -c "SELECT id, name, price, quantity FROM \"TicketType\" WHERE \"eventId\" = 'event_id' ORDER BY name;"
+```
 
 ## Tailwind Classes Exist But Styling Does Not Apply
 
@@ -148,6 +292,22 @@ If duplicate titles reappear, inspect:
 - `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
 - `components/events/create-event-form.tsx`
 
+## `next-env.d.ts` Changes After Build Or Dev
+
+Next can rewrite `next-env.d.ts` depending on whether the last run was dev or build:
+
+```ts
+import "./.next/dev/types/routes.d.ts";
+```
+
+or:
+
+```ts
+import "./.next/types/routes.d.ts";
+```
+
+This is generated route-type metadata. It is not application behavior. If it appears in a diff after running `pnpm build` or `next dev`, decide whether to keep the generated state or exclude it from unrelated commits.
+
 ## Docker File Sync
 
 Expected volumes:
@@ -199,7 +359,7 @@ Meaning:
 
 Fix:
 
-- Sign in as `org_owner` or `finance_manager`
+- Sign in as a role other than `member`
 - Go to `/dashboard/[orgSlug]/settings`
 - Complete Stripe Connect onboarding
 

@@ -52,7 +52,7 @@ postgres_data:/var/lib/postgresql/data
 Current `package.json` dev script:
 
 ```json
-"dev": "next dev --webpack --hostname 0.0.0.0"
+"dev": "next dev --turbopack --hostname 0.0.0.0"
 ```
 
 The app container also sets:
@@ -67,8 +67,30 @@ This is intentional.
 
 Reason:
 
-- Turbopack was unreliable in this Docker setup and repeatedly served stale UI.
-- Webpack plus polling has been the stable configuration.
+- Next 16 production builds use Turbopack.
+- Webpack dev mode failed to reliably register nested App Router event routes in this Docker/Windows/OneDrive setup.
+- Turbopack dev mode plus polling is the current route-stable configuration.
+
+## Build Output Separation
+
+`next.config.ts` separates dev and production output:
+
+```ts
+distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next"
+```
+
+Why:
+
+- `next dev` writes live route metadata under `.next/dev`.
+- `pnpm build` writes production artifacts under `.next-build`.
+- This prevents build verification from overwriting or confusing the running dev server's route manifest.
+
+`.gitignore` must include both:
+
+```gitignore
+.next/
+.next-build/
+```
 
 ## Tailwind Setup
 
@@ -164,22 +186,62 @@ Clear `.next` when:
 - Restarting the app container does not fix stale output.
 - Runtime HTML contains code that no longer exists in source.
 - Old strings still appear inside `.next`.
+- A valid App Router route exists in source but dev still returns 404.
+- `.next/dev/server/app-paths-manifest.json` is missing a route that exists in source.
 
 PowerShell:
 
 ```powershell
-docker compose down
 if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -Force }
-docker compose up --build --force-recreate -d
+docker compose restart app
 ```
 
 Bash:
 
 ```bash
-docker compose down
 rm -rf .next
+docker compose restart app
+```
+
+If production build artifacts may also be involved, clear both from inside Docker:
+
+```bash
+docker compose down
+docker compose run --rm app sh -lc "rm -rf .next .next-build"
 docker compose up --build --force-recreate -d
 ```
+
+If restart still does not pick up the change, then recreate containers:
+
+```bash
+docker compose down
+docker compose up --build --force-recreate -d
+```
+
+## Generated Next Type Metadata
+
+`next-env.d.ts` may switch between dev and build route type imports:
+
+```ts
+import "./.next/dev/types/routes.d.ts";
+```
+
+and:
+
+```ts
+import "./.next/types/routes.d.ts";
+```
+
+This depends on whether `next dev` or `next build` ran most recently. Treat it as generated framework metadata, not a product change.
+
+With the current `.next-build` production dist directory, Next may also add these generated type paths to `tsconfig.json`:
+
+```json
+".next-build/types/**/*.ts",
+".next-build/dev/types/**/*.ts"
+```
+
+Those entries are expected after `pnpm build`.
 
 ## When To Use `down -v`
 

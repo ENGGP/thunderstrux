@@ -48,6 +48,7 @@ Rules:
 - `price` is integer cents.
 - `price` must be non-negative.
 - `quantity` must be greater than zero when creating.
+- `quantity` may be zero when editing because sold-out inventory is represented as `0`.
 - Public checkout validates requested quantity against remaining inventory.
 - Webhook fulfilment reduces inventory after payment is confirmed.
 
@@ -84,6 +85,47 @@ PATCH /api/events/[eventId]
 
 The edit endpoint updates event fields and synchronises ticket types. It does not own the publish/unpublish lifecycle.
 
+Edit route:
+
+```text
+/dashboard/[orgSlug]/events/[eventId]/edit
+```
+
+Source files:
+
+```text
+app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx
+app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
+components/events/create-event-form.tsx
+app/api/events/[eventId]/route.ts
+lib/validators/events.ts
+```
+
+Important rules:
+
+- Existing ticket rows are matched by `id`, not by name.
+- Submitted existing IDs must belong to the edited event.
+- Omitted unsold ticket types are deleted.
+- New ticket types have no `id` and are created.
+- Ticket types with existing orders or issued tickets cannot be deleted.
+- Ticket types with existing orders or issued tickets cannot be modified.
+- Sold-out ticket types with `quantity = 0` can be kept while editing event fields.
+- The edit form locks sold/issued ticket rows in the UI, but event title, description, location, and times remain editable.
+
+Current logging for edit debugging:
+
+```text
+FORM SUBMIT DATA:
+PATCH PAYLOAD:
+PATCH EVENT HIT:
+REQUEST BODY:
+AUTH PASSED
+EXISTING TICKETS:
+INCOMING TICKETS:
+UPDATING EVENT:
+UPDATED EVENT RESULT:
+```
+
 ## Public Event APIs
 
 Public APIs:
@@ -102,4 +144,3 @@ Rules:
 `lib/events/public-events.ts` ensures public discovery has demo events if there are no published events.
 
 This is separate from `prisma/seed.mjs`. The seed is the preferred way to restore a full development database because it also creates users and memberships.
-

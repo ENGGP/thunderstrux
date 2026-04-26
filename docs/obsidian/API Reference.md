@@ -131,6 +131,52 @@ Rules:
 - Auth required.
 - Event-management role required.
 - Does not own publish/unpublish status transitions.
+- Request must include `organisationId`, but the API revalidates membership and scopes the event server-side.
+- Existing ticket types are matched by `id`.
+- New ticket types omit `id`.
+- Omitted unsold ticket types are deleted.
+- Ticket types with existing orders or issued tickets cannot be deleted or modified.
+- Ticket quantity may be `0` on update because sold-out inventory is valid.
+- Ticket quantity must not be negative.
+
+Expected request shape:
+
+```json
+{
+  "organisationId": "organisation_id",
+  "title": "Event title",
+  "description": "Event description",
+  "startTime": "2026-05-06T15:00:00.000Z",
+  "endTime": "2026-05-06T17:00:00.000Z",
+  "location": "Campus Hall",
+  "ticketTypes": [
+    {
+      "id": "existing_ticket_type_id",
+      "name": "General Admission",
+      "price": 1000,
+      "quantity": 0
+    },
+    {
+      "name": "New Ticket",
+      "price": 1500,
+      "quantity": 20
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "event": {
+    "id": "event_id",
+    "organisationId": "organisation_id",
+    "title": "Event title",
+    "ticketTypes": []
+  }
+}
+```
 
 ### `DELETE /api/events/[eventId]`
 
@@ -235,7 +281,10 @@ Creates or reuses a Stripe Express account and returns an onboarding link.
 Allowed roles:
 
 - `org_owner`
+- `org_admin`
+- `event_manager`
 - `finance_manager`
+- `content_manager`
 
 Rules:
 
@@ -305,7 +354,10 @@ Creates a fresh onboarding link for an existing connected account.
 Allowed roles:
 
 - `org_owner`
+- `org_admin`
+- `event_manager`
 - `finance_manager`
+- `content_manager`
 
 Rules:
 
@@ -320,7 +372,10 @@ Disconnects the Stripe account locally.
 Allowed roles:
 
 - `org_owner`
+- `org_admin`
+- `event_manager`
 - `finance_manager`
+- `content_manager`
 
 Rules:
 

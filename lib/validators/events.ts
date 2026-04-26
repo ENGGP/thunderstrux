@@ -20,12 +20,18 @@ export const createTicketTypeSchema = z.object({
   quantity: z.number().int().min(1)
 });
 
+const updateTicketTypeFieldsSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  price: z.number().int().min(0),
+  quantity: z.number().int().min(0)
+});
+
 export const createEventSchema = eventFieldsSchema.extend({
   status: z.enum(["draft", "published"]).default("draft"),
   ticketTypes: z.array(createTicketTypeSchema).optional().default([])
 });
 
-export const updateTicketTypeSchema = createTicketTypeSchema.extend({
+export const updateTicketTypeSchema = updateTicketTypeFieldsSchema.extend({
   id: z.string().trim().min(1).optional()
 });
 

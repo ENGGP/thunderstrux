@@ -163,6 +163,7 @@ Current UI:
 Files:
 
 - `app/(dashboard)/dashboard/[orgSlug]/events/page.tsx`
+- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
 - `components/events/events-list.tsx`
 - `app/api/events/route.ts`
 - `app/api/events/[eventId]/route.ts`
@@ -192,6 +193,34 @@ Important edit rules:
 - Ticket types with existing orders or issued tickets cannot be modified.
 - Event deletion is blocked after orders or ticket issuance.
 
+Edit link shape:
+
+```ts
+`/dashboard/${orgSlug}/events/${event.id}/edit`
+```
+
+The link is generated in:
+
+```text
+components/events/events-list.tsx
+```
+
+The expected page is:
+
+```text
+app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
+```
+
+There is also a pass-through layout at:
+
+```text
+app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx
+```
+
+This exists intentionally. In the Docker/Windows/OneDrive dev setup, Next 16 repeatedly failed to register nested child event routes in `.next/dev/server/app-paths-manifest.json` unless the `events` segment had an explicit route boundary.
+
+If this URL returns the generic not-found page while source is correct, do not rewrite the href first. Check the dev route manifest in [[Troubleshooting]].
+
 ## Create and Edit Event
 
 Files:
@@ -206,13 +235,36 @@ Flow:
 CreateEventForm loads organisation by slug
   -> create mode posts to /api/events
   -> edit mode patches /api/events/[eventId]
+  -> PATCH validates event fields and ticketTypes
+  -> PATCH checks event-management access
+  -> PATCH updates Event and synchronises TicketType rows in a Prisma transaction
+  -> form calls router.refresh()
   -> on success, router.push(`/dashboard/${orgSlug}/events`)
+```
+
+Edit route access:
+
+```text
+Edit page receives orgSlug + eventId
+  -> requireOrganisationMembershipBySlug(orgSlug)
+  -> query Event where id = eventId and organisationId = resolved organisation.id
+  -> render CreateEventForm in edit mode
+  -> notFound() when membership is missing or the event belongs to another org
 ```
 
 Current UI note:
 
 - Edit page now shows only one `Edit event` title.
 - New event page still has a top page heading `Create Event` and the form title `New event`.
+
+Ticket edit details:
+
+- Create mode requires ticket quantity greater than zero.
+- Edit mode allows ticket quantity zero so sold-out ticket types can remain attached while event fields are edited.
+- Existing ticket rows must include `id`.
+- New ticket rows omit `id`.
+- Removing a ticket row from the submitted array deletes it only if it has no orders or issued tickets.
+- Sold/issued ticket rows are shown read-only in the edit form. Event fields above them stay editable.
 
 ## Stripe Settings
 

@@ -84,7 +84,9 @@ docs/obsidian/
 - Do not trust frontend `organisationId` or `x-org-id` as authority. They are inputs, not trust boundaries.
 - Payment fulfilment happens only from Stripe webhooks.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
-- Docker development uses Webpack plus polling because Turbopack was unreliable in this setup.
+- Docker development uses Turbopack plus polling.
+- Production builds write to `.next-build`; dev writes to `.next`.
+- Keep the explicit events route boundary at `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`.
 - Stripe Connect readiness is represented by lifecycle states, not by the word "connected" alone.
 - Current Stripe Connect states are `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
 
@@ -103,3 +105,5 @@ docs/obsidian/
 - `/dashboard/[orgSlug]/events/new` still renders a page heading `Create Event` above the form title `New event`. This is a UI inconsistency, not a backend issue.
 - `app/page.tsx` uses `export const dynamic = "force-dynamic"` to avoid stale homepage output during development.
 - Stripe account disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the account in Stripe. Reconnecting the same old account requires manually restoring the old `acct_...` id in the DB.
+- Event edit routes rely on an explicit pass-through `events/layout.tsx` because Next dev route registration was unreliable for nested event routes without it in the local Docker/Windows/OneDrive setup.
+- Edit mode allows ticket type quantity `0`; create mode does not. This supports sold-out inventory while still preventing zero-inventory new events.

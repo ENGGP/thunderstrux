@@ -91,6 +91,10 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   const { eventId } = await context.params;
+  console.log("PATCH EVENT HIT:", eventId);
+  const requestBody = await request.clone().json().catch(() => null);
+  console.log("REQUEST BODY:", requestBody);
+
   const validation = await validateJson(request, updateEventSchema);
 
   if (!validation.success) {
@@ -100,6 +104,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireEventManagementAccess(organisationId);
+    console.log("AUTH PASSED");
 
     const existingEvent = await prisma.event.findFirst({
       where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -127,6 +132,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const submittedTicketTypes = validation.data.ticketTypes;
+    console.log("EXISTING TICKETS:", existingEvent.ticketTypes);
+    console.log("INCOMING TICKETS:", submittedTicketTypes);
+
+    const isLockedTicketType = (ticketType: (typeof existingEvent.ticketTypes)[number]) =>
+      ticketType._count.orders > 0 || ticketType._count.tickets > 0;
+
     const existingTicketTypesById = new Map(
       existingEvent.ticketTypes.map((ticketType) => [ticketType.id, ticketType])
     );
@@ -155,22 +166,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const removedTicketTypes = existingEvent.ticketTypes.filter(
-      (ticketType) => !uniqueSubmittedIds.has(ticketType.id)
-    );
-    const soldRemovedTicketType = removedTicketTypes.find(
       (ticketType) =>
-        ticketType._count.orders > 0 || ticketType._count.tickets > 0
+        !isLockedTicketType(ticketType) && !uniqueSubmittedIds.has(ticketType.id)
     );
-
-    if (soldRemovedTicketType) {
-      return badRequest("Ticket type cannot be deleted after sales", [
-        {
-          path: ["ticketTypes"],
-          message:
-            "Ticket types with existing orders or issued tickets must be kept"
-        }
-      ]);
-    }
 
     const modifiedSoldTicketType = submittedTicketTypes.find((ticketType) => {
       if (!ticketType.id) {
@@ -181,8 +179,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
       return Boolean(
         existingTicketType &&
-          (existingTicketType._count.orders > 0 ||
-            existingTicketType._count.tickets > 0) &&
+          isLockedTicketType(existingTicketType) &&
           (existingTicketType.name !== ticketType.name ||
             existingTicketType.price !== ticketType.price ||
             existingTicketType.quantity !== ticketType.quantity)
@@ -200,7 +197,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const event = await prisma.$transaction(async (transaction) => {
-      await transaction.event.update({
+      console.log("UPDATING EVENT:", eventId);
+      const updatedEvent = await transaction.event.update({
         where: { id: eventId },
         data: {
           title: validation.data.title,
@@ -210,6 +208,7 @@ export async function PATCH(request: Request, context: RouteContext) {
           location: validation.data.location
         }
       });
+      console.log("UPDATED EVENT RESULT:", updatedEvent);
 
       const removedTicketTypeIds = removedTicketTypes.map(
         (ticketType) => ticketType.id
@@ -227,6 +226,12 @@ export async function PATCH(request: Request, context: RouteContext) {
       await Promise.all(
         submittedTicketTypes.map((ticketType) => {
           if (ticketType.id) {
+            const existingTicketType = existingTicketTypesById.get(ticketType.id);
+
+            if (existingTicketType && isLockedTicketType(existingTicketType)) {
+              return Promise.resolve();
+            }
+
             return transaction.ticketType.update({
               where: { id: ticketType.id },
               data: {

@@ -20,6 +20,8 @@ type EventFormData = {
     name: string;
     price: number;
     quantity: number;
+    ordersCount: number;
+    ticketsCount: number;
   }>;
 };
 
@@ -28,7 +30,13 @@ export default async function EditEventPage({
 }: {
   params: Promise<{ eventId: string; orgSlug: string }>;
 }) {
-  const { eventId, orgSlug } = await params;
+  const resolvedParams = await params;
+  const { eventId, orgSlug } = resolvedParams;
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("EDIT PAGE PARAMS:", resolvedParams);
+  }
+
   let organisation: { id: string };
 
   try {
@@ -60,7 +68,13 @@ export default async function EditEventPage({
           id: true,
           name: true,
           price: true,
-          quantity: true
+          quantity: true,
+          _count: {
+            select: {
+              orders: true,
+              tickets: true
+            }
+          }
         },
         orderBy: { createdAt: "asc" }
       }
@@ -74,7 +88,15 @@ export default async function EditEventPage({
   const initialEvent: EventFormData = {
     ...event,
     startTime: event.startTime.toISOString(),
-    endTime: event.endTime.toISOString()
+    endTime: event.endTime.toISOString(),
+    ticketTypes: event.ticketTypes.map((ticketType) => ({
+      id: ticketType.id,
+      name: ticketType.name,
+      price: ticketType.price,
+      quantity: ticketType.quantity,
+      ordersCount: ticketType._count.orders,
+      ticketsCount: ticketType._count.tickets
+    }))
   };
 
   return (

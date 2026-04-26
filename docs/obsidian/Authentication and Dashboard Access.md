@@ -136,7 +136,17 @@ Finance management:
 Stripe Connect onboarding:
 
 - `org_owner`
+- `org_admin`
+- `event_manager`
 - `finance_manager`
+- `content_manager`
+
+`member` cannot manage Stripe Connect. Users without an organisation membership cannot access the organisation dashboard or Connect APIs.
+
+Recent verification:
+
+- `admin@example.com` can start Stripe Connect onboarding for Arts Society.
+- `user2@example.com`, which is only a `member` in Arts Society, still receives `403 Insufficient Stripe Connect permissions`.
 
 ## Trust Model
 

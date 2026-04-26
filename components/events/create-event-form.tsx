@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TextArea, TextInput } from "@/components/ui/input";
-import { ClientApiError, fetchJson } from "@/lib/client/api";
+import { ClientApiError } from "@/lib/client/api";
 import {
   fetchOrganisationBySlug,
   type Organisation
@@ -29,6 +29,8 @@ type TicketTypeFormState = {
   name: string;
   price: string;
   quantity: string;
+  ordersCount?: number;
+  ticketsCount?: number;
 };
 
 const initialFormState: FormState = {
@@ -56,8 +58,14 @@ type EventFormData = FormState & {
     name: string;
     price: number;
     quantity: number;
+    ordersCount?: number;
+    ticketsCount?: number;
   }>;
 };
+
+function hasIssuedOrSoldTickets(ticketType: TicketTypeFormState) {
+  return (ticketType.ordersCount ?? 0) > 0 || (ticketType.ticketsCount ?? 0) > 0;
+}
 
 function fieldError(details: ErrorDetail[], field: keyof FormState) {
   return details.find((detail) => detail.path?.includes(field))?.message;
@@ -85,7 +93,10 @@ function validateForm(form: FormState): ErrorDetail[] {
   return errors;
 }
 
-function validateTicketTypes(ticketTypes: TicketTypeFormState[]): ErrorDetail[] {
+function validateTicketTypes(
+  ticketTypes: TicketTypeFormState[],
+  mode: EventFormMode
+): ErrorDetail[] {
   const errors: ErrorDetail[] = [];
 
   ticketTypes.forEach((ticketType, index) => {
@@ -113,7 +124,14 @@ function validateTicketTypes(ticketTypes: TicketTypeFormState[]): ErrorDetail[] 
       });
     }
 
-    if (!Number.isInteger(quantity) || quantity <= 0) {
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      errors.push({
+        path: ["ticketTypes", String(index), "quantity"],
+        message: "Quantity cannot be negative"
+      });
+    }
+
+    if (mode === "create" && quantity === 0) {
       errors.push({
         path: ["ticketTypes", String(index), "quantity"],
         message: "Quantity must be greater than zero"
@@ -151,6 +169,19 @@ function normaliseTicketTypes(ticketTypes: TicketTypeFormState[]) {
       price: Number(ticketType.price),
       quantity: Number(ticketType.quantity)
     }));
+}
+
+function buildTicketTypesPayload(
+  ticketTypes: TicketTypeFormState[],
+  mode: EventFormMode
+) {
+  if (mode === "create") {
+    return normaliseTicketTypes(ticketTypes);
+  }
+
+  return normaliseTicketTypes(
+    ticketTypes.filter((ticketType) => !hasIssuedOrSoldTickets(ticketType))
+  );
 }
 
 function toDateTimeLocal(value: string) {
@@ -211,7 +242,9 @@ export function CreateEventForm({
                     id: ticketType.id,
                     name: ticketType.name,
                     price: String(ticketType.price),
-                    quantity: String(ticketType.quantity)
+                    quantity: String(ticketType.quantity),
+                    ordersCount: ticketType.ordersCount,
+                    ticketsCount: ticketType.ticketsCount
                   }))
                 : [{ ...emptyTicketType }]
             );
@@ -248,9 +281,12 @@ export function CreateEventForm({
     setErrors([]);
     setSuccessMessage(null);
 
+    const formData = { ...form, ticketTypes };
+    console.log("FORM SUBMIT DATA:", formData);
+
     const clientErrors = [
       ...validateForm(form),
-      ...validateTicketTypes(ticketTypes)
+      ...validateTicketTypes(ticketTypes, mode)
     ];
 
     if (clientErrors.length > 0) {
@@ -260,25 +296,52 @@ export function CreateEventForm({
     }
 
     try {
-      await fetchJson(mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events", {
-        method: mode === "edit" && eventId ? "PATCH" : "POST",
+      const payload = {
+        organisationId: organisation.id,
+        title: form.title,
+        description: form.description,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        location: form.location,
+        ticketTypes: buildTicketTypesPayload(ticketTypes, mode)
+      };
+      const url = mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events";
+      const method = mode === "edit" && eventId ? "PATCH" : "POST";
+
+      console.log("PATCH PAYLOAD:", payload);
+
+      const response = await fetch(url, {
+        method,
         headers: {
           "content-type": "application/json"
         },
-        body: JSON.stringify({
-          organisationId: organisation.id,
-          title: form.title,
-          description: form.description,
-          startTime: form.startTime,
-          endTime: form.endTime,
-          location: form.location,
-          ticketTypes: normaliseTicketTypes(ticketTypes)
-        })
+        body: JSON.stringify(payload)
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(errorText);
+
+        let payload: unknown = null;
+        try {
+          payload = JSON.parse(errorText);
+        } catch {
+          payload = null;
+        }
+
+        throw new ClientApiError(
+          "Request failed. Please try again.",
+          response.status,
+          payload && typeof payload === "object" ? payload : null
+        );
+      }
+
+      await response.json();
 
       setSuccessMessage(
         mode === "edit" ? "Event updated. Redirecting..." : "Event created. Redirecting..."
       );
+      router.refresh();
       setTimeout(() => {
         router.push(`/dashboard/${orgSlug}/events`);
       }, 700);
@@ -391,70 +454,85 @@ export function CreateEventForm({
             </button>
           </div>
 
-          {ticketTypes.map((ticketType, index) => (
-            <div
-              className="grid gap-3 rounded-md border border-neutral-200 p-4"
-              key={ticketType.id ?? index}
-            >
-              <div className="grid gap-4 sm:grid-cols-[1fr_10rem_10rem_auto] sm:items-start">
-                <TextInput
-                  label="Name"
-                  value={ticketType.name}
-                  error={ticketTypeFieldError(errors, index, "name")}
-                  onChange={(event) =>
-                    setTicketTypes((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, name: event.target.value }
-                          : item
+          {ticketTypes.map((ticketType, index) => {
+            const isLocked = hasIssuedOrSoldTickets(ticketType);
+
+            return (
+              <div
+                className="grid gap-3 rounded-md border border-neutral-200 p-4"
+                key={ticketType.id ?? index}
+              >
+                <div className="grid gap-4 sm:grid-cols-[1fr_10rem_10rem_auto] sm:items-start">
+                  <TextInput
+                    label="Name"
+                    value={ticketType.name}
+                    disabled={isLocked}
+                    error={ticketTypeFieldError(errors, index, "name")}
+                    onChange={(event) =>
+                      setTicketTypes((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, name: event.target.value }
+                            : item
+                        )
                       )
-                    )
-                  }
-                />
-                <TextInput
-                  label="Price"
-                  type="number"
-                  value={ticketType.price}
-                  error={ticketTypeFieldError(errors, index, "price")}
-                  onChange={(event) =>
-                    setTicketTypes((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, price: event.target.value }
-                          : item
+                    }
+                  />
+                  <TextInput
+                    label="Price"
+                    type="number"
+                    value={ticketType.price}
+                    disabled={isLocked}
+                    error={ticketTypeFieldError(errors, index, "price")}
+                    onChange={(event) =>
+                      setTicketTypes((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, price: event.target.value }
+                            : item
+                        )
                       )
-                    )
-                  }
-                />
-                <TextInput
-                  label="Quantity"
-                  type="number"
-                  value={ticketType.quantity}
-                  error={ticketTypeFieldError(errors, index, "quantity")}
-                  onChange={(event) =>
-                    setTicketTypes((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, quantity: event.target.value }
-                          : item
+                    }
+                  />
+                  <TextInput
+                    label="Quantity"
+                    type="number"
+                    value={ticketType.quantity}
+                    disabled={isLocked}
+                    error={ticketTypeFieldError(errors, index, "quantity")}
+                    onChange={(event) =>
+                      setTicketTypes((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, quantity: event.target.value }
+                            : item
+                        )
                       )
-                    )
-                  }
-                />
-                <button
-                  className="h-10 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-900 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-6"
-                  onClick={() =>
-                    setTicketTypes((current) =>
-                      current.filter((_item, itemIndex) => itemIndex !== index)
-                    )
-                  }
-                  type="button"
-                >
-                  Remove
-                </button>
+                    }
+                  />
+                  <button
+                    className="h-10 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-900 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-6"
+                    disabled={isLocked}
+                    onClick={() =>
+                      setTicketTypes((current) =>
+                        current.filter((_item, itemIndex) => itemIndex !== index)
+                      )
+                    }
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </div>
+                {isLocked ? (
+                  <p className="text-sm text-neutral-500">
+                    This ticket type has orders or issued tickets, so its name,
+                    price, quantity, and removal are locked. Event details above
+                    can still be edited.
+                  </p>
+                ) : null}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
         <div>
           <Button disabled={isSubmitting || Boolean(successMessage)} type="submit">

@@ -36,7 +36,7 @@ export function canManageFinance(userRole: OrganisationRole): boolean {
 }
 
 export function canManageStripeConnect(userRole: OrganisationRole): boolean {
-  return userRole === "org_owner" || userRole === "finance_manager";
+  return userRole !== "member";
 }
 
 export function parseRoleHeader(request: Request):

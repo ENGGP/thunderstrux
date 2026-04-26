@@ -2,6 +2,8 @@
 
 Thunderstrux is a Next.js App Router SaaS foundation for student societies. It supports organisation-scoped dashboards, event management, ticket types, public event discovery, credentials-based authentication, and Stripe-based checkout/connect flows.
 
+Last reviewed: 2026-04-26
+
 ## Stack
 
 - Next.js 16 App Router
@@ -11,6 +13,8 @@ Thunderstrux is a Next.js App Router SaaS foundation for student societies. It s
 - PostgreSQL
 - Tailwind CSS
 - Docker Compose
+- Stripe Checkout
+- Stripe Connect Express
 
 ## Local Development
 
@@ -41,6 +45,8 @@ Use `http://localhost:3000` for browser-facing URLs. Do not use `0.0.0.0` for au
 ```bash
 docker compose up --build
 ```
+
+The Docker dev server intentionally runs `next dev --webpack --hostname 0.0.0.0` with polling enabled. Turbopack was unreliable in this local Docker setup and served stale UI during development.
 
 App:
 
@@ -82,11 +88,17 @@ Session data includes `session.user.id`, which is used for organisation access a
 
 ## Seeded / Test Accounts
 
-Common local accounts:
+Common local accounts all use `password123`:
 
-- `user1@example.com` / `password123`
-- `user2@example.com` / `password123`
-- `empty@example.com` / `password123`
+- `user1@example.com` - Engineering Society owner
+- `admin@example.com` - admin across Engineering and Arts
+- `event.manager@example.com` - Engineering event manager and Robotics owner
+- `finance@example.com` - Engineering finance manager and Payments Lab owner
+- `content@example.com` - Engineering content manager
+- `member@example.com` - Engineering member
+- `user2@example.com` - Arts member and seeded buyer
+- `empty@example.com` - owner of Empty Society with no events
+- `outsider@example.com` - no organisation memberships
 
 Additional one-off e2e test users may exist in the local database if validation scripts were run.
 
@@ -96,6 +108,7 @@ Public:
 
 - `/` - homepage, published events only
 - `/events/[eventId]` - public event page
+- `/tickets` - authenticated buyer ticket history
 
 Auth:
 
@@ -110,6 +123,7 @@ Dashboard:
 - `/dashboard/[orgSlug]/events` - event list
 - `/dashboard/[orgSlug]/events/new` - create event
 - `/dashboard/[orgSlug]/events/[eventId]/edit` - edit event
+- `/dashboard/[orgSlug]/orders` - organiser order review
 - `/dashboard/[orgSlug]/settings` - organisation settings / Stripe Connect
 
 ## Main API Routes
@@ -124,6 +138,12 @@ Dashboard:
 - `GET /api/public/events` - published public events
 - `GET /api/public/events/[eventId]` - published public event detail
 - `POST /api/payments/checkout/event` - authenticated checkout start
+- `POST /api/payments/webhook` - Stripe Checkout webhook fulfilment
+- `GET /api/stripe/connect/status?organisationId=...` - sync Stripe Connect status
+- `POST /api/stripe/connect/onboard` - create/reuse Express account and return onboarding URL
+- `POST /api/stripe/connect/continue` - return a fresh onboarding URL for an existing account
+- `POST /api/stripe/connect/disconnect` - local-only disconnect
+- `POST /api/stripe/connect/webhook` - Stripe Connect account status webhook
 
 ## Event Lifecycle
 
@@ -143,6 +163,31 @@ Checkout is authenticated and server-scoped:
 
 To complete checkout locally, the organisation must have a Stripe-ready connected account and Stripe env vars must be configured.
 
+Fulfilment happens only through Stripe webhooks. Frontend success/cancel redirects do not issue tickets or mark orders paid.
+
+## Stripe Connect Notes
+
+Stripe Connect is organisation-scoped. The Stripe account itself lives in Stripe; Thunderstrux stores the connected account id and cached readiness flags on the local `Organisation` row:
+
+```text
+stripeAccountId
+stripeAccountStatus
+stripeChargesEnabled
+stripePayoutsEnabled
+stripeDetailsSubmitted
+```
+
+Current lifecycle states:
+
+- `NOT_CONNECTED` - no local connected account id is stored
+- `PLATFORM_NOT_READY` - the Stripe platform profile/setup blocks Express account creation
+- `CONNECTED_INCOMPLETE` - account exists but onboarding details are not submitted
+- `RESTRICTED` - details are submitted but charges are not enabled
+- `READY` - charges are enabled and checkout can proceed
+- `ERROR` - an existing connected account could not be retrieved or synced
+
+Disconnect is local-only. It clears the organisation Stripe fields in Thunderstrux but does not delete the account in Stripe. Reconnecting to the exact same old account requires manually restoring the old `acct_...` id in the database and refreshing status.
+
 ## Troubleshooting
 
 ### Route Exists But Returns 404 In Dev
@@ -158,7 +203,7 @@ This was required for stale dynamic dashboard routes such as `/dashboard/[orgSlu
 
 ### Dashboard Or Navbar Shows Old UI
 
-If Docker/Turbopack serves stale output:
+If Docker serves stale output:
 
 ```bash
 docker compose down

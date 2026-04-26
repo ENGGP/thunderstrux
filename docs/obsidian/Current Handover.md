@@ -170,6 +170,9 @@ Authenticated route/API validation was run against local Docker:
 - Simulated invalid stored Stripe account returns `ERROR` and clears stale readiness flags.
 - Checkout is blocked when the organisation is not Stripe-ready.
 - Signed local webhook payloads validated completed, duplicate completed, late expired, and normal expired handling.
+- Expanded seed data was applied with `docker compose run --rm app pnpm seed`.
+- Seed verification counted 9 users, 5 organisations, 11 memberships, 8 events, 9 ticket types, 3 orders, and 2 tickets.
+- `payments-lab` is seeded with `stripeAccountStatus = PLATFORM_NOT_READY` and no `stripeAccountId`.
 
 ## Not Yet Fully Verified
 

@@ -135,7 +135,7 @@ Rules:
 - Existing ticket types are matched by `id`.
 - New ticket types omit `id`.
 - Omitted unsold ticket types are deleted.
-- Ticket types with existing orders or issued tickets cannot be deleted or modified.
+- Ticket types with existing orders or issued tickets cannot be deleted, but their name, price, and quantity can be edited for future purchases.
 - Ticket quantity may be `0` on update because sold-out inventory is valid.
 - Ticket quantity must not be negative.
 

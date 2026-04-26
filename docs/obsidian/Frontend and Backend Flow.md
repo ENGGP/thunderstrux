@@ -190,7 +190,9 @@ Supported actions:
 Important edit rules:
 
 - Ticket types with existing orders or issued tickets cannot be deleted.
-- Ticket types with existing orders or issued tickets cannot be modified.
+- Ticket types with existing orders or issued tickets can be renamed and can have price/quantity changed for future purchases.
+- Historical `Order.unitPrice` and `Order.totalAmount` are preserved when ticket type price changes.
+- Existing `Ticket` rows remain linked to the same `ticketTypeId`.
 - Event deletion is blocked after orders or ticket issuance.
 
 Edit link shape:
@@ -263,8 +265,10 @@ Ticket edit details:
 - Edit mode allows ticket quantity zero so sold-out ticket types can remain attached while event fields are edited.
 - Existing ticket rows must include `id`.
 - New ticket rows omit `id`.
+- Existing ticket rows included in the payload update `name`, `price`, and `quantity`, even if orders or issued tickets exist.
 - Removing a ticket row from the submitted array deletes it only if it has no orders or issued tickets.
-- Sold/issued ticket rows are shown read-only in the edit form. Event fields above them stay editable.
+- Sold/issued ticket rows omitted from the payload are preserved unchanged instead of being deleted.
+- Sold/issued ticket rows keep editable name/price/quantity inputs, but their Remove button is disabled.
 
 ## Stripe Settings
 

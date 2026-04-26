@@ -34,7 +34,8 @@ Observed issue:
 
 Current mitigation:
 
-- `pnpm dev` runs `next dev --turbopack --hostname 0.0.0.0`
+- `pnpm dev` runs `node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`
+- `scripts/clean-next-dev.mjs` clears `.next/dev` before dev startup.
 - Docker enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`
 - `next.config.ts` sends production build output to `.next-build` so `pnpm build` does not clobber live dev output under `.next`
 
@@ -81,9 +82,11 @@ docker compose exec app sh -lc "grep -n 'events/.*/edit\|events/\[eventId\]/edit
 Permanent fixes now in code:
 
 - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx` exists as an explicit pass-through route boundary for nested event pages.
-- `package.json` uses `next dev --turbopack --hostname 0.0.0.0`.
+- `package.json` uses `node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`.
+- `scripts/clean-next-dev.mjs` clears `.next/dev` so restarting the app cannot reuse a stale app-paths manifest.
 - `next.config.ts` uses `.next-build` for production builds and `.next` for dev output.
 - `.gitignore` ignores both `.next/` and `.next-build/`.
+- `.dockerignore` ignores `.next-build/` so Docker build context does not include generated production artifacts.
 
 If it happens again, first inspect the dev manifest:
 
@@ -156,15 +159,26 @@ Current fix:
 - `createTicketTypeSchema` still requires `quantity >= 1`.
 - `updateTicketTypeSchema` allows `quantity >= 0`.
 - `components/events/create-event-form.tsx` allows zero quantity only in edit mode.
-- Sold/issued ticket rows are disabled in the edit form so event fields can still be saved without accidentally modifying protected ticket history.
+- Sold/issued ticket rows keep editable name, price, and quantity fields for future purchases.
+- Only removal is disabled for sold/issued ticket rows.
+- `PATCH /api/events/[eventId]` preserves omitted sold/issued ticket types instead of deleting them.
 - Failed PATCH responses are logged with the raw response body.
 - Successful saves call `router.refresh()` before redirecting back to the events list.
 
 Expected behavior:
 
 - Event title, description, location, start time, and end time can be edited even after sales.
-- Ticket type name, price, quantity, and removal are locked once that ticket type has orders or issued tickets.
+- Ticket type name, price, and quantity can be edited after sales for future purchases.
+- Ticket type removal is blocked once that ticket type has orders or issued tickets.
+- Existing orders keep historical `unitPrice` and `totalAmount`; changing `TicketType.price` does not recalculate old orders.
+- Existing tickets keep their `ticketTypeId`.
 - Unsold ticket types on the same event remain editable/removable.
+
+Recent bug and fix:
+
+- Symptom: editing only event details failed with `400 Ticket type cannot be modified after sales`.
+- Root cause: previous frontend/backend logic treated sold ticket rows as immutable and the backend rejected protected-field differences.
+- Current fix: the frontend submits all edited ticket rows, and the backend updates included rows while only preserving sold/issued rows when omitted. The old rejection now applies to deletion/removal behavior only.
 
 Trace logs now available:
 
@@ -304,6 +318,12 @@ or:
 
 ```ts
 import "./.next/types/routes.d.ts";
+```
+
+or, after a production build with the current `.next-build` dist directory:
+
+```ts
+import "./.next-build/types/routes.d.ts";
 ```
 
 This is generated route-type metadata. It is not application behavior. If it appears in a diff after running `pnpm build` or `next dev`, decide whether to keep the generated state or exclude it from unrelated commits.

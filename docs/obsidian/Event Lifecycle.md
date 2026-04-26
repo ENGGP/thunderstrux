@@ -108,9 +108,11 @@ Important rules:
 - Omitted unsold ticket types are deleted.
 - New ticket types have no `id` and are created.
 - Ticket types with existing orders or issued tickets cannot be deleted.
-- Ticket types with existing orders or issued tickets cannot be modified.
-- Sold-out ticket types with `quantity = 0` can be kept while editing event fields.
-- The edit form locks sold/issued ticket rows in the UI, but event title, description, location, and times remain editable.
+- Ticket types with existing orders or issued tickets can still have `name`, `price`, and `quantity` edited for future purchases.
+- Existing orders keep their historical `unitPrice` and `totalAmount`; old orders are not recalculated when a ticket type price changes.
+- Existing tickets remain linked to the same `ticketTypeId`.
+- Sold-out ticket types with `quantity = 0` can be edited back to a positive quantity to reopen future availability.
+- The edit form only disables removal for sold/issued ticket rows. Event fields and ticket name/price/quantity stay editable.
 
 Current logging for edit debugging:
 

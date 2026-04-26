@@ -170,32 +170,6 @@ export async function PATCH(request: Request, context: RouteContext) {
         !isLockedTicketType(ticketType) && !uniqueSubmittedIds.has(ticketType.id)
     );
 
-    const modifiedSoldTicketType = submittedTicketTypes.find((ticketType) => {
-      if (!ticketType.id) {
-        return false;
-      }
-
-      const existingTicketType = existingTicketTypesById.get(ticketType.id);
-
-      return Boolean(
-        existingTicketType &&
-          isLockedTicketType(existingTicketType) &&
-          (existingTicketType.name !== ticketType.name ||
-            existingTicketType.price !== ticketType.price ||
-            existingTicketType.quantity !== ticketType.quantity)
-      );
-    });
-
-    if (modifiedSoldTicketType) {
-      return badRequest("Ticket type cannot be modified after sales", [
-        {
-          path: ["ticketTypes"],
-          message:
-            "Ticket types with existing orders or issued tickets cannot be edited"
-        }
-      ]);
-    }
-
     const event = await prisma.$transaction(async (transaction) => {
       console.log("UPDATING EVENT:", eventId);
       const updatedEvent = await transaction.event.update({
@@ -226,12 +200,6 @@ export async function PATCH(request: Request, context: RouteContext) {
       await Promise.all(
         submittedTicketTypes.map((ticketType) => {
           if (ticketType.id) {
-            const existingTicketType = existingTicketTypesById.get(ticketType.id);
-
-            if (existingTicketType && isLockedTicketType(existingTicketType)) {
-              return Promise.resolve();
-            }
-
             return transaction.ticketType.update({
               where: { id: ticketType.id },
               data: {

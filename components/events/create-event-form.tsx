@@ -171,19 +171,6 @@ function normaliseTicketTypes(ticketTypes: TicketTypeFormState[]) {
     }));
 }
 
-function buildTicketTypesPayload(
-  ticketTypes: TicketTypeFormState[],
-  mode: EventFormMode
-) {
-  if (mode === "create") {
-    return normaliseTicketTypes(ticketTypes);
-  }
-
-  return normaliseTicketTypes(
-    ticketTypes.filter((ticketType) => !hasIssuedOrSoldTickets(ticketType))
-  );
-}
-
 function toDateTimeLocal(value: string) {
   const date = new Date(value);
 
@@ -303,7 +290,7 @@ export function CreateEventForm({
         startTime: form.startTime,
         endTime: form.endTime,
         location: form.location,
-        ticketTypes: buildTicketTypesPayload(ticketTypes, mode)
+        ticketTypes: normaliseTicketTypes(ticketTypes)
       };
       const url = mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events";
       const method = mode === "edit" && eventId ? "PATCH" : "POST";
@@ -466,7 +453,6 @@ export function CreateEventForm({
                   <TextInput
                     label="Name"
                     value={ticketType.name}
-                    disabled={isLocked}
                     error={ticketTypeFieldError(errors, index, "name")}
                     onChange={(event) =>
                       setTicketTypes((current) =>
@@ -482,7 +468,6 @@ export function CreateEventForm({
                     label="Price"
                     type="number"
                     value={ticketType.price}
-                    disabled={isLocked}
                     error={ticketTypeFieldError(errors, index, "price")}
                     onChange={(event) =>
                       setTicketTypes((current) =>
@@ -498,7 +483,6 @@ export function CreateEventForm({
                     label="Quantity"
                     type="number"
                     value={ticketType.quantity}
-                    disabled={isLocked}
                     error={ticketTypeFieldError(errors, index, "quantity")}
                     onChange={(event) =>
                       setTicketTypes((current) =>
@@ -525,9 +509,9 @@ export function CreateEventForm({
                 </div>
                 {isLocked ? (
                   <p className="text-sm text-neutral-500">
-                    This ticket type has orders or issued tickets, so its name,
-                    price, quantity, and removal are locked. Event details above
-                    can still be edited.
+                    This ticket type has existing orders or issued tickets, so
+                    it cannot be removed. You can still update its name, price,
+                    and quantity for future purchases.
                   </p>
                 ) : null}
               </div>

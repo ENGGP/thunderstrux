@@ -52,7 +52,7 @@ postgres_data:/var/lib/postgresql/data
 Current `package.json` dev script:
 
 ```json
-"dev": "next dev --turbopack --hostname 0.0.0.0"
+"dev": "node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0"
 ```
 
 The app container also sets:
@@ -68,6 +68,7 @@ This is intentional.
 Reason:
 
 - Next 16 production builds use Turbopack.
+- `scripts/clean-next-dev.mjs` clears `.next/dev` before startup so stale dev route manifests do not survive container restarts.
 - Webpack dev mode failed to reliably register nested App Router event routes in this Docker/Windows/OneDrive setup.
 - Turbopack dev mode plus polling is the current route-stable configuration.
 
@@ -91,6 +92,8 @@ Why:
 .next/
 .next-build/
 ```
+
+`.dockerignore` must also include `.next-build` so Docker build context does not include production build artifacts or generated Prisma client files.
 
 ## Tailwind Setup
 
@@ -230,6 +233,12 @@ and:
 
 ```ts
 import "./.next/types/routes.d.ts";
+```
+
+or, after a production build with the current `.next-build` dist directory:
+
+```ts
+import "./.next-build/types/routes.d.ts";
 ```
 
 This depends on whether `next dev` or `next build` ran most recently. Treat it as generated framework metadata, not a product change.

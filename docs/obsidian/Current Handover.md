@@ -13,7 +13,7 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies wit
 - Stripe Checkout with webhook-only fulfilment.
 - Stripe Connect Express onboarding with explicit lifecycle states.
 
-The latest work focused on Stripe Connect platform readiness, checkout/webhook reliability, dashboard event route stability, edit-event persistence, expanded seed data, permissions, and docs alignment.
+The latest work focused on Stripe Connect platform readiness, checkout/webhook reliability, dashboard event route stability, edit-event persistence, sold-ticket edit rules, expanded seed data, permissions, and docs alignment.
 
 ## Recently Changed Areas
 
@@ -44,9 +44,11 @@ Dashboard events and permissions:
 Next runtime/build stability:
 
 - `package.json`
+- `scripts/clean-next-dev.mjs`
 - `next.config.ts`
 - `tsconfig.json`
 - `.gitignore`
+- `.dockerignore`
 
 Docs:
 
@@ -202,6 +204,12 @@ Authenticated route/API validation was run against local Docker:
   - Sold-out event with `quantity = 0` now allows event-field edits.
   - Draft event ticket sync verified update, create, and delete behavior.
   - Direct Postgres queries confirmed changed `Event` and `TicketType` rows.
+- Sold-ticket edit rule verified:
+  - Sold ticket type `cmoffx2ij001bul1azvkr7ya4` on event `cmoffx2ig0019ul1abb52zeii` was renamed and repriced through `PATCH /api/events/[eventId]`.
+  - Quantity was changed from `0` to a positive value to reopen future availability.
+  - Existing order history kept historical `unitPrice = 1200` and `totalAmount = 1200` while the current `TicketType.price` changed to `4321`.
+  - Omitting the sold ticket type from `ticketTypes` preserved it instead of deleting it.
+  - Creating and then omitting an unsold ticket type deleted only the unsold type.
 
 ## Recent Bug Lessons
 
@@ -228,9 +236,11 @@ Root causes encountered:
 
 Permanent fix now in code:
 
-- `package.json`: dev uses `next dev --turbopack --hostname 0.0.0.0`.
+- `package.json`: dev uses `node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`.
+- `scripts/clean-next-dev.mjs`: clears `.next/dev` before dev startup so stale app-paths manifests do not survive container restarts.
 - `next.config.ts`: production builds use `.next-build`; dev keeps `.next`.
 - `.gitignore`: ignores `.next-build/`.
+- `.dockerignore`: ignores `.next-build/`.
 - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`: explicit pass-through route boundary.
 
 Recovery command if a local manifest is corrupt:
@@ -278,6 +288,35 @@ Verified:
 - Draft event `cmoffx2i90013ul1aae9ck4qk` verified ticket update, new ticket create, and omitted ticket delete.
 - Direct Postgres queries confirmed persisted rows.
 
+### Sold Ticket Type Edits Failed
+
+Symptom:
+
+- Editing event details after purchases still failed with `400 Ticket type cannot be modified after sales`.
+- The form showed sold/issued ticket rows as locked and the backend rejected changes to sold ticket `name`, `price`, or `quantity`.
+
+Product rule now implemented:
+
+- Event details remain editable after purchases.
+- Ticket type `name`, `price`, and `quantity` remain editable after purchases for future purchases.
+- Ticket types with existing orders or issued tickets cannot be removed.
+- Existing orders keep historical `unitPrice` and `totalAmount`.
+- Existing tickets remain linked by `ticketTypeId`.
+
+Fix:
+
+- `components/events/create-event-form.tsx`: sold/issued ticket inputs are editable; only the Remove button is disabled.
+- `components/events/create-event-form.tsx`: edit PATCH payload includes edited sold ticket rows.
+- `app/api/events/[eventId]/route.ts`: removed the old sold-ticket modification rejection and the transaction skip for locked ticket updates.
+- `app/api/events/[eventId]/route.ts`: omitted sold/issued ticket rows are preserved; omitted unsold rows are deleted.
+
+Verified:
+
+- Sold ticket `name`, `price`, and `quantity` persisted after PATCH.
+- Existing order for that ticket type retained historical `unitPrice` and `totalAmount`.
+- Public event detail returned the updated current ticket type values for future purchases.
+- Event deletion protection still returned `400` for events with orders or tickets.
+
 ### `next-env.d.ts` Churn
 
 `next-env.d.ts` can flip between:
@@ -290,6 +329,12 @@ and:
 
 ```ts
 import "./.next/types/routes.d.ts";
+```
+
+or:
+
+```ts
+import "./.next-build/types/routes.d.ts";
 ```
 
 depending on whether `next dev` or `next build` ran most recently. This is generated Next metadata, not application logic. Avoid treating that line as a meaningful product change.

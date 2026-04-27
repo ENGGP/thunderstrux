@@ -11,10 +11,14 @@
             "id": "cbad8e0152342c4d",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "markdown",
+              "state": {
+                "file": "Current Handover.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Current Handover"
             }
           }
         ]
@@ -181,20 +185,20 @@
   },
   "active": "cbad8e0152342c4d",
   "lastOpenFiles": [
+    "Architecture Overview.md",
+    "Thunderstrux Codebase Map.md",
+    "Database and Multi Tenancy.md",
     "Frontend and Backend Flow.md",
     "2026-04-24.md",
     "Authentication and Dashboard Access.md",
     "Untitled.base",
-    "Architecture Overview.md",
     "API Reference.md",
     "UI Architecture Rules.md",
     "Troubleshooting.md",
-    "Thunderstrux Codebase Map.md",
     "Stripe Payments and Connect.md",
     "Seeding and Data.md",
     "Development Workflow.md",
     "Event Lifecycle.md",
-    "Database and Multi Tenancy.md",
     "2026-04-23.md",
     "Untitled.canvas"
   ]

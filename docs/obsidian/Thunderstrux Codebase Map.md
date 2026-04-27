@@ -28,7 +28,7 @@ Not implemented:
 
 Read these in order:
 
-1. [[2026-04-24]]
+1. [[Handover 2026-04-24]]
 2. [[Architecture Overview]]
 3. [[Development Workflow]]
 4. [[Troubleshooting]]

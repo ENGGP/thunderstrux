@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Current Handover.md",
+                "file": "Frontend and Backend Flow.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Current Handover"
+              "title": "Frontend and Backend Flow"
             }
           }
         ]
@@ -185,12 +185,16 @@
   },
   "active": "cbad8e0152342c4d",
   "lastOpenFiles": [
+    "Handover 2026-04-27.md",
+    "Handover 2026-04-24.md",
     "Architecture Overview.md",
+    "Untitled.canvas",
+    "Event Lifecycle.md",
+    "Authentication and Dashboard Access.md",
+    "Current Handover.md",
     "Thunderstrux Codebase Map.md",
     "Database and Multi Tenancy.md",
     "Frontend and Backend Flow.md",
-    "2026-04-24.md",
-    "Authentication and Dashboard Access.md",
     "Untitled.base",
     "API Reference.md",
     "UI Architecture Rules.md",
@@ -198,8 +202,6 @@
     "Stripe Payments and Connect.md",
     "Seeding and Data.md",
     "Development Workflow.md",
-    "Event Lifecycle.md",
-    "2026-04-23.md",
-    "Untitled.canvas"
+    "2026-04-23.md"
   ]
 }

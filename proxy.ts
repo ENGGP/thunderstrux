@@ -4,7 +4,7 @@ import { getToken } from "next-auth/jwt";
 
 const authSecret = process.env.AUTH_SECRET || "dev-secret";
 
-export default async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const token = await getToken({
     req: request,
     secret: authSecret

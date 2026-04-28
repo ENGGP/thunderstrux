@@ -158,12 +158,15 @@ Latest verification:
 Keep these route stability fixes:
 
 - `scripts/clean-next-dev.mjs`
+- `scripts/prepare-next-build.mjs`
 - `next.config.ts` uses `.next-build` for production and `.next` for dev.
 - `.next-build/` ignored in `.gitignore` and `.dockerignore`.
 - `app/(dashboard)/dashboard/events/layout.tsx`
 - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
 
 `tsconfig.json` should include generated production build types under `.next-build`, not stale `.next/dev` route types. Stale `.next/dev/types/routes.d.ts` can break `docker compose exec app pnpm build`.
+
+`pnpm build` now runs `scripts/prepare-next-build.mjs` first so build verification strips stale `.next` dev type includes before `next build`.
 
 Current generated include entries:
 

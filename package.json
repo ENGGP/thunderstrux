@@ -3,13 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0",
-    "build": "next build",
+    "dev": "node scripts/assert-docker-runtime.mjs && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0",
+    "build": "node scripts/prepare-next-build.mjs && next build",
     "start": "next start --hostname 0.0.0.0",
     "seed": "prisma db seed",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
-    "prisma:seed": "node prisma/seed.mjs"
+    "prisma:seed": "node prisma/seed.mjs",
+    "docker:up": "docker compose up -d",
+    "docker:restart": "docker compose restart app",
+    "docker:build": "docker compose exec app pnpm build",
+    "docker:migrate": "docker compose exec app pnpm prisma:migrate",
+    "docker:seed": "docker compose exec app pnpm seed",
+    "docker:db:sync": "docker compose exec app pnpm prisma:migrate && docker compose exec app pnpm prisma:generate && docker compose exec app pnpm seed"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"

@@ -1,219 +1,165 @@
 # Thunderstrux
 
-Thunderstrux is a Next.js App Router SaaS foundation for student societies. It supports organisation-scoped dashboards, event management, ticket types, public event discovery, credentials-based authentication, and Stripe-based checkout/connect flows.
+Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. It supports member and organisation accounts, organisation event management, public event discovery, ticket checkout, and Stripe Connect.
 
-Last reviewed: 2026-04-26
+Last reviewed: 2026-04-28
 
 ## Stack
 
-- Next.js 16 App Router
+- Next.js 16 App Router with Turbopack
 - React 19
 - Auth.js / NextAuth Credentials provider
 - Prisma
-- PostgreSQL
+- PostgreSQL 16
 - Tailwind CSS
 - Docker Compose
 - Stripe Checkout
 - Stripe Connect Express
+- pnpm
 
 ## Local Development
 
-### Prerequisites
+Development is Docker-only.
 
-- Docker Desktop
-- Node.js and `pnpm` if you want to run commands outside Docker
+The project `.env` uses:
 
-### Environment
-
-Local development expects a `.env` file. Current important values:
-
-```env
+```text
 DATABASE_URL=postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
-AUTH_SECRET=your-secret
-AUTH_URL=http://localhost:3000
-NEXTAUTH_URL=http://localhost:3000
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-STRIPE_CONNECT_WEBHOOK_SECRET=
 ```
 
-Use `http://localhost:3000` for browser-facing URLs. Do not use `0.0.0.0` for auth callbacks.
+The host name `db` only resolves inside the Docker Compose network. Do not run host `next dev` with this `.env`; it will fail to connect to Postgres.
 
-### Run with Docker
+Start the stack:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
-The Docker dev server intentionally runs `next dev --webpack --hostname 0.0.0.0` with polling enabled. Turbopack was unreliable in this local Docker setup and served stale UI during development.
+Open:
 
-App:
+```text
+http://localhost:3000
+```
 
-- `http://localhost:3000`
+Database from host:
 
-Database:
+```text
+postgresql://thunderstrux:thunderstrux@localhost:5432/thunderstrux?schema=public
+```
 
-- `localhost:5432`
+Database from app container:
 
-### Useful Commands
+```text
+postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
+```
 
-Run Prisma migrations in the app container:
+## Common Commands
 
 ```bash
-docker compose run --rm app pnpm exec prisma migrate deploy
+docker compose up -d
+docker compose restart app
+docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm prisma:generate
+docker compose exec app pnpm seed
+docker compose exec app pnpm build
+docker compose logs -f app
 ```
 
-Seed demo data:
+Equivalent package helpers exist for host use:
 
 ```bash
-docker compose run --rm app pnpm prisma:seed
+pnpm docker:up
+pnpm docker:restart
+pnpm docker:migrate
+pnpm docker:seed
+pnpm docker:db:sync
+pnpm docker:build
 ```
 
-Typecheck:
+## Account Model
 
-```bash
-docker compose run --rm app corepack pnpm exec tsc --noEmit
+`User.accountRole` is either:
+
+- `member`
+- `organisation`
+
+Member accounts can complete a profile, join organisations, browse public events, buy tickets, and view `/tickets`.
+
+Organisation accounts represent exactly one organisation via `Organisation.accountUserId` and manage it at `/dashboard`.
+
+For MVP, organisation committee members may share one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
+
+## Seeded Accounts
+
+All seeded accounts use:
+
+```text
+password123
 ```
 
-## Authentication
+Organisation accounts:
 
-Auth uses the Credentials provider.
+- `engineering.org@example.com`
+- `arts.org@example.com`
+- `robotics.org@example.com`
+- `payments.lab@example.com`
+- `empty.org@example.com`
 
-- Login page: `/login`
-- Signup page: `/signup`
-- Protected dashboard routes redirect unauthenticated users to `/login`
+Member/test accounts:
 
-Session data includes `session.user.id`, which is used for organisation access and checkout ownership.
-
-## Seeded / Test Accounts
-
-Common local accounts all use `password123`:
-
-- `user1@example.com` - Engineering Society owner
-- `admin@example.com` - admin across Engineering and Arts
-- `event.manager@example.com` - Engineering event manager and Robotics owner
-- `finance@example.com` - Engineering finance manager and Payments Lab owner
-- `content@example.com` - Engineering content manager
-- `member@example.com` - Engineering member
-- `user2@example.com` - Arts member and seeded buyer
-- `empty@example.com` - owner of Empty Society with no events
-- `outsider@example.com` - no organisation memberships
-
-Additional one-off e2e test users may exist in the local database if validation scripts were run.
+- `user1@example.com`
+- `user2@example.com`
+- `admin@example.com`
+- `event.manager@example.com`
+- `finance@example.com`
+- `content@example.com`
+- `member@example.com`
+- `empty@example.com`
+- `outsider@example.com`
 
 ## Main Routes
 
 Public:
 
-- `/` - homepage, published events only
-- `/events/[eventId]` - public event page
-- `/tickets` - authenticated buyer ticket history
-
-Auth:
-
+- `/`
+- `/events/[eventId]`
 - `/login`
 - `/signup`
 
-Dashboard:
+Member:
 
-- `/dashboard` - organisation selection / onboarding
-- `/dashboard/create` - create organisation
-- `/dashboard/[orgSlug]` - organisation dashboard
-- `/dashboard/[orgSlug]/events` - event list
-- `/dashboard/[orgSlug]/events/new` - create event
-- `/dashboard/[orgSlug]/events/[eventId]/edit` - edit event
-- `/dashboard/[orgSlug]/orders` - organiser order review
-- `/dashboard/[orgSlug]/settings` - organisation settings / Stripe Connect
+- `/dashboard`
+- `/dashboard/organisations`
+- `/tickets`
 
-## Main API Routes
+Organisation:
 
-- `GET /api/orgs` - organisations for the authenticated user
-- `POST /api/orgs` - create organisation and `org_owner` membership
-- `GET /api/events?orgId=...` - organisation-scoped events
-- `POST /api/events` - create event with optional ticket types
-- `PATCH /api/events/[eventId]` - update event and ticket types
-- `PATCH /api/events/[eventId]/publish` - publish/unpublish event
-- `DELETE /api/events/[eventId]` - delete event if safe
-- `GET /api/public/events` - published public events
-- `GET /api/public/events/[eventId]` - published public event detail
-- `POST /api/payments/checkout/event` - authenticated checkout start
-- `POST /api/payments/webhook` - Stripe Checkout webhook fulfilment
-- `GET /api/stripe/connect/status?organisationId=...` - sync Stripe Connect status
-- `POST /api/stripe/connect/onboard` - create/reuse Express account and return onboarding URL
-- `POST /api/stripe/connect/continue` - return a fresh onboarding URL for an existing account
-- `POST /api/stripe/connect/disconnect` - local-only disconnect
-- `POST /api/stripe/connect/webhook` - Stripe Connect account status webhook
+- `/dashboard`
+- `/dashboard/create`
+- `/dashboard/events`
+- `/dashboard/events/new`
+- `/dashboard/events/[eventId]/edit`
+- `/dashboard/orders`
+- `/dashboard/settings`
 
-## Event Lifecycle
+Legacy compatibility redirects:
 
-- New events start as `draft`
-- Draft events are not publicly visible
-- Publish/unpublish is handled through `PATCH /api/events/[eventId]/publish`
-- Publishing requires at least one ticket type and total quantity greater than zero
-- Unpublishing is blocked if orders already exist
+- `/dashboard/[orgSlug]`
+- `/dashboard/[orgSlug]/events`
+- `/dashboard/[orgSlug]/events/new`
+- `/dashboard/[orgSlug]/events/[eventId]/edit`
+- `/dashboard/[orgSlug]/orders`
+- `/dashboard/[orgSlug]/settings`
 
-## Checkout Notes
+## Next.js Stability Notes
 
-Checkout is authenticated and server-scoped:
-
-- The API resolves `organisationId` from the event, not the client
-- The pending order is linked to `session.user.id`
-- Validation checks event status, ticket type, and inventory before Stripe readiness
-
-To complete checkout locally, the organisation must have a Stripe-ready connected account and Stripe env vars must be configured.
-
-Fulfilment happens only through Stripe webhooks. Frontend success/cancel redirects do not issue tickets or mark orders paid.
-
-## Stripe Connect Notes
-
-Stripe Connect is organisation-scoped. The Stripe account itself lives in Stripe; Thunderstrux stores the connected account id and cached readiness flags on the local `Organisation` row:
-
-```text
-stripeAccountId
-stripeAccountStatus
-stripeChargesEnabled
-stripePayoutsEnabled
-stripeDetailsSubmitted
-```
-
-Current lifecycle states:
-
-- `NOT_CONNECTED` - no local connected account id is stored
-- `PLATFORM_NOT_READY` - the Stripe platform profile/setup blocks Express account creation
-- `CONNECTED_INCOMPLETE` - account exists but onboarding details are not submitted
-- `RESTRICTED` - details are submitted but charges are not enabled
-- `READY` - charges are enabled and checkout can proceed
-- `ERROR` - an existing connected account could not be retrieved or synced
-
-Disconnect is local-only. It clears the organisation Stripe fields in Thunderstrux but does not delete the account in Stripe. Reconnecting to the exact same old account requires manually restoring the old `acct_...` id in the database and refreshing status.
-
-## Troubleshooting
-
-### Route Exists But Returns 404 In Dev
-
-If an App Router page exists in source but still returns 404, clear the dev cache:
-
-```powershell
-Remove-Item -LiteralPath .next -Recurse -Force
-docker compose restart app
-```
-
-This was required for stale dynamic dashboard routes such as `/dashboard/[orgSlug]/events/new`.
-
-### Dashboard Or Navbar Shows Old UI
-
-If Docker serves stale output:
-
-```bash
-docker compose down
-docker volume prune -f
-rm -rf .next
-docker compose up --build --force-recreate -d
-docker compose run --rm app pnpm exec prisma migrate deploy
-```
-
-`docker volume prune -f` can wipe the local database volume.
+- Dev output writes to `.next`.
+- Production build output writes to `.next-build`.
+- `pnpm dev` clears `.next/dev` before startup.
+- `pnpm build` runs `scripts/prepare-next-build.mjs` before `next build`.
+- `tsconfig.json` must not include `.next/dev/types/**/*.ts`; stale dev route types can break production builds.
+- The current route guard uses `proxy.ts`, not deprecated `middleware.ts`.
+- Turbopack root is pinned in `next.config.ts` so unrelated lockfiles outside the repo do not affect workspace detection.
 
 ## Project Structure
 
@@ -224,4 +170,5 @@ lib/           Auth, Prisma, validators, Stripe, client helpers
 prisma/        Schema, migrations, seed script
 docs/obsidian/ Internal codebase notes
 docker/        Dockerfile and container setup
+scripts/       Local development safety scripts
 ```

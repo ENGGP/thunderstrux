@@ -9,7 +9,7 @@ Main files:
 - `auth.ts`
 - `app/api/auth/[...nextauth]/route.ts`
 - `app/api/auth/signup/route.ts`
-- `middleware.ts`
+- `proxy.ts`
 - `components/auth/credentials-login-form.tsx`
 - `components/auth/signup-form.tsx`
 
@@ -44,7 +44,7 @@ These values are used for dashboard routing and access checks.
 
 ## Protected Routes
 
-`middleware.ts` protects:
+`proxy.ts` protects:
 
 ```text
 /dashboard/:path*
@@ -113,7 +113,7 @@ Important helpers:
 
 Dashboard protection is layered:
 
-1. Middleware blocks unauthenticated users from `/dashboard/*`
+1. Proxy blocks unauthenticated users from `/dashboard/*`
 2. Route-level layout checks organisation membership
 3. API handlers verify membership and role again on mutations
 

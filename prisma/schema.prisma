@@ -11,26 +11,39 @@ model User {
   id                      String               @id @default(cuid())
   email                   String               @unique
   password                String
+  accountRole             AccountRole          @default(member)
+  firstName               String?
+  lastName                String?
+  displayName             String?
+  phone                   String?
+  studentNumber           String?
+  onboardingCompletedAt   DateTime?
   createdAt               DateTime             @default(now())
   organisationMemberships OrganisationMember[]
+  ownedOrganisation       Organisation?        @relation("OrganisationAccount")
   orders                  Order[]
+
+  @@index([accountRole])
 }
 
 model Organisation {
   id                  String               @id @default(cuid())
   name                String
   slug                String               @unique
+  accountUserId       String?              @unique
   stripeAccountId     String?
   stripeAccountStatus String?
   stripeChargesEnabled Boolean              @default(false)
   stripePayoutsEnabled Boolean              @default(false)
   stripeDetailsSubmitted Boolean            @default(false)
   createdAt           DateTime             @default(now())
+  accountUser         User?                @relation("OrganisationAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
   members             OrganisationMember[]
   events              Event[]
   orders              Order[]
   tickets             Ticket[]
 
+  @@index([accountUserId])
   @@index([stripeAccountId])
 }
 
@@ -133,6 +146,11 @@ enum OrganisationRole {
   finance_manager
   content_manager
   member
+}
+
+enum AccountRole {
+  member
+  organisation
 }
 
 enum EventStatus {

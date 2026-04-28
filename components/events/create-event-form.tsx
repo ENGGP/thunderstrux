@@ -182,16 +182,19 @@ function toDateTimeLocal(value: string) {
 }
 
 export function CreateEventForm({
+  basePath,
   eventId,
   initialEvent,
   mode = "create",
   orgSlug
 }: {
+  basePath?: string;
   eventId?: string;
   initialEvent?: EventFormData;
   mode?: EventFormMode;
   orgSlug: string;
 }) {
+  const dashboardBasePath = basePath ?? `/dashboard/${orgSlug}`;
   const router = useRouter();
   const [organisation, setOrganisation] = useState<Organisation | null>(null);
   const [form, setForm] = useState<FormState>(initialFormState);
@@ -330,7 +333,7 @@ export function CreateEventForm({
       );
       router.refresh();
       setTimeout(() => {
-        router.push(`/dashboard/${orgSlug}/events`);
+        router.push(`${dashboardBasePath}/events`);
       }, 700);
     } catch (error) {
       const details =

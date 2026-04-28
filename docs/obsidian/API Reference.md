@@ -2,6 +2,60 @@
 
 This is a concise reference for implemented API routes. Security and data-model rules are documented in [[Database and Multi Tenancy]].
 
+## Auth And Profile
+
+### `POST /api/auth/signup`
+
+Creates either a member account or an organisation account.
+
+Request:
+
+```json
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "accountRole": "member"
+}
+```
+
+Rules:
+
+- `accountRole` is `member` or `organisation`.
+- Old email/password-only requests default to `member`.
+- Member signup may include `firstName` and `lastName`.
+
+### `PATCH /api/me/profile`
+
+Completes or updates member onboarding profile fields.
+
+Rules:
+
+- Auth required.
+- Member account required.
+- Stores first name, last name, and optional useful profile fields.
+
+## Organisation Search And Join
+
+### `GET /api/orgs/search?q=...`
+
+Searches organisations by name or slug.
+
+Rules:
+
+- Auth required.
+- Member account required.
+- Returns public-safe organisation fields and whether the member has joined.
+
+### `POST /api/orgs/[orgSlug]/join`
+
+Joins an organisation as a member.
+
+Rules:
+
+- Auth required.
+- Member account required.
+- Creates or updates an `OrganisationMember` row with role `member`.
+
 ## Public Events
 
 ### `GET /api/public/events`
@@ -46,13 +100,15 @@ Rules:
 
 ### `GET /api/orgs`
 
-Returns organisations where the authenticated user is a member.
+Returns organisations for the authenticated account.
 
 Rules:
 
 - Auth required.
 - Uses `session.user.id`.
 - Does not trust frontend organisation headers.
+- Member accounts receive joined organisations.
+- Organisation accounts receive their one owned organisation, if created.
 
 ### `POST /api/orgs`
 
@@ -69,9 +125,12 @@ Request:
 Rules:
 
 - Auth required.
+- Organisation account required.
+- An organisation account can create only one organisation.
 - Slug is normalised server-side.
 - Slug uniqueness is enforced.
-- Creator becomes `org_owner`.
+- The created organisation stores `accountUserId`.
+- A transitional `org_owner` membership is also created for compatibility.
 
 ### `GET /api/orgs/[orgSlug]`
 
@@ -80,7 +139,7 @@ Fetches an organisation by slug.
 Rules:
 
 - Auth required.
-- Signed-in user must be an organisation member.
+- Signed-in organisation account must own the organisation, or a member account must have a membership during compatibility.
 
 ## Events
 
@@ -92,7 +151,7 @@ Rules:
 
 - Auth required.
 - `orgId` is required.
-- Signed-in user must be a member.
+- Signed-in user must be the organisation account that owns the organisation.
 - Returns organisation-scoped events.
 - Includes `ticketTypes`.
 
@@ -100,15 +159,11 @@ Rules:
 
 Creates an event and ticket types.
 
-Allowed roles:
-
-- `org_owner`
-- `org_admin`
-- `event_manager`
-
 Rules:
 
 - Auth required.
+- Organisation account required.
+- Signed-in organisation account must own the submitted `organisationId`.
 - `startTime` must be before `endTime`.
 - Ticket prices are integer cents.
 - Ticket quantities must be greater than zero.
@@ -120,7 +175,7 @@ Fetches a dashboard event.
 Rules:
 
 - Auth required.
-- Signed-in user must have access to the event organisation.
+- Signed-in organisation account must own the event organisation.
 
 ### `PATCH /api/events/[eventId]`
 
@@ -129,9 +184,9 @@ Updates event fields and synchronises ticket types.
 Rules:
 
 - Auth required.
-- Event-management role required.
+- Organisation account required.
 - Does not own publish/unpublish status transitions.
-- Request must include `organisationId`, but the API revalidates membership and scopes the event server-side.
+- Request must include `organisationId`, but the API revalidates organisation ownership and scopes the event server-side.
 - Existing ticket types are matched by `id`.
 - New ticket types omit `id`.
 - Omitted unsold ticket types are deleted.
@@ -261,16 +316,18 @@ Rules:
 - Shows paid, pending, and failed orders.
 - Shows ticket identifiers when tickets exist.
 
-### `GET /dashboard/[orgSlug]/orders`
+### `GET /dashboard/orders`
 
 Organiser-facing authenticated dashboard page.
 
 Rules:
 
 - Auth required.
-- Organisation membership required.
+- Organisation account required.
 - Finance access required.
-- Reads orders scoped to the resolved organisation id.
+- Reads orders scoped to the current organisation account's organisation id.
+
+Legacy `/dashboard/[orgSlug]/orders` redirects to `/dashboard/orders` when the signed-in organisation account owns the slug.
 
 ## Stripe Connect
 
@@ -278,18 +335,11 @@ Rules:
 
 Creates or reuses a Stripe Express account and returns an onboarding link.
 
-Allowed roles:
-
-- `org_owner`
-- `org_admin`
-- `event_manager`
-- `finance_manager`
-- `content_manager`
-
 Rules:
 
 - Auth required.
-- User must have Stripe Connect access through organisation membership.
+- Organisation account required.
+- Signed-in organisation account must own the submitted `organisationId`.
 - Organisation is resolved server-side from `organisationId`.
 - Existing `stripeAccountId` is reused and a fresh onboarding link is generated.
 - Returns structured Stripe errors instead of a generic 500.
@@ -326,7 +376,7 @@ Retrieves and persists connected account status.
 Rules:
 
 - Auth required.
-- Organisation membership required.
+- Organisation account ownership required.
 - Calls `stripe.accounts.retrieve`.
 - Updates organisation Stripe flags.
 - Maps Stripe account fields into a Thunderstrux lifecycle state.
@@ -351,36 +401,20 @@ Persists:
 
 Creates a fresh onboarding link for an existing connected account.
 
-Allowed roles:
-
-- `org_owner`
-- `org_admin`
-- `event_manager`
-- `finance_manager`
-- `content_manager`
-
 Rules:
 
 - Auth required.
-- User must have Stripe Connect access.
+- Organisation account ownership required.
 - Organisation must already have `stripeAccountId`.
 
 ### `POST /api/stripe/connect/disconnect`
 
 Disconnects the Stripe account locally.
 
-Allowed roles:
-
-- `org_owner`
-- `org_admin`
-- `event_manager`
-- `finance_manager`
-- `content_manager`
-
 Rules:
 
 - Auth required.
-- User must have Stripe Connect access.
+- Organisation account ownership required.
 - Clears local Stripe fields on the organisation.
 - Does not delete or modify the account inside Stripe.
 - Also clears `PLATFORM_NOT_READY` back to `NOT_CONNECTED`.

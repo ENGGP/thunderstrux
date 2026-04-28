@@ -16,7 +16,7 @@ Core files:
 - `app/api/payments/checkout/event/route.ts`
 - `app/api/payments/webhook/route.ts`
 - `app/tickets/page.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/orders/page.tsx`
+- `app/(dashboard)/dashboard/orders/page.tsx`
 - `app/api/stripe/connect/onboard/route.ts`
 - `app/api/stripe/connect/continue/route.ts`
 - `app/api/stripe/connect/disconnect/route.ts`
@@ -53,7 +53,7 @@ Current implementation details:
 
 Checkout currently requires:
 
-- authenticated user
+- authenticated member account
 - published event
 - ticket type that belongs to the event
 - requested quantity within remaining inventory
@@ -87,15 +87,9 @@ This means local failures are often caused by:
 
 ## Stripe Connect Lifecycle
 
-Allowed roles:
+Stripe Connect management requires an `organisation` account that owns the organisation through `Organisation.accountUserId`.
 
-- `org_owner`
-- `org_admin`
-- `event_manager`
-- `finance_manager`
-- `content_manager`
-
-`member` cannot manage Stripe Connect.
+Member accounts cannot manage Stripe Connect.
 
 Thunderstrux uses strict internal lifecycle states:
 
@@ -136,7 +130,7 @@ lib/stripe/connect.ts
 Responsibilities:
 
 - `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`. If Stripe rejects account creation because platform setup is incomplete, stores `PLATFORM_NOT_READY` and throws `StripeConnectPlatformNotReadyError`.
-- `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid settings-page return and refresh URLs.
+- `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid `/dashboard/settings` return and refresh URLs.
 - `getAccountStatus(accountId)`: retrieves the live Stripe account, maps it to a lifecycle state, and persists local readiness flags.
 - `disconnectAccount(orgId)`: clears the local Stripe fields. It does not delete the Stripe account in Stripe.
 - `notConnectedStatus()`: returns the canonical no-account status payload.
@@ -151,7 +145,7 @@ Flow:
 
 ```text
 Settings page
-  -> resolve organisation by slug
+  -> resolve current organisation account
   -> GET /api/stripe/connect/status?organisationId=...
   -> UI renders one of NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
   -> user clicks Connect Stripe Account, Continue onboarding, or Fix account
@@ -216,7 +210,7 @@ SET
 WHERE slug = 'engineering-society';
 ```
 
-Then open settings and click `Refresh status`.
+Then open `/dashboard/settings` and click `Refresh status`.
 
 ## Stripe Connect Status
 
@@ -224,7 +218,7 @@ Then open settings and click `Refresh status`.
 
 Behavior:
 
-- verifies org membership
+- verifies organisation account ownership
 - loads organisation from Prisma
 - if no connected account and no stored platform setup block, returns `state: NOT_CONNECTED`
 - if no connected account and `stripeAccountStatus = PLATFORM_NOT_READY`, returns `state: PLATFORM_NOT_READY`
@@ -259,7 +253,7 @@ This endpoint is both a status reader and a local state synchronizer.
 
 - Retrieves Stripe account status and maps it to the lifecycle state.
 
-All Stripe Connect mutation routes require an organisation role other than `member`.
+All Stripe Connect mutation routes require an organisation account that owns the target organisation.
 
 ## Stripe Connect Webhook
 
@@ -389,12 +383,12 @@ STRIPE_CONNECT_WEBHOOK_SECRET=
 
 Minimum end-to-end local test:
 
-1. Sign in as `user1@example.com`.
+1. Sign in as `engineering.org@example.com`.
 2. Complete or simulate Stripe Connect readiness for `Engineering Society`.
 3. Visit a published event detail page.
 4. Buy a ticket through Stripe Checkout.
 5. Confirm `/tickets` shows a paid order and ticket IDs.
-6. Confirm `/dashboard/engineering-society/orders` shows the order.
+6. Confirm `/dashboard/orders` shows the order.
 7. Confirm ticket type inventory decreased.
 
 Important: the real end-to-end test must start from the app checkout button. Generic `stripe trigger` events verify webhook plumbing, but they do not prove local order reconciliation because they usually do not contain this app's real `orderId`, `eventId`, `ticketTypeId`, and `quantity` metadata.

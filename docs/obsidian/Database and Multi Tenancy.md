@@ -8,15 +8,21 @@ Core model:
 
 ```text
 User
-  -> OrganisationMember
-  -> Organisation
+  -> accountRole member | organisation
+
+Organisation account User
+  -> Organisation.accountUserId
        -> Event
             -> TicketType
        -> Order
        -> Ticket
+
+Member account User
+  -> OrganisationMember
+  -> Organisation
 ```
 
-Dashboard access is granted by `OrganisationMember` rows.
+Organisation dashboard access is granted by `Organisation.accountUserId`. `OrganisationMember` remains for member join relationships and migration compatibility, not MVP staff access.
 
 ## Schema Snapshot
 
@@ -43,6 +49,13 @@ Important fields:
 - `id`
 - `email` unique
 - `password`
+- `accountRole`
+- `firstName`
+- `lastName`
+- `displayName`
+- `phone`
+- `studentNumber`
+- `onboardingCompletedAt`
 - `createdAt`
 
 `password` stores the bcrypt hash, not the raw password.
@@ -54,6 +67,7 @@ Important fields:
 - `id`
 - `name`
 - `slug` unique
+- `accountUserId` unique nullable
 - `stripeAccountId`
 - `stripeAccountStatus`
 - `stripeChargesEnabled`
@@ -66,8 +80,10 @@ Important fields:
 Example:
 
 ```text
-/dashboard/engineering-society
+/dashboard
 ```
+
+Legacy slug routes such as `/dashboard/engineering-society` currently redirect to slugless organisation dashboard routes for backwards compatibility.
 
 Stripe fields are local cache/control fields for Connect:
 
@@ -122,6 +138,8 @@ Current roles:
 - `finance_manager`
 - `content_manager`
 - `member`
+
+In the target MVP, these rows represent member-account joins. They are not staff invite records. Organisation committee access currently uses a shared organisation account login.
 
 ## Events
 
@@ -178,14 +196,19 @@ One paid order creates `quantity` ticket rows.
 The backend resolves tenant access through:
 
 - authenticated user
-- organisation membership
-- role-specific checks
+- account role
+- organisation account ownership through `Organisation.accountUserId`
+- member join relationships through `OrganisationMember`
 
 Common patterns:
 
+- `requireCurrentOrganisationAccount()`
+- `getCurrentOrganisationAccount()`
 - `requireOrganisationMembershipBySlug(orgSlug)`
 - `requireOrganisationMembershipById(organisationId)`
 - `requireEventManagementAccess(organisationId)`
+
+`requireOrganisationMembershipBySlug` and `requireOrganisationMembershipById` still exist for compatibility. Organisation-management decisions should prefer organisation-account ownership, not member join rows.
 
 ## Organisation Scope Helpers
 
@@ -205,7 +228,7 @@ Important helpers:
 
 Current note:
 
-- The helper layer supports validating `x-org-id`, but the important security boundary is still the server-side membership and role check.
+- The helper layer supports validating `x-org-id`, but the important security boundary is still the server-side account role and organisation ownership check.
 
 ## Public vs Private Data
 

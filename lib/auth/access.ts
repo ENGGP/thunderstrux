@@ -7,6 +7,8 @@ import {
   type OrganisationRole
 } from "@/lib/permissions";
 
+export type AccountRole = "member" | "organisation";
+
 export class AuthenticationRequiredError extends Error {
   constructor(message = "Authentication required") {
     super(message);
@@ -29,11 +31,63 @@ export async function requireAuthenticatedUser() {
     throw new AuthenticationRequiredError();
   }
 
-  return { id: userId, email: session.user.email };
+  return {
+    id: userId,
+    accountRole: session.user.accountRole ?? "member",
+    email: session.user.email
+  };
+}
+
+export async function requireAccountRole(accountRole: AccountRole) {
+  const user = await requireAuthenticatedUser();
+
+  if (user.accountRole !== accountRole) {
+    throw new OrganisationAccessError("Account role is not allowed for this action");
+  }
+
+  return user;
+}
+
+export async function getCurrentOrganisationAccount() {
+  const user = await requireAccountRole("organisation");
+
+  const organisation = await prisma.organisation.findUnique({
+    where: {
+      accountUserId: user.id
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true
+    }
+  });
+
+  return organisation
+    ? {
+        ...organisation,
+        role: "org_owner" as OrganisationRole
+      }
+    : null;
+}
+
+export async function requireCurrentOrganisationAccount() {
+  const organisation = await getCurrentOrganisationAccount();
+
+  if (!organisation) {
+    throw new OrganisationAccessError("Organisation account has no organisation");
+  }
+
+  return organisation;
 }
 
 export async function getMemberOrganisations() {
   const user = await requireAuthenticatedUser();
+
+  if (user.accountRole === "organisation") {
+    const organisation = await getCurrentOrganisationAccount();
+    return organisation ? [organisation] : [];
+  }
 
   const memberships = await prisma.organisationMember.findMany({
     where: {
@@ -64,6 +118,32 @@ export async function getMemberOrganisations() {
 }
 
 export async function getOrganisationMembershipsForUser(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { accountRole: true }
+  });
+
+  if (user?.accountRole === "organisation") {
+    const organisation = await prisma.organisation.findUnique({
+      where: { accountUserId: userId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        createdAt: true
+      }
+    });
+
+    return organisation
+      ? [
+          {
+            role: "org_owner" as OrganisationRole,
+            organisation
+          }
+        ]
+      : [];
+  }
+
   return prisma.organisationMember.findMany({
     where: { userId },
     orderBy: {
@@ -96,6 +176,31 @@ export function mapMembershipsToOrganisations(
 
 export async function requireOrganisationMembershipBySlug(orgSlug: string) {
   const user = await requireAuthenticatedUser();
+
+  if (user.accountRole === "organisation") {
+    const organisation = await prisma.organisation.findFirst({
+      where: {
+        slug: orgSlug,
+        accountUserId: user.id
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        createdAt: true
+      }
+    });
+
+    if (!organisation) {
+      throw new OrganisationAccessError("Organisation not found or access denied");
+    }
+
+    return {
+      ...organisation,
+      role: "org_owner" as OrganisationRole
+    };
+  }
+
   const organisation = await prisma.organisation.findFirst({
     where: {
       slug: orgSlug,
@@ -133,6 +238,31 @@ export async function requireOrganisationMembershipBySlug(orgSlug: string) {
 
 export async function requireOrganisationMembershipById(organisationId: string) {
   const user = await requireAuthenticatedUser();
+
+  if (user.accountRole === "organisation") {
+    const organisation = await prisma.organisation.findFirst({
+      where: {
+        id: organisationId,
+        accountUserId: user.id
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        createdAt: true
+      }
+    });
+
+    if (!organisation) {
+      throw new OrganisationAccessError("Organisation not found or access denied");
+    }
+
+    return {
+      ...organisation,
+      role: "org_owner" as OrganisationRole
+    };
+  }
+
   const membership = await prisma.organisationMember.findUnique({
     where: {
       userId_organisationId: {
@@ -164,6 +294,12 @@ export async function requireOrganisationMembershipById(organisationId: string) 
 }
 
 export async function requireEventManagementAccess(organisationId: string) {
+  const user = await requireAuthenticatedUser();
+
+  if (user.accountRole !== "organisation") {
+    throw new OrganisationAccessError("Organisation account required");
+  }
+
   const organisation = await requireOrganisationMembershipById(organisationId);
 
   if (!canManageEvents(organisation.role)) {
@@ -174,6 +310,12 @@ export async function requireEventManagementAccess(organisationId: string) {
 }
 
 export async function requireFinanceAccess(organisationId: string) {
+  const user = await requireAuthenticatedUser();
+
+  if (user.accountRole !== "organisation") {
+    throw new OrganisationAccessError("Organisation account required");
+  }
+
   const organisation = await requireOrganisationMembershipById(organisationId);
 
   if (!canManageFinance(organisation.role)) {
@@ -184,6 +326,12 @@ export async function requireFinanceAccess(organisationId: string) {
 }
 
 export async function requireStripeConnectAccess(organisationId: string) {
+  const user = await requireAuthenticatedUser();
+
+  if (user.accountRole !== "organisation") {
+    throw new OrganisationAccessError("Organisation account required");
+  }
+
   const organisation = await requireOrganisationMembershipById(organisationId);
 
   if (!canManageStripeConnect(organisation.role)) {

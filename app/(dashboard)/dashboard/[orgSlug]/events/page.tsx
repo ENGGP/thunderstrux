@@ -1,11 +1,25 @@
-import { EventsList } from "@/components/events/events-list";
+import { notFound, redirect } from "next/navigation";
+import { requireAuthenticatedUser } from "@/lib/auth/access";
+import { prisma } from "@/lib/db";
 
-export default async function EventsPage({
+export default async function LegacyEventsPage({
   params
 }: {
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const user = await requireAuthenticatedUser();
+  const organisation = await prisma.organisation.findFirst({
+    where: {
+      slug: orgSlug,
+      accountUserId: user.id
+    },
+    select: { id: true }
+  });
 
-  return <EventsList orgSlug={orgSlug} />;
+  if (!organisation) {
+    notFound();
+  }
+
+  redirect("/dashboard/events");
 }

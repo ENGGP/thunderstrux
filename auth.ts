@@ -30,7 +30,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           select: {
             id: true,
             email: true,
-            password: true
+            password: true,
+            accountRole: true,
+            firstName: true,
+            lastName: true,
+            onboardingCompletedAt: true
           }
         });
 
@@ -46,7 +50,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
         return {
           id: user.id,
-          email: user.email
+          email: user.email,
+          accountRole: user.accountRole,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null
         };
       }
     })
@@ -60,11 +68,31 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         token.userId = user.id;
       }
 
+      if (user && "accountRole" in user) {
+        token.accountRole = user.accountRole as "member" | "organisation";
+      }
+
+      if (user && "firstName" in user) {
+        token.firstName = user.firstName as string | null;
+      }
+
+      if (user && "lastName" in user) {
+        token.lastName = user.lastName as string | null;
+      }
+
+      if (user && "onboardingCompletedAt" in user) {
+        token.onboardingCompletedAt = user.onboardingCompletedAt as string | null;
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.userId as string;
+        session.user.accountRole = token.accountRole ?? "member";
+        session.user.firstName = token.firstName ?? null;
+        session.user.lastName = token.lastName ?? null;
+        session.user.onboardingCompletedAt = token.onboardingCompletedAt ?? null;
       }
 
       return session;

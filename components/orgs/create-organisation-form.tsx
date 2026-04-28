@@ -35,7 +35,7 @@ export function CreateOrganisationForm() {
         body: JSON.stringify({ name })
       });
 
-      router.push(`/dashboard/${data.organisation.slug}`);
+      router.push("/dashboard");
       router.refresh();
     } catch (createError) {
       if (createError instanceof ClientApiError) {

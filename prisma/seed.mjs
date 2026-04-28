@@ -4,32 +4,36 @@ import { hash } from "bcryptjs";
 const prisma = new PrismaClient();
 const defaultPassword = "password123";
 
-async function upsertUser(email, password = defaultPassword) {
+async function upsertUser(email, password = defaultPassword, data = {}) {
   const hashedPassword = await hash(password, 12);
 
   return prisma.user.upsert({
     where: { email },
     update: {
-      password: hashedPassword
+      password: hashedPassword,
+      ...data
     },
     create: {
       email,
-      password: hashedPassword
+      password: hashedPassword,
+      ...data
     },
     select: { id: true, email: true }
   });
 }
 
-async function upsertOrganisation(name, slug, stripeData = {}) {
+async function upsertOrganisation(name, slug, stripeData = {}, accountUserId = null) {
   return prisma.organisation.upsert({
     where: { slug },
     update: {
       name,
+      accountUserId,
       ...stripeData
     },
     create: {
       name,
       slug,
+      accountUserId,
       ...stripeData
     },
     select: { id: true, name: true, slug: true }
@@ -268,25 +272,99 @@ async function main() {
     contentUser,
     memberUser,
     emptyUser,
-    outsiderUser
+    outsiderUser,
+    engineeringOrgUser,
+    artsOrgUser,
+    roboticsOrgUser,
+    paymentsLabOrgUser,
+    emptyOrgUser
   ] = await Promise.all([
-    upsertUser("user1@example.com"),
-    upsertUser("user2@example.com"),
-    upsertUser("admin@example.com"),
-    upsertUser("event.manager@example.com"),
-    upsertUser("finance@example.com"),
-    upsertUser("content@example.com"),
-    upsertUser("member@example.com"),
-    upsertUser("empty@example.com"),
-    upsertUser("outsider@example.com")
+    upsertUser("user1@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Jordan",
+      lastName: "Buyer",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("user2@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Casey",
+      lastName: "Member",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("admin@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Alex",
+      lastName: "Admin",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("event.manager@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Evan",
+      lastName: "Events",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("finance@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Finley",
+      lastName: "Finance",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("content@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Charlie",
+      lastName: "Content",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("member@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Morgan",
+      lastName: "Member",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("empty@example.com", defaultPassword, {
+      accountRole: "member",
+      firstName: "Emery",
+      lastName: "Empty",
+      onboardingCompletedAt: new Date()
+    }),
+    upsertUser("outsider@example.com", defaultPassword, {
+      accountRole: "member"
+    }),
+    upsertUser("engineering.org@example.com", defaultPassword, {
+      accountRole: "organisation"
+    }),
+    upsertUser("arts.org@example.com", defaultPassword, {
+      accountRole: "organisation"
+    }),
+    upsertUser("robotics.org@example.com", defaultPassword, {
+      accountRole: "organisation"
+    }),
+    upsertUser("payments.lab@example.com", defaultPassword, {
+      accountRole: "organisation"
+    }),
+    upsertUser("empty.org@example.com", defaultPassword, {
+      accountRole: "organisation"
+    })
   ]);
 
   const engineeringSociety = await upsertOrganisation(
     "Engineering Society",
-    "engineering-society"
+    "engineering-society",
+    {},
+    engineeringOrgUser.id
   );
-  const artsSociety = await upsertOrganisation("Arts Society", "arts-society");
-  const roboticsClub = await upsertOrganisation("Robotics Club", "robotics-club");
+  const artsSociety = await upsertOrganisation(
+    "Arts Society",
+    "arts-society",
+    {},
+    artsOrgUser.id
+  );
+  const roboticsClub = await upsertOrganisation(
+    "Robotics Club",
+    "robotics-club",
+    {},
+    roboticsOrgUser.id
+  );
   const paymentsLab = await upsertOrganisation(
     "Payments Lab",
     "payments-lab",
@@ -296,11 +374,22 @@ async function main() {
       stripeChargesEnabled: false,
       stripePayoutsEnabled: false,
       stripeDetailsSubmitted: false
-    }
+    },
+    paymentsLabOrgUser.id
   );
-  const emptySociety = await upsertOrganisation("Empty Society", "empty-society");
+  const emptySociety = await upsertOrganisation(
+    "Empty Society",
+    "empty-society",
+    {},
+    emptyOrgUser.id
+  );
 
   await Promise.all([
+    ensureMembership(engineeringOrgUser.id, engineeringSociety.id, "org_owner"),
+    ensureMembership(artsOrgUser.id, artsSociety.id, "org_owner"),
+    ensureMembership(roboticsOrgUser.id, roboticsClub.id, "org_owner"),
+    ensureMembership(paymentsLabOrgUser.id, paymentsLab.id, "org_owner"),
+    ensureMembership(emptyOrgUser.id, emptySociety.id, "org_owner"),
     ensureMembership(user1.id, engineeringSociety.id, "org_owner"),
     ensureMembership(adminUser.id, engineeringSociety.id, "org_admin"),
     ensureMembership(eventManagerUser.id, engineeringSociety.id, "event_manager"),
@@ -507,6 +596,11 @@ async function main() {
   console.log("Test accounts all use password: password123");
   console.table([
     { email: "user1@example.com", note: "Engineering org_owner" },
+    { email: "engineering.org@example.com", note: "Engineering organisation account" },
+    { email: "arts.org@example.com", note: "Arts organisation account" },
+    { email: "robotics.org@example.com", note: "Robotics organisation account" },
+    { email: "payments.lab@example.com", note: "Payments Lab organisation account" },
+    { email: "empty.org@example.com", note: "Empty Society organisation account" },
     { email: "admin@example.com", note: "Engineering org_admin, Arts org_admin" },
     { email: "event.manager@example.com", note: "Engineering event_manager, Robotics owner" },
     { email: "finance@example.com", note: "Engineering finance_manager, Payments Lab owner" },

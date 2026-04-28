@@ -9,14 +9,18 @@ const navItems = [
 ];
 
 export function DashboardShell({
+  basePath,
   orgName,
   orgSlug,
   children
 }: {
+  basePath?: string;
   orgName: string;
-  orgSlug: string;
+  orgSlug?: string;
   children: ReactNode;
 }) {
+  const resolvedBasePath = basePath ?? `/dashboard/${orgSlug}`;
+
   return (
     <div className="min-h-screen bg-neutral-100">
       <aside className="fixed bottom-0 left-0 top-16 hidden w-64 border-r border-neutral-200 bg-white p-6 shadow-sm md:block">
@@ -24,7 +28,7 @@ export function DashboardShell({
           {navItems.map((item) => (
             <Link
               key={item.label}
-              href={`/dashboard/${orgSlug}${item.href}`}
+              href={`${resolvedBasePath}${item.href}`}
               className={`rounded-lg px-3 py-2 text-sm transition ${
                 item.active
                   ? "bg-neutral-100 font-semibold text-neutral-900"

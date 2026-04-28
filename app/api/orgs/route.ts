@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import {
   badRequest,
+  forbidden,
   internalError,
   unauthorized,
   validationError
 } from "@/lib/api/errors";
 import {
   AuthenticationRequiredError,
+  OrganisationAccessError,
   getOrganisationMembershipsForUser,
   mapMembershipsToOrganisations,
+  requireAccountRole,
   requireAuthenticatedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
@@ -46,10 +49,14 @@ export async function POST(request: Request) {
   let user: { id: string };
 
   try {
-    user = await requireAuthenticatedUser();
+    user = await requireAccountRole("organisation");
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
+    }
+
+    if (error instanceof OrganisationAccessError) {
+      return forbidden(error.message);
     }
 
     console.error(error);
@@ -75,10 +82,26 @@ export async function POST(request: Request) {
 
     try {
       const organisation = await prisma.$transaction(async (tx) => {
+        const existingOrganisation = await tx.organisation.findUnique({
+          where: {
+            accountUserId: user.id
+          },
+          select: {
+            id: true
+          }
+        });
+
+        if (existingOrganisation) {
+          throw new OrganisationAccessError(
+            "Organisation account already has an organisation"
+          );
+        }
+
         const organisation = await tx.organisation.create({
           data: {
             name: validation.data.name,
-            slug
+            slug,
+            accountUserId: user.id
           },
           select: {
             id: true,
@@ -103,6 +126,10 @@ export async function POST(request: Request) {
     } catch (error) {
       if (isPrismaErrorCode(error, "P2002")) {
         continue;
+      }
+
+      if (error instanceof OrganisationAccessError) {
+        return forbidden(error.message);
       }
 
       console.error(error);

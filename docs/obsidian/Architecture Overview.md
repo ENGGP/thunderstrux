@@ -27,6 +27,19 @@ Browser
   -> Stripe webhooks reconcile payments and sync account readiness
 ```
 
+## Product Account Model
+
+`User.accountRole` is exactly one of:
+
+- `member`
+- `organisation`
+
+Member accounts represent people. They can complete a profile, join organisations, browse published events, buy tickets, and view `/tickets`.
+
+Organisation accounts represent exactly one organisation through `Organisation.accountUserId`. They manage that organisation directly at `/dashboard`.
+
+For MVP, organisation committee members may share one organisation login. This is a product tradeoff, not the final security model. Future work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
+
 ## App Router Structure
 
 Route groups are filesystem-only. `(dashboard)` and `(public)` do not appear in URLs.
@@ -43,16 +56,16 @@ app/
     events/[eventId]/page.tsx
   (dashboard)/
     dashboard/
-      page.tsx
-      create/page.tsx
-      [orgSlug]/
-        layout.tsx
-        page.tsx
-        events/page.tsx
-        events/new/page.tsx
-        events/[eventId]/edit/page.tsx
-        orders/page.tsx
-        settings/page.tsx
+      page.tsx                         Role-aware member/org dashboard
+      create/page.tsx                  Organisation-account onboarding
+      organisations/page.tsx           Member organisation search/join
+      events/layout.tsx                Explicit route boundary
+      events/page.tsx                  Organisation event list
+      events/new/page.tsx              Organisation event creation
+      events/[eventId]/edit/page.tsx   Organisation event editing
+      orders/page.tsx                  Organisation order review
+      settings/page.tsx                Organisation settings/Stripe Connect
+      [orgSlug]/                       Legacy compatibility redirects
   api/
 ```
 
@@ -65,57 +78,80 @@ app/
 - Renders the fixed global `Navbar`.
 - Offsets page content with `pt-16` so content does not sit under the fixed header.
 
-`app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
+`app/(dashboard)/dashboard/page.tsx`
 
-- Resolves `orgSlug`.
-- Calls `requireOrganisationMembershipBySlug(orgSlug)`.
-- Uses `notFound()` when membership is missing.
-- Passes the organisation name and slug into `DashboardShell`.
+- Branches by `session.user.accountRole`.
+- Renders the member dashboard for `member` accounts.
+- Resolves `Organisation.accountUserId` and renders the organisation dashboard for `organisation` accounts.
+- Redirects organisation accounts without an organisation to `/dashboard/create`.
 
 `components/layout/dashboard-shell.tsx`
 
-- Renders the fixed left sidebar below the global header.
+- Renders the fixed left sidebar below the global header for organisation dashboards.
 - Renders the organisation heading row.
 - Owns shared organisation dashboard nav.
-- Must remain the single source of dashboard navigation.
+- Uses slugless `/dashboard/*` paths for current organisation management routes.
+
+`app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
+
+- Compatibility layout only.
+- Keeps old nested slug routes available as redirect targets.
+- Does not own the dashboard shell.
 
 ## Page Responsibilities
 
 `/dashboard`
 
-- Loads the signed-in user’s organisations through `GET /api/orgs`.
-- Shows empty-state onboarding when there are no memberships.
-- Shows organisation cards with `Open dashboard` when memberships exist.
+- Member accounts see profile completion, joined organisations, organisation search, public event discovery, and ticket links.
+- Organisation accounts see their organisation dashboard directly with upcoming events, recent orders, past-month revenue, and management navigation.
 
-`/dashboard/[orgSlug]`
+`/dashboard/events`
 
-- Renders overview content only.
-- Shows `View events`.
-- Must not duplicate `Settings` navigation.
+- Renders the organisation event list through `components/events/events-list.tsx`.
 
-`/dashboard/[orgSlug]/events`
+`/dashboard/events/new`
 
-- Renders the events list via `components/events/events-list.tsx`.
+- Renders the event creation form for the signed-in organisation account.
 
-`/dashboard/[orgSlug]/settings`
+`/dashboard/events/[eventId]/edit`
+
+- Renders the event edit form after verifying the event belongs to the signed-in organisation account.
+
+`/dashboard/orders`
+
+- Renders organisation-scoped order and payment review.
+
+`/dashboard/settings`
 
 - Renders Stripe Connect settings UI.
 - The UI is state-driven from the backend Connect lifecycle: `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
+
+`/dashboard/organisations`
+
+- Member-only organisation search and join page.
+
+`/dashboard/[orgSlug]/*`
+
+- Legacy compatibility routes.
+- Redirect to the matching slugless organisation dashboard route when the signed-in organisation account owns the slug.
+- Return not found when ownership does not match.
 
 ## Authentication Model
 
 - Auth uses the Credentials provider in `auth.ts`.
 - Passwords are stored hashed with bcrypt.
-- JWT callback stores `userId` in the token.
-- Session callback exposes `session.user.id`.
+- JWT callback stores `userId`, `accountRole`, profile names, and onboarding timestamp in the token.
+- Session callback exposes `session.user.id` and `session.user.accountRole`.
 - Custom sign-in page is `/login`.
 
 ## Multi-Tenancy Model
 
-- A user can belong to many organisations.
-- `Organisation.slug` is the stable route identifier.
-- Dashboard access is always resolved from the authenticated session plus the database membership row.
-- The frontend may send `organisationId`, but backend permission checks must still verify membership and role.
+- `Organisation` remains the tenant, event owner, order owner, ticket owner, and Stripe Connect owner.
+- Organisation dashboard access is resolved from the authenticated organisation account plus `Organisation.accountUserId`.
+- Member join relationships use `OrganisationMember`.
+- `OrganisationMember` is not staff access for the MVP, although legacy compatibility rows may still exist.
+- `Organisation.slug` remains a stable identifier for compatibility, public display, and lookup APIs.
+- The frontend may send `organisationId`, but backend permission checks must still verify the authenticated account and organisation ownership.
 
 ## Styling Pipeline
 
@@ -141,12 +177,6 @@ content: [
   "./components/**/*.{js,ts,jsx,tsx}"
 ]
 ```
-
-Important historical context:
-
-- Tailwind previously appeared “partially broken” because the project was using legacy `@tailwind base/components/utilities` directives under Tailwind v4.
-- The broken symptom was: structural utilities compiled, but color/spacing/radius/shadow utilities did not.
-- The current v4 import setup fixes that.
 
 ## Stripe Connect Boundary
 

@@ -11,6 +11,10 @@ type SignupResponse = {
   user: {
     id: string;
     email: string;
+    accountRole: "member" | "organisation";
+    firstName: string | null;
+    lastName: string | null;
+    onboardingCompletedAt: string | null;
     createdAt: string;
   };
 };
@@ -18,6 +22,11 @@ type SignupResponse = {
 export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [accountRole, setAccountRole] = useState<"member" | "organisation">(
+    "member"
+  );
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -32,7 +41,13 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({
+          email,
+          password,
+          accountRole,
+          firstName: accountRole === "member" ? firstName : undefined,
+          lastName: accountRole === "member" ? lastName : undefined
+        })
       });
 
       const result = await signIn("credentials", {
@@ -79,6 +94,51 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
         type="password"
         value={password}
       />
+
+      <fieldset className="grid gap-2">
+        <legend className="text-sm font-medium text-neutral-900">
+          Account type
+        </legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-800">
+            <input
+              checked={accountRole === "member"}
+              name="accountRole"
+              onChange={() => setAccountRole("member")}
+              type="radio"
+              value="member"
+            />
+            Member
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-800">
+            <input
+              checked={accountRole === "organisation"}
+              name="accountRole"
+              onChange={() => setAccountRole("organisation")}
+              type="radio"
+              value="organisation"
+            />
+            Organisation
+          </label>
+        </div>
+      </fieldset>
+
+      {accountRole === "member" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextInput
+            label="First name"
+            maxLength={80}
+            onChange={(event) => setFirstName(event.target.value)}
+            value={firstName}
+          />
+          <TextInput
+            label="Last name"
+            maxLength={80}
+            onChange={(event) => setLastName(event.target.value)}
+            value={lastName}
+          />
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button disabled={isSubmitting} type="submit">

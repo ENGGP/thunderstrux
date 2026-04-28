@@ -20,7 +20,7 @@ Useful commands:
 
 ```bash
 rg -n --hidden --no-ignore "Exact stale text" .
-docker compose exec app cat 'app/(dashboard)/dashboard/[orgSlug]/page.tsx'
+docker compose exec app cat 'app/(dashboard)/dashboard/page.tsx'
 ```
 
 ## Stale Next.js Output In Docker
@@ -51,20 +51,20 @@ Fix order:
 Observed with:
 
 ```text
-/dashboard/engineering-society/events/[eventId]/edit
+/dashboard/events/[eventId]/edit
 ```
 
-Also observed as browser console 404s such as:
+Legacy compatibility route:
 
 ```text
-GET http://localhost:3000/dashboard/engineering-society/events/cmob9yf710002po0z781ua9qr/edit 404 (Not Found)
+/dashboard/engineering-society/events/[eventId]/edit
 ```
 
 Source was correct:
 
 ```text
 components/events/events-list.tsx
-app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
+app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx
 ```
 
 The generated production manifests contained the route, but the dev manifest did not:
@@ -81,7 +81,8 @@ docker compose exec app sh -lc "grep -n 'events/.*/edit\|events/\[eventId\]/edit
 
 Permanent fixes now in code:
 
-- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx` exists as an explicit pass-through route boundary for nested event pages.
+- `app/(dashboard)/dashboard/events/layout.tsx` exists as an explicit pass-through route boundary for current nested event pages.
+- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx` remains for legacy redirect route stability.
 - `package.json` uses `node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`.
 - `scripts/clean-next-dev.mjs` clears `.next/dev` so restarting the app cannot reuse a stale app-paths manifest.
 - `next.config.ts` uses `.next-build` for production builds and `.next` for dev output.
@@ -97,6 +98,9 @@ docker compose exec app sh -lc "cat .next/dev/server/app-paths-manifest.json"
 It must include:
 
 ```text
+/(dashboard)/dashboard/events/[eventId]/edit/page
+/(dashboard)/dashboard/events/new/page
+/(dashboard)/dashboard/events/page
 /(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page
 /(dashboard)/dashboard/[orgSlug]/events/new/page
 /(dashboard)/dashboard/[orgSlug]/events/page
@@ -114,15 +118,16 @@ Then recheck the route. If the route is registered but the page still 404s, insp
 
 - `app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
 - `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
-- `requireOrganisationMembershipBySlug(orgSlug)`
+- `app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx`
+- `requireCurrentOrganisationAccount()`
 - event lookup by `eventId` and `organisationId`
 
-For a valid Engineering event and `user1@example.com`, the route should return `200`. For `user2@example.com`, direct Engineering edit URLs should return `404`.
+For a valid Engineering event and `engineering.org@example.com`, `/dashboard/events/[eventId]/edit` should return `200`. For member accounts such as `user2@example.com`, direct management URLs should not grant access.
 
-If clicking `Edit` navigates to `/dashboard/[orgSlug]/events/edit` without an event id, the source link or a stale client bundle is wrong. The correct source link is:
+If clicking `Edit` navigates to `/dashboard/events/edit` without an event id, the source link or a stale client bundle is wrong. The correct current source link resolves through `EventsList` using:
 
 ```tsx
-href={`/dashboard/${orgSlug}/events/${event.id}/edit`}
+href={`${dashboardBasePath}/events/${event.id}/edit`}
 ```
 
 It lives in:
@@ -138,7 +143,7 @@ Check browser hard refresh and confirm `EDIT EVENT ID:` logs a real id.
 Observed on:
 
 ```text
-/dashboard/[orgSlug]/events/[eventId]/edit
+/dashboard/events/[eventId]/edit
 ```
 
 Symptom:
@@ -280,8 +285,9 @@ If overlap returns, inspect:
 Current intended structure:
 
 - `DashboardShell` owns `Dashboard`, `Events`, `Settings`
-- `/dashboard/[orgSlug]` page body renders only overview content and `View events`
-- `/dashboard` organisation cards render only `Open dashboard`
+- `/dashboard` renders the organisation overview for organisation accounts
+- `/dashboard` renders the member dashboard for member accounts
+- Legacy `/dashboard/[orgSlug]/*` routes redirect
 
 If stale or duplicate buttons appear:
 
@@ -304,6 +310,7 @@ Current correct state:
 If duplicate titles reappear, inspect:
 
 - `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
+- `app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx`
 - `components/events/create-event-form.tsx`
 
 ## `next-env.d.ts` Changes After Build Or Dev
@@ -341,10 +348,42 @@ volumes:
 Verify container sees latest file:
 
 ```bash
-docker compose exec app cat 'app/(dashboard)/dashboard/[orgSlug]/page.tsx'
+docker compose exec app cat 'app/(dashboard)/dashboard/page.tsx'
 ```
 
 If host and container differ, inspect Docker Desktop file sharing and restart Docker.
+
+## Homepage Internal Server Error
+
+Common causes:
+
+- App was started on the host instead of inside Docker.
+- `DATABASE_URL` points at `db:5432`, which only resolves inside the Docker network.
+- Prisma migrations were not applied after schema changes.
+- Seed data has not been restored after a database reset.
+
+Expected local runtime:
+
+```bash
+docker compose up -d
+docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm seed
+docker compose restart app
+```
+
+Verify:
+
+```bash
+docker compose ps
+docker compose logs --tail=80 app
+docker compose exec app pnpm build
+```
+
+The homepage should return `200 OK` at:
+
+```text
+http://localhost:3000/
+```
 
 ## Hydration Mismatch On `<body>`
 
@@ -379,8 +418,8 @@ Meaning:
 
 Fix:
 
-- Sign in as a role other than `member`
-- Go to `/dashboard/[orgSlug]/settings`
+- Sign in as the organisation account that owns the event organisation
+- Go to `/dashboard/settings`
 - Complete Stripe Connect onboarding
 
 ## Stripe Connect Account Exists But Payments Still Blocked
@@ -400,7 +439,7 @@ Checkout requires `stripeAccountId` and `stripeChargesEnabled = true`, so `NOT_C
 
 Fix:
 
-1. Open `/dashboard/[orgSlug]/settings`.
+1. Open `/dashboard/settings`.
 2. Click `Continue onboarding` or `Fix account`.
 3. Complete required Stripe steps.
 4. Click `Refresh status`.
@@ -468,7 +507,7 @@ Fix:
 
 1. Open `https://dashboard.stripe.com/settings/connect/platform-profile`.
 2. Complete Stripe Connect platform profile/responsibilities.
-3. Return to `/dashboard/[orgSlug]/settings`.
+3. Return to `/dashboard/settings`.
 4. Click `Retry after completion`.
 
 You may also click `Disconnect Stripe account` in this state to clear the local status back to `NOT_CONNECTED`.

@@ -80,7 +80,7 @@ Flow:
 ```text
 User signs up
   -> POST /api/auth/signup
-  -> User row created with hashed password
+  -> User row created with hashed password and accountRole
   -> frontend signs in via credentials
   -> browser redirects to callbackUrl
 ```
@@ -89,7 +89,7 @@ User signs up
 User signs in
   -> signIn("credentials")
   -> auth.ts checks email/password against Prisma
-  -> session.user.id is exposed
+  -> session.user.id and session.user.accountRole are exposed
   -> browser redirects to callbackUrl
 ```
 
@@ -103,17 +103,42 @@ Files:
 Flow:
 
 ```text
-Server page forwards request cookies to GET /api/orgs
-  -> API reads authenticated user from session
-  -> API loads organisation memberships and maps to organisation list
-  -> page renders empty state or organisation cards
+User visits /dashboard
+  -> server reads authenticated user from session
+  -> member account renders member dashboard
+  -> organisation account resolves Organisation.accountUserId
+  -> organisation account renders organisation dashboard directly
 ```
 
 Current UI:
 
-- Empty state shows `Create Organisation`.
-- Populated state shows `New organisation` and `Open dashboard`.
-- Root dashboard does not render a card-level `Settings` button.
+- Member dashboard shows profile completion, joined organisations, event discovery, and tickets.
+- Organisation dashboard shows organisation name, upcoming events, recent orders, past-month revenue, and management navigation.
+
+## Member Organisation Search And Join
+
+Files:
+
+- `app/(dashboard)/dashboard/organisations/page.tsx`
+- `components/members/organisation-search.tsx`
+- `app/api/orgs/search/route.ts`
+- `app/api/orgs/[orgSlug]/join/route.ts`
+
+Flow:
+
+```text
+Member opens /dashboard/organisations
+  -> page requires accountRole = member
+  -> OrganisationSearch calls GET /api/orgs/search?q=...
+  -> API returns public-safe organisation rows and joined state
+  -> member clicks Join
+  -> POST /api/orgs/[orgSlug]/join
+  -> API creates or updates OrganisationMember with role = member
+```
+
+Important rule:
+
+- Joining an organisation never grants management access.
 
 ## Create Organisation
 
@@ -128,42 +153,44 @@ Flow:
 ```text
 User submits organisation name
   -> POST /api/orgs
+  -> API requires accountRole = organisation
+  -> API verifies the organisation account does not already own an organisation
   -> API normalises or generates slug
   -> API creates Organisation
-  -> API creates org_owner membership for current user
-  -> frontend redirects to /dashboard/[orgSlug]
+  -> API sets Organisation.accountUserId
+  -> API creates transitional org_owner membership for compatibility
+  -> frontend redirects to /dashboard
 ```
 
 ## Organisation Dashboard Overview
 
 Files:
 
-- `app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
+- `app/(dashboard)/dashboard/page.tsx`
 - `components/layout/dashboard-shell.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/page.tsx`
 
 Flow:
 
 ```text
-Layout receives orgSlug
-  -> requireOrganisationMembershipBySlug(orgSlug)
-  -> pass organisation.name + orgSlug into DashboardShell
-  -> page renders overview content
+Page resolves the signed-in organisation account
+  -> requireCurrentOrganisationAccount()
+  -> pass organisation.name into DashboardShell
+  -> page renders overview, upcoming events, recent orders, and revenue summary
 ```
 
 Current UI:
 
 - Sidebar navigation: `Dashboard`, `Events`, `Orders`, `Settings`
 - Header shows the organisation name
-- Page body shows `View events`
-- Page body does not render `Open settings`
+- Primary management links use slugless `/dashboard/*` paths.
+- Legacy `/dashboard/[orgSlug]/*` pages redirect for backwards compatibility.
 
 ## Events Dashboard
 
 Files:
 
-- `app/(dashboard)/dashboard/[orgSlug]/events/page.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
+- `app/(dashboard)/dashboard/events/page.tsx`
+- `app/(dashboard)/dashboard/events/layout.tsx`
 - `components/events/events-list.tsx`
 - `app/api/events/route.ts`
 - `app/api/events/[eventId]/route.ts`
@@ -172,10 +199,10 @@ Files:
 Flow:
 
 ```text
-Events page receives orgSlug
-  -> EventsList fetches organisation by slug via /api/orgs/[orgSlug]
+Events page resolves current organisation account
+  -> EventsList fetches organisation by slug via /api/orgs/[orgSlug] for API compatibility
   -> EventsList fetches GET /api/events?orgId=...
-  -> API verifies membership for organisationId
+  -> API verifies organisation account ownership for organisationId
   -> events render with management actions
 ```
 
@@ -199,6 +226,8 @@ Edit link shape:
 
 ```ts
 `/dashboard/${orgSlug}/events/${event.id}/edit`
+or current slugless form:
+`/dashboard/events/${event.id}/edit`
 ```
 
 The link is generated in:
@@ -211,6 +240,7 @@ The expected page is:
 
 ```text
 app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
+app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx
 ```
 
 There is also a pass-through layout at:
@@ -229,6 +259,8 @@ Files:
 
 - `app/(dashboard)/dashboard/[orgSlug]/events/new/page.tsx`
 - `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
+- `app/(dashboard)/dashboard/events/new/page.tsx`
+- `app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx`
 - `components/events/create-event-form.tsx`
 
 Flow:
@@ -241,17 +273,17 @@ CreateEventForm loads organisation by slug
   -> PATCH checks event-management access
   -> PATCH updates Event and synchronises TicketType rows in a Prisma transaction
   -> form calls router.refresh()
-  -> on success, router.push(`/dashboard/${orgSlug}/events`)
+  -> on success, router.push(`/dashboard/events`) on slugless routes
 ```
 
 Edit route access:
 
 ```text
-Edit page receives orgSlug + eventId
-  -> requireOrganisationMembershipBySlug(orgSlug)
-  -> query Event where id = eventId and organisationId = resolved organisation.id
+Edit page receives eventId
+  -> requireCurrentOrganisationAccount()
+  -> query Event where id = eventId and organisationId = current organisation.id
   -> render CreateEventForm in edit mode
-  -> notFound() when membership is missing or the event belongs to another org
+  -> notFound() when the event belongs to another org
 ```
 
 Current UI note:
@@ -274,7 +306,7 @@ Ticket edit details:
 
 Files:
 
-- `app/(dashboard)/dashboard/[orgSlug]/settings/page.tsx`
+- `app/(dashboard)/dashboard/settings/page.tsx`
 - `components/settings/stripe-connect-settings.tsx`
 - `app/api/stripe/connect/status/route.ts`
 - `app/api/stripe/connect/onboard/route.ts`
@@ -285,8 +317,8 @@ Files:
 Flow:
 
 ```text
-Settings page receives orgSlug
-  -> client resolves organisation via /api/orgs/[orgSlug]
+Settings page resolves current organisation account
+  -> client resolves organisation via /api/orgs/[orgSlug] for API compatibility
   -> GET /api/stripe/connect/status?organisationId=...
   -> backend maps account into NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
   -> user may connect, open platform settings, retry onboarding, continue onboarding, fix account, open dashboard, refresh status, or disconnect locally
@@ -312,19 +344,18 @@ Current disconnect behavior:
 Important security detail:
 
 - The frontend sends `organisationId` only as an input.
-- Every Connect mutation rechecks the authenticated user's organisation role on the server.
+- Every Connect mutation rechecks the authenticated organisation account ownership on the server.
 
 ## Organiser Orders
 
 Files:
 
-- `app/(dashboard)/dashboard/[orgSlug]/orders/page.tsx`
+- `app/(dashboard)/dashboard/orders/page.tsx`
 
 Flow:
 
 ```text
-Page receives orgSlug
-  -> requireOrganisationMembershipBySlug(orgSlug)
+Page resolves current organisation account
   -> requireFinanceAccess(organisation.id)
   -> query orders scoped to organisation.id
   -> render buyer, event, ticket type, quantity, total, status, and paidAt
@@ -332,6 +363,4 @@ Page receives orgSlug
 
 Access:
 
-- `org_owner`
-- `org_admin`
-- `finance_manager`
+- Organisation account required.

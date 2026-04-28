@@ -19,12 +19,17 @@ Users authenticate with:
 
 - `email`
 - `password`
+- `accountRole`
 
 Rules:
 
 - Passwords are hashed with bcrypt before storage.
 - Auth lookup normalises email to lowercase during credentials authorization.
 - Signup validation is handled by Zod in `lib/validators/auth.ts`.
+- Account role is either `member` or `organisation`.
+- Member accounts represent people.
+- Organisation accounts represent exactly one organisation.
+- For MVP, organisation committee members may share the one organisation login. This is a temporary product tradeoff; future work should add named staff users, invites, MFA, audit logs, and per-user organisation permissions.
 
 ## Session Shape
 
@@ -32,9 +37,10 @@ Important session field:
 
 ```ts
 session.user.id
+session.user.accountRole
 ```
 
-This is the value used for all dashboard access checks.
+These values are used for dashboard routing and access checks.
 
 ## Protected Routes
 
@@ -111,37 +117,33 @@ Dashboard protection is layered:
 2. Route-level layout checks organisation membership
 3. API handlers verify membership and role again on mutations
 
-`/dashboard/[orgSlug]/*` is ultimately authorized by:
+Organisation management is now available at:
+
+```text
+/dashboard
+/dashboard/events
+/dashboard/events/new
+/dashboard/events/[eventId]/edit
+/dashboard/orders
+/dashboard/settings
+```
+
+Legacy `/dashboard/[orgSlug]/*` routes remain as compatibility redirects for organisation accounts that own the slug.
+
+Organisation dashboard access is ultimately authorized by:
 
 - session user id
-- database membership row
-- server-side role checks
+- `User.accountRole = organisation`
+- `Organisation.accountUserId`
+- server-side organisation ownership checks
 
-If membership is missing, the org dashboard layout resolves as `notFound()`.
+If ownership is missing, the organisation dashboard redirects to organisation creation or resolves as `notFound()` on legacy routes.
 
 ## Current Role Capabilities
 
-Event management:
+Organisation accounts have full event, finance, settings, and Stripe Connect management access for their one organisation.
 
-- `org_owner`
-- `org_admin`
-- `event_manager`
-
-Finance management:
-
-- `org_owner`
-- `org_admin`
-- `finance_manager`
-
-Stripe Connect onboarding:
-
-- `org_owner`
-- `org_admin`
-- `event_manager`
-- `finance_manager`
-- `content_manager`
-
-`member` cannot manage Stripe Connect. Users without an organisation membership cannot access the organisation dashboard or Connect APIs.
+Member accounts can complete a profile, join organisations, browse public events, buy tickets, and view `/tickets`. They cannot access organisation management APIs or pages.
 
 Recent verification:
 

@@ -11,7 +11,13 @@ Draft events are visible only in the organisation dashboard. Published events ca
 
 ## Creation Flow
 
-Route:
+Current route:
+
+```text
+/dashboard/events/new
+```
+
+Legacy compatibility route:
 
 ```text
 /dashboard/[orgSlug]/events/new
@@ -19,25 +25,27 @@ Route:
 
 Main files:
 
-- `app/(dashboard)/dashboard/[orgSlug]/events/new/page.tsx`
+- `app/(dashboard)/dashboard/events/new/page.tsx`
+- `app/(dashboard)/dashboard/events/layout.tsx`
 - `components/events/create-event-form.tsx`
 - `app/api/events/route.ts`
 
 Flow:
 
 ```text
-Create event form
-  -> resolves organisation by slug
+Organisation account opens /dashboard/events/new
+  -> route resolves current organisation from Organisation.accountUserId
+  -> CreateEventForm resolves the organisation by slug for existing API compatibility
   -> POST /api/events
-  -> API validates authenticated membership and role
+  -> API validates organisation account ownership and event-management access
   -> API creates Event and TicketType rows
 ```
 
-Allowed roles:
+Access:
 
-- `org_owner`
-- `org_admin`
-- `event_manager`
+- Organisation account required.
+- The signed-in organisation account must own the submitted `organisationId`.
+- Member accounts cannot create events.
 
 ## Ticket Types
 
@@ -68,8 +76,8 @@ PATCH /api/events/[eventId]/publish
 
 Publishing requires:
 
-- Authenticated user.
-- Event-management role in the event organisation.
+- Organisation account.
+- Event-management access to the event organisation.
 - At least one ticket type.
 - Total ticket quantity greater than zero.
 
@@ -85,7 +93,13 @@ PATCH /api/events/[eventId]
 
 The edit endpoint updates event fields and synchronises ticket types. It does not own the publish/unpublish lifecycle.
 
-Edit route:
+Current edit route:
+
+```text
+/dashboard/events/[eventId]/edit
+```
+
+Legacy compatibility route:
 
 ```text
 /dashboard/[orgSlug]/events/[eventId]/edit
@@ -94,6 +108,8 @@ Edit route:
 Source files:
 
 ```text
+app/(dashboard)/dashboard/events/layout.tsx
+app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx
 app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx
 app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
 components/events/create-event-form.tsx
@@ -114,20 +130,6 @@ Important rules:
 - Sold-out ticket types with `quantity = 0` can be edited back to a positive quantity to reopen future availability.
 - The edit form only disables removal for sold/issued ticket rows. Event fields and ticket name/price/quantity stay editable.
 
-Current logging for edit debugging:
-
-```text
-FORM SUBMIT DATA:
-PATCH PAYLOAD:
-PATCH EVENT HIT:
-REQUEST BODY:
-AUTH PASSED
-EXISTING TICKETS:
-INCOMING TICKETS:
-UPDATING EVENT:
-UPDATED EVENT RESULT:
-```
-
 ## Public Event APIs
 
 Public APIs:
@@ -145,4 +147,4 @@ Rules:
 
 `lib/events/public-events.ts` ensures public discovery has demo events if there are no published events.
 
-This is separate from `prisma/seed.mjs`. The seed is the preferred way to restore a full development database because it also creates users and memberships.
+This is separate from `prisma/seed.mjs`. The seed is the preferred way to restore a full development database because it also creates users, organisation accounts, member accounts, memberships, orders, and tickets.

@@ -67,7 +67,14 @@ function publishDisabledReason(event: EventListItem) {
   return null;
 }
 
-export function EventsList({ orgSlug }: { orgSlug: string }) {
+export function EventsList({
+  basePath,
+  orgSlug
+}: {
+  basePath?: string;
+  orgSlug: string;
+}) {
+  const dashboardBasePath = basePath ?? `/dashboard/${orgSlug}`;
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [actionMessage, setActionMessage] = useState<{
     tone: "error" | "success";
@@ -214,7 +221,7 @@ export function EventsList({ orgSlug }: { orgSlug: string }) {
           <p className="text-sm text-neutral-500">{state.organisation.name}</p>
         </div>
         <Link
-          href={`/dashboard/${orgSlug}/events/new`}
+          href={`${dashboardBasePath}/events/new`}
           className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
         >
           New event
@@ -301,7 +308,7 @@ export function EventsList({ orgSlug }: { orgSlug: string }) {
                           )}
                           <Link
                             className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
-                            href={`/dashboard/${orgSlug}/events/${event.id}/edit`}
+                            href={`${dashboardBasePath}/events/${event.id}/edit`}
                           >
                             Edit
                           </Link>

@@ -30,6 +30,13 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireAuthenticatedUser();
+
+    if (user.accountRole !== "member") {
+      return badRequest("Member account required", [
+        { path: ["accountRole"], message: "Only member accounts can buy tickets" }
+      ]);
+    }
+
     await failStalePreCheckoutOrders({ userId: user.id });
 
     const event = await prisma.event.findFirst({

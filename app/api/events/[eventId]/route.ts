@@ -10,8 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireEventManagementAccess,
-  requireOrganisationMembershipById
+  requireEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import {
@@ -56,7 +55,7 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const { searchParams } = new URL(request.url);
     const organisationId = requireOrganisationId(searchParams.get("orgId"));
-    await requireOrganisationMembershipById(organisationId);
+    await requireEventManagementAccess(organisationId);
 
     const event = await prisma.event.findFirst({
       where: scopedByOrganisation(organisationId, { id: eventId }),

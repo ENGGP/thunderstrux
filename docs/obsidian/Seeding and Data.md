@@ -57,6 +57,14 @@ Users:
 - `empty@example.com`
 - `outsider@example.com`
 
+Organisation account users:
+
+- `engineering.org@example.com`
+- `arts.org@example.com`
+- `robotics.org@example.com`
+- `payments.lab@example.com`
+- `empty.org@example.com`
+
 ## Seeded Organisations
 
 - `Engineering Society` / `engineering-society`
@@ -64,6 +72,8 @@ Users:
 - `Robotics Club` / `robotics-club`
 - `Payments Lab` / `payments-lab`
 - `Empty Society` / `empty-society`
+
+Each seeded organisation is linked to its matching organisation account through `Organisation.accountUserId`.
 
 `Payments Lab` is seeded with:
 
@@ -76,6 +86,14 @@ stripeChargesEnabled = false
 This gives a stable local UI state for testing Stripe platform setup handling without creating a real Stripe account.
 
 ## Seeded Memberships
+
+Organisation account compatibility memberships:
+
+- `engineering.org@example.com` -> `Engineering Society` -> `org_owner`
+- `arts.org@example.com` -> `Arts Society` -> `org_owner`
+- `robotics.org@example.com` -> `Robotics Club` -> `org_owner`
+- `payments.lab@example.com` -> `Payments Lab` -> `org_owner`
+- `empty.org@example.com` -> `Empty Society` -> `org_owner`
 
 Engineering Society:
 
@@ -181,8 +199,8 @@ After seeding:
 
 Expected:
 
-- Engineering dashboard resolves for the owner.
+- Engineering dashboard resolves at `/dashboard` for `engineering.org@example.com`.
 - Engineering orders page shows paid and failed seeded order data.
 - Public homepage shows published events.
 - `user2@example.com` can see a seeded paid order/tickets in `/tickets`.
-- Payments Lab settings shows the `PLATFORM_NOT_READY` Stripe Connect state.
+- `payments.lab@example.com` can open `/dashboard/settings` and see the `PLATFORM_NOT_READY` Stripe Connect state.

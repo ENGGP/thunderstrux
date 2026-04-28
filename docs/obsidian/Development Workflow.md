@@ -162,6 +162,13 @@ Show app logs:
 docker compose logs -f app
 ```
 
+Apply the current schema and seed data after pulling schema changes:
+
+```bash
+docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm seed
+```
+
 ## Normal Change Workflow
 
 1. Edit source files on the host.
@@ -251,6 +258,42 @@ With the current `.next-build` production dist directory, Next may also add thes
 ```
 
 Those entries are expected after `pnpm build`.
+
+Do not include `.next/dev/types/**/*.ts` in production type checking. Stale dev route types can break Docker builds with errors from `.next/dev/types/routes.d.ts`. Current generated type includes should stay under `.next-build`.
+
+## Docker Access From Codex
+
+Docker Desktop may be healthy even if sandboxed commands report named-pipe or log-file access errors.
+
+Symptoms:
+
+```text
+permission denied while trying to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine
+unable to create a log file for docker-desktop.exe ... Access is denied
+```
+
+In this Codex environment, run Docker commands with escalated permissions when needed. Verified working checks:
+
+```bash
+docker desktop status
+docker info
+docker compose ps
+docker compose exec app pnpm build
+```
+
+If the app is started outside Docker, `DATABASE_URL=db:5432` will not resolve. Use the Docker app container for normal development.
+
+Host database connection string:
+
+```text
+postgresql://thunderstrux:thunderstrux@localhost:5432/thunderstrux?schema=public
+```
+
+Container database connection string:
+
+```text
+postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
+```
 
 ## When To Use `down -v`
 

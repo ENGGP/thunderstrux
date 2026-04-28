@@ -1,384 +1,182 @@
 # Current Handover
 
-This is the quickest context for the next coding session. Read this first, then [[Thunderstrux Codebase Map]].
+Read this first, then [[Thunderstrux Codebase Map]].
 
 ## Current State
 
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies with:
 
 - Auth.js credentials auth.
-- Organisation-scoped dashboards.
+- Two account roles: `member` and `organisation`.
+- Member profile onboarding, organisation search/join, public event browsing, ticket checkout, and `/tickets`.
+- Organisation accounts that own exactly one organisation through `Organisation.accountUserId`.
+- Organisation dashboard at `/dashboard`.
+- Organisation management routes at `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
+- Legacy `/dashboard/[orgSlug]/*` routes kept as redirects.
 - Event creation, editing, publishing, unpublishing, and deletion rules.
-- Public event discovery and ticket purchase.
 - Stripe Checkout with webhook-only fulfilment.
 - Stripe Connect Express onboarding with explicit lifecycle states.
 
-The latest work focused on Stripe Connect platform readiness, checkout/webhook reliability, dashboard event route stability, edit-event persistence, sold-ticket edit rules, expanded seed data, permissions, and docs alignment.
+For MVP, organisation committee members may share the one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
 
-## Recently Changed Areas
+## Latest Migration
 
-Stripe Connect and payments:
+The account role/platform structure migration is implemented.
 
-- `lib/stripe/connect.ts`
-- `app/api/stripe/connect/onboard/route.ts`
-- `app/api/stripe/connect/status/route.ts`
-- `app/api/stripe/connect/continue/route.ts`
-- `app/api/stripe/connect/disconnect/route.ts`
-- `app/api/stripe/connect/webhook/route.ts`
-- `app/api/payments/checkout/event/route.ts`
-- `app/api/payments/webhook/route.ts`
-- `components/settings/stripe-connect-settings.tsx`
-- `lib/client/api.ts`
+Changed areas:
 
-Dashboard events and permissions:
-
-- `components/events/events-list.tsx`
-- `components/events/create-event-form.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
-- `app/api/events/[eventId]/route.ts`
-- `lib/permissions/index.ts`
-- `lib/validators/events.ts`
+- `prisma/schema.prisma`
+- `prisma/migrations/20260428000000_account_role_groundwork/migration.sql`
+- `auth.ts`
+- `next-auth.d.ts`
+- `lib/auth/access.ts`
+- `app/api/auth/signup/route.ts`
+- `components/auth/signup-form.tsx`
+- `app/api/me/profile/route.ts`
+- `app/api/orgs/search/route.ts`
+- `app/api/orgs/[orgSlug]/join/route.ts`
+- `app/(dashboard)/dashboard/page.tsx`
+- `app/(dashboard)/dashboard/events/*`
+- `app/(dashboard)/dashboard/orders/page.tsx`
+- `app/(dashboard)/dashboard/settings/page.tsx`
+- `app/(dashboard)/dashboard/organisations/page.tsx`
+- `components/members/*`
 - `prisma/seed.mjs`
-
-Next runtime/build stability:
-
-- `package.json`
-- `scripts/clean-next-dev.mjs`
-- `next.config.ts`
-- `tsconfig.json`
-- `.gitignore`
-- `.dockerignore`
-
-Docs:
-
 - `docs/obsidian/*.md`
 
-## Stripe Connect State Model
+## Current Routes
 
-The backend and UI use:
+Public:
 
-```ts
-NOT_CONNECTED
-PLATFORM_NOT_READY
-CONNECTED_INCOMPLETE
-RESTRICTED
-READY
-ERROR
-```
+- `/`
+- `/events/[eventId]`
+- `/login`
+- `/signup`
+- `/success`
+- `/cancel`
 
-Mapping:
+Member:
 
-- `NOT_CONNECTED`: no local `stripeAccountId` and no remembered platform setup block.
-- `PLATFORM_NOT_READY`: Stripe platform profile/setup blocks `stripe.accounts.create({ type: "express" })` before an account exists.
-- `CONNECTED_INCOMPLETE`: a Stripe Express account exists, but `details_submitted = false`.
-- `RESTRICTED`: details are submitted, but `charges_enabled = false`.
-- `READY`: `charges_enabled = true`.
-- `ERROR`: an existing connected account could not be retrieved or synced.
+- `/dashboard`
+- `/dashboard/organisations`
+- `/tickets`
 
-Checkout still uses `isOrganisationStripeReady`, which requires:
+Organisation:
 
-- `stripeAccountId`
-- `stripeChargesEnabled`
+- `/dashboard`
+- `/dashboard/create`
+- `/dashboard/events`
+- `/dashboard/events/new`
+- `/dashboard/events/[eventId]/edit`
+- `/dashboard/orders`
+- `/dashboard/settings`
 
-`stripeAccountId` alone does not mean payments are allowed.
+Legacy compatibility:
 
-## Platform Not Ready
+- `/dashboard/[orgSlug]`
+- `/dashboard/[orgSlug]/events`
+- `/dashboard/[orgSlug]/events/new`
+- `/dashboard/[orgSlug]/events/[eventId]/edit`
+- `/dashboard/[orgSlug]/orders`
+- `/dashboard/[orgSlug]/settings`
 
-Stripe can reject Express account creation with messages such as:
+The legacy routes redirect for the owning organisation account and return not found when ownership does not match.
 
-```text
-Please review the responsibilities of managing losses...
-```
+## Seeded Logins
 
-or:
-
-```text
-You can only create new accounts if you've signed up for Connect...
-```
-
-Thunderstrux maps these to `PLATFORM_NOT_READY`, not generic `ERROR`.
-
-`POST /api/stripe/connect/onboard` returns:
-
-```json
-{
-  "state": "PLATFORM_NOT_READY",
-  "message": "Stripe platform setup incomplete",
-  "actionRequired": "Complete Stripe Connect platform profile",
-  "actionUrl": "https://dashboard.stripe.com/settings/connect/platform-profile"
-}
-```
-
-The settings UI shows `Open Stripe Platform Settings`, `Retry after completion`, and `Disconnect Stripe account`.
-
-## Disconnect And Reconnect Reality
-
-Disconnect is local-only.
-
-It clears these fields on `Organisation`:
-
-- `stripeAccountId = null`
-- `stripeAccountStatus = "NOT_CONNECTED"`
-- `stripeChargesEnabled = false`
-- `stripePayoutsEnabled = false`
-- `stripeDetailsSubmitted = false`
-
-It does not delete or detach the account in Stripe.
-
-After disconnecting, clicking `Connect Stripe Account` creates a new Express account unless the old `acct_...` id is manually restored in the DB. There is no UI for reconnecting a previously forgotten account.
-
-Manual restore pattern:
-
-```sql
-UPDATE "Organisation"
-SET
-  "stripeAccountId" = 'acct_old_account_id',
-  "stripeAccountStatus" = 'CONNECTED_INCOMPLETE',
-  "stripeChargesEnabled" = false,
-  "stripePayoutsEnabled" = false,
-  "stripeDetailsSubmitted" = false
-WHERE slug = 'engineering-society';
-```
-
-Then open settings and click `Refresh status`.
-
-## Stripe Connect UX
-
-Settings page:
+All seeded accounts use:
 
 ```text
-/dashboard/[orgSlug]/settings
+password123
 ```
 
-Controls by state:
+Organisation accounts:
 
-- `NOT_CONNECTED`: `Connect Stripe Account`
-- `PLATFORM_NOT_READY`: `Open Stripe Platform Settings`, `Retry after completion`, `Disconnect Stripe account`
-- `CONNECTED_INCOMPLETE`: `Continue onboarding`, `Open in Stripe dashboard`, `Refresh status`, `Disconnect Stripe account`
-- `RESTRICTED`: `Fix account`, requirements list if provided, `Open in Stripe dashboard`, `Refresh status`, `Disconnect Stripe account`
-- `READY`: readiness rows, `Open in Stripe dashboard`, `Refresh status`, `Disconnect Stripe account`
-- `ERROR`: retry/recovery actions and local disconnect
+- `engineering.org@example.com`
+- `arts.org@example.com`
+- `robotics.org@example.com`
+- `payments.lab@example.com`
+- `empty.org@example.com`
 
-## Webhook And Checkout Reliability
+Member/test accounts:
 
-Payment fulfilment is webhook-only:
+- `user1@example.com`
+- `user2@example.com`
+- `admin@example.com`
+- `event.manager@example.com`
+- `finance@example.com`
+- `content@example.com`
+- `member@example.com`
+- `empty@example.com`
+- `outsider@example.com`
 
-- `POST /api/payments/checkout/event` creates a local pending order, then creates a Stripe Checkout Session.
-- `POST /api/payments/webhook` handles `checkout.session.completed` and `checkout.session.expired`.
-- Completed checkout validates amount, currency, metadata, order status, and inventory inside a serializable Prisma transaction.
-- Duplicate completed delivery is idempotent: paid orders are not paid twice and tickets are not duplicated.
-- Expired checkout marks matching pending orders failed and does not restore inventory because inventory is not reserved before payment.
+Best smoke-test accounts:
 
-Known product tradeoff:
+- `engineering.org@example.com`: organisation dashboard with events/orders.
+- `payments.lab@example.com`: Stripe `PLATFORM_NOT_READY` settings state.
+- `user2@example.com`: member account with seeded ticket/order history.
+- `outsider@example.com`: member account with no joined organisations.
 
-- Inventory is not reserved at checkout creation. If multiple buyers race for the last ticket, Stripe may collect payment for a later order that fails reconciliation due to inventory. Refund management UI is not implemented yet.
+## Runtime And Database
 
-## Verification Already Run
+Use Docker for normal development. The app container resolves Postgres at `db:5432`; running Next directly on the Windows host with the Docker `.env` will not resolve `db`.
 
-Latest build passed:
+Database:
+
+```text
+PostgreSQL 16
+Database: thunderstrux
+User: thunderstrux
+Password: thunderstrux
+Container host: db
+Host machine: localhost
+Port: 5432
+Docker volume: thunderstrux_postgres_data
+Container path: /var/lib/postgresql/data
+```
+
+Useful commands:
 
 ```bash
+docker compose up -d
+docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm seed
+docker compose restart app
 docker compose exec app pnpm build
 ```
 
-Authenticated route/API validation was run against local Docker:
+Latest verification:
 
-- Disconnect returns `NOT_CONNECTED`.
-- Stripe platform setup block returns `409 PLATFORM_NOT_READY`.
-- Status endpoint returns `PLATFORM_NOT_READY` after that block.
-- Simulated invalid stored Stripe account returns `ERROR` and clears stale readiness flags.
-- Checkout is blocked when the organisation is not Stripe-ready.
-- Signed local webhook payloads validated completed, duplicate completed, late expired, and normal expired handling.
-- Expanded seed data was applied with `docker compose run --rm app pnpm seed`.
-- Seed verification counted 9 users, 5 organisations, 11 memberships, 8 events, 9 ticket types, 3 orders, and 2 tickets.
-- `payments-lab` is seeded with `stripeAccountStatus = PLATFORM_NOT_READY` and no `stripeAccountId`.
-- Dashboard event edit route 404 was debugged. Source href was correct, but `.next/dev/server/app-paths-manifest.json` was missing nested event routes until the dev/build output separation and explicit `events/layout.tsx` boundary were added.
-- Clearing `.next` and restarting the app made `/dashboard/engineering-society/events/[eventId]/edit` resolve correctly.
-- Authenticated event workflow audit passed: dashboard pages, edit page, event create, event GET, event PATCH, publish, unpublish, delete, public events, public detail, and tickets page.
-- Access boundary verified: `user2@example.com` receives 404 for a direct Engineering event edit route.
-- Stripe Connect permission change verified: `admin@example.com` can start Connect onboarding for Arts Society; `user2@example.com` as `member` still receives `403`.
-- Dashboard event edit route verified after a production build: `/dashboard/engineering-society/events/cmob9yf710002po0z781ua9qr/edit` and `/dashboard/engineering-society/events/cmoffx2ig0019ul1abb52zeii/edit` both returned `200`.
-- Final dev manifest contains `events/page`, `events/new/page`, and `events/[eventId]/edit/page`.
-- Event edit persistence verified:
-  - Sold-out event with `quantity = 0` now allows event-field edits.
-  - Draft event ticket sync verified update, create, and delete behavior.
-  - Direct Postgres queries confirmed changed `Event` and `TicketType` rows.
-- Sold-ticket edit rule verified:
-  - Sold ticket type `cmoffx2ij001bul1azvkr7ya4` on event `cmoffx2ig0019ul1abb52zeii` was renamed and repriced through `PATCH /api/events/[eventId]`.
-  - Quantity was changed from `0` to a positive value to reopen future availability.
-  - Existing order history kept historical `unitPrice = 1200` and `totalAmount = 1200` while the current `TicketType.price` changed to `4321`.
-  - Omitting the sold ticket type from `ticketTypes` preserved it instead of deleting it.
-  - Creating and then omitting an unsold ticket type deleted only the unsold type.
+- `docker compose exec app pnpm prisma:migrate` applied `20260428000000_account_role_groundwork`.
+- `docker compose exec app pnpm seed` completed.
+- `docker compose restart app` completed.
+- `http://localhost:3000/` returned `200 OK`.
+- `docker compose exec app pnpm build` passed.
 
-## Recent Bug Lessons
+## Next Route Stability
 
-### Edit Event 404
+Keep these route stability fixes:
 
-Symptom:
+- `scripts/clean-next-dev.mjs`
+- `next.config.ts` uses `.next-build` for production and `.next` for dev.
+- `.next-build/` ignored in `.gitignore` and `.dockerignore`.
+- `app/(dashboard)/dashboard/events/layout.tsx`
+- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
 
-```text
-/dashboard/engineering-society/events/[eventId]/edit
-```
+`tsconfig.json` should include generated production build types under `.next-build`, not stale `.next/dev` route types. Stale `.next/dev/types/routes.d.ts` can break `docker compose exec app pnpm build`.
 
-returned the standard Next.js not-found page even though:
+Current generated include entries:
 
-- `components/events/events-list.tsx` generated the correct href.
-- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx` existed.
-- production build manifests included the route.
-
-Root causes encountered:
-
-- The source route and href were correct, but the live dev route manifest omitted nested event routes.
-- `next dev --webpack` did not reliably register nested App Router routes in this setup.
-- Running `pnpm build` while dev was running could also confuse the shared `.next` output.
-- In the final failure, a clean Turbopack dev server still omitted child event routes until an explicit segment layout was added.
-
-Permanent fix now in code:
-
-- `package.json`: dev uses `node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`.
-- `scripts/clean-next-dev.mjs`: clears `.next/dev` before dev startup so stale app-paths manifests do not survive container restarts.
-- `next.config.ts`: production builds use `.next-build`; dev keeps `.next`.
-- `.gitignore`: ignores `.next-build/`.
-- `.dockerignore`: ignores `.next-build/`.
-- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`: explicit pass-through route boundary.
-
-Recovery command if a local manifest is corrupt:
-
-```bash
-docker compose down
-docker compose run --rm app sh -lc "rm -rf .next .next-build"
-docker compose up --build --force-recreate -d
-```
-
-The dev manifest must include:
-
-```text
-/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page
-/(dashboard)/dashboard/[orgSlug]/events/new/page
-/(dashboard)/dashboard/[orgSlug]/events/page
-```
-
-After the fix, `pnpm build` passed and the running edit route still returned `200`.
-
-### Edit Event Saves Did Not Persist
-
-Symptom:
-
-- User edited event fields or ticket types on `/dashboard/[orgSlug]/events/[eventId]/edit`.
-- Clicking `Save event` appeared to do nothing.
-- Reopening the edit page showed old data.
-
-Exact chain break:
-
-- The frontend submitted the correct `PATCH /api/events/[eventId]` URL and included ticket IDs.
-- The API route was hit, but validation rejected the body before auth and before Prisma update.
-- Root cause was `quantity = 0` on a sold-out ticket type. Sold-out inventory is valid, but the update schema reused the create rule requiring `quantity >= 1`.
-
-Fix:
-
-- `lib/validators/events.ts`: create ticket types still require `quantity >= 1`; update ticket types allow `quantity >= 0`.
-- `components/events/create-event-form.tsx`: client validation allows `0` only in edit mode.
-- `app/api/events/[eventId]/route.ts`: added trace logs for PATCH body, auth, ticket diff, and awaited Prisma update result.
-- Frontend now logs raw failed PATCH response text and calls `router.refresh()` after successful save.
-
-Verified:
-
-- Sold-out event `cmoffx2ig0019ul1abb52zeii` updated event fields while keeping its ticket quantity at `0`.
-- Draft event `cmoffx2i90013ul1aae9ck4qk` verified ticket update, new ticket create, and omitted ticket delete.
-- Direct Postgres queries confirmed persisted rows.
-
-### Sold Ticket Type Edits Failed
-
-Symptom:
-
-- Editing event details after purchases still failed with `400 Ticket type cannot be modified after sales`.
-- The form showed sold/issued ticket rows as locked and the backend rejected changes to sold ticket `name`, `price`, or `quantity`.
-
-Product rule now implemented:
-
-- Event details remain editable after purchases.
-- Ticket type `name`, `price`, and `quantity` remain editable after purchases for future purchases.
-- Ticket types with existing orders or issued tickets cannot be removed.
-- Existing orders keep historical `unitPrice` and `totalAmount`.
-- Existing tickets remain linked by `ticketTypeId`.
-
-Fix:
-
-- `components/events/create-event-form.tsx`: sold/issued ticket inputs are editable; only the Remove button is disabled.
-- `components/events/create-event-form.tsx`: edit PATCH payload includes edited sold ticket rows.
-- `app/api/events/[eventId]/route.ts`: removed the old sold-ticket modification rejection and the transaction skip for locked ticket updates.
-- `app/api/events/[eventId]/route.ts`: omitted sold/issued ticket rows are preserved; omitted unsold rows are deleted.
-
-Verified:
-
-- Sold ticket `name`, `price`, and `quantity` persisted after PATCH.
-- Existing order for that ticket type retained historical `unitPrice` and `totalAmount`.
-- Public event detail returned the updated current ticket type values for future purchases.
-- Event deletion protection still returned `400` for events with orders or tickets.
-
-### `next-env.d.ts` Churn
-
-`next-env.d.ts` can flip between:
-
-```ts
-import "./.next/dev/types/routes.d.ts";
-```
-
-and:
-
-```ts
-import "./.next/types/routes.d.ts";
-```
-
-or:
-
-```ts
-import "./.next-build/types/routes.d.ts";
-```
-
-depending on whether `next dev` or `next build` ran most recently. This is generated Next metadata, not application logic. Avoid treating that line as a meaningful product change.
-
-### Stripe Connect Permissions
-
-`canManageStripeConnect` now allows every organisation role except `member`:
-
-```ts
-return userRole !== "member";
-```
-
-This means `org_owner`, `org_admin`, `event_manager`, `finance_manager`, and `content_manager` can manage Connect. `member` cannot.
-
-## Not Yet Fully Verified
-
-Still requires manual Stripe-side setup:
-
-- Complete the Stripe platform profile for the account behind `STRIPE_SECRET_KEY`.
-- Create/complete a real Stripe Express account through hosted onboarding.
-- Make a real test-mode Checkout purchase from the public event page.
-- Forward real Checkout and Connect webhooks through Stripe CLI or Dashboard endpoint.
-
-## Runtime Notes
-
-Docker loads `.env` through `env_file`.
-
-After changing Stripe keys or webhook secrets, recreate containers:
-
-```bash
-docker compose down
-docker compose up --build -d
-```
-
-Verify required env names without printing secrets:
-
-```powershell
-docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
+```json
+".next-build/types/**/*.ts",
+".next-build/dev/types/**/*.ts"
 ```
 
 ## High-Risk Rules To Preserve
 
 - Do not trust frontend tenancy inputs.
-- Dashboard navigation belongs in `DashboardShell`.
+- Keep `Organisation` as the tenant/payment/event/order owner.
+- Member `OrganisationMember` rows must not grant organisation management access.
 - Payment fulfilment must remain webhook-driven.
 - Stripe onboarding must stay hosted by Stripe.
 - Do not collect sensitive onboarding or compliance data in Thunderstrux.

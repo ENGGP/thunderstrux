@@ -1,8 +1,29 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import {
+  OrganisationAccessError,
+  getCurrentOrganisationAccount,
+  requireAccountRole
+} from "@/lib/auth/access";
 import { CreateOrganisationForm } from "@/components/orgs/create-organisation-form";
 import { Card } from "@/components/ui/card";
 
-export default function CreateOrganisationPage() {
+export default async function CreateOrganisationPage() {
+  try {
+    await requireAccountRole("organisation");
+    const organisation = await getCurrentOrganisationAccount();
+
+    if (organisation) {
+      redirect("/dashboard");
+    }
+  } catch (error) {
+    if (error instanceof OrganisationAccessError) {
+      redirect("/dashboard");
+    }
+
+    throw error;
+  }
+
   return (
     <main className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-md gap-4">

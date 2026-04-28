@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { badRequest, internalError, validationError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { validateJson } from "@/lib/validators";
-import { credentialsSchema } from "@/lib/validators/auth";
+import { signupSchema } from "@/lib/validators/auth";
 
 function isPrismaErrorCode(error: unknown, code: string): boolean {
   return (
@@ -15,7 +15,7 @@ function isPrismaErrorCode(error: unknown, code: string): boolean {
 }
 
 export async function POST(request: Request) {
-  const validation = await validateJson(request, credentialsSchema);
+  const validation = await validateJson(request, signupSchema);
 
   if (!validation.success) {
     return validationError(validation.details);
@@ -26,11 +26,24 @@ export async function POST(request: Request) {
     const user = await prisma.user.create({
       data: {
         email: validation.data.email,
-        password
+        password,
+        accountRole: validation.data.accountRole,
+        firstName: validation.data.firstName || null,
+        lastName: validation.data.lastName || null,
+        onboardingCompletedAt:
+          validation.data.accountRole === "member" &&
+          validation.data.firstName &&
+          validation.data.lastName
+            ? new Date()
+            : null
       },
       select: {
         id: true,
         email: true,
+        accountRole: true,
+        firstName: true,
+        lastName: true,
+        onboardingCompletedAt: true,
         createdAt: true
       }
     });

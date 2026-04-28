@@ -38,7 +38,7 @@ function statusLabel(status: "pending" | "paid" | "failed") {
 }
 
 export default async function MyTicketsPage() {
-  let user: { id: string };
+  let user: Awaited<ReturnType<typeof requireAuthenticatedUser>>;
 
   try {
     user = await requireAuthenticatedUser();
@@ -48,6 +48,10 @@ export default async function MyTicketsPage() {
     }
 
     throw error;
+  }
+
+  if (user.accountRole === "organisation") {
+    redirect("/dashboard");
   }
 
   await failStalePreCheckoutOrders({ userId: user.id });

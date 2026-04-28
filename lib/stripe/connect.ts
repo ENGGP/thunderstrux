@@ -56,8 +56,8 @@ function stripeDashboardUrl(accountId: string, livemode = isLiveStripeMode()) {
   return `https://dashboard.stripe.com/${modeSegment}connect/accounts/${accountId}`;
 }
 
-function settingsUrl(orgSlug: string) {
-  return new URL(`/dashboard/${orgSlug}/settings`, getAppUrl()).toString();
+function settingsUrl() {
+  return new URL("/dashboard/settings", getAppUrl()).toString();
 }
 
 function mapAccountState(account: Stripe.Account): StripeConnectState {
@@ -236,8 +236,8 @@ export async function createOnboardingLink(accountId: string, orgSlug: string) {
   const stripe = getStripe();
   const accountLink = await stripe.accountLinks.create({
     account: accountId,
-    refresh_url: settingsUrl(orgSlug),
-    return_url: settingsUrl(orgSlug),
+    refresh_url: settingsUrl(),
+    return_url: settingsUrl(),
     type: "account_onboarding"
   });
 

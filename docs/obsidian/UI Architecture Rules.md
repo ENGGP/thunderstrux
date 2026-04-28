@@ -17,6 +17,29 @@ Current nav items:
 
 Do not duplicate these links in page files.
 
+## Account-Specific Dashboards
+
+`/dashboard` is role-aware.
+
+Member accounts:
+
+- See profile completion.
+- See joined organisations.
+- Can navigate to `/dashboard/organisations` to search and join organisations.
+- Can browse public events and view `/tickets`.
+- Must not see organisation management navigation.
+
+Organisation accounts:
+
+- See the organisation dashboard directly at `/dashboard`.
+- Use `DashboardShell`.
+- Use slugless management routes:
+  - `/dashboard/events`
+  - `/dashboard/orders`
+  - `/dashboard/settings`
+
+Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
+
 ## Global Header Rule
 
 Global top navigation belongs in:
@@ -41,54 +64,63 @@ Current header behavior:
 - Renders the fixed navbar
 - Offsets content below the header with `pt-16`
 
-`app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
+`app/(dashboard)/dashboard/page.tsx`
 
-- Resolves org membership and organisation name
-- Passes name and slug into `DashboardShell`
+- Branches by account role.
+- Renders member dashboard without `DashboardShell`.
+- Renders organisation dashboard inside `DashboardShell`.
 
 `components/layout/dashboard-shell.tsx`
 
-- Renders the fixed left sidebar below the global header
-- Renders the organisation heading row
-- Renders page children
+- Renders the fixed left sidebar below the global header.
+- Renders the organisation heading row.
+- Renders page children.
+- Uses `/dashboard` as the base path for organisation management.
 
 ## Page Responsibilities
 
 `/dashboard`
 
-- Renders organisation selection and onboarding
+- Member: profile, joined organisations, search/join entry point, public events, tickets.
+- Organisation: organisation overview, upcoming events, recent orders, past-month revenue summary.
 
-`/dashboard/[orgSlug]`
+`/dashboard/events`
 
-- Renders overview content and `View events`
-- Must not render `Open settings`
+- Renders event list content.
 
-`/dashboard/[orgSlug]/events`
+`/dashboard/events/new`
 
-- Renders event list content
+- Renders event creation content.
 
-`/dashboard/[orgSlug]/orders`
+`/dashboard/events/[eventId]/edit`
 
-- Renders organisation-scoped order review for finance-capable roles
+- Renders event editing content.
 
-`/dashboard/[orgSlug]/settings`
+`/dashboard/orders`
+
+- Renders organisation-scoped order review for organisation accounts.
+
+`/dashboard/settings`
 
 - Renders Stripe Connect settings.
 - State-specific Connect controls are allowed here because they are settings content, not dashboard navigation.
 
+`/dashboard/organisations`
+
+- Renders member organisation search/join content.
+
 ## Current Button Rules
 
-`/dashboard`
+Organisation dashboard:
 
-- Shows `New organisation`
-- Organisation cards show `Open dashboard`
-- Organisation cards do not show `Settings`
+- Shows `New event`.
+- Sidebar shows `Dashboard`, `Events`, `Orders`, `Settings`.
+- Page content may link to event/order drilldowns.
 
-`/dashboard/[orgSlug]`
+Member dashboard:
 
-- Sidebar shows `Dashboard`, `Events`, `Orders`, `Settings`
-- Page content shows `View events`
-- Page content must not show `Open settings`
+- Shows `Search organisations`, `Browse`, and `/tickets` entry points.
+- Must not show event-management, order-management, or settings controls.
 
 ## Current Heading Rules
 

@@ -259,10 +259,6 @@ export function EventsList({
                 {state.events.map((event) => {
                   const disabledReason = publishDisabledReason(event);
 
-                  if (process.env.NODE_ENV === "development") {
-                    console.log("EDIT EVENT ID:", event.id);
-                  }
-
                   return (
                     <tr
                       key={event.id}

@@ -139,6 +139,8 @@ Useful commands:
 
 ```bash
 docker compose up -d
+docker compose exec app pnpm dev:doctor
+docker compose exec app pnpm dev:webpack
 docker compose exec app pnpm prisma:migrate
 docker compose exec app pnpm seed
 docker compose restart app
@@ -166,7 +168,13 @@ Keep these route stability fixes:
 
 `tsconfig.json` should include generated production build types under `.next-build`, not stale `.next/dev` route types. Stale `.next/dev/types/routes.d.ts` can break `docker compose exec app pnpm build`.
 
-`pnpm build` now runs `scripts/prepare-next-build.mjs` first so build verification strips stale `.next` dev type includes before `next build`.
+`pnpm build` runs `scripts/prepare-next-build.mjs` and `pnpm prisma:generate` before `next build`, so build verification strips stale `.next` dev type includes and regenerates Prisma Client from the current schema.
+
+`pnpm dev` blocks accidental host `next dev` when the project `.env` points at `db:5432`. The underlying guard script only warns by default, so it does not block Docker startup or build scripts.
+
+Use `pnpm dev:webpack` inside Docker if Turbopack hot reload or route manifest generation becomes unstable.
+
+Use `pnpm dev:doctor` for a read-only check of stale `.next/dev` metadata, missing dev manifests, stale `tsconfig` includes, and localhost reachability.
 
 Current generated include entries:
 

@@ -52,7 +52,13 @@ postgres_data:/var/lib/postgresql/data
 Current `package.json` dev script:
 
 ```json
-"dev": "node scripts/assert-docker-runtime.mjs && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0"
+"dev": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0"
+```
+
+Fallback dev script:
+
+```json
+"dev:webpack": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --webpack --hostname 0.0.0.0"
 ```
 
 The app container also sets:
@@ -68,10 +74,11 @@ This is intentional.
 Reason:
 
 - Next 16 production builds use Turbopack.
-- `scripts/assert-docker-runtime.mjs` prevents accidental host `next dev` when `DATABASE_URL` uses the Docker-only `db:5432` hostname.
+- `scripts/assert-docker-runtime.mjs` warns by default, but blocks `pnpm dev` outside Docker when `DATABASE_URL` uses the Docker-only `db:5432` hostname.
 - `scripts/clean-next-dev.mjs` clears `.next/dev` before startup so stale dev route manifests do not survive container restarts.
-- Webpack dev mode failed to reliably register nested App Router event routes in this Docker/Windows/OneDrive setup.
-- Turbopack dev mode plus polling is the current route-stable configuration.
+- Turbopack dev mode plus polling is the default route-stable configuration.
+- `pnpm dev:webpack` is kept as a safe fallback when Turbopack hot reload or route manifest generation appears stuck.
+- `pnpm dev:doctor` prints a read-only report for stale `.next/dev` metadata, missing dev manifests, stale `tsconfig` includes, and localhost reachability.
 
 ## Build Output Separation
 
@@ -154,10 +161,10 @@ docker compose exec app pnpm build
 The build script runs:
 
 ```text
-node scripts/prepare-next-build.mjs && next build
+node scripts/prepare-next-build.mjs && pnpm prisma:generate && next build
 ```
 
-This strips `.next/types/**/*.ts` / `.next/dev/types/**/*.ts` from `tsconfig.json` before production type checking.
+This strips `.next/types/**/*.ts` / `.next/dev/types/**/*.ts` from `tsconfig.json`, regenerates Prisma Client from the current schema, then runs production type checking and build.
 
 Restart only the app container:
 
@@ -169,6 +176,12 @@ Show app logs:
 
 ```bash
 docker compose logs -f app
+```
+
+Check dev environment health without changing files:
+
+```bash
+docker compose exec app pnpm dev:doctor
 ```
 
 Host-facing package helpers:
@@ -240,6 +253,8 @@ docker compose down
 docker compose run --rm app sh -lc "rm -rf .next .next-build"
 docker compose up --build --force-recreate -d
 ```
+
+Prefer clearing `.next/dev` first through the normal dev startup path. `scripts/clean-next-dev.mjs` has a narrow path guard and only removes `.next/dev`; it never removes `.next-build`.
 
 If restart still does not pick up the change, then recreate containers:
 

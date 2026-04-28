@@ -34,7 +34,9 @@ Observed issue:
 
 Current mitigation:
 
-- `pnpm dev` runs `node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`
+- `pnpm dev` runs `node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`
+- `pnpm dev:webpack` runs the same startup checks with webpack as a fallback if Turbopack becomes unstable.
+- `pnpm dev:doctor` prints a read-only report for stale dev metadata and localhost reachability.
 - `scripts/clean-next-dev.mjs` clears `.next/dev` before dev startup.
 - Docker enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`
 - `next.config.ts` sends production build output to `.next-build` so `pnpm build` does not clobber live dev output under `.next`
@@ -83,7 +85,8 @@ Permanent fixes now in code:
 
 - `app/(dashboard)/dashboard/events/layout.tsx` exists as an explicit pass-through route boundary for current nested event pages.
 - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx` remains for legacy redirect route stability.
-- `package.json` uses `node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`.
+- `package.json` uses `node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`.
+- `package.json` also includes `pnpm dev:webpack` for a Docker-safe webpack fallback and `pnpm dev:doctor` for read-only diagnosis.
 - `scripts/clean-next-dev.mjs` clears `.next/dev` so restarting the app cannot reuse a stale app-paths manifest.
 - `next.config.ts` uses `.next-build` for production builds and `.next` for dev output.
 - `.gitignore` ignores both `.next/` and `.next-build/`.

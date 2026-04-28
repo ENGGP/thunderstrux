@@ -271,9 +271,6 @@ export function CreateEventForm({
     setErrors([]);
     setSuccessMessage(null);
 
-    const formData = { ...form, ticketTypes };
-    console.log("FORM SUBMIT DATA:", formData);
-
     const clientErrors = [
       ...validateForm(form),
       ...validateTicketTypes(ticketTypes, mode)
@@ -297,8 +294,6 @@ export function CreateEventForm({
       };
       const url = mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events";
       const method = mode === "edit" && eventId ? "PATCH" : "POST";
-
-      console.log("PATCH PAYLOAD:", payload);
 
       const response = await fetch(url, {
         method,

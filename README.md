@@ -58,6 +58,8 @@ postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
 ```bash
 docker compose up -d
 docker compose restart app
+docker compose exec app pnpm dev:doctor
+docker compose exec app pnpm dev:webpack
 docker compose exec app pnpm prisma:migrate
 docker compose exec app pnpm prisma:generate
 docker compose exec app pnpm seed
@@ -156,10 +158,14 @@ Legacy compatibility redirects:
 - Dev output writes to `.next`.
 - Production build output writes to `.next-build`.
 - `pnpm dev` clears `.next/dev` before startup.
-- `pnpm build` runs `scripts/prepare-next-build.mjs` before `next build`.
+- `pnpm dev` uses Turbopack by default.
+- `pnpm dev:webpack` is the safe fallback if Turbopack route manifests or hot reload become unstable.
+- `pnpm dev:doctor` prints a read-only report for stuck dev-server symptoms and stale generated metadata.
+- `pnpm build` runs `scripts/prepare-next-build.mjs` and `prisma generate` before `next build`.
 - `tsconfig.json` must not include `.next/dev/types/**/*.ts`; stale dev route types can break production builds.
 - The current route guard uses `proxy.ts`, not deprecated `middleware.ts`.
 - Turbopack root is pinned in `next.config.ts` so unrelated lockfiles outside the repo do not affect workspace detection.
+- `scripts/assert-docker-runtime.mjs` warns by default, but blocks `pnpm dev` outside Docker when `.env` points at `db:5432`.
 
 ## Project Structure
 

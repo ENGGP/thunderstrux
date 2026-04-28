@@ -90,9 +90,6 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   const { eventId } = await context.params;
-  console.log("PATCH EVENT HIT:", eventId);
-  const requestBody = await request.clone().json().catch(() => null);
-  console.log("REQUEST BODY:", requestBody);
 
   const validation = await validateJson(request, updateEventSchema);
 
@@ -103,7 +100,6 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireEventManagementAccess(organisationId);
-    console.log("AUTH PASSED");
 
     const existingEvent = await prisma.event.findFirst({
       where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -131,8 +127,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const submittedTicketTypes = validation.data.ticketTypes;
-    console.log("EXISTING TICKETS:", existingEvent.ticketTypes);
-    console.log("INCOMING TICKETS:", submittedTicketTypes);
 
     const isLockedTicketType = (ticketType: (typeof existingEvent.ticketTypes)[number]) =>
       ticketType._count.orders > 0 || ticketType._count.tickets > 0;
@@ -170,8 +164,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
 
     const event = await prisma.$transaction(async (transaction) => {
-      console.log("UPDATING EVENT:", eventId);
-      const updatedEvent = await transaction.event.update({
+      await transaction.event.update({
         where: { id: eventId },
         data: {
           title: validation.data.title,
@@ -181,7 +174,6 @@ export async function PATCH(request: Request, context: RouteContext) {
           location: validation.data.location
         }
       });
-      console.log("UPDATED EVENT RESULT:", updatedEvent);
 
       const removedTicketTypeIds = removedTicketTypes.map(
         (ticketType) => ticketType.id

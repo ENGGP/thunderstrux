@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
-import { ClientApiError, fetchJson } from "@/lib/client/api";
+import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type SearchOrganisation = {
   id: string;
@@ -31,9 +31,10 @@ export function OrganisationSearch() {
       setOrganisations(data.organisations);
     } catch (searchError) {
       setError(
-        searchError instanceof ClientApiError
-          ? searchError.message
-          : "Unable to search organisations."
+        getClientErrorMessage(
+          searchError,
+          "Unable to search organisations."
+        )
       );
     } finally {
       setIsLoading(false);
@@ -66,9 +67,7 @@ export function OrganisationSearch() {
       setMessage(`Joined ${organisation.name}.`);
     } catch (joinError) {
       setError(
-        joinError instanceof ClientApiError
-          ? joinError.message
-          : "Unable to join organisation."
+        getClientErrorMessage(joinError, "Unable to join organisation.")
       );
     } finally {
       setJoiningSlug(null);

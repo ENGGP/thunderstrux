@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
-import { ClientApiError, fetchJson } from "@/lib/client/api";
+import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type CreateOrganisationResponse = {
   organisation: {
@@ -19,15 +19,17 @@ export function CreateOrganisationForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSuccessMessage(null);
     setIsSubmitting(true);
 
     try {
-      const data = await fetchJson<CreateOrganisationResponse>("/api/orgs", {
+      await fetchJson<CreateOrganisationResponse>("/api/orgs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -35,14 +37,16 @@ export function CreateOrganisationForm() {
         body: JSON.stringify({ name })
       });
 
+      setSuccessMessage("Organisation created. Redirecting...");
       router.push("/dashboard");
       router.refresh();
     } catch (createError) {
-      if (createError instanceof ClientApiError) {
-        setError(createError.message);
-      } else {
-        setError("Unable to create organisation. Please try again.");
-      }
+      setError(
+        getClientErrorMessage(
+          createError,
+          "Unable to create organisation. Please try again."
+        )
+      );
 
       setIsSubmitting(false);
     }
@@ -53,6 +57,11 @@ export function CreateOrganisationForm() {
       {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+      {successMessage ? (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          {successMessage}
         </div>
       ) : null}
 

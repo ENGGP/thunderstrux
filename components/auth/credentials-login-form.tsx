@@ -14,26 +14,34 @@ export function CredentialsLoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSuccessMessage(null);
     setIsSubmitting(true);
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false
-    });
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false
+      });
 
-    if (result?.error) {
-      setError("Invalid email or password.");
+      if (result?.error) {
+        setError("Invalid email or password.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      setSuccessMessage("Signed in. Redirecting...");
+      window.location.href = callbackUrl;
+    } catch {
+      setError("Unable to sign in. Please try again.");
       setIsSubmitting(false);
-      return;
     }
-
-    window.location.href = callbackUrl;
   }
 
   return (
@@ -41,6 +49,11 @@ export function CredentialsLoginForm({
       {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+      {successMessage ? (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          {successMessage}
         </div>
       ) : null}
 

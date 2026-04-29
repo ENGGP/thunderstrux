@@ -25,6 +25,50 @@ export class ClientApiError extends Error {
   }
 }
 
+function isSafeServerMessage(message: string) {
+  const trimmed = message.trim();
+
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 200 &&
+    !/internal server error/i.test(trimmed)
+  );
+}
+
+export function getClientErrorMessage(
+  error: unknown,
+  fallback: string,
+  overrides: Record<string, string> = {}
+) {
+  if (error instanceof ClientApiError) {
+    const serverMessage =
+      error.payload?.error?.details?.[0]?.message ??
+      error.payload?.error?.message ??
+      error.payload?.message ??
+      error.message;
+
+    if (serverMessage && overrides[serverMessage]) {
+      return overrides[serverMessage];
+    }
+
+    if (serverMessage && isSafeServerMessage(serverMessage)) {
+      return serverMessage;
+    }
+
+    return fallback;
+  }
+
+  if (error instanceof TypeError) {
+    return "Network error. Check your connection and try again.";
+  }
+
+  if (error instanceof Error && isSafeServerMessage(error.message)) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 async function parseJsonSafely(response: Response): Promise<unknown> {
   const text = await response.text();
 

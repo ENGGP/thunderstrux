@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
-import { ClientApiError, fetchJson } from "@/lib/client/api";
+import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type SignupResponse = {
   user: {
@@ -28,11 +28,13 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setSuccessMessage(null);
     setIsSubmitting(true);
 
     try {
@@ -62,13 +64,15 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
         return;
       }
 
+      setSuccessMessage("Account created. Redirecting...");
       window.location.href = callbackUrl;
     } catch (signupError) {
-      if (signupError instanceof ClientApiError) {
-        setError(signupError.message);
-      } else {
-        setError("Could not create account. Please try again.");
-      }
+      setError(
+        getClientErrorMessage(
+          signupError,
+          "Could not create account. Please try again."
+        )
+      );
       setIsSubmitting(false);
     }
   }
@@ -78,6 +82,11 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
       {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+      {successMessage ? (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          {successMessage}
         </div>
       ) : null}
 

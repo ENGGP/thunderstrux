@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
-import { fetchJson } from "@/lib/client/api";
+import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type TicketType = {
   id: string;
@@ -90,15 +90,15 @@ export function PublicTicketPurchase({
       window.location.href = data.url;
     } catch (checkoutError) {
       setActiveTicketTypeId(null);
-      const message =
-        checkoutError instanceof Error
-          ? checkoutError.message
-          : "Unable to start checkout. Please try again.";
-
       setError(
-        message === "Stripe not connected"
-          ? "The organiser must complete Stripe onboarding before ticket sales can start."
-          : message
+        getClientErrorMessage(
+          checkoutError,
+          "Unable to start checkout. Please try again.",
+          {
+            "Stripe not connected":
+              "The organiser must complete Stripe onboarding before ticket sales can start."
+          }
+        )
       );
     }
   }

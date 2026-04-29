@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TextArea, TextInput } from "@/components/ui/input";
-import { ClientApiError } from "@/lib/client/api";
+import { ClientApiError, getClientErrorMessage } from "@/lib/client/api";
 import {
   fetchOrganisationBySlug,
   type Organisation
@@ -305,7 +305,6 @@ export function CreateEventForm({
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(errorText);
 
         let payload: unknown = null;
         try {
@@ -338,10 +337,12 @@ export function CreateEventForm({
           ? details
           : [
               {
-                message:
+                message: getClientErrorMessage(
+                  error,
                   mode === "edit"
-                    ? "Unable to update event"
-                    : "Unable to create event"
+                    ? "Unable to update event. Please try again."
+                    : "Unable to create event. Please try again."
+                )
               }
             ]
       );

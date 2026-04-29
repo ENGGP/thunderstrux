@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
-import { ClientApiError, fetchJson } from "@/lib/client/api";
+import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type Profile = {
   firstName: string;
@@ -38,13 +38,13 @@ export function MemberProfileForm({
         body: JSON.stringify(profile)
       });
 
-      setMessage("Profile saved.");
-      window.location.reload();
+      setMessage("Profile saved. Refreshing...");
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     } catch (profileError) {
       setError(
-        profileError instanceof ClientApiError
-          ? profileError.message
-          : "Unable to save profile."
+        getClientErrorMessage(profileError, "Unable to save profile.")
       );
     } finally {
       setIsSubmitting(false);

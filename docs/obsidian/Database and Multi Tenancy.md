@@ -16,6 +16,7 @@ Organisation account User
             -> TicketType
        -> Order
        -> Ticket
+       -> TicketReservation
 
 Member account User
   -> OrganisationMember
@@ -35,12 +36,14 @@ Main models in `prisma/schema.prisma`:
 - `TicketType`
 - `Order`
 - `Ticket`
+- `TicketReservation`
 
 Enums:
 
 - `OrganisationRole`
 - `EventStatus`
 - `OrderStatus`
+- `ReservationStatus`
 
 ## Users
 
@@ -170,8 +173,9 @@ Fields:
 Current rule:
 
 - quantity must be positive on creation
+- quantity means remaining inventory, not original capacity
 
-## Orders and Tickets
+## Orders, Reservations, And Tickets
 
 `Order` is the checkout and reconciliation record.
 
@@ -186,6 +190,37 @@ Important fields:
 - `unitPrice`
 - `totalAmount`
 - `stripeSessionId` unique
+
+`TicketReservation` is the temporary soft hold created before redirecting to Stripe Checkout.
+
+Important fields:
+
+- `orderId` unique
+- `organisationId`
+- `eventId`
+- `ticketTypeId`
+- `userId`
+- `quantity`
+- `status`
+- `expiresAt`
+- `confirmedAt`
+- `releasedAt`
+- `releaseReason`
+
+Reservation statuses:
+
+- `active`
+- `confirmed`
+- `released`
+- `expired`
+
+Rules:
+
+- active reservations reduce checkout availability
+- reservation expiry is 30 minutes
+- expired reservations do not reduce availability
+- Stripe Checkout `expires_at` matches the reservation expiry
+- paid webhook reconciliation confirms reservations atomically with order payment, inventory decrement, and ticket creation
 
 `Ticket` is the issued unit created after a paid webhook reconciliation.
 
@@ -204,11 +239,13 @@ Common patterns:
 
 - `requireCurrentOrganisationAccount()`
 - `getCurrentOrganisationAccount()`
-- `requireOrganisationMembershipBySlug(orgSlug)`
-- `requireOrganisationMembershipById(organisationId)`
-- `requireEventManagementAccess(organisationId)`
+- `requireOrganisationAccessBySlug(orgSlug)`
+- `requireOrganisationAccessById(organisationId)`
+- `requireOrganisationEventManagementAccess(organisationId)`
+- `requireOrganisationFinanceAccess(organisationId)`
+- `requireOrganisationStripeConnectAccess(organisationId)`
 
-`requireOrganisationMembershipBySlug` and `requireOrganisationMembershipById` still exist for compatibility. Organisation-management decisions should prefer organisation-account ownership, not member join rows.
+Organisation-management decisions are based on organisation-account ownership, not member join rows.
 
 ## Organisation Scope Helpers
 

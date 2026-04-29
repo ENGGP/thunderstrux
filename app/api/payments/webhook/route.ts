@@ -7,6 +7,12 @@ import {
   getStripeWebhookSecret,
   StripeConfigurationError
 } from "@/lib/stripe";
+import {
+  confirmReservationForOrder,
+  expireReservationForOrder,
+  findActiveReservationForOrder,
+  releaseReservationForOrder
+} from "@/lib/tickets/reservations";
 
 const expectedCurrency = "aud";
 const maxTransactionAttempts = 3;
@@ -251,6 +257,8 @@ export async function POST(request: Request) {
                 failureReason: reason
               }
             });
+
+            await releaseReservationForOrder(tx, localOrder.id, reason);
           }
 
           if (
@@ -311,6 +319,56 @@ export async function POST(request: Request) {
             return;
           }
 
+          const now = new Date();
+          const activeReservation = await findActiveReservationForOrder(
+            tx,
+            localOrder.id,
+            now
+          );
+
+          if (!activeReservation) {
+            const existingReservation = await tx.ticketReservation.findUnique({
+              where: { orderId: localOrder.id },
+              select: {
+                id: true,
+                status: true,
+                expiresAt: true
+              }
+            });
+            const failureReason = existingReservation
+              ? "Ticket reservation expired before payment completed"
+              : "Ticket reservation not found for paid checkout session";
+
+            reconciliationError(failureReason, {
+              orderId: localOrder.id,
+              stripeSessionId: session.id,
+              reservationStatus: existingReservation?.status,
+              reservationExpiresAt: existingReservation?.expiresAt
+            });
+
+            await tx.order.update({
+              where: { id: localOrder.id },
+              data: {
+                status: "failed",
+                stripeSessionId: localOrder.stripeSessionId ?? session.id,
+                paidAt: null,
+                failedAt: now,
+                failureReason
+              }
+            });
+
+            await expireReservationForOrder(tx, localOrder.id, failureReason, now);
+            return;
+          }
+
+          if (activeReservation.quantity !== localOrder.quantity) {
+            await failOrder("Ticket reservation quantity does not match order", {
+              reservationQuantity: activeReservation.quantity,
+              orderQuantity: localOrder.quantity
+            });
+            return;
+          }
+
           console.info("Stripe checkout reconciliation validation passed", {
             orderId: localOrder.id,
             stripeSessionId: session.id,
@@ -318,7 +376,6 @@ export async function POST(request: Request) {
             totalAmount: localOrder.totalAmount
           });
 
-          const paidAt = new Date();
           const claimedOrder = await tx.order.updateMany({
             where: {
               id: localOrder.id,
@@ -327,13 +384,41 @@ export async function POST(request: Request) {
             data: {
               status: "paid",
               stripeSessionId: session.id,
-              paidAt,
+              paidAt: now,
               failedAt: null,
               failureReason: null
             }
           });
 
           if (claimedOrder.count === 0) {
+            return;
+          }
+
+          const confirmedReservation = await confirmReservationForOrder(
+            tx,
+            localOrder.id,
+            now
+          );
+
+          if (confirmedReservation.count === 0) {
+            await tx.order.update({
+              where: { id: localOrder.id },
+              data: {
+                status: "failed",
+                stripeSessionId: session.id,
+                paidAt: null,
+                failedAt: now,
+                failureReason:
+                  "Ticket reservation could not be confirmed for paid checkout session"
+              }
+            });
+            reconciliationError(
+              "Ticket reservation could not be confirmed for paid checkout session",
+              {
+                orderId: localOrder.id,
+                stripeSessionId: session.id
+              }
+            );
             return;
           }
 
@@ -362,6 +447,25 @@ export async function POST(request: Request) {
                 failedAt: new Date(),
                 failureReason:
                   "Insufficient ticket inventory for paid checkout session"
+              }
+            });
+            await releaseReservationForOrder(
+              tx,
+              localOrder.id,
+              "Insufficient ticket inventory for paid checkout session",
+              now
+            );
+            await tx.ticketReservation.updateMany({
+              where: {
+                orderId: localOrder.id,
+                status: "confirmed"
+              },
+              data: {
+                status: "released",
+                releasedAt: now,
+                releaseReason:
+                  "Insufficient ticket inventory for paid checkout session",
+                confirmedAt: null
               }
             });
 
@@ -462,15 +566,23 @@ export async function POST(request: Request) {
         return;
       }
 
+      const now = new Date();
+
       await tx.order.update({
         where: { id: order.id },
         data: {
           status: "failed",
           stripeSessionId: order.stripeSessionId ?? session.id,
-          failedAt: new Date(),
+          failedAt: now,
           failureReason: "Stripe Checkout Session expired before payment"
         }
       });
+      await releaseReservationForOrder(
+        tx,
+        order.id,
+        "Stripe Checkout Session expired before payment",
+        now
+      );
 
       console.info("Stripe checkout expired order marked failed", {
         orderId: order.id,

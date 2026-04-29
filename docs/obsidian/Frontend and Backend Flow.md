@@ -356,7 +356,7 @@ Flow:
 
 ```text
 Page resolves current organisation account
-  -> requireFinanceAccess(organisation.id)
+  -> requireOrganisationFinanceAccess(organisation.id)
   -> query orders scoped to organisation.id
   -> render buyer, event, ticket type, quantity, total, status, and paidAt
 ```

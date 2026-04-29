@@ -283,6 +283,9 @@ Rules:
 - Organisation is resolved server-side from the event.
 - Organisation must be Stripe-ready.
 - Creates a local pending `Order`.
+- Creates an active `TicketReservation` after checkout preconditions pass.
+- Uses 30-minute reservation expiry and sets Stripe Checkout `expires_at` to match.
+- Validates availability as `TicketType.quantity - activeReservedQuantity`.
 
 ### `POST /api/payments/webhook`
 
@@ -298,6 +301,7 @@ Responsibilities:
 - Verify signature.
 - Reconcile against local order.
 - Reduce inventory.
+- Confirm or release the related reservation.
 - Create tickets.
 - Mark order paid.
 - Store `paidAt` on success.

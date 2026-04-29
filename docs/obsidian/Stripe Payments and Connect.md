@@ -6,6 +6,7 @@
 - Do not fulfil from frontend redirects
 - Fulfil only from Stripe webhooks
 - Keep a local `Order` row before redirecting to Stripe
+- Create a temporary ticket reservation before redirecting to Stripe
 - Reconcile amount, currency, and metadata before marking paid
 - Reduce inventory and issue tickets atomically
 
@@ -25,6 +26,7 @@ Core files:
 - `lib/stripe/index.ts`
 - `lib/stripe/connect.ts`
 - `lib/stripe/fees.ts`
+- `lib/tickets/reservations.ts`
 - `components/settings/stripe-connect-settings.tsx`
 - `components/events/public-ticket-purchase.tsx`
 
@@ -34,9 +36,9 @@ Core files:
 Public event page
   -> user selects ticket type + quantity
   -> POST /api/payments/checkout/event
-  -> API validates auth, event, ticketType, quantity, inventory, Stripe readiness
-  -> local pending Order created
-  -> Stripe Checkout Session created
+  -> API validates auth, event, ticketType, quantity, amount, Stripe readiness
+  -> serializable transaction creates local pending Order and active TicketReservation
+  -> Stripe Checkout Session created with expires_at matching reservation expiry
   -> Checkout Session metadata includes orderId, eventId, organisationId, ticketTypeId, and quantity
   -> local Order is updated with stripeSessionId
   -> browser redirected to Stripe
@@ -48,6 +50,35 @@ Current implementation details:
 - Payment flow uses destination charges
 - Checkout is restricted to card payments so `checkout.session.completed` can require `payment_status = paid`
 - Platform fee is calculated by `calculatePlatformFee(totalAmount)`
+- Reservation window is 30 minutes because Stripe Checkout `expires_at` must be at least 30 minutes after session creation
+- `TicketType.quantity` remains remaining inventory; reservations are subtracted from it during checkout availability checks
+
+## Ticket Reservations
+
+`TicketReservation` is a soft hold linked one-to-one with an `Order`.
+
+Statuses:
+
+- `active`: counts against checkout availability until `expiresAt`
+- `confirmed`: paid webhook completed and tickets were issued
+- `released`: checkout failed or Stripe Checkout expired before payment
+- `expired`: local hold expired before payment completed
+
+Availability:
+
+```text
+availableNow = TicketType.quantity - activeReservedQuantity
+```
+
+Checkout creates a reservation only after these preconditions pass:
+
+- authenticated member account
+- published event
+- ticket type belongs to the event
+- positive amount
+- organisation Stripe account present and charges-enabled
+
+If Stripe session creation fails after a reservation is created, the order is marked `failed` and the reservation is released.
 
 ## Required Conditions For Checkout
 
@@ -283,6 +314,7 @@ Reconciliation checks:
 - local order exists by `stripeSessionId`
 - Stripe metadata `orderId` resolves the local order
 - local order is still `pending`
+- matching active, non-expired reservation exists
 - session amount matches local total
 - currency matches expected `aud`
 - Stripe metadata matches local order
@@ -294,6 +326,7 @@ On success:
 - order marked `paid`
 - `paidAt` timestamp stored
 - ticket type inventory decremented
+- reservation marked `confirmed`
 - one `Ticket` row created per purchased ticket
 
 On reconciliation failure:
@@ -307,9 +340,16 @@ Expired Checkout sessions:
 - The webhook resolves the local order with `metadata.orderId` first.
 - If `metadata.orderId` is missing or stale, it falls back to `stripeSessionId`.
 - If the order is still `pending`, it is marked `failed`.
+- Any active reservation for the order is marked `released`.
 - If the order is already `paid`, the webhook logs the idempotency path and does nothing.
 - If the order is already `failed`, the webhook logs the idempotency path and does nothing.
-- No inventory is restored because Thunderstrux does not reserve inventory at checkout creation time. Inventory is decremented only after `checkout.session.completed` passes reconciliation.
+
+Completed Checkout sessions with missing or expired local reservations:
+
+- order is marked `failed`
+- `failureReason` explains whether the reservation was missing or expired
+- tickets are not issued
+- inventory is not decremented
 
 ## Stale Pending Orders
 
@@ -324,10 +364,24 @@ Design choice:
 - These rows represent checkout creation that did not reach Stripe.
 - Pending orders that already have a `stripeSessionId` are not expired by the local timer because a real Stripe Checkout Session may still complete and must be resolved by webhook delivery.
 - Cleanup runs opportunistically when starting checkout, viewing `/tickets`, or viewing organiser orders.
+- Active reservations attached to stale pre-Checkout orders are released by the same cleanup.
 
 Transaction:
 
 - Prisma transaction isolation level is `Serializable`
+
+## Smoke Tests
+
+`scripts/smoke-test.mjs` covers:
+
+- organisation/member auth and dashboard access
+- event create/edit and ticket editing
+- member denial from management APIs
+- Stripe-not-ready checkout creates no reservation
+- active reservation reduces availability
+- expired reservation is ignored
+- reservation expiry window is exactly 30 minutes
+- order `unitPrice` and `totalAmount` history remains unchanged
 
 ## Local Testing Limits
 

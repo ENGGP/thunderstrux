@@ -18,6 +18,24 @@ import { calculatePlatformFee } from "@/lib/stripe/fees";
 import { validateJson } from "@/lib/validators";
 import { createEventCheckoutSchema } from "@/lib/validators/payments";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
+import {
+  expireOldActiveReservations,
+  getActiveReservedQuantity,
+  getReservationExpiry,
+  reservationMinutes,
+  releaseReservationForOrder,
+  runSerializableReservationTransaction
+} from "@/lib/tickets/reservations";
+
+class CheckoutAvailabilityError extends Error {
+  details: Array<{ path: string[]; message: string }>;
+
+  constructor(message: string, details: Array<{ path: string[]; message: string }>) {
+    super(message);
+    this.name = "CheckoutAvailabilityError";
+    this.details = details;
+  }
+}
 
 export async function POST(request: Request) {
   const validation = await validateJson(request, createEventCheckoutSchema);
@@ -95,12 +113,6 @@ export async function POST(request: Request) {
       ]);
     }
 
-    if (ticketType.quantity < validation.data.quantity) {
-      return badRequest("Not enough tickets available", [
-        { path: ["quantity"], message: "Requested quantity exceeds availability" }
-      ]);
-    }
-
     if (!organisation.stripeAccountId) {
       return badRequest("Stripe not connected", [
         {
@@ -130,6 +142,8 @@ export async function POST(request: Request) {
     const platformFeeAmount = calculatePlatformFee(totalAmount);
     const stripe = getStripe();
     const appUrl = getAppUrl();
+    const reservationNow = new Date();
+    const reservationExpiresAt = getReservationExpiry(reservationNow);
 
     console.info("Stripe checkout creation started", {
       eventId: event.id,
@@ -140,21 +154,95 @@ export async function POST(request: Request) {
       platformFeeAmount
     });
 
-    const pendingOrder = await prisma.order.create({
-      data: {
-        organisationId,
-        eventId: event.id,
-        ticketTypeId: ticketType.id,
-        quantity: validation.data.quantity,
-        unitPrice: ticketType.price,
-        status: "pending",
-        totalAmount,
-        userId: user.id
-      },
-      select: { id: true }
-    });
+    const pendingOrder = await runSerializableReservationTransaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "TicketType" WHERE id = ${ticketType.id} FOR UPDATE`;
+        await expireOldActiveReservations(tx, {
+          now: reservationNow,
+          ticketTypeId: ticketType.id
+        });
+
+        const lockedTicketType = await tx.ticketType.findFirst({
+          where: {
+            id: ticketType.id,
+            eventId: event.id
+          },
+          select: {
+            id: true,
+            quantity: true
+          }
+        });
+
+        if (!lockedTicketType) {
+          throw new CheckoutAvailabilityError("Ticket type was not found", [
+            { path: ["ticketTypeId"], message: "Ticket type was not found for this event" }
+          ]);
+        }
+
+        const activeReservedQuantity = await getActiveReservedQuantity(
+          tx,
+          lockedTicketType.id,
+          reservationNow
+        );
+        const availableNow = lockedTicketType.quantity - activeReservedQuantity;
+
+        if (availableNow <= 0) {
+          throw new CheckoutAvailabilityError("Tickets are sold out", [
+            {
+              path: ["ticketTypeId"],
+              message: "Ticket type has no remaining inventory"
+            }
+          ]);
+        }
+
+        if (availableNow < validation.data.quantity) {
+          throw new CheckoutAvailabilityError("Not enough tickets available", [
+            {
+              path: ["quantity"],
+              message: "Requested quantity exceeds availability"
+            }
+          ]);
+        }
+
+        const order = await tx.order.create({
+          data: {
+            organisationId,
+            eventId: event.id,
+            ticketTypeId: ticketType.id,
+            quantity: validation.data.quantity,
+            unitPrice: ticketType.price,
+            status: "pending",
+            totalAmount,
+            userId: user.id
+          },
+          select: { id: true }
+        });
+
+        await tx.ticketReservation.create({
+          data: {
+            orderId: order.id,
+            organisationId,
+            eventId: event.id,
+            ticketTypeId: ticketType.id,
+            userId: user.id,
+            quantity: validation.data.quantity,
+            expiresAt: reservationExpiresAt
+          }
+        });
+
+        return order;
+      }
+    );
 
     pendingOrderId = pendingOrder.id;
+    const stripeExpiresAt = Math.ceil(Date.now() / 1000) + reservationMinutes * 60;
+
+    await prisma.ticketReservation.update({
+      where: { orderId: pendingOrder.id },
+      data: {
+        expiresAt: new Date(stripeExpiresAt * 1000)
+      }
+    });
 
     const session = await stripe.checkout.sessions.create(
       {
@@ -181,6 +269,7 @@ export async function POST(request: Request) {
         },
         success_url: `${appUrl}/success`,
         cancel_url: `${appUrl}/cancel`,
+        expires_at: stripeExpiresAt,
         metadata: {
           orderId: pendingOrder.id,
           eventId: event.id,
@@ -192,13 +281,20 @@ export async function POST(request: Request) {
     );
 
     if (!session.url) {
-      await prisma.order.update({
-        where: { id: pendingOrder.id },
-        data: {
-          status: "failed",
-          failedAt: new Date(),
-          failureReason: "Stripe Checkout Session did not include a redirect URL"
-        }
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: pendingOrder.id },
+          data: {
+            status: "failed",
+            failedAt: new Date(),
+            failureReason: "Stripe Checkout Session did not include a redirect URL"
+          }
+        });
+        await releaseReservationForOrder(
+          tx,
+          pendingOrder.id,
+          "Stripe Checkout Session did not include a redirect URL"
+        );
       });
       return internalError();
     }
@@ -224,6 +320,10 @@ export async function POST(request: Request) {
       return unauthorized();
     }
 
+    if (error instanceof CheckoutAvailabilityError) {
+      return badRequest(error.message, error.details);
+    }
+
     if (error instanceof StripeConfigurationError) {
       console.error("Stripe checkout configuration error", {
         message: error.message
@@ -234,13 +334,21 @@ export async function POST(request: Request) {
     }
 
     if (pendingOrderId) {
-      await prisma.order.update({
-        where: { id: pendingOrderId },
-        data: {
-          status: "failed",
-          failedAt: new Date(),
-          failureReason: "Failed to create Stripe Checkout Session"
-        }
+      const orderId = pendingOrderId;
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: "failed",
+            failedAt: new Date(),
+            failureReason: "Failed to create Stripe Checkout Session"
+          }
+        });
+        await releaseReservationForOrder(
+          tx,
+          orderId,
+          "Failed to create Stripe Checkout Session"
+        );
       });
     }
 

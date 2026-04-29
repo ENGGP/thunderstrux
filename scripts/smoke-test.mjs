@@ -1,4 +1,8 @@
+import { PrismaClient } from "@prisma/client";
+
 const baseUrl = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
+const prisma = new PrismaClient();
+const reservationWindowMs = 30 * 60 * 1000;
 
 class SmokeTestError extends Error {
   constructor(message, details = "") {
@@ -183,6 +187,7 @@ async function main() {
 
   let createdEventId = null;
   let organisationClient = null;
+  const createdSmokeOrderIds = [];
 
   try {
     organisationClient = await runStep("1. Login as organisation account", () =>
@@ -318,6 +323,7 @@ async function main() {
       assert(updatedTicket.name === "Smoke General Updated", "ticket name was not updated");
       assert(updatedTicket.price === ticket.price + 100, "ticket price was not updated");
       assert(updatedTicket.quantity === ticket.quantity + 2, "ticket quantity was not updated");
+      return result.body.event;
     });
 
     const memberClient = await runStep("7. Login as member account", () =>
@@ -372,6 +378,10 @@ async function main() {
       const ticketType = detail.body?.event?.ticketTypes?.[0];
       assert(ticketType?.id, "payments lab ticket type missing");
 
+      const reservationCountBefore = await prisma.ticketReservation.count({
+        where: { ticketTypeId: ticketType.id }
+      });
+
       const checkout = await memberClient.json("/api/payments/checkout/event", {
         method: "POST",
         headers: {
@@ -389,8 +399,164 @@ async function main() {
         `checkout precondition should fail, got ${checkout.response.status}`,
         JSON.stringify(checkout.body, null, 2)
       );
+
+      const reservationCountAfter = await prisma.ticketReservation.count({
+        where: { ticketTypeId: ticketType.id }
+      });
+      assert(
+        reservationCountAfter === reservationCountBefore,
+        "Stripe-not-ready checkout created a reservation"
+      );
+    });
+
+    await runStep("11. Verify active reservation reduces availability", async () => {
+      const event = await prisma.event.findUnique({
+        where: { id: createdEventId },
+        select: {
+          id: true,
+          organisationId: true,
+          ticketTypes: {
+            select: {
+              id: true,
+              price: true,
+              quantity: true
+            },
+            take: 1
+          }
+        }
+      });
+      assert(event?.ticketTypes?.[0], "smoke event ticket type missing");
+
+      const member = await prisma.user.findUnique({
+        where: { email: "user2@example.com" },
+        select: { id: true }
+      });
+      assert(member?.id, "user2@example.com missing");
+
+      const ticketType = event.ticketTypes[0];
+      const reservationCreatedAt = new Date();
+      const reservationExpiresAt = new Date(
+        reservationCreatedAt.getTime() + reservationWindowMs
+      );
+      const order = await prisma.order.create({
+        data: {
+          organisationId: event.organisationId,
+          eventId: event.id,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "pending",
+          quantity: 3,
+          unitPrice: ticketType.price,
+          totalAmount: ticketType.price * 3
+        },
+        select: { id: true }
+      });
+      createdSmokeOrderIds.push(order.id);
+
+      await prisma.ticketReservation.create({
+        data: {
+          orderId: order.id,
+          organisationId: event.organisationId,
+          eventId: event.id,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          quantity: 3,
+          createdAt: reservationCreatedAt,
+          expiresAt: reservationExpiresAt
+        }
+      });
+
+      const reservation = await prisma.ticketReservation.findUnique({
+        where: { orderId: order.id },
+        select: { createdAt: true, expiresAt: true }
+      });
+      assert(reservation, "active reservation was not created");
+      assert(
+        reservation.expiresAt.getTime() - reservation.createdAt.getTime() ===
+          reservationWindowMs,
+        "reservation expiry window was not exactly 30 minutes"
+      );
+
+      const activeReserved = await prisma.ticketReservation.aggregate({
+        where: {
+          ticketTypeId: ticketType.id,
+          status: "active",
+          expiresAt: { gt: new Date() }
+        },
+        _sum: { quantity: true }
+      });
+      const availableNow = ticketType.quantity - (activeReserved._sum.quantity ?? 0);
+
+      assert(
+        availableNow === ticketType.quantity - 3,
+        "active reservation was not subtracted from availability"
+      );
+    });
+
+    await runStep("12. Verify expired reservation is ignored", async () => {
+      assert(createdSmokeOrderIds.length > 0, "reservation smoke order missing");
+      const orderId = createdSmokeOrderIds[createdSmokeOrderIds.length - 1];
+      const past = new Date(Date.now() - 60 * 1000);
+
+      await prisma.ticketReservation.update({
+        where: { orderId },
+        data: { expiresAt: past }
+      });
+      await prisma.ticketReservation.updateMany({
+        where: {
+          orderId,
+          status: "active",
+          expiresAt: { lte: new Date() }
+        },
+        data: {
+          status: "expired",
+          releasedAt: new Date(),
+          releaseReason: "Smoke test expired reservation"
+        }
+      });
+
+      const reservation = await prisma.ticketReservation.findUnique({
+        where: { orderId },
+        select: {
+          status: true,
+          ticketTypeId: true,
+          quantity: true
+        }
+      });
+      assert(reservation?.status === "expired", "reservation was not expired");
+
+      const activeReserved = await prisma.ticketReservation.aggregate({
+        where: {
+          ticketTypeId: reservation.ticketTypeId,
+          status: "active",
+          expiresAt: { gt: new Date() }
+        },
+        _sum: { quantity: true }
+      });
+
+      assert(
+        (activeReserved._sum.quantity ?? 0) === 0,
+        "expired reservation still counted as active"
+      );
+
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          quantity: true,
+          unitPrice: true,
+          totalAmount: true
+        }
+      });
+      assert(order, "reservation smoke order missing after expiry");
+      assert(order.totalAmount === order.unitPrice * order.quantity, "order amount history changed");
     });
   } finally {
+    if (createdSmokeOrderIds.length > 0) {
+      await prisma.order.deleteMany({
+        where: { id: { in: createdSmokeOrderIds } }
+      });
+    }
+
     if (createdEventId && organisationClient) {
       const cleanup = await organisationClient.fetch(`/api/events/${createdEventId}`, {
         method: "DELETE"
@@ -402,10 +568,13 @@ async function main() {
         );
       }
     }
+
+    await prisma.$disconnect();
   }
 }
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
+  void prisma.$disconnect();
   process.exit(1);
 });

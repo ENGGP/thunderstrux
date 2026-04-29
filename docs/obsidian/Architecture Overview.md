@@ -24,7 +24,7 @@ Browser
   -> Route handlers validate input and enforce auth/tenancy
   -> Prisma reads and writes PostgreSQL
   -> Stripe APIs create checkout sessions and onboarding links
-  -> Stripe webhooks reconcile payments and sync account readiness
+  -> Stripe webhooks reconcile reservations, payments, tickets, and account readiness
 ```
 
 ## Product Account Model
@@ -152,6 +152,16 @@ app/
 - `OrganisationMember` is not staff access for the MVP, although legacy compatibility rows may still exist.
 - `Organisation.slug` remains a stable identifier for compatibility, public display, and lookup APIs.
 - The frontend may send `organisationId`, but backend permission checks must still verify the authenticated account and organisation ownership.
+
+## Ticket Reservation Model
+
+Checkout uses soft holds to prevent overselling:
+
+- `TicketType.quantity` remains remaining inventory.
+- `TicketReservation` holds a requested quantity for 30 minutes.
+- Checkout availability is `TicketType.quantity - activeReservedQuantity`.
+- Stripe Checkout `expires_at` is aligned with the reservation expiry.
+- Webhooks confirm, release, or expire reservations while preserving `Order` history.
 
 ## Styling Pipeline
 

@@ -22,6 +22,7 @@ model User {
   organisationMemberships OrganisationMember[]
   ownedOrganisation       Organisation?        @relation("OrganisationAccount")
   orders                  Order[]
+  reservations            TicketReservation[]
 
   @@index([accountRole])
 }
@@ -42,6 +43,7 @@ model Organisation {
   events              Event[]
   orders              Order[]
   tickets             Ticket[]
+  reservations        TicketReservation[]
 
   @@index([accountUserId])
   @@index([stripeAccountId])
@@ -75,6 +77,7 @@ model Event {
   ticketTypes    TicketType[]
   tickets        Ticket[]
   orders         Order[]
+  reservations   TicketReservation[]
 
   @@index([organisationId])
   @@index([organisationId, status])
@@ -90,6 +93,7 @@ model TicketType {
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   tickets   Ticket[]
   orders    Order[]
+  reservations TicketReservation[]
 
   @@index([eventId])
 }
@@ -114,6 +118,7 @@ model Order {
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
   user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   tickets         Ticket[]
+  reservation     TicketReservation?
 
   @@index([organisationId])
   @@index([eventId])
@@ -139,6 +144,31 @@ model Ticket {
   @@index([organisationId])
 }
 
+model TicketReservation {
+  id             String            @id @default(cuid())
+  orderId        String            @unique
+  organisationId String
+  eventId        String
+  ticketTypeId   String
+  userId         String?
+  quantity       Int
+  status         ReservationStatus @default(active)
+  expiresAt      DateTime
+  createdAt      DateTime          @default(now())
+  confirmedAt    DateTime?
+  releasedAt     DateTime?
+  releaseReason  String?
+  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  organisation   Organisation      @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  event          Event             @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  ticketType     TicketType        @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([ticketTypeId, status, expiresAt])
+  @@index([orderId])
+  @@index([userId])
+}
+
 enum OrganisationRole {
   org_owner
   org_admin
@@ -162,4 +192,11 @@ enum OrderStatus {
   pending
   paid
   failed
+}
+
+enum ReservationStatus {
+  active
+  confirmed
+  released
+  expired
 }

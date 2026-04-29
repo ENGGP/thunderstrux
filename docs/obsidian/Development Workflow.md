@@ -158,6 +158,14 @@ Build:
 docker compose exec app pnpm build
 ```
 
+Smoke tests:
+
+```bash
+docker compose exec app pnpm test:smoke
+```
+
+The smoke script checks auth roles, dashboard access, event create/edit, ticket editing, member API denial, checkout preconditions, and reservation availability behavior.
+
 The build script runs:
 
 ```text

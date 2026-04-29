@@ -57,7 +57,7 @@ Rules:
 - `price` must be non-negative.
 - `quantity` must be greater than zero when creating.
 - `quantity` may be zero when editing because sold-out inventory is represented as `0`.
-- Public checkout validates requested quantity against remaining inventory.
+- Public checkout validates requested quantity against remaining inventory minus active reservations.
 - Webhook fulfilment reduces inventory after payment is confirmed.
 
 ## Publish And Unpublish

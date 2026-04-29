@@ -102,20 +102,20 @@ lib/auth/access.ts
 Important helpers:
 
 - `requireAuthenticatedUser`
-- `getMemberOrganisations`
-- `requireOrganisationMembershipBySlug`
-- `requireOrganisationMembershipById`
-- `requireEventManagementAccess`
-- `requireFinanceAccess`
-- `requireStripeConnectAccess`
+- `getAccessibleOrganisationsForCurrentAccount`
+- `requireOrganisationAccessBySlug`
+- `requireOrganisationAccessById`
+- `requireOrganisationEventManagementAccess`
+- `requireOrganisationFinanceAccess`
+- `requireOrganisationStripeConnectAccess`
 
 ## Dashboard Access Layers
 
 Dashboard protection is layered:
 
 1. Proxy blocks unauthenticated users from `/dashboard/*`
-2. Route-level layout checks organisation membership
-3. API handlers verify membership and role again on mutations
+2. Dashboard pages resolve the current account role
+3. API handlers verify ownership or member access again on mutations
 
 Organisation management is now available at:
 
@@ -156,7 +156,8 @@ Trusted:
 
 - Auth.js session
 - `session.user.id`
-- `OrganisationMember` row
+- `Organisation.accountUserId` for organisation management
+- `OrganisationMember` row for member joins only
 - server-side Prisma query results
 
 Not trusted as authority:
@@ -166,4 +167,4 @@ Not trusted as authority:
 - request headers such as `x-user-role`
 - request headers such as `x-org-id`
 
-Some helper functions exist for organisation header matching, but access decisions still need the database membership check.
+Some helper functions exist for organisation header matching, but access decisions still need server-side database ownership or member-access checks.

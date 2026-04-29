@@ -1,10 +1,15 @@
+import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import {
   requireCurrentOrganisationAccount,
   requireOrganisationFinanceAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
-import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
+import {
+  getGroupedOrganisationOrders,
+  orderStatusFilters,
+  parseOrderStatusFilter,
+  type OrderStatusFilter
+} from "@/lib/orders/grouped-orders";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat(undefined, {
@@ -24,7 +29,7 @@ function formatDateTime(value: Date | null) {
   }).format(value);
 }
 
-function statusLabel(status: "pending" | "paid" | "failed") {
+function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
   if (status === "paid") {
     return "Paid";
   }
@@ -33,43 +38,30 @@ function statusLabel(status: "pending" | "paid" | "failed") {
     return "Failed";
   }
 
+  if (status === "expired") {
+    return "Expired";
+  }
+
   return "Pending";
 }
 
-export default async function OrganisationOrdersPage() {
+function filterLabel(status: OrderStatusFilter) {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+export default async function OrganisationOrdersPage({
+  searchParams
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const { status: statusParam } = await searchParams;
   const organisation = await requireCurrentOrganisationAccount();
   await requireOrganisationFinanceAccess(organisation.id);
-  await failStalePreCheckoutOrders({ organisationId: organisation.id });
-
-  const orders = await prisma.order.findMany({
-    where: { organisationId: organisation.id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      status: true,
-      quantity: true,
-      totalAmount: true,
-      createdAt: true,
-      paidAt: true,
-      failedAt: true,
-      failureReason: true,
-      user: {
-        select: {
-          email: true
-        }
-      },
-      event: {
-        select: {
-          title: true
-        }
-      },
-      ticketType: {
-        select: {
-          name: true
-        }
-      }
-    }
-  });
+  const activeFilter = parseOrderStatusFilter(statusParam ?? null);
+  const groupedOrders = await getGroupedOrganisationOrders(
+    organisation.id,
+    activeFilter
+  );
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name}>
@@ -81,60 +73,102 @@ export default async function OrganisationOrdersPage() {
           </p>
         </header>
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          {orders.length === 0 ? (
-            <p className="text-sm text-neutral-600">No orders have been placed yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-neutral-200 text-neutral-500">
-                    <th className="py-3 pr-4 font-medium">Buyer</th>
-                    <th className="py-3 pr-4 font-medium">Event</th>
-                    <th className="py-3 pr-4 font-medium">Ticket</th>
-                    <th className="py-3 pr-4 font-medium">Quantity</th>
-                    <th className="py-3 pr-4 font-medium">Total</th>
-                    <th className="py-3 pr-4 font-medium">Status</th>
-                    <th className="py-3 font-medium">Payment time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order) => (
-                    <tr
-                      className="border-b border-neutral-100 last:border-0"
-                      key={order.id}
-                    >
-                      <td className="py-3 pr-4 text-neutral-700">
-                        {order.user?.email ?? "Unknown buyer"}
-                      </td>
-                      <td className="py-3 pr-4 font-medium text-neutral-950">
-                        {order.event.title}
-                      </td>
-                      <td className="py-3 pr-4 text-neutral-700">
-                        {order.ticketType.name}
-                      </td>
-                      <td className="py-3 pr-4 text-neutral-700">
-                        {order.quantity}
-                      </td>
-                      <td className="py-3 pr-4 text-neutral-700">
-                        {formatCurrency(order.totalAmount)}
-                      </td>
-                      <td className="py-3 pr-4 text-neutral-700">
-                        {statusLabel(order.status)}
-                        {order.failureReason ? (
-                          <p className="mt-1 max-w-56 text-xs text-red-700">
-                            {order.failureReason}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="py-3 text-neutral-700">
-                        {formatDateTime(order.paidAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <nav className="flex flex-wrap gap-2" aria-label="Order status filters">
+          {orderStatusFilters.map((status) => {
+            const isActive = status === activeFilter;
+            const href =
+              status === "all" ? "/dashboard/orders" : `/dashboard/orders?status=${status}`;
+
+            return (
+              <Link
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  isActive
+                    ? "border-neutral-900 bg-neutral-900 text-white"
+                    : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                }`}
+                href={href}
+                key={status}
+              >
+                {filterLabel(status)}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <section className="space-y-5">
+          {groupedOrders.length === 0 ? (
+            <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+              <p className="text-sm text-neutral-600">
+                No {activeFilter === "all" ? "" : `${activeFilter} `}orders have
+                been placed yet.
+              </p>
             </div>
+          ) : (
+            groupedOrders.map((group) => (
+              <article
+                className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
+                key={group.eventId}
+              >
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-lg font-semibold text-neutral-950">
+                    {group.eventTitle}
+                  </h3>
+                  <p className="text-sm text-neutral-500">
+                    {group.orders.length} order
+                    {group.orders.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-neutral-200 text-neutral-500">
+                        <th className="py-3 pr-4 font-medium">Buyer</th>
+                        <th className="py-3 pr-4 font-medium">Ticket</th>
+                        <th className="py-3 pr-4 font-medium">Quantity</th>
+                        <th className="py-3 pr-4 font-medium">Total</th>
+                        <th className="py-3 pr-4 font-medium">Status</th>
+                        <th className="py-3 font-medium">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.orders.map((order) => (
+                        <tr
+                          className="border-b border-neutral-100 last:border-0"
+                          key={order.id}
+                        >
+                          <td className="py-3 pr-4 text-neutral-700">
+                            {order.buyerEmail ?? "Unknown buyer"}
+                          </td>
+                          <td className="py-3 pr-4 text-neutral-700">
+                            {order.ticketType}
+                          </td>
+                          <td className="py-3 pr-4 text-neutral-700">
+                            {order.quantity}
+                          </td>
+                          <td className="py-3 pr-4 text-neutral-700">
+                            {formatCurrency(order.totalAmount)}
+                          </td>
+                          <td className="py-3 pr-4 text-neutral-700">
+                            {statusLabel(order.status)}
+                            {order.failureReason ? (
+                              <p className="mt-1 max-w-56 text-xs text-red-700">
+                                {order.failureReason}
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="py-3 text-neutral-700">
+                            {formatDateTime(
+                              order.paidAt ?? order.failedAt ?? order.createdAt
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            ))
           )}
         </section>
       </div>

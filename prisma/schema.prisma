@@ -192,6 +192,7 @@ enum OrderStatus {
   pending
   paid
   failed
+  expired
 }
 
 enum ReservationStatus {

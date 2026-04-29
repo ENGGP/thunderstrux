@@ -47,16 +47,19 @@ export async function expireOldActiveReservations(
   tx: Prisma.TransactionClient,
   {
     now = new Date(),
+    organisationId,
     ticketTypeId,
     userId
   }: {
     now?: Date;
+    organisationId?: string;
     ticketTypeId?: string;
     userId?: string;
   } = {}
 ) {
-  return tx.ticketReservation.updateMany({
+  const expiredReservations = await tx.ticketReservation.findMany({
     where: {
+      ...(organisationId ? { organisationId } : {}),
       ...(ticketTypeId ? { ticketTypeId } : {}),
       ...(userId ? { userId } : {}),
       status: "active",
@@ -64,12 +67,44 @@ export async function expireOldActiveReservations(
         lte: now
       }
     },
+    select: {
+      orderId: true
+    }
+  });
+  const expiredOrderIds = expiredReservations.map(
+    (reservation) => reservation.orderId
+  );
+
+  const reservations = await tx.ticketReservation.updateMany({
+    where: {
+      orderId: {
+        in: expiredOrderIds
+      },
+      status: "active"
+    },
     data: {
       status: "expired",
       releasedAt: now,
       releaseReason: "Reservation expired before checkout completed"
     }
   });
+
+  if (expiredOrderIds.length > 0) {
+    await tx.order.updateMany({
+      where: {
+        id: {
+          in: expiredOrderIds
+        },
+        status: "pending"
+      },
+      data: {
+        status: "expired",
+        failureReason: null
+      }
+    });
+  }
+
+  return reservations;
 }
 
 export async function getActiveReservedQuantity(

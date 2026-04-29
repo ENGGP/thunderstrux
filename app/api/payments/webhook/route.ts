@@ -222,6 +222,14 @@ export async function POST(request: Request) {
             return;
           }
 
+          if (localOrder.status === "expired") {
+            console.warn("Stripe checkout completed for expired order", {
+              orderId: localOrder.id,
+              stripeSessionId: session.id
+            });
+            return;
+          }
+
           if (localOrder.status === "failed") {
             reconciliationError("Order is not pending", {
               orderId: localOrder.id,
@@ -265,24 +273,24 @@ export async function POST(request: Request) {
             localOrder.stripeSessionId &&
             localOrder.stripeSessionId !== session.id
           ) {
-            reconciliationError("Stripe session id does not match local order", {
-              orderId: localOrder.id,
-              stripeSessionId: session.id,
-              sessionId: session.id,
+            await failOrder("webhook_mismatch", {
+              mismatchReason: "Stripe session id does not match local order",
               orderStripeSessionId: localOrder.stripeSessionId
             });
             return;
           }
 
           if (session.payment_status !== "paid") {
-            await failOrder("Stripe session is not paid", {
+            await failOrder("webhook_mismatch", {
+              mismatchReason: "Stripe session is not paid",
               paymentStatus: session.payment_status
             });
             return;
           }
 
           if (session.amount_total !== localOrder.totalAmount) {
-            await failOrder("Stripe amount does not match local order", {
+            await failOrder("webhook_mismatch", {
+              mismatchReason: "Stripe amount does not match local order",
               stripeAmountTotal: session.amount_total,
               orderTotalAmount: localOrder.totalAmount
             });
@@ -290,7 +298,8 @@ export async function POST(request: Request) {
           }
 
           if (session.currency?.toLowerCase() !== expectedCurrency) {
-            await failOrder("Stripe currency does not match expected currency", {
+            await failOrder("webhook_mismatch", {
+              mismatchReason: "Stripe currency does not match expected currency",
               stripeCurrency: session.currency,
               expectedCurrency
             });
@@ -304,7 +313,8 @@ export async function POST(request: Request) {
             localOrder.organisationId !== organisationId ||
             localOrder.quantity !== metadataQuantity
           ) {
-            await failOrder("Stripe metadata does not match local order", {
+            await failOrder("webhook_mismatch", {
+              mismatchReason: "Stripe metadata does not match local order",
               orderId: localOrder.id,
               metadataOrderId: orderId,
               orderEventId: localOrder.eventId,
@@ -335,34 +345,49 @@ export async function POST(request: Request) {
                 expiresAt: true
               }
             });
-            const failureReason = existingReservation
-              ? "Ticket reservation expired before payment completed"
-              : "Ticket reservation not found for paid checkout session";
 
-            reconciliationError(failureReason, {
-              orderId: localOrder.id,
-              stripeSessionId: session.id,
+            if (
+              existingReservation &&
+              (existingReservation.status === "expired" ||
+                existingReservation.expiresAt <= now)
+            ) {
+              console.warn("Stripe checkout completed after reservation expiry", {
+                orderId: localOrder.id,
+                stripeSessionId: session.id,
+                reservationStatus: existingReservation.status,
+                reservationExpiresAt: existingReservation.expiresAt
+              });
+
+              await tx.order.update({
+                where: { id: localOrder.id },
+                data: {
+                  status: "expired",
+                  stripeSessionId: localOrder.stripeSessionId ?? session.id,
+                  paidAt: null,
+                  failureReason: null
+                }
+              });
+
+              await expireReservationForOrder(
+                tx,
+                localOrder.id,
+                "Reservation expired before checkout completed",
+                now
+              );
+              return;
+            }
+
+            await failOrder("webhook_mismatch", {
+              mismatchReason: "Ticket reservation not found for paid checkout session",
               reservationStatus: existingReservation?.status,
               reservationExpiresAt: existingReservation?.expiresAt
             });
-
-            await tx.order.update({
-              where: { id: localOrder.id },
-              data: {
-                status: "failed",
-                stripeSessionId: localOrder.stripeSessionId ?? session.id,
-                paidAt: null,
-                failedAt: now,
-                failureReason
-              }
-            });
-
-            await expireReservationForOrder(tx, localOrder.id, failureReason, now);
             return;
           }
 
           if (activeReservation.quantity !== localOrder.quantity) {
-            await failOrder("Ticket reservation quantity does not match order", {
+            await failOrder("webhook_mismatch", {
+              mismatchReason: "Ticket reservation quantity does not match order",
               reservationQuantity: activeReservation.quantity,
               orderQuantity: localOrder.quantity
             });
@@ -408,8 +433,7 @@ export async function POST(request: Request) {
                 stripeSessionId: session.id,
                 paidAt: null,
                 failedAt: now,
-                failureReason:
-                  "Ticket reservation could not be confirmed for paid checkout session"
+                failureReason: "webhook_mismatch"
               }
             });
             reconciliationError(
@@ -445,8 +469,7 @@ export async function POST(request: Request) {
                 stripeSessionId: localOrder.stripeSessionId ?? session.id,
                 paidAt: null,
                 failedAt: new Date(),
-                failureReason:
-                  "Insufficient ticket inventory for paid checkout session"
+                failureReason: "webhook_mismatch"
               }
             });
             await releaseReservationForOrder(
@@ -557,6 +580,14 @@ export async function POST(request: Request) {
         return;
       }
 
+      if (order.status === "expired") {
+        console.info("Stripe checkout expired ignored for expired order", {
+          orderId: order.id,
+          stripeSessionId: session.id
+        });
+        return;
+      }
+
       if (order.status !== "pending") {
         reconciliationError("Expired Stripe session order is not pending", {
           orderId: order.id,
@@ -571,20 +602,19 @@ export async function POST(request: Request) {
       await tx.order.update({
         where: { id: order.id },
         data: {
-          status: "failed",
+          status: "expired",
           stripeSessionId: order.stripeSessionId ?? session.id,
-          failedAt: now,
-          failureReason: "Stripe Checkout Session expired before payment"
+          failureReason: null
         }
       });
-      await releaseReservationForOrder(
+      await expireReservationForOrder(
         tx,
         order.id,
         "Stripe Checkout Session expired before payment",
         now
       );
 
-      console.info("Stripe checkout expired order marked failed", {
+      console.info("Stripe checkout expired order marked expired", {
         orderId: order.id,
         stripeSessionId: session.id
       });

@@ -361,7 +361,16 @@ async function main() {
       );
     });
 
-    await runStep("10. Verify checkout fails before Stripe readiness", async () => {
+    await runStep("10. Verify member cannot access orders API", async () => {
+      const result = await memberClient.json("/api/orders");
+      assert(
+        [401, 403].includes(result.response.status),
+        `member orders API access should fail, got ${result.response.status}`,
+        JSON.stringify(result.body, null, 2)
+      );
+    });
+
+    await runStep("11. Verify checkout fails before Stripe readiness", async () => {
       const paymentsOrg = await organisationClient.json("/api/orgs/payments-lab");
       assertStatus(paymentsOrg.response, 403, "organisation account cannot access payments lab");
 
@@ -409,7 +418,7 @@ async function main() {
       );
     });
 
-    await runStep("11. Verify active reservation reduces availability", async () => {
+    await runStep("12. Verify active reservation reduces availability", async () => {
       const event = await prisma.event.findUnique({
         where: { id: createdEventId },
         select: {
@@ -493,7 +502,7 @@ async function main() {
       );
     });
 
-    await runStep("12. Verify expired reservation is ignored", async () => {
+    await runStep("13. Verify expired reservation settles order and is grouped", async () => {
       assert(createdSmokeOrderIds.length > 0, "reservation smoke order missing");
       const orderId = createdSmokeOrderIds[createdSmokeOrderIds.length - 1];
       const past = new Date(Date.now() - 60 * 1000);
@@ -502,18 +511,24 @@ async function main() {
         where: { orderId },
         data: { expiresAt: past }
       });
-      await prisma.ticketReservation.updateMany({
-        where: {
-          orderId,
-          status: "active",
-          expiresAt: { lte: new Date() }
-        },
-        data: {
-          status: "expired",
-          releasedAt: new Date(),
-          releaseReason: "Smoke test expired reservation"
-        }
-      });
+
+      const grouped = await organisationClient.json("/api/orders?status=expired");
+      assertStatus(grouped.response, 200, "grouped expired orders", grouped.body);
+      assert(Array.isArray(grouped.body), "grouped orders response was not an array");
+
+      const eventGroup = grouped.body.find((group) => group.eventId === createdEventId);
+      assert(eventGroup, "smoke event group missing from grouped orders");
+      assert(
+        eventGroup.eventTitle?.startsWith("Smoke Test Event"),
+        "grouped order event title missing"
+      );
+      const groupedOrder = eventGroup.orders?.find((order) => order.id === orderId);
+      assert(groupedOrder, "expired smoke order missing from grouped orders");
+      assert(groupedOrder.status === "expired", "grouped order was not expired");
+      assert(
+        groupedOrder.failureReason === null,
+        "normal expiry should not set failureReason"
+      );
 
       const reservation = await prisma.ticketReservation.findUnique({
         where: { orderId },
@@ -524,6 +539,20 @@ async function main() {
         }
       });
       assert(reservation?.status === "expired", "reservation was not expired");
+
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          status: true,
+          failureReason: true,
+          quantity: true,
+          unitPrice: true,
+          totalAmount: true
+        }
+      });
+      assert(order, "reservation smoke order missing after expiry");
+      assert(order.status === "expired", "order was not expired");
+      assert(order.failureReason === null, "normal expiry set failureReason");
 
       const activeReserved = await prisma.ticketReservation.aggregate({
         where: {
@@ -539,15 +568,6 @@ async function main() {
         "expired reservation still counted as active"
       );
 
-      const order = await prisma.order.findUnique({
-        where: { id: orderId },
-        select: {
-          quantity: true,
-          unitPrice: true,
-          totalAmount: true
-        }
-      });
-      assert(order, "reservation smoke order missing after expiry");
       assert(order.totalAmount === order.unitPrice * order.quantity, "order amount history changed");
     });
   } finally {

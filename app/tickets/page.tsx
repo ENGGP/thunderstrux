@@ -25,13 +25,17 @@ function formatDateTime(value: Date | null) {
   }).format(value);
 }
 
-function statusLabel(status: "pending" | "paid" | "failed") {
+function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
   if (status === "paid") {
     return "Paid";
   }
 
   if (status === "failed") {
     return "Failed";
+  }
+
+  if (status === "expired") {
+    return "Expired";
   }
 
   return "Pending";
@@ -168,6 +172,12 @@ export default async function MyTicketsPage() {
                 {order.status === "failed" ? (
                   <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     Payment could not be fulfilled locally. Contact support with this order ID.
+                  </p>
+                ) : null}
+
+                {order.status === "expired" ? (
+                  <p className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+                    Checkout expired before payment completed. No tickets were issued.
                   </p>
                 ) : null}
 

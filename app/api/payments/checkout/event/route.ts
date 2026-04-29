@@ -287,7 +287,7 @@ export async function POST(request: Request) {
           data: {
             status: "failed",
             failedAt: new Date(),
-            failureReason: "Stripe Checkout Session did not include a redirect URL"
+            failureReason: "stripe_error"
           }
         });
         await releaseReservationForOrder(
@@ -341,7 +341,7 @@ export async function POST(request: Request) {
           data: {
             status: "failed",
             failedAt: new Date(),
-            failureReason: "Failed to create Stripe Checkout Session"
+            failureReason: "stripe_error"
           }
         });
         await releaseReservationForOrder(

@@ -10,7 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireEventManagementAccess
+  requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import {
@@ -38,7 +38,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
-    await requireEventManagementAccess(organisationId);
+    await requireOrganisationEventManagementAccess(organisationId);
     await assertEventBelongsToOrganisation(eventId, organisationId);
 
     const ticketType = await prisma.ticketType.create({

@@ -8,7 +8,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireOrganisationMembershipById
+  requireOrganisationAccessById
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
   try {
     const organisationId = requireOrganisationId(searchParams.get("organisationId"));
-    await requireOrganisationMembershipById(organisationId);
+    await requireOrganisationAccessById(organisationId);
 
     const organisation = await prisma.organisation.findUnique({
       where: { id: organisationId },

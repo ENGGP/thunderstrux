@@ -9,7 +9,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireStripeConnectAccess
+  requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
-    await requireStripeConnectAccess(organisationId);
+    await requireOrganisationStripeConnectAccess(organisationId);
 
     const organisation = await prisma.organisation.findUnique({
       where: { id: organisationId },

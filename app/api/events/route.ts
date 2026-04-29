@@ -9,7 +9,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireEventManagementAccess
+  requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
-    await requireEventManagementAccess(organisationId);
+    await requireOrganisationEventManagementAccess(organisationId);
 
     const organisation = await prisma.organisation.findUnique({
       where: { id: organisationId },
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const organisationId = requireOrganisationId(searchParams.get("orgId"));
-    await requireEventManagementAccess(organisationId);
+    await requireOrganisationEventManagementAccess(organisationId);
 
     const events = await prisma.event.findMany({
       where: scopedByOrganisation(organisationId),

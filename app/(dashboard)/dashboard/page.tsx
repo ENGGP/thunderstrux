@@ -4,7 +4,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { MemberProfileForm } from "@/components/members/member-profile-form";
 import {
   OrganisationAccessError,
-  getMemberOrganisations,
+  getAccessibleOrganisationsForCurrentAccount,
   requireAuthenticatedUser,
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
@@ -281,7 +281,7 @@ async function MemberDashboard({ userId }: { userId: string }) {
         onboardingCompletedAt: true
       }
     }),
-    getMemberOrganisations(),
+    getAccessibleOrganisationsForCurrentAccount(),
     prisma.order.count({
       where: { userId }
     })

@@ -10,7 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireEventManagementAccess
+  requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import {
@@ -55,7 +55,7 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const { searchParams } = new URL(request.url);
     const organisationId = requireOrganisationId(searchParams.get("orgId"));
-    await requireEventManagementAccess(organisationId);
+    await requireOrganisationEventManagementAccess(organisationId);
 
     const event = await prisma.event.findFirst({
       where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -99,7 +99,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
-    await requireEventManagementAccess(organisationId);
+    await requireOrganisationEventManagementAccess(organisationId);
 
     const existingEvent = await prisma.event.findFirst({
       where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -266,7 +266,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       return notFound("Event was not found in this organisation");
     }
 
-    await requireEventManagementAccess(existingEvent.organisationId);
+    await requireOrganisationEventManagementAccess(existingEvent.organisationId);
 
     if (existingEvent._count.orders > 0 || existingEvent._count.tickets > 0) {
       return badRequest("Event cannot be deleted after orders or tickets exist", [

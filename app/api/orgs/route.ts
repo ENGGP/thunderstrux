@@ -9,8 +9,8 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  getOrganisationMembershipsForUser,
-  mapMembershipsToOrganisations,
+  getOrganisationAccessForUser,
+  mapOrganisationAccessToOrganisations,
   requireAccountRole,
   requireAuthenticatedUser
 } from "@/lib/auth/access";
@@ -31,8 +31,8 @@ function isPrismaErrorCode(error: unknown, code: string): boolean {
 export async function GET() {
   try {
     const user = await requireAuthenticatedUser();
-    const memberships = await getOrganisationMembershipsForUser(user.id);
-    const organisations = mapMembershipsToOrganisations(memberships);
+    const accessRows = await getOrganisationAccessForUser(user.id);
+    const organisations = mapOrganisationAccessToOrganisations(accessRows);
 
     return NextResponse.json({ organisations });
   } catch (error) {

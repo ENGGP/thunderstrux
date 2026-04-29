@@ -3,7 +3,7 @@ import { forbidden, internalError, unauthorized } from "@/lib/api/errors";
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireOrganisationMembershipBySlug
+  requireOrganisationAccessBySlug
 } from "@/lib/auth/access";
 
 type RouteContext = {
@@ -16,7 +16,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const { orgSlug } = await context.params;
 
   try {
-    const organisation = await requireOrganisationMembershipBySlug(orgSlug);
+    const organisation = await requireOrganisationAccessBySlug(orgSlug);
 
     return NextResponse.json({ organisation });
   } catch (error) {

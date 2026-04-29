@@ -27,6 +27,9 @@ const allowedRoles: OrganisationRole[] = [
   "member"
 ];
 
+// Role helpers are compatibility checks after access has already been resolved.
+// In the current account model, management entrypoints must first prove
+// Organisation.accountUserId ownership; OrganisationMember is member join state.
 export function canManageEvents(userRole: OrganisationRole): boolean {
   return eventManagementRoles.includes(userRole);
 }

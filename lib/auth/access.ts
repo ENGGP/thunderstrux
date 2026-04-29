@@ -81,7 +81,7 @@ export async function requireCurrentOrganisationAccount() {
   return organisation;
 }
 
-export async function getMemberOrganisations() {
+export async function getAccessibleOrganisationsForCurrentAccount() {
   const user = await requireAuthenticatedUser();
 
   if (user.accountRole === "organisation") {
@@ -89,6 +89,8 @@ export async function getMemberOrganisations() {
     return organisation ? [organisation] : [];
   }
 
+  // Member accounts discover their joined organisations from OrganisationMember.
+  // Those rows are member join state, not organisation management authority.
   const memberships = await prisma.organisationMember.findMany({
     where: {
       userId: user.id
@@ -117,7 +119,7 @@ export async function getMemberOrganisations() {
   }));
 }
 
-export async function getOrganisationMembershipsForUser(userId: string) {
+export async function getOrganisationAccessForUser(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { accountRole: true }
@@ -144,6 +146,8 @@ export async function getOrganisationMembershipsForUser(userId: string) {
       : [];
   }
 
+  // OrganisationMember represents member join state only. It is not used to
+  // grant organisation management authority.
   return prisma.organisationMember.findMany({
     where: { userId },
     orderBy: {
@@ -165,18 +169,20 @@ export async function getOrganisationMembershipsForUser(userId: string) {
   });
 }
 
-export function mapMembershipsToOrganisations(
-  memberships: Awaited<ReturnType<typeof getOrganisationMembershipsForUser>>
+export function mapOrganisationAccessToOrganisations(
+  accessRows: Awaited<ReturnType<typeof getOrganisationAccessForUser>>
 ) {
-  return memberships.map((membership) => ({
-    ...membership.organisation,
-    role: membership.role as OrganisationRole
+  return accessRows.map((accessRow) => ({
+    ...accessRow.organisation,
+    role: accessRow.role as OrganisationRole
   }));
 }
 
-export async function requireOrganisationMembershipBySlug(orgSlug: string) {
+export async function requireOrganisationAccessBySlug(orgSlug: string) {
   const user = await requireAuthenticatedUser();
 
+  // Organisation accounts access their organisation through ownership
+  // (`Organisation.accountUserId`), not through OrganisationMember.
   if (user.accountRole === "organisation") {
     const organisation = await prisma.organisation.findFirst({
       where: {
@@ -201,6 +207,8 @@ export async function requireOrganisationMembershipBySlug(orgSlug: string) {
     };
   }
 
+  // Member accounts can view organisations they have joined. This membership
+  // path is intentionally separate from management authority.
   const organisation = await prisma.organisation.findFirst({
     where: {
       slug: orgSlug,
@@ -236,9 +244,11 @@ export async function requireOrganisationMembershipBySlug(orgSlug: string) {
   };
 }
 
-export async function requireOrganisationMembershipById(organisationId: string) {
+export async function requireOrganisationAccessById(organisationId: string) {
   const user = await requireAuthenticatedUser();
 
+  // Organisation accounts access their organisation through ownership
+  // (`Organisation.accountUserId`), not through OrganisationMember.
   if (user.accountRole === "organisation") {
     const organisation = await prisma.organisation.findFirst({
       where: {
@@ -263,6 +273,8 @@ export async function requireOrganisationMembershipById(organisationId: string) 
     };
   }
 
+  // Member accounts can view joined organisations. OrganisationMember rows do
+  // not grant management authority in the current account model.
   const membership = await prisma.organisationMember.findUnique({
     where: {
       userId_organisationId: {
@@ -293,14 +305,40 @@ export async function requireOrganisationMembershipById(organisationId: string) 
   };
 }
 
-export async function requireEventManagementAccess(organisationId: string) {
+async function requireOwnedOrganisationById(organisationId: string) {
   const user = await requireAuthenticatedUser();
 
   if (user.accountRole !== "organisation") {
     throw new OrganisationAccessError("Organisation account required");
   }
 
-  const organisation = await requireOrganisationMembershipById(organisationId);
+  // Management authority comes from owning the organisation account, not from
+  // OrganisationMember. This keeps member joins from escalating to staff access.
+  const organisation = await prisma.organisation.findFirst({
+    where: {
+      id: organisationId,
+      accountUserId: user.id
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true
+    }
+  });
+
+  if (!organisation) {
+    throw new OrganisationAccessError("Organisation not found or access denied");
+  }
+
+  return {
+    ...organisation,
+    role: "org_owner" as OrganisationRole
+  };
+}
+
+export async function requireOrganisationEventManagementAccess(organisationId: string) {
+  const organisation = await requireOwnedOrganisationById(organisationId);
 
   if (!canManageEvents(organisation.role)) {
     throw new OrganisationAccessError("Insufficient event permissions");
@@ -309,14 +347,8 @@ export async function requireEventManagementAccess(organisationId: string) {
   return organisation;
 }
 
-export async function requireFinanceAccess(organisationId: string) {
-  const user = await requireAuthenticatedUser();
-
-  if (user.accountRole !== "organisation") {
-    throw new OrganisationAccessError("Organisation account required");
-  }
-
-  const organisation = await requireOrganisationMembershipById(organisationId);
+export async function requireOrganisationFinanceAccess(organisationId: string) {
+  const organisation = await requireOwnedOrganisationById(organisationId);
 
   if (!canManageFinance(organisation.role)) {
     throw new OrganisationAccessError("Insufficient finance permissions");
@@ -325,14 +357,8 @@ export async function requireFinanceAccess(organisationId: string) {
   return organisation;
 }
 
-export async function requireStripeConnectAccess(organisationId: string) {
-  const user = await requireAuthenticatedUser();
-
-  if (user.accountRole !== "organisation") {
-    throw new OrganisationAccessError("Organisation account required");
-  }
-
-  const organisation = await requireOrganisationMembershipById(organisationId);
+export async function requireOrganisationStripeConnectAccess(organisationId: string) {
+  const organisation = await requireOwnedOrganisationById(organisationId);
 
   if (!canManageStripeConnect(organisation.role)) {
     throw new OrganisationAccessError("Insufficient Stripe Connect permissions");

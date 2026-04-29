@@ -9,7 +9,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireEventManagementAccess
+  requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 
@@ -67,7 +67,7 @@ export async function PATCH(_request: Request, context: RouteContext) {
       return notFound("Event was not found in this organisation");
     }
 
-    await requireEventManagementAccess(event.organisationId);
+    await requireOrganisationEventManagementAccess(event.organisationId);
 
     if (event.status === "draft") {
       if (event.ticketTypes.length === 0) {

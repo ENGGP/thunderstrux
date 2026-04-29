@@ -1,7 +1,7 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import {
   requireCurrentOrganisationAccount,
-  requireFinanceAccess
+  requireOrganisationFinanceAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
@@ -38,7 +38,7 @@ function statusLabel(status: "pending" | "paid" | "failed") {
 
 export default async function OrganisationOrdersPage() {
   const organisation = await requireCurrentOrganisationAccount();
-  await requireFinanceAccess(organisation.id);
+  await requireOrganisationFinanceAccess(organisation.id);
   await failStalePreCheckoutOrders({ organisationId: organisation.id });
 
   const orders = await prisma.order.findMany({

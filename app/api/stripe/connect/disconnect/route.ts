@@ -8,7 +8,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireStripeConnectAccess
+  requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
 import { disconnectAccount, notConnectedStatus } from "@/lib/stripe/connect";
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
-    await requireStripeConnectAccess(organisationId);
+    await requireOrganisationStripeConnectAccess(organisationId);
     await disconnectAccount(organisationId);
 
     return NextResponse.json({

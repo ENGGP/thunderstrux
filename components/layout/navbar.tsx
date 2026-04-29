@@ -4,11 +4,16 @@ import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 
 export default function Navbar() {
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
+  const isOrganisation = session?.user?.accountRole === "organisation";
+  const isMember = session?.user?.accountRole === "member";
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between border-b border-neutral-200 bg-white px-6 shadow-sm">
-      <Link href="/" className="text-sm font-semibold text-neutral-950">
+      <Link
+        href={isOrganisation ? "/dashboard" : "/"}
+        className="text-sm font-semibold text-neutral-950"
+      >
         Thunderstrux
       </Link>
 
@@ -21,12 +26,14 @@ export default function Navbar() {
             >
               Dashboard
             </Link>
-            <Link
-              href="/tickets"
-              className="text-sm font-medium text-neutral-700 transition hover:text-neutral-950"
-            >
-              My tickets
-            </Link>
+            {isMember ? (
+              <Link
+                href="/tickets"
+                className="text-sm font-medium text-neutral-700 transition hover:text-neutral-950"
+              >
+                My tickets
+              </Link>
+            ) : null}
             <button
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-950"
               onClick={() => signOut({ callbackUrl: "http://localhost:3000/" })}

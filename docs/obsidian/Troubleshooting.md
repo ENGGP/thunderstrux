@@ -38,6 +38,7 @@ Current mitigation:
 - `pnpm dev:webpack` runs the same startup checks with webpack as a fallback if Turbopack becomes unstable.
 - `pnpm dev:doctor` prints a read-only report for stale dev metadata and localhost reachability.
 - `scripts/clean-next-dev.mjs` clears `.next/dev` before dev startup.
+- If Windows/Docker file locking returns `EPERM`, `EBUSY`, or `EACCES`, the script warns and continues startup so Docker dev is not blocked.
 - Docker enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`
 - `next.config.ts` sends production build output to `.next-build` so `pnpm build` does not clobber live dev output under `.next`
 
@@ -101,6 +102,7 @@ docker compose exec app sh -lc "cat .next/dev/server/app-paths-manifest.json"
 It must include:
 
 ```text
+/(dashboard)/dashboard/events/[eventId]/page
 /(dashboard)/dashboard/events/[eventId]/edit/page
 /(dashboard)/dashboard/events/new/page
 /(dashboard)/dashboard/events/page
@@ -126,6 +128,12 @@ Then recheck the route. If the route is registered but the page still 404s, insp
 - event lookup by `eventId` and `organisationId`
 
 For a valid Engineering event and `engineering.org@example.com`, `/dashboard/events/[eventId]/edit` should return `200`. For member accounts such as `user2@example.com`, direct management URLs should not grant access.
+
+For the organiser analytics route:
+
+- `engineering.org@example.com` should receive `200` for an owned event at `/dashboard/events/[eventId]`.
+- `user2@example.com` should redirect to `/`.
+- An organisation account visiting `/events/[eventId]` should redirect to `/dashboard/events/[eventId]`.
 
 If clicking `Edit` navigates to `/dashboard/events/edit` without an event id, the source link or a stale client bundle is wrong. The correct current source link resolves through `EventsList` using:
 

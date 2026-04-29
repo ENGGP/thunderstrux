@@ -18,17 +18,18 @@ try {
 } catch (error) {
   const code = error && typeof error === "object" ? error.code : undefined;
 
-  if (code === "EPERM" || code === "EBUSY") {
-    console.error(
+  if (code === "EPERM" || code === "EBUSY" || code === "EACCES") {
+    console.warn(
       [
         `Unable to clear ${devCachePath}.`,
         "A stale Next.js or Node process may still have files open.",
-        "Stop local Node/Next processes or run: docker compose restart app",
+        "Continuing startup so Docker dev is not blocked.",
+        "If route manifests look stale, stop local Node/Next processes and restart Docker.",
         "",
         "This script only removes .next/dev and never removes .next-build."
       ].join("\n")
     );
-    process.exit(1);
+    process.exit(0);
   }
 
   throw error;

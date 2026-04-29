@@ -5,7 +5,8 @@ import {
   requireOrganisationFinanceAccess
 } from "@/lib/auth/access";
 import {
-  getGroupedOrganisationOrders,
+  OrganisationOrderEventAccessError,
+  getGroupedOrganisationOrdersWithContext,
   orderStatusFilters,
   parseOrderStatusFilter,
   type OrderStatusFilter
@@ -52,16 +53,30 @@ function filterLabel(status: OrderStatusFilter) {
 export default async function OrganisationOrdersPage({
   searchParams
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; eventId?: string }>;
 }) {
-  const { status: statusParam } = await searchParams;
+  const { status: statusParam, eventId: eventIdParam } = await searchParams;
   const organisation = await requireCurrentOrganisationAccount();
   await requireOrganisationFinanceAccess(organisation.id);
   const activeFilter = parseOrderStatusFilter(statusParam ?? null);
-  const groupedOrders = await getGroupedOrganisationOrders(
-    organisation.id,
-    activeFilter
-  );
+  const eventId = eventIdParam?.trim() || undefined;
+  let orderResult: Awaited<ReturnType<typeof getGroupedOrganisationOrdersWithContext>>;
+
+  try {
+    orderResult = await getGroupedOrganisationOrdersWithContext(
+      organisation.id,
+      activeFilter,
+      eventId
+    );
+  } catch (error) {
+    if (error instanceof OrganisationOrderEventAccessError) {
+      orderResult = { event: null, groups: [] };
+    } else {
+      throw error;
+    }
+  }
+  const groupedOrders = orderResult.groups;
+  const eventFilter = orderResult.event;
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name}>
@@ -73,11 +88,38 @@ export default async function OrganisationOrdersPage({
           </p>
         </header>
 
+        {eventFilter ? (
+          <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-neutral-500">Filtered by event</p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-xl font-semibold text-neutral-950">
+                {eventFilter.title}
+              </h3>
+              <Link
+                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                href="/dashboard/orders"
+              >
+                Back to all orders
+              </Link>
+            </div>
+          </section>
+        ) : null}
+
         <nav className="flex flex-wrap gap-2" aria-label="Order status filters">
           {orderStatusFilters.map((status) => {
             const isActive = status === activeFilter;
-            const href =
-              status === "all" ? "/dashboard/orders" : `/dashboard/orders?status=${status}`;
+            const params = new URLSearchParams();
+
+            if (status !== "all") {
+              params.set("status", status);
+            }
+
+            if (eventId) {
+              params.set("eventId", eventId);
+            }
+
+            const query = params.toString();
+            const href = query ? `/dashboard/orders?${query}` : "/dashboard/orders";
 
             return (
               <Link
@@ -99,8 +141,11 @@ export default async function OrganisationOrdersPage({
           {groupedOrders.length === 0 ? (
             <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
               <p className="text-sm text-neutral-600">
-                No {activeFilter === "all" ? "" : `${activeFilter} `}orders have
-                been placed yet.
+                {eventId && !eventFilter
+                  ? "No orders found for this event."
+                  : `No ${
+                      activeFilter === "all" ? "" : `${activeFilter} `
+                    }orders yet.`}
               </p>
             </div>
           ) : (

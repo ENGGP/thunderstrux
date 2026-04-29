@@ -61,6 +61,7 @@ app/
       organisations/page.tsx           Member organisation search/join
       events/layout.tsx                Explicit route boundary
       events/page.tsx                  Organisation event list
+      events/[eventId]/page.tsx        Organisation event analytics
       events/new/page.tsx              Organisation event creation
       events/[eventId]/edit/page.tsx   Organisation event editing
       orders/page.tsx                  Organisation order review
@@ -109,6 +110,12 @@ app/
 
 - Renders the organisation event list through `components/events/events-list.tsx`.
 
+`/dashboard/events/[eventId]`
+
+- Renders organisation-only event details and analytics.
+- Shows event metadata, revenue, sold tickets, remaining tickets, and ticket-type analytics.
+- Redirects member accounts away through the proxy before rendering.
+
 `/dashboard/events/new`
 
 - Renders the event creation form for the signed-in organisation account.
@@ -120,6 +127,7 @@ app/
 `/dashboard/orders`
 
 - Renders organisation-scoped order and payment review.
+- Supports event-scoped filtering through `eventId`.
 
 `/dashboard/settings`
 
@@ -162,6 +170,16 @@ Checkout uses soft holds to prevent overselling:
 - Checkout availability is `TicketType.quantity - activeReservedQuantity`.
 - Stripe Checkout `expires_at` is aligned with the reservation expiry.
 - Webhooks confirm, release, or expire reservations while preserving `Order` history.
+
+## Organiser Analytics Model
+
+Organiser event analytics are derived from existing event, ticket type, and paid order data.
+
+- `TicketType.quantity` is displayed as remaining inventory.
+- Sold count is summed from paid `Order.quantity`.
+- Revenue is summed from paid `Order.totalAmount`.
+- The analytics page does not show total capacity because original capacity is not stored.
+- Each order maps to one ticket type through `Order.ticketTypeId`, so ticket-type revenue is grouped by `ticketTypeId`.
 
 ## Styling Pipeline
 

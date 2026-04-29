@@ -76,6 +76,7 @@ Reason:
 - Next 16 production builds use Turbopack.
 - `scripts/assert-docker-runtime.mjs` warns by default, but blocks `pnpm dev` outside Docker when `DATABASE_URL` uses the Docker-only `db:5432` hostname.
 - `scripts/clean-next-dev.mjs` clears `.next/dev` before startup so stale dev route manifests do not survive container restarts.
+- If `.next/dev` contains locked files on Windows/Docker, `scripts/clean-next-dev.mjs` warns and continues startup instead of blocking the app container. It still never removes `.next-build`.
 - Turbopack dev mode plus polling is the default route-stable configuration.
 - `pnpm dev:webpack` is kept as a safe fallback when Turbopack hot reload or route manifest generation appears stuck.
 - `pnpm dev:doctor` prints a read-only report for stale `.next/dev` metadata, missing dev manifests, stale `tsconfig` includes, and localhost reachability.
@@ -320,6 +321,7 @@ It protects:
 
 ```text
 /dashboard/:path*
+/events/:path*
 ```
 
 Expected behavior:
@@ -327,6 +329,8 @@ Expected behavior:
 - Logged-out dashboard requests redirect to `/login`.
 - The `callbackUrl` query preserves the requested dashboard path.
 - Logged-in requests continue normally.
+- Organisation accounts requesting `/events/[eventId]` redirect to `/dashboard/events/[eventId]`.
+- Member accounts requesting `/dashboard/events/[eventId]` redirect to `/`.
 
 ## Docker Access From Codex
 

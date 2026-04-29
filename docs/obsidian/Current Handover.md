@@ -12,6 +12,8 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies wit
 - Organisation accounts that own exactly one organisation through `Organisation.accountUserId`.
 - Organisation dashboard at `/dashboard`.
 - Organisation management routes at `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
+- Organisation event analytics at `/dashboard/events/[eventId]`.
+- Organisation accounts redirect from public event pages to organiser event analytics.
 - Legacy `/dashboard/[orgSlug]/*` routes kept as redirects.
 - Event creation, editing, publishing, unpublishing, and deletion rules.
 - Stripe Checkout with 30-minute ticket reservations and webhook-only fulfilment.
@@ -25,12 +27,15 @@ Implemented migrations:
 
 - `20260428000000_account_role_groundwork`: role-based member/organisation account model.
 - `20260429000000_ticket_reservations`: checkout ticket reservations.
+- `20260429010000_order_expired_status`: adds the `expired` order status.
 
 Recent feature areas:
 
 - Role-based auth and slugless dashboard routes.
 - Member profile onboarding, organisation search/join, and `/tickets`.
 - Organisation dashboard, events, orders, settings, and Stripe Connect.
+- Organisation-safe event viewing and analytics.
+- Event-scoped organiser orders.
 - Ticket reservation model and reservation-aware checkout/webhook reconciliation.
 - Lightweight smoke tests in `scripts/smoke-test.mjs`.
 
@@ -56,6 +61,7 @@ Organisation:
 - `/dashboard`
 - `/dashboard/create`
 - `/dashboard/events`
+- `/dashboard/events/[eventId]`
 - `/dashboard/events/new`
 - `/dashboard/events/[eventId]/edit`
 - `/dashboard/orders`
@@ -140,9 +146,10 @@ docker compose exec app pnpm build
 
 Latest verification:
 
-- `docker compose exec app pnpm prisma:migrate` applied through `20260429000000_ticket_reservations`.
+- `docker compose exec app pnpm prisma:migrate` applied through `20260429010000_order_expired_status`.
 - `docker compose exec app pnpm test:smoke` passed.
 - `docker compose exec app pnpm build` passed.
+- Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, and organisation checkout denial.
 
 ## Next Route Stability
 
@@ -161,6 +168,8 @@ Keep these route stability fixes:
 
 `pnpm dev` blocks accidental host `next dev` when the project `.env` points at `db:5432`. The underlying guard script only warns by default, so it does not block Docker startup or build scripts.
 
+`scripts/clean-next-dev.mjs` warns and continues if Windows/Docker file locking prevents deleting `.next/dev`; it still never removes `.next-build`.
+
 Use `pnpm dev:webpack` inside Docker if Turbopack hot reload or route manifest generation becomes unstable.
 
 Use `pnpm dev:doctor` for a read-only check of stale `.next/dev` metadata, missing dev manifests, stale `tsconfig` includes, and localhost reachability.
@@ -177,6 +186,8 @@ Current generated include entries:
 - Do not trust frontend tenancy inputs.
 - Keep `Organisation` as the tenant/payment/event/order owner.
 - Member `OrganisationMember` rows must not grant organisation management access.
+- Organisation accounts must be redirected away from buyer checkout surfaces and cannot create checkout sessions.
+- Member accounts must not access organiser analytics.
 - Payment fulfilment must remain webhook-driven.
 - Ticket reservations are temporary soft holds; paid tickets are still issued only by Stripe Checkout webhook reconciliation.
 - Stripe onboarding must stay hosted by Stripe.

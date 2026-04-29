@@ -290,18 +290,12 @@ export function EventsList({
                       </td>
                       <td className="py-3">
                         <div className="flex flex-wrap gap-2">
-                          {event.status === "published" ? (
-                            <Link
-                              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
-                              href={`/events/${event.id}`}
-                            >
-                              View Event
-                            </Link>
-                          ) : (
-                            <span className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm font-medium text-neutral-400">
-                              Preview unavailable
-                            </span>
-                          )}
+                          <Link
+                            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+                            href={`${dashboardBasePath}/events/${event.id}`}
+                          >
+                            View Event
+                          </Link>
                           <Link
                             className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
                             href={`${dashboardBasePath}/events/${event.id}/edit`}

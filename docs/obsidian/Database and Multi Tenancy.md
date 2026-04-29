@@ -174,6 +174,8 @@ Current rule:
 
 - quantity must be positive on creation
 - quantity means remaining inventory, not original capacity
+- organiser analytics display `quantity` as remaining only
+- sold counts and revenue are derived from paid orders
 
 ## Orders, Reservations, And Tickets
 
@@ -190,6 +192,15 @@ Important fields:
 - `unitPrice`
 - `totalAmount`
 - `stripeSessionId` unique
+
+Current statuses:
+
+- `pending`
+- `paid`
+- `failed`
+- `expired`
+
+Each order maps to exactly one ticket type through `ticketTypeId`. Organiser analytics group paid orders by `ticketTypeId` and sum `quantity` and `totalAmount` for sold count and revenue.
 
 `TicketReservation` is the temporary soft hold created before redirecting to Stripe Checkout.
 
@@ -277,7 +288,7 @@ Public APIs:
 Private APIs:
 
 - require authentication
-- require organisation membership
+- require organisation account ownership for management routes
 - require management roles for mutations
 
-Checkout is public-facing in URL shape, but still requires an authenticated user and server-side event resolution.
+Checkout is public-facing in URL shape, but still requires an authenticated member account and server-side event resolution.

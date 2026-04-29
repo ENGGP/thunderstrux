@@ -143,6 +143,33 @@ Rules:
 - Do not require auth.
 - Do not support dashboard previews.
 
+## Organiser Event View
+
+Current route:
+
+```text
+/dashboard/events/[eventId]
+```
+
+Rules:
+
+- Organisation account required.
+- The event must belong to the signed-in organisation account.
+- Member accounts are redirected to `/`.
+- Draft and published events can be viewed by the owning organisation account.
+- The route shows event details, remaining tickets, sold tickets, and revenue.
+- Sold and revenue values are derived from paid orders.
+- The UI does not show total capacity because original capacity is not stored.
+
+Public route behavior:
+
+```text
+/events/[eventId]
+```
+
+- Members and logged-out users use the public buyer-facing event page.
+- Organisation accounts are redirected to `/dashboard/events/[eventId]`.
+
 ## Public Demo Event Loader
 
 `lib/events/public-events.ts` ensures public discovery has demo events if there are no published events.

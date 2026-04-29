@@ -61,7 +61,7 @@ Statuses:
 
 - `active`: counts against checkout availability until `expiresAt`
 - `confirmed`: paid webhook completed and tickets were issued
-- `released`: checkout failed or Stripe Checkout expired before payment
+- `released`: checkout failed before a normal expiry path
 - `expired`: local hold expired before payment completed
 
 Availability:
@@ -339,32 +339,32 @@ Expired Checkout sessions:
 
 - The webhook resolves the local order with `metadata.orderId` first.
 - If `metadata.orderId` is missing or stale, it falls back to `stripeSessionId`.
-- If the order is still `pending`, it is marked `failed`.
-- Any active reservation for the order is marked `released`.
+- If the order is still `pending`, it is marked `expired`.
+- Any active reservation for the order is marked `expired`.
 - If the order is already `paid`, the webhook logs the idempotency path and does nothing.
 - If the order is already `failed`, the webhook logs the idempotency path and does nothing.
+- If the order is already `expired`, the webhook logs the idempotency path and does nothing.
 
 Completed Checkout sessions with missing or expired local reservations:
 
-- order is marked `failed`
-- `failureReason` explains whether the reservation was missing or expired
+- normal reservation expiry leaves the order `expired`
+- unexpected mismatches mark the order `failed` with `failureReason = webhook_mismatch`
 - tickets are not issued
 - inventory is not decremented
 
 ## Stale Pending Orders
 
-The app marks only pre-Checkout stale orders as failed:
+The app expires old active reservations opportunistically:
 
-- `status = pending`
-- `stripeSessionId = null`
-- older than 30 minutes
+- active reservation with `expiresAt` in the past becomes `expired`
+- matching pending order becomes `expired`
+- normal expiry does not set `failureReason`
 
 Design choice:
 
-- These rows represent checkout creation that did not reach Stripe.
-- Pending orders that already have a `stripeSessionId` are not expired by the local timer because a real Stripe Checkout Session may still complete and must be resolved by webhook delivery.
-- Cleanup runs opportunistically when starting checkout, viewing `/tickets`, or viewing organiser orders.
-- Active reservations attached to stale pre-Checkout orders are released by the same cleanup.
+- Reservation expiry is the source of truth for abandoned checkout cleanup.
+- Stripe/session creation failures still mark orders `failed` and release reservations.
+- Cleanup runs opportunistically when starting checkout, viewing `/tickets`, viewing organiser orders, or computing grouped order data.
 
 Transaction:
 
@@ -379,9 +379,12 @@ Transaction:
 - member denial from management APIs
 - Stripe-not-ready checkout creates no reservation
 - active reservation reduces availability
-- expired reservation is ignored
+- expired reservation settles the order as `expired`
 - reservation expiry window is exactly 30 minutes
 - order `unitPrice` and `totalAmount` history remains unchanged
+- organisation public event route redirects to organiser event view
+- member access to organiser event view redirects away
+- organisation accounts cannot create checkout sessions
 
 ## Local Testing Limits
 
@@ -473,16 +476,16 @@ stripe listen --events checkout.session.completed,checkout.session.expired --for
 2. Create a real Checkout Session by starting checkout in the app.
 3. Let the Checkout Session expire in Stripe test mode, or expire it from Stripe tooling/Dashboard where available.
 4. Confirm the forwarded event type is `checkout.session.expired`.
-5. Confirm the matching local order becomes `failed`.
-6. Confirm `failedAt` is set.
-7. Confirm `failureReason` is `Stripe Checkout Session expired before payment`.
+5. Confirm the matching local order becomes `expired`.
+6. Confirm normal expiry does not set `failureReason`.
+7. Confirm the reservation becomes `expired`.
 8. Confirm ticket inventory is unchanged.
 
 Expected app logs for an expired checkout:
 
 - `Stripe checkout expired webhook received`
 - `Stripe checkout expired order matched`
-- `Stripe checkout expired order marked failed`
+- `Stripe checkout expired order marked expired`
 
 Generic CLI trigger:
 

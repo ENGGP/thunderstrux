@@ -95,6 +95,7 @@ Rules:
 - No auth required.
 - Event must be `published`.
 - Includes ticket types.
+- Organisation accounts are redirected at the route/proxy layer from `/events/[eventId]` to `/dashboard/events/[eventId]`; this API remains public-safe.
 
 ## Organisations
 
@@ -259,6 +260,47 @@ Rules:
 - Price must be non-negative integer cents.
 - Quantity must be greater than zero.
 
+## Orders
+
+### `GET /api/orders?status=...&eventId=...`
+
+Returns organisation-scoped orders grouped by event.
+
+Rules:
+
+- Auth required.
+- Organisation account required.
+- Finance access required.
+- `status` is optional and may be `all`, `paid`, `pending`, `expired`, or `failed`.
+- `eventId` is optional.
+- When `eventId` is present, the API verifies the event belongs to the signed-in organisation account before filtering.
+- Member accounts cannot access this endpoint.
+
+Response:
+
+```json
+[
+  {
+    "eventId": "event_id",
+    "eventTitle": "Event title",
+    "orders": [
+      {
+        "id": "order_id",
+        "status": "paid",
+        "ticketType": "General Admission",
+        "quantity": 2,
+        "totalAmount": 2400,
+        "createdAt": "2026-04-29T10:00:00.000Z",
+        "paidAt": "2026-04-29T10:05:00.000Z",
+        "failedAt": null,
+        "failureReason": null,
+        "buyerEmail": "buyer@example.com"
+      }
+    ]
+  }
+]
+```
+
 ## Payments
 
 ### `POST /api/payments/checkout/event`
@@ -278,6 +320,7 @@ Request:
 Rules:
 
 - Auth required.
+- Member account required.
 - Event must be published.
 - Ticket type must belong to event.
 - Organisation is resolved server-side from the event.
@@ -305,7 +348,8 @@ Responsibilities:
 - Create tickets.
 - Mark order paid.
 - Store `paidAt` on success.
-- Store `failedAt` and `failureReason` on reconciliation failure.
+- Mark normal reservation or Checkout expiry as `expired` without `failureReason`.
+- Store `failedAt` and `failureReason` only on unexpected reconciliation failure.
 
 ## Server-Rendered Order Views
 
@@ -317,7 +361,7 @@ Rules:
 
 - Auth required.
 - Reads orders by `session.user.id`.
-- Shows paid, pending, and failed orders.
+- Shows paid, pending, expired, and failed orders.
 - Shows ticket identifiers when tickets exist.
 
 ### `GET /dashboard/orders`
@@ -330,6 +374,8 @@ Rules:
 - Organisation account required.
 - Finance access required.
 - Reads orders scoped to the current organisation account's organisation id.
+- Supports optional `eventId` and status filtering.
+- Shows event-scoped order headers when filtered by event.
 
 Legacy `/dashboard/[orgSlug]/orders` redirects to `/dashboard/orders` when the signed-in organisation account owns the slug.
 

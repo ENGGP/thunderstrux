@@ -9,6 +9,20 @@ export async function proxy(request: NextRequest) {
     req: request,
     secret: authSecret
   });
+  const pathname = request.nextUrl.pathname;
+
+  if (
+    token?.accountRole === "organisation" &&
+    pathname.startsWith("/events/")
+  ) {
+    const eventId = pathname.split("/")[2];
+
+    if (eventId) {
+      return NextResponse.redirect(
+        new URL(`/dashboard/events/${eventId}`, request.nextUrl.origin)
+      );
+    }
+  }
 
   if (!token) {
     const loginUrl = new URL("/login", request.nextUrl.origin);
@@ -20,9 +34,16 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  if (
+    token.accountRole === "member" &&
+    pathname.startsWith("/dashboard/events/")
+  ) {
+    return NextResponse.redirect(new URL("/", request.nextUrl.origin));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*"]
+  matcher: ["/dashboard/:path*", "/events/:path*"]
 };

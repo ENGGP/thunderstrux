@@ -48,12 +48,15 @@ These values are used for dashboard routing and access checks.
 
 ```text
 /dashboard/:path*
+/events/:path*
 ```
 
 Behavior:
 
 - If no token exists, user is redirected to `/login`
 - Relative callback URL is preserved in the query string
+- Organisation accounts requesting `/events/[eventId]` are redirected to `/dashboard/events/[eventId]`
+- Member accounts requesting `/dashboard/events/[eventId]` are redirected to `/`
 
 ## Login and Signup Flow
 
@@ -87,8 +90,12 @@ Files:
 Current behavior:
 
 - Navbar is fixed globally at the top
+- Thunderstrux logo links to `/dashboard` for organisation accounts
+- Thunderstrux logo links to `/` for member and logged-out users
 - Logged-out users see `Sign in`
 - Logged-in users see `Dashboard` and `Sign out`
+- Member accounts see `My tickets`
+- Organisation accounts do not see `My tickets`
 - Sign out currently redirects to `http://localhost:3000/`
 
 ## Organisation Access Helpers
@@ -122,6 +129,7 @@ Organisation management is now available at:
 ```text
 /dashboard
 /dashboard/events
+/dashboard/events/[eventId]
 /dashboard/events/new
 /dashboard/events/[eventId]/edit
 /dashboard/orders
@@ -144,6 +152,8 @@ If ownership is missing, the organisation dashboard redirects to organisation cr
 Organisation accounts have full event, finance, settings, and Stripe Connect management access for their one organisation.
 
 Member accounts can complete a profile, join organisations, browse public events, buy tickets, and view `/tickets`. They cannot access organisation management APIs or pages.
+
+Organisation accounts can view public event URLs only as redirects to the organiser event view. They cannot buy tickets.
 
 Recent verification:
 

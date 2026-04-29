@@ -326,11 +326,38 @@ async function main() {
       return result.body.event;
     });
 
-    const memberClient = await runStep("7. Login as member account", () =>
+    await runStep("7. Verify organisation event view and public redirect", async () => {
+      const organiserView = await organisationClient.fetch(
+        `/dashboard/events/${createdEvent.id}`,
+        { redirect: "follow" }
+      );
+      const organiserViewText = await organiserView.text();
+      assertStatus(organiserView, 200, "organiser event view");
+      assert(
+        organiserViewText.includes("Ticket analytics") &&
+          organiserViewText.includes(createdEvent.title),
+        "organiser event view did not render analytics"
+      );
+
+      const publicView = await organisationClient.fetch(`/events/${createdEvent.id}`);
+      assert(
+        [307, 308].includes(publicView.status),
+        `organisation public event route should redirect, got ${publicView.status}`,
+        await publicView.text()
+      );
+      const location = publicView.headers.get("location") ?? "";
+      assert(
+        location.includes(`/dashboard/events/${createdEvent.id}`),
+        "organisation public event redirect target was incorrect",
+        location
+      );
+    });
+
+    const memberClient = await runStep("8. Login as member account", () =>
       login("user2@example.com", "password123", "member")
     );
 
-    await runStep("8. Verify member dashboard and public event access", async () => {
+    await runStep("9. Verify member dashboard and public event access", async () => {
       const dashboard = await memberClient.fetch("/dashboard", {
         redirect: "follow"
       });
@@ -350,7 +377,22 @@ async function main() {
       return publicEvents.body.events;
     });
 
-    await runStep("9. Verify member cannot access management events API", async () => {
+    await runStep("10. Verify member cannot access organiser event view", async () => {
+      const result = await memberClient.fetch(`/dashboard/events/${createdEvent.id}`);
+      assert(
+        [307, 308].includes(result.status),
+        `member organiser event route should redirect, got ${result.status}`,
+        await result.text()
+      );
+      const location = result.headers.get("location") ?? "";
+      assert(
+        location === "/" || location.endsWith("/"),
+        "member organiser event redirect target was incorrect",
+        location
+      );
+    });
+
+    await runStep("11. Verify member cannot access management events API", async () => {
       const result = await memberClient.json(
         `/api/events?orgId=${encodeURIComponent(engineeringOrganisation.id)}`
       );
@@ -361,7 +403,7 @@ async function main() {
       );
     });
 
-    await runStep("10. Verify member cannot access orders API", async () => {
+    await runStep("12. Verify member cannot access orders API", async () => {
       const result = await memberClient.json("/api/orders");
       assert(
         [401, 403].includes(result.response.status),
@@ -370,7 +412,28 @@ async function main() {
       );
     });
 
-    await runStep("11. Verify checkout fails before Stripe readiness", async () => {
+    await runStep("13. Verify organisation account cannot checkout", async () => {
+      const ticketType = editedEvent.ticketTypes[0];
+      const checkout = await organisationClient.json("/api/payments/checkout/event", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          eventId: editedEvent.id,
+          ticketTypeId: ticketType.id,
+          quantity: 1
+        })
+      });
+
+      assert(
+        checkout.response.status >= 400,
+        `organisation checkout should fail, got ${checkout.response.status}`,
+        JSON.stringify(checkout.body, null, 2)
+      );
+    });
+
+    await runStep("14. Verify checkout fails before Stripe readiness", async () => {
       const paymentsOrg = await organisationClient.json("/api/orgs/payments-lab");
       assertStatus(paymentsOrg.response, 403, "organisation account cannot access payments lab");
 
@@ -418,7 +481,7 @@ async function main() {
       );
     });
 
-    await runStep("12. Verify active reservation reduces availability", async () => {
+    await runStep("15. Verify active reservation reduces availability", async () => {
       const event = await prisma.event.findUnique({
         where: { id: createdEventId },
         select: {
@@ -502,7 +565,7 @@ async function main() {
       );
     });
 
-    await runStep("13. Verify expired reservation settles order and is grouped", async () => {
+    await runStep("16. Verify expired reservation settles order and is grouped", async () => {
       assert(createdSmokeOrderIds.length > 0, "reservation smoke order missing");
       const orderId = createdSmokeOrderIds[createdSmokeOrderIds.length - 1];
       const past = new Date(Date.now() - 60 * 1000);

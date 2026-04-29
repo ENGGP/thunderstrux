@@ -37,6 +37,7 @@ Flow:
 
 ```text
 User visits /events/[eventId]
+  -> proxy redirects organisation accounts to /dashboard/events/[eventId]
   -> page fetches GET /api/public/events/[eventId]
   -> API returns only published events
   -> page renders event details and ticketTypes
@@ -61,7 +62,7 @@ Buyer tickets page:
 
 - Requires authentication.
 - Reads orders by `session.user.id`.
-- Shows pending, paid, and failed orders.
+- Shows pending, paid, expired, and failed orders.
 - Shows ticket identifiers once tickets have been issued.
 
 ## Login and Signup
@@ -209,6 +210,7 @@ Events page resolves current organisation account
 Supported actions:
 
 - Create new event
+- View event analytics
 - Edit event
 - Publish draft event
 - Unpublish published event, but only if there are no orders
@@ -241,6 +243,18 @@ The expected page is:
 ```text
 app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
 app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx
+```
+
+View event link shape:
+
+```ts
+`/dashboard/events/${event.id}`
+```
+
+The expected page is:
+
+```text
+app/(dashboard)/dashboard/events/[eventId]/page.tsx
 ```
 
 There is also a pass-through layout at:
@@ -302,6 +316,32 @@ Ticket edit details:
 - Sold/issued ticket rows omitted from the payload are preserved unchanged instead of being deleted.
 - Sold/issued ticket rows keep editable name/price/quantity inputs, but their Remove button is disabled.
 
+## Organiser Event Analytics
+
+Files:
+
+- `app/(dashboard)/dashboard/events/[eventId]/page.tsx`
+- `lib/events/event-analytics.ts`
+
+Flow:
+
+```text
+Organisation opens /dashboard/events/[eventId]
+  -> proxy allows organisation accounts and redirects member accounts to /
+  -> page resolves current organisation through Organisation.accountUserId
+  -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
+  -> page renders event details, revenue, sold count, remaining count, ticket rows, and order link
+```
+
+Analytics rules:
+
+- Remaining is current `TicketType.quantity`.
+- Sold is summed from paid `Order.quantity`.
+- Revenue is summed from paid `Order.totalAmount`.
+- Revenue is grouped per ticket type by `Order.ticketTypeId`.
+- The UI does not show total capacity.
+- Empty states are shown for no ticket types and no tickets sold.
+
 ## Stripe Settings
 
 Files:
@@ -351,16 +391,26 @@ Important security detail:
 Files:
 
 - `app/(dashboard)/dashboard/orders/page.tsx`
+- `app/api/orders/route.ts`
+- `lib/orders/grouped-orders.ts`
 
 Flow:
 
 ```text
 Page resolves current organisation account
   -> requireOrganisationFinanceAccess(organisation.id)
-  -> query orders scoped to organisation.id
-  -> render buyer, event, ticket type, quantity, total, status, and paidAt
+  -> optionally validates eventId belongs to the current organisation
+  -> query orders scoped to organisation.id and optional eventId
+  -> render grouped events, buyer, ticket type, quantity, total, status, and timestamps
 ```
 
 Access:
 
 - Organisation account required.
+
+Current UI:
+
+- Orders are grouped by event.
+- Status filters support `all`, `paid`, `pending`, `expired`, and `failed`.
+- Event-filtered views show an event header and `Back to all orders`.
+- Empty states are shown when no orders match.

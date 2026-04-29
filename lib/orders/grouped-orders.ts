@@ -18,15 +18,41 @@ export function parseOrderStatusFilter(value: string | null): OrderStatusFilter 
     : "all";
 }
 
-export async function getGroupedOrganisationOrders(
+export class OrganisationOrderEventAccessError extends Error {
+  constructor(message = "Event not found or access denied") {
+    super(message);
+    this.name = "OrganisationOrderEventAccessError";
+  }
+}
+
+export async function getGroupedOrganisationOrdersWithContext(
   organisationId: string,
-  statusFilter: OrderStatusFilter = "all"
+  statusFilter: OrderStatusFilter = "all",
+  eventId?: string
 ) {
   await failStalePreCheckoutOrders({ organisationId });
+
+  const eventContext = eventId
+    ? await prisma.event.findFirst({
+        where: {
+          id: eventId,
+          organisationId
+        },
+        select: {
+          id: true,
+          title: true
+        }
+      })
+    : null;
+
+  if (eventId && !eventContext) {
+    throw new OrganisationOrderEventAccessError();
+  }
 
   const orders = await prisma.order.findMany({
     where: {
       organisationId,
+      ...(eventId ? { eventId } : {}),
       ...(statusFilter === "all" ? {} : { status: statusFilter as OrderStatus })
     },
     orderBy: { createdAt: "desc" },
@@ -101,5 +127,22 @@ export async function getGroupedOrganisationOrders(
     groups.set(order.event.id, group);
   }
 
-  return [...groups.values()];
+  return {
+    event: eventContext,
+    groups: [...groups.values()]
+  };
+}
+
+export async function getGroupedOrganisationOrders(
+  organisationId: string,
+  statusFilter: OrderStatusFilter = "all",
+  eventId?: string
+) {
+  const result = await getGroupedOrganisationOrdersWithContext(
+    organisationId,
+    statusFilter,
+    eventId
+  );
+
+  return result.groups;
 }

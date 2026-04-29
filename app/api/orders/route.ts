@@ -11,6 +11,7 @@ import {
   requireOrganisationFinanceAccess
 } from "@/lib/auth/access";
 import {
+  OrganisationOrderEventAccessError,
   getGroupedOrganisationOrders,
   parseOrderStatusFilter
 } from "@/lib/orders/grouped-orders";
@@ -21,7 +22,12 @@ export async function GET(request: Request) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationFinanceAccess(organisation.id);
     const status = parseOrderStatusFilter(searchParams.get("status"));
-    const groups = await getGroupedOrganisationOrders(organisation.id, status);
+    const eventId = searchParams.get("eventId")?.trim() || undefined;
+    const groups = await getGroupedOrganisationOrders(
+      organisation.id,
+      status,
+      eventId
+    );
 
     return NextResponse.json(groups);
   } catch (error) {
@@ -30,6 +36,10 @@ export async function GET(request: Request) {
     }
 
     if (error instanceof OrganisationAccessError) {
+      return forbidden(error.message);
+    }
+
+    if (error instanceof OrganisationOrderEventAccessError) {
       return forbidden(error.message);
     }
 

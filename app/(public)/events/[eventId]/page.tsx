@@ -1,4 +1,5 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@/auth";
 import { PublicTicketPurchase } from "@/components/events/public-ticket-purchase";
 import { getAppUrl } from "@/lib/stripe";
 
@@ -36,6 +37,12 @@ function formatDateTime(value: string) {
 
 export default async function PublicEventPage({ params }: PublicEventPageProps) {
   const { eventId } = await params;
+  const session = await auth();
+
+  if (session?.user?.accountRole === "organisation") {
+    redirect(`/dashboard/events/${eventId}`);
+  }
+
   const response = await fetch(`${getAppUrl()}/api/public/events/${eventId}`, {
     cache: "no-store"
   });

@@ -128,7 +128,8 @@ User: thunderstrux
 Password: thunderstrux
 Container host: db
 Host machine: localhost
-Port: 5432
+Host port: 5433
+Container port: 5432
 Docker volume: thunderstrux_postgres_data
 Container path: /var/lib/postgresql/data
 ```

@@ -23,7 +23,7 @@ http://localhost:3000
 PostgreSQL:
 
 ```text
-localhost:5432
+localhost:5433
 ```
 
 ## Docker Configuration
@@ -357,7 +357,7 @@ If the app is started outside Docker, `DATABASE_URL=db:5432` will not resolve. U
 Host database connection string:
 
 ```text
-postgresql://thunderstrux:thunderstrux@localhost:5432/thunderstrux?schema=public
+postgresql://thunderstrux:thunderstrux@localhost:5433/thunderstrux?schema=public
 ```
 
 Container database connection string:

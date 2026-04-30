@@ -44,7 +44,7 @@ http://localhost:3000
 Database from host:
 
 ```text
-postgresql://thunderstrux:thunderstrux@localhost:5432/thunderstrux?schema=public
+postgresql://thunderstrux:thunderstrux@localhost:5433/thunderstrux?schema=public
 ```
 
 Database from app container:

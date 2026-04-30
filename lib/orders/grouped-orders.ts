@@ -1,6 +1,6 @@
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
+import { runStaleOrderCleanup } from "@/lib/orders/stale-orders";
 
 export const orderStatusFilters = [
   "all",
@@ -30,7 +30,7 @@ export async function getGroupedOrganisationOrdersWithContext(
   statusFilter: OrderStatusFilter = "all",
   eventId?: string
 ) {
-  await failStalePreCheckoutOrders({ organisationId });
+  await runStaleOrderCleanup({ organisationId });
 
   const eventContext = eventId
     ? await prisma.event.findFirst({

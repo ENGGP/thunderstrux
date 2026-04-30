@@ -3,7 +3,7 @@ import { expireOldActiveReservations } from "@/lib/tickets/reservations";
 
 export const stalePreCheckoutOrderMinutes = 30;
 
-export async function failStalePreCheckoutOrders({
+export async function runStaleOrderCleanup({
   organisationId,
   eventId,
   ticketTypeId,
@@ -24,7 +24,7 @@ export async function failStalePreCheckoutOrders({
       userId
     });
 
-    await tx.order.updateMany({
+    const orders = await tx.order.updateMany({
       where: {
         ...(organisationId ? { organisationId } : {}),
         ...(eventId ? { eventId } : {}),
@@ -50,6 +50,24 @@ export async function failStalePreCheckoutOrders({
       }
     });
 
-    return reservations;
+    console.log("STALE CLEANUP:", {
+      organisationId,
+      eventId,
+      ticketTypeId,
+      userId,
+      reservationsUpdated: reservations.count,
+      ordersUpdated: orders.count
+    });
+
+    return {
+      reservationsUpdated: reservations.count,
+      ordersUpdated: orders.count
+    };
   });
+}
+
+export async function failStalePreCheckoutOrders(
+  filters: Parameters<typeof runStaleOrderCleanup>[0] = {}
+) {
+  return runStaleOrderCleanup(filters);
 }

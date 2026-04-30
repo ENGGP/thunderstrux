@@ -267,7 +267,7 @@ export async function POST(request: Request) {
             destination: organisation.stripeAccountId
           }
         },
-        success_url: `${appUrl}/success`,
+        success_url: `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${appUrl}/cancel`,
         expires_at: stripeExpiresAt,
         metadata: {

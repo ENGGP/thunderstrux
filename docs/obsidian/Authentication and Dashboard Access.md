@@ -115,6 +115,8 @@ Important helpers:
 - `requireOrganisationEventManagementAccess`
 - `requireOrganisationFinanceAccess`
 - `requireOrganisationStripeConnectAccess`
+- `requireOrganisationStaffAccess`
+- `requireOrganisationAdminAccess`
 
 ## Dashboard Access Layers
 
@@ -151,7 +153,7 @@ If ownership is missing, the organisation dashboard redirects to organisation cr
 
 Organisation accounts have full event, finance, settings, and Stripe Connect management access for their one organisation.
 
-Member accounts can complete a profile, join organisations, browse public events, buy tickets, and view `/tickets`. They cannot access organisation management APIs or pages.
+Member accounts can complete a profile, join and leave organisations, view public-safe organisation details, browse public events, buy tickets, and view `/tickets`. They cannot access organisation management APIs or pages.
 
 Organisation accounts can view public event URLs only as redirects to the organiser event view. They cannot buy tickets.
 

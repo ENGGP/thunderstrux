@@ -4,6 +4,13 @@ const baseUrl = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
 const prisma = new PrismaClient();
 const reservationWindowMs = 30 * 60 * 1000;
 
+function formatCurrency(amountInCents) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "AUD"
+  }).format(amountInCents / 100);
+}
+
 class SmokeTestError extends Error {
   constructor(message, details = "") {
     super(details ? `${message}\n${details}` : message);
@@ -336,7 +343,7 @@ async function main() {
       assertStatus(organiserView, 200, "organiser event view");
       assert(
         organiserViewText.includes("Ticket performance") &&
-          organiserViewText.includes("Revenue over time") &&
+          organiserViewText.includes("Revenue (UTC)") &&
           organiserViewText.includes(createdEvent.title),
         "organiser event view did not render analytics"
       );
@@ -730,6 +737,230 @@ async function main() {
       );
 
       assert(order.totalAmount === order.unitPrice * order.quantity, "order amount history changed");
+    });
+
+    await runStep("21. Verify pending order with expired reservation is lazily expired", async () => {
+      const ticketType = await prisma.ticketType.findFirst({
+        where: { eventId: createdEventId },
+        select: { id: true, price: true }
+      });
+      assert(ticketType, "ticket type missing for lazy expiry smoke test");
+
+      const member = await prisma.user.findUnique({
+        where: { email: "user2@example.com" },
+        select: { id: true }
+      });
+      assert(member?.id, "user2@example.com missing for lazy expiry smoke test");
+
+      const pendingOrder = await prisma.order.create({
+        data: {
+          organisationId: engineeringOrganisation.id,
+          eventId: createdEventId,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "pending",
+          quantity: 1,
+          unitPrice: ticketType.price,
+          totalAmount: ticketType.price,
+          reservation: {
+            create: {
+              organisationId: engineeringOrganisation.id,
+              eventId: createdEventId,
+              ticketTypeId: ticketType.id,
+              userId: member.id,
+              quantity: 1,
+              status: "expired",
+              expiresAt: new Date(Date.now() - 60 * 1000),
+              releasedAt: new Date(Date.now() - 60 * 1000),
+              releaseReason: "Smoke test pre-expired reservation"
+            }
+          }
+        },
+        select: { id: true }
+      });
+      createdSmokeOrderIds.push(pendingOrder.id);
+
+      const grouped = await organisationClient.json("/api/orders?status=expired");
+      assertStatus(grouped.response, 200, "lazy expired grouped orders", grouped.body);
+
+      const order = await prisma.order.findUnique({
+        where: { id: pendingOrder.id },
+        select: { status: true, failureReason: true }
+      });
+      assert(order?.status === "expired", "pending order with expired reservation was not expired");
+      assert(order.failureReason === null, "lazy expiry set failureReason");
+
+      const analytics = await organisationClient.fetch(
+        `/dashboard/events/${createdEventId}`,
+        { redirect: "follow" }
+      );
+      const analyticsText = await analytics.text();
+      assertStatus(analytics, 200, "analytics after lazy expiry");
+      assert(
+        !analyticsText.includes(formatCurrency(ticketType.price)),
+        "expired order was counted as analytics revenue"
+      );
+    });
+
+    await runStep("22. Verify cleanup is idempotent and preserves paid or failed orders", async () => {
+      const ticketType = await prisma.ticketType.findFirst({
+        where: { eventId: createdEventId },
+        select: { id: true, price: true, quantity: true }
+      });
+      assert(ticketType, "ticket type missing for cleanup safety smoke test");
+
+      const member = await prisma.user.findUnique({
+        where: { email: "user2@example.com" },
+        select: { id: true }
+      });
+      assert(member?.id, "user2@example.com missing for cleanup safety smoke test");
+
+      const now = new Date();
+      const past = new Date(Date.now() - 60 * 1000);
+
+      const paidOrder = await prisma.order.create({
+        data: {
+          organisationId: engineeringOrganisation.id,
+          eventId: createdEventId,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "paid",
+          quantity: 1,
+          unitPrice: ticketType.price,
+          totalAmount: ticketType.price,
+          paidAt: now,
+          reservation: {
+            create: {
+              organisationId: engineeringOrganisation.id,
+              eventId: createdEventId,
+              ticketTypeId: ticketType.id,
+              userId: member.id,
+              quantity: 1,
+              status: "confirmed",
+              expiresAt: past,
+              confirmedAt: now
+            }
+          }
+        },
+        select: { id: true }
+      });
+      createdSmokeOrderIds.push(paidOrder.id);
+
+      const failedOrder = await prisma.order.create({
+        data: {
+          organisationId: engineeringOrganisation.id,
+          eventId: createdEventId,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "failed",
+          quantity: 1,
+          unitPrice: ticketType.price,
+          totalAmount: ticketType.price,
+          failedAt: now,
+          failureReason: "smoke_test_failed_order",
+          reservation: {
+            create: {
+              organisationId: engineeringOrganisation.id,
+              eventId: createdEventId,
+              ticketTypeId: ticketType.id,
+              userId: member.id,
+              quantity: 1,
+              status: "released",
+              expiresAt: past,
+              releasedAt: now,
+              releaseReason: "Smoke test failed order"
+            }
+          }
+        },
+        select: { id: true }
+      });
+      createdSmokeOrderIds.push(failedOrder.id);
+
+      const expiringOrder = await prisma.order.create({
+        data: {
+          organisationId: engineeringOrganisation.id,
+          eventId: createdEventId,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "pending",
+          quantity: 1,
+          unitPrice: ticketType.price,
+          totalAmount: ticketType.price,
+          reservation: {
+            create: {
+              organisationId: engineeringOrganisation.id,
+              eventId: createdEventId,
+              ticketTypeId: ticketType.id,
+              userId: member.id,
+              quantity: 1,
+              status: "active",
+              expiresAt: past
+            }
+          }
+        },
+        select: { id: true }
+      });
+      createdSmokeOrderIds.push(expiringOrder.id);
+
+      const publish = await organisationClient.json(
+        `/api/events/${createdEventId}/publish`,
+        { method: "PATCH" }
+      );
+      assertStatus(publish.response, 200, "publish smoke event for public cleanup");
+
+      const publicEvent = await memberClient.json(`/api/public/events/${createdEventId}`);
+      assertStatus(publicEvent.response, 200, "public event cleanup", publicEvent.body);
+      const publicTicketType = publicEvent.body.event.ticketTypes.find(
+        (item) => item.id === ticketType.id
+      );
+      assert(publicTicketType, "public event ticket type missing after cleanup");
+      assert(
+        publicTicketType.quantity === ticketType.quantity,
+        "expired reservation reduced public checkout availability"
+      );
+
+      const firstCleanup = await organisationClient.json("/api/orders");
+      assertStatus(firstCleanup.response, 200, "first idempotent cleanup", firstCleanup.body);
+      const secondCleanup = await organisationClient.json("/api/orders");
+      assertStatus(secondCleanup.response, 200, "second idempotent cleanup", secondCleanup.body);
+
+      const checkedOrders = await prisma.order.findMany({
+        where: {
+          id: {
+            in: [paidOrder.id, failedOrder.id, expiringOrder.id]
+          }
+        },
+        select: {
+          id: true,
+          status: true,
+          failureReason: true,
+          reservation: {
+            select: {
+              status: true
+            }
+          }
+        }
+      });
+      const ordersById = new Map(checkedOrders.map((order) => [order.id, order]));
+
+      assert(ordersById.get(paidOrder.id)?.status === "paid", "paid order was changed");
+      assert(
+        ordersById.get(paidOrder.id)?.reservation?.status === "confirmed",
+        "confirmed reservation was changed"
+      );
+      assert(ordersById.get(failedOrder.id)?.status === "failed", "failed order was changed");
+      assert(
+        ordersById.get(failedOrder.id)?.failureReason === "smoke_test_failed_order",
+        "failed order failureReason was changed"
+      );
+      assert(
+        ordersById.get(expiringOrder.id)?.status === "expired",
+        "active expired reservation did not expire pending order"
+      );
+      assert(
+        ordersById.get(expiringOrder.id)?.reservation?.status === "expired",
+        "active expired reservation was not expired"
+      );
     });
   } finally {
     if (createdSmokeOrderIds.length > 0) {

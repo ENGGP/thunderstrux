@@ -74,7 +74,7 @@ export default async function OrganisationDetailsPage({
 
           {upcomingEvents.length === 0 ? (
             <p className="text-sm text-neutral-600">
-              No upcoming published events.
+              No upcoming events.
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">

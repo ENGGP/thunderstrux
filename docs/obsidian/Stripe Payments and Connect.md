@@ -16,8 +16,10 @@ Core files:
 
 - `app/api/payments/checkout/event/route.ts`
 - `app/api/payments/webhook/route.ts`
+- `app/api/public/events/[eventId]/route.ts`
 - `app/tickets/page.tsx`
 - `app/(dashboard)/dashboard/orders/page.tsx`
+- `app/(dashboard)/dashboard/events/[eventId]/page.tsx`
 - `app/api/stripe/connect/onboard/route.ts`
 - `app/api/stripe/connect/continue/route.ts`
 - `app/api/stripe/connect/disconnect/route.ts`
@@ -26,7 +28,9 @@ Core files:
 - `lib/stripe/index.ts`
 - `lib/stripe/connect.ts`
 - `lib/stripe/fees.ts`
+- `lib/orders/stale-orders.ts`
 - `lib/tickets/reservations.ts`
+- `lib/events/event-analytics.ts`
 - `components/settings/stripe-connect-settings.tsx`
 - `components/events/public-ticket-purchase.tsx`
 
@@ -354,17 +358,38 @@ Completed Checkout sessions with missing or expired local reservations:
 
 ## Stale Pending Orders
 
-The app expires old active reservations opportunistically:
+The app expires old active reservations and their pending orders through an idempotent server-side cleanup helper.
 
 - active reservation with `expiresAt` in the past becomes `expired`
 - matching pending order becomes `expired`
+- pending order with an already-expired linked reservation becomes `expired`
 - normal expiry does not set `failureReason`
 
 Design choice:
 
 - Reservation expiry is the source of truth for abandoned checkout cleanup.
 - Stripe/session creation failures still mark orders `failed` and release reservations.
-- Cleanup runs opportunistically when starting checkout, viewing `/tickets`, viewing organiser orders, or computing grouped order data.
+- No background worker exists; cleanup runs from normal server-side app paths.
+
+Current cleanup paths:
+
+- starting checkout in `POST /api/payments/checkout/event`
+- ticket-type reservation cleanup inside the checkout transaction
+- buyer `/tickets`
+- member `/dashboard`
+- organisation `/dashboard`
+- organiser orders through `/api/orders` and `/dashboard/orders`
+- organiser event analytics through `/dashboard/events/[eventId]`
+- public event details through `GET /api/public/events/[eventId]`
+
+Safety rules:
+
+- Paid orders are never changed by stale cleanup.
+- Failed orders are never changed by stale cleanup.
+- Confirmed reservations are never changed by stale cleanup.
+- Cleanup uses batched updates and is safe to run repeatedly.
+- Expired orders do not count in analytics because analytics queries include only `status = paid`.
+- Expired reservations do not reduce availability because availability counts only active reservations with `expiresAt` in the future.
 
 Transaction:
 
@@ -380,6 +405,12 @@ Transaction:
 - Stripe-not-ready checkout creates no reservation
 - active reservation reduces availability
 - expired reservation settles the order as `expired`
+- pending order with expired reservation becomes `expired`
+- expired orders do not count as analytics revenue
+- expired reservations do not reduce public checkout availability
+- paid orders with confirmed reservations are preserved by cleanup
+- failed orders are preserved by cleanup
+- stale cleanup is idempotent
 - reservation expiry window is exactly 30 minutes
 - order `unitPrice` and `totalAmount` history remains unchanged
 - organisation public event route redirects to organiser event view

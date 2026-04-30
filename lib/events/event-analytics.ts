@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/db";
+import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 
 export class EventAnalyticsAccessError extends Error {
   constructor(message = "Event not found or access denied") {
@@ -12,6 +13,8 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
   organisationId: string,
   eventId: string
 ) {
+  await failStalePreCheckoutOrders({ organisationId, eventId });
+
   const [event, paidOrderGroups] = await prisma.$transaction([
     prisma.event.findFirst({
       where: {
@@ -106,6 +109,8 @@ export const getOrganisationEventRevenueSeries = cache(
     organisationId: string,
     eventId: string
   ) {
+    await failStalePreCheckoutOrders({ organisationId, eventId });
+
     const [event, paidOrders] = await prisma.$transaction([
       prisma.event.findFirst({
         where: {

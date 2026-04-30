@@ -230,6 +230,8 @@ Rules:
 - active reservations reduce checkout availability
 - reservation expiry is 30 minutes
 - expired reservations do not reduce availability
+- pending orders linked to expired reservations are marked `expired` by app-level stale cleanup
+- normal reservation expiry does not set `Order.failureReason`
 - Stripe Checkout `expires_at` matches the reservation expiry
 - paid webhook reconciliation confirms reservations atomically with order payment, inventory decrement, and ticket creation
 

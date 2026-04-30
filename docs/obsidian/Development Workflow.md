@@ -165,7 +165,7 @@ Smoke tests:
 docker compose exec app pnpm test:smoke
 ```
 
-The smoke script checks auth roles, dashboard access, event create/edit, ticket editing, member API denial, checkout preconditions, and reservation availability behavior.
+The smoke script checks auth roles, dashboard access, event create/edit, ticket editing, member API denial, checkout preconditions, member organisation leave, public organisation details, reservation availability behavior, stale pending order expiry, cleanup idempotency, and paid/failed cleanup safety.
 
 The build script runs:
 

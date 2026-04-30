@@ -48,11 +48,13 @@ export async function expireOldActiveReservations(
   {
     now = new Date(),
     organisationId,
+    eventId,
     ticketTypeId,
     userId
   }: {
     now?: Date;
     organisationId?: string;
+    eventId?: string;
     ticketTypeId?: string;
     userId?: string;
   } = {}
@@ -60,6 +62,7 @@ export async function expireOldActiveReservations(
   const expiredReservations = await tx.ticketReservation.findMany({
     where: {
       ...(organisationId ? { organisationId } : {}),
+      ...(eventId ? { eventId } : {}),
       ...(ticketTypeId ? { ticketTypeId } : {}),
       ...(userId ? { userId } : {}),
       status: "active",

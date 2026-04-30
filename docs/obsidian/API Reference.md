@@ -56,6 +56,18 @@ Rules:
 - Member account required.
 - Creates or updates an `OrganisationMember` row with role `member`.
 
+### `POST /api/orgs/[orgSlug]/leave`
+
+Leaves an organisation as a member.
+
+Rules:
+
+- Auth required.
+- Member account required.
+- Deletes only the signed-in member account's `OrganisationMember` row for the resolved organisation.
+- Organisation accounts cannot use this endpoint.
+- If the member is already not joined, the endpoint still returns success.
+
 ## Public Events
 
 ### `GET /api/public/events`
@@ -95,6 +107,7 @@ Rules:
 - No auth required.
 - Event must be `published`.
 - Includes ticket types.
+- Runs stale pending order cleanup for the event before returning availability-sensitive ticket type data.
 - Organisation accounts are redirected at the route/proxy layer from `/events/[eventId]` to `/dashboard/events/[eventId]`; this API remains public-safe.
 
 ## Organisations
@@ -271,6 +284,7 @@ Rules:
 - Auth required.
 - Organisation account required.
 - Finance access required.
+- Runs stale pending order cleanup for the organisation before returning grouped orders.
 - `status` is optional and may be `all`, `paid`, `pending`, `expired`, or `failed`.
 - `eventId` is optional.
 - When `eventId` is present, the API verifies the event belongs to the signed-in organisation account before filtering.

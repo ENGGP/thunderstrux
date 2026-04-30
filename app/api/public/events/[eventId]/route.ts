@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { internalError, notFound } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
+import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 
 type RouteContext = {
   params: Promise<{
@@ -19,6 +20,7 @@ export async function GET(_request: Request, context: RouteContext) {
       },
       select: {
         id: true,
+        organisationId: true,
         title: true,
         description: true,
         startTime: true,
@@ -46,7 +48,14 @@ export async function GET(_request: Request, context: RouteContext) {
       return notFound("Event not found");
     }
 
-    return NextResponse.json({ event });
+    const { organisationId, ...publicEvent } = event;
+
+    await failStalePreCheckoutOrders({
+      organisationId,
+      eventId: event.id
+    });
+
+    return NextResponse.json({ event: publicEvent });
   } catch (error) {
     console.error(error);
     return internalError();

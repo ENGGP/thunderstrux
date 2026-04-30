@@ -40,6 +40,7 @@ User visits /events/[eventId]
   -> proxy redirects organisation accounts to /dashboard/events/[eventId]
   -> page fetches GET /api/public/events/[eventId]
   -> API returns only published events
+  -> API runs stale pending order cleanup for that event before returning ticketTypes
   -> page renders event details and ticketTypes
   -> PublicTicketPurchase handles client-side checkout start
 ```
@@ -50,8 +51,10 @@ Checkout flow:
 User selects quantity
   -> POST /api/payments/checkout/event
   -> route validates event, ticket type, quantity, status, inventory, and Stripe readiness
+  -> old active reservations for the ticket type are expired
   -> local Order row is created with status=pending
-  -> Stripe Checkout session is created
+  -> active TicketReservation row is created with a 30-minute expiry
+  -> Stripe Checkout session is created with expires_at matching the reservation expiry
   -> Order row is updated with stripeSessionId
   -> browser redirects to Stripe
   -> payment webhook marks Order paid and issues Ticket rows
@@ -61,6 +64,7 @@ User selects quantity
 Buyer tickets page:
 
 - Requires authentication.
+- Runs stale pending order cleanup for the signed-in member before reading orders.
 - Reads orders by `session.user.id`.
 - Shows pending, paid, expired, and failed orders.
 - Shows ticket identifiers once tickets have been issued.
@@ -140,6 +144,34 @@ Member opens /dashboard/organisations
 Important rule:
 
 - Joining an organisation never grants management access.
+
+## Member Organisation Details And Leave
+
+Files:
+
+- `components/members/member-organisations-list.tsx`
+- `app/(public)/organisations/[orgSlug]/page.tsx`
+- `app/api/orgs/[orgSlug]/leave/route.ts`
+
+Flow:
+
+```text
+Member opens /dashboard
+  -> joined organisation cards render View details and Leave organisation actions
+  -> View details links to /organisations/[orgSlug]
+  -> public organisation details page loads public-safe organisation data and upcoming published events
+  -> Leave organisation confirms in the browser
+  -> POST /api/orgs/[orgSlug]/leave
+  -> API requires accountRole = member
+  -> API deletes only the signed-in user's OrganisationMember row for that organisation
+  -> dashboard refreshes
+```
+
+Important rules:
+
+- `/organisations/[orgSlug]` exposes only public-safe organisation data and upcoming published events.
+- Leave is idempotent when the member is already not joined.
+- Organisation accounts cannot leave their owned organisation through the member leave endpoint.
 
 ## Create Organisation
 
@@ -329,8 +361,10 @@ Flow:
 Organisation opens /dashboard/events/[eventId]
   -> proxy allows organisation accounts and redirects member accounts to /
   -> page resolves current organisation through Organisation.accountUserId
+  -> analytics helper runs stale pending order cleanup for that event
   -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
-  -> page renders event details, revenue, sold count, remaining count, ticket rows, and order link
+  -> revenue series helper fetches paid order paidAt/totalAmount values for UTC daily grouping
+  -> page renders event details, revenue, sold count, remaining count, UTC revenue chart, ticket rows, and order link
 ```
 
 Analytics rules:
@@ -339,6 +373,7 @@ Analytics rules:
 - Sold is summed from paid `Order.quantity`.
 - Revenue is summed from paid `Order.totalAmount`.
 - Revenue is grouped per ticket type by `Order.ticketTypeId`.
+- Revenue-over-time is grouped by UTC day and labelled as `Revenue (UTC)`.
 - The UI does not show total capacity.
 - Empty states are shown for no ticket types and no tickets sold.
 
@@ -399,6 +434,7 @@ Flow:
 ```text
 Page resolves current organisation account
   -> requireOrganisationFinanceAccess(organisation.id)
+  -> stale pending order cleanup runs for the organisation
   -> optionally validates eventId belongs to the current organisation
   -> query orders scoped to organisation.id and optional eventId
   -> render grouped events, buyer, ticket type, quantity, total, status, and timestamps

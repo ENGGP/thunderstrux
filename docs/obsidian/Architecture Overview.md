@@ -103,7 +103,7 @@ app/
 
 `/dashboard`
 
-- Member accounts see profile completion, joined organisations, organisation search, public event discovery, and ticket links.
+- Member accounts see profile completion, joined organisations, member organisation actions, organisation search, public event discovery, and ticket links.
 - Organisation accounts see their organisation dashboard directly with upcoming events, recent orders, past-month revenue, and management navigation.
 
 `/dashboard/events`
@@ -138,6 +138,12 @@ app/
 
 - Member-only organisation search and join page.
 
+`/organisations/[orgSlug]`
+
+- Public-safe organisation details page.
+- Shows organisation name, slug, and upcoming published events.
+- Does not expose members, Stripe fields, or management actions.
+
 `/dashboard/[orgSlug]/*`
 
 - Legacy compatibility routes.
@@ -170,6 +176,7 @@ Checkout uses soft holds to prevent overselling:
 - Checkout availability is `TicketType.quantity - activeReservedQuantity`.
 - Stripe Checkout `expires_at` is aligned with the reservation expiry.
 - Webhooks confirm, release, or expire reservations while preserving `Order` history.
+- App-level stale cleanup expires pending orders whose reservations are expired or past `expiresAt` from normal server-side read paths.
 
 ## Organiser Analytics Model
 
@@ -178,6 +185,7 @@ Organiser event analytics are derived from existing event, ticket type, and paid
 - `TicketType.quantity` is displayed as remaining inventory.
 - Sold count is summed from paid `Order.quantity`.
 - Revenue is summed from paid `Order.totalAmount`.
+- Revenue-over-time is grouped by UTC day for charting.
 - The analytics page does not show total capacity because original capacity is not stored.
 - Each order maps to one ticket type through `Order.ticketTypeId`, so ticket-type revenue is grouped by `ticketTypeId`.
 

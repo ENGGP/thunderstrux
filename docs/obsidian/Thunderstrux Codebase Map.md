@@ -4,7 +4,7 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. Th
 
 - Email/password authentication with Auth.js credentials.
 - Two account roles: `member` and `organisation`.
-- Member profile onboarding, organisation search/join, public event browsing, ticket purchase, and `/tickets`.
+- Member profile onboarding, organisation search/join/leave, public organisation details, public event browsing, ticket purchase, and `/tickets`.
 - Organisation accounts manage exactly one organisation directly at `/dashboard`.
 - Organisation management routes under `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
 - Legacy `/dashboard/[orgSlug]/*` routes retained as compatibility redirects.
@@ -52,6 +52,7 @@ app/
   layout.tsx                         Root layout, session provider, global navbar
   page.tsx                           Public homepage: Discover Events
   (public)/events/[eventId]/         Public event detail route
+  (public)/organisations/[orgSlug]/  Public-safe organisation details route
   (dashboard)/dashboard/             Role-aware dashboard route group
     page.tsx                         Member dashboard or organisation dashboard
     create/page.tsx                  Organisation onboarding
@@ -77,6 +78,7 @@ lib/
   client/                            Frontend fetch and helper utilities
   db/                                Prisma client and organisation scoping helpers
   events/                            Public event loading and demo event fallback
+  orders/                            Grouped orders and stale pending order cleanup
   permissions/                       Legacy role permission helpers
   stripe/                            Stripe SDK, Connect, and fee helpers
   validators/                        Zod schemas

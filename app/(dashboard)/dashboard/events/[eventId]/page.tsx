@@ -153,10 +153,10 @@ export default async function OrganiserEventPage({
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-neutral-950">
-              Revenue over time
+              Revenue (UTC)
             </h3>
             <p className="mt-1 text-sm text-neutral-500">
-              Paid order revenue grouped by day.
+              Paid order revenue grouped by UTC day.
             </p>
           </div>
 

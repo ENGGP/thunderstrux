@@ -21,12 +21,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationFinanceAccess(organisation.id);
-    const status = parseOrderStatusFilter(searchParams.get("status"));
+    const includeSystemOrders = searchParams.get("includeSystem") === "true";
+    const status = parseOrderStatusFilter(searchParams.get("status"), {
+      includeSystemOrders
+    });
     const eventId = searchParams.get("eventId")?.trim() || undefined;
     const groups = await getGroupedOrganisationOrders(
       organisation.id,
       status,
-      eventId
+      eventId,
+      { includeSystemOrders }
     );
 
     return NextResponse.json(groups);

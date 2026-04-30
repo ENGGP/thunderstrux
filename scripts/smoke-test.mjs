@@ -902,6 +902,37 @@ async function main() {
       });
       createdSmokeOrderIds.push(expiringOrder.id);
 
+      const legacyOldPendingOrder = await prisma.order.create({
+        data: {
+          organisationId: engineeringOrganisation.id,
+          eventId: createdEventId,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "pending",
+          quantity: 1,
+          unitPrice: ticketType.price,
+          totalAmount: ticketType.price,
+          createdAt: new Date(Date.now() - 31 * 60 * 1000)
+        },
+        select: { id: true }
+      });
+      createdSmokeOrderIds.push(legacyOldPendingOrder.id);
+
+      const legacyFreshPendingOrder = await prisma.order.create({
+        data: {
+          organisationId: engineeringOrganisation.id,
+          eventId: createdEventId,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "pending",
+          quantity: 1,
+          unitPrice: ticketType.price,
+          totalAmount: ticketType.price
+        },
+        select: { id: true }
+      });
+      createdSmokeOrderIds.push(legacyFreshPendingOrder.id);
+
       const publish = await organisationClient.json(
         `/api/events/${createdEventId}/publish`,
         { method: "PATCH" }
@@ -923,11 +954,36 @@ async function main() {
       assertStatus(firstCleanup.response, 200, "first idempotent cleanup", firstCleanup.body);
       const secondCleanup = await organisationClient.json("/api/orders");
       assertStatus(secondCleanup.response, 200, "second idempotent cleanup", secondCleanup.body);
+      const defaultOrderIds = firstCleanup.body.flatMap((group) =>
+        group.orders.map((order) => order.id)
+      );
+      assert(
+        !defaultOrderIds.includes(legacyFreshPendingOrder.id),
+        "pending system order was visible in default orders response"
+      );
+
+      const systemOrders = await organisationClient.json(
+        "/api/orders?includeSystem=true&status=pending"
+      );
+      assertStatus(systemOrders.response, 200, "system pending orders", systemOrders.body);
+      const systemPendingOrderIds = systemOrders.body.flatMap((group) =>
+        group.orders.map((order) => order.id)
+      );
+      assert(
+        systemPendingOrderIds.includes(legacyFreshPendingOrder.id),
+        "fresh pending system order was not visible in system orders response"
+      );
 
       const checkedOrders = await prisma.order.findMany({
         where: {
           id: {
-            in: [paidOrder.id, failedOrder.id, expiringOrder.id]
+            in: [
+              paidOrder.id,
+              failedOrder.id,
+              expiringOrder.id,
+              legacyOldPendingOrder.id,
+              legacyFreshPendingOrder.id
+            ]
           }
         },
         select: {
@@ -960,6 +1016,25 @@ async function main() {
       assert(
         ordersById.get(expiringOrder.id)?.reservation?.status === "expired",
         "active expired reservation was not expired"
+      );
+      assert(
+        ordersById.get(legacyOldPendingOrder.id)?.status === "expired",
+        "old pending order without reservation was not expired"
+      );
+      assert(
+        ordersById.get(legacyFreshPendingOrder.id)?.status === "pending",
+        "fresh pending order without reservation was expired too early"
+      );
+
+      const ticketsPage = await memberClient.fetch("/tickets", {
+        redirect: "follow"
+      });
+      const ticketsText = await ticketsPage.text();
+      assertStatus(ticketsPage, 200, "member tickets page");
+      assert(ticketsText.includes(paidOrder.id), "paid order missing from tickets page");
+      assert(
+        !ticketsText.includes(legacyFreshPendingOrder.id),
+        "pending order was visible on tickets page"
       );
     });
   } finally {

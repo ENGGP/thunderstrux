@@ -61,7 +61,10 @@ export default async function MyTicketsPage() {
   await failStalePreCheckoutOrders({ userId: user.id });
 
   const orders = await prisma.order.findMany({
-    where: { userId: user.id },
+    where: {
+      userId: user.id,
+      status: "paid"
+    },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

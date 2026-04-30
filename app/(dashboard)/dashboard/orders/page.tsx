@@ -9,6 +9,7 @@ import {
   getGroupedOrganisationOrdersWithContext,
   orderStatusFilters,
   parseOrderStatusFilter,
+  systemOrderStatusFilters,
   type OrderStatusFilter
 } from "@/lib/orders/grouped-orders";
 
@@ -53,20 +54,35 @@ function filterLabel(status: OrderStatusFilter) {
 export default async function OrganisationOrdersPage({
   searchParams
 }: {
-  searchParams: Promise<{ status?: string; eventId?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    eventId?: string;
+    includeSystem?: string;
+  }>;
 }) {
-  const { status: statusParam, eventId: eventIdParam } = await searchParams;
+  const {
+    status: statusParam,
+    eventId: eventIdParam,
+    includeSystem: includeSystemParam
+  } = await searchParams;
   const organisation = await requireCurrentOrganisationAccount();
   await requireOrganisationFinanceAccess(organisation.id);
-  const activeFilter = parseOrderStatusFilter(statusParam ?? null);
+  const includeSystemOrders = includeSystemParam === "true";
+  const activeFilter = parseOrderStatusFilter(statusParam ?? null, {
+    includeSystemOrders
+  });
   const eventId = eventIdParam?.trim() || undefined;
+  const visibleStatusFilters = includeSystemOrders
+    ? systemOrderStatusFilters
+    : orderStatusFilters;
   let orderResult: Awaited<ReturnType<typeof getGroupedOrganisationOrdersWithContext>>;
 
   try {
     orderResult = await getGroupedOrganisationOrdersWithContext(
       organisation.id,
       activeFilter,
-      eventId
+      eventId,
+      { includeSystemOrders }
     );
   } catch (error) {
     if (error instanceof OrganisationOrderEventAccessError) {
@@ -106,7 +122,7 @@ export default async function OrganisationOrdersPage({
         ) : null}
 
         <nav className="flex flex-wrap gap-2" aria-label="Order status filters">
-          {orderStatusFilters.map((status) => {
+          {visibleStatusFilters.map((status) => {
             const isActive = status === activeFilter;
             const params = new URLSearchParams();
 
@@ -116,6 +132,10 @@ export default async function OrganisationOrdersPage({
 
             if (eventId) {
               params.set("eventId", eventId);
+            }
+
+            if (includeSystemOrders) {
+              params.set("includeSystem", "true");
             }
 
             const query = params.toString();
@@ -135,6 +155,35 @@ export default async function OrganisationOrdersPage({
               </Link>
             );
           })}
+          {(() => {
+            const params = new URLSearchParams();
+
+            if (eventId) {
+              params.set("eventId", eventId);
+            }
+
+            if (!includeSystemOrders) {
+              params.set("includeSystem", "true");
+            }
+
+            const query = params.toString();
+            const href = query ? `/dashboard/orders?${query}` : "/dashboard/orders";
+
+            return (
+              <Link
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  includeSystemOrders
+                    ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                    : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                }`}
+                href={href}
+              >
+                {includeSystemOrders
+                  ? "Hide system orders"
+                  : "Show system orders"}
+              </Link>
+            );
+          })()}
         </nav>
 
         <section className="space-y-5">

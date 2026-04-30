@@ -16,6 +16,9 @@ export async function runStaleOrderCleanup({
 } = {}) {
   return prisma.$transaction(async (tx) => {
     const now = new Date();
+    const legacyPendingCutoff = new Date(
+      now.getTime() - stalePreCheckoutOrderMinutes * 60 * 1000
+    );
     const reservations = await expireOldActiveReservations(tx, {
       now,
       organisationId,
@@ -24,7 +27,7 @@ export async function runStaleOrderCleanup({
       userId
     });
 
-    const orders = await tx.order.updateMany({
+    const reservationBackedOrders = await tx.order.updateMany({
       where: {
         ...(organisationId ? { organisationId } : {}),
         ...(eventId ? { eventId } : {}),
@@ -50,18 +53,45 @@ export async function runStaleOrderCleanup({
       }
     });
 
+    const legacyReservationlessOrders = await tx.order.updateMany({
+      where: {
+        ...(organisationId ? { organisationId } : {}),
+        ...(eventId ? { eventId } : {}),
+        ...(ticketTypeId ? { ticketTypeId } : {}),
+        ...(userId ? { userId } : {}),
+        status: "pending",
+        createdAt: {
+          lt: legacyPendingCutoff
+        },
+        reservation: {
+          is: null
+        }
+      },
+      data: {
+        status: "expired",
+        failureReason: null
+      }
+    });
+
+    const ordersUpdated =
+      reservationBackedOrders.count + legacyReservationlessOrders.count;
+
     console.log("STALE CLEANUP:", {
       organisationId,
       eventId,
       ticketTypeId,
       userId,
       reservationsUpdated: reservations.count,
-      ordersUpdated: orders.count
+      reservationBackedOrdersUpdated: reservationBackedOrders.count,
+      legacyReservationlessOrdersUpdated: legacyReservationlessOrders.count,
+      ordersUpdated
     });
 
     return {
       reservationsUpdated: reservations.count,
-      ordersUpdated: orders.count
+      reservationBackedOrdersUpdated: reservationBackedOrders.count,
+      legacyReservationlessOrdersUpdated: legacyReservationlessOrders.count,
+      ordersUpdated
     };
   });
 }

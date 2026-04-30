@@ -5,15 +5,26 @@ import { runStaleOrderCleanup } from "@/lib/orders/stale-orders";
 export const orderStatusFilters = [
   "all",
   "paid",
-  "pending",
   "expired",
   "failed"
 ] as const;
 
-export type OrderStatusFilter = (typeof orderStatusFilters)[number];
+export const systemOrderStatusFilters = [
+  ...orderStatusFilters,
+  "pending"
+] as const;
 
-export function parseOrderStatusFilter(value: string | null): OrderStatusFilter {
-  return orderStatusFilters.includes(value as OrderStatusFilter)
+export type OrderStatusFilter = (typeof systemOrderStatusFilters)[number];
+
+export function parseOrderStatusFilter(
+  value: string | null,
+  { includeSystemOrders = false }: { includeSystemOrders?: boolean } = {}
+): OrderStatusFilter {
+  const allowedFilters = includeSystemOrders
+    ? systemOrderStatusFilters
+    : orderStatusFilters;
+
+  return allowedFilters.some((filter) => filter === value)
     ? (value as OrderStatusFilter)
     : "all";
 }
@@ -28,7 +39,8 @@ export class OrganisationOrderEventAccessError extends Error {
 export async function getGroupedOrganisationOrdersWithContext(
   organisationId: string,
   statusFilter: OrderStatusFilter = "all",
-  eventId?: string
+  eventId?: string,
+  { includeSystemOrders = false }: { includeSystemOrders?: boolean } = {}
 ) {
   await runStaleOrderCleanup({ organisationId });
 
@@ -53,7 +65,11 @@ export async function getGroupedOrganisationOrdersWithContext(
     where: {
       organisationId,
       ...(eventId ? { eventId } : {}),
-      ...(statusFilter === "all" ? {} : { status: statusFilter as OrderStatus })
+      ...(statusFilter === "all"
+        ? includeSystemOrders
+          ? {}
+          : { status: { in: ["paid", "expired", "failed"] as OrderStatus[] } }
+        : { status: statusFilter as OrderStatus })
     },
     orderBy: { createdAt: "desc" },
     select: {
@@ -136,12 +152,14 @@ export async function getGroupedOrganisationOrdersWithContext(
 export async function getGroupedOrganisationOrders(
   organisationId: string,
   statusFilter: OrderStatusFilter = "all",
-  eventId?: string
+  eventId?: string,
+  { includeSystemOrders = false }: { includeSystemOrders?: boolean } = {}
 ) {
   const result = await getGroupedOrganisationOrdersWithContext(
     organisationId,
     statusFilter,
-    eventId
+    eventId,
+    { includeSystemOrders }
   );
 
   return result.groups;

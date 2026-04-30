@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 
 export class EventAnalyticsAccessError extends Error {
@@ -7,7 +8,7 @@ export class EventAnalyticsAccessError extends Error {
   }
 }
 
-export async function getOrganisationEventAnalytics(
+export const getOrganisationEventAnalytics = cache(async function getOrganisationEventAnalytics(
   organisationId: string,
   eventId: string
 ) {
@@ -98,4 +99,60 @@ export async function getOrganisationEventAnalytics(
       )
     }
   };
-}
+});
+
+export const getOrganisationEventRevenueSeries = cache(
+  async function getOrganisationEventRevenueSeries(
+    organisationId: string,
+    eventId: string
+  ) {
+    const [event, paidOrders] = await prisma.$transaction([
+      prisma.event.findFirst({
+        where: {
+          id: eventId,
+          organisationId
+        },
+        select: {
+          id: true
+        }
+      }),
+      prisma.order.findMany({
+        where: {
+          organisationId,
+          eventId,
+          status: "paid",
+          paidAt: {
+            not: null
+          }
+        },
+        select: {
+          paidAt: true,
+          totalAmount: true
+        },
+        orderBy: {
+          paidAt: "asc"
+        }
+      })
+    ]);
+
+    if (!event) {
+      throw new EventAnalyticsAccessError();
+    }
+
+    const buckets = new Map<string, number>();
+
+    for (const order of paidOrders) {
+      if (!order.paidAt) {
+        continue;
+      }
+
+      const key = order.paidAt.toISOString().slice(0, 10);
+      buckets.set(key, (buckets.get(key) ?? 0) + order.totalAmount);
+    }
+
+    return [...buckets.entries()].map(([date, revenue]) => ({
+      date,
+      revenue
+    }));
+  }
+);

@@ -337,6 +337,89 @@ async function requireOwnedOrganisationById(organisationId: string) {
   };
 }
 
+async function requireOrganisationRoleAccess(
+  organisationId: string,
+  allowedRoles: OrganisationRole[],
+  errorMessage: string
+) {
+  const user = await requireAuthenticatedUser();
+
+  if (user.accountRole === "organisation") {
+    const organisation = await prisma.organisation.findFirst({
+      where: {
+        id: organisationId,
+        accountUserId: user.id
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        createdAt: true
+      }
+    });
+
+    if (!organisation || !allowedRoles.includes("org_owner")) {
+      throw new OrganisationAccessError(errorMessage);
+    }
+
+    return {
+      ...organisation,
+      role: "org_owner" as OrganisationRole
+    };
+  }
+
+  const membership = await prisma.organisationMember.findUnique({
+    where: {
+      userId_organisationId: {
+        userId: user.id,
+        organisationId
+      }
+    },
+    select: {
+      role: true,
+      organisation: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true
+        }
+      }
+    }
+  });
+
+  if (!membership || !allowedRoles.includes(membership.role as OrganisationRole)) {
+    throw new OrganisationAccessError(errorMessage);
+  }
+
+  return {
+    ...membership.organisation,
+    role: membership.role as OrganisationRole
+  };
+}
+
+export async function requireOrganisationStaffAccess(organisationId: string) {
+  return requireOrganisationRoleAccess(
+    organisationId,
+    [
+      "org_owner",
+      "org_admin",
+      "event_manager",
+      "finance_manager",
+      "content_manager"
+    ],
+    "Insufficient staff permissions"
+  );
+}
+
+export async function requireOrganisationAdminAccess(organisationId: string) {
+  return requireOrganisationRoleAccess(
+    organisationId,
+    ["org_owner", "org_admin"],
+    "Insufficient admin permissions"
+  );
+}
+
 export async function requireOrganisationEventManagementAccess(organisationId: string) {
   const organisation = await requireOwnedOrganisationById(organisationId);
 

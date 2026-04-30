@@ -188,6 +188,7 @@ async function main() {
   let createdEventId = null;
   let organisationClient = null;
   const createdSmokeOrderIds = [];
+  const createdSmokeOrganisationIds = [];
 
   try {
     organisationClient = await runStep("1. Login as organisation account", () =>
@@ -334,7 +335,8 @@ async function main() {
       const organiserViewText = await organiserView.text();
       assertStatus(organiserView, 200, "organiser event view");
       assert(
-        organiserViewText.includes("Ticket analytics") &&
+        organiserViewText.includes("Ticket performance") &&
+          organiserViewText.includes("Revenue over time") &&
           organiserViewText.includes(createdEvent.title),
         "organiser event view did not render analytics"
       );
@@ -357,7 +359,39 @@ async function main() {
       login("user2@example.com", "password123", "member")
     );
 
-    await runStep("9. Verify member dashboard and public event access", async () => {
+    const smokeMemberOrganisation = await runStep(
+      "9. Create temporary member organisation",
+      async () => {
+        const member = await prisma.user.findUnique({
+          where: { email: "user2@example.com" },
+          select: { id: true }
+        });
+        assert(member?.id, "user2@example.com missing");
+
+        const slug = `smoke-member-org-${Date.now()}`;
+        const organisation = await prisma.organisation.create({
+          data: {
+            name: "Smoke Member Organisation",
+            slug,
+            members: {
+              create: {
+                userId: member.id,
+                role: "member"
+              }
+            }
+          },
+          select: {
+            id: true,
+            name: true,
+            slug: true
+          }
+        });
+        createdSmokeOrganisationIds.push(organisation.id);
+        return organisation;
+      }
+    );
+
+    await runStep("10. Verify member dashboard and public event access", async () => {
       const dashboard = await memberClient.fetch("/dashboard", {
         redirect: "follow"
       });
@@ -369,6 +403,10 @@ async function main() {
           dashboardText.includes("Member"),
         "member dashboard did not look like a member dashboard"
       );
+      assert(
+        dashboardText.includes(`/organisations/${smokeMemberOrganisation.slug}`),
+        "member dashboard did not include organisation details link"
+      );
 
       const publicEvents = await memberClient.json("/api/public/events");
       assertStatus(publicEvents.response, 200, "public events", publicEvents.body);
@@ -377,7 +415,67 @@ async function main() {
       return publicEvents.body.events;
     });
 
-    await runStep("10. Verify member cannot access organiser event view", async () => {
+    await runStep("11. Verify organisation details page is public-safe", async () => {
+      const response = await memberClient.fetch(
+        `/organisations/${smokeMemberOrganisation.slug}`,
+        { redirect: "follow" }
+      );
+      const text = await response.text();
+      assertStatus(response, 200, "organisation details");
+      assert(
+        text.includes(smokeMemberOrganisation.name) &&
+          text.includes("Upcoming events"),
+        "organisation details page did not render public-safe organisation data"
+      );
+      assert(!text.includes("stripeAccountId"), "organisation details leaked Stripe data");
+    });
+
+    await runStep("12. Verify member can leave organisation", async () => {
+      const firstLeave = await memberClient.json(
+        `/api/orgs/${smokeMemberOrganisation.slug}/leave`,
+        { method: "POST" }
+      );
+      assertStatus(firstLeave.response, 200, "member leave organisation", firstLeave.body);
+      assert(
+        firstLeave.body?.organisation?.joined === false,
+        "leave response did not mark organisation as not joined",
+        JSON.stringify(firstLeave.body, null, 2)
+      );
+
+      const secondLeave = await memberClient.json(
+        `/api/orgs/${smokeMemberOrganisation.slug}/leave`,
+        { method: "POST" }
+      );
+      assertStatus(secondLeave.response, 200, "member idempotent leave", secondLeave.body);
+
+      const membership = await prisma.organisationMember.findUnique({
+        where: {
+          userId_organisationId: {
+            userId: (await prisma.user.findUniqueOrThrow({
+              where: { email: "user2@example.com" },
+              select: { id: true }
+            })).id,
+            organisationId: smokeMemberOrganisation.id
+          }
+        },
+        select: { id: true }
+      });
+      assert(!membership, "member organisation membership was not removed");
+    });
+
+    await runStep("13. Verify organisation account cannot leave organisation", async () => {
+      const result = await organisationClient.json(
+        `/api/orgs/${engineeringOrganisation.slug}/leave`,
+        { method: "POST" }
+      );
+      assert(
+        [401, 403].includes(result.response.status),
+        `organisation leave should fail, got ${result.response.status}`,
+        JSON.stringify(result.body, null, 2)
+      );
+    });
+
+    await runStep("14. Verify member cannot access organiser event view", async () => {
       const result = await memberClient.fetch(`/dashboard/events/${createdEvent.id}`);
       assert(
         [307, 308].includes(result.status),
@@ -392,7 +490,7 @@ async function main() {
       );
     });
 
-    await runStep("11. Verify member cannot access management events API", async () => {
+    await runStep("15. Verify member cannot access management events API", async () => {
       const result = await memberClient.json(
         `/api/events?orgId=${encodeURIComponent(engineeringOrganisation.id)}`
       );
@@ -403,7 +501,7 @@ async function main() {
       );
     });
 
-    await runStep("12. Verify member cannot access orders API", async () => {
+    await runStep("16. Verify member cannot access orders API", async () => {
       const result = await memberClient.json("/api/orders");
       assert(
         [401, 403].includes(result.response.status),
@@ -412,7 +510,7 @@ async function main() {
       );
     });
 
-    await runStep("13. Verify organisation account cannot checkout", async () => {
+    await runStep("17. Verify organisation account cannot checkout", async () => {
       const ticketType = editedEvent.ticketTypes[0];
       const checkout = await organisationClient.json("/api/payments/checkout/event", {
         method: "POST",
@@ -433,7 +531,7 @@ async function main() {
       );
     });
 
-    await runStep("14. Verify checkout fails before Stripe readiness", async () => {
+    await runStep("18. Verify checkout fails before Stripe readiness", async () => {
       const paymentsOrg = await organisationClient.json("/api/orgs/payments-lab");
       assertStatus(paymentsOrg.response, 403, "organisation account cannot access payments lab");
 
@@ -481,7 +579,7 @@ async function main() {
       );
     });
 
-    await runStep("15. Verify active reservation reduces availability", async () => {
+    await runStep("19. Verify active reservation reduces availability", async () => {
       const event = await prisma.event.findUnique({
         where: { id: createdEventId },
         select: {
@@ -565,7 +663,7 @@ async function main() {
       );
     });
 
-    await runStep("16. Verify expired reservation settles order and is grouped", async () => {
+    await runStep("20. Verify expired reservation settles order and is grouped", async () => {
       assert(createdSmokeOrderIds.length > 0, "reservation smoke order missing");
       const orderId = createdSmokeOrderIds[createdSmokeOrderIds.length - 1];
       const past = new Date(Date.now() - 60 * 1000);
@@ -637,6 +735,12 @@ async function main() {
     if (createdSmokeOrderIds.length > 0) {
       await prisma.order.deleteMany({
         where: { id: { in: createdSmokeOrderIds } }
+      });
+    }
+
+    if (createdSmokeOrganisationIds.length > 0) {
+      await prisma.organisation.deleteMany({
+        where: { id: { in: createdSmokeOrganisationIds } }
       });
     }
 

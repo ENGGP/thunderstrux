@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { MemberProfileForm } from "@/components/members/member-profile-form";
+import { MemberOrganisationsList } from "@/components/members/member-organisations-list";
 import {
   OrganisationAccessError,
   getAccessibleOrganisationsForCurrentAccount,
@@ -362,27 +363,7 @@ async function MemberDashboard({ userId }: { userId: string }) {
             </Link>
           </div>
 
-          {organisations.length === 0 ? (
-            <p className="mt-5 text-sm text-neutral-600">
-              You have not joined any organisations yet.
-            </p>
-          ) : (
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {organisations.map((organisation) => (
-                <article
-                  className="rounded-lg border border-neutral-200 p-4"
-                  key={organisation.id}
-                >
-                  <h3 className="font-medium text-neutral-950">
-                    {organisation.name}
-                  </h3>
-                  <p className="mt-1 text-sm text-neutral-500">
-                    Joined as {organisation.role}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
+          <MemberOrganisationsList organisations={organisations} />
         </section>
       </div>
     </main>

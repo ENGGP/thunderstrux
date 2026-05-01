@@ -3,8 +3,8 @@
 ## Design Principles
 
 - Use Stripe Checkout hosted pages
-- Do not fulfil from frontend redirects
-- Fulfil only from Stripe webhooks
+- Do not fulfil from frontend redirects in production
+- Fulfil production payments only from Stripe webhooks
 - Keep a local `Order` row before redirecting to Stripe
 - Create a temporary ticket reservation before redirecting to Stripe
 - Reconcile amount, currency, and metadata before marking paid
@@ -28,6 +28,7 @@ Core files:
 - `lib/stripe/index.ts`
 - `lib/stripe/connect.ts`
 - `lib/stripe/fees.ts`
+- `lib/payments/checkout-reconciliation.ts`
 - `lib/orders/stale-orders.ts`
 - `lib/tickets/reservations.ts`
 - `lib/events/event-analytics.ts`
@@ -46,6 +47,7 @@ Public event page
   -> Checkout Session metadata includes orderId, eventId, organisationId, ticketTypeId, and quantity
   -> local Order is updated with stripeSessionId
   -> browser redirected to Stripe
+  -> Stripe redirects back to /success?session_id={CHECKOUT_SESSION_ID}
 ```
 
 Current implementation details:
@@ -53,6 +55,7 @@ Current implementation details:
 - Currency is `aud`
 - Payment flow uses destination charges
 - Checkout is restricted to card payments so `checkout.session.completed` can require `payment_status = paid`
+- Success URL includes `{CHECKOUT_SESSION_ID}` so non-production can run the dev-only reconciliation fallback when local webhook forwarding is missing
 - Platform fee is calculated by `calculatePlatformFee(totalAmount)`
 - Reservation window is 30 minutes because Stripe Checkout `expires_at` must be at least 30 minutes after session creation
 - `TicketType.quantity` remains remaining inventory; reservations are subtracted from it during checkout availability checks
@@ -315,6 +318,7 @@ Handled event:
 Reconciliation checks:
 
 - Stripe signature valid
+- raw request body is read with `request.text()`
 - local order exists by `stripeSessionId`
 - Stripe metadata `orderId` resolves the local order
 - local order is still `pending`
@@ -356,6 +360,36 @@ Completed Checkout sessions with missing or expired local reservations:
 - tickets are not issued
 - inventory is not decremented
 
+Unhandled signed event types:
+
+- return `200`
+- log that the event was ignored
+- do not attempt reconciliation
+
+## Checkout Reconciliation Helper
+
+Shared helper:
+
+```text
+lib/payments/checkout-reconciliation.ts
+```
+
+Responsibilities:
+
+- Validate paid Checkout Session metadata, amount, currency, order status, and reservation state.
+- Mark orders paid.
+- Confirm reservations.
+- Decrement remaining ticket inventory.
+- Create ticket rows.
+- Preserve idempotency for duplicate completed events.
+
+Callers:
+
+- `POST /api/payments/webhook` for production webhook fulfilment.
+- `/success?session_id=...` only when `NODE_ENV !== "production"` as a local-dev fallback.
+
+The dev fallback exists because Stripe redirects the browser to `/success` even when local webhook forwarding is not running. It does not replace webhook fulfilment in production.
+
 ## Stale Pending Orders
 
 The app expires old active reservations and their pending orders through an idempotent server-side cleanup helper.
@@ -363,6 +397,7 @@ The app expires old active reservations and their pending orders through an idem
 - active reservation with `expiresAt` in the past becomes `expired`
 - matching pending order becomes `expired`
 - pending order with an already-expired linked reservation becomes `expired`
+- pending order with no reservation becomes `expired` only when older than 30 minutes
 - normal expiry does not set `failureReason`
 
 Design choice:
@@ -388,6 +423,8 @@ Safety rules:
 - Failed orders are never changed by stale cleanup.
 - Confirmed reservations are never changed by stale cleanup.
 - Cleanup uses batched updates and is safe to run repeatedly.
+- Normal organiser and member product views hide pending orders.
+- `/dashboard/orders?includeSystem=true` exposes pending orders for debugging.
 - Expired orders do not count in analytics because analytics queries include only `status = paid`.
 - Expired reservations do not reduce availability because availability counts only active reservations with `expiresAt` in the future.
 
@@ -406,6 +443,9 @@ Transaction:
 - active reservation reduces availability
 - expired reservation settles the order as `expired`
 - pending order with expired reservation becomes `expired`
+- legacy pending order without reservation becomes `expired` after 30 minutes
+- fresh reservationless pending order remains internal
+- pending orders are hidden from default organiser orders and member tickets
 - expired orders do not count as analytics revenue
 - expired reservations do not reduce public checkout availability
 - paid orders with confirmed reservations are preserved by cleanup
@@ -457,6 +497,18 @@ STRIPE_WEBHOOK_SECRET=
 
 The `STRIPE_WEBHOOK_SECRET` must be the `whsec_...` printed by this exact `stripe listen` process. A Dashboard webhook secret and a Stripe CLI forwarding secret are different.
 
+After changing `.env`, recreate the app container. `docker compose restart app` does not reload env values:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
+Verify the loaded prefix without printing the full secret:
+
+```bash
+docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"
+```
+
 Forward Connect webhooks in a second terminal if testing onboarding account updates:
 
 ```bash
@@ -490,6 +542,8 @@ stripe trigger checkout.session.expired
 
 Expected app logs for a real paid checkout:
 
+- `WEBHOOK RECEIVED checkout.session.completed`
+- `Stripe checkout webhook signature verified`
 - `Stripe checkout webhook received`
 - `Stripe checkout order matched`
 - `Stripe checkout reconciliation validation passed`
@@ -552,8 +606,9 @@ If webhook signature verification fails:
 
 - confirm `STRIPE_WEBHOOK_SECRET` starts with `whsec_`
 - confirm it came from the active `stripe listen` process
-- restart the Next.js container after changing `.env`
+- recreate the app container after changing `.env`
 - do not use a Dashboard endpoint secret for local CLI forwarding unless using that exact registered endpoint flow
+- compare the logged webhook secret prefix against the Stripe CLI `whsec_...` prefix
 
 Useful debug commands:
 

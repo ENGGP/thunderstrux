@@ -200,6 +200,8 @@ Current statuses:
 - `failed`
 - `expired`
 
+`pending` remains in the schema as an internal checkout reconciliation state. It is not part of normal organiser or member UX.
+
 Each order maps to exactly one ticket type through `ticketTypeId`. Organiser analytics group paid orders by `ticketTypeId` and sum `quantity` and `totalAmount` for sold count and revenue.
 
 `TicketReservation` is the temporary soft hold created before redirecting to Stripe Checkout.
@@ -231,6 +233,7 @@ Rules:
 - reservation expiry is 30 minutes
 - expired reservations do not reduce availability
 - pending orders linked to expired reservations are marked `expired` by app-level stale cleanup
+- legacy pending orders without reservations are marked `expired` by stale cleanup once they are older than 30 minutes
 - normal reservation expiry does not set `Order.failureReason`
 - Stripe Checkout `expires_at` matches the reservation expiry
 - paid webhook reconciliation confirms reservations atomically with order payment, inventory decrement, and ticket creation

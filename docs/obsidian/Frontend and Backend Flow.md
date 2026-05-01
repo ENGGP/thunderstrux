@@ -58,6 +58,7 @@ User selects quantity
   -> Order row is updated with stripeSessionId
   -> browser redirects to Stripe
   -> payment webhook marks Order paid and issues Ticket rows
+  -> in non-production only, /success?session_id=... can reconcile paid sessions if local webhook forwarding is absent
   -> buyer sees the result at /tickets
 ```
 
@@ -66,7 +67,8 @@ Buyer tickets page:
 - Requires authentication.
 - Runs stale pending order cleanup for the signed-in member before reading orders.
 - Reads orders by `session.user.id`.
-- Shows pending, paid, expired, and failed orders.
+- Shows paid orders only.
+- Pending, expired, and failed order states remain internal/system history.
 - Shows ticket identifiers once tickets have been issued.
 
 ## Login and Signup
@@ -447,6 +449,8 @@ Access:
 Current UI:
 
 - Orders are grouped by event.
-- Status filters support `all`, `paid`, `pending`, `expired`, and `failed`.
+- Normal status filters support `all`, `paid`, `expired`, and `failed`.
+- Default `all` excludes internal `pending` orders.
+- `Show system orders` enables a debug/system view that can include `pending`.
 - Event-filtered views show an event header and `Back to all orders`.
 - Empty states are shown when no orders match.

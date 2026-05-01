@@ -17,6 +17,7 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies wit
 - Legacy `/dashboard/[orgSlug]/*` routes kept as redirects.
 - Event creation, editing, publishing, unpublishing, and deletion rules.
 - Stripe Checkout with 30-minute ticket reservations and webhook-only fulfilment.
+- Non-production `/success?session_id=...` fallback exists only to reconcile paid sessions when local webhook forwarding is absent.
 - Stripe Connect Express onboarding with explicit lifecycle states.
 
 For MVP, organisation committee members may share the one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
@@ -38,6 +39,8 @@ Recent feature areas:
 - Event-scoped organiser orders.
 - Ticket reservation model and reservation-aware checkout/webhook reconciliation.
 - App-level stale pending order cleanup across order, ticket, checkout, public event, dashboard, and analytics reads.
+- Pending orders are internal system state and hidden from normal member/organiser UX.
+- Stripe webhook debugging now logs signature verification details and ignores signed non-checkout events with `200`.
 - Lightweight smoke tests in `scripts/smoke-test.mjs`.
 
 ## Current Routes
@@ -153,6 +156,7 @@ Latest verification:
 - `docker compose exec app pnpm test:smoke` passed.
 - `docker compose exec app pnpm build` passed.
 - Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
+- A Stripe webhook 400 investigation found a mismatched `STRIPE_WEBHOOK_SECRET` between the app container and active Stripe CLI listener. Recreate the app container after changing `.env`; `docker compose restart app` is not enough.
 
 ## Next Route Stability
 
@@ -192,7 +196,8 @@ Current generated include entries:
 - Organisation accounts must be redirected away from buyer checkout surfaces and cannot create checkout sessions.
 - Member accounts must not access organiser analytics.
 - Payment fulfilment must remain webhook-driven.
-- Ticket reservations are temporary soft holds; paid tickets are still issued only by Stripe Checkout webhook reconciliation.
+- The `/success` fallback must remain non-production only and must call the same checkout reconciliation helper as the webhook.
+- Ticket reservations are temporary soft holds; production paid tickets are issued only by Stripe Checkout webhook reconciliation.
 - Stale cleanup may expire pending orders and active reservations, but must not fulfil orders, decrement inventory, or alter paid/failed orders.
 - Stripe onboarding must stay hosted by Stripe.
 - Do not collect sensitive onboarding or compliance data in Thunderstrux.

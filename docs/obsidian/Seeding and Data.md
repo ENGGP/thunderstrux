@@ -155,6 +155,25 @@ These support:
 
 Seeded orders use synthetic `stripeSessionId` values prefixed with `cs_seed_`. They are local test records, not real Stripe sessions.
 
+## Manual Edge-Case Paid Orders
+
+The local Docker database may also contain manually inserted paid orders with `stripeSessionId` values prefixed by:
+
+```text
+cs_seed_edge_
+```
+
+These were added to exercise dashboard and analytics edge cases:
+
+- multi-quantity paid orders
+- multiple paid ticket types on one event
+- low-price ticket revenue
+- unknown buyer display with `userId = null`
+- revenue-over-time across multiple days
+- confirmed reservations with matching ticket rows
+
+They are not currently part of `prisma/seed.mjs`. Running `docker compose down -v` removes them, and rerunning the seed will not recreate them unless they are later added to the seed script.
+
 ## Important Interaction With Demo Public Events
 
 `lib/events/public-events.ts` contains fallback logic:

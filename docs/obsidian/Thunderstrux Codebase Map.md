@@ -79,6 +79,7 @@ lib/
   db/                                Prisma client and organisation scoping helpers
   events/                            Public event loading and demo event fallback
   orders/                            Grouped orders and stale pending order cleanup
+  payments/                          Shared Checkout reconciliation helper
   permissions/                       Legacy role permission helpers
   stripe/                            Stripe SDK, Connect, and fee helpers
   validators/                        Zod schemas
@@ -101,7 +102,8 @@ docs/obsidian/
 - Navigation for organisation dashboards belongs in `components/layout/dashboard-shell.tsx`.
 - Private APIs must derive access from the authenticated session and server-side database ownership checks.
 - Do not trust frontend `organisationId` or `x-org-id` as authority. They are inputs, not trust boundaries.
-- Payment fulfilment happens only from Stripe webhooks.
+- Production payment fulfilment happens only from Stripe webhooks.
+- Non-production `/success?session_id=...` can call the shared reconciliation helper when local webhook forwarding is missing.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Docker development uses Turbopack plus polling.
 - `pnpm dev` clears `.next/dev` before startup via `scripts/clean-next-dev.mjs`.

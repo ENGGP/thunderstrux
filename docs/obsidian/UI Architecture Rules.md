@@ -99,6 +99,8 @@ Current header behavior:
 `/dashboard/orders`
 
 - Renders organisation-scoped order review for organisation accounts.
+- Normal filters hide internal pending orders.
+- `Show system orders` may expose pending orders for debugging, but pending must not be presented as a normal product status.
 
 `/dashboard/settings`
 

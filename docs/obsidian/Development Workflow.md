@@ -402,15 +402,27 @@ STRIPE_CONNECT_WEBHOOK_SECRET=
 
 Browser-facing URLs should use `localhost`, even though the app binds to `0.0.0.0` inside Docker.
 
-After editing `.env`, recreate containers rather than only refreshing the browser:
+After editing `.env`, recreate containers rather than only refreshing the browser or restarting the container:
 
 ```bash
 docker compose down
 docker compose up --build -d
 ```
 
+For webhook-secret-only changes, recreating the app container is enough:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
 Verify environment values are present without printing secrets:
 
 ```powershell
 docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
+```
+
+To compare a Stripe CLI webhook secret without printing the full secret:
+
+```bash
+docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"
 ```

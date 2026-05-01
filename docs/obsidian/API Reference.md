@@ -275,7 +275,7 @@ Rules:
 
 ## Orders
 
-### `GET /api/orders?status=...&eventId=...`
+### `GET /api/orders?status=...&eventId=...&includeSystem=...`
 
 Returns organisation-scoped orders grouped by event.
 
@@ -285,7 +285,9 @@ Rules:
 - Organisation account required.
 - Finance access required.
 - Runs stale pending order cleanup for the organisation before returning grouped orders.
-- `status` is optional and may be `all`, `paid`, `pending`, `expired`, or `failed`.
+- Normal `status` values are `all`, `paid`, `expired`, or `failed`.
+- `pending` is an internal system status and is accepted only when `includeSystem=true`.
+- Default `all` excludes `pending`.
 - `eventId` is optional.
 - When `eventId` is present, the API verifies the event belongs to the signed-in organisation account before filtering.
 - Member accounts cannot access this endpoint.
@@ -342,6 +344,7 @@ Rules:
 - Creates a local pending `Order`.
 - Creates an active `TicketReservation` after checkout preconditions pass.
 - Uses 30-minute reservation expiry and sets Stripe Checkout `expires_at` to match.
+- Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}` for dev fallback diagnostics.
 - Validates availability as `TicketType.quantity - activeReservedQuantity`.
 
 ### `POST /api/payments/webhook`
@@ -356,6 +359,7 @@ Handles:
 Responsibilities:
 
 - Verify signature.
+- Use the raw request body from `request.text()`.
 - Reconcile against local order.
 - Reduce inventory.
 - Confirm or release the related reservation.
@@ -364,6 +368,7 @@ Responsibilities:
 - Store `paidAt` on success.
 - Mark normal reservation or Checkout expiry as `expired` without `failureReason`.
 - Store `failedAt` and `failureReason` only on unexpected reconciliation failure.
+- Return `200` for signed but unhandled Stripe event types.
 
 ## Server-Rendered Order Views
 
@@ -375,7 +380,8 @@ Rules:
 
 - Auth required.
 - Reads orders by `session.user.id`.
-- Shows paid, pending, expired, and failed orders.
+- Shows paid orders only.
+- Pending, expired, and failed orders are internal/system history and are not shown in the member ticket wallet.
 - Shows ticket identifiers when tickets exist.
 
 ### `GET /dashboard/orders`
@@ -389,6 +395,8 @@ Rules:
 - Finance access required.
 - Reads orders scoped to the current organisation account's organisation id.
 - Supports optional `eventId` and status filtering.
+- Default view excludes internal pending orders.
+- `Show system orders` exposes pending orders for debugging.
 - Shows event-scoped order headers when filtered by event.
 
 Legacy `/dashboard/[orgSlug]/orders` redirects to `/dashboard/orders` when the signed-in organisation account owns the slug.

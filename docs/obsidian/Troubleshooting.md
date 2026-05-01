@@ -489,6 +489,55 @@ Verify env inside Docker without printing secrets:
 docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
 ```
 
+## Stripe Webhook Returns 400
+
+Symptoms:
+
+- Stripe CLI shows events reaching the server.
+- Every event returns `400`.
+- Orders remain `pending`.
+- No tickets are created.
+
+Most common cause:
+
+- The app container is using a different `STRIPE_WEBHOOK_SECRET` than the active `stripe listen` process.
+
+Observed failure:
+
+```text
+No signatures found matching the expected signature for payload
+```
+
+Fix:
+
+1. Start the Checkout webhook listener:
+
+```bash
+stripe listen --forward-to localhost:3000/api/payments/webhook
+```
+
+2. Copy the printed `whsec_...` value into `.env` as `STRIPE_WEBHOOK_SECRET`.
+3. Recreate the app container. Restart alone does not reload env values:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
+4. Confirm the container loaded the same prefix:
+
+```bash
+docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"
+```
+
+Expected logs after a valid signed event:
+
+```text
+Stripe checkout webhook signature verified
+WEBHOOK RECEIVED checkout.session.completed
+```
+
+Signed but unrelated events such as `charge.succeeded`, `payment_intent.succeeded`, and `transfer.created` should return `200 Ignored`.
+
 ## Stripe Platform Setup Required
 
 The settings page can show:

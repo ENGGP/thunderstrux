@@ -176,7 +176,8 @@ Checkout uses soft holds to prevent overselling:
 - Checkout availability is `TicketType.quantity - activeReservedQuantity`.
 - Stripe Checkout `expires_at` is aligned with the reservation expiry.
 - Webhooks confirm, release, or expire reservations while preserving `Order` history.
-- App-level stale cleanup expires pending orders whose reservations are expired or past `expiresAt` from normal server-side read paths.
+- App-level stale cleanup expires pending orders whose reservations are expired or past `expiresAt`, plus legacy reservationless pending orders older than 30 minutes.
+- `pending` is kept internally for checkout reconciliation but hidden from normal member and organiser UX.
 
 ## Organiser Analytics Model
 
@@ -230,3 +231,13 @@ The platform owns the UX. Stripe owns compliance and sensitive onboarding data c
 ```text
 https://dashboard.stripe.com/settings/connect/platform-profile
 ```
+
+## Checkout Reconciliation Boundary
+
+Checkout fulfilment is shared through:
+
+```text
+lib/payments/checkout-reconciliation.ts
+```
+
+Production fulfilment remains webhook-driven through `POST /api/payments/webhook`. The `/success` page has a non-production-only fallback that retrieves the Checkout Session by `session_id` and calls the same reconciliation helper when local webhook forwarding is missing.

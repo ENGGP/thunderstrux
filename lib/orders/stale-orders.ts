@@ -76,17 +76,6 @@ export async function runStaleOrderCleanup({
     const ordersUpdated =
       reservationBackedOrders.count + legacyReservationlessOrders.count;
 
-    console.log("STALE CLEANUP:", {
-      organisationId,
-      eventId,
-      ticketTypeId,
-      userId,
-      reservationsUpdated: reservations.count,
-      reservationBackedOrdersUpdated: reservationBackedOrders.count,
-      legacyReservationlessOrdersUpdated: legacyReservationlessOrders.count,
-      ordersUpdated
-    });
-
     return {
       reservationsUpdated: reservations.count,
       reservationBackedOrdersUpdated: reservationBackedOrders.count,

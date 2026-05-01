@@ -49,28 +49,21 @@ export async function POST(request: Request) {
   }
 
   let event: Stripe.Event;
-  const signaturePreview = signature.slice(0, 32);
-  const webhookSecretPreview = `${webhookSecret.slice(0, 12)}...`;
 
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     console.info("Stripe checkout webhook signature verified", {
-      rawBodyLength: rawBody.length,
-      signaturePreview,
-      webhookSecretPreview
+      rawBodyLength: rawBody.length
     });
   } catch (error) {
     console.error("WEBHOOK ERROR:", error);
     console.error("Stripe checkout webhook signature verification failed", {
       rawBodyLength: rawBody.length,
-      signaturePreview,
-      webhookSecretPreview,
       message: error instanceof Error ? error.message : String(error)
     });
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
 
-  console.log("WEBHOOK RECEIVED", event.type);
   console.info("Stripe checkout webhook processing", {
     stripeEventId: event.id,
     eventType: event.type

@@ -9,6 +9,7 @@
     "build": "node scripts/prepare-next-build.mjs && pnpm prisma:generate && next build",
     "start": "next start --hostname 0.0.0.0",
     "test:smoke": "node scripts/smoke-test.mjs",
+    "test:integration": "node scripts/run-integration-tests.mjs",
     "seed": "prisma db seed",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
@@ -47,7 +48,8 @@
     "postcss": "latest",
     "prisma": "6.19.0",
     "tailwindcss": "latest",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "^4.1.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

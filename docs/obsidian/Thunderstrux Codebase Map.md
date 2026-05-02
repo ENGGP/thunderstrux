@@ -105,7 +105,8 @@ docs/obsidian/
 - Production payment fulfilment happens only from Stripe webhooks.
 - Non-production `/success?session_id=...` can call the shared reconciliation helper when local webhook forwarding is missing.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
-- Docker development uses Turbopack plus polling.
+- Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
+- Runtime migrations run through `pnpm prisma:migrate:deploy` in `docker/entrypoint.sh`.
 - `pnpm dev` clears `.next/dev` before startup via `scripts/clean-next-dev.mjs`.
 - Production builds write to `.next-build`; dev writes to `.next`.
 - Keep explicit events route boundaries for both current and legacy event routes:

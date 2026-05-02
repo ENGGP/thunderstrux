@@ -196,20 +196,6 @@ Recent bug and fix:
 - Root cause: previous frontend/backend logic treated sold ticket rows as immutable and the backend rejected protected-field differences.
 - Current fix: the frontend submits all edited ticket rows, and the backend updates included rows while only preserving sold/issued rows when omitted. The old rejection now applies to deletion/removal behavior only.
 
-Trace logs now available:
-
-```text
-FORM SUBMIT DATA:
-PATCH PAYLOAD:
-PATCH EVENT HIT:
-REQUEST BODY:
-AUTH PASSED
-EXISTING TICKETS:
-INCOMING TICKETS:
-UPDATING EVENT:
-UPDATED EVENT RESULT:
-```
-
 Database verification examples:
 
 ```bash
@@ -348,7 +334,7 @@ This is generated route-type metadata. It is not application behavior. If it app
 
 ## Docker File Sync
 
-Expected volumes:
+Expected volumes in `docker-compose.dev.yml`:
 
 ```yaml
 volumes:
@@ -362,7 +348,7 @@ Verify container sees latest file:
 docker compose exec app cat 'app/(dashboard)/dashboard/page.tsx'
 ```
 
-If host and container differ, inspect Docker Desktop file sharing and restart Docker.
+If host and container differ while using the dev override, inspect Docker Desktop file sharing and restart Docker. The base `docker-compose.yml` intentionally does not bind-mount source code; it serves the built image.
 
 ## Homepage Internal Server Error
 
@@ -376,8 +362,7 @@ Common causes:
 Expected local runtime:
 
 ```bash
-docker compose up -d
-docker compose exec app pnpm prisma:migrate
+pnpm docker:dev
 docker compose exec app pnpm seed
 docker compose restart app
 ```
@@ -533,7 +518,7 @@ Expected logs after a valid signed event:
 
 ```text
 Stripe checkout webhook signature verified
-WEBHOOK RECEIVED checkout.session.completed
+Stripe checkout webhook processing
 ```
 
 Signed but unrelated events such as `charge.succeeded`, `payment_intent.succeeded`, and `transfer.created` should return `200 Ignored`.
@@ -623,7 +608,6 @@ This removes the Postgres volume.
 Restore:
 
 ```bash
-docker compose up --build --force-recreate -d
-docker compose exec app pnpm prisma:migrate
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --force-recreate -d
 docker compose exec app pnpm seed
 ```

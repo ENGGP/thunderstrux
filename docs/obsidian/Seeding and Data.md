@@ -199,8 +199,7 @@ After that, users, organisations, memberships, events, ticket types, orders, and
 ## Safe Restore Flow
 
 ```bash
-docker compose up --build --force-recreate -d
-docker compose exec app pnpm prisma:migrate
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --force-recreate -d
 docker compose exec app pnpm seed
 ```
 
@@ -210,11 +209,11 @@ After seeding:
 
 1. Sign in as `user1@example.com`.
 2. Visit `/dashboard`.
-3. Open `/dashboard/engineering-society`.
-4. Visit `/dashboard/engineering-society/orders`.
+3. Sign in as `engineering.org@example.com`.
+4. Visit `/dashboard/orders`.
 5. Visit homepage `/`.
 6. Visit `/tickets` as `user2@example.com`.
-7. Sign in as `finance@example.com` and open `/dashboard/payments-lab/settings`.
+7. Sign in as `payments.lab@example.com` and open `/dashboard/settings`.
 
 Expected:
 

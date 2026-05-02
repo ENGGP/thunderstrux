@@ -13,6 +13,12 @@ Main files:
 - `components/auth/credentials-login-form.tsx`
 - `components/auth/signup-form.tsx`
 
+`AUTH_SECRET` rules:
+
+- production runtime requires a real non-placeholder `AUTH_SECRET`
+- development may use a dev-only fallback with a warning
+- Docker image builds use a build-time placeholder only so real secrets are not required during image creation
+
 ## User Model
 
 Users authenticate with:

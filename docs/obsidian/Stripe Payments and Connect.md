@@ -542,7 +542,6 @@ stripe trigger checkout.session.expired
 
 Expected app logs for a real paid checkout:
 
-- `WEBHOOK RECEIVED checkout.session.completed`
 - `Stripe checkout webhook signature verified`
 - `Stripe checkout webhook received`
 - `Stripe checkout order matched`
@@ -608,7 +607,7 @@ If webhook signature verification fails:
 - confirm it came from the active `stripe listen` process
 - recreate the app container after changing `.env`
 - do not use a Dashboard endpoint secret for local CLI forwarding unless using that exact registered endpoint flow
-- compare the logged webhook secret prefix against the Stripe CLI `whsec_...` prefix
+- compare the container environment secret prefix with the Stripe CLI `whsec_...` prefix using the safe command above
 
 Useful debug commands:
 

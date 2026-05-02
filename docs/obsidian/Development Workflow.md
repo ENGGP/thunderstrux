@@ -2,16 +2,30 @@
 
 ## Standard Local Setup
 
-Start the stack:
+Thunderstrux now has two Docker Compose modes.
+
+Production-like local runtime:
 
 ```bash
-docker compose up
+docker compose up --build
 ```
 
-Detached mode:
+or:
 
 ```bash
-docker compose up -d
+pnpm docker:prod
+```
+
+Development runtime with bind mounts, polling, and Turbopack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+or:
+
+```bash
+pnpm docker:dev
 ```
 
 App:
@@ -20,26 +34,45 @@ App:
 http://localhost:3000
 ```
 
-PostgreSQL:
+PostgreSQL host port:
 
 ```text
-localhost:5433
+localhost:5433 in dev override only
 ```
 
 ## Docker Configuration
 
-`docker-compose.yml` mounts the project into the app container:
+`docker-compose.yml` is production-like:
+
+- app runs `pnpm start`
+- app uses the built `.next-build` output from the Docker image
+- app receives only app runtime environment variables
+- app waits for the database healthcheck
+- app entrypoint runs `pnpm prisma:migrate:deploy`
+- database uses the named volume `postgres_data`
+- database port is not exposed to the host
+
+`docker-compose.dev.yml` only adds development-specific overrides:
 
 ```yaml
 volumes:
   - .:/app
   - /app/node_modules
+command: pnpm dev
+environment:
+  NODE_ENV: development
+  WATCHPACK_POLLING: "true"
+  CHOKIDAR_USEPOLLING: "true"
+ports:
+  - "5433:5432"
 ```
 
 Why:
 
-- `.:/app` keeps source live-mounted into the container.
-- `/app/node_modules` avoids host/container dependency conflicts.
+- base Compose can validate the production runtime path without host source mounts
+- dev override keeps source live-mounted into the container
+- `/app/node_modules` avoids host/container dependency conflicts
+- DB host port exposure is available for dev tools only
 
 Database data lives in the named volume:
 
@@ -49,7 +82,7 @@ postgres_data:/var/lib/postgresql/data
 
 ## Dev Server Configuration
 
-Current `package.json` dev script:
+Current `package.json` dev script, used by the dev override:
 
 ```json
 "dev": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0"
@@ -61,7 +94,7 @@ Fallback dev script:
 "dev:webpack": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --webpack --hostname 0.0.0.0"
 ```
 
-The app container also sets:
+The dev override also sets:
 
 ```yaml
 environment:
@@ -135,10 +168,40 @@ Do not revert to the legacy `@tailwind base/components/utilities` entrypoint unl
 
 ## Common Commands
 
+Start production-like Docker runtime:
+
+```bash
+pnpm docker:prod
+```
+
+Start Docker dev runtime:
+
+```bash
+pnpm docker:dev
+```
+
+Reset Docker volumes intentionally:
+
+```bash
+pnpm docker:reset
+```
+
+Follow app logs:
+
+```bash
+pnpm docker:logs
+```
+
 Run migrations:
 
 ```bash
 docker compose exec app pnpm prisma:migrate
+```
+
+Deploy migrations through the production entrypoint/script:
+
+```bash
+docker compose exec app pnpm prisma:migrate:deploy
 ```
 
 Generate Prisma client:
@@ -196,6 +259,10 @@ docker compose exec app pnpm dev:doctor
 Host-facing package helpers:
 
 ```bash
+pnpm docker:dev
+pnpm docker:prod
+pnpm docker:reset
+pnpm docker:logs
 pnpm docker:up
 pnpm docker:restart
 pnpm docker:migrate
@@ -203,6 +270,8 @@ pnpm docker:seed
 pnpm docker:db:sync
 pnpm docker:build
 ```
+
+`pnpm docker:up` is a detached dev-stack alias using `docker-compose.dev.yml`.
 
 Apply the current schema and seed data after pulling schema changes:
 
@@ -213,8 +282,10 @@ docker compose exec app pnpm seed
 
 ## Normal Change Workflow
 
+Use the dev override for source-editing work.
+
 1. Edit source files on the host.
-2. Let Docker hot reload the app.
+2. Let Docker hot reload the app through `docker-compose.dev.yml`.
 3. Refresh the browser for server-rendered pages.
 4. Verify the rendered route actually reflects the source change.
 
@@ -354,7 +425,7 @@ docker compose exec app pnpm build
 
 If the app is started outside Docker, `DATABASE_URL=db:5432` will not resolve. Use the Docker app container for normal development.
 
-Host database connection string:
+Host database connection string, available when using `docker-compose.dev.yml`:
 
 ```text
 postgresql://thunderstrux:thunderstrux@localhost:5433/thunderstrux?schema=public
@@ -377,20 +448,16 @@ docker compose down -v
 After `down -v`, restore:
 
 ```bash
-docker compose up --build --force-recreate -d
-docker compose exec app pnpm prisma:migrate
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --force-recreate -d
 docker compose exec app pnpm seed
 ```
 
 ## Environment Variables
 
-Important local values:
+Application `.env` values:
 
 ```text
 DATABASE_URL=
-POSTGRES_USER=
-POSTGRES_PASSWORD=
-POSTGRES_DB=
 AUTH_SECRET=
 AUTH_URL=http://localhost:3000
 NEXTAUTH_URL=http://localhost:3000
@@ -400,9 +467,24 @@ STRIPE_WEBHOOK_SECRET=
 STRIPE_CONNECT_WEBHOOK_SECRET=
 ```
 
+Database `.env.db` values:
+
+```text
+POSTGRES_USER=
+POSTGRES_PASSWORD=
+POSTGRES_DB=
+```
+
+Tracked examples:
+
+```text
+.env.example
+.env.db.example
+```
+
 Browser-facing URLs should use `localhost`, even though the app binds to `0.0.0.0` inside Docker.
 
-After editing `.env`, recreate containers rather than only refreshing the browser or restarting the container:
+After editing `.env` or `.env.db`, recreate containers rather than only refreshing the browser:
 
 ```bash
 docker compose down

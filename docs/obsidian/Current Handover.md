@@ -40,7 +40,7 @@ Recent feature areas:
 - Ticket reservation model and reservation-aware checkout/webhook reconciliation.
 - App-level stale pending order cleanup across order, ticket, checkout, public event, dashboard, and analytics reads.
 - Pending orders are internal system state and hidden from normal member/organiser UX.
-- Stripe webhook debugging now logs signature verification details and ignores signed non-checkout events with `200`.
+- Stripe webhooks verify signatures from raw request bodies and ignore signed non-checkout events with `200`.
 - Lightweight smoke tests in `scripts/smoke-test.mjs`.
 
 ## Current Routes
@@ -122,6 +122,17 @@ Best smoke-test accounts:
 
 Use Docker for normal development. The app container resolves Postgres at `db:5432`; running Next directly on the Windows host with the Docker `.env` will not resolve `db`.
 
+Docker modes:
+
+- `docker-compose.yml`: production-like runtime, built image, `pnpm start`, migration deploy entrypoint, no database host port.
+- `docker-compose.dev.yml`: development override, bind-mounted source, `pnpm dev`, polling, database host port `5433`.
+
+Environment files:
+
+- `.env`: app runtime values such as `DATABASE_URL`, Auth.js URLs/secrets, and Stripe keys.
+- `.env.db`: Postgres container values only.
+- `.env.example` and `.env.db.example` are the tracked templates.
+
 Database:
 
 ```text
@@ -131,7 +142,7 @@ User: thunderstrux
 Password: thunderstrux
 Container host: db
 Host machine: localhost
-Host port: 5433
+Host port: 5433 in dev override only
 Container port: 5432
 Docker volume: thunderstrux_postgres_data
 Container path: /var/lib/postgresql/data
@@ -140,18 +151,21 @@ Container path: /var/lib/postgresql/data
 Useful commands:
 
 ```bash
-docker compose up -d
+pnpm docker:dev
 docker compose exec app pnpm dev:doctor
 docker compose exec app pnpm dev:webpack
 docker compose exec app pnpm prisma:migrate
+docker compose exec app pnpm prisma:migrate:deploy
 docker compose exec app pnpm seed
-docker compose restart app
+pnpm docker:logs
 docker compose exec app pnpm test:smoke
 docker compose exec app pnpm build
 ```
 
 Latest verification:
 
+- `docker compose build app` passed with the multi-stage Dockerfile.
+- `docker compose up -d` starts the production-like container and runs `pnpm prisma:migrate:deploy` before `pnpm start`.
 - `docker compose exec app pnpm prisma:migrate` applied through `20260429010000_order_expired_status`.
 - `docker compose exec app pnpm test:smoke` passed.
 - `docker compose exec app pnpm build` passed.

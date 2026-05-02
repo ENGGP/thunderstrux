@@ -27,6 +27,12 @@ Browser
   -> Stripe webhooks reconcile reservations, payments, tickets, and account readiness
 ```
 
+Docker runtime:
+
+- base `docker-compose.yml` runs the production-like image with `pnpm start`
+- `docker/entrypoint.sh` runs `pnpm prisma:migrate:deploy` before startup
+- `docker-compose.dev.yml` adds source bind mounts, polling, `pnpm dev`, and the host database port for local tools
+
 ## Product Account Model
 
 `User.accountRole` is exactly one of:

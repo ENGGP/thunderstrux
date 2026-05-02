@@ -42,6 +42,7 @@ Recent feature areas:
 - Pending orders are internal system state and hidden from normal member/organiser UX.
 - Stripe webhooks verify signatures from raw request bodies and ignore signed non-checkout events with `200`.
 - Lightweight smoke tests in `scripts/smoke-test.mjs`.
+- Functional/integration tests with Vitest, isolated `thunderstrux_test` database reset, mocked auth, and mocked Stripe/network boundaries.
 
 ## Current Routes
 
@@ -159,7 +160,9 @@ docker compose exec app pnpm prisma:migrate:deploy
 docker compose exec app pnpm seed
 pnpm docker:logs
 docker compose exec app pnpm test:smoke
-docker compose exec app pnpm build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration
+docker compose build app
+pnpm docker:rebuild
 ```
 
 Latest verification:
@@ -168,9 +171,12 @@ Latest verification:
 - `docker compose up -d` starts the production-like container and runs `pnpm prisma:migrate:deploy` before `pnpm start`.
 - `docker compose exec app pnpm prisma:migrate` applied through `20260429010000_order_expired_status`.
 - `docker compose exec app pnpm test:smoke` passed.
-- `docker compose exec app pnpm build` passed.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 9 files and 27 tests.
+- Previous build verification passed before the runtime-build guard was added. Current safe build validation is `docker compose build app`.
 - Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
 - A Stripe webhook 400 investigation found a mismatched `STRIPE_WEBHOOK_SECRET` between the app container and active Stripe CLI listener. Recreate the app container after changing `.env`; `docker compose restart app` is not enough.
+- A CSS outage investigation found that running `pnpm build` inside a live production-like `next start` container can desynchronise `.next-build` static assets from the running server manifest. Recreate the app container after any in-container production build validation.
+- Runtime app containers set `THUNDERSTRUX_RUNTIME_CONTAINER=true`; `scripts/prepare-next-build.mjs` now blocks `pnpm build` in that context. Use `pnpm docker:build` or `pnpm docker:rebuild`.
 
 ## Next Route Stability
 
@@ -201,6 +207,39 @@ Current generated include entries:
 ".next-build/types/**/*.ts",
 ".next-build/dev/types/**/*.ts"
 ```
+
+## Integration Test State
+
+Current integration test runner:
+
+```text
+scripts/run-integration-tests.mjs
+```
+
+Current suites:
+
+```text
+tests/integration/auth-access.test.ts
+tests/integration/organisation-tenancy.test.ts
+tests/integration/event-lifecycle.test.ts
+tests/integration/checkout-reservations.test.ts
+tests/integration/webhook-reconciliation.test.ts
+tests/integration/pending-cleanup.test.ts
+tests/integration/member-features.test.ts
+tests/integration/orders-api.test.ts
+tests/integration/public-safe-pages.test.ts
+```
+
+Important rules:
+
+- Integration tests must run against a database whose name ends with `_test`.
+- The default isolated database is `thunderstrux_test`.
+- The runner drops and recreates the test database, deploys migrations, then starts Vitest.
+- Tests are sequential; Vitest uses `--no-file-parallelism --maxWorkers=1 --maxConcurrency=1`.
+- `tests/helpers/db-reset.ts` truncates application tables before each test.
+- The test setup mocks `@/auth`, blocks real `fetch` network calls, and uses Stripe SDK mocks where practical.
+- Webhook reconciliation tests call the shared reconciliation helper with mocked Checkout Sessions instead of relying on live Stripe CLI delivery.
+- Current future improvement: add stricter test hardening for `console.error`, unhandled rejections, invariant helpers, and lightweight Prisma query-count checks.
 
 ## High-Risk Rules To Preserve
 

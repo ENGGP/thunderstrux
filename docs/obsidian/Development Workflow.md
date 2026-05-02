@@ -219,8 +219,24 @@ docker compose exec app pnpm seed
 Build:
 
 ```bash
-docker compose exec app pnpm build
+docker compose build app
 ```
+
+Rebuild and recreate the app container:
+
+```bash
+pnpm docker:rebuild
+```
+
+Do not run `pnpm build` inside a live production-like `next start` container and continue using that same process as the running app. `next build` mutates `.next-build` while `next start` serves the previous build manifest, which can leave HTML and static asset serving out of sync. Runtime containers set `THUNDERSTRUX_RUNTIME_CONTAINER=true`, so `scripts/prepare-next-build.mjs` blocks this unsafe path before build metadata is changed.
+
+If build was somehow run inside a running app container, recreate the app container afterwards:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
+For final production-path validation, prefer rebuilding/recreating the base Compose app container rather than relying on a build run inside an already-started process.
 
 Smoke tests:
 
@@ -229,6 +245,31 @@ docker compose exec app pnpm test:smoke
 ```
 
 The smoke script checks auth roles, dashboard access, event create/edit, ticket editing, member API denial, checkout preconditions, member organisation leave, public organisation details, reservation availability behavior, stale pending order expiry, cleanup idempotency, and paid/failed cleanup safety.
+
+Integration tests:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration
+```
+
+The integration runner uses a disposable test database, not the normal development database.
+
+Current test database behavior:
+
+- default database URL: `postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public`
+- override with `INTEGRATION_DATABASE_URL` or `TEST_DATABASE_URL`
+- refuses to run unless the database name ends with `_test`
+- drops and recreates the test database before the suite
+- runs `pnpm prisma:migrate:deploy` against the test database
+- truncates app tables before each test
+- runs Vitest sequentially with `--no-file-parallelism --maxWorkers=1 --maxConcurrency=1`
+
+Important:
+
+- Run integration tests from the Docker dev stack because `docker-compose.dev.yml` bind-mounts the local `tests/` directory into the app container.
+- Do not run integration tests against the normal `thunderstrux` development database.
+- Vitest 4 does not support the literal Jest flag `--runInBand`; the current sequential flags are the equivalent.
+- The integration suite blocks real network calls through the global test `fetch` stub and mocks Stripe at the SDK boundary where needed.
 
 The build script runs:
 
@@ -269,9 +310,14 @@ pnpm docker:migrate
 pnpm docker:seed
 pnpm docker:db:sync
 pnpm docker:build
+pnpm docker:rebuild
 ```
 
 `pnpm docker:up` is a detached dev-stack alias using `docker-compose.dev.yml`.
+
+`pnpm docker:build` runs `docker compose build app`. It does not execute `pnpm build` inside the running app container.
+
+`pnpm docker:rebuild` runs `docker compose up -d --build --force-recreate app`.
 
 Apply the current schema and seed data after pulling schema changes:
 
@@ -420,7 +466,7 @@ In this Codex environment, run Docker commands with escalated permissions when n
 docker desktop status
 docker info
 docker compose ps
-docker compose exec app pnpm build
+docker compose build app
 ```
 
 If the app is started outside Docker, `DATABASE_URL=db:5432` will not resolve. Use the Docker app container for normal development.

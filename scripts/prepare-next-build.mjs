@@ -1,6 +1,15 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+if (
+  process.env.NODE_ENV === "production" &&
+  process.env.THUNDERSTRUX_RUNTIME_CONTAINER === "true"
+) {
+  throw new Error(
+    "Do not run pnpm build inside a running container. Rebuild using docker compose."
+  );
+}
+
 const projectRoot = process.cwd();
 const tsconfigPath = join(projectRoot, "tsconfig.json");
 

@@ -21,7 +21,8 @@
     "docker:logs": "docker compose logs -f app",
     "docker:up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d",
     "docker:restart": "docker compose restart app",
-    "docker:build": "docker compose exec app pnpm build",
+    "docker:build": "docker compose build app",
+    "docker:rebuild": "docker compose up -d --build --force-recreate app",
     "docker:migrate": "docker compose exec app pnpm prisma:migrate",
     "docker:seed": "docker compose exec app pnpm seed",
     "docker:db:sync": "docker compose exec app pnpm prisma:migrate && docker compose exec app pnpm prisma:generate && docker compose exec app pnpm seed"

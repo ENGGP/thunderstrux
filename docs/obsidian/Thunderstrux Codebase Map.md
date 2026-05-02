@@ -89,6 +89,11 @@ prisma/
   seed.mjs                           Idempotent local development seed
   migrations/                        Applied schema migrations
 
+tests/
+  helpers/                           Integration test auth, DB, HTTP, Stripe, and data helpers
+  integration/                       Functional/API integration test suites
+  setup/                             Vitest integration setup and runtime guards
+
 docs/obsidian/
   *.md                               Internal project documentation
 ```
@@ -107,8 +112,11 @@ docs/obsidian/
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
 - Runtime migrations run through `pnpm prisma:migrate:deploy` in `docker/entrypoint.sh`.
+- Integration tests run through Vitest against the disposable `thunderstrux_test` database, never the normal development database.
+- Integration tests must stay sequential because they reset shared database state.
 - `pnpm dev` clears `.next/dev` before startup via `scripts/clean-next-dev.mjs`.
 - Production builds write to `.next-build`; dev writes to `.next`.
+- Recreate the app container after running `pnpm build` inside a live production-like `next start` container, because `.next-build` can change while the server still holds the old build manifest.
 - Keep explicit events route boundaries for both current and legacy event routes:
   - `app/(dashboard)/dashboard/events/layout.tsx`
   - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
@@ -134,3 +142,4 @@ docs/obsidian/
 - Event edit routes rely on explicit pass-through `events/layout.tsx` files because Next dev route registration was unreliable for nested event routes without them in the local Docker/Windows/OneDrive setup.
 - Edit mode allows ticket type quantity `0`; create mode does not. This supports sold-out inventory while still preventing zero-inventory new events.
 - Ticket types with orders or issued tickets can have name, price, and quantity edited for future purchases, but cannot be removed.
+- Running integration tests requires the dev Compose override so the `tests/` directory is bind-mounted into the app container.

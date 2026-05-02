@@ -63,7 +63,8 @@ docker compose exec app pnpm dev:webpack
 docker compose exec app pnpm prisma:migrate
 docker compose exec app pnpm prisma:generate
 docker compose exec app pnpm seed
-docker compose exec app pnpm build
+docker compose build app
+docker compose up -d --build --force-recreate app
 docker compose logs -f app
 ```
 
@@ -76,6 +77,30 @@ pnpm docker:migrate
 pnpm docker:seed
 pnpm docker:db:sync
 pnpm docker:build
+pnpm docker:rebuild
+```
+
+## DO NOT RUN pnpm build INSIDE CONTAINER
+
+Do not run this against a running app container:
+
+```bash
+docker compose exec app pnpm build
+```
+
+The production container serves the `.next-build` output through a running `next start` process. Running `pnpm build` inside that same container mutates `.next-build` while the server still has the previous build manifest in memory. That can desynchronise CSS/static chunks and routes, causing assets to return `404`.
+
+Use these commands instead:
+
+```bash
+pnpm docker:build
+pnpm docker:rebuild
+```
+
+If an in-container build was already run, recreate the app container:
+
+```bash
+docker compose up -d --build --force-recreate app
 ```
 
 ## Account Model
@@ -162,6 +187,7 @@ Legacy compatibility redirects:
 - `pnpm dev:webpack` is the safe fallback if Turbopack route manifests or hot reload become unstable.
 - `pnpm dev:doctor` prints a read-only report for stuck dev-server symptoms and stale generated metadata.
 - `pnpm build` runs `scripts/prepare-next-build.mjs` and `prisma generate` before `next build`.
+- `pnpm build` is blocked inside the running production-like app container. Rebuild the image instead.
 - `tsconfig.json` must not include `.next/dev/types/**/*.ts`; stale dev route types can break production builds.
 - The current route guard uses `proxy.ts`, not deprecated `middleware.ts`.
 - Turbopack root is pinned in `next.config.ts` so unrelated lockfiles outside the repo do not affect workspace detection.

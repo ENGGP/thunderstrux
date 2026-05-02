@@ -239,6 +239,48 @@ Important current lesson:
 - A global `a { color: inherit; }` rule can override Tailwind text color utilities on `Link` elements if it lands after utilities.
 - The current fix is that the app-level anchor rule only removes underline, not color.
 
+## CSS Missing After Running Build In A Live Container
+
+Observed issue:
+
+- Pages rendered without Tailwind styling.
+- `app/layout.tsx` correctly imported `./globals.css`.
+- `app/globals.css` correctly used the Tailwind v4 entrypoint.
+- The HTML referenced a generated CSS chunk under `/_next/static/chunks/...css`.
+- The CSS file existed on disk under `.next-build/static/chunks`.
+- The running server returned `404` for that CSS URL.
+
+Root cause:
+
+- `pnpm build` was run inside an already-running production-like app container while `next start` was serving the previous `.next-build` manifest.
+- The build mutated `.next-build`, leaving the running server's in-memory build manifest and the files on disk out of sync.
+- Vitest did not cause the CSS failure; the test config is isolated to test execution.
+
+Fix:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
+Verification:
+
+```powershell
+$html = (Invoke-WebRequest -Uri http://localhost:3000/ -UseBasicParsing).Content
+$href = ([regex]::Matches($html, 'href="([^"]+\.css[^"]*)"') | Select-Object -First 1).Groups[1].Value
+Invoke-WebRequest -Uri "http://localhost:3000$href" -UseBasicParsing
+```
+
+Expected result:
+
+- CSS request returns `200`.
+- Response body is non-empty.
+- Tailwind utilities are present in the compiled CSS.
+
+Prevention:
+
+- Do not keep using the same `next start` process after running `pnpm build` inside its container.
+- Recreate the app container after build validation, or rebuild/recreate the Docker image for production-path testing.
+
 ## Button Text Is Invisible On Dark Buttons
 
 Observed issue:
@@ -372,7 +414,7 @@ Verify:
 ```bash
 docker compose ps
 docker compose logs --tail=80 app
-docker compose exec app pnpm build
+docker compose build app
 ```
 
 The homepage should return `200 OK` at:

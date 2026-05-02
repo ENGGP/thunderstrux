@@ -5,6 +5,7 @@ services:
       dockerfile: docker/Dockerfile
     environment:
       NODE_ENV: production
+      THUNDERSTRUX_RUNTIME_CONTAINER: "true"
       DATABASE_URL: ${DATABASE_URL}
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_URL: ${AUTH_URL}

@@ -457,6 +457,25 @@ Transaction:
 - member access to organiser event view redirects away
 - organisation accounts cannot create checkout sessions
 
+## Integration Test Coverage
+
+Payment-related integration suites run without live Stripe CLI delivery.
+
+Current coverage:
+
+- checkout creates pending `Order` plus active `TicketReservation`
+- Stripe-not-ready checkout does not create a reservation
+- member-only checkout and organisation-account checkout denial
+- active reservations reduce availability
+- expired reservations do not reduce availability
+- completed Checkout reconciliation marks the order paid, confirms the reservation, creates tickets, and decrements inventory
+- duplicate completed reconciliation is idempotent
+- invalid metadata, amount, or currency does not mark an order paid
+- reservation-backed pending orders and legacy reservationless pending orders expire through stale cleanup
+- paid and failed orders are preserved by stale cleanup
+
+The webhook integration tests call `lib/payments/checkout-reconciliation.ts` with mocked `Stripe.Checkout.Session` objects. They verify local reconciliation behavior, not Stripe CLI forwarding or raw webhook signature plumbing.
+
 ## Local Testing Limits
 
 Full payment flow requires:

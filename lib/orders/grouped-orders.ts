@@ -36,11 +36,23 @@ export class OrganisationOrderEventAccessError extends Error {
   }
 }
 
+export type OrganisationOrderQueryFilters = {
+  includeSystemOrders?: boolean;
+  search?: string;
+  startDate?: Date;
+  endDate?: Date;
+};
+
 export async function getGroupedOrganisationOrdersWithContext(
   organisationId: string,
   statusFilter: OrderStatusFilter = "all",
   eventId?: string,
-  { includeSystemOrders = false }: { includeSystemOrders?: boolean } = {}
+  {
+    includeSystemOrders = false,
+    search,
+    startDate,
+    endDate
+  }: OrganisationOrderQueryFilters = {}
 ) {
   await runStaleOrderCleanup({ organisationId });
 
@@ -65,6 +77,24 @@ export async function getGroupedOrganisationOrdersWithContext(
     where: {
       organisationId,
       ...(eventId ? { eventId } : {}),
+      ...(search
+        ? {
+            user: {
+              email: {
+                contains: search,
+                mode: "insensitive"
+              }
+            }
+          }
+        : {}),
+      ...(startDate || endDate
+        ? {
+            createdAt: {
+              ...(startDate ? { gte: startDate } : {}),
+              ...(endDate ? { lte: endDate } : {})
+            }
+          }
+        : {}),
       ...(statusFilter === "all"
         ? includeSystemOrders
           ? {}
@@ -81,6 +111,7 @@ export async function getGroupedOrganisationOrdersWithContext(
       paidAt: true,
       failedAt: true,
       failureReason: true,
+      isManuallyRefunded: true,
       user: {
         select: {
           email: true
@@ -115,6 +146,7 @@ export async function getGroupedOrganisationOrdersWithContext(
         paidAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        isManuallyRefunded: boolean;
         buyerEmail: string | null;
       }>;
     }
@@ -137,6 +169,7 @@ export async function getGroupedOrganisationOrdersWithContext(
       paidAt: order.paidAt,
       failedAt: order.failedAt,
       failureReason: order.failureReason,
+      isManuallyRefunded: order.isManuallyRefunded,
       buyerEmail: order.user?.email ?? null
     });
 
@@ -153,13 +186,13 @@ export async function getGroupedOrganisationOrders(
   organisationId: string,
   statusFilter: OrderStatusFilter = "all",
   eventId?: string,
-  { includeSystemOrders = false }: { includeSystemOrders?: boolean } = {}
+  filters: OrganisationOrderQueryFilters = {}
 ) {
   const result = await getGroupedOrganisationOrdersWithContext(
     organisationId,
     statusFilter,
     eventId,
-    { includeSystemOrders }
+    filters
   );
 
   return result.groups;

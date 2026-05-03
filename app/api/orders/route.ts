@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  badRequest,
   forbidden,
   internalError,
   unauthorized
@@ -16,6 +17,32 @@ import {
   parseOrderStatusFilter
 } from "@/lib/orders/grouped-orders";
 
+function parseDateParam(
+  value: string | null,
+  field: string,
+  { endOfDay = false }: { endOfDay?: boolean } = {}
+) {
+  if (!value) {
+    return { date: undefined };
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return {
+      error: badRequest("Invalid date filter", [
+        { path: [field], message: `${field} must be a valid date` }
+      ])
+    };
+  }
+
+  if (endOfDay && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    date.setUTCHours(23, 59, 59, 999);
+  }
+
+  return { date };
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -26,11 +53,30 @@ export async function GET(request: Request) {
       includeSystemOrders
     });
     const eventId = searchParams.get("eventId")?.trim() || undefined;
+    const search = searchParams.get("search")?.trim() || undefined;
+    const startDateResult = parseDateParam(searchParams.get("startDate"), "startDate");
+    const endDateResult = parseDateParam(searchParams.get("endDate"), "endDate", {
+      endOfDay: true
+    });
+
+    if (startDateResult.error) {
+      return startDateResult.error;
+    }
+
+    if (endDateResult.error) {
+      return endDateResult.error;
+    }
+
     const groups = await getGroupedOrganisationOrders(
       organisation.id,
       status,
       eventId,
-      { includeSystemOrders }
+      {
+        includeSystemOrders,
+        search,
+        startDate: startDateResult.date,
+        endDate: endDateResult.date
+      }
     );
 
     return NextResponse.json(groups);

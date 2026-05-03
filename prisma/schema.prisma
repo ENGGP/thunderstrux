@@ -113,6 +113,7 @@ model Order {
   paidAt          DateTime?
   failedAt        DateTime?
   failureReason   String?
+  isManuallyRefunded Boolean @default(false)
   organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)

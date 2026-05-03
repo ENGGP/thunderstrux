@@ -112,6 +112,8 @@ docs/obsidian/
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
 - Runtime migrations run through `pnpm prisma:migrate:deploy` in `docker/entrypoint.sh`.
+- Base Docker Compose requires core app env values before startup and restarts the app with `restart: unless-stopped`.
+- Dev Compose explicitly sets `THUNDERSTRUX_RUNTIME_CONTAINER=false`; production-like runtime sets it to `true`.
 - Integration tests run through Vitest against the disposable `thunderstrux_test` database, never the normal development database.
 - Integration tests must stay sequential because they reset shared database state.
 - `pnpm dev` clears `.next/dev` before startup via `scripts/clean-next-dev.mjs`.

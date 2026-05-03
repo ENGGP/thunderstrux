@@ -63,7 +63,7 @@ if (devCacheExists && (!appManifestExists || !devRoutesTypesExist)) {
 }
 
 if (hasStaleDevTypes) {
-  suggestions.push("Stale dev type include found. Run: docker compose exec app pnpm build");
+  suggestions.push("Stale dev type include found. Run: pnpm docker:build");
 }
 
 if (middlewareExists) {

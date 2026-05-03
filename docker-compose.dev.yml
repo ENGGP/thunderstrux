@@ -2,6 +2,7 @@ services:
   app:
     environment:
       NODE_ENV: development
+      THUNDERSTRUX_RUNTIME_CONTAINER: "false"
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     volumes:

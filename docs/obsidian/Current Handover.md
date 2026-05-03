@@ -133,6 +133,8 @@ Environment files:
 - `.env`: app runtime values such as `DATABASE_URL`, Auth.js URLs/secrets, and Stripe keys.
 - `.env.db`: Postgres container values only.
 - `.env.example` and `.env.db.example` are the tracked templates.
+- base Compose fails fast if required app env values are missing or empty.
+- dev Compose explicitly sets `THUNDERSTRUX_RUNTIME_CONTAINER=false`.
 
 Database:
 
@@ -173,10 +175,13 @@ Latest verification:
 - `docker compose exec app pnpm test:smoke` passed.
 - `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 9 files and 27 tests.
 - Previous build verification passed before the runtime-build guard was added. Current safe build validation is `docker compose build app`.
+- Required-env startup validation passed: `docker compose --env-file <temp> up app` failed before app startup when `DATABASE_URL` was omitted, output contained `DATABASE_URL is required`, and the temporary env file was deleted.
 - Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
 - A Stripe webhook 400 investigation found a mismatched `STRIPE_WEBHOOK_SECRET` between the app container and active Stripe CLI listener. Recreate the app container after changing `.env`; `docker compose restart app` is not enough.
 - A CSS outage investigation found that running `pnpm build` inside a live production-like `next start` container can desynchronise `.next-build` static assets from the running server manifest. Recreate the app container after any in-container production build validation.
 - Runtime app containers set `THUNDERSTRUX_RUNTIME_CONTAINER=true`; `scripts/prepare-next-build.mjs` now blocks `pnpm build` in that context. Use `pnpm docker:build` or `pnpm docker:rebuild`.
+- `proxy.ts` now rejects missing or placeholder production `AUTH_SECRET` values instead of silently using `dev-secret`.
+- `scripts/doctor-dev.mjs` now recommends `pnpm docker:build`, not the unsafe in-container build command.
 
 ## Next Route Stability
 
@@ -189,7 +194,7 @@ Keep these route stability fixes:
 - `app/(dashboard)/dashboard/events/layout.tsx`
 - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
 
-`tsconfig.json` should include generated production build types under `.next-build`, not stale `.next/dev` route types. Stale `.next/dev/types/routes.d.ts` can break `docker compose exec app pnpm build`.
+`tsconfig.json` should include generated production build types under `.next-build`, not stale `.next/dev` route types. Stale `.next/dev/types/routes.d.ts` can break production image builds. Use `docker compose build app` for safe build validation.
 
 `pnpm build` runs `scripts/prepare-next-build.mjs` and `pnpm prisma:generate` before `next build`, so build verification strips stale `.next` dev type includes and regenerates Prisma Client from the current schema.
 

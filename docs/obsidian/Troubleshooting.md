@@ -423,6 +423,82 @@ The homepage should return `200 OK` at:
 http://localhost:3000/
 ```
 
+## Docker Compose Fails Before Starting App
+
+Symptoms:
+
+- `docker compose up` exits before the app service starts.
+- Output contains a required-variable message such as:
+
+```text
+DATABASE_URL is required
+AUTH_SECRET is required
+AUTH_URL is required
+NEXTAUTH_URL is required
+NEXT_PUBLIC_APP_URL is required
+```
+
+Reason:
+
+- The base `docker-compose.yml` requires core app runtime variables at Compose interpolation time.
+- This is intentional so missing `.env` values fail before migrations or `next start`.
+
+Fix:
+
+1. Check `.env` exists.
+2. Ensure these values are non-empty:
+
+```text
+DATABASE_URL
+AUTH_SECRET
+AUTH_URL
+NEXTAUTH_URL
+NEXT_PUBLIC_APP_URL
+```
+
+3. Recreate the app container after changes:
+
+```bash
+docker compose up -d --build --force-recreate app
+```
+
+Stripe variables may remain empty for non-payment local work.
+
+## Production Auth Secret Rejected
+
+Symptoms:
+
+- Production-like app startup or proxy initialization fails with:
+
+```text
+AUTH_SECRET must be set to a strong non-placeholder value in production.
+```
+
+Reason:
+
+- Production runtime rejects empty or placeholder auth secrets.
+- `auth.ts` and `proxy.ts` both enforce this.
+
+Fix:
+
+1. Generate a real local secret:
+
+```bash
+openssl rand -base64 32
+```
+
+2. Set it in `.env`:
+
+```text
+AUTH_SECRET=generated_value
+```
+
+3. Recreate the app container:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
 ## Hydration Mismatch On `<body>`
 
 Warning attributes:

@@ -632,5 +632,5 @@ Useful debug commands:
 
 ```bash
 docker compose logs -f app
-docker compose exec app pnpm build
+docker compose build app
 ```

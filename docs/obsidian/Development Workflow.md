@@ -47,6 +47,8 @@ localhost:5433 in dev override only
 - app runs `pnpm start`
 - app uses the built `.next-build` output from the Docker image
 - app receives only app runtime environment variables
+- app requires `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`, `NEXTAUTH_URL`, and `NEXT_PUBLIC_APP_URL` at Compose interpolation time
+- app uses `restart: unless-stopped`
 - app waits for the database healthcheck
 - app entrypoint runs `pnpm prisma:migrate:deploy`
 - database uses the named volume `postgres_data`
@@ -61,6 +63,7 @@ volumes:
 command: pnpm dev
 environment:
   NODE_ENV: development
+  THUNDERSTRUX_RUNTIME_CONTAINER: "false"
   WATCHPACK_POLLING: "true"
   CHOKIDAR_USEPOLLING: "true"
 ports:
@@ -71,6 +74,7 @@ Why:
 
 - base Compose can validate the production runtime path without host source mounts
 - dev override keeps source live-mounted into the container
+- dev override explicitly clears the production runtime marker so build/runtime guard behavior is unambiguous
 - `/app/node_modules` avoids host/container dependency conflicts
 - DB host port exposure is available for dev tools only
 
@@ -448,6 +452,7 @@ Expected behavior:
 - Logged-in requests continue normally.
 - Organisation accounts requesting `/events/[eventId]` redirect to `/dashboard/events/[eventId]`.
 - Member accounts requesting `/dashboard/events/[eventId]` redirect to `/`.
+- Production proxy startup rejects missing or placeholder `AUTH_SECRET` values instead of silently using `dev-secret`.
 
 ## Docker Access From Codex
 
@@ -511,6 +516,30 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_CONNECT_WEBHOOK_SECRET=
+```
+
+Required for app container startup:
+
+```text
+DATABASE_URL
+AUTH_SECRET
+AUTH_URL
+NEXTAUTH_URL
+NEXT_PUBLIC_APP_URL
+```
+
+If one is missing or empty, `docker compose up` fails before starting the app. Example diagnostic:
+
+```text
+DATABASE_URL is required
+```
+
+Optional Stripe values may be empty for non-payment local work:
+
+```text
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+STRIPE_CONNECT_WEBHOOK_SECRET
 ```
 
 Database `.env.db` values:

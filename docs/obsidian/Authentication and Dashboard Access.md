@@ -18,6 +18,7 @@ Main files:
 - production runtime requires a real non-placeholder `AUTH_SECRET`
 - development may use a dev-only fallback with a warning
 - Docker image builds use a build-time placeholder only so real secrets are not required during image creation
+- `proxy.ts` also rejects missing or placeholder production `AUTH_SECRET` values so proxy token decoding cannot silently fall back to `dev-secret`
 
 ## User Model
 
@@ -63,6 +64,7 @@ Behavior:
 - Relative callback URL is preserved in the query string
 - Organisation accounts requesting `/events/[eventId]` are redirected to `/dashboard/events/[eventId]`
 - Member accounts requesting `/dashboard/events/[eventId]` are redirected to `/`
+- In production, proxy initialization fails for unsafe `AUTH_SECRET` values: empty string, `dev-secret`, or `replace-with-a-non-empty-secret`
 
 ## Login and Signup Flow
 

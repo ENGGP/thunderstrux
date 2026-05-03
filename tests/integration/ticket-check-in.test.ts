@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { GET as getEventTickets } from "@/app/api/events/[eventId]/tickets/route";
 import { POST as checkInTicket } from "@/app/api/tickets/[ticketId]/check-in/route";
+import { POST as checkOutTicket } from "@/app/api/tickets/[ticketId]/check-out/route";
 import { prisma } from "@/lib/db";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
@@ -237,5 +238,148 @@ describe("ticket visibility and check-in API", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  test("organiser can check out their own checked-in ticket without changing order state", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const originalCheckedInAt = new Date("2026-05-02T12:00:00.000Z");
+    const { order, ticket } = await createPaidTicket({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      checkedInAt: originalCheckedInAt
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await checkOutTicket(
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ ticketId: ticket.id })
+    );
+    expect(response.status).toBe(200);
+    const body = await parseJsonResponse(response);
+    expect(body.ticket).toEqual({
+      id: ticket.id,
+      status: "unused",
+      checkedInAt: null
+    });
+
+    const updated = await prisma.ticket.findUniqueOrThrow({
+      where: { id: ticket.id },
+      select: {
+        checkedInAt: true,
+        organisationId: true,
+        eventId: true,
+        order: {
+          select: {
+            status: true,
+            paidAt: true,
+            stripeSessionId: true
+          }
+        },
+        ticketType: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            quantity: true
+          }
+        }
+      }
+    });
+    expect(updated.checkedInAt).toBeNull();
+    expect(updated.organisationId).toBe(organisation.id);
+    expect(updated.eventId).toBe(event.id);
+    expect(updated.order.status).toBe("paid");
+    expect(updated.order.paidAt).toEqual(order.paidAt);
+    expect(updated.order.stripeSessionId).toBe(order.stripeSessionId);
+    expect(updated.ticketType).toEqual({
+      id: ticketType.id,
+      name: ticketType.name,
+      price: ticketType.price,
+      quantity: ticketType.quantity
+    });
+  });
+
+  test("check-out returns conflict when ticket is already unused", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const { ticket } = await createPaidTicket({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await checkOutTicket(
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ ticketId: ticket.id })
+    );
+    expect(response.status).toBe(409);
+
+    const updated = await prisma.ticket.findUniqueOrThrow({
+      where: { id: ticket.id },
+      select: { checkedInAt: true }
+    });
+    expect(updated.checkedInAt).toBeNull();
+  });
+
+  test("organiser cannot check out another organisation ticket", async () => {
+    const { user } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: other.organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const { ticket } = await createPaidTicket({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      checkedInAt: new Date("2026-05-02T12:00:00.000Z")
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await checkOutTicket(
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ ticketId: ticket.id })
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  test("member cannot check out a ticket", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const { ticket } = await createPaidTicket({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      checkedInAt: new Date("2026-05-02T12:00:00.000Z")
+    });
+
+    setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
+    const response = await checkOutTicket(
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ ticketId: ticket.id })
+    );
+
+    expect(response.status).toBe(403);
   });
 });

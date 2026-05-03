@@ -401,6 +401,8 @@ Organisation opens /dashboard/events/[eventId]/tickets
   -> Check in button calls POST /api/tickets/[ticketId]/check-in
   -> API verifies ticket ownership through the event/organisation relationship
   -> API atomically sets checkedInAt only when it is currently null
+  -> Check out button calls POST /api/tickets/[ticketId]/check-out
+  -> API atomically clears checkedInAt only when it is currently not null
   -> UI disables the button and shows the checked-in timestamp
 ```
 
@@ -410,8 +412,9 @@ Rules:
 - The current route/API uses organisation event-management access checks.
 - Frontend ticket ids are inputs only; ownership is verified server-side.
 - Double check-in returns `409` and preserves the original timestamp.
-- Check-in only mutates `Ticket.checkedInAt`.
-- Check-in does not alter order status, Stripe state, ticket ownership, or ticket type data.
+- Check-out returns `409` when the ticket is already unused.
+- Check-in and check-out only mutate `Ticket.checkedInAt`.
+- Check-in and check-out do not alter order status, Stripe state, ticket ownership, or ticket type data.
 
 ## Stripe Settings
 

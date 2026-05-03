@@ -350,6 +350,39 @@ Status:
 - `404` ticket missing or not owned by the current organisation.
 - `409` ticket is already checked in.
 
+### `POST /api/tickets/[ticketId]/check-out`
+
+Reverses check-in for one issued ticket.
+
+Rules:
+
+- Auth required.
+- Organisation account required.
+- Event-management access required for the current organisation.
+- Ticket must belong to an event owned by the organisation account.
+- Only `Ticket.checkedInAt` is updated.
+- Only checked-in tickets can be checked out.
+- Does not modify order status, Stripe state, ticket ownership, or ticket type data.
+
+Success response:
+
+```json
+{
+  "ticket": {
+    "id": "ticket_id",
+    "status": "unused",
+    "checkedInAt": null
+  }
+}
+```
+
+Status:
+
+- `401` unauthenticated.
+- `403` non-organisation account.
+- `404` ticket missing or not owned by the current organisation.
+- `409` ticket is already unused.
+
 ## Orders
 
 ### `GET /api/orders?status=...&eventId=...&includeSystem=...&search=...&startDate=...&endDate=...`

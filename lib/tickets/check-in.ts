@@ -21,6 +21,13 @@ export class TicketAlreadyCheckedInError extends Error {
   }
 }
 
+export class TicketNotCheckedInError extends Error {
+  constructor(message = "Ticket is not checked in") {
+    super(message);
+    this.name = "TicketNotCheckedInError";
+  }
+}
+
 export type OrganisationEventTicket = Awaited<
   ReturnType<typeof getOrganisationEventTickets>
 >["tickets"][number];
@@ -146,6 +153,73 @@ export async function checkInOrganisationTicket(
 
   if (updated.count === 0) {
     throw new TicketAlreadyCheckedInError();
+  }
+
+  const ticket = await prisma.ticket.findFirstOrThrow({
+    where: {
+      id: ticketId,
+      organisationId,
+      event: {
+        organisationId
+      }
+    },
+    select: {
+      id: true,
+      checkedInAt: true
+    }
+  });
+
+  return {
+    id: ticket.id,
+    status: ticketStatus(ticket.checkedInAt),
+    checkedInAt: ticket.checkedInAt
+  };
+}
+
+export async function checkOutOrganisationTicket(
+  organisationId: string,
+  ticketId: string
+) {
+  const existingTicket = await prisma.ticket.findFirst({
+    where: {
+      id: ticketId,
+      organisationId,
+      event: {
+        organisationId
+      }
+    },
+    select: {
+      id: true,
+      checkedInAt: true
+    }
+  });
+
+  if (!existingTicket) {
+    throw new OrganisationTicketAccessError();
+  }
+
+  if (!existingTicket.checkedInAt) {
+    throw new TicketNotCheckedInError();
+  }
+
+  const updated = await prisma.ticket.updateMany({
+    where: {
+      id: ticketId,
+      organisationId,
+      event: {
+        organisationId
+      },
+      checkedInAt: {
+        not: null
+      }
+    },
+    data: {
+      checkedInAt: null
+    }
+  });
+
+  if (updated.count === 0) {
+    throw new TicketNotCheckedInError();
   }
 
   const ticket = await prisma.ticket.findFirstOrThrow({

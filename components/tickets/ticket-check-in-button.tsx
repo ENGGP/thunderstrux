@@ -25,29 +25,33 @@ export function TicketCheckInButton({
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function checkInTicket() {
+  async function updateTicketCheckIn(action: "check-in" | "check-out") {
     setIsBusy(true);
     setMessage(null);
 
     try {
-      const response = await fetch(`/api/tickets/${ticketId}/check-in`, {
+      const response = await fetch(`/api/tickets/${ticketId}/${action}`, {
         method: "POST"
       });
       const body = await response.json().catch(() => null);
 
-      if (response.ok && body?.ticket?.checkedInAt) {
-        setCheckedInAt(body.ticket.checkedInAt);
+      if (response.ok && body?.ticket) {
+        setCheckedInAt(body.ticket.checkedInAt ?? null);
         router.refresh();
         return;
       }
 
       if (response.status === 409) {
-        setMessage("Already checked in.");
+        setMessage(action === "check-in" ? "Already checked in." : "Already unused.");
         router.refresh();
         return;
       }
 
-      setMessage("Could not check in ticket.");
+      setMessage(
+        action === "check-in"
+          ? "Could not check in ticket."
+          : "Could not check out ticket."
+      );
     } finally {
       setIsBusy(false);
     }
@@ -55,18 +59,27 @@ export function TicketCheckInButton({
 
   if (checkedInAt) {
     return (
-      <div className="space-y-1">
-        <span className="inline-flex rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-green-200">
-          Checked in
-        </span>
+      <div className="space-y-2">
         <p className="text-xs text-neutral-500">{formatDateTime(checkedInAt)}</p>
+        <Button
+          disabled={isBusy}
+          onClick={() => updateTicketCheckIn("check-out")}
+          type="button"
+        >
+          {isBusy ? "Checking out..." : "Check out"}
+        </Button>
+        {message ? <p className="text-xs text-neutral-600">{message}</p> : null}
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
-      <Button disabled={isBusy} onClick={checkInTicket} type="button">
+      <Button
+        disabled={isBusy}
+        onClick={() => updateTicketCheckIn("check-in")}
+        type="button"
+      >
         {isBusy ? "Checking in..." : "Check in"}
       </Button>
       {message ? <p className="text-xs text-neutral-600">{message}</p> : null}

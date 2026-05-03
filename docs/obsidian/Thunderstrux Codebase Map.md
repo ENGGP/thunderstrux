@@ -8,7 +8,7 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. Th
 - Organisation accounts manage exactly one organisation directly at `/dashboard`.
 - Organisation management routes under `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
 - Organiser order detail, manual refund flag, Stripe session visibility, and paid-order email resend.
-- Organiser event ticket visibility and manual attendee check-in.
+- Organiser event ticket visibility, manual attendee check-in, and check-out.
 - Legacy `/dashboard/[orgSlug]/*` routes retained as compatibility redirects.
 - Event creation, editing, publishing, unpublishing, and deletion rules.
 - Public event discovery and public event detail pages.
@@ -63,7 +63,7 @@ app/
     create/page.tsx                  Organisation onboarding
     organisations/page.tsx           Member organisation search/join
     events/                          Slugless organisation event management
-    events/[eventId]/tickets/        Event ticket list and check-in page
+    events/[eventId]/tickets/        Event ticket list, check-in, and check-out page
     orders/page.tsx                  Slugless organisation order review
     orders/[orderId]/page.tsx        Organiser order detail
     settings/page.tsx                Slugless organisation settings
@@ -77,7 +77,7 @@ components/
   members/                           Member profile and organisation search UI
   orgs/                              Organisation creation form
   settings/                          Stripe Connect settings UI
-  tickets/                           Ticket check-in controls
+  tickets/                           Ticket check-in/check-out controls
   ui/                                Small reusable primitives
 
 lib/
@@ -91,7 +91,7 @@ lib/
   payments/                          Shared Checkout reconciliation helper
   permissions/                       Legacy role permission helpers
   stripe/                            Stripe SDK, Connect, and fee helpers
-  tickets/                           Ticket reservations and check-in helpers
+  tickets/                           Ticket reservations and check-in/check-out helpers
   validators/                        Zod schemas
 
 prisma/
@@ -121,7 +121,7 @@ docs/obsidian/
 - Non-production `/success?session_id=...` can call the shared reconciliation helper when local webhook forwarding is missing.
 - Ticket delivery email is attempted only after paid webhook fulfilment and ticket issuance.
 - Email delivery failure must not roll back payment, inventory, reservation confirmation, or ticket issuance.
-- Ticket check-in only mutates `Ticket.checkedInAt`.
+- Ticket check-in and check-out only mutate `Ticket.checkedInAt`.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
 - Runtime migrations run through `pnpm prisma:migrate:deploy` in `docker/entrypoint.sh`.

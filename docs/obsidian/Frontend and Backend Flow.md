@@ -58,6 +58,7 @@ User selects quantity
   -> Order row is updated with stripeSessionId
   -> browser redirects to Stripe
   -> payment webhook marks Order paid and issues Ticket rows
+  -> after fulfilment succeeds, webhook flow attempts ticket delivery email
   -> in non-production only, /success?session_id=... can reconcile paid sessions if local webhook forwarding is absent
   -> buyer sees the result at /tickets
 ```
@@ -366,7 +367,7 @@ Organisation opens /dashboard/events/[eventId]
   -> analytics helper runs stale pending order cleanup for that event
   -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
   -> revenue series helper fetches paid order paidAt/totalAmount values for UTC daily grouping
-  -> page renders event details, revenue, sold count, remaining count, UTC revenue chart, ticket rows, and order link
+  -> page renders event details, revenue, sold count, remaining count, UTC revenue chart, ticket rows, order link, and ticket visibility link
 ```
 
 Analytics rules:
@@ -378,6 +379,39 @@ Analytics rules:
 - Revenue-over-time is grouped by UTC day and labelled as `Revenue (UTC)`.
 - The UI does not show total capacity.
 - Empty states are shown for no ticket types and no tickets sold.
+
+## Organiser Event Tickets And Check-in
+
+Files:
+
+- `app/(dashboard)/dashboard/events/[eventId]/tickets/page.tsx`
+- `app/api/events/[eventId]/tickets/route.ts`
+- `app/api/tickets/[ticketId]/check-in/route.ts`
+- `components/tickets/ticket-check-in-button.tsx`
+- `lib/tickets/check-in.ts`
+
+Flow:
+
+```text
+Organisation opens /dashboard/events/[eventId]/tickets
+  -> page resolves current organisation through Organisation.accountUserId
+  -> server query verifies the event belongs to the current organisation
+  -> page renders issued Ticket rows for that event
+  -> each row shows buyer, ticket type, createdAt, and unused/checked-in state
+  -> Check in button calls POST /api/tickets/[ticketId]/check-in
+  -> API verifies ticket ownership through the event/organisation relationship
+  -> API atomically sets checkedInAt only when it is currently null
+  -> UI disables the button and shows the checked-in timestamp
+```
+
+Rules:
+
+- Member accounts cannot view event tickets or check tickets in.
+- The current route/API uses organisation event-management access checks.
+- Frontend ticket ids are inputs only; ownership is verified server-side.
+- Double check-in returns `409` and preserves the original timestamp.
+- Check-in only mutates `Ticket.checkedInAt`.
+- Check-in does not alter order status, Stripe state, ticket ownership, or ticket type data.
 
 ## Stripe Settings
 
@@ -428,8 +462,14 @@ Important security detail:
 Files:
 
 - `app/(dashboard)/dashboard/orders/page.tsx`
+- `app/(dashboard)/dashboard/orders/[orderId]/page.tsx`
 - `app/api/orders/route.ts`
+- `app/api/orders/[orderId]/route.ts`
+- `app/api/orders/[orderId]/refund-manual/route.ts`
+- `app/api/orders/[orderId]/resend/route.ts`
 - `lib/orders/grouped-orders.ts`
+- `lib/orders/order-detail.ts`
+- `lib/email/ticket-delivery.ts`
 
 Flow:
 
@@ -438,19 +478,67 @@ Page resolves current organisation account
   -> requireOrganisationFinanceAccess(organisation.id)
   -> stale pending order cleanup runs for the organisation
   -> optionally validates eventId belongs to the current organisation
-  -> query orders scoped to organisation.id and optional eventId
+  -> query orders scoped to organisation.id and optional eventId/search/date filters
   -> render grouped events, buyer, ticket type, quantity, total, status, and timestamps
 ```
 
 Access:
 
 - Organisation account required.
+- Finance access required.
 
 Current UI:
 
 - Orders are grouped by event.
+- Search supports buyer email.
+- Filters support event id and createdAt date range.
 - Normal status filters support `all`, `paid`, `expired`, and `failed`.
 - Default `all` excludes internal `pending` orders.
 - `Show system orders` enables a debug/system view that can include `pending`.
 - Event-filtered views show an event header and `Back to all orders`.
 - Empty states are shown when no orders match.
+
+Order detail flow:
+
+```text
+Organisation opens /dashboard/orders/[orderId]
+  -> page resolves current organisation account
+  -> query verifies the order belongs to the current organisation through event/order ownership
+  -> page renders order snapshot data, buyer, event link, issued ticket ids, total, and Stripe session id
+  -> manual refund action calls PATCH /api/orders/[orderId]/refund-manual
+  -> resend action calls POST /api/orders/[orderId]/resend
+```
+
+Rules:
+
+- Manual refund only sets `Order.isManuallyRefunded`; it never calls Stripe and never changes order status.
+- Manual resend is paid-order only and sends actual ticket email through the email delivery service.
+- Manual resend updates `ticketEmailResentAt` on success and `ticketEmailLastError` on failure.
+- Pending orders remain hidden from normal organiser UI.
+
+## Ticket Email Delivery
+
+Files:
+
+- `lib/email/ticket-delivery.ts`
+- `lib/payments/checkout-reconciliation.ts`
+- `app/api/orders/[orderId]/resend/route.ts`
+
+Automatic webhook flow:
+
+```text
+Stripe checkout.session.completed received
+  -> reconciliation validates paid session and pending order
+  -> transaction marks order paid, confirms reservation, decrements inventory, and creates tickets
+  -> after transaction succeeds, sendTicketDeliveryEmail(..., mode="automatic") runs
+  -> success sets ticketEmailSentAt and clears ticketEmailLastError
+  -> failure sets ticketEmailLastError and logs the error
+```
+
+Rules:
+
+- Email is attempted only after successful payment fulfilment and ticket issuance.
+- Email failure is non-blocking and must not roll back order payment, reservation confirmation, inventory decrement, or ticket issuance.
+- Duplicate webhook delivery does not resend automatic ticket email after `ticketEmailSentAt` is set.
+- Manual resend can send again for paid orders and updates `ticketEmailResentAt`.
+- No attachments, QR codes, queues, or notification preferences exist in the MVP.

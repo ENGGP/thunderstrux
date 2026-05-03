@@ -273,9 +273,86 @@ Rules:
 - Price must be non-negative integer cents.
 - Quantity must be greater than zero.
 
+### `GET /api/events/[eventId]/tickets`
+
+Lists issued tickets for one organiser-owned event.
+
+Rules:
+
+- Auth required.
+- Organisation account required.
+- Event-management access required for the current organisation.
+- The event must belong to the organisation owned by `session.user`.
+- Access is resolved server-side; the frontend does not provide trusted organisation ownership.
+- Returns actual `Ticket` rows only.
+
+Response:
+
+```json
+{
+  "event": {
+    "id": "event_id",
+    "title": "Event title"
+  },
+  "tickets": [
+    {
+      "id": "ticket_id",
+      "status": "unused",
+      "createdAt": "2026-05-03T10:00:00.000Z",
+      "checkedInAt": null,
+      "ticketTypeName": "General Admission",
+      "orderId": "order_id",
+      "buyerEmail": "buyer@example.com",
+      "buyerName": "Buyer Name"
+    }
+  ]
+}
+```
+
+Status:
+
+- `401` unauthenticated.
+- `403` non-organisation account.
+- `404` event missing or not owned by the current organisation.
+
+## Tickets
+
+### `POST /api/tickets/[ticketId]/check-in`
+
+Marks one issued ticket as checked in.
+
+Rules:
+
+- Auth required.
+- Organisation account required.
+- Event-management access required for the current organisation.
+- Ticket must belong to an event owned by the organisation account.
+- Only `Ticket.checkedInAt` is updated.
+- Already checked-in tickets are rejected and the original timestamp is preserved.
+- Does not modify order status, Stripe state, ticket ownership, or ticket type data.
+
+Success response:
+
+```json
+{
+  "ticket": {
+    "id": "ticket_id",
+    "status": "checked-in",
+    "checkedInAt": "2026-05-03T10:05:00.000Z"
+  }
+}
+```
+
+Status:
+
+- `401` unauthenticated.
+- `403` non-organisation account.
+- `404` ticket missing or not owned by the current organisation.
+- `409` ticket is already checked in.
+
 ## Orders
 
-### `GET /api/orders?status=...&eventId=...&includeSystem=...`
+### `GET /api/orders?status=...&eventId=...&includeSystem=...&search=...&startDate=...&endDate=...`
 
 Returns organisation-scoped orders grouped by event.
 
@@ -290,6 +367,8 @@ Rules:
 - Default `all` excludes `pending`.
 - `eventId` is optional.
 - When `eventId` is present, the API verifies the event belongs to the signed-in organisation account before filtering.
+- `search` filters buyer email.
+- `startDate` and `endDate` filter by order `createdAt`.
 - Member accounts cannot access this endpoint.
 
 Response:
@@ -316,6 +395,68 @@ Response:
   }
 ]
 ```
+
+### `GET /api/orders/[orderId]`
+
+Returns a safe organiser order detail payload.
+
+Rules:
+
+- Auth required.
+- Organisation account required.
+- Finance access required.
+- The order must belong to an event owned by the current organisation account.
+- Pending orders are not exposed through normal organiser UI.
+- Unit price and total amount come from the order snapshot, not the current ticket type price.
+
+Includes:
+
+- order id, status, createdAt, paidAt, failedAt, failureReason
+- buyer email and name when available
+- event id/title
+- ticket line with ticket type name, quantity, unit price, and total amount
+- issued ticket ids
+- Stripe session id
+- manual refund and ticket email tracking fields
+
+### `PATCH /api/orders/[orderId]/refund-manual`
+
+Sets the local manual refund flag on an organiser-owned order.
+
+Rules:
+
+- Auth required.
+- Organisation account required.
+- Finance access required.
+- The order must belong to the current organisation account.
+- This is internal bookkeeping only.
+- Does not call Stripe.
+- Does not change Stripe payment state.
+- Does not change order `status`.
+
+### `POST /api/orders/[orderId]/resend`
+
+Sends the ticket delivery email again for a paid organiser-owned order.
+
+Rules:
+
+- Auth required.
+- Organisation account required.
+- Finance access required.
+- The order must belong to the current organisation account.
+- Order must be `paid`.
+- Sends even when `ticketEmailSentAt` is already set.
+- On success, updates `Order.ticketEmailResentAt` and clears `Order.ticketEmailLastError`.
+- On failure, updates `Order.ticketEmailLastError`.
+- Does not modify order payment state, Stripe state, ticket ownership, or ticket check-in state.
+
+Status:
+
+- `400` unpaid order or missing buyer recipient.
+- `401` unauthenticated.
+- `403` non-organisation account.
+- `404` order missing or not owned by the current organisation.
+- `503` email provider configuration missing.
 
 ## Payments
 
@@ -366,9 +507,15 @@ Responsibilities:
 - Create tickets.
 - Mark order paid.
 - Store `paidAt` on success.
+- Attempt ticket delivery email only after successful payment fulfilment and ticket issuance.
+- Store `ticketEmailSentAt` on automatic email success.
+- Store `ticketEmailLastError` on automatic email failure.
+- Skip automatic email on duplicate webhook delivery when `ticketEmailSentAt` is already set.
 - Mark normal reservation or Checkout expiry as `expired` without `failureReason`.
 - Store `failedAt` and `failureReason` only on unexpected reconciliation failure.
 - Return `200` for signed but unhandled Stripe event types.
+
+Email delivery failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.
 
 ## Server-Rendered Order Views
 

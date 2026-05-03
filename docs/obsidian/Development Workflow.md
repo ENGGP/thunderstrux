@@ -522,6 +522,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_CONNECT_WEBHOOK_SECRET=
+RESEND_API_KEY=
+EMAIL_FROM=
 ```
 
 Required for app container startup:
@@ -547,6 +549,15 @@ STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET
 STRIPE_CONNECT_WEBHOOK_SECRET
 ```
+
+Optional email delivery values may be empty for local work that does not need actual ticket emails:
+
+```text
+RESEND_API_KEY
+EMAIL_FROM
+```
+
+When email values are missing, paid webhook fulfilment still succeeds, automatic email delivery records an error, and manual resend returns an email configuration error.
 
 Database `.env.db` values:
 

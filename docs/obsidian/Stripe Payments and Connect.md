@@ -9,6 +9,7 @@
 - Create a temporary ticket reservation before redirecting to Stripe
 - Reconcile amount, currency, and metadata before marking paid
 - Reduce inventory and issue tickets atomically
+- Send ticket delivery email only after successful webhook fulfilment and ticket issuance
 
 ## Stripe Files
 
@@ -29,6 +30,7 @@ Core files:
 - `lib/stripe/connect.ts`
 - `lib/stripe/fees.ts`
 - `lib/payments/checkout-reconciliation.ts`
+- `lib/email/ticket-delivery.ts`
 - `lib/orders/stale-orders.ts`
 - `lib/tickets/reservations.ts`
 - `lib/events/event-analytics.ts`
@@ -336,6 +338,9 @@ On success:
 - ticket type inventory decremented
 - reservation marked `confirmed`
 - one `Ticket` row created per purchased ticket
+- ticket delivery email attempted after fulfilment succeeds and the database transaction commits
+- automatic ticket email success stores `Order.ticketEmailSentAt`
+- automatic ticket email failure stores `Order.ticketEmailLastError` and does not roll back fulfilment
 
 On reconciliation failure:
 
@@ -381,6 +386,7 @@ Responsibilities:
 - Confirm reservations.
 - Decrement remaining ticket inventory.
 - Create ticket rows.
+- Attempt automatic ticket delivery email after successful fulfilment.
 - Preserve idempotency for duplicate completed events.
 
 Callers:
@@ -389,6 +395,56 @@ Callers:
 - `/success?session_id=...` only when `NODE_ENV !== "production"` as a local-dev fallback.
 
 The dev fallback exists because Stripe redirects the browser to `/success` even when local webhook forwarding is not running. It does not replace webhook fulfilment in production.
+
+## Ticket Delivery Email
+
+Files:
+
+```text
+lib/email/ticket-delivery.ts
+app/api/orders/[orderId]/resend/route.ts
+```
+
+Provider:
+
+- Uses a Resend-compatible HTTP API through `fetch`.
+- No npm provider package is currently required.
+- Runtime env values:
+  - `RESEND_API_KEY`
+  - `EMAIL_FROM`
+
+Automatic delivery:
+
+- Runs only after successful paid checkout reconciliation and ticket issuance.
+- Skips duplicate automatic sends when `Order.ticketEmailSentAt` is already set.
+- On success, sets `ticketEmailSentAt` and clears `ticketEmailLastError`.
+- On failure, sets `ticketEmailLastError`.
+- Email failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.
+
+Manual resend:
+
+- Route: `POST /api/orders/[orderId]/resend`.
+- Organisation account and finance access required.
+- Order must belong to the current organisation and have `status = paid`.
+- Sends even when `ticketEmailSentAt` is already set.
+- On success, sets `ticketEmailResentAt` and clears `ticketEmailLastError`.
+- On failure, sets `ticketEmailLastError`.
+
+Current MVP email content:
+
+- event name
+- ticket type
+- quantity
+- order total
+- issued ticket ids
+
+Not included:
+
+- attachments
+- QR codes
+- queues
+- notification preferences
+- full template system
 
 ## Stale Pending Orders
 
@@ -470,6 +526,9 @@ Current coverage:
 - expired reservations do not reduce availability
 - completed Checkout reconciliation marks the order paid, confirms the reservation, creates tickets, and decrements inventory
 - duplicate completed reconciliation is idempotent
+- automatic ticket email sends after successful fulfilment
+- automatic ticket email failure records the error without rolling back fulfilment
+- manual resend sends for paid organiser-owned orders and updates delivery tracking
 - invalid metadata, amount, or currency does not mark an order paid
 - reservation-backed pending orders and legacy reservationless pending orders expire through stale cleanup
 - paid and failed orders are preserved by stale cleanup

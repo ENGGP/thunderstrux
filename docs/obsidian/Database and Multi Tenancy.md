@@ -192,6 +192,10 @@ Important fields:
 - `unitPrice`
 - `totalAmount`
 - `stripeSessionId` unique
+- `isManuallyRefunded`
+- `ticketEmailSentAt`
+- `ticketEmailLastError`
+- `ticketEmailResentAt`
 
 Current statuses:
 
@@ -203,6 +207,15 @@ Current statuses:
 `pending` remains in the schema as an internal checkout reconciliation state. It is not part of normal organiser or member UX.
 
 Each order maps to exactly one ticket type through `ticketTypeId`. Organiser analytics group paid orders by `ticketTypeId` and sum `quantity` and `totalAmount` for sold count and revenue.
+
+Order management fields:
+
+- `isManuallyRefunded`: local organiser bookkeeping flag only. It does not call Stripe, change Stripe payment state, or change order lifecycle status.
+- `ticketEmailSentAt`: first successful automatic ticket delivery email timestamp.
+- `ticketEmailLastError`: most recent ticket email delivery error message.
+- `ticketEmailResentAt`: most recent successful manual resend timestamp.
+
+Ticket email delivery tracking is operational state only. It must not be used as payment truth, ticket ownership, refund state, or fulfilment truth.
 
 `TicketReservation` is the temporary soft hold created before redirecting to Stripe Checkout.
 
@@ -241,6 +254,24 @@ Rules:
 `Ticket` is the issued unit created after a paid webhook reconciliation.
 
 One paid order creates `quantity` ticket rows.
+
+Important fields:
+
+- `organisationId`
+- `eventId`
+- `ticketTypeId`
+- `orderId`
+- `userId`
+- `checkedInAt`
+- `createdAt`
+
+Ticket check-in state:
+
+- `checkedInAt = null`: unused.
+- `checkedInAt != null`: checked in.
+- Check-in is the only mutable ticket operational state in the MVP.
+- Check-in must not modify order status, Stripe data, ticket ownership, ticket type history, or payment state.
+- Double check-in is prevented by atomically updating only tickets where `checkedInAt` is still `null`.
 
 ## Multi-Tenant Access Pattern
 

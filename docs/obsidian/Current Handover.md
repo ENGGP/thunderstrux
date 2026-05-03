@@ -2,6 +2,8 @@
 
 Read this first, then [[Thunderstrux Codebase Map]].
 
+Latest dated handover: [[Handover 2026-05-03 Ticket Operations and Email Delivery]].
+
 ## Current State
 
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies with:
@@ -13,10 +15,13 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies wit
 - Organisation dashboard at `/dashboard`.
 - Organisation management routes at `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
 - Organisation event analytics at `/dashboard/events/[eventId]`.
+- Organisation order detail and safe order actions.
+- Organisation ticket visibility and manual check-in for event attendees.
 - Organisation accounts redirect from public event pages to organiser event analytics.
 - Legacy `/dashboard/[orgSlug]/*` routes kept as redirects.
 - Event creation, editing, publishing, unpublishing, and deletion rules.
 - Stripe Checkout with 30-minute ticket reservations and webhook-only fulfilment.
+- Ticket delivery email after successful webhook fulfilment, with manual resend.
 - Non-production `/success?session_id=...` fallback exists only to reconcile paid sessions when local webhook forwarding is absent.
 - Stripe Connect Express onboarding with explicit lifecycle states.
 
@@ -29,6 +34,9 @@ Implemented migrations:
 - `20260428000000_account_role_groundwork`: role-based member/organisation account model.
 - `20260429000000_ticket_reservations`: checkout ticket reservations.
 - `20260429010000_order_expired_status`: adds the `expired` order status.
+- `20260503020000_manual_order_refund_flag`: adds local-only manual refund tracking on orders.
+- `20260503030000_ticket_check_in_state`: adds ticket check-in timestamp state.
+- `20260503040000_ticket_email_delivery_tracking`: adds ticket delivery email tracking on orders.
 
 Recent feature areas:
 
@@ -37,6 +45,11 @@ Recent feature areas:
 - Organisation dashboard, events, orders, settings, and Stripe Connect.
 - Organisation-safe event viewing and analytics.
 - Event-scoped organiser orders.
+- Organiser order detail at `/dashboard/orders/[orderId]`.
+- Organiser manual refund flag, Stripe session copy/view support, and paid-order ticket email resend.
+- Event ticket list at `/dashboard/events/[eventId]/tickets`.
+- Ticket check-in state through `Ticket.checkedInAt`, with double check-in prevention.
+- Automatic paid-order ticket email delivery after webhook fulfilment and ticket issuance.
 - Ticket reservation model and reservation-aware checkout/webhook reconciliation.
 - App-level stale pending order cleanup across order, ticket, checkout, public event, dashboard, and analytics reads.
 - Pending orders are internal system state and hidden from normal member/organiser UX.
@@ -68,9 +81,11 @@ Organisation:
 - `/dashboard/create`
 - `/dashboard/events`
 - `/dashboard/events/[eventId]`
+- `/dashboard/events/[eventId]/tickets`
 - `/dashboard/events/new`
 - `/dashboard/events/[eventId]/edit`
 - `/dashboard/orders`
+- `/dashboard/orders/[orderId]`
 - `/dashboard/settings`
 
 Legacy compatibility:
@@ -130,7 +145,7 @@ Docker modes:
 
 Environment files:
 
-- `.env`: app runtime values such as `DATABASE_URL`, Auth.js URLs/secrets, and Stripe keys.
+- `.env`: app runtime values such as `DATABASE_URL`, Auth.js URLs/secrets, Stripe keys, and optional email delivery keys.
 - `.env.db`: Postgres container values only.
 - `.env.example` and `.env.db.example` are the tracked templates.
 - base Compose fails fast if required app env values are missing or empty.
@@ -172,9 +187,10 @@ Latest verification:
 
 - `docker compose build app` passed with the multi-stage Dockerfile.
 - `docker compose up -d` starts the production-like container and runs `pnpm prisma:migrate:deploy` before `pnpm start`.
-- `docker compose exec app pnpm prisma:migrate` applied through `20260429010000_order_expired_status`.
+- `docker compose exec app pnpm prisma:migrate` applied through `20260503040000_ticket_email_delivery_tracking`.
+- `pnpm exec tsc --noEmit` passed after the ticket email delivery changes.
 - `docker compose exec app pnpm test:smoke` passed.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 9 files and 27 tests.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 42 tests.
 - Previous build verification passed before the runtime-build guard was added. Current safe build validation is `docker compose build app`.
 - Required-env startup validation passed: `docker compose --env-file <temp> up app` failed before app startup when `DATABASE_URL` was omitted, output contained `DATABASE_URL is required`, and the temporary env file was deleted.
 - Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
@@ -234,6 +250,7 @@ tests/integration/pending-cleanup.test.ts
 tests/integration/member-features.test.ts
 tests/integration/orders-api.test.ts
 tests/integration/public-safe-pages.test.ts
+tests/integration/ticket-check-in.test.ts
 ```
 
 Important rules:
@@ -260,6 +277,11 @@ Important rules:
 - Payment fulfilment must remain webhook-driven.
 - The `/success` fallback must remain non-production only and must call the same checkout reconciliation helper as the webhook.
 - Ticket reservations are temporary soft holds; production paid tickets are issued only by Stripe Checkout webhook reconciliation.
+- Ticket delivery email must only run after paid webhook fulfilment and ticket issuance.
+- Ticket delivery email failure must update `Order.ticketEmailLastError` and must not roll back order payment, ticket issuance, reservation confirmation, or inventory decrement.
+- Duplicate webhook delivery must not send automatic ticket email again after `Order.ticketEmailSentAt` is set.
+- Manual ticket email resend must be organisation-scoped and paid-order only.
+- Ticket check-in may only mutate `Ticket.checkedInAt`; it must not alter orders, Stripe state, ticket ownership, ticket type snapshots, or payment state.
 - Stale cleanup may expire pending orders and active reservations, but must not fulfil orders, decrement inventory, or alter paid/failed orders.
 - Stripe onboarding must stay hosted by Stripe.
 - Do not collect sensitive onboarding or compliance data in Thunderstrux.

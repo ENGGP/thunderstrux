@@ -155,6 +155,7 @@ Useful commands:
 
 ```bash
 pnpm docker:dev
+pnpm docker:dev:clean
 docker compose exec app pnpm dev:doctor
 docker compose exec app pnpm dev:webpack
 docker compose exec app pnpm prisma:migrate
@@ -237,9 +238,12 @@ tests/integration/public-safe-pages.test.ts
 
 Important rules:
 
-- Integration tests must run against a database whose name ends with `_test`.
+- Integration tests must run against a database whose name contains `_test`.
 - The default isolated database is `thunderstrux_test`.
-- The runner drops and recreates the test database, deploys migrations, then starts Vitest.
+- The runner sets `DATABASE_URL` from the resolved test URL so host `DATABASE_URL` values do not leak into child commands.
+- The runner resets the test database with `pnpm prisma migrate reset --force --skip-seed`.
+- The runner runs `pnpm prisma:generate` after reset so Prisma Client matches the current schema.
+- The runner then starts Vitest.
 - Tests are sequential; Vitest uses `--no-file-parallelism --maxWorkers=1 --maxConcurrency=1`.
 - `tests/helpers/db-reset.ts` truncates application tables before each test.
 - The test setup mocks `@/auth`, blocks real `fetch` network calls, and uses Stripe SDK mocks where practical.

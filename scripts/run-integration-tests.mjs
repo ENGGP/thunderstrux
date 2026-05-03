@@ -11,23 +11,18 @@ const databaseUrl =
 const parsedDatabaseUrl = new URL(databaseUrl);
 const databaseName = parsedDatabaseUrl.pathname.replace(/^\//, "");
 
-if (!databaseName.endsWith("_test")) {
+if (!databaseName.includes("_test")) {
   console.error(
-    `Refusing to run integration tests against non-test database "${databaseName}".`
+    `Refusing to run integration tests against non-test database "${databaseName}". The database name must contain "_test".`
   );
   process.exit(1);
 }
 
-const adminDatabaseUrl = new URL(databaseUrl);
-adminDatabaseUrl.pathname = "/postgres";
-adminDatabaseUrl.search = "";
-
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
-function run(command, args, options = {}) {
+function run(command, args) {
   const result = spawnSync(command, args, {
-    stdio: options.input ? ["pipe", "inherit", "inherit"] : "inherit",
-    input: options.input,
+    stdio: "inherit",
     env: {
       ...process.env,
       DATABASE_URL: databaseUrl,
@@ -42,24 +37,8 @@ function run(command, args, options = {}) {
   }
 }
 
-const safeDatabaseName = databaseName.replaceAll('"', '""');
-const terminateSql = `
-SELECT pg_terminate_backend(pid)
-FROM pg_stat_activity
-WHERE datname = '${databaseName.replaceAll("'", "''")}'
-  AND pid <> pg_backend_pid();
-`;
-const dropSql = `DROP DATABASE IF EXISTS "${safeDatabaseName}";`;
-const createSql = `CREATE DATABASE "${safeDatabaseName}";`;
-
-for (const sql of [terminateSql, dropSql, createSql]) {
-  run(
-    pnpm,
-    ["prisma", "db", "execute", "--url", adminDatabaseUrl.toString(), "--stdin"],
-    { input: sql }
-  );
-}
-run(pnpm, ["prisma:migrate:deploy"]);
+run(pnpm, ["prisma", "migrate", "reset", "--force", "--skip-seed"]);
+run(pnpm, ["prisma:generate"]);
 run(pnpm, [
   "vitest",
   "run",

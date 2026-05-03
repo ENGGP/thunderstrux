@@ -392,6 +392,34 @@ docker compose exec app cat 'app/(dashboard)/dashboard/page.tsx'
 
 If host and container differ while using the dev override, inspect Docker Desktop file sharing and restart Docker. The base `docker-compose.yml` intentionally does not bind-mount source code; it serves the built image.
 
+If the app container was previously started through the base production-like Compose file and does not see current migrations or source files, use the explicit clean dev recovery command:
+
+```bash
+pnpm docker:dev:clean
+```
+
+This recreates the dev app container with bind mounts. It does not remove the Postgres volume.
+
+## Integration Test Reset Fails
+
+The integration runner should not require manual database reset.
+
+Current expected behavior:
+
+- resolves the test database URL from `INTEGRATION_DATABASE_URL`, `TEST_DATABASE_URL`, or the default container URL
+- refuses to run unless the database name contains `_test`
+- runs `pnpm prisma migrate reset --force --skip-seed`
+- runs `pnpm prisma:generate`
+- runs Vitest sequentially
+
+Run integration tests from the dev stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration
+```
+
+If the runner refuses the database, inspect `INTEGRATION_DATABASE_URL` and `TEST_DATABASE_URL`. Do not point integration tests at the normal `thunderstrux` database.
+
 ## Homepage Internal Server Error
 
 Common causes:

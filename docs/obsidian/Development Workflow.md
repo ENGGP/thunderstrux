@@ -262,9 +262,10 @@ Current test database behavior:
 
 - default database URL: `postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public`
 - override with `INTEGRATION_DATABASE_URL` or `TEST_DATABASE_URL`
-- refuses to run unless the database name ends with `_test`
-- drops and recreates the test database before the suite
-- runs `pnpm prisma:migrate:deploy` against the test database
+- refuses to run unless the database name contains `_test`
+- ignores accidental host `DATABASE_URL` leakage by setting `DATABASE_URL` from the resolved test URL for all child commands
+- resets the test database through `pnpm prisma migrate reset --force --skip-seed`
+- runs `pnpm prisma:generate` after reset so Prisma Client matches the current schema
 - truncates app tables before each test
 - runs Vitest sequentially with `--no-file-parallelism --maxWorkers=1 --maxConcurrency=1`
 
@@ -305,6 +306,7 @@ Host-facing package helpers:
 
 ```bash
 pnpm docker:dev
+pnpm docker:dev:clean
 pnpm docker:prod
 pnpm docker:reset
 pnpm docker:logs
@@ -318,6 +320,10 @@ pnpm docker:rebuild
 ```
 
 `pnpm docker:up` is a detached dev-stack alias using `docker-compose.dev.yml`.
+
+`pnpm docker:dev` is the normal fast foreground dev start.
+
+`pnpm docker:dev:clean` is the explicit recovery path when the app container does not see current source, migrations, or generated state. It uses the dev Compose files with `--build --force-recreate` and does not wipe the Postgres volume.
 
 `pnpm docker:build` runs `docker compose build app`. It does not execute `pnpm build` inside the running app container.
 

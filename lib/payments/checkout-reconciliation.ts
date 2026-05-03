@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
+import { sendTicketDeliveryEmail } from "@/lib/email/ticket-delivery";
 import {
   confirmReservationForOrder,
   expireReservationForOrder,
@@ -127,6 +128,7 @@ export async function reconcileCompletedCheckoutSession(
   const organisationId = metadata?.organisationId;
   const ticketTypeId = metadata?.ticketTypeId;
   const metadataQuantity = parseMetadataQuantity(metadata?.quantity);
+  let fulfilledOrderId: string | null = null;
 
   if (!orderId || !eventId || !organisationId || !ticketTypeId || !metadataQuantity) {
     reconciliationError("Stripe session missing required metadata", {
@@ -499,5 +501,22 @@ export async function reconcileCompletedCheckoutSession(
       orderId: localOrder.id,
       ticketCount: localOrder.quantity
     });
+
+    fulfilledOrderId = localOrder.id;
   });
+
+  if (fulfilledOrderId) {
+    try {
+      await sendTicketDeliveryEmail({
+        orderId: fulfilledOrderId,
+        mode: "automatic"
+      });
+    } catch (error) {
+      console.error("Ticket delivery email failed after checkout reconciliation", {
+        orderId: fulfilledOrderId,
+        stripeSessionId: session.id,
+        error
+      });
+    }
+  }
 }

@@ -114,6 +114,9 @@ model Order {
   failedAt        DateTime?
   failureReason   String?
   isManuallyRefunded Boolean @default(false)
+  ticketEmailSentAt DateTime?
+  ticketEmailLastError String?
+  ticketEmailResentAt DateTime?
   organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)

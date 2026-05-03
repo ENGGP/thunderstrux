@@ -11,9 +11,32 @@ import {
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 
 describe("webhook reconciliation", () => {
+  function configureEmailEnv() {
+    const previousApiKey = process.env.RESEND_API_KEY;
+    const previousFrom = process.env.EMAIL_FROM;
+
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.EMAIL_FROM = "Thunderstrux <tickets@example.com>";
+
+    return () => {
+      if (previousApiKey === undefined) {
+        delete process.env.RESEND_API_KEY;
+      } else {
+        process.env.RESEND_API_KEY = previousApiKey;
+      }
+
+      if (previousFrom === undefined) {
+        delete process.env.EMAIL_FROM;
+      } else {
+        process.env.EMAIL_FROM = previousFrom;
+      }
+    };
+  }
+
   test("paid checkout session confirms reservation, issues tickets, decrements inventory, and is idempotent", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const member = await createMember();
     const event = await createEvent({
@@ -81,6 +104,158 @@ describe("webhook reconciliation", () => {
       "Stripe checkout tickets created",
       expect.any(Object)
     );
+  });
+
+  test("successful fulfilment sends ticket email once and tracks sent timestamp", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    const restoreEmailEnv = configureEmailEnv();
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { organisation } = await createOrganisationAccount({ stripeReady: true });
+      const member = await createMember({ email: "ticket-email@example.com" });
+      const event = await createEvent({
+        organisationId: organisation.id,
+        status: "published",
+        ticketTypes: [{ name: "General", price: 1000, quantity: 5 }]
+      });
+      const ticketType = event.ticketTypes[0];
+      const order = await createOrder({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        quantity: 2,
+        unitPrice: ticketType.price,
+        stripeSessionId: "cs_ticket_email"
+      });
+      await createReservation({
+        orderId: order.id,
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        quantity: 2,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      });
+
+      const session = checkoutSession({
+        id: "cs_ticket_email",
+        orderId: order.id,
+        eventId: event.id,
+        organisationId: organisation.id,
+        ticketTypeId: ticketType.id,
+        quantity: 2,
+        amountTotal: 2000
+      });
+      await reconcileCompletedCheckoutSession(session);
+      await reconcileCompletedCheckoutSession(session);
+
+      const updated = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+        select: {
+          status: true,
+          ticketEmailSentAt: true,
+          ticketEmailLastError: true,
+          tickets: true
+        }
+      });
+      expect(updated.status).toBe("paid");
+      expect(updated.ticketEmailSentAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
+      expect(updated.ticketEmailLastError).toBeNull();
+      expect(updated.tickets).toHaveLength(2);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.resend.com/emails",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("ticket-email@example.com")
+        })
+      );
+    } finally {
+      restoreEmailEnv();
+    }
+  });
+
+  test("ticket email failure is recorded without rolling back fulfilment", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    const previousApiKey = process.env.RESEND_API_KEY;
+    const previousFrom = process.env.EMAIL_FROM;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.EMAIL_FROM;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const { organisation } = await createOrganisationAccount({ stripeReady: true });
+      const member = await createMember();
+      const event = await createEvent({
+        organisationId: organisation.id,
+        status: "published",
+        ticketTypes: [{ name: "General", price: 1000, quantity: 5 }]
+      });
+      const ticketType = event.ticketTypes[0];
+      const order = await createOrder({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        quantity: 1,
+        unitPrice: ticketType.price,
+        stripeSessionId: "cs_ticket_email_failure"
+      });
+      await createReservation({
+        orderId: order.id,
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        quantity: 1,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      });
+
+      await reconcileCompletedCheckoutSession(
+        checkoutSession({
+          id: "cs_ticket_email_failure",
+          orderId: order.id,
+          eventId: event.id,
+          organisationId: organisation.id,
+          ticketTypeId: ticketType.id,
+          quantity: 1,
+          amountTotal: 1000
+        })
+      );
+
+      const fulfilled = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+        include: { reservation: true, tickets: true }
+      });
+      const updatedTicketType = await prisma.ticketType.findUniqueOrThrow({
+        where: { id: ticketType.id }
+      });
+      expect(fulfilled.status).toBe("paid");
+      expect(fulfilled.tickets).toHaveLength(1);
+      expect(fulfilled.reservation?.status).toBe("confirmed");
+      expect(updatedTicketType.quantity).toBe(4);
+      expect(fulfilled.ticketEmailSentAt).toBeNull();
+      expect(fulfilled.ticketEmailLastError).toBe("Email provider is not configured");
+      expect(error).toHaveBeenCalledWith(
+        "Ticket delivery email failed after checkout reconciliation",
+        expect.objectContaining({ orderId: order.id })
+      );
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.RESEND_API_KEY;
+      } else {
+        process.env.RESEND_API_KEY = previousApiKey;
+      }
+
+      if (previousFrom === undefined) {
+        delete process.env.EMAIL_FROM;
+      } else {
+        process.env.EMAIL_FROM = previousFrom;
+      }
+    }
   });
 
   test("wrong amount or currency fails the pending order with webhook_mismatch", async () => {

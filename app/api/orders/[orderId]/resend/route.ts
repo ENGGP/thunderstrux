@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  badRequest,
   forbidden,
   internalError,
   notFound,
+  serviceUnavailable,
   unauthorized
 } from "@/lib/api/errors";
 import {
@@ -15,6 +17,12 @@ import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
 } from "@/lib/orders/order-detail";
+import {
+  isTicketEmailConfigurationError,
+  isTicketEmailRecipientError,
+  isTicketEmailOrderStateError,
+  sendTicketDeliveryEmail
+} from "@/lib/email/ticket-delivery";
 
 type RouteContext = {
   params: Promise<{
@@ -30,10 +38,13 @@ export async function POST(_request: Request, context: RouteContext) {
     await requireOrganisationFinanceAccess(organisation.id);
     const order = await getOrganisationOrderDetail(organisation.id, orderId);
 
-    console.info("Ticket resend requested", {
+    if (order.status !== "paid") {
+      return badRequest("Ticket email can only be resent for paid orders");
+    }
+
+    await sendTicketDeliveryEmail({
       orderId: order.id,
-      organisationId: organisation.id,
-      ticketCount: order.tickets.length
+      mode: "manual"
     });
 
     return NextResponse.json({ success: true });
@@ -48,6 +59,14 @@ export async function POST(_request: Request, context: RouteContext) {
 
     if (error instanceof OrganisationOrderAccessError) {
       return notFound(error.message);
+    }
+
+    if (isTicketEmailConfigurationError(error)) {
+      return serviceUnavailable(error.message);
+    }
+
+    if (isTicketEmailRecipientError(error) || isTicketEmailOrderStateError(error)) {
+      return badRequest(error.message);
     }
 
     console.error("Failed to resend tickets", { orderId, error });

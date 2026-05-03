@@ -105,6 +105,12 @@ export default async function OrganiserEventPage({
                 Edit event
               </Link>
               <Link
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+                href={`/dashboard/events/${analytics.event.id}/tickets`}
+              >
+                View tickets
+              </Link>
+              <Link
                 className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
                 href={`/dashboard/orders?eventId=${analytics.event.id}`}
               >

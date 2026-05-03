@@ -6,11 +6,26 @@ node_modules/
 .next/
 .next-build/
 out/
+.vercel/
 
 # Build output
 dist/
 coverage/
 *.tsbuildinfo
+
+# Test and tooling output
+test-results/
+playwright-report/
+blob-report/
+.nyc_output/
+.eslintcache
+.stylelintcache
+
+# Tool caches
+.cache/
+.turbo/
+.parcel-cache/
+.swc/
 
 # Environment files
 .env
@@ -39,3 +54,10 @@ Thumbs.db
 # Local runtime files
 tmp/
 temp/
+
+# Local database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+prisma/dev.db*

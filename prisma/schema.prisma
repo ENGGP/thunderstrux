@@ -134,6 +134,7 @@ model Ticket {
   ticketTypeId   String
   organisationId String
   createdAt      DateTime     @default(now())
+  checkedInAt    DateTime?
   order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
   ticketType     TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
@@ -141,6 +142,7 @@ model Ticket {
 
   @@index([orderId])
   @@index([eventId])
+  @@index([eventId, checkedInAt])
   @@index([ticketTypeId])
   @@index([organisationId])
 }

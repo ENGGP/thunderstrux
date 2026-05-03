@@ -6,6 +6,7 @@ export type ApiErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "NOT_FOUND"
+  | "CONFLICT"
   | "INTERNAL_ERROR"
   | "SERVICE_UNAVAILABLE";
 
@@ -58,6 +59,10 @@ export function forbidden(message = "Insufficient permissions") {
 
 export function notFound(message: string) {
   return apiError("NOT_FOUND", message, 404);
+}
+
+export function conflict(message: string) {
+  return apiError("CONFLICT", message, 409);
 }
 
 export function internalError() {

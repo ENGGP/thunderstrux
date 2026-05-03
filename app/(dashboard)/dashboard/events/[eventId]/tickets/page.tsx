@@ -19,9 +19,10 @@ type OrganiserEventTicketsPageProps = {
 };
 
 function formatDateTime(value: Date) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Australia/Brisbane"
   }).format(value);
 }
 

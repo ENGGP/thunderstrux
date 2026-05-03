@@ -29,9 +29,10 @@ type PublicEvent = {
 };
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "full",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Australia/Brisbane"
   }).format(new Date(value));
 }
 

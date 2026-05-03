@@ -524,6 +524,7 @@ Rules:
 Files:
 
 - `lib/email/ticket-delivery.ts`
+- `lib/payments/checkout-fulfilment-orchestrator.ts`
 - `lib/payments/checkout-reconciliation.ts`
 - `app/api/orders/[orderId]/resend/route.ts`
 
@@ -531,9 +532,11 @@ Automatic webhook flow:
 
 ```text
 Stripe checkout.session.completed received
+  -> fulfilment orchestrator calls checkout reconciliation
   -> reconciliation validates paid session and pending order
   -> transaction marks order paid, confirms reservation, decrements inventory, and creates tickets
-  -> after transaction succeeds, sendTicketDeliveryEmail(..., mode="automatic") runs
+  -> reconciliation returns a typed result
+  -> when result is fulfilled, orchestrator runs sendTicketDeliveryEmail(..., mode="automatic")
   -> success sets ticketEmailSentAt and clears ticketEmailLastError
   -> failure sets ticketEmailLastError and logs the error
 ```

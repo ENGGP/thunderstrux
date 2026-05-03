@@ -17,7 +17,7 @@ type CheckoutResponse = {
 };
 
 function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD"
   }).format(amountInCents / 100);

@@ -1,7 +1,6 @@
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
-import { sendTicketDeliveryEmail } from "@/lib/email/ticket-delivery";
 import {
   confirmReservationForOrder,
   expireReservationForOrder,
@@ -11,6 +10,13 @@ import {
 
 const expectedCurrency = "aud";
 const maxTransactionAttempts = 3;
+
+export type CheckoutReconciliationResult =
+  | { status: "fulfilled"; orderId: string }
+  | { status: "already_paid"; orderId: string }
+  | { status: "expired"; orderId: string }
+  | { status: "failed"; orderId: string; reason: string }
+  | { status: "ignored"; orderId?: string; reason: string };
 
 function reconciliationError(message: string, details: Record<string, unknown>) {
   console.error("Stripe checkout reconciliation failed", {
@@ -108,7 +114,7 @@ export async function reconcileCompletedCheckoutSession(
     stripeEventId?: string;
     source?: "webhook" | "dev_success_fallback";
   } = {}
-) {
+): Promise<CheckoutReconciliationResult> {
   console.info("Stripe checkout completed reconciliation started", {
     source,
     stripeEventId,
@@ -119,7 +125,10 @@ export async function reconcileCompletedCheckoutSession(
 
   if (!session.id) {
     reconciliationError("Stripe session missing id", { source, stripeEventId });
-    return;
+    return {
+      status: "ignored",
+      reason: "missing_session_id"
+    } satisfies CheckoutReconciliationResult;
   }
 
   const metadata = session.metadata;
@@ -128,7 +137,10 @@ export async function reconcileCompletedCheckoutSession(
   const organisationId = metadata?.organisationId;
   const ticketTypeId = metadata?.ticketTypeId;
   const metadataQuantity = parseMetadataQuantity(metadata?.quantity);
-  let fulfilledOrderId: string | null = null;
+  let result: CheckoutReconciliationResult = {
+    status: "ignored",
+    reason: "not_reconciled"
+  };
 
   if (!orderId || !eventId || !organisationId || !ticketTypeId || !metadataQuantity) {
     reconciliationError("Stripe session missing required metadata", {
@@ -137,7 +149,10 @@ export async function reconcileCompletedCheckoutSession(
       stripeSessionId: session.id,
       metadata
     });
-    return;
+    return {
+      status: "ignored",
+      reason: "missing_required_metadata"
+    } satisfies CheckoutReconciliationResult;
   }
 
   await runCheckoutReconciliationTransaction(async (tx) => {
@@ -169,6 +184,10 @@ export async function reconcileCompletedCheckoutSession(
         stripeSessionId: session.id,
         metadataOrderId: orderId
       });
+      result = {
+        status: "ignored",
+        reason: "order_not_found"
+      };
       return;
     }
 
@@ -191,6 +210,10 @@ export async function reconcileCompletedCheckoutSession(
         });
       }
 
+      result = {
+        status: "already_paid",
+        orderId: localOrder.id
+      };
       return;
     }
 
@@ -200,6 +223,10 @@ export async function reconcileCompletedCheckoutSession(
         orderId: localOrder.id,
         stripeSessionId: session.id
       });
+      result = {
+        status: "expired",
+        orderId: localOrder.id
+      };
       return;
     }
 
@@ -211,6 +238,11 @@ export async function reconcileCompletedCheckoutSession(
         stripeSessionId: session.id,
         failureReason: localOrder.failureReason
       });
+      result = {
+        status: "failed",
+        orderId: localOrder.id,
+        reason: localOrder.failureReason ?? "order_already_failed"
+      };
       return;
     }
 
@@ -221,6 +253,11 @@ export async function reconcileCompletedCheckoutSession(
         status: localOrder.status,
         stripeSessionId: session.id
       });
+      result = {
+        status: "ignored",
+        orderId: localOrder.id,
+        reason: "order_not_pending"
+      };
       return;
     }
 
@@ -243,6 +280,11 @@ export async function reconcileCompletedCheckoutSession(
       });
 
       await releaseReservationForOrder(tx, localOrder.id, reason);
+      result = {
+        status: "failed",
+        orderId: localOrder.id,
+        reason
+      };
     }
 
     if (localOrder.stripeSessionId && localOrder.stripeSessionId !== session.id) {
@@ -348,6 +390,10 @@ export async function reconcileCompletedCheckoutSession(
           "Reservation expired before checkout completed",
           now
         );
+        result = {
+          status: "expired",
+          orderId: localOrder.id
+        };
         return;
       }
 
@@ -391,6 +437,11 @@ export async function reconcileCompletedCheckoutSession(
     });
 
     if (claimedOrder.count === 0) {
+      result = {
+        status: "ignored",
+        orderId: localOrder.id,
+        reason: "order_claim_failed"
+      };
       return;
     }
 
@@ -419,6 +470,11 @@ export async function reconcileCompletedCheckoutSession(
           stripeSessionId: session.id
         }
       );
+      result = {
+        status: "failed",
+        orderId: localOrder.id,
+        reason: "webhook_mismatch"
+      };
       return;
     }
 
@@ -477,6 +533,11 @@ export async function reconcileCompletedCheckoutSession(
           requestedQuantity: localOrder.quantity
         }
       );
+      result = {
+        status: "failed",
+        orderId: localOrder.id,
+        reason: "webhook_mismatch"
+      };
       return;
     }
 
@@ -502,21 +563,11 @@ export async function reconcileCompletedCheckoutSession(
       ticketCount: localOrder.quantity
     });
 
-    fulfilledOrderId = localOrder.id;
+    result = {
+      status: "fulfilled",
+      orderId: localOrder.id
+    };
   });
 
-  if (fulfilledOrderId) {
-    try {
-      await sendTicketDeliveryEmail({
-        orderId: fulfilledOrderId,
-        mode: "automatic"
-      });
-    } catch (error) {
-      console.error("Ticket delivery email failed after checkout reconciliation", {
-        orderId: fulfilledOrderId,
-        stripeSessionId: session.id,
-        error
-      });
-    }
-  }
+  return result;
 }

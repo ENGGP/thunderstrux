@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import {
   createEvent,
@@ -73,8 +74,12 @@ describe("webhook reconciliation", () => {
       quantity: 2,
       amountTotal: 2000
     });
-    await reconcileCompletedCheckoutSession(session, { stripeEventId: "evt_1" });
-    await reconcileCompletedCheckoutSession(session, { stripeEventId: "evt_1_duplicate" });
+    const result = await reconcileCompletedCheckoutSession(session, {
+      stripeEventId: "evt_1"
+    });
+    const duplicateResult = await reconcileCompletedCheckoutSession(session, {
+      stripeEventId: "evt_1_duplicate"
+    });
 
     const paidOrder = await prisma.order.findUniqueOrThrow({
       where: { id: order.id },
@@ -84,6 +89,8 @@ describe("webhook reconciliation", () => {
       where: { id: ticketType.id }
     });
     expect(paidOrder.status).toBe("paid");
+    expect(result).toEqual({ status: "fulfilled", orderId: order.id });
+    expect(duplicateResult).toEqual({ status: "already_paid", orderId: order.id });
     expect(paidOrder.paidAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
     expect(paidOrder.reservation?.status).toBe("confirmed");
     expect(paidOrder.tickets).toHaveLength(2);
@@ -104,6 +111,72 @@ describe("webhook reconciliation", () => {
       "Stripe checkout tickets created",
       expect.any(Object)
     );
+  });
+
+  test("reconciliation does not send ticket email directly", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    const restoreEmailEnv = configureEmailEnv();
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { organisation } = await createOrganisationAccount({ stripeReady: true });
+      const member = await createMember({ email: "reconcile-only@example.com" });
+      const event = await createEvent({
+        organisationId: organisation.id,
+        status: "published",
+        ticketTypes: [{ name: "General", price: 1000, quantity: 2 }]
+      });
+      const ticketType = event.ticketTypes[0];
+      const order = await createOrder({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        quantity: 1,
+        unitPrice: ticketType.price,
+        stripeSessionId: "cs_reconcile_only"
+      });
+      await createReservation({
+        orderId: order.id,
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        quantity: 1,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      });
+
+      const result = await reconcileCompletedCheckoutSession(
+        checkoutSession({
+          id: "cs_reconcile_only",
+          orderId: order.id,
+          eventId: event.id,
+          organisationId: organisation.id,
+          ticketTypeId: ticketType.id,
+          quantity: 1,
+          amountTotal: 1000
+        })
+      );
+
+      const updated = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+        select: {
+          status: true,
+          ticketEmailSentAt: true,
+          ticketEmailLastError: true,
+          tickets: true
+        }
+      });
+      expect(result).toEqual({ status: "fulfilled", orderId: order.id });
+      expect(updated.status).toBe("paid");
+      expect(updated.tickets).toHaveLength(1);
+      expect(updated.ticketEmailSentAt).toBeNull();
+      expect(updated.ticketEmailLastError).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      restoreEmailEnv();
+    }
   });
 
   test("successful fulfilment sends ticket email once and tracks sent timestamp", async () => {
@@ -149,8 +222,10 @@ describe("webhook reconciliation", () => {
         quantity: 2,
         amountTotal: 2000
       });
-      await reconcileCompletedCheckoutSession(session);
-      await reconcileCompletedCheckoutSession(session);
+      const result = await reconcileCompletedCheckoutSessionWithSideEffects(session);
+      const duplicateResult = await reconcileCompletedCheckoutSessionWithSideEffects(
+        session
+      );
 
       const updated = await prisma.order.findUniqueOrThrow({
         where: { id: order.id },
@@ -162,6 +237,11 @@ describe("webhook reconciliation", () => {
         }
       });
       expect(updated.status).toBe("paid");
+      expect(result).toEqual({ status: "fulfilled", orderId: order.id });
+      expect(duplicateResult).toEqual({
+        status: "already_paid",
+        orderId: order.id
+      });
       expect(updated.ticketEmailSentAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
       expect(updated.ticketEmailLastError).toBeNull();
       expect(updated.tickets).toHaveLength(2);
@@ -214,7 +294,7 @@ describe("webhook reconciliation", () => {
         expiresAt: new Date(Date.now() + 30 * 60 * 1000)
       });
 
-      await reconcileCompletedCheckoutSession(
+      const result = await reconcileCompletedCheckoutSessionWithSideEffects(
         checkoutSession({
           id: "cs_ticket_email_failure",
           orderId: order.id,
@@ -234,6 +314,7 @@ describe("webhook reconciliation", () => {
         where: { id: ticketType.id }
       });
       expect(fulfilled.status).toBe("paid");
+      expect(result).toEqual({ status: "fulfilled", orderId: order.id });
       expect(fulfilled.tickets).toHaveLength(1);
       expect(fulfilled.reservation?.status).toBe("confirmed");
       expect(updatedTicketType.quantity).toBe(4);

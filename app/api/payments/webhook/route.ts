@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import {
   findOrderForCheckoutSession,
-  reconcileCompletedCheckoutSession,
   runCheckoutReconciliationTransaction
 } from "@/lib/payments/checkout-reconciliation";
+import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import {
   getStripe,
   getStripeWebhookSecret,
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         orderId: session.metadata?.orderId
       });
 
-      await reconcileCompletedCheckoutSession(session, {
+      await reconcileCompletedCheckoutSessionWithSideEffects(session, {
         stripeEventId: event.id,
         source: "webhook"
       });

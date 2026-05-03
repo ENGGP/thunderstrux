@@ -13,15 +13,16 @@ import { prisma } from "@/lib/db";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 
 function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD"
   }).format(amountInCents / 100);
 }
 
 function formatDate(value: Date) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium"
+  return new Intl.DateTimeFormat("en-AU", {
+    dateStyle: "medium",
+    timeZone: "Australia/Brisbane"
   }).format(value);
 }
 

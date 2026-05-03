@@ -10,9 +10,10 @@ type TicketCheckInButtonProps = {
 };
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Australia/Brisbane"
   }).format(new Date(value));
 }
 

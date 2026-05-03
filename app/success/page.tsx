@@ -1,4 +1,4 @@
-import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { getStripe, StripeConfigurationError } from "@/lib/stripe";
 
 type SuccessPageProps = {
@@ -37,7 +37,7 @@ async function runDevCheckoutFallback(sessionId: string | undefined) {
       return;
     }
 
-    await reconcileCompletedCheckoutSession(session, {
+    await reconcileCompletedCheckoutSessionWithSideEffects(session, {
       source: "dev_success_fallback"
     });
   } catch (error) {

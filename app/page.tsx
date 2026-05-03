@@ -79,9 +79,10 @@ function formatDateTime(value: string) {
     return "Date unavailable";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Australia/Brisbane"
   }).format(date);
 }
 

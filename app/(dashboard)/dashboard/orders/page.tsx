@@ -14,7 +14,7 @@ import {
 } from "@/lib/orders/grouped-orders";
 
 function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD"
   }).format(amountInCents / 100);
@@ -25,9 +25,10 @@ function formatDateTime(value: Date | null) {
     return "Not available";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Australia/Brisbane"
   }).format(value);
 }
 

@@ -18,16 +18,17 @@ type OrganiserEventPageProps = {
 };
 
 function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD"
   }).format(amountInCents / 100);
 }
 
 function formatDateTime(value: Date) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "full",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Australia/Brisbane"
   }).format(value);
 }
 
@@ -38,9 +39,10 @@ function statusBadgeClassName(status: "draft" | "published") {
 }
 
 function formatShortDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-AU", {
     month: "short",
-    day: "numeric"
+    day: "numeric",
+    timeZone: "UTC"
   }).format(new Date(`${value}T00:00:00.000Z`));
 }
 

@@ -29,6 +29,7 @@ Core files:
 - `lib/stripe/index.ts`
 - `lib/stripe/connect.ts`
 - `lib/stripe/fees.ts`
+- `lib/payments/checkout-fulfilment-orchestrator.ts`
 - `lib/payments/checkout-reconciliation.ts`
 - `lib/email/ticket-delivery.ts`
 - `lib/orders/stale-orders.ts`
@@ -386,8 +387,20 @@ Responsibilities:
 - Confirm reservations.
 - Decrement remaining ticket inventory.
 - Create ticket rows.
-- Attempt automatic ticket delivery email after successful fulfilment.
+- Return a typed reconciliation result for the caller.
 - Preserve idempotency for duplicate completed events.
+
+Side-effect orchestrator:
+
+```text
+lib/payments/checkout-fulfilment-orchestrator.ts
+```
+
+Responsibilities:
+
+- Call the reconciliation helper.
+- Send automatic ticket delivery email only when reconciliation returns a newly fulfilled order.
+- Keep email failures non-blocking.
 
 Callers:
 
@@ -416,6 +429,7 @@ Provider:
 Automatic delivery:
 
 - Runs only after successful paid checkout reconciliation and ticket issuance.
+- Is triggered by the fulfilment orchestrator, not by the reconciliation transaction helper.
 - Skips duplicate automatic sends when `Order.ticketEmailSentAt` is already set.
 - On success, sets `ticketEmailSentAt` and clears `ticketEmailLastError`.
 - On failure, sets `ticketEmailLastError`.

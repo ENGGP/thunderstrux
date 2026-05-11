@@ -115,6 +115,7 @@ describe("checkout and reservation logic", () => {
       include: { reservation: true }
     });
     expect(order).toMatchObject({
+      organisationId: event.organisationId,
       status: "pending",
       quantity: 2,
       unitPrice: 2500,
@@ -122,6 +123,7 @@ describe("checkout and reservation logic", () => {
       stripeSessionId: "cs_integration_success"
     });
     expect(order.reservation).toMatchObject({
+      organisationId: event.organisationId,
       status: "active",
       quantity: 2
     });
@@ -137,7 +139,7 @@ describe("checkout and reservation logic", () => {
         metadata: expect.objectContaining({
           orderId: order.id,
           eventId: event.id,
-          organisationId: organisation.id,
+          organisationId: event.organisationId,
           ticketTypeId: event.ticketTypes[0].id,
           quantity: "2"
         })

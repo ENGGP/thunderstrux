@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       ]);
     }
 
-    const organisationId = event.organisationId;
+    const authoritativeOrganisationId = event.organisationId;
     const organisation = event.organisation;
     const ticketType = event.ticketTypes[0];
 
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
 
     console.info("Stripe checkout creation started", {
       eventId: event.id,
-      organisationId,
+      organisationId: authoritativeOrganisationId,
       ticketTypeId: ticketType.id,
       quantity: validation.data.quantity,
       totalAmount,
@@ -206,7 +206,7 @@ export async function POST(request: Request) {
 
         const order = await tx.order.create({
           data: {
-            organisationId,
+            organisationId: authoritativeOrganisationId,
             eventId: event.id,
             ticketTypeId: ticketType.id,
             quantity: validation.data.quantity,
@@ -221,7 +221,7 @@ export async function POST(request: Request) {
         await tx.ticketReservation.create({
           data: {
             orderId: order.id,
-            organisationId,
+            organisationId: authoritativeOrganisationId,
             eventId: event.id,
             ticketTypeId: ticketType.id,
             userId: user.id,
@@ -273,7 +273,7 @@ export async function POST(request: Request) {
         metadata: {
           orderId: pendingOrder.id,
           eventId: event.id,
-          organisationId,
+          organisationId: authoritativeOrganisationId,
           ticketTypeId: ticketType.id,
           quantity: String(validation.data.quantity)
         }
@@ -310,7 +310,7 @@ export async function POST(request: Request) {
       orderId: pendingOrder.id,
       stripeSessionId: session.id,
       eventId: event.id,
-      organisationId,
+      organisationId: authoritativeOrganisationId,
       ticketTypeId: ticketType.id
     });
 

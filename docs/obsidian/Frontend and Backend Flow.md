@@ -481,7 +481,7 @@ Page resolves current organisation account
   -> requireOrganisationFinanceAccess(organisation.id)
   -> stale pending order cleanup runs for the organisation
   -> optionally validates eventId belongs to the current organisation
-  -> query orders scoped to organisation.id and optional eventId/search/date filters
+  -> query orders scoped through Order.event.organisationId with optional eventId/search/date filters
   -> render grouped events, buyer, ticket type, quantity, total, status, and timestamps
 ```
 
@@ -506,7 +506,7 @@ Order detail flow:
 ```text
 Organisation opens /dashboard/orders/[orderId]
   -> page resolves current organisation account
-  -> query verifies the order belongs to the current organisation through event/order ownership
+  -> query verifies the order belongs to an event owned by the current organisation
   -> page renders order snapshot data, buyer, event link, issued ticket ids, total, and Stripe session id
   -> manual refund action calls PATCH /api/orders/[orderId]/refund-manual
   -> resend action calls POST /api/orders/[orderId]/resend
@@ -514,6 +514,8 @@ Organisation opens /dashboard/orders/[orderId]
 
 Rules:
 
+- Organiser order access uses `Order.event.organisationId` as the ownership source of truth.
+- `Order.organisationId` remains stored but should not be used alone for organiser access decisions.
 - Manual refund only sets `Order.isManuallyRefunded`; it never calls Stripe and never changes order status.
 - Manual resend is paid-order only and sends actual ticket email through the email delivery service.
 - Manual resend updates `ticketEmailResentAt` on success and `ticketEmailLastError` on failure.

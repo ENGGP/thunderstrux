@@ -117,6 +117,8 @@ docs/obsidian/
 - Navigation for organisation dashboards belongs in `components/layout/dashboard-shell.tsx`.
 - Private APIs must derive access from the authenticated session and server-side database ownership checks.
 - Do not trust frontend `organisationId` or `x-org-id` as authority. They are inputs, not trust boundaries.
+- Organiser ticket and order access should use event ownership as the source of truth: `Ticket.event.organisationId` and `Order.event.organisationId`.
+- `Ticket.organisationId` and `Order.organisationId` remain denormalized storage and should not be trusted alone for access decisions.
 - Production payment fulfilment happens only from Stripe webhooks.
 - Non-production `/success?session_id=...` can call the shared reconciliation helper when local webhook forwarding is missing.
 - Ticket delivery email is attempted only after paid webhook fulfilment and ticket issuance.

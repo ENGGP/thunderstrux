@@ -400,6 +400,7 @@ Rules:
 - Default `all` excludes `pending`.
 - `eventId` is optional.
 - When `eventId` is present, the API verifies the event belongs to the signed-in organisation account before filtering.
+- Returned orders are authorised through `Order.event.organisationId`; `Order.organisationId` is denormalized storage and is not the access source of truth.
 - `search` filters buyer email.
 - `startDate` and `endDate` filter by order `createdAt`.
 - Member accounts cannot access this endpoint.
@@ -439,6 +440,7 @@ Rules:
 - Organisation account required.
 - Finance access required.
 - The order must belong to an event owned by the current organisation account.
+- Ownership is checked through `Order.event.organisationId`.
 - Pending orders are not exposed through normal organiser UI.
 - Unit price and total amount come from the order snapshot, not the current ticket type price.
 
@@ -461,7 +463,7 @@ Rules:
 - Auth required.
 - Organisation account required.
 - Finance access required.
-- The order must belong to the current organisation account.
+- The order must belong to an event owned by the current organisation account.
 - This is internal bookkeeping only.
 - Does not call Stripe.
 - Does not change Stripe payment state.
@@ -476,7 +478,7 @@ Rules:
 - Auth required.
 - Organisation account required.
 - Finance access required.
-- The order must belong to the current organisation account.
+- The order must belong to an event owned by the current organisation account.
 - Order must be `paid`.
 - Sends even when `ticketEmailSentAt` is already set.
 - On success, updates `Order.ticketEmailResentAt` and clears `Order.ticketEmailLastError`.
@@ -573,7 +575,7 @@ Rules:
 - Auth required.
 - Organisation account required.
 - Finance access required.
-- Reads orders scoped to the current organisation account's organisation id.
+- Reads orders scoped through events owned by the current organisation account.
 - Supports optional `eventId` and status filtering.
 - Default view excludes internal pending orders.
 - `Show system orders` exposes pending orders for debugging.

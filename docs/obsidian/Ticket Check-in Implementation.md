@@ -33,6 +33,7 @@ Rules:
 - Ownership is verified server-side from `session.user` through `Organisation.accountUserId`.
 - Ticket access is scoped through `Ticket.event.organisationId`.
 - `Ticket.organisationId` remains stored, but event ownership is the source of truth for ticket visibility and check-in/check-out authorization.
+- Webhook ticket issuance writes `Ticket.organisationId` from `Event.organisationId`, and logs/corrects the ticket organisation value if historical order data is inconsistent.
 
 Invalid transitions:
 
@@ -83,4 +84,4 @@ tests/integration/ticket-check-in.test.ts
 ```
 
 The suite covers own-organisation visibility, member denial, cross-organisation denial, check-in, double check-in conflict, check-out, invalid check-out conflict, and order/payment state preservation.
-It also covers inconsistent `Ticket.organisationId` data to confirm event ownership remains the access source of truth.
+It also covers inconsistent `Ticket.organisationId` data to confirm event ownership remains the access source of truth, plus webhook issuance consistency for newly created tickets.

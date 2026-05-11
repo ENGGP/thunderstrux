@@ -43,7 +43,11 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
       by: ["ticketTypeId"],
       where: {
         eventId,
-        organisationId,
+        event: {
+          is: {
+            organisationId
+          }
+        },
         status: "paid"
       },
       _sum: {
@@ -123,8 +127,12 @@ export const getOrganisationEventRevenueSeries = cache(
       }),
       prisma.order.findMany({
         where: {
-          organisationId,
           eventId,
+          event: {
+            is: {
+              organisationId
+            }
+          },
           status: "paid",
           paidAt: {
             not: null

@@ -33,7 +33,11 @@ export async function getOrganisationOrderDetail(
   const order = await prisma.order.findFirst({
     where: {
       id: orderId,
-      organisationId,
+      event: {
+        is: {
+          organisationId
+        }
+      },
       status: { in: visibleOrderStatuses }
     },
     select: {
@@ -104,7 +108,11 @@ export async function markOrganisationOrderManuallyRefunded(
   await prisma.order.updateMany({
     where: {
       id: orderId,
-      organisationId,
+      event: {
+        is: {
+          organisationId
+        }
+      },
       status: { in: visibleOrderStatuses }
     },
     data: { isManuallyRefunded: true }
@@ -113,7 +121,11 @@ export async function markOrganisationOrderManuallyRefunded(
   return prisma.order.findFirstOrThrow({
     where: {
       id: orderId,
-      organisationId
+      event: {
+        is: {
+          organisationId
+        }
+      }
     },
     select: {
       id: true,

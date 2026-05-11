@@ -207,6 +207,124 @@ describe("orders API", () => {
     expect(response.status).toBe(404);
   });
 
+  test("organiser order access uses event ownership when order organisation is inconsistent", async () => {
+    const restoreEmailEnv = configureEmailEnv();
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { user, organisation } = await createOrganisationAccount();
+      const other = await createOrganisationAccount();
+      const member = await createMember({
+        email: "event-owned-buyer@example.com"
+      });
+      const event = await createEvent({ organisationId: organisation.id });
+      const ticketType = event.ticketTypes[0];
+      const order = await createOrder({
+        organisationId: other.organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        status: "paid",
+        paidAt: new Date(),
+        unitPrice: ticketType.price
+      });
+      await prisma.ticket.create({
+        data: {
+          orderId: order.id,
+          eventId: event.id,
+          ticketTypeId: ticketType.id,
+          organisationId: organisation.id
+        }
+      });
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { ticketEmailSentAt: new Date("2026-05-01T10:00:00.000Z") }
+      });
+
+      setMockSession({
+        userId: user.id,
+        email: user.email,
+        accountRole: "organisation"
+      });
+
+      const listResponse = await getOrders(jsonRequest("http://localhost/api/orders"));
+      expect(listResponse.status).toBe(200);
+      expect(JSON.stringify(await parseJsonResponse(listResponse))).toContain(order.id);
+
+      const detailResponse = await getOrderDetail(
+        jsonRequest(`http://localhost/api/orders/${order.id}`),
+        routeContext({ orderId: order.id })
+      );
+      expect(detailResponse.status).toBe(200);
+
+      const refundResponse = await markManualRefund(
+        jsonRequest(`http://localhost/api/orders/${order.id}`, undefined, {
+          method: "PATCH"
+        }),
+        routeContext({ orderId: order.id })
+      );
+      expect(refundResponse.status).toBe(200);
+
+      const resendResponse = await resendTickets(
+        jsonRequest(`http://localhost/api/orders/${order.id}/resend`, undefined, {
+          method: "POST"
+        }),
+        routeContext({ orderId: order.id })
+      );
+      expect(resendResponse.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      restoreEmailEnv();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("organiser order access rejects event owned by another organisation", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: other.organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "paid",
+      paidAt: new Date(),
+      unitPrice: ticketType.price
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+
+    const listResponse = await getOrders(jsonRequest("http://localhost/api/orders"));
+    expect(listResponse.status).toBe(200);
+    expect(JSON.stringify(await parseJsonResponse(listResponse))).not.toContain(order.id);
+
+    const detailResponse = await getOrderDetail(
+      jsonRequest(`http://localhost/api/orders/${order.id}`),
+      routeContext({ orderId: order.id })
+    );
+    expect(detailResponse.status).toBe(404);
+
+    const refundResponse = await markManualRefund(
+      jsonRequest(`http://localhost/api/orders/${order.id}`, undefined, {
+        method: "PATCH"
+      }),
+      routeContext({ orderId: order.id })
+    );
+    expect(refundResponse.status).toBe(404);
+
+    const resendResponse = await resendTickets(
+      jsonRequest(`http://localhost/api/orders/${order.id}/resend`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ orderId: order.id })
+    );
+    expect(resendResponse.status).toBe(404);
+  });
+
   test("member cannot fetch order detail", async () => {
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();

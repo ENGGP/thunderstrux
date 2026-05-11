@@ -56,6 +56,7 @@ Recent feature areas:
 - Stripe webhooks verify signatures from raw request bodies and ignore signed non-checkout events with `200`.
 - Lightweight smoke tests in `scripts/smoke-test.mjs`.
 - Functional/integration tests with Vitest, isolated `thunderstrux_test` database reset, mocked auth, and mocked Stripe/network boundaries.
+- TypeScript validation ignores volatile `.next` dev-generated route types and relies on `.next-build/types` for stable generated route typing.
 
 ## Current Routes
 
@@ -188,9 +189,9 @@ Latest verification:
 - `docker compose build app` passed with the multi-stage Dockerfile.
 - `docker compose up -d` starts the production-like container and runs `pnpm prisma:migrate:deploy` before `pnpm start`.
 - `docker compose exec app pnpm prisma:migrate` applied through `20260503040000_ticket_email_delivery_tracking`.
-- `pnpm exec tsc --noEmit` passed after the ticket email delivery changes.
+- `pnpm exec tsc --noEmit` passed after removing volatile `.next` generated type includes from normal TypeScript validation.
 - `docker compose exec app pnpm test:smoke` passed.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 46 tests.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 51 tests.
 - Previous build verification passed before the runtime-build guard was added. Current safe build validation is `docker compose build app`.
 - Required-env startup validation passed: `docker compose --env-file <temp> up app` failed before app startup when `DATABASE_URL` was omitted, output contained `DATABASE_URL is required`, and the temporary env file was deleted.
 - Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
@@ -198,7 +199,7 @@ Latest verification:
 - A CSS outage investigation found that running `pnpm build` inside a live production-like `next start` container can desynchronise `.next-build` static assets from the running server manifest. Recreate the app container after any in-container production build validation.
 - Runtime app containers set `THUNDERSTRUX_RUNTIME_CONTAINER=true`; `scripts/prepare-next-build.mjs` now blocks `pnpm build` in that context. Use `pnpm docker:build` or `pnpm docker:rebuild`.
 - `proxy.ts` now rejects missing or placeholder production `AUTH_SECRET` values instead of silently using `dev-secret`.
-- `scripts/doctor-dev.mjs` now recommends `pnpm docker:build`, not the unsafe in-container build command.
+- `scripts/doctor-dev.mjs` reports volatile `.next` type includes and recommends relying on `.next-build` route types.
 
 ## Next Route Stability
 
@@ -211,23 +212,22 @@ Keep these route stability fixes:
 - `app/(dashboard)/dashboard/events/layout.tsx`
 - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
 
-`tsconfig.json` should include generated production build types under `.next-build`, not stale `.next/dev` route types. Stale `.next/dev/types/routes.d.ts` can break production image builds. Use `docker compose build app` for safe build validation.
+`tsconfig.json` should include generated production build types under `.next-build`, not stale `.next` or `.next/dev` route types. Stale `.next/dev/types/validator.ts` and route type files can break `pnpm exec tsc --noEmit` even when application code is valid. Use `docker compose build app` for safe build validation.
 
 `pnpm build` runs `scripts/prepare-next-build.mjs` and `pnpm prisma:generate` before `next build`, so build verification strips stale `.next` dev type includes and regenerates Prisma Client from the current schema.
 
 `pnpm dev` blocks accidental host `next dev` when the project `.env` points at `db:5432`. The underlying guard script only warns by default, so it does not block Docker startup or build scripts.
 
-`scripts/clean-next-dev.mjs` warns and continues if Windows/Docker file locking prevents deleting `.next/dev`; it still never removes `.next-build`.
+`scripts/clean-next-dev.mjs` clears volatile `.next/dev` and `.next/types` before dev startup. It warns and continues if Windows/Docker/OneDrive file locking prevents deletion; it still never removes `.next-build`.
 
 Use `pnpm dev:webpack` inside Docker if Turbopack hot reload or route manifest generation becomes unstable.
 
-Use `pnpm dev:doctor` for a read-only check of stale `.next/dev` metadata, missing dev manifests, stale `tsconfig` includes, and localhost reachability.
+Use `pnpm dev:doctor` for a read-only check of stale `.next/dev` metadata, missing dev manifests, volatile `.next` type includes in `tsconfig`, and localhost reachability.
 
 Current generated include entries:
 
 ```json
-".next-build/types/**/*.ts",
-".next-build/dev/types/**/*.ts"
+".next-build/types/**/*.ts"
 ```
 
 ## Integration Test State
@@ -266,6 +266,19 @@ Important rules:
 - The test setup mocks `@/auth`, blocks real `fetch` network calls, and uses Stripe SDK mocks where practical.
 - Webhook reconciliation tests call the shared reconciliation helper with mocked Checkout Sessions instead of relying on live Stripe CLI delivery.
 - Current future improvement: add stricter test hardening for `console.error`, unhandled rejections, invariant helpers, and lightweight Prisma query-count checks.
+
+## Current Next Work
+
+Recommended next implementation branch:
+
+- Order ownership consistency: order access should be authorised through `Order.event.organisationId` as the source of truth, matching the ticket ownership model. `Order.organisationId` should remain stored for relations/reporting, but event ownership should be used for organiser order list/detail/action access checks.
+
+Other pending branches:
+
+- Ticket list pagination for `/dashboard/events/[eventId]/tickets` and `GET /api/events/[eventId]/tickets`.
+- API error standardisation and small UI state consistency improvements.
+- Move demo event auto-creation out of public read paths before production hardening.
+- Future staff/RBAC, audit logs, QR scanning, and asynchronous email outbox.
 
 ## High-Risk Rules To Preserve
 

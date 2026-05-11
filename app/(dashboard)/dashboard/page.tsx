@@ -77,7 +77,13 @@ async function OrganisationDashboard() {
       }
     }),
     prisma.order.findMany({
-      where: { organisationId: organisation.id },
+      where: {
+        event: {
+          is: {
+            organisationId: organisation.id
+          }
+        }
+      },
       orderBy: { createdAt: "desc" },
       take: 5,
       select: {
@@ -96,7 +102,11 @@ async function OrganisationDashboard() {
     }),
     prisma.order.findMany({
       where: {
-        organisationId: organisation.id,
+        event: {
+          is: {
+            organisationId: organisation.id
+          }
+        },
         status: "paid",
         paidAt: {
           gte: startOfMonth

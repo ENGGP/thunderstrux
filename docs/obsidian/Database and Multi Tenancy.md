@@ -261,7 +261,6 @@ Important fields:
 - `eventId`
 - `ticketTypeId`
 - `orderId`
-- `userId`
 - `checkedInAt`
 - `createdAt`
 
@@ -272,9 +271,14 @@ Ticket check-in/check-out state:
 - Check-in is the only mutable ticket operational state in the MVP.
 - Ticket access for visibility and check-in/check-out is authorised through `Ticket.event.organisationId`.
 - `Ticket.organisationId` remains stored for existing relations/reporting, but event ownership is the access source of truth.
+- Ticket issuance always writes `Ticket.organisationId` from `Event.organisationId`. If historical order data has a different `Order.organisationId`, webhook reconciliation logs the mismatch and still creates tickets with the event organisation.
 - Check-in and check-out must not modify order status, Stripe data, ticket ownership, ticket type history, or payment state.
 - Double check-in is prevented by atomically updating only tickets where `checkedInAt` is still `null`.
 - Invalid check-out is prevented by atomically updating only tickets where `checkedInAt` is not `null`.
+
+Current follow-up:
+
+- Order access still needs the same consistency pass: organiser order list/detail/action access should be authorised through `Order.event.organisationId`, while keeping `Order.organisationId` stored for existing relations/reporting.
 
 ## Multi-Tenant Access Pattern
 

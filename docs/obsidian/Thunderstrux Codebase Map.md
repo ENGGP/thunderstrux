@@ -129,7 +129,7 @@ docs/obsidian/
 - Dev Compose explicitly sets `THUNDERSTRUX_RUNTIME_CONTAINER=false`; production-like runtime sets it to `true`.
 - Integration tests run through Vitest against the disposable `thunderstrux_test` database, never the normal development database.
 - Integration tests must stay sequential because they reset shared database state.
-- `pnpm dev` clears `.next/dev` before startup via `scripts/clean-next-dev.mjs`.
+- `pnpm dev` clears volatile `.next/dev` and `.next/types` before startup via `scripts/clean-next-dev.mjs`.
 - Production builds write to `.next-build`; dev writes to `.next`.
 - Recreate the app container after running `pnpm build` inside a live production-like `next start` container, because `.next-build` can change while the server still holds the old build manifest.
 - Keep explicit events route boundaries for both current and legacy event routes:

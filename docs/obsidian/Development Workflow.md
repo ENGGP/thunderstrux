@@ -112,11 +112,11 @@ Reason:
 
 - Next 16 production builds use Turbopack.
 - `scripts/assert-docker-runtime.mjs` warns by default, but blocks `pnpm dev` outside Docker when `DATABASE_URL` uses the Docker-only `db:5432` hostname.
-- `scripts/clean-next-dev.mjs` clears `.next/dev` before startup so stale dev route manifests do not survive container restarts.
-- If `.next/dev` contains locked files on Windows/Docker, `scripts/clean-next-dev.mjs` warns and continues startup instead of blocking the app container. It still never removes `.next-build`.
+- `scripts/clean-next-dev.mjs` clears `.next/dev` and `.next/types` before startup so stale dev route manifests and volatile generated type files do not survive container restarts.
+- If volatile `.next` files are locked on Windows/Docker/OneDrive, `scripts/clean-next-dev.mjs` warns and continues startup instead of blocking the app container. It still never removes `.next-build`.
 - Turbopack dev mode plus polling is the default route-stable configuration.
 - `pnpm dev:webpack` is kept as a safe fallback when Turbopack hot reload or route manifest generation appears stuck.
-- `pnpm dev:doctor` prints a read-only report for stale `.next/dev` metadata, missing dev manifests, stale `tsconfig` includes, and localhost reachability.
+- `pnpm dev:doctor` prints a read-only report for stale `.next/dev` metadata, missing dev manifests, volatile `.next` type includes, and localhost reachability.
 
 ## Build Output Separation
 
@@ -390,7 +390,7 @@ docker compose run --rm app sh -lc "rm -rf .next .next-build"
 docker compose up --build --force-recreate -d
 ```
 
-Prefer clearing `.next/dev` first through the normal dev startup path. `scripts/clean-next-dev.mjs` has a narrow path guard and only removes `.next/dev`; it never removes `.next-build`.
+Prefer clearing volatile `.next/dev` and `.next/types` first through the normal dev startup path. `scripts/clean-next-dev.mjs` has a narrow path guard and only removes those volatile `.next` paths; it never removes `.next-build`.
 
 If restart still does not pick up the change, then recreate containers:
 
@@ -421,16 +421,15 @@ import "./.next-build/types/routes.d.ts";
 
 This depends on whether `next dev` or `next build` ran most recently. Treat it as generated framework metadata, not a product change.
 
-With the current `.next-build` production dist directory, Next may also add these generated type paths to `tsconfig.json`:
+With the current `.next-build` production dist directory, normal TypeScript validation should include the stable generated route types:
 
 ```json
-".next-build/types/**/*.ts",
-".next-build/dev/types/**/*.ts"
+".next-build/types/**/*.ts"
 ```
 
-Those entries are expected after `pnpm build`.
+Do not keep `.next-build/dev/types/**/*.ts` unless that directory actually exists and is intentionally used by the current Next build output.
 
-Do not include `.next/dev/types/**/*.ts` in production type checking. Stale dev route types can break Docker builds with errors from `.next/dev/types/routes.d.ts`. Current generated type includes should stay under `.next-build`.
+Do not include `.next/types/**/*.ts` or `.next/dev/types/**/*.ts` in normal TypeScript validation. Stale dev route types or `validator.ts` files can break `pnpm exec tsc --noEmit` with errors from ignored generated cache files. Current generated type includes should stay under `.next-build`.
 
 `scripts/prepare-next-build.mjs` enforces this immediately before `pnpm build`, because Next dev may re-add `.next/types` entries while the dev server is running.
 

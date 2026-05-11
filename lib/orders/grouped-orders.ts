@@ -75,7 +75,11 @@ export async function getGroupedOrganisationOrdersWithContext(
 
   const orders = await prisma.order.findMany({
     where: {
-      organisationId,
+      event: {
+        is: {
+          organisationId
+        }
+      },
       ...(eventId ? { eventId } : {}),
       ...(search
         ? {

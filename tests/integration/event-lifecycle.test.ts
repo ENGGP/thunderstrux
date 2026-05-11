@@ -14,6 +14,10 @@ import {
   PATCH as updateEventRoute
 } from "@/app/api/events/[eventId]/route";
 import { PATCH as publishEventRoute } from "@/app/api/events/[eventId]/publish/route";
+import {
+  getOrganisationEventAnalytics,
+  getOrganisationEventRevenueSeries
+} from "@/lib/events/event-analytics";
 
 function eventPayload(organisationId: string, overrides: Record<string, unknown> = {}) {
   const startTime = futureDate(20, 10).toISOString();
@@ -226,5 +230,38 @@ describe("event lifecycle", () => {
       routeContext({ eventId: event.id })
     );
     expect(getResponse.status).toBe(200);
+  });
+
+  test("event analytics use event ownership when order organisation is inconsistent", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    await createOrder({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      status: "paid",
+      quantity: 2,
+      unitPrice: ticketType.price,
+      paidAt: new Date("2026-05-01T10:00:00.000Z")
+    });
+
+    const analytics = await getOrganisationEventAnalytics(organisation.id, event.id);
+    expect(analytics.totals).toMatchObject({
+      sold: 2,
+      revenue: ticketType.price * 2
+    });
+
+    const revenueSeries = await getOrganisationEventRevenueSeries(
+      organisation.id,
+      event.id
+    );
+    expect(revenueSeries).toEqual([
+      {
+        date: "2026-05-01",
+        revenue: ticketType.price * 2
+      }
+    ]);
   });
 });

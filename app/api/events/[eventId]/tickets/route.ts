@@ -13,8 +13,11 @@ import {
 } from "@/lib/auth/access";
 import {
   OrganisationEventTicketsAccessError,
-  getOrganisationEventTickets
+  TicketPaginationError,
+  getOrganisationEventTickets,
+  parseTicketPaginationOptions
 } from "@/lib/tickets/check-in";
+import { badRequest } from "@/lib/api/errors";
 
 type RouteContext = {
   params: Promise<{
@@ -22,13 +25,19 @@ type RouteContext = {
   }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { eventId } = await context.params;
 
   try {
+    const { searchParams } = new URL(request.url);
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
-    const payload = await getOrganisationEventTickets(organisation.id, eventId);
+    const pagination = parseTicketPaginationOptions(searchParams);
+    const payload = await getOrganisationEventTickets(
+      organisation.id,
+      eventId,
+      pagination
+    );
 
     return NextResponse.json(payload);
   } catch (error) {
@@ -42,6 +51,10 @@ export async function GET(_request: Request, context: RouteContext) {
 
     if (error instanceof OrganisationEventTicketsAccessError) {
       return notFound(error.message);
+    }
+
+    if (error instanceof TicketPaginationError) {
+      return badRequest(error.message);
     }
 
     console.error("Failed to fetch event tickets", { eventId, error });

@@ -17,12 +17,14 @@ async function createPaidTicket({
   eventId,
   ticketTypeId,
   userId,
+  createdAt,
   checkedInAt
 }: {
   organisationId: string;
   eventId: string;
   ticketTypeId: string;
   userId: string;
+  createdAt?: Date;
   checkedInAt?: Date | null;
 }) {
   const order = await createOrder({
@@ -32,8 +34,7 @@ async function createPaidTicket({
     userId,
     status: "paid",
     paidAt: new Date("2026-05-01T10:00:00.000Z"),
-    unitPrice: 1200,
-    stripeSessionId: `cs_test_ticket_${ticketTypeId}_${userId}`
+    unitPrice: 1200
   });
   const ticket = await prisma.ticket.create({
     data: {
@@ -41,6 +42,7 @@ async function createPaidTicket({
       eventId,
       ticketTypeId,
       organisationId,
+      createdAt,
       checkedInAt: checkedInAt ?? null
     }
   });
@@ -69,7 +71,8 @@ describe("ticket visibility and check-in API", () => {
     expect(response.status).toBe(200);
     const body = await parseJsonResponse(response);
 
-    expect(body).toEqual({
+    expect(body).toEqual(
+      expect.objectContaining({
       event: {
         id: event.id,
         title: event.title
@@ -85,7 +88,118 @@ describe("ticket visibility and check-in API", () => {
           buyerName: "Test Member"
         })
       ]
+      })
+    );
+    expect(body.pageInfo).toEqual({
+      limit: 25,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      nextCursor: null,
+      previousCursor: null
     });
+    expect(body.counts).toEqual({
+      total: 1,
+      unused: 1,
+      checkedIn: 0
+    });
+  });
+
+  test("organiser can paginate event tickets with stable cursors and counts", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const ticketIds: string[] = [];
+
+    for (let index = 0; index < 3; index += 1) {
+      const member = await createMember({
+        email: `ticket-page-${index}@example.com`
+      });
+      const { ticket } = await createPaidTicket({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        createdAt: new Date(`2026-05-01T10:0${index}:00.000Z`),
+        checkedInAt: index === 1 ? new Date("2026-05-02T12:00:00.000Z") : null
+      });
+      ticketIds.push(ticket.id);
+    }
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const firstResponse = await getEventTickets(
+      jsonRequest(`http://localhost/api/events/${event.id}/tickets?limit=2`),
+      routeContext({ eventId: event.id })
+    );
+    expect(firstResponse.status).toBe(200);
+    const firstBody = await parseJsonResponse(firstResponse);
+    expect(firstBody.tickets.map((ticket: { id: string }) => ticket.id)).toEqual(
+      ticketIds.slice(0, 2)
+    );
+    expect(firstBody.counts).toEqual({
+      total: 3,
+      unused: 2,
+      checkedIn: 1
+    });
+    expect(firstBody.pageInfo).toEqual(
+      expect.objectContaining({
+        limit: 2,
+        hasNextPage: true,
+        hasPreviousPage: false,
+        previousCursor: null,
+        nextCursor: expect.any(String)
+      })
+    );
+
+    const secondResponse = await getEventTickets(
+      jsonRequest(
+        `http://localhost/api/events/${event.id}/tickets?limit=2&cursor=${encodeURIComponent(
+          firstBody.pageInfo.nextCursor
+        )}&direction=next`
+      ),
+      routeContext({ eventId: event.id })
+    );
+    expect(secondResponse.status).toBe(200);
+    const secondBody = await parseJsonResponse(secondResponse);
+    expect(secondBody.tickets.map((ticket: { id: string }) => ticket.id)).toEqual([
+      ticketIds[2]
+    ]);
+    expect(secondBody.pageInfo).toEqual(
+      expect.objectContaining({
+        limit: 2,
+        hasNextPage: false,
+        hasPreviousPage: true,
+        nextCursor: null,
+        previousCursor: expect.any(String)
+      })
+    );
+    expect(secondBody.counts).toEqual(firstBody.counts);
+
+    const previousResponse = await getEventTickets(
+      jsonRequest(
+        `http://localhost/api/events/${event.id}/tickets?limit=2&cursor=${encodeURIComponent(
+          secondBody.pageInfo.previousCursor
+        )}&direction=prev`
+      ),
+      routeContext({ eventId: event.id })
+    );
+    expect(previousResponse.status).toBe(200);
+    const previousBody = await parseJsonResponse(previousResponse);
+    expect(previousBody.tickets.map((ticket: { id: string }) => ticket.id)).toEqual(
+      ticketIds.slice(0, 2)
+    );
+  });
+
+  test("invalid ticket pagination cursor returns bad request", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await getEventTickets(
+      jsonRequest(`http://localhost/api/events/${event.id}/tickets?cursor=not-a-cursor`),
+      routeContext({ eventId: event.id })
+    );
+
+    expect(response.status).toBe(400);
   });
 
   test("organiser cannot list tickets for another organisation event", async () => {

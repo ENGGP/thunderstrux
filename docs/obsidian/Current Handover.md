@@ -46,6 +46,7 @@ Recent feature areas:
 - Organisation-safe event viewing and analytics.
 - Event-scoped organiser orders.
 - Organiser order access is authorised through `Order.event.organisationId`; `Order.organisationId` remains denormalized storage.
+- Checkout-created orders and reservations write organisation ownership from `Event.organisationId`.
 - Organiser order detail at `/dashboard/orders/[orderId]`.
 - Organiser manual refund flag, Stripe session copy/view support, and paid-order ticket email resend.
 - Event ticket list at `/dashboard/events/[eventId]/tickets`.
@@ -191,8 +192,8 @@ Latest verification:
 - `docker compose up -d` starts the production-like container and runs `pnpm prisma:migrate:deploy` before `pnpm start`.
 - `docker compose exec app pnpm prisma:migrate` applied through `20260503040000_ticket_email_delivery_tracking`.
 - `pnpm exec tsc --noEmit` passed after removing volatile `.next` generated type includes from normal TypeScript validation.
-- `docker compose exec app pnpm test:smoke` passed.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 54 tests after event-based order ownership regression coverage.
+- `docker compose exec app pnpm test:smoke` passed with 22 smoke steps.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 54 tests after event-based order ownership and checkout ownership regression coverage.
 - Previous build verification passed before the runtime-build guard was added. Current safe build validation is `docker compose build app`.
 - Required-env startup validation passed: `docker compose --env-file <temp> up app` failed before app startup when `DATABASE_URL` was omitted, output contained `DATABASE_URL is required`, and the temporary env file was deleted.
 - Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
@@ -272,12 +273,11 @@ Important rules:
 
 Recommended next implementation branch:
 
-- Order organisation consistency guard: checkout-created orders should always write `Order.organisationId` from `Event.organisationId`, matching the event-based order access model. Add regression coverage that checkout-created orders and reservations use the event organisation and preserve existing Stripe/reservation behaviour.
+- Ticket list pagination for `/dashboard/events/[eventId]/tickets` and `GET /api/events/[eventId]/tickets`. This is the next organiser-facing scalability improvement; keep the existing event-based ownership checks and response shape backwards-compatible where practical.
 
 Other pending branches:
 
 - Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry behaviour.
-- Ticket list pagination for `/dashboard/events/[eventId]/tickets` and `GET /api/events/[eventId]/tickets`.
 - API error standardisation and small UI state consistency improvements.
 - Move demo event auto-creation out of public read paths before production hardening.
 - Future staff/RBAC, audit logs, QR scanning, and asynchronous email outbox.

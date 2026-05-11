@@ -201,6 +201,7 @@ Order tenancy:
 
 - `Event.organisationId` is the source of truth for organiser order access.
 - `Order.organisationId` remains stored as a denormalized field for existing relations/reporting and checkout metadata.
+- Checkout-created orders write `Order.organisationId` from `Event.organisationId`.
 - Organiser order list/detail/action queries must scope through `Order.event.organisationId`, not trust `Order.organisationId` alone.
 - Manual refund and manual resend access inherit the same event-based ownership check.
 - Event analytics counts paid orders through event ownership.
@@ -286,7 +287,7 @@ Ticket check-in/check-out state:
 
 Current follow-up:
 
-- Add an order creation consistency guard so checkout-created orders always write `Order.organisationId` from `Event.organisationId`. This mirrors the existing ticket issuance guard for `Ticket.organisationId`.
+- Ticket list pagination is the next organiser-facing scalability improvement.
 - Review stale pending cleanup separately because it still uses denormalized order ownership and touches lifecycle state.
 
 ## Multi-Tenant Access Pattern

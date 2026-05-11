@@ -7,9 +7,12 @@ services:
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - .:/app
-      - /app/node_modules
+      - node_modules:/app/node_modules
     command: pnpm dev
 
   db:
     ports:
       - "5433:5432"
+
+volumes:
+  node_modules:

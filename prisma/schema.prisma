@@ -145,6 +145,7 @@ model Ticket {
 
   @@index([orderId])
   @@index([eventId])
+  @@index([eventId, createdAt, id])
   @@index([eventId, checkedInAt])
   @@index([ticketTypeId])
   @@index([organisationId])

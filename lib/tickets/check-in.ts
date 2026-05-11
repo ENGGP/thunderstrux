@@ -32,6 +32,33 @@ export type OrganisationEventTicket = Awaited<
   ReturnType<typeof getOrganisationEventTickets>
 >["tickets"][number];
 
+export const defaultTicketPageLimit = 25;
+export const maxTicketPageLimit = 100;
+
+export class TicketPaginationError extends Error {
+  constructor(message = "Invalid ticket pagination parameters") {
+    super(message);
+    this.name = "TicketPaginationError";
+  }
+}
+
+type TicketCursor = {
+  createdAt: Date;
+  id: string;
+};
+
+type TicketPaginationOptions = {
+  limit?: number;
+  cursor?: string;
+  direction?: "next" | "prev";
+};
+
+type ParsedTicketPaginationOptions = {
+  limit: number;
+  cursor?: string;
+  direction: "next" | "prev";
+};
+
 function buyerName(user: {
   firstName: string | null;
   lastName: string | null;
@@ -45,9 +72,85 @@ function ticketStatus(checkedInAt: Date | null): "unused" | "checked-in" {
   return checkedInAt ? "checked-in" : "unused";
 }
 
+function encodeTicketCursor(ticket: { createdAt: Date; id: string }) {
+  return Buffer.from(
+    JSON.stringify({
+      createdAt: ticket.createdAt.toISOString(),
+      id: ticket.id
+    })
+  ).toString("base64url");
+}
+
+function decodeTicketCursor(cursor: string): TicketCursor {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
+      createdAt?: unknown;
+      id?: unknown;
+    };
+
+    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") {
+      throw new Error("Invalid cursor shape");
+    }
+
+    const createdAt = new Date(parsed.createdAt);
+
+    if (Number.isNaN(createdAt.getTime()) || parsed.id.trim().length === 0) {
+      throw new Error("Invalid cursor values");
+    }
+
+    return {
+      createdAt,
+      id: parsed.id
+    };
+  } catch {
+    throw new TicketPaginationError("Invalid ticket cursor");
+  }
+}
+
+export function parseTicketPaginationOptions(
+  searchParams: URLSearchParams
+): ParsedTicketPaginationOptions {
+  const limitParam = searchParams.get("limit");
+  const cursor = searchParams.get("cursor")?.trim() || undefined;
+  const directionParam = searchParams.get("direction") ?? "next";
+
+  if (directionParam !== "next" && directionParam !== "prev") {
+    throw new TicketPaginationError("Invalid ticket pagination direction");
+  }
+
+  if (!limitParam) {
+    return {
+      limit: defaultTicketPageLimit,
+      cursor,
+      direction: directionParam as "next" | "prev"
+    };
+  }
+
+  if (!/^\d+$/.test(limitParam)) {
+    throw new TicketPaginationError("Invalid ticket page limit");
+  }
+
+  const limit = Number(limitParam);
+
+  if (limit < 1 || limit > maxTicketPageLimit) {
+    throw new TicketPaginationError("Invalid ticket page limit");
+  }
+
+  return {
+    limit,
+    cursor,
+    direction: directionParam as "next" | "prev"
+  };
+}
+
 export async function getOrganisationEventTickets(
   organisationId: string,
-  eventId: string
+  eventId: string,
+  {
+    limit = defaultTicketPageLimit,
+    cursor,
+    direction = "next"
+  }: TicketPaginationOptions = {}
 ) {
   const event = await prisma.event.findFirst({
     where: {
@@ -64,42 +167,105 @@ export async function getOrganisationEventTickets(
     throw new OrganisationEventTicketsAccessError();
   }
 
-  const tickets = await prisma.ticket.findMany({
-    where: {
+  if (!Number.isInteger(limit) || limit < 1 || limit > maxTicketPageLimit) {
+    throw new TicketPaginationError("Invalid ticket page limit");
+  }
+
+  const decodedCursor = cursor ? decodeTicketCursor(cursor) : null;
+  const cursorWhere = decodedCursor
+    ? direction === "prev"
+      ? {
+          OR: [
+            { createdAt: { lt: decodedCursor.createdAt } },
+            {
+              createdAt: decodedCursor.createdAt,
+              id: { lt: decodedCursor.id }
+            }
+          ]
+        }
+      : {
+          OR: [
+            { createdAt: { gt: decodedCursor.createdAt } },
+            {
+              createdAt: decodedCursor.createdAt,
+              id: { gt: decodedCursor.id }
+            }
+          ]
+        }
+    : {};
+  const ticketWhere = {
       eventId,
       event: {
         organisationId
-      }
-    },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    select: {
-      id: true,
-      createdAt: true,
-      checkedInAt: true,
-      ticketType: {
-        select: {
-          name: true
-        }
       },
-      order: {
-        select: {
-          id: true,
-          user: {
-            select: {
-              email: true,
-              firstName: true,
-              lastName: true,
-              displayName: true
+      ...cursorWhere
+    };
+
+  const [tickets, totalCount, checkedInCount] = await prisma.$transaction([
+    prisma.ticket.findMany({
+      where: ticketWhere,
+      orderBy:
+        direction === "prev"
+          ? [{ createdAt: "desc" }, { id: "desc" }]
+          : [{ createdAt: "asc" }, { id: "asc" }],
+      take: limit + 1,
+      select: {
+        id: true,
+        createdAt: true,
+        checkedInAt: true,
+        ticketType: {
+          select: {
+            name: true
+          }
+        },
+        order: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                email: true,
+                firstName: true,
+                lastName: true,
+                displayName: true
+              }
             }
           }
         }
       }
-    }
-  });
+    }),
+    prisma.ticket.count({
+      where: {
+        eventId,
+        event: {
+          organisationId
+        }
+      }
+    }),
+    prisma.ticket.count({
+      where: {
+        eventId,
+        checkedInAt: {
+          not: null
+        },
+        event: {
+          organisationId
+        }
+      }
+    })
+  ]);
+
+  const hasExtraTicket = tickets.length > limit;
+  const pageTickets = tickets.slice(0, limit);
+  const orderedTickets =
+    direction === "prev" ? [...pageTickets].reverse() : pageTickets;
+  const firstTicket = orderedTickets[0] ?? null;
+  const lastTicket = orderedTickets[orderedTickets.length - 1] ?? null;
+  const hasPreviousPage = direction === "prev" ? hasExtraTicket : Boolean(cursor);
+  const hasNextPage = direction === "prev" ? Boolean(cursor) : hasExtraTicket;
 
   return {
     event,
-    tickets: tickets.map((ticket) => ({
+    tickets: orderedTickets.map((ticket) => ({
       id: ticket.id,
       status: ticketStatus(ticket.checkedInAt),
       createdAt: ticket.createdAt,
@@ -108,7 +274,20 @@ export async function getOrganisationEventTickets(
       orderId: ticket.order.id,
       buyerEmail: ticket.order.user?.email ?? null,
       buyerName: ticket.order.user ? buyerName(ticket.order.user) : null
-    }))
+    })),
+    pageInfo: {
+      limit,
+      hasNextPage,
+      hasPreviousPage,
+      nextCursor: lastTicket && hasNextPage ? encodeTicketCursor(lastTicket) : null,
+      previousCursor:
+        firstTicket && hasPreviousPage ? encodeTicketCursor(firstTicket) : null
+    },
+    counts: {
+      total: totalCount,
+      unused: totalCount - checkedInCount,
+      checkedIn: checkedInCount
+    }
   };
 }
 

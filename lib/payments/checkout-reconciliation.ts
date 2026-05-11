@@ -171,6 +171,11 @@ export async function reconcileCompletedCheckoutSession(
         paidAt: true,
         failedAt: true,
         failureReason: true,
+        event: {
+          select: {
+            organisationId: true
+          }
+        },
         tickets: {
           select: { id: true }
         }
@@ -548,12 +553,23 @@ export async function reconcileCompletedCheckoutSession(
       quantity: localOrder.quantity
     });
 
+    if (localOrder.organisationId !== localOrder.event.organisationId) {
+      console.error("Ticket organisation mismatch corrected during checkout reconciliation", {
+        source,
+        orderId: localOrder.id,
+        eventId: localOrder.eventId,
+        stripeSessionId: session.id,
+        orderOrganisationId: localOrder.organisationId,
+        eventOrganisationId: localOrder.event.organisationId
+      });
+    }
+
     await tx.ticket.createMany({
       data: Array.from({ length: localOrder.quantity }, () => ({
         orderId: localOrder.id,
         eventId: localOrder.eventId,
         ticketTypeId: localOrder.ticketTypeId,
-        organisationId: localOrder.organisationId
+        organisationId: localOrder.event.organisationId
       }))
     });
 

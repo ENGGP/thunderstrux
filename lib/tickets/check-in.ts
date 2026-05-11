@@ -67,7 +67,9 @@ export async function getOrganisationEventTickets(
   const tickets = await prisma.ticket.findMany({
     where: {
       eventId,
-      organisationId
+      event: {
+        organisationId
+      }
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
@@ -117,7 +119,6 @@ export async function checkInOrganisationTicket(
   const existingTicket = await prisma.ticket.findFirst({
     where: {
       id: ticketId,
-      organisationId,
       event: {
         organisationId
       }
@@ -140,7 +141,6 @@ export async function checkInOrganisationTicket(
   const updated = await prisma.ticket.updateMany({
     where: {
       id: ticketId,
-      organisationId,
       event: {
         organisationId
       },
@@ -158,7 +158,6 @@ export async function checkInOrganisationTicket(
   const ticket = await prisma.ticket.findFirstOrThrow({
     where: {
       id: ticketId,
-      organisationId,
       event: {
         organisationId
       }
@@ -183,7 +182,6 @@ export async function checkOutOrganisationTicket(
   const existingTicket = await prisma.ticket.findFirst({
     where: {
       id: ticketId,
-      organisationId,
       event: {
         organisationId
       }
@@ -205,7 +203,6 @@ export async function checkOutOrganisationTicket(
   const updated = await prisma.ticket.updateMany({
     where: {
       id: ticketId,
-      organisationId,
       event: {
         organisationId
       },
@@ -225,7 +222,6 @@ export async function checkOutOrganisationTicket(
   const ticket = await prisma.ticket.findFirstOrThrow({
     where: {
       id: ticketId,
-      organisationId,
       event: {
         organisationId
       }

@@ -27,6 +27,9 @@ blob-report/
 .parcel-cache/
 .swc/
 
+# Local Codex workspace state
+.codex/
+
 # Environment files
 .env
 .env.*

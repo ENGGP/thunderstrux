@@ -31,7 +31,8 @@ Rules:
 - Organisation account required.
 - Event-management access required.
 - Ownership is verified server-side from `session.user` through `Organisation.accountUserId`.
-- Ticket actions must verify the ticket belongs to the current organisation and its event.
+- Ticket access is scoped through `Ticket.event.organisationId`.
+- `Ticket.organisationId` remains stored, but event ownership is the source of truth for ticket visibility and check-in/check-out authorization.
 
 Invalid transitions:
 
@@ -82,3 +83,4 @@ tests/integration/ticket-check-in.test.ts
 ```
 
 The suite covers own-organisation visibility, member denial, cross-organisation denial, check-in, double check-in conflict, check-out, invalid check-out conflict, and order/payment state preservation.
+It also covers inconsistent `Ticket.organisationId` data to confirm event ownership remains the access source of truth.

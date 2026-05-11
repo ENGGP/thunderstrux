@@ -110,6 +110,35 @@ describe("ticket visibility and check-in API", () => {
     expect(response.status).toBe(404);
   });
 
+  test("ticket listing uses event ownership when ticket organisation is inconsistent", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const { ticket } = await createPaidTicket({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await getEventTickets(
+      jsonRequest(`http://localhost/api/events/${event.id}/tickets`),
+      routeContext({ eventId: event.id })
+    );
+    expect(response.status).toBe(200);
+    const body = await parseJsonResponse(response);
+
+    expect(body.tickets).toEqual([
+      expect.objectContaining({
+        id: ticket.id,
+        ticketTypeName: ticketType.name
+      })
+    ]);
+  });
+
   test("member cannot list event tickets", async () => {
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();
@@ -240,6 +269,35 @@ describe("ticket visibility and check-in API", () => {
     expect(response.status).toBe(404);
   });
 
+  test("check-in uses event ownership when ticket organisation is inconsistent", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const { ticket } = await createPaidTicket({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await checkInTicket(
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ ticketId: ticket.id })
+    );
+    expect(response.status).toBe(200);
+
+    const updated = await prisma.ticket.findUniqueOrThrow({
+      where: { id: ticket.id },
+      select: { checkedInAt: true }
+    });
+    expect(updated.checkedInAt).toBeInstanceOf(Date);
+  });
+
   test("organiser can check out their own checked-in ticket without changing order state", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const member = await createMember();
@@ -357,6 +415,36 @@ describe("ticket visibility and check-in API", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  test("check-out uses event ownership when ticket organisation is inconsistent", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const { ticket } = await createPaidTicket({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      checkedInAt: new Date("2026-05-02T12:00:00.000Z")
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await checkOutTicket(
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ ticketId: ticket.id })
+    );
+    expect(response.status).toBe(200);
+
+    const updated = await prisma.ticket.findUniqueOrThrow({
+      where: { id: ticket.id },
+      select: { checkedInAt: true }
+    });
+    expect(updated.checkedInAt).toBeNull();
   });
 
   test("member cannot check out a ticket", async () => {

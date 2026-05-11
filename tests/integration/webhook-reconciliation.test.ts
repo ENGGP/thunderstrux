@@ -94,6 +94,9 @@ describe("webhook reconciliation", () => {
     expect(paidOrder.paidAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
     expect(paidOrder.reservation?.status).toBe("confirmed");
     expect(paidOrder.tickets).toHaveLength(2);
+    expect(
+      paidOrder.tickets.every((ticket) => ticket.organisationId === event.organisationId)
+    ).toBe(true);
     expect(updatedTicketType.quantity).toBe(3);
     expect(info).toHaveBeenCalledWith(
       "Stripe checkout completed reconciliation started",
@@ -110,6 +113,73 @@ describe("webhook reconciliation", () => {
     expect(info).toHaveBeenCalledWith(
       "Stripe checkout tickets created",
       expect.any(Object)
+    );
+  });
+
+  test("ticket issuance uses event organisation when order organisation is inconsistent", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const other = await createOrganisationAccount({ stripeReady: true });
+    const member = await createMember();
+    const event = await createEvent({
+      organisationId: organisation.id,
+      status: "published",
+      ticketTypes: [{ name: "General", price: 1000, quantity: 5 }]
+    });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      quantity: 2,
+      unitPrice: ticketType.price,
+      stripeSessionId: "cs_ticket_org_guard"
+    });
+    await createReservation({
+      orderId: order.id,
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      quantity: 2,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+    });
+
+    const result = await reconcileCompletedCheckoutSession(
+      checkoutSession({
+        id: "cs_ticket_org_guard",
+        orderId: order.id,
+        eventId: event.id,
+        organisationId: other.organisation.id,
+        ticketTypeId: ticketType.id,
+        quantity: 2,
+        amountTotal: 2000
+      })
+    );
+
+    const paidOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: { tickets: true }
+    });
+
+    expect(result).toEqual({ status: "fulfilled", orderId: order.id });
+    expect(paidOrder.status).toBe("paid");
+    expect(paidOrder.tickets).toHaveLength(2);
+    expect(
+      paidOrder.tickets.every((ticket) => ticket.organisationId === event.organisationId)
+    ).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      "Ticket organisation mismatch corrected during checkout reconciliation",
+      expect.objectContaining({
+        orderId: order.id,
+        eventId: event.id,
+        stripeSessionId: "cs_ticket_org_guard",
+        orderOrganisationId: other.organisation.id,
+        eventOrganisationId: organisation.id
+      })
     );
   });
 

@@ -270,6 +270,8 @@ Ticket check-in/check-out state:
 - `checkedInAt = null`: unused.
 - `checkedInAt != null`: checked in.
 - Check-in is the only mutable ticket operational state in the MVP.
+- Ticket access for visibility and check-in/check-out is authorised through `Ticket.event.organisationId`.
+- `Ticket.organisationId` remains stored for existing relations/reporting, but event ownership is the access source of truth.
 - Check-in and check-out must not modify order status, Stripe data, ticket ownership, ticket type history, or payment state.
 - Double check-in is prevented by atomically updating only tickets where `checkedInAt` is still `null`.
 - Invalid check-out is prevented by atomically updating only tickets where `checkedInAt` is not `null`.

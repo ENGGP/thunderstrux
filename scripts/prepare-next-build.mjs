@@ -23,8 +23,7 @@ const requiredIncludes = [
   "next-env.d.ts",
   "**/*.ts",
   "**/*.tsx",
-  ".next-build/types/**/*.ts",
-  ".next-build/dev/types/**/*.ts"
+  ".next-build/types/**/*.ts"
 ];
 
 tsconfig.include = [

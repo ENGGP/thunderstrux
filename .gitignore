@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+.codex
 
 # Next.js
 .next/
@@ -28,7 +29,7 @@ blob-report/
 .swc/
 
 # Local Codex workspace state
-.codex/
+
 
 # Environment files
 .env

@@ -47,7 +47,9 @@ const proxyExists = pathExists("proxy.ts");
 const middlewareExists = pathExists("middleware.ts");
 const tsconfig = readJson("tsconfig.json");
 const tsIncludes = Array.isArray(tsconfig?.include) ? tsconfig.include : [];
-const hasStaleDevTypes = tsIncludes.includes(".next/dev/types/**/*.ts");
+const hasVolatileNextTypes =
+  tsIncludes.includes(".next/types/**/*.ts") ||
+  tsIncludes.includes(".next/dev/types/**/*.ts");
 
 checks.push(`.next/dev cache: ${devCacheExists ? "present" : "not present"}`);
 checks.push(`dev app manifest: ${appManifestExists ? "present" : "missing"}`);
@@ -55,15 +57,15 @@ checks.push(`dev route types: ${devRoutesTypesExist ? "present" : "missing"}`);
 checks.push(`.next-build output: ${buildCacheExists ? "present" : "not present"}`);
 checks.push(`proxy.ts route guard: ${proxyExists ? "present" : "missing"}`);
 checks.push(`middleware.ts legacy file: ${middlewareExists ? "present" : "not present"}`);
-checks.push(`tsconfig stale .next/dev include: ${hasStaleDevTypes ? "present" : "not present"}`);
+checks.push(`tsconfig volatile .next type includes: ${hasVolatileNextTypes ? "present" : "not present"}`);
 
 if (devCacheExists && (!appManifestExists || !devRoutesTypesExist)) {
   suggestions.push("Dev cache looks incomplete. Run: docker compose restart app");
   suggestions.push("If the route manifest remains stale, run inside the app container: pnpm dev");
 }
 
-if (hasStaleDevTypes) {
-  suggestions.push("Stale dev type include found. Run: pnpm docker:build");
+if (hasVolatileNextTypes) {
+  suggestions.push("Volatile .next type include found. Remove .next type includes from tsconfig and rely on .next-build route types.");
 }
 
 if (middlewareExists) {

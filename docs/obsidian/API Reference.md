@@ -503,6 +503,7 @@ Rules:
 Includes:
 
 - order id, status, createdAt, paidAt, failedAt, failureReason
+- compensation-review fields when paid local fulfilment failed
 - buyer email and name when available
 - event id/title
 - ticket line with ticket type name, quantity, unit price, and total amount
@@ -598,12 +599,14 @@ Responsibilities:
 - Create tickets.
 - Mark order paid.
 - Store `paidAt` on success.
+- Persist compensation-review state when Stripe confirms payment but local ticket fulfilment cannot complete.
 - Attempt ticket delivery email only after successful payment fulfilment and ticket issuance.
 - Store `ticketEmailSentAt` on automatic email success.
 - Store `ticketEmailLastError` on automatic email failure.
 - Skip automatic email on duplicate webhook delivery when `ticketEmailSentAt` is already set.
 - Mark normal reservation or Checkout expiry as `expired` without `failureReason`.
 - Store `failedAt` and `failureReason` only on unexpected reconciliation failure.
+- Do not issue tickets or send ticket email for compensation-required orders.
 - Return `200` for signed but unhandled Stripe event types.
 
 Email delivery failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.

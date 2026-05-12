@@ -193,6 +193,9 @@ Important fields:
 - `totalAmount`
 - `stripeSessionId` unique
 - `isManuallyRefunded`
+- `requiresCompensationReview`
+- `fulfilmentFailedAt`
+- `fulfilmentFailureReason`
 - `ticketEmailSentAt`
 - `ticketEmailLastError`
 - `ticketEmailResentAt`
@@ -220,6 +223,9 @@ Each order maps to exactly one ticket type through `ticketTypeId`. Organiser ana
 Order management fields:
 
 - `isManuallyRefunded`: local organiser bookkeeping flag only. It does not call Stripe, change Stripe payment state, or change order lifecycle status.
+- `requiresCompensationReview`: marks paid Stripe sessions where local ticket fulfilment failed and operator review is required. These orders remain `status = failed`, are not valid member tickets, and must not trigger ticket email.
+- `fulfilmentFailedAt`: first recorded timestamp for paid-but-unfulfilled local fulfilment failure. Treat as write-once diagnostics.
+- `fulfilmentFailureReason`: first recorded machine-readable reason for paid-but-unfulfilled local fulfilment failure. Treat as write-once diagnostics.
 - `ticketEmailSentAt`: first successful automatic ticket delivery email timestamp.
 - `ticketEmailLastError`: most recent ticket email delivery error message.
 - `ticketEmailResentAt`: most recent successful manual resend timestamp.

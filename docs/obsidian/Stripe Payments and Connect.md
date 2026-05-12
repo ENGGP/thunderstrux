@@ -9,6 +9,7 @@
 - Create a temporary ticket reservation before redirecting to Stripe
 - Reconcile amount, currency, and metadata before marking paid
 - Reduce inventory and issue tickets atomically
+- Mark paid-but-unfulfilled sessions for compensation review instead of silently treating them as ordinary failed checkouts
 - Send ticket delivery email only after successful webhook fulfilment and ticket issuance
 
 ## Stripe Files
@@ -343,11 +344,27 @@ On success:
 - automatic ticket email success stores `Order.ticketEmailSentAt`
 - automatic ticket email failure stores `Order.ticketEmailLastError` and does not roll back fulfilment
 
-On reconciliation failure:
+On paid reconciliation failure before tickets are issued:
 
-- order marked `failed`
-- `failedAt` timestamp stored
-- `failureReason` stored for organiser debugging
+- order is stored as `status = failed`
+- `requiresCompensationReview = true`
+- `paidAt` is set or preserved because Stripe confirmed payment
+- `fulfilmentFailedAt` and `fulfilmentFailureReason` are write-once diagnostics
+- tickets are not issued
+- automatic ticket email is not sent
+- active reservations are released only for unsafe/unrecoverable mismatch paths; confirmed/released/expired reservations are not restored
+
+If a later webhook retry naturally succeeds while an active unexpired reservation still exists:
+
+- `requiresCompensationReview` is cleared
+- `fulfilmentFailedAt` and `fulfilmentFailureReason` are preserved as historical diagnostics
+- normal successful fulfilment continues: paid order, confirmed reservation, inventory decrement, tickets, and automatic email
+
+On ordinary non-paid reconciliation failure:
+
+- order is marked `failed`
+- `failedAt` timestamp is stored
+- `failureReason` is stored for organiser debugging
 
 Expired Checkout sessions:
 
@@ -361,8 +378,8 @@ Expired Checkout sessions:
 
 Completed Checkout sessions with missing or expired local reservations:
 
-- normal reservation expiry leaves the order `expired`
-- unexpected mismatches mark the order `failed` with `failureReason = webhook_mismatch`
+- if Stripe confirms payment, the order becomes compensation-required failed state
+- if Stripe did not confirm payment, normal expiry leaves the order `expired`
 - tickets are not issued
 - inventory is not decremented
 
@@ -389,6 +406,8 @@ Responsibilities:
 - Create ticket rows.
 - Return a typed reconciliation result for the caller.
 - Preserve idempotency for duplicate completed events.
+- Preserve already-paid duplicate webhook behavior.
+- Return `compensation_required` for paid-but-unfulfilled orders.
 
 Side-effect orchestrator:
 
@@ -400,6 +419,7 @@ Responsibilities:
 
 - Call the reconciliation helper.
 - Send automatic ticket delivery email only when reconciliation returns a newly fulfilled order.
+- Do not send ticket email for `compensation_required`, `failed`, `expired`, `ignored`, or `already_paid` results.
 - Keep email failures non-blocking.
 
 Callers:
@@ -545,6 +565,11 @@ Current coverage:
 - automatic ticket email failure records the error without rolling back fulfilment
 - manual resend sends for paid organiser-owned orders and updates delivery tracking
 - invalid metadata, amount, or currency does not mark an order paid
+- paid-but-unfulfilled sessions become compensation-required failed orders
+- duplicate compensation webhooks do not issue tickets, send email, or overwrite write-once diagnostics
+- successful natural retry clears `requiresCompensationReview` and preserves diagnostics
+- already-paid orders with ticket mismatches are logged but not mutated into compensation review
+- compensation-required orders do not surface as valid member tickets
 - reservation-backed pending orders and legacy reservationless pending orders expire through stale cleanup
 - paid and failed orders are preserved by stale cleanup
 

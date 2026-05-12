@@ -2,7 +2,7 @@
 
 Read this first, then [[Thunderstrux Codebase Map]].
 
-Latest dated handover: [[Handover 2026-05-12 Trusted Origin and Rate Limiting]].
+Latest dated handover: [[Handover 2026-05-13 Compensation Review]].
 
 ## Current State
 
@@ -15,6 +15,7 @@ Core model:
 - `Event.organisationId` is the canonical ownership source for event-owned resources.
 - Public event reads are read-only and never create demo data.
 - Stripe Checkout fulfilment remains webhook-driven.
+- Paid-but-unfulfilled Checkout sessions enter a durable compensation-review state instead of ordinary silent failure.
 - Email delivery is non-blocking and must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
 
 Implemented product areas:
@@ -26,6 +27,7 @@ Implemented product areas:
 - Stripe Checkout uses 30-minute ticket reservations.
 - Stripe Connect Express onboarding has explicit local lifecycle states.
 - Public event demo data comes from `prisma/seed.mjs`, not runtime reads.
+- Paid Stripe sessions that cannot issue tickets are stored as failed orders with `requiresCompensationReview=true`.
 
 Security hardening now in place:
 
@@ -46,8 +48,9 @@ Implemented migrations:
 - `20260503030000_ticket_check_in_state`
 - `20260503040000_ticket_email_delivery_tracking`
 - `20260503050000_ticket_event_cursor_index`
+- `20260512060000_order_compensation_review`
 
-No schema migration was added for the trusted-origin or rate-limiting slices.
+No schema migration was added for the trusted-origin or rate-limiting slices. The compensation-review slice added order review metadata only.
 
 ## Current Routes
 
@@ -180,11 +183,13 @@ pnpm docker:rebuild
 
 ## Latest Verification
 
-Most recent validation after P0.3 rate limiting:
+Most recent validation after P0.4 compensation review:
 
+- `pnpm prisma:generate` passed after rerunning with network approval for Prisma engine metadata.
 - `pnpm exec tsc --noEmit` passed.
 - `git diff --check` passed with CRLF warnings only.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 12 files, 73 tests.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 12 files, 76 tests.
+- `docker compose exec app pnpm prisma:migrate:deploy` applied `20260512060000_order_compensation_review` to the local Docker database after the first smoke run found the new columns missing.
 - `docker compose exec app pnpm test:smoke` passed: 22 smoke checks.
 
 ## Integration Test State
@@ -220,6 +225,7 @@ Recommended next implementation branch:
 
 Other pending branches:
 
+- See [[Non-Blocking Issue Register]] for current non-blocking codebase risks and follow-up candidates.
 - Add pagination hardening tests: same-`createdAt` cursor collision, malformed `limit`, malformed `direction`, and optional empty stale-cursor `pageInfo` cleanup.
 - Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry.
 - API error standardisation and small UI state consistency improvements.
@@ -238,6 +244,8 @@ Do not implement QR scanning, RBAC/staff invites, microservices, or broad archit
 - Do not mark orders paid from frontend success pages.
 - The `/success` fallback must remain non-production only and must call the same checkout reconciliation helper as the webhook.
 - Ticket reservations are temporary soft holds; paid tickets are issued only by Stripe Checkout webhook reconciliation.
+- Paid Stripe sessions that cannot locally issue tickets must become compensation-required failed orders, with no tickets and no ticket email.
+- Compensation diagnostics are write-once; successful natural retry may clear `requiresCompensationReview` but should preserve fulfilment diagnostics.
 - Ticket delivery email must only run after paid webhook fulfilment and ticket issuance.
 - Ticket delivery email failure must update `Order.ticketEmailLastError` and must not roll back core payment/order/ticket state.
 - Duplicate webhook delivery must not send automatic ticket email again after `Order.ticketEmailSentAt` is set.

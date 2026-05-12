@@ -113,6 +113,9 @@ model Order {
   paidAt          DateTime?
   failedAt        DateTime?
   failureReason   String?
+  requiresCompensationReview Boolean @default(false)
+  fulfilmentFailedAt DateTime?
+  fulfilmentFailureReason String?
   isManuallyRefunded Boolean @default(false)
   ticketEmailSentAt DateTime?
   ticketEmailLastError String?

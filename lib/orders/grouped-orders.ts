@@ -115,6 +115,9 @@ export async function getGroupedOrganisationOrdersWithContext(
       paidAt: true,
       failedAt: true,
       failureReason: true,
+      requiresCompensationReview: true,
+      fulfilmentFailedAt: true,
+      fulfilmentFailureReason: true,
       isManuallyRefunded: true,
       user: {
         select: {
@@ -150,6 +153,9 @@ export async function getGroupedOrganisationOrdersWithContext(
         paidAt: Date | null;
         failedAt: Date | null;
         failureReason: string | null;
+        requiresCompensationReview: boolean;
+        fulfilmentFailedAt: Date | null;
+        fulfilmentFailureReason: string | null;
         isManuallyRefunded: boolean;
         buyerEmail: string | null;
       }>;
@@ -173,6 +179,9 @@ export async function getGroupedOrganisationOrdersWithContext(
       paidAt: order.paidAt,
       failedAt: order.failedAt,
       failureReason: order.failureReason,
+      requiresCompensationReview: order.requiresCompensationReview,
+      fulfilmentFailedAt: order.fulfilmentFailedAt,
+      fulfilmentFailureReason: order.fulfilmentFailureReason,
       isManuallyRefunded: order.isManuallyRefunded,
       buyerEmail: order.user?.email ?? null
     });

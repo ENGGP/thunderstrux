@@ -54,6 +54,9 @@ export async function getOrganisationOrderDetail(
       paidAt: true,
       failedAt: true,
       failureReason: true,
+      requiresCompensationReview: true,
+      fulfilmentFailedAt: true,
+      fulfilmentFailureReason: true,
       isManuallyRefunded: true,
       user: {
         select: {

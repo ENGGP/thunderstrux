@@ -233,6 +233,9 @@ describe("webhook reconciliation", () => {
         where: { id: order.id },
         select: {
           status: true,
+          requiresCompensationReview: true,
+          fulfilmentFailedAt: true,
+          fulfilmentFailureReason: true,
           ticketEmailSentAt: true,
           ticketEmailLastError: true,
           tickets: true
@@ -240,6 +243,9 @@ describe("webhook reconciliation", () => {
       });
       expect(result).toEqual({ status: "fulfilled", orderId: order.id });
       expect(updated.status).toBe("paid");
+      expect(updated.requiresCompensationReview).toBe(false);
+      expect(updated.fulfilmentFailedAt).toBeNull();
+      expect(updated.fulfilmentFailureReason).toBeNull();
       expect(updated.tickets).toHaveLength(1);
       expect(updated.ticketEmailSentAt).toBeNull();
       expect(updated.ticketEmailLastError).toBeNull();
@@ -409,8 +415,11 @@ describe("webhook reconciliation", () => {
     }
   });
 
-  test("wrong amount or currency fails the pending order with webhook_mismatch", async () => {
+  test("paid amount mismatch marks compensation review without issuing tickets or email", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const member = await createMember();
     const event = await createEvent({
@@ -437,7 +446,7 @@ describe("webhook reconciliation", () => {
       expiresAt: new Date(Date.now() + 30 * 60 * 1000)
     });
 
-    await reconcileCompletedCheckoutSession(
+    const result = await reconcileCompletedCheckoutSessionWithSideEffects(
       checkoutSession({
         id: "cs_wrong_amount",
         orderId: order.id,
@@ -453,17 +462,239 @@ describe("webhook reconciliation", () => {
       where: { id: order.id },
       include: { reservation: true, tickets: true }
     });
+    expect(result).toEqual({
+      status: "compensation_required",
+      orderId: order.id,
+      reason: "webhook_mismatch"
+    });
     expect(failed.status).toBe("failed");
+    expect(failed.paidAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
     expect(failed.failureReason).toBe("webhook_mismatch");
+    expect(failed.requiresCompensationReview).toBe(true);
+    expect(failed.fulfilmentFailedAt).toEqual(
+      new Date("2026-05-01T12:00:00.000Z")
+    );
+    expect(failed.fulfilmentFailureReason).toBe("webhook_mismatch");
     expect(failed.tickets).toHaveLength(0);
     expect(failed.reservation?.status).toBe("released");
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(
       "Stripe checkout reconciliation failed",
       expect.objectContaining({ message: "webhook_mismatch" })
     );
   });
 
-  test("expired order receiving completed session remains expired and issues no tickets", async () => {
+  test("paid inventory mismatch is compensation-required and duplicate delivery preserves diagnostics", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const member = await createMember();
+    const event = await createEvent({
+      organisationId: organisation.id,
+      status: "published",
+      ticketTypes: [{ name: "General", price: 1000, quantity: 1 }]
+    });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      quantity: 2,
+      unitPrice: ticketType.price,
+      stripeSessionId: "cs_inventory_compensation"
+    });
+    await createReservation({
+      orderId: order.id,
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      quantity: 2,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+    });
+
+    const session = checkoutSession({
+      id: "cs_inventory_compensation",
+      orderId: order.id,
+      eventId: event.id,
+      organisationId: organisation.id,
+      ticketTypeId: ticketType.id,
+      quantity: 2,
+      amountTotal: 2000
+    });
+    const first = await reconcileCompletedCheckoutSessionWithSideEffects(session);
+    vi.setSystemTime(new Date("2026-05-01T12:05:00.000Z"));
+    const duplicate = await reconcileCompletedCheckoutSessionWithSideEffects(session);
+
+    const updated = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: { reservation: true, tickets: true }
+    });
+    expect(first).toEqual({
+      status: "compensation_required",
+      orderId: order.id,
+      reason: "inventory_unavailable_after_payment"
+    });
+    expect(duplicate).toEqual({
+      status: "compensation_required",
+      orderId: order.id,
+      reason: "inventory_unavailable_after_payment"
+    });
+    expect(updated.status).toBe("failed");
+    expect(updated.requiresCompensationReview).toBe(true);
+    expect(updated.paidAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
+    expect(updated.fulfilmentFailedAt).toEqual(
+      new Date("2026-05-01T12:00:00.000Z")
+    );
+    expect(updated.fulfilmentFailureReason).toBe(
+      "inventory_unavailable_after_payment"
+    );
+    expect(updated.tickets).toHaveLength(0);
+    expect(updated.reservation?.status).toBe("released");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("future retry can clear compensation warning when active reservation naturally remains recoverable", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    const restoreEmailEnv = configureEmailEnv();
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const { organisation } = await createOrganisationAccount({ stripeReady: true });
+      const member = await createMember({ email: "retry-recovery@example.com" });
+      const event = await createEvent({
+        organisationId: organisation.id,
+        status: "published",
+        ticketTypes: [{ name: "General", price: 1000, quantity: 3 }]
+      });
+      const ticketType = event.ticketTypes[0];
+      const failedAt = new Date("2026-05-01T11:55:00.000Z");
+      const order = await createOrder({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        status: "failed",
+        quantity: 1,
+        unitPrice: ticketType.price,
+        stripeSessionId: "cs_compensation_retry",
+        paidAt: failedAt,
+        failedAt,
+        failureReason: "reservation_confirm_failed_after_payment",
+        requiresCompensationReview: true,
+        fulfilmentFailedAt: failedAt,
+        fulfilmentFailureReason: "reservation_confirm_failed_after_payment"
+      });
+      await createReservation({
+        orderId: order.id,
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        quantity: 1,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      });
+
+      const result = await reconcileCompletedCheckoutSessionWithSideEffects(
+        checkoutSession({
+          id: "cs_compensation_retry",
+          orderId: order.id,
+          eventId: event.id,
+          organisationId: organisation.id,
+          ticketTypeId: ticketType.id,
+          quantity: 1,
+          amountTotal: 1000
+        })
+      );
+
+      const recovered = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+        include: { reservation: true, tickets: true }
+      });
+      expect(result).toEqual({ status: "fulfilled", orderId: order.id });
+      expect(recovered.status).toBe("paid");
+      expect(recovered.requiresCompensationReview).toBe(false);
+      expect(recovered.failedAt).toBeNull();
+      expect(recovered.failureReason).toBeNull();
+      expect(recovered.fulfilmentFailedAt).toEqual(failedAt);
+      expect(recovered.fulfilmentFailureReason).toBe(
+        "reservation_confirm_failed_after_payment"
+      );
+      expect(recovered.reservation?.status).toBe("confirmed");
+      expect(recovered.tickets).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      restoreEmailEnv();
+    }
+  });
+
+  test("already-paid order with ticket mismatch is not mutated into compensation review", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const member = await createMember();
+    const event = await createEvent({
+      organisationId: organisation.id,
+      status: "published",
+      ticketTypes: [{ name: "General", price: 1000, quantity: 3 }]
+    });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "paid",
+      quantity: 2,
+      unitPrice: ticketType.price,
+      stripeSessionId: "cs_paid_ticket_mismatch",
+      paidAt: new Date("2026-05-01T12:00:00.000Z")
+    });
+    await prisma.ticket.create({
+      data: {
+        orderId: order.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        organisationId: organisation.id
+      }
+    });
+
+    const result = await reconcileCompletedCheckoutSession(
+      checkoutSession({
+        id: "cs_paid_ticket_mismatch",
+        orderId: order.id,
+        eventId: event.id,
+        organisationId: organisation.id,
+        ticketTypeId: ticketType.id,
+        quantity: 2,
+        amountTotal: 2000
+      })
+    );
+
+    const unchanged = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: { tickets: true }
+    });
+    expect(result).toEqual({ status: "already_paid", orderId: order.id });
+    expect(unchanged.status).toBe("paid");
+    expect(unchanged.requiresCompensationReview).toBe(false);
+    expect(unchanged.fulfilmentFailedAt).toBeNull();
+    expect(unchanged.fulfilmentFailureReason).toBeNull();
+    expect(unchanged.tickets).toHaveLength(1);
+    expect(error).toHaveBeenCalledWith(
+      "Stripe checkout reconciliation failed",
+      expect.objectContaining({
+        message:
+          "Paid order ticket count does not match quantity; historical integrity review required"
+      })
+    );
+  });
+
+  test("expired order receiving completed paid session requires compensation review", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const event = await createEvent({ organisationId: organisation.id });
@@ -478,7 +709,7 @@ describe("webhook reconciliation", () => {
       stripeSessionId: "cs_expired_order"
     });
 
-    await reconcileCompletedCheckoutSession(
+    const result = await reconcileCompletedCheckoutSession(
       checkoutSession({
         id: "cs_expired_order",
         orderId: order.id,
@@ -497,8 +728,14 @@ describe("webhook reconciliation", () => {
     const currentTicketType = await prisma.ticketType.findUniqueOrThrow({
       where: { id: ticketType.id }
     });
-    expect(unchanged.status).toBe("expired");
-    expect(unchanged.paidAt).toBeNull();
+    expect(result).toEqual({
+      status: "compensation_required",
+      orderId: order.id,
+      reason: "expired_order_paid_after_payment"
+    });
+    expect(unchanged.status).toBe("failed");
+    expect(unchanged.requiresCompensationReview).toBe(true);
+    expect(unchanged.paidAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
     expect(unchanged.tickets).toHaveLength(0);
     expect(currentTicketType.quantity).toBe(ticketType.quantity);
     expect(warn).toHaveBeenCalledWith(
@@ -507,7 +744,8 @@ describe("webhook reconciliation", () => {
     );
   });
 
-  test("expired or missing reservations do not mark paid", async () => {
+  test("paid sessions with expired or missing reservations require compensation review", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const event = await createEvent({
       organisationId: organisation.id,
@@ -545,8 +783,16 @@ describe("webhook reconciliation", () => {
       })
     );
     await expect(
-      prisma.order.findUniqueOrThrow({ where: { id: expiredReservationOrder.id } })
-    ).resolves.toMatchObject({ status: "expired", failureReason: null });
+      prisma.order.findUniqueOrThrow({
+        where: { id: expiredReservationOrder.id },
+        include: { reservation: true }
+      })
+    ).resolves.toMatchObject({
+      status: "failed",
+      requiresCompensationReview: true,
+      fulfilmentFailureReason: "reservation_expired_after_payment",
+      reservation: { status: "expired" }
+    });
 
     const missingReservationOrder = await createOrder({
       organisationId: organisation.id,
@@ -570,7 +816,11 @@ describe("webhook reconciliation", () => {
     );
     await expect(
       prisma.order.findUniqueOrThrow({ where: { id: missingReservationOrder.id } })
-    ).resolves.toMatchObject({ status: "failed", failureReason: "webhook_mismatch" });
+    ).resolves.toMatchObject({
+      status: "failed",
+      requiresCompensationReview: true,
+      fulfilmentFailureReason: "reservation_missing_after_payment"
+    });
 
     await expect(prisma.ticket.count()).resolves.toBe(0);
   });

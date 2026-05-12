@@ -144,6 +144,11 @@ export default async function OrganisationOrderDetailPage({
               This order is marked as manually refunded.
             </p>
           ) : null}
+          {order.requiresCompensationReview ? (
+            <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Payment was received, but ticket fulfilment failed. Review this order in Stripe before contacting the buyer or taking manual action.
+            </p>
+          ) : null}
         </section>
 
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">

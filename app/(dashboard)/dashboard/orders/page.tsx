@@ -364,6 +364,11 @@ export default async function OrganisationOrdersPage({
                                 Manual refund
                               </p>
                             ) : null}
+                            {order.requiresCompensationReview ? (
+                              <p className="mt-1 max-w-56 text-xs font-medium text-amber-700">
+                                Payment received; fulfilment review required
+                              </p>
+                            ) : null}
                             {order.failureReason ? (
                               <p className="mt-1 max-w-56 text-xs text-red-700">
                                 {order.failureReason}

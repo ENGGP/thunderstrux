@@ -141,6 +141,20 @@ describe("member features", () => {
       failureReason: "test",
       unitPrice: ticketType.price
     });
+    await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "failed",
+      paidAt: new Date(),
+      failedAt: new Date(),
+      failureReason: "inventory_unavailable_after_payment",
+      requiresCompensationReview: true,
+      fulfilmentFailedAt: new Date(),
+      fulfilmentFailureReason: "inventory_unavailable_after_payment",
+      unitPrice: ticketType.price
+    });
 
     const ticketOrders = await prisma.order.findMany({
       where: {

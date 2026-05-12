@@ -140,7 +140,10 @@ export async function createOrder({
   createdAt,
   paidAt,
   failedAt,
-  failureReason
+  failureReason,
+  requiresCompensationReview,
+  fulfilmentFailedAt,
+  fulfilmentFailureReason
 }: {
   organisationId: string;
   eventId: string;
@@ -154,6 +157,9 @@ export async function createOrder({
   paidAt?: Date | null;
   failedAt?: Date | null;
   failureReason?: string | null;
+  requiresCompensationReview?: boolean;
+  fulfilmentFailedAt?: Date | null;
+  fulfilmentFailureReason?: string | null;
 }) {
   return prisma.order.create({
     data: {
@@ -169,7 +175,10 @@ export async function createOrder({
       createdAt,
       paidAt,
       failedAt,
-      failureReason
+      failureReason,
+      requiresCompensationReview,
+      fulfilmentFailedAt,
+      fulfilmentFailureReason
     }
   });
 }

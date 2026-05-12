@@ -59,7 +59,7 @@ localhost:5433 in dev override only
 ```yaml
 volumes:
   - .:/app
-  - /app/node_modules
+  - node_modules:/app/node_modules
 command: pnpm dev
 environment:
   NODE_ENV: development
@@ -75,13 +75,19 @@ Why:
 - base Compose can validate the production runtime path without host source mounts
 - dev override keeps source live-mounted into the container
 - dev override explicitly clears the production runtime marker so build/runtime guard behavior is unambiguous
-- `/app/node_modules` avoids host/container dependency conflicts
+- `node_modules:/app/node_modules` avoids host/container dependency conflicts and uses the named Docker volume `thunderstrux_node_modules` instead of an anonymous hash volume
 - DB host port exposure is available for dev tools only
 
 Database data lives in the named volume:
 
 ```yaml
 postgres_data:/var/lib/postgresql/data
+```
+
+Container dependencies live in the named dev volume:
+
+```yaml
+node_modules:/app/node_modules
 ```
 
 ## Dev Server Configuration

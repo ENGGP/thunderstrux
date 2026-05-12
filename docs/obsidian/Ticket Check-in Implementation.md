@@ -35,6 +35,16 @@ Rules:
 - `Ticket.organisationId` remains stored, but event ownership is the source of truth for ticket visibility and check-in/check-out authorization.
 - Webhook ticket issuance writes `Ticket.organisationId` from `Event.organisationId`, and logs/corrects the ticket organisation value if historical order data is inconsistent.
 
+Ticket listing pagination:
+
+- `GET /api/events/[eventId]/tickets` defaults to `limit=25`.
+- Maximum `limit` is 100.
+- Supported query params are `limit`, `cursor`, and `direction`.
+- `direction` is `next` or `prev`; default is `next`.
+- Cursors are opaque and encode the ticket `createdAt` and `id`.
+- Ordering is stable by `Ticket.createdAt ASC, Ticket.id ASC`.
+- The response includes `pageInfo` and global event ticket `counts`.
+
 Invalid transitions:
 
 - Checking in an already checked-in ticket returns `409`.
@@ -51,7 +61,8 @@ lib/tickets/check-in.ts
 
 Important functions:
 
-- `getOrganisationEventTickets(organisationId, eventId)`
+- `parseTicketPaginationOptions(searchParams)`
+- `getOrganisationEventTickets(organisationId, eventId, paginationOptions)`
 - `checkInOrganisationTicket(organisationId, ticketId)`
 - `checkOutOrganisationTicket(organisationId, ticketId)`
 
@@ -74,6 +85,7 @@ Behavior:
 - Unused tickets show `Check in`.
 - Checked-in tickets show timestamp and `Check out`.
 - Successful actions update local state and call `router.refresh()` so server-rendered counts refresh.
+- The organiser event tickets page renders one page of tickets at a time with Previous and Next cursor links.
 
 ## Tests
 
@@ -83,5 +95,5 @@ Coverage lives in:
 tests/integration/ticket-check-in.test.ts
 ```
 
-The suite covers own-organisation visibility, member denial, cross-organisation denial, check-in, double check-in conflict, check-out, invalid check-out conflict, and order/payment state preservation.
+The suite covers own-organisation visibility, member denial, cross-organisation denial, cursor pagination, invalid cursor handling, check-in, double check-in conflict, check-out, invalid check-out conflict, and order/payment state preservation.
 It also covers inconsistent `Ticket.organisationId` data to confirm event ownership remains the access source of truth, plus webhook issuance consistency for newly created tickets.

@@ -284,10 +284,12 @@ Ticket check-in/check-out state:
 - Check-in and check-out must not modify order status, Stripe data, ticket ownership, ticket type history, or payment state.
 - Double check-in is prevented by atomically updating only tickets where `checkedInAt` is still `null`.
 - Invalid check-out is prevented by atomically updating only tickets where `checkedInAt` is not `null`.
+- Organiser ticket listing is cursor-paginated by event using stable ordering on `Ticket.createdAt` and `Ticket.id`.
+- `Ticket(eventId, createdAt, id)` is indexed for event ticket cursor pagination.
 
 Current follow-up:
 
-- Ticket list pagination is the next organiser-facing scalability improvement.
+- Add pagination hardening coverage for same-`createdAt` cursor collisions and malformed limit/direction params.
 - Review stale pending cleanup separately because it still uses denormalized order ownership and touches lifecycle state.
 
 ## Multi-Tenant Access Pattern

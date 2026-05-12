@@ -45,10 +45,11 @@ Read these in order:
 
 Dated handover files are historical records:
 
-- [[Handover 2026-04-24]]
-- [[Handover 2026-04-27]]
-- [[Handover 2026-05-03]]
+- [[Handover 2026-04-24 SaaS Foundation]]
+- [[Handover 2026-04-27 Route Stability and Event Editing]]
+- [[Handover 2026-05-03 Docker Runtime Hardening]]
 - [[Handover 2026-05-03 Ticket Operations and Email Delivery]]
+- [[Handover 2026-05-12 Pagination Ownership and Dev Volume]]
 
 ## Key Directories
 

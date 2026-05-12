@@ -1,6 +1,6 @@
 # Handover 2026-05-03 - Ticket Operations and Email Delivery
 
-Read [[Current Handover]] first. This handover records the current organiser operations work after the Docker/runtime handover in [[Handover 2026-05-03]].
+Read [[Current Handover]] first. This handover records the current organiser operations work after the Docker/runtime handover in [[Handover 2026-05-03 Docker Runtime Hardening]].
 
 ## Session Focus
 

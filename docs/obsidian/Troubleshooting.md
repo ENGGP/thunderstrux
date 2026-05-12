@@ -381,7 +381,7 @@ Expected volumes in `docker-compose.dev.yml`:
 ```yaml
 volumes:
   - .:/app
-  - /app/node_modules
+  - node_modules:/app/node_modules
 ```
 
 Verify container sees latest file:
@@ -399,6 +399,8 @@ pnpm docker:dev:clean
 ```
 
 This recreates the dev app container with bind mounts. It does not remove the Postgres volume.
+
+The `/app/node_modules` mount should be the named Compose volume `thunderstrux_node_modules`. If an anonymous hash-named volume appears mounted at `/app/node_modules`, recreate the dev app container from the current Compose config so it uses the named volume.
 
 ## Integration Test Reset Fails
 

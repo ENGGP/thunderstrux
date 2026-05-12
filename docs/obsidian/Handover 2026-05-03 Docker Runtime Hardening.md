@@ -1,4 +1,4 @@
-# Handover 2026-05-03
+# Handover 2026-05-03 - Docker Runtime Hardening
 
 Read [[Current Handover]] first, then this file for the Docker/runtime hardening completed in this session.
 
@@ -166,8 +166,8 @@ Current docs updated:
 
 Historical handovers updated only to mark the old in-container build command as obsolete/unsafe:
 
-- [[Handover 2026-04-24]]
-- [[Handover 2026-04-27]]
+- [[Handover 2026-04-24 SaaS Foundation]]
+- [[Handover 2026-04-27 Route Stability and Event Editing]]
 
 ## Files Changed In Code/Config
 

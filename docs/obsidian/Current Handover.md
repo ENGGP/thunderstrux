@@ -2,7 +2,7 @@
 
 Read this first, then [[Thunderstrux Codebase Map]].
 
-Latest dated handover: [[Handover 2026-05-03 Ticket Operations and Email Delivery]].
+Latest dated handover: [[Handover 2026-05-12 Pagination Ownership and Dev Volume]].
 
 ## Current State
 
@@ -37,6 +37,7 @@ Implemented migrations:
 - `20260503020000_manual_order_refund_flag`: adds local-only manual refund tracking on orders.
 - `20260503030000_ticket_check_in_state`: adds ticket check-in timestamp state.
 - `20260503040000_ticket_email_delivery_tracking`: adds ticket delivery email tracking on orders.
+- `20260503050000_ticket_event_cursor_index`: adds the event ticket cursor pagination index on `Ticket(eventId, createdAt, id)`.
 
 Recent feature areas:
 
@@ -49,8 +50,9 @@ Recent feature areas:
 - Checkout-created orders and reservations write organisation ownership from `Event.organisationId`.
 - Organiser order detail at `/dashboard/orders/[orderId]`.
 - Organiser manual refund flag, Stripe session copy/view support, and paid-order ticket email resend.
-- Event ticket list at `/dashboard/events/[eventId]/tickets`.
+- Cursor-paginated event ticket list at `/dashboard/events/[eventId]/tickets`.
 - Ticket check-in/check-out state through `Ticket.checkedInAt`, with invalid transition prevention.
+- Organiser event ticket listing uses cursor pagination with stable ordering by `Ticket.createdAt` and `Ticket.id`.
 - Automatic paid-order ticket email delivery after webhook fulfilment and ticket issuance.
 - Ticket reservation model and reservation-aware checkout/webhook reconciliation.
 - App-level stale pending order cleanup across order, ticket, checkout, public event, dashboard, and analytics reads.
@@ -169,6 +171,13 @@ Docker volume: thunderstrux_postgres_data
 Container path: /var/lib/postgresql/data
 ```
 
+The dev app container also uses a named dependency volume:
+
+```text
+Docker volume: thunderstrux_node_modules
+Container path: /app/node_modules
+```
+
 Useful commands:
 
 ```bash
@@ -190,10 +199,10 @@ Latest verification:
 
 - `docker compose build app` passed with the multi-stage Dockerfile.
 - `docker compose up -d` starts the production-like container and runs `pnpm prisma:migrate:deploy` before `pnpm start`.
-- `docker compose exec app pnpm prisma:migrate` applied through `20260503040000_ticket_email_delivery_tracking`.
+- `docker compose exec app pnpm prisma:migrate` applied through `20260503050000_ticket_event_cursor_index`.
 - `pnpm exec tsc --noEmit` passed after removing volatile `.next` generated type includes from normal TypeScript validation.
 - `docker compose exec app pnpm test:smoke` passed with 22 smoke steps.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 54 tests after event-based order ownership and checkout ownership regression coverage.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 56 tests after ticket pagination coverage.
 - Previous build verification passed before the runtime-build guard was added. Current safe build validation is `docker compose build app`.
 - Required-env startup validation passed: `docker compose --env-file <temp> up app` failed before app startup when `DATABASE_URL` was omitted, output contained `DATABASE_URL is required`, and the temporary env file was deleted.
 - Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
@@ -273,7 +282,7 @@ Important rules:
 
 Recommended next implementation branch:
 
-- Ticket list pagination for `/dashboard/events/[eventId]/tickets` and `GET /api/events/[eventId]/tickets`. This is the next organiser-facing scalability improvement; keep the existing event-based ownership checks and response shape backwards-compatible where practical.
+- Add the small follow-up pagination hardening tests identified during review: same-`createdAt` cursor collision coverage, malformed `limit` and `direction` coverage, and optional empty stale-cursor `pageInfo` cleanup.
 
 Other pending branches:
 

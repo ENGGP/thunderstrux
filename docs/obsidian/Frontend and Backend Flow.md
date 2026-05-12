@@ -396,7 +396,10 @@ Flow:
 Organisation opens /dashboard/events/[eventId]/tickets
   -> page resolves current organisation through Organisation.accountUserId
   -> server query verifies the event belongs to the current organisation
-  -> page renders issued Ticket rows for that event
+  -> page parses limit/cursor/direction pagination params
+  -> page renders one cursor-paginated slice of issued Ticket rows for that event
+  -> pagination uses stable ordering by Ticket.createdAt then Ticket.id
+  -> Next and Previous links pass opaque cursors back to the same route/API
   -> each row shows buyer, ticket type, createdAt, and unused/checked-in state
   -> Check in button calls POST /api/tickets/[ticketId]/check-in
   -> API verifies ticket ownership through the event/organisation relationship
@@ -415,6 +418,8 @@ Rules:
 - Check-out returns `409` when the ticket is already unused.
 - Check-in and check-out only mutate `Ticket.checkedInAt`.
 - Check-in and check-out do not alter order status, Stripe state, ticket ownership, or ticket type data.
+- `GET /api/events/[eventId]/tickets` defaults to 25 tickets per page and supports `limit`, `cursor`, and `direction`.
+- Invalid pagination params return `400` from the API; the server-rendered page redirects invalid pagination back to the first page.
 
 ## Stripe Settings
 

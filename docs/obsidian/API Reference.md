@@ -275,7 +275,7 @@ Rules:
 
 ### `GET /api/events/[eventId]/tickets`
 
-Lists issued tickets for one organiser-owned event.
+Lists issued tickets for one organiser-owned event with cursor pagination.
 
 Rules:
 
@@ -285,6 +285,15 @@ Rules:
 - The event must belong to the organisation owned by `session.user`.
 - Access is resolved server-side; the frontend does not provide trusted organisation ownership.
 - Returns actual `Ticket` rows only.
+- Default page size is 25.
+- Maximum page size is 100.
+- Ordering is stable by `Ticket.createdAt ASC, Ticket.id ASC`.
+
+Query params:
+
+- `limit`: optional integer from 1 to 100.
+- `cursor`: optional opaque cursor returned by `pageInfo.nextCursor` or `pageInfo.previousCursor`.
+- `direction`: optional, either `next` or `prev`; defaults to `next`.
 
 Response:
 
@@ -305,7 +314,19 @@ Response:
       "buyerEmail": "buyer@example.com",
       "buyerName": "Buyer Name"
     }
-  ]
+  ],
+  "pageInfo": {
+    "limit": 25,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "nextCursor": null,
+    "previousCursor": null
+  },
+  "counts": {
+    "total": 1,
+    "unused": 1,
+    "checkedIn": 0
+  }
 }
 ```
 
@@ -313,6 +334,7 @@ Status:
 
 - `401` unauthenticated.
 - `403` non-organisation account.
+- `400` malformed `limit`, `cursor`, or `direction`.
 - `404` event missing or not owned by the current organisation.
 
 ## Tickets

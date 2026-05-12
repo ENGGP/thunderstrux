@@ -142,6 +142,8 @@ Rules:
 - Return only `published` events.
 - Do not require auth.
 - Do not support dashboard previews.
+- Public event reads are read-only and do not create demo data or run stale pending order cleanup.
+- If no published events exist, `GET /api/public/events` returns an empty list.
 
 ## Organiser Event View
 
@@ -170,8 +172,8 @@ Public route behavior:
 - Members and logged-out users use the public buyer-facing event page.
 - Organisation accounts are redirected to `/dashboard/events/[eventId]`.
 
-## Public Demo Event Loader
+## Public Demo Events
 
-`lib/events/public-events.ts` ensures public discovery has demo events if there are no published events.
+Demo public events are created by `prisma/seed.mjs`.
 
-This is separate from `prisma/seed.mjs`. The seed is the preferred way to restore a full development database because it also creates users, organisation accounts, member accounts, memberships, orders, and tickets.
+The public event runtime does not auto-create demo events. The seed is the preferred way to restore a full development database because it also creates users, organisation accounts, member accounts, memberships, orders, and tickets.

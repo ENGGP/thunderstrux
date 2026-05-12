@@ -22,6 +22,7 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies wit
 - Event creation, editing, publishing, unpublishing, and deletion rules.
 - Stripe Checkout with 30-minute ticket reservations and webhook-only fulfilment.
 - Ticket delivery email after successful webhook fulfilment, with manual resend.
+- Public event reads are read-only; development demo public events come from `prisma/seed.mjs`.
 - Non-production `/success?session_id=...` fallback exists only to reconcile paid sessions when local webhook forwarding is absent.
 - Stripe Connect Express onboarding with explicit lifecycle states.
 
@@ -55,7 +56,7 @@ Recent feature areas:
 - Organiser event ticket listing uses cursor pagination with stable ordering by `Ticket.createdAt` and `Ticket.id`.
 - Automatic paid-order ticket email delivery after webhook fulfilment and ticket issuance.
 - Ticket reservation model and reservation-aware checkout/webhook reconciliation.
-- App-level stale pending order cleanup across order, ticket, checkout, public event, dashboard, and analytics reads.
+- App-level stale pending order cleanup across order, ticket, checkout, dashboard, and analytics reads. Public event reads are read-only.
 - Pending orders are internal system state and hidden from normal member/organiser UX.
 - Stripe webhooks verify signatures from raw request bodies and ignore signed non-checkout events with `200`.
 - Lightweight smoke tests in `scripts/smoke-test.mjs`.
@@ -288,7 +289,7 @@ Other pending branches:
 
 - Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry behaviour.
 - API error standardisation and small UI state consistency improvements.
-- Move demo event auto-creation out of public read paths before production hardening.
+- Public read-time demo event auto-creation has been removed; seed data now owns demo public events.
 - Future staff/RBAC, audit logs, QR scanning, and asynchronous email outbox.
 
 ## High-Risk Rules To Preserve

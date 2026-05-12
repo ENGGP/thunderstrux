@@ -14,7 +14,6 @@ Flow:
 User visits /
   -> page fetches GET /api/public/events with cache: no-store
   -> API calls getPublishedEvents()
-  -> getPublishedEvents() ensures demo published events exist if there are zero published events
   -> page renders public event cards
 ```
 
@@ -22,7 +21,8 @@ Important current behavior:
 
 - `app/page.tsx` is `force-dynamic`.
 - Public homepage cards always link to `/events/[eventId]`.
-- If there are zero published events in the whole database, demo events are auto-created.
+- Public event reads are read-only. If there are zero published events in the whole database, the API returns an empty event list.
+- Demo public events come from `prisma/seed.mjs`, not from public runtime reads.
 
 ## Public Event Detail
 
@@ -40,7 +40,6 @@ User visits /events/[eventId]
   -> proxy redirects organisation accounts to /dashboard/events/[eventId]
   -> page fetches GET /api/public/events/[eventId]
   -> API returns only published events
-  -> API runs stale pending order cleanup for that event before returning ticketTypes
   -> page renders event details and ticketTypes
   -> PublicTicketPurchase handles client-side checkout start
 ```

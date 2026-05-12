@@ -176,14 +176,14 @@ They are not currently part of `prisma/seed.mjs`. Running `docker compose down -
 
 ## Important Interaction With Demo Public Events
 
-`lib/events/public-events.ts` contains fallback logic:
+Public event reads are read-only:
 
-- If the database has zero published events, the public homepage auto-creates demo published events.
+- If the database has zero published events, the public homepage shows an empty state.
+- Public runtime routes do not create organisations, events, ticket types, users, orders, reservations, tickets, or demo data.
 
 This means:
 
-- Public pages can look populated even when you have not run the seed.
-- Dashboard memberships and users still require the seed.
+- Public pages only look populated when real or seeded published events exist.
 - The seed remains the correct way to restore full development state.
 
 ## What `down -v` Removes

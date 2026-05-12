@@ -87,7 +87,7 @@ lib/
   client/                            Frontend fetch and helper utilities
   db/                                Prisma client and organisation scoping helpers
   email/                             Ticket delivery email service
-  events/                            Public event loading and demo event fallback
+  events/                            Read-only public event loading
   orders/                            Grouped orders and stale pending order cleanup
   payments/                          Shared Checkout reconciliation helper
   permissions/                       Legacy role permission helpers

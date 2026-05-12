@@ -485,7 +485,8 @@ Current cleanup paths:
 - organisation `/dashboard`
 - organiser orders through `/api/orders` and `/dashboard/orders`
 - organiser event analytics through `/dashboard/events/[eventId]`
-- public event details through `GET /api/public/events/[eventId]`
+
+Public event reads are read-only and do not run stale pending order cleanup. Checkout remains authoritative for expiring stale reservations before new reservations are created.
 
 Safety rules:
 

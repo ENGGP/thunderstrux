@@ -79,6 +79,7 @@ Rules:
 - No auth required.
 - Only `published` events are returned.
 - Response is public-safe.
+- Read-only. If no published events exist, returns an empty `events` array instead of creating demo data.
 
 Example response:
 
@@ -107,7 +108,7 @@ Rules:
 - No auth required.
 - Event must be `published`.
 - Includes ticket types.
-- Runs stale pending order cleanup for the event before returning availability-sensitive ticket type data.
+- Read-only. Does not run stale pending order cleanup or mutate orders/reservations.
 - Organisation accounts are redirected at the route/proxy layer from `/events/[eventId]` to `/dashboard/events/[eventId]`; this API remains public-safe.
 
 ## Organisations

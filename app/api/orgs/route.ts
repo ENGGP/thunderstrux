@@ -15,6 +15,7 @@ import {
   requireAuthenticatedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createOrganisationSchema } from "@/lib/validators/orgs";
 import { normaliseSlug } from "@/lib/validators/slug";
@@ -46,6 +47,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   let user: { id: string };
 
   try {

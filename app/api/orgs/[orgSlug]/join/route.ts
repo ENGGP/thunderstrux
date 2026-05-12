@@ -11,6 +11,7 @@ import {
   requireAccountRole
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
   params: Promise<{
@@ -18,7 +19,13 @@ type RouteContext = {
   }>;
 };
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const { orgSlug } = await context.params;
 
   try {

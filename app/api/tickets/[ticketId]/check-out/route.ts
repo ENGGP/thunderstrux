@@ -17,6 +17,7 @@ import {
   TicketNotCheckedInError,
   checkOutOrganisationTicket
 } from "@/lib/tickets/check-in";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
   params: Promise<{
@@ -24,7 +25,13 @@ type RouteContext = {
   }>;
 };
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const { ticketId } = await context.params;
 
   try {

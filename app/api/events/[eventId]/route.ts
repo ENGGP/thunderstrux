@@ -19,6 +19,7 @@ import {
   requireOrganisationId,
   scopedByOrganisation
 } from "@/lib/db/organisation-scope";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { updateEventSchema } from "@/lib/validators/events";
 
@@ -89,6 +90,12 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const { eventId } = await context.params;
 
   const validation = await validateJson(request, updateEventSchema);
@@ -245,6 +252,12 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const { eventId } = await context.params;
 
   try {

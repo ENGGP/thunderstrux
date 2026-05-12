@@ -2,6 +2,17 @@
 
 This is a concise reference for implemented API routes. Security and data-model rules are documented in [[Database and Multi Tenancy]].
 
+## Mutation Origin Guard
+
+Custom cookie-authenticated mutation routes (`POST`, `PATCH`, `DELETE`) use a central trusted-origin guard.
+
+Rules:
+
+- If `Origin` exists, it must match `NEXT_PUBLIC_APP_URL` or `TRUSTED_APP_ORIGINS`.
+- If `Origin` is missing and `Referer` exists, the `Referer` origin must be trusted.
+- Compatibility mode: if both are missing, the request is currently allowed and a warning is logged for remediation tracking.
+- Stripe webhook routes are exempt and remain protected by Stripe signature verification on raw request bodies.
+
 ## Auth And Profile
 
 ### `POST /api/auth/signup`

@@ -15,6 +15,7 @@ import {
   OrganisationOrderAccessError,
   markOrganisationOrderManuallyRefunded
 } from "@/lib/orders/order-detail";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
   params: Promise<{
@@ -22,7 +23,13 @@ type RouteContext = {
   }>;
 };
 
-export async function PATCH(_request: Request, context: RouteContext) {
+export async function PATCH(request: Request, context: RouteContext) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const { orderId } = await context.params;
 
   try {

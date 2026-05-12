@@ -18,10 +18,17 @@ import {
   requireOrganisationId,
   scopedByOrganisation
 } from "@/lib/db/organisation-scope";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createEventSchema } from "@/lib/validators/events";
 
 export async function POST(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const validation = await validateJson(request, createEventSchema);
 
   if (!validation.success) {

@@ -15,10 +15,17 @@ import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { createOnboardingLink } from "@/lib/stripe/connect";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
 
 export async function POST(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const validation = await validateJson(request, organisationConnectSchema);
 
   if (!validation.success) {

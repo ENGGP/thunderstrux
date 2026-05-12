@@ -26,6 +26,7 @@ import {
   releaseReservationForOrder,
   runSerializableReservationTransaction
 } from "@/lib/tickets/reservations";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 class CheckoutAvailabilityError extends Error {
   details: Array<{ path: string[]; message: string }>;
@@ -38,6 +39,12 @@ class CheckoutAvailabilityError extends Error {
 }
 
 export async function POST(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const validation = await validateJson(request, createEventCheckoutSchema);
 
   if (!validation.success) {

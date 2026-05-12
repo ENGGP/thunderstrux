@@ -11,10 +11,17 @@ import {
   requireAccountRole
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { memberProfileSchema } from "@/lib/validators/auth";
 
 export async function PATCH(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const validation = await validateJson(request, memberProfileSchema);
 
   if (!validation.success) {

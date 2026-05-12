@@ -12,6 +12,7 @@ import {
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
   params: Promise<{
@@ -40,7 +41,13 @@ const eventSelect = {
   }
 } as const;
 
-export async function PATCH(_request: Request, context: RouteContext) {
+export async function PATCH(request: Request, context: RouteContext) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const { eventId } = await context.params;
 
   try {

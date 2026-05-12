@@ -18,6 +18,7 @@ import {
   StripeConnectPlatformNotReadyError
 } from "@/lib/stripe/connect";
 import { StripeConfigurationError } from "@/lib/stripe";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
 
@@ -39,6 +40,12 @@ function stripeErrorResponse(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const validation = await validateJson(request, organisationConnectSchema);
 
   if (!validation.success) {

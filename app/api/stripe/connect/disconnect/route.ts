@@ -11,11 +11,18 @@ import {
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { disconnectAccount, notConnectedStatus } from "@/lib/stripe/connect";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
 
 export async function POST(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const validation = await validateJson(request, organisationConnectSchema);
 
   if (!validation.success) {

@@ -19,6 +19,7 @@ import {
   assertEventBelongsToOrganisation,
   requireOrganisationId
 } from "@/lib/db/organisation-scope";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createScopedTicketTypeSchema } from "@/lib/validators/events";
 
@@ -29,6 +30,12 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, context: RouteContext) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+
+  if (trustedOriginError) {
+    return trustedOriginError;
+  }
+
   const { eventId } = await context.params;
   const validation = await validateJson(request, createScopedTicketTypeSchema);
 

@@ -48,11 +48,13 @@ localhost:5433 in dev override only
 - app uses the built `.next-build` output from the Docker image
 - app receives only app runtime environment variables
 - app requires `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`, `NEXTAUTH_URL`, and `NEXT_PUBLIC_APP_URL` at Compose interpolation time
+- app receives optional `RATE_LIMIT_*` values
 - app uses `restart: unless-stopped`
 - app waits for the database healthcheck
 - app entrypoint runs `pnpm prisma:migrate:deploy`
 - database uses the named volume `postgres_data`
 - database port is not exposed to the host
+- Redis 7 is available as `redis` for rate limiting when `RATE_LIMIT_ENABLED=true`
 
 `docker-compose.dev.yml` only adds development-specific overrides:
 
@@ -563,6 +565,17 @@ EMAIL_FROM
 ```
 
 When email values are missing, paid webhook fulfilment still succeeds, automatic email delivery records an error, and manual resend returns an email configuration error.
+
+Rate-limit values:
+
+```text
+RATE_LIMIT_ENABLED=false
+RATE_LIMIT_REDIS_URL=redis://redis:6379
+RATE_LIMIT_FAIL_OPEN=false
+RATE_LIMIT_KEY_PREFIX=thunderstrux
+```
+
+Keep `RATE_LIMIT_ENABLED=false` for normal local development unless testing throttling behavior. Production should enable it and point `RATE_LIMIT_REDIS_URL` at a managed or otherwise reliable Redis-compatible service.
 
 Database `.env.db` values:
 

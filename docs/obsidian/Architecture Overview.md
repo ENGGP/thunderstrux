@@ -22,6 +22,7 @@ Browser
   -> Next.js App Router pages and layouts
   -> Client components submit forms and call route handlers
   -> Route handlers validate input and enforce auth/tenancy
+  -> Mutation guards enforce trusted origins and selected abuse limits
   -> Prisma reads and writes PostgreSQL
   -> Stripe APIs create checkout sessions and onboarding links
   -> Stripe webhooks reconcile reservations, payments, tickets, and account readiness
@@ -32,6 +33,7 @@ Docker runtime:
 - base `docker-compose.yml` runs the production-like image with `pnpm start`
 - `docker/entrypoint.sh` runs `pnpm prisma:migrate:deploy` before startup
 - `docker-compose.dev.yml` adds source bind mounts, polling, `pnpm dev`, and the host database port for local tools
+- Redis 7 is available for central rate limiting when `RATE_LIMIT_ENABLED=true`
 
 ## Product Account Model
 
@@ -163,6 +165,22 @@ app/
 - JWT callback stores `userId`, `accountRole`, profile names, and onboarding timestamp in the token.
 - Session callback exposes `session.user.id` and `session.user.accountRole`.
 - Custom sign-in page is `/login`.
+
+## Request Protection Model
+
+Custom cookie-authenticated mutation routes use two central protections:
+
+- `lib/security/request-guard.ts` validates first-party `Origin` or `Referer` headers for browser mutation routes.
+- `lib/security/rate-limit.ts` applies Redis-backed fixed-window rate limits to high-abuse routes.
+
+The rate limiter hashes bucket parts before constructing Redis keys. It does not store raw emails, user IDs, order IDs, tokens, cookies, passwords, Redis URLs, or unhashed bucket keys.
+
+Failure policy:
+
+- Login, signup, and organisation creation fail closed when rate limiting is unavailable.
+- Checkout creation, ticket email resend, organisation join/leave, ticket check-in/check-out, and Stripe Connect browser mutations fail open with a structured warning when rate limiting is unavailable.
+
+Stripe webhook routes are deliberately excluded from both protections because they verify Stripe signatures against the raw request body.
 
 ## Multi-Tenancy Model
 

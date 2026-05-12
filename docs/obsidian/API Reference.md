@@ -32,6 +32,7 @@ Rules:
 - Login, signup, and organisation creation fail closed if the limiter backend is unavailable.
 - Checkout, resend, join/leave, check-in/check-out, and Stripe Connect mutations fail open with a structured warning if the limiter backend is unavailable.
 - Limit responses use `429` with a safe retry message and `Retry-After` when available.
+- Bucket keys are hashed before Redis storage; warning logs avoid request bodies, cookies, tokens, passwords, raw emails, raw user IDs, raw order IDs, Redis URLs, and unhashed bucket keys.
 - Stripe webhook routes are not rate-limited.
 
 ## Auth And Profile

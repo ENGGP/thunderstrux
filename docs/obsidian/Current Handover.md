@@ -2,66 +2,52 @@
 
 Read this first, then [[Thunderstrux Codebase Map]].
 
-Latest dated handover: [[Handover 2026-05-12 Pagination Ownership and Dev Volume]].
+Latest dated handover: [[Handover 2026-05-12 Trusted Origin and Rate Limiting]].
 
 ## Current State
 
-Thunderstrux is a Docker-based Next.js App Router SaaS for student societies with:
+Thunderstrux is a Docker-based Next.js 16 App Router SaaS for student societies.
 
-- Auth.js credentials auth.
-- Two account roles: `member` and `organisation`.
-- Member profile onboarding, organisation search/join/leave, public organisation details, public event browsing, ticket checkout, and `/tickets`.
-- Organisation accounts that own exactly one organisation through `Organisation.accountUserId`.
-- Organisation dashboard at `/dashboard`.
-- Organisation management routes at `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
-- Organisation event analytics at `/dashboard/events/[eventId]`.
-- Organisation order detail and safe order actions.
-- Organisation ticket visibility and manual check-in for event attendees.
-- Organisation accounts redirect from public event pages to organiser event analytics.
-- Legacy `/dashboard/[orgSlug]/*` routes kept as redirects.
-- Event creation, editing, publishing, unpublishing, and deletion rules.
-- Stripe Checkout with 30-minute ticket reservations and webhook-only fulfilment.
-- Ticket delivery email after successful webhook fulfilment, with manual resend.
-- Public event reads are read-only; development demo public events come from `prisma/seed.mjs`.
-- Non-production `/success?session_id=...` fallback exists only to reconcile paid sessions when local webhook forwarding is absent.
-- Stripe Connect Express onboarding with explicit lifecycle states.
+Core model:
 
-For MVP, organisation committee members may share the one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
+- `Organisation` is the tenant boundary.
+- Organisation dashboard access is based on `Organisation.accountUserId`.
+- `Event.organisationId` is the canonical ownership source for event-owned resources.
+- Public event reads are read-only and never create demo data.
+- Stripe Checkout fulfilment remains webhook-driven.
+- Email delivery is non-blocking and must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
+
+Implemented product areas:
+
+- Auth.js credentials auth with `member` and `organisation` account roles.
+- Member profile onboarding, organisation search/join/leave, public organisation pages, public event browsing, checkout, and `/tickets`.
+- Organisation dashboard, event management, event analytics, order review, manual refund flagging, ticket email resend, Stripe Connect settings, and ticket check-in/check-out.
+- Legacy `/dashboard/[orgSlug]/*` routes remain compatibility redirects.
+- Stripe Checkout uses 30-minute ticket reservations.
+- Stripe Connect Express onboarding has explicit local lifecycle states.
+- Public event demo data comes from `prisma/seed.mjs`, not runtime reads.
+
+Security hardening now in place:
+
+- Central trusted-origin guard for custom cookie-authenticated mutation routes.
+- Central Redis-backed fixed-window rate limiting for credentials login, signup, checkout creation, ticket email resend, organisation create/join/leave, ticket check-in/check-out, and Stripe Connect browser mutations.
+- Stripe webhook routes are exempt from trusted-origin and rate-limit guards; they remain governed by Stripe signature verification over raw request bodies.
+
+For MVP, organisation committee members may share one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
 
 ## Latest Migrations
 
 Implemented migrations:
 
-- `20260428000000_account_role_groundwork`: role-based member/organisation account model.
-- `20260429000000_ticket_reservations`: checkout ticket reservations.
-- `20260429010000_order_expired_status`: adds the `expired` order status.
-- `20260503020000_manual_order_refund_flag`: adds local-only manual refund tracking on orders.
-- `20260503030000_ticket_check_in_state`: adds ticket check-in timestamp state.
-- `20260503040000_ticket_email_delivery_tracking`: adds ticket delivery email tracking on orders.
-- `20260503050000_ticket_event_cursor_index`: adds the event ticket cursor pagination index on `Ticket(eventId, createdAt, id)`.
+- `20260428000000_account_role_groundwork`
+- `20260429000000_ticket_reservations`
+- `20260429010000_order_expired_status`
+- `20260503020000_manual_order_refund_flag`
+- `20260503030000_ticket_check_in_state`
+- `20260503040000_ticket_email_delivery_tracking`
+- `20260503050000_ticket_event_cursor_index`
 
-Recent feature areas:
-
-- Role-based auth and slugless dashboard routes.
-- Member profile onboarding, organisation search/join, and `/tickets`.
-- Organisation dashboard, events, orders, settings, and Stripe Connect.
-- Organisation-safe event viewing and analytics.
-- Event-scoped organiser orders.
-- Organiser order access is authorised through `Order.event.organisationId`; `Order.organisationId` remains denormalized storage.
-- Checkout-created orders and reservations write organisation ownership from `Event.organisationId`.
-- Organiser order detail at `/dashboard/orders/[orderId]`.
-- Organiser manual refund flag, Stripe session copy/view support, and paid-order ticket email resend.
-- Cursor-paginated event ticket list at `/dashboard/events/[eventId]/tickets`.
-- Ticket check-in/check-out state through `Ticket.checkedInAt`, with invalid transition prevention.
-- Organiser event ticket listing uses cursor pagination with stable ordering by `Ticket.createdAt` and `Ticket.id`.
-- Automatic paid-order ticket email delivery after webhook fulfilment and ticket issuance.
-- Ticket reservation model and reservation-aware checkout/webhook reconciliation.
-- App-level stale pending order cleanup across order, ticket, checkout, dashboard, and analytics reads. Public event reads are read-only.
-- Pending orders are internal system state and hidden from normal member/organiser UX.
-- Stripe webhooks verify signatures from raw request bodies and ignore signed non-checkout events with `200`.
-- Lightweight smoke tests in `scripts/smoke-test.mjs`.
-- Functional/integration tests with Vitest, isolated `thunderstrux_test` database reset, mocked auth, and mocked Stripe/network boundaries.
-- TypeScript validation ignores volatile `.next` dev-generated route types and relies on `.next-build/types` for stable generated route typing.
+No schema migration was added for the trusted-origin or rate-limiting slices.
 
 ## Current Routes
 
@@ -103,8 +89,6 @@ Legacy compatibility:
 - `/dashboard/[orgSlug]/orders`
 - `/dashboard/[orgSlug]/settings`
 
-The legacy routes redirect for the owning organisation account and return not found when ownership does not match.
-
 ## Seeded Logins
 
 All seeded accounts use:
@@ -144,40 +128,38 @@ Best smoke-test accounts:
 
 Use Docker for normal development. The app container resolves Postgres at `db:5432`; running Next directly on the Windows host with the Docker `.env` will not resolve `db`.
 
+Docker services:
+
+- `app`: Next.js runtime.
+- `db`: PostgreSQL 16.
+- `redis`: Redis 7, used when `RATE_LIMIT_ENABLED=true`.
+
 Docker modes:
 
 - `docker-compose.yml`: production-like runtime, built image, `pnpm start`, migration deploy entrypoint, no database host port.
 - `docker-compose.dev.yml`: development override, bind-mounted source, `pnpm dev`, polling, database host port `5433`.
 
-Environment files:
-
-- `.env`: app runtime values such as `DATABASE_URL`, Auth.js URLs/secrets, Stripe keys, and optional email delivery keys.
-- `.env.db`: Postgres container values only.
-- `.env.example` and `.env.db.example` are the tracked templates.
-- base Compose fails fast if required app env values are missing or empty.
-- dev Compose explicitly sets `THUNDERSTRUX_RUNTIME_CONTAINER=false`.
-
-Database:
+Important env values:
 
 ```text
-PostgreSQL 16
-Database: thunderstrux
-User: thunderstrux
-Password: thunderstrux
-Container host: db
-Host machine: localhost
-Host port: 5433 in dev override only
-Container port: 5432
-Docker volume: thunderstrux_postgres_data
-Container path: /var/lib/postgresql/data
+DATABASE_URL=
+AUTH_SECRET=
+AUTH_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+TRUSTED_APP_ORIGINS=
+RATE_LIMIT_ENABLED=false
+RATE_LIMIT_REDIS_URL=redis://redis:6379
+RATE_LIMIT_FAIL_OPEN=false
+RATE_LIMIT_KEY_PREFIX=thunderstrux
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_CONNECT_WEBHOOK_SECRET=
+RESEND_API_KEY=
+EMAIL_FROM=
 ```
 
-The dev app container also uses a named dependency volume:
-
-```text
-Docker volume: thunderstrux_node_modules
-Container path: /app/node_modules
-```
+`RATE_LIMIT_ENABLED=false` preserves local/dev behaviour. Production should set `RATE_LIMIT_ENABLED=true` and provide a reachable Redis URL.
 
 Useful commands:
 
@@ -196,117 +178,72 @@ docker compose build app
 pnpm docker:rebuild
 ```
 
-Latest verification:
+## Latest Verification
 
-- `docker compose build app` passed with the multi-stage Dockerfile.
-- `docker compose up -d` starts the production-like container and runs `pnpm prisma:migrate:deploy` before `pnpm start`.
-- `docker compose exec app pnpm prisma:migrate` applied through `20260503050000_ticket_event_cursor_index`.
-- `pnpm exec tsc --noEmit` passed after removing volatile `.next` generated type includes from normal TypeScript validation.
-- `docker compose exec app pnpm test:smoke` passed with 22 smoke steps.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed with 10 files and 56 tests after ticket pagination coverage.
-- Previous build verification passed before the runtime-build guard was added. Current safe build validation is `docker compose build app`.
-- Required-env startup validation passed: `docker compose --env-file <temp> up app` failed before app startup when `DATABASE_URL` was omitted, output contained `DATABASE_URL is required`, and the temporary env file was deleted.
-- Latest smoke/build verification covers organiser public-event redirect, member organiser-event redirect, organiser analytics rendering, event-scoped orders, member organisation leave, public organisation details, organisation checkout denial, stale pending order expiry, cleanup idempotency, paid/failed cleanup safety, and expired reservation availability behavior.
-- A Stripe webhook 400 investigation found a mismatched `STRIPE_WEBHOOK_SECRET` between the app container and active Stripe CLI listener. Recreate the app container after changing `.env`; `docker compose restart app` is not enough.
-- A CSS outage investigation found that running `pnpm build` inside a live production-like `next start` container can desynchronise `.next-build` static assets from the running server manifest. Recreate the app container after any in-container production build validation.
-- Runtime app containers set `THUNDERSTRUX_RUNTIME_CONTAINER=true`; `scripts/prepare-next-build.mjs` now blocks `pnpm build` in that context. Use `pnpm docker:build` or `pnpm docker:rebuild`.
-- `proxy.ts` now rejects missing or placeholder production `AUTH_SECRET` values instead of silently using `dev-secret`.
-- `scripts/doctor-dev.mjs` reports volatile `.next` type includes and recommends relying on `.next-build` route types.
+Most recent validation after P0.3 rate limiting:
 
-## Next Route Stability
-
-Keep these route stability fixes:
-
-- `scripts/clean-next-dev.mjs`
-- `scripts/prepare-next-build.mjs`
-- `next.config.ts` uses `.next-build` for production and `.next` for dev.
-- `.next-build/` ignored in `.gitignore` and `.dockerignore`.
-- `app/(dashboard)/dashboard/events/layout.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
-
-`tsconfig.json` should include generated production build types under `.next-build`, not stale `.next` or `.next/dev` route types. Stale `.next/dev/types/validator.ts` and route type files can break `pnpm exec tsc --noEmit` even when application code is valid. Use `docker compose build app` for safe build validation.
-
-`pnpm build` runs `scripts/prepare-next-build.mjs` and `pnpm prisma:generate` before `next build`, so build verification strips stale `.next` dev type includes and regenerates Prisma Client from the current schema.
-
-`pnpm dev` blocks accidental host `next dev` when the project `.env` points at `db:5432`. The underlying guard script only warns by default, so it does not block Docker startup or build scripts.
-
-`scripts/clean-next-dev.mjs` clears volatile `.next/dev` and `.next/types` before dev startup. It warns and continues if Windows/Docker/OneDrive file locking prevents deletion; it still never removes `.next-build`.
-
-Use `pnpm dev:webpack` inside Docker if Turbopack hot reload or route manifest generation becomes unstable.
-
-Use `pnpm dev:doctor` for a read-only check of stale `.next/dev` metadata, missing dev manifests, volatile `.next` type includes in `tsconfig`, and localhost reachability.
-
-Current generated include entries:
-
-```json
-".next-build/types/**/*.ts"
-```
+- `pnpm exec tsc --noEmit` passed.
+- `git diff --check` passed with CRLF warnings only.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 12 files, 73 tests.
+- `docker compose exec app pnpm test:smoke` passed: 22 smoke checks.
 
 ## Integration Test State
 
-Current integration test runner:
+Current integration suites:
 
-```text
-scripts/run-integration-tests.mjs
-```
-
-Current suites:
-
-```text
-tests/integration/auth-access.test.ts
-tests/integration/organisation-tenancy.test.ts
-tests/integration/event-lifecycle.test.ts
-tests/integration/checkout-reservations.test.ts
-tests/integration/webhook-reconciliation.test.ts
-tests/integration/pending-cleanup.test.ts
-tests/integration/member-features.test.ts
-tests/integration/orders-api.test.ts
-tests/integration/public-safe-pages.test.ts
-tests/integration/ticket-check-in.test.ts
-```
+- `tests/integration/auth-access.test.ts`
+- `tests/integration/checkout-reservations.test.ts`
+- `tests/integration/event-lifecycle.test.ts`
+- `tests/integration/member-features.test.ts`
+- `tests/integration/orders-api.test.ts`
+- `tests/integration/organisation-tenancy.test.ts`
+- `tests/integration/pending-cleanup.test.ts`
+- `tests/integration/public-safe-pages.test.ts`
+- `tests/integration/rate-limit.test.ts`
+- `tests/integration/ticket-check-in.test.ts`
+- `tests/integration/trusted-origin-guard.test.ts`
+- `tests/integration/webhook-reconciliation.test.ts`
 
 Important rules:
 
 - Integration tests must run against a database whose name contains `_test`.
 - The default isolated database is `thunderstrux_test`.
-- The runner sets `DATABASE_URL` from the resolved test URL so host `DATABASE_URL` values do not leak into child commands.
-- The runner resets the test database with `pnpm prisma migrate reset --force --skip-seed`.
-- The runner runs `pnpm prisma:generate` after reset so Prisma Client matches the current schema.
-- The runner then starts Vitest.
-- Tests are sequential; Vitest uses `--no-file-parallelism --maxWorkers=1 --maxConcurrency=1`.
-- `tests/helpers/db-reset.ts` truncates application tables before each test.
-- The test setup mocks `@/auth`, blocks real `fetch` network calls, and uses Stripe SDK mocks where practical.
-- Webhook reconciliation tests call the shared reconciliation helper with mocked Checkout Sessions instead of relying on live Stripe CLI delivery.
-- Current future improvement: add stricter test hardening for `console.error`, unhandled rejections, invariant helpers, and lightweight Prisma query-count checks.
+- Tests are sequential.
+- The setup blocks real network calls and mocks Stripe where practical.
+- Rate-limit tests use the central test backend exposed by `lib/security/rate-limit.ts`; do not point them at a real Redis instance unless deliberately testing infrastructure.
 
 ## Current Next Work
 
 Recommended next implementation branch:
 
-- Add the small follow-up pagination hardening tests identified during review: same-`createdAt` cursor collision coverage, malformed `limit` and `direction` coverage, and optional empty stale-cursor `pageInfo` cleanup.
+- Pick the next item from `production-readiness-remediation-plan.md`, keeping each remediation slice narrow and separately reviewed.
 
 Other pending branches:
 
-- Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry behaviour.
+- Add pagination hardening tests: same-`createdAt` cursor collision, malformed `limit`, malformed `direction`, and optional empty stale-cursor `pageInfo` cleanup.
+- Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry.
 - API error standardisation and small UI state consistency improvements.
-- Public read-time demo event auto-creation has been removed; seed data now owns demo public events.
 - Future staff/RBAC, audit logs, QR scanning, and asynchronous email outbox.
+
+Do not implement QR scanning, RBAC/staff invites, microservices, or broad architecture rewrites unless explicitly requested.
 
 ## High-Risk Rules To Preserve
 
-- Do not trust frontend tenancy inputs.
+- Do not trust frontend tenancy inputs, route params, or headers as authority.
 - Keep `Organisation` as the tenant/payment/event/order owner.
 - Member `OrganisationMember` rows must not grant organisation management access.
-- Organisation accounts must be redirected away from buyer checkout surfaces and cannot create checkout sessions.
+- Organisation accounts must not create checkout sessions.
 - Member accounts must not access organiser analytics.
 - Payment fulfilment must remain webhook-driven.
+- Do not mark orders paid from frontend success pages.
 - The `/success` fallback must remain non-production only and must call the same checkout reconciliation helper as the webhook.
-- Ticket reservations are temporary soft holds; production paid tickets are issued only by Stripe Checkout webhook reconciliation.
+- Ticket reservations are temporary soft holds; paid tickets are issued only by Stripe Checkout webhook reconciliation.
 - Ticket delivery email must only run after paid webhook fulfilment and ticket issuance.
-- Ticket delivery email failure must update `Order.ticketEmailLastError` and must not roll back order payment, ticket issuance, reservation confirmation, or inventory decrement.
+- Ticket delivery email failure must update `Order.ticketEmailLastError` and must not roll back core payment/order/ticket state.
 - Duplicate webhook delivery must not send automatic ticket email again after `Order.ticketEmailSentAt` is set.
 - Manual ticket email resend must be organisation-scoped and paid-order only.
-- Ticket check-in and check-out may only mutate `Ticket.checkedInAt`; they must not alter orders, Stripe state, ticket ownership, ticket type snapshots, or payment state.
+- Ticket check-in and check-out may only mutate `Ticket.checkedInAt`.
+- Public event reads must not create organisations, events, ticket types, users, orders, reservations, tickets, or demo data.
 - Stale cleanup may expire pending orders and active reservations, but must not fulfil orders, decrement inventory, or alter paid/failed orders.
 - Stripe onboarding must stay hosted by Stripe.
 - Do not collect sensitive onboarding or compliance data in Thunderstrux.

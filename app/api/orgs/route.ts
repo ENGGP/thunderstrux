@@ -15,6 +15,7 @@ import {
   requireAuthenticatedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createOrganisationSchema } from "@/lib/validators/orgs";
@@ -68,6 +69,16 @@ export async function POST(request: Request) {
 
     console.error(error);
     return internalError();
+  }
+
+  const limitResponse = await enforceRateLimit({
+    policy: "organisation_create",
+    request,
+    keyParts: [user.id, getRateLimitClientIp(request)]
+  });
+
+  if (limitResponse) {
+    return limitResponse;
   }
 
   const validation = await validateJson(request, createOrganisationSchema);

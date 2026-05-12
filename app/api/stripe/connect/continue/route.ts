@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { createOnboardingLink } from "@/lib/stripe/connect";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
@@ -35,6 +36,15 @@ export async function POST(request: Request) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireOrganisationStripeConnectAccess(organisationId);
+    const limitResponse = await enforceRateLimit({
+      policy: "stripe_connect_mutation",
+      request,
+      keyParts: [organisationId, "continue"]
+    });
+
+    if (limitResponse) {
+      return limitResponse;
+    }
 
     const organisation = await prisma.organisation.findUnique({
       where: { id: organisationId },

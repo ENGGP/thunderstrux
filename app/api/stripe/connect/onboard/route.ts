@@ -18,6 +18,7 @@ import {
   StripeConnectPlatformNotReadyError
 } from "@/lib/stripe/connect";
 import { StripeConfigurationError } from "@/lib/stripe";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
@@ -55,6 +56,15 @@ export async function POST(request: Request) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireOrganisationStripeConnectAccess(organisationId);
+    const limitResponse = await enforceRateLimit({
+      policy: "stripe_connect_mutation",
+      request,
+      keyParts: [organisationId, "onboard"]
+    });
+
+    if (limitResponse) {
+      return limitResponse;
+    }
 
     const { accountId, orgSlug } = await createExpressAccount(organisationId);
     const url = await createOnboardingLink(accountId, orgSlug);

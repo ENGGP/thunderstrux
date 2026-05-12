@@ -17,6 +17,7 @@ import {
   TicketNotCheckedInError,
   checkOutOrganisationTicket
 } from "@/lib/tickets/check-in";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
@@ -37,6 +38,16 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
+    const limitResponse = await enforceRateLimit({
+      policy: "ticket_check_in_out",
+      request,
+      keyParts: [organisation.id, "check-out"]
+    });
+
+    if (limitResponse) {
+      return limitResponse;
+    }
+
     const ticket = await checkOutOrganisationTicket(organisation.id, ticketId);
 
     return NextResponse.json({ ticket });

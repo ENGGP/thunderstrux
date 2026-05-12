@@ -26,6 +26,7 @@ import {
   releaseReservationForOrder,
   runSerializableReservationTransaction
 } from "@/lib/tickets/reservations";
+import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 class CheckoutAvailabilityError extends Error {
@@ -60,6 +61,16 @@ export async function POST(request: Request) {
       return badRequest("Member account required", [
         { path: ["accountRole"], message: "Only member accounts can buy tickets" }
       ]);
+    }
+
+    const limitResponse = await enforceRateLimit({
+      policy: "checkout_create",
+      request,
+      keyParts: [user.id, validation.data.eventId, getRateLimitClientIp(request)]
+    });
+
+    if (limitResponse) {
+      return limitResponse;
     }
 
     await failStalePreCheckoutOrders({ userId: user.id });

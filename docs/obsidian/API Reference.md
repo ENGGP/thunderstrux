@@ -13,6 +13,27 @@ Rules:
 - Compatibility mode: if both are missing, the request is currently allowed and a warning is logged for remediation tracking.
 - Stripe webhook routes are exempt and remain protected by Stripe signature verification on raw request bodies.
 
+## Rate Limiting
+
+High-risk mutation routes use central Redis-backed fixed-window rate limiting.
+
+Protected routes:
+
+- credentials login
+- signup
+- checkout creation
+- ticket email resend
+- organisation create, join, and leave
+- ticket check-in and check-out
+- Stripe Connect onboard, continue, and disconnect
+
+Rules:
+
+- Login, signup, and organisation creation fail closed if the limiter backend is unavailable.
+- Checkout, resend, join/leave, check-in/check-out, and Stripe Connect mutations fail open with a structured warning if the limiter backend is unavailable.
+- Limit responses use `429` with a safe retry message and `Retry-After` when available.
+- Stripe webhook routes are not rate-limited.
+
 ## Auth And Profile
 
 ### `POST /api/auth/signup`

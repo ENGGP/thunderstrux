@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { NextResponse } from "next/server";
 import { badRequest, internalError, validationError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
+import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { validateJson } from "@/lib/validators";
 import { signupSchema } from "@/lib/validators/auth";
 
@@ -15,10 +16,31 @@ function isPrismaErrorCode(error: unknown, code: string): boolean {
 }
 
 export async function POST(request: Request) {
+  const ip = getRateLimitClientIp(request);
+  const ipLimitResponse = await enforceRateLimit({
+    policy: "signup_ip",
+    request,
+    keyParts: [ip]
+  });
+
+  if (ipLimitResponse) {
+    return ipLimitResponse;
+  }
+
   const validation = await validateJson(request, signupSchema);
 
   if (!validation.success) {
     return validationError(validation.details);
+  }
+
+  const emailLimitResponse = await enforceRateLimit({
+    policy: "signup_email",
+    request,
+    keyParts: [validation.data.email.trim().toLowerCase()]
+  });
+
+  if (emailLimitResponse) {
+    return emailLimitResponse;
   }
 
   try {

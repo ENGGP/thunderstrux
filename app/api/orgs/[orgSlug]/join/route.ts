@@ -11,6 +11,7 @@ import {
   requireAccountRole
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
@@ -30,6 +31,16 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const user = await requireAccountRole("member");
+    const limitResponse = await enforceRateLimit({
+      policy: "organisation_join_leave",
+      request,
+      keyParts: [user.id, orgSlug, "join"]
+    });
+
+    if (limitResponse) {
+      return limitResponse;
+    }
+
     const organisation = await prisma.organisation.findUnique({
       where: { slug: orgSlug },
       select: { id: true, name: true, slug: true }

@@ -11,6 +11,7 @@ import {
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { disconnectAccount, notConnectedStatus } from "@/lib/stripe/connect";
 import { validateJson } from "@/lib/validators";
@@ -32,6 +33,16 @@ export async function POST(request: Request) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireOrganisationStripeConnectAccess(organisationId);
+    const limitResponse = await enforceRateLimit({
+      policy: "stripe_connect_mutation",
+      request,
+      keyParts: [organisationId, "disconnect"]
+    });
+
+    if (limitResponse) {
+      return limitResponse;
+    }
+
     await disconnectAccount(organisationId);
 
     return NextResponse.json({

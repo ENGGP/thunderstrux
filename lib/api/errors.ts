@@ -7,6 +7,7 @@ export type ApiErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "CONFLICT"
+  | "RATE_LIMITED"
   | "INTERNAL_ERROR"
   | "SERVICE_UNAVAILABLE";
 
@@ -63,6 +64,10 @@ export function notFound(message: string) {
 
 export function conflict(message: string) {
   return apiError("CONFLICT", message, 409);
+}
+
+export function tooManyRequests(message: string) {
+  return apiError("RATE_LIMITED", message, 429);
 }
 
 export function internalError() {

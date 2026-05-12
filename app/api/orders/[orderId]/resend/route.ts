@@ -23,6 +23,7 @@ import {
   isTicketEmailOrderStateError,
   sendTicketDeliveryEmail
 } from "@/lib/email/ticket-delivery";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
@@ -44,6 +45,15 @@ export async function POST(request: Request, context: RouteContext) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationFinanceAccess(organisation.id);
     const order = await getOrganisationOrderDetail(organisation.id, orderId);
+    const limitResponse = await enforceRateLimit({
+      policy: "order_resend",
+      request,
+      keyParts: [organisation.id, order.id]
+    });
+
+    if (limitResponse) {
+      return limitResponse;
+    }
 
     if (order.status !== "paid") {
       return badRequest("Ticket email can only be resent for paid orders");

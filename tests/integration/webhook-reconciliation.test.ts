@@ -38,7 +38,7 @@ describe("webhook reconciliation", () => {
   test("paid checkout session confirms reservation, issues tickets, decrements inventory, and is idempotent", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const member = await createMember();
     const event = await createEvent({
@@ -120,6 +120,9 @@ describe("webhook reconciliation", () => {
       "Stripe checkout tickets created",
       expect.any(Object)
     );
+    expect(
+      error.mock.calls.filter(([message]) => message === "Operational alert")
+    ).toHaveLength(0);
   });
 
   test("ticket issuance uses event organisation when order organisation is inconsistent", async () => {
@@ -570,7 +573,7 @@ describe("webhook reconciliation", () => {
 
   test("paid inventory mismatch is compensation-required and duplicate delivery preserves diagnostics", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
@@ -642,10 +645,26 @@ describe("webhook reconciliation", () => {
       prisma.emailOutbox.count({ where: { orderId: order.id } })
     ).resolves.toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
+    const alertCalls = error.mock.calls.filter(
+      ([message]) => message === "Operational alert"
+    );
+    expect(alertCalls).toHaveLength(1);
+    expect(alertCalls[0][1]).toEqual({
+      event: "paid_but_unfulfilled_compensation_required",
+      orderId: order.id,
+      stripeSessionId: "cs_inventory_compensation",
+      eventId: event.id,
+      reason: "inventory_unavailable_after_payment",
+      source: "webhook"
+    });
+    expect(JSON.stringify(alertCalls)).not.toContain(member.email);
+    expect(JSON.stringify(alertCalls)).not.toContain("stripe-signature");
+    expect(JSON.stringify(alertCalls)).not.toContain("metadata");
   });
 
   test("future retry can clear compensation warning when active reservation naturally remains recoverable", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const restoreEmailEnv = configureEmailEnv();
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -719,6 +738,9 @@ describe("webhook reconciliation", () => {
         status: "pending"
       });
       expect(fetchMock).not.toHaveBeenCalled();
+      expect(
+        error.mock.calls.filter(([message]) => message === "Operational alert")
+      ).toHaveLength(0);
     } finally {
       restoreEmailEnv();
     }

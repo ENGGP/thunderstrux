@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
 import {
   confirmReservationForOrder,
   expireReservationForOrder,
@@ -11,6 +12,13 @@ import {
 
 const expectedCurrency = "aud";
 const maxTransactionAttempts = 3;
+
+type CompensationAlertPayload = {
+  orderId: string;
+  stripeSessionId: string;
+  eventId: string;
+  reason: string;
+};
 
 export type CheckoutReconciliationResult =
   | { status: "fulfilled"; orderId: string }
@@ -151,8 +159,10 @@ export async function reconcileCompletedCheckoutSession(
     status: "ignored",
     reason: "not_reconciled"
   };
+  let compensationAlert: CompensationAlertPayload | null = null;
 
   await runCheckoutReconciliationTransaction(async (tx) => {
+    compensationAlert = null;
     const orderSelect = {
       id: true,
       status: true,
@@ -246,6 +256,15 @@ export async function reconcileCompletedCheckoutSession(
             localOrder.fulfilmentFailureReason ?? reason
         }
       });
+
+      if (!localOrder.requiresCompensationReview) {
+        compensationAlert = {
+          orderId: localOrder.id,
+          stripeSessionId: session.id,
+          eventId: localOrder.eventId,
+          reason
+        };
+      }
 
       if (releaseActiveReservation) {
         await releaseReservationForOrder(tx, localOrder.id, reason, now);
@@ -683,6 +702,18 @@ export async function reconcileCompletedCheckoutSession(
       orderId: localOrder.id
     };
   });
+
+  const alertToEmit = compensationAlert as CompensationAlertPayload | null;
+
+  if (alertToEmit) {
+    emitOperationalAlert("paid_but_unfulfilled_compensation_required", {
+      orderId: alertToEmit.orderId,
+      stripeSessionId: alertToEmit.stripeSessionId,
+      eventId: alertToEmit.eventId,
+      reason: alertToEmit.reason,
+      source
+    });
+  }
 
   return result;
 }

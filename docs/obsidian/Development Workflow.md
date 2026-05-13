@@ -585,7 +585,6 @@ Rate-limit values:
 ```text
 RATE_LIMIT_ENABLED=false
 RATE_LIMIT_REDIS_URL=redis://redis:6379
-RATE_LIMIT_FAIL_OPEN=false
 RATE_LIMIT_KEY_PREFIX=thunderstrux
 ```
 

@@ -47,6 +47,17 @@ Run one bounded batch and exit:
 pnpm email:outbox:process
 ```
 
+Production should schedule this command every 1 minute through the deployment
+platform scheduler, cron, or an equivalent one-shot job runner. If the worker is
+not scheduled, paid orders can still be fulfilled and ticket rows can still be
+issued, but buyers may not receive ticket delivery email.
+
+Expected success output:
+
+```text
+Ticket email outbox batch processed { claimed, sent, retried, failed, skipped }
+```
+
 Worker behavior:
 
 - Claims due `pending` jobs and stale `processing` jobs.
@@ -58,6 +69,33 @@ Worker behavior:
 - Stores `providerMessageId` and `deliveredToProviderAt` after provider success and successful DB update.
 - Updates `Order.ticketEmailSentAt` only after automatic provider success.
 - Updates `Order.ticketEmailResentAt` only after manual provider success.
+
+Operational checks:
+
+```sql
+-- Pending due jobs
+SELECT count(*)
+FROM "EmailOutbox"
+WHERE "status" = 'pending'
+  AND "nextAttemptAt" <= now();
+
+-- Terminal failed jobs
+SELECT "id", "orderId", "mode", "attempts", "lastError", "updatedAt"
+FROM "EmailOutbox"
+WHERE "status" = 'failed'
+ORDER BY "updatedAt" DESC;
+
+-- Stale processing jobs older than the default processing timeout
+SELECT "id", "orderId", "mode", "processingStartedAt"
+FROM "EmailOutbox"
+WHERE "status" = 'processing'
+  AND "processingStartedAt" < now() - interval '10 minutes';
+```
+
+When failed jobs exist, operators should fix the provider or environment issue,
+identify affected paid orders from `orderId`, and contact buyers manually if
+needed. Terminal failed jobs are not automatically requeued; explicit audited
+requeue tooling is future work.
 
 ## Provider
 

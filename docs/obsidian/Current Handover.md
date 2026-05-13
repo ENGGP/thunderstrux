@@ -28,12 +28,14 @@ Implemented product areas:
 - Stripe Connect Express onboarding has explicit local lifecycle states.
 - Public event demo data comes from `prisma/seed.mjs`, not runtime reads.
 - Paid Stripe sessions that cannot issue tickets are stored as failed orders with `requiresCompensationReview=true`.
+- First-time paid-but-unfulfilled compensation transitions emit a redacted `paid_but_unfulfilled_compensation_required` operational alert after the reconciliation transaction commits.
 - Successful fulfilment transactionally creates durable automatic `EmailOutbox` ticket-delivery jobs; worker processing is separate from webhook reconciliation.
 
 Security hardening now in place:
 
 - Central trusted-origin guard for custom cookie-authenticated mutation routes.
 - Central Redis-backed fixed-window rate limiting for credentials login, signup, checkout creation, ticket email resend, organisation create/join/leave, ticket check-in/check-out, and Stripe Connect browser mutations.
+- Rate-limit tests cover side-effect prevention for organisation create, join/leave, ticket check-in/check-out, checkout/resend, and Stripe Connect mutation paths.
 - Stripe webhook routes are exempt from trusted-origin and rate-limit guards; they remain governed by Stripe signature verification over raw request bodies.
 
 For MVP, organisation committee members may share one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
@@ -155,7 +157,6 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 TRUSTED_APP_ORIGINS=
 RATE_LIMIT_ENABLED=false
 RATE_LIMIT_REDIS_URL=redis://redis:6379
-RATE_LIMIT_FAIL_OPEN=false
 RATE_LIMIT_KEY_PREFIX=thunderstrux
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
@@ -185,13 +186,11 @@ pnpm docker:rebuild
 
 ## Latest Verification
 
-Most recent validation after P0.4 compensation review:
+Most recent validation after P0 A/C/D follow-up hardening:
 
-- `pnpm prisma:generate` passed after rerunning with network approval for Prisma engine metadata.
 - `pnpm exec tsc --noEmit` passed.
 - `git diff --check` passed with CRLF warnings only.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 12 files, 76 tests.
-- `docker compose exec app pnpm prisma:migrate:deploy` applied `20260512060000_order_compensation_review` to the local Docker database after the first smoke run found the new columns missing.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 13 files, 87 tests.
 - `docker compose exec app pnpm test:smoke` passed: 22 smoke checks.
 
 ## Integration Test State
@@ -210,6 +209,7 @@ Current integration suites:
 - `tests/integration/ticket-check-in.test.ts`
 - `tests/integration/trusted-origin-guard.test.ts`
 - `tests/integration/webhook-reconciliation.test.ts`
+- `tests/integration/email-outbox.test.ts`
 
 Important rules:
 
@@ -223,11 +223,14 @@ Important rules:
 
 Recommended next implementation branch:
 
-- Pick the next item from `production-readiness-remediation-plan.md`, keeping each remediation slice narrow and separately reviewed.
+- Produce the dedicated CSRF design for P0 Slice B before implementing any token-based CSRF changes.
+- After CSRF is designed/approved, pick the next item from `production-readiness-remediation-plan.md`, keeping each remediation slice narrow and separately reviewed.
 
 Other pending branches:
 
 - See [[Non-Blocking Issue Register]] for current non-blocking codebase risks and follow-up candidates.
+- Production must schedule `pnpm email:outbox:process` every 1 minute or paid buyers may not receive ticket delivery email.
+- `paid_but_unfulfilled_compensation_required` currently uses structured console alerting; route this into real metrics/alerting in P1.
 - Add pagination hardening tests: same-`createdAt` cursor collision, malformed `limit`, malformed `direction`, and optional empty stale-cursor `pageInfo` cleanup.
 - Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry.
 - API error standardisation and small UI state consistency improvements.

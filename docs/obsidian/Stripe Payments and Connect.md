@@ -350,6 +350,7 @@ On paid reconciliation failure before tickets are issued:
 - `requiresCompensationReview = true`
 - `paidAt` is set or preserved because Stripe confirmed payment
 - `fulfilmentFailedAt` and `fulfilmentFailureReason` are write-once diagnostics
+- a redacted operational alert `paid_but_unfulfilled_compensation_required` is emitted only after the first compensation transition commits
 - tickets are not issued
 - automatic ticket email is not sent
 - active reservations are released only for unsafe/unrecoverable mismatch paths; confirmed/released/expired reservations are not restored
@@ -358,6 +359,7 @@ If a later webhook retry naturally succeeds while an active unexpired reservatio
 
 - `requiresCompensationReview` is cleared
 - `fulfilmentFailedAt` and `fulfilmentFailureReason` are preserved as historical diagnostics
+- no compensation alert is emitted for the successful recovery
 - normal successful fulfilment continues: paid order, confirmed reservation, inventory decrement, tickets, and transactional automatic email enqueue
 
 On ordinary non-paid reconciliation failure:
@@ -452,6 +454,7 @@ Automatic delivery:
 - Is enqueued inside successful paid checkout reconciliation after ticket issuance and before transaction commit.
 - Uses a raw partial unique index so duplicate webhook delivery cannot enqueue duplicate automatic jobs for the same order.
 - Provider I/O is performed by `pnpm email:outbox:process`, which processes one bounded batch and exits.
+- Production should schedule `pnpm email:outbox:process` every 1 minute. Without the scheduled worker, paid buyers may not receive ticket delivery email.
 - Provider calls use `Idempotency-Key: ticket-email/{EmailOutbox.id}`.
 - Worker success stores provider metadata on `EmailOutbox.providerMessageId` and `EmailOutbox.deliveredToProviderAt` when available.
 - On worker success, sets `ticketEmailSentAt` and clears `ticketEmailLastError`.
@@ -568,8 +571,11 @@ Current coverage:
 - manual resend queues paid organiser-owned orders for worker delivery
 - invalid metadata, amount, or currency does not mark an order paid
 - paid-but-unfulfilled sessions become compensation-required failed orders
+- first-time compensation transitions emit a redacted `paid_but_unfulfilled_compensation_required` alert after the transaction commits
 - duplicate compensation webhooks do not issue tickets, send email, or overwrite write-once diagnostics
+- duplicate compensation webhooks do not emit duplicate compensation alerts
 - successful natural retry clears `requiresCompensationReview` and preserves diagnostics
+- successful natural retry does not emit a compensation alert
 - already-paid orders with ticket mismatches are logged but not mutated into compensation review
 - compensation-required orders do not surface as valid member tickets
 - reservation-backed pending orders and legacy reservationless pending orders expire through stale cleanup

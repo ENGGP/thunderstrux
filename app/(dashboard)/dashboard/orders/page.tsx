@@ -12,6 +12,10 @@ import {
   systemOrderStatusFilters,
   type OrderStatusFilter
 } from "@/lib/orders/grouped-orders";
+import {
+  PaginationError,
+  parsePaginationOptionsOrDefault
+} from "@/lib/pagination/cursor";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat("en-AU", {
@@ -62,6 +66,9 @@ export default async function OrganisationOrdersPage({
     search?: string;
     startDate?: string;
     endDate?: string;
+    limit?: string;
+    cursor?: string;
+    direction?: string;
   }>;
 }) {
   const {
@@ -70,7 +77,10 @@ export default async function OrganisationOrdersPage({
     includeSystem: includeSystemParam,
     search: searchParam,
     startDate: startDateParam,
-    endDate: endDateParam
+    endDate: endDateParam,
+    limit: limitParam,
+    cursor: cursorParam,
+    direction: directionParam
   } = await searchParams;
   const organisation = await requireCurrentOrganisationAccount();
   await requireOrganisationFinanceAccess(organisation.id);
@@ -82,6 +92,13 @@ export default async function OrganisationOrdersPage({
   const search = searchParam?.trim() || undefined;
   const startDate = startDateParam ? new Date(startDateParam) : undefined;
   const endDate = endDateParam ? new Date(endDateParam) : undefined;
+  let pagination = parsePaginationOptionsOrDefault(
+    new URLSearchParams({
+      ...(limitParam ? { limit: limitParam } : {}),
+      ...(cursorParam ? { cursor: cursorParam } : {}),
+      ...(directionParam ? { direction: directionParam } : {})
+    })
+  );
 
   if (
     endDate &&
@@ -106,18 +123,88 @@ export default async function OrganisationOrdersPage({
         search,
         startDate:
           startDate && !Number.isNaN(startDate.getTime()) ? startDate : undefined,
-        endDate: endDate && !Number.isNaN(endDate.getTime()) ? endDate : undefined
+        endDate: endDate && !Number.isNaN(endDate.getTime()) ? endDate : undefined,
+        limit: pagination.limit,
+        cursor: pagination.cursor,
+        direction: pagination.direction
       }
     );
   } catch (error) {
     if (error instanceof OrganisationOrderEventAccessError) {
-      orderResult = { event: null, groups: [] };
+      orderResult = {
+        event: null,
+        groups: [],
+        pageInfo: {
+          limit: pagination.limit,
+          hasNextPage: false,
+          hasPreviousPage: false,
+          nextCursor: null,
+          previousCursor: null
+        }
+      };
+    } else if (error instanceof PaginationError) {
+      pagination = {
+        limit: 25,
+        direction: "next",
+        invalid: true
+      };
+      orderResult = await getGroupedOrganisationOrdersWithContext(
+        organisation.id,
+        activeFilter,
+        eventId,
+        {
+          includeSystemOrders,
+          search,
+          startDate:
+            startDate && !Number.isNaN(startDate.getTime()) ? startDate : undefined,
+          endDate: endDate && !Number.isNaN(endDate.getTime()) ? endDate : undefined,
+          limit: pagination.limit,
+          direction: pagination.direction
+        }
+      );
     } else {
       throw error;
     }
   }
   const groupedOrders = orderResult.groups;
   const eventFilter = orderResult.event;
+  const pageInfo = orderResult.pageInfo;
+  const paginationBaseParams = new URLSearchParams();
+
+  if (activeFilter !== "all") {
+    paginationBaseParams.set("status", activeFilter);
+  }
+
+  if (eventId) {
+    paginationBaseParams.set("eventId", eventId);
+  }
+
+  if (includeSystemOrders) {
+    paginationBaseParams.set("includeSystem", "true");
+  }
+
+  if (search) {
+    paginationBaseParams.set("search", search);
+  }
+
+  if (startDateParam) {
+    paginationBaseParams.set("startDate", startDateParam);
+  }
+
+  if (endDateParam) {
+    paginationBaseParams.set("endDate", endDateParam);
+  }
+
+  if (pageInfo.limit !== 25) {
+    paginationBaseParams.set("limit", String(pageInfo.limit));
+  }
+
+  function paginationHref(cursor: string, direction: "next" | "prev") {
+    const params = new URLSearchParams(paginationBaseParams);
+    params.set("cursor", cursor);
+    params.set("direction", direction);
+    return `/dashboard/orders?${params.toString()}`;
+  }
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name}>
@@ -245,6 +332,9 @@ export default async function OrganisationOrdersPage({
           {includeSystemOrders ? (
             <input name="includeSystem" type="hidden" value="true" />
           ) : null}
+          {pageInfo.limit !== 25 ? (
+            <input name="limit" type="hidden" value={pageInfo.limit} />
+          ) : null}
           <label className="grid gap-2 text-sm font-medium text-neutral-800">
             <span>Buyer email</span>
             <input
@@ -299,6 +389,12 @@ export default async function OrganisationOrdersPage({
           </div>
         </form>
 
+        {pagination.invalid ? (
+          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Invalid pagination parameters were ignored. Showing the first page.
+          </section>
+        ) : null}
+
         <section className="space-y-5">
           {groupedOrders.length === 0 ? (
             <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
@@ -323,6 +419,7 @@ export default async function OrganisationOrdersPage({
                   <p className="text-sm text-neutral-500">
                     {group.orders.length} order
                     {group.orders.length === 1 ? "" : "s"}
+                    {" "}on this page
                   </p>
                 </div>
 
@@ -397,6 +494,32 @@ export default async function OrganisationOrdersPage({
             ))
           )}
         </section>
+
+        {pageInfo.hasPreviousPage || pageInfo.hasNextPage ? (
+          <nav
+            aria-label="Order pagination"
+            className="flex flex-wrap items-center justify-between gap-3"
+          >
+            {pageInfo.previousCursor ? (
+              <Link
+                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                href={paginationHref(pageInfo.previousCursor, "prev")}
+              >
+                Previous
+              </Link>
+            ) : (
+              <span />
+            )}
+            {pageInfo.nextCursor ? (
+              <Link
+                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                href={paginationHref(pageInfo.nextCursor, "next")}
+              >
+                Next
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </div>
     </DashboardShell>
   );

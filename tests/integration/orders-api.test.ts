@@ -15,6 +15,10 @@ import { routeContext } from "@/tests/helpers/http";
 import { prisma } from "@/lib/db";
 
 describe("orders API", () => {
+  function orderIds(body: { groups: Array<{ orders: Array<{ id: string }> }> }) {
+    return body.groups.flatMap((group) => group.orders.map((order) => order.id));
+  }
+
   function configureEmailEnv() {
     const previousApiKey = process.env.RESEND_API_KEY;
     const previousFrom = process.env.EMAIL_FROM;
@@ -64,13 +68,20 @@ describe("orders API", () => {
     const defaultResponse = await getOrders(jsonRequest("http://localhost/api/orders"));
     expect(defaultResponse.status).toBe(200);
     const defaultBody = await parseJsonResponse(defaultResponse);
-    expect(defaultBody).toEqual([
-      expect.objectContaining({
-        eventId: event.id,
-        eventTitle: event.title,
-        orders: [expect.objectContaining({ id: paid.id, status: "paid" })]
+    expect(defaultBody).toEqual({
+      groups: [
+        expect.objectContaining({
+          eventId: event.id,
+          eventTitle: event.title,
+          orders: [expect.objectContaining({ id: paid.id, status: "paid" })]
+        })
+      ],
+      pageInfo: expect.objectContaining({
+        limit: 25,
+        hasNextPage: false,
+        hasPreviousPage: false
       })
-    ]);
+    });
     expect(JSON.stringify(defaultBody)).not.toContain(pending.id);
 
     const systemResponse = await getOrders(
@@ -78,7 +89,7 @@ describe("orders API", () => {
     );
     expect(systemResponse.status).toBe(200);
     const systemBody = await parseJsonResponse(systemResponse);
-    expect(systemBody[0].orders).toEqual([
+    expect(systemBody.groups[0].orders).toEqual([
       expect.objectContaining({
         id: pending.id,
         status: "pending",
@@ -88,6 +99,41 @@ describe("orders API", () => {
         buyerEmail: member.email
       })
     ]);
+  });
+
+  test("default orders response is bounded and includes pageInfo", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+
+    for (let index = 0; index < 27; index += 1) {
+      await createOrder({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        status: "paid",
+        paidAt: new Date(),
+        unitPrice: ticketType.price,
+        createdAt: new Date(`2026-05-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`)
+      });
+    }
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await getOrders(jsonRequest("http://localhost/api/orders"));
+    expect(response.status).toBe(200);
+    const body = await parseJsonResponse(response);
+
+    expect(orderIds(body)).toHaveLength(25);
+    expect(body.pageInfo).toEqual(
+      expect.objectContaining({
+        limit: 25,
+        hasNextPage: true,
+        hasPreviousPage: false,
+        nextCursor: expect.any(String)
+      })
+    );
   });
 
   test("status filters and member denial work", async () => {
@@ -117,13 +163,13 @@ describe("orders API", () => {
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const expired = await getOrders(jsonRequest("http://localhost/api/orders?status=expired"));
     expect(expired.status).toBe(200);
-    expect((await parseJsonResponse(expired))[0].orders).toEqual([
+    expect((await parseJsonResponse(expired)).groups[0].orders).toEqual([
       expect.objectContaining({ status: "expired" })
     ]);
 
     const failed = await getOrders(jsonRequest("http://localhost/api/orders?status=failed"));
     expect(failed.status).toBe(200);
-    expect((await parseJsonResponse(failed))[0].orders).toEqual([
+    expect((await parseJsonResponse(failed)).groups[0].orders).toEqual([
       expect.objectContaining({ status: "failed", failureReason: "test" })
     ]);
 
@@ -205,6 +251,94 @@ describe("orders API", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  test("order pagination handles same createdAt rows with next and previous cursors", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const sharedCreatedAt = new Date("2026-05-13T10:00:00.000Z");
+    const orders = [];
+
+    for (let index = 0; index < 3; index += 1) {
+      orders.push(
+        await createOrder({
+          organisationId: organisation.id,
+          eventId: event.id,
+          ticketTypeId: ticketType.id,
+          userId: member.id,
+          status: "paid",
+          paidAt: new Date(),
+          unitPrice: ticketType.price,
+          createdAt: sharedCreatedAt
+        })
+      );
+    }
+
+    const expectedIds = orders
+      .map((order) => order.id)
+      .sort((left, right) => right.localeCompare(left));
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const firstResponse = await getOrders(
+      jsonRequest("http://localhost/api/orders?limit=2")
+    );
+    expect(firstResponse.status).toBe(200);
+    const firstBody = await parseJsonResponse(firstResponse);
+    expect(orderIds(firstBody)).toEqual(expectedIds.slice(0, 2));
+    expect(firstBody.pageInfo).toEqual(
+      expect.objectContaining({
+        limit: 2,
+        hasNextPage: true,
+        hasPreviousPage: false,
+        nextCursor: expect.any(String)
+      })
+    );
+
+    const secondResponse = await getOrders(
+      jsonRequest(
+        `http://localhost/api/orders?limit=2&cursor=${encodeURIComponent(
+          firstBody.pageInfo.nextCursor
+        )}&direction=next`
+      )
+    );
+    expect(secondResponse.status).toBe(200);
+    const secondBody = await parseJsonResponse(secondResponse);
+    expect(orderIds(secondBody)).toEqual(expectedIds.slice(2));
+    expect(secondBody.pageInfo.previousCursor).toEqual(expect.any(String));
+
+    const previousResponse = await getOrders(
+      jsonRequest(
+        `http://localhost/api/orders?limit=2&cursor=${encodeURIComponent(
+          secondBody.pageInfo.previousCursor
+        )}&direction=prev`
+      )
+    );
+    expect(previousResponse.status).toBe(200);
+    expect(orderIds(await parseJsonResponse(previousResponse))).toEqual(
+      expectedIds.slice(0, 2)
+    );
+  });
+
+  test("invalid order pagination params return structured bad requests", async () => {
+    const { user } = await createOrganisationAccount();
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+
+    for (const url of [
+      "http://localhost/api/orders?limit=0",
+      "http://localhost/api/orders?limit=101",
+      "http://localhost/api/orders?direction=back",
+      "http://localhost/api/orders?cursor=not-json"
+    ]) {
+      const response = await getOrders(jsonRequest(url));
+      expect(response.status).toBe(400);
+      await expect(parseJsonResponse(response)).resolves.toMatchObject({
+        error: {
+          code: "BAD_REQUEST"
+        }
+      });
+    }
   });
 
   test("organiser order access uses event ownership when order organisation is inconsistent", async () => {

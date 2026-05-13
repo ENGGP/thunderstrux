@@ -6,6 +6,16 @@ import {
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
+import {
+  PaginationError,
+  decodeTimestampCursor,
+  descendingCursorWhere,
+  orderByForDirection,
+  pageInfoForPage,
+  parsePaginationOptionsOrDefault,
+  type PageInfo,
+  type ParsedPaginationOptions
+} from "@/lib/pagination/cursor";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat("en-AU", {
@@ -42,31 +52,40 @@ function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
   return "Pending";
 }
 
-export default async function MyTicketsPage() {
-  let user: Awaited<ReturnType<typeof requireAuthenticatedUser>>;
+type MemberTicketOrderPage = Awaited<ReturnType<typeof getMemberTicketOrders>>;
 
-  try {
-    user = await requireAuthenticatedUser();
-  } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      redirect("/login?callbackUrl=/tickets");
-    }
+function emptyPageInfo(limit: number): PageInfo {
+  return {
+    limit,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextCursor: null,
+    previousCursor: null
+  };
+}
 
-    throw error;
-  }
-
-  if (user.accountRole === "organisation") {
-    redirect("/dashboard");
-  }
-
-  await failStalePreCheckoutOrders({ userId: user.id });
-
+async function getMemberTicketOrders(
+  userId: string,
+  {
+    limit,
+    cursor,
+    direction
+  }: ParsedPaginationOptions
+) {
+  const decodedCursor = cursor
+    ? decodeTimestampCursor("createdAt", cursor)
+    : null;
+  const cursorWhere = decodedCursor
+    ? descendingCursorWhere("createdAt", decodedCursor, direction)
+    : {};
   const orders = await prisma.order.findMany({
     where: {
-      userId: user.id,
-      status: "paid"
+      userId,
+      status: "paid",
+      ...cursorWhere
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: orderByForDirection("createdAt", direction, "desc"),
+    take: limit + 1,
     select: {
       id: true,
       status: true,
@@ -103,6 +122,90 @@ export default async function MyTicketsPage() {
     }
   });
 
+  return pageInfoForPage({
+    items: orders,
+    limit,
+    direction,
+    cursor,
+    timestampField: "createdAt"
+  });
+}
+
+export default async function MyTicketsPage({
+  searchParams
+}: {
+  searchParams: Promise<{
+    limit?: string;
+    cursor?: string;
+    direction?: string;
+  }>;
+}) {
+  let user: Awaited<ReturnType<typeof requireAuthenticatedUser>>;
+
+  try {
+    user = await requireAuthenticatedUser();
+  } catch (error) {
+    if (error instanceof AuthenticationRequiredError) {
+      redirect("/login?callbackUrl=/tickets");
+    }
+
+    throw error;
+  }
+
+  if (user.accountRole === "organisation") {
+    redirect("/dashboard");
+  }
+
+  await failStalePreCheckoutOrders({ userId: user.id });
+
+  const {
+    limit: limitParam,
+    cursor: cursorParam,
+    direction: directionParam
+  } = await searchParams;
+  let pagination = parsePaginationOptionsOrDefault(
+    new URLSearchParams({
+      ...(limitParam ? { limit: limitParam } : {}),
+      ...(cursorParam ? { cursor: cursorParam } : {}),
+      ...(directionParam ? { direction: directionParam } : {})
+    })
+  );
+  let orderResult: MemberTicketOrderPage;
+
+  try {
+    orderResult = await getMemberTicketOrders(user.id, pagination);
+  } catch (error) {
+    if (!(error instanceof PaginationError)) {
+      throw error;
+    }
+
+    pagination = {
+      limit: 25,
+      direction: "next",
+      invalid: true
+    };
+    orderResult = {
+      items: [],
+      pageInfo: emptyPageInfo(pagination.limit)
+    };
+    orderResult = await getMemberTicketOrders(user.id, pagination);
+  }
+
+  const orders = orderResult.items;
+  const pageInfo = orderResult.pageInfo;
+  const paginationBaseParams = new URLSearchParams();
+
+  if (pageInfo.limit !== 25) {
+    paginationBaseParams.set("limit", String(pageInfo.limit));
+  }
+
+  function paginationHref(cursor: string, direction: "next" | "prev") {
+    const params = new URLSearchParams(paginationBaseParams);
+    params.set("cursor", cursor);
+    params.set("direction", direction);
+    return `/tickets?${params.toString()}`;
+  }
+
   return (
     <main className="min-h-screen bg-neutral-50 px-6 py-10">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -112,6 +215,12 @@ export default async function MyTicketsPage() {
             View your ticket purchases and payment status.
           </p>
         </header>
+
+        {pagination.invalid ? (
+          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Invalid pagination parameters were ignored. Showing the first page.
+          </section>
+        ) : null}
 
         {orders.length === 0 ? (
           <section className="rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600 shadow-sm">
@@ -206,6 +315,32 @@ export default async function MyTicketsPage() {
             ))}
           </section>
         )}
+
+        {pageInfo.hasPreviousPage || pageInfo.hasNextPage ? (
+          <nav
+            aria-label="Ticket pagination"
+            className="flex flex-wrap items-center justify-between gap-3"
+          >
+            {pageInfo.previousCursor ? (
+              <Link
+                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                href={paginationHref(pageInfo.previousCursor, "prev")}
+              >
+                Previous
+              </Link>
+            ) : (
+              <span />
+            )}
+            {pageInfo.nextCursor ? (
+              <Link
+                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                href={paginationHref(pageInfo.nextCursor, "next")}
+              >
+                Next
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </div>
     </main>
   );

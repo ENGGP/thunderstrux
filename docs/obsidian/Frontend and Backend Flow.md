@@ -12,15 +12,17 @@ Flow:
 
 ```text
 User visits /
-  -> page fetches GET /api/public/events with cache: no-store
-  -> API calls getPublishedEvents()
+  -> page calls getPublishedEvents() directly from lib/events/public-events.ts
   -> page renders public event cards
+  -> page renders cursor next/previous links when pageInfo indicates more rows
 ```
 
 Important current behavior:
 
 - `app/page.tsx` is `force-dynamic`.
 - Public homepage cards always link to `/events/[eventId]`.
+- Homepage supports `limit`, `cursor`, and `direction` query params for discovery pagination.
+- Invalid homepage pagination params fall back to first page with a non-blocking warning.
 - Public event reads are read-only. If there are zero published events in the whole database, the API returns an empty event list.
 - Demo public events come from `prisma/seed.mjs`, not from public runtime reads.
 

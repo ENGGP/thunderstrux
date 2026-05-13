@@ -112,6 +112,12 @@ Rules:
 - No auth required.
 - Only `published` events are returned.
 - Response is public-safe.
+- Cursor pagination uses stable `startTime ASC, id ASC` ordering.
+- Query params:
+  - `limit`: optional integer `1..100`, defaults to `25`.
+  - `cursor`: optional opaque cursor from `pageInfo.nextCursor` or `pageInfo.previousCursor`.
+  - `direction`: optional `next` or `prev`, defaults to `next`.
+- Invalid pagination params return structured `400`.
 - Read-only. If no published events exist, returns an empty `events` array instead of creating demo data.
 
 Example response:
@@ -128,7 +134,14 @@ Example response:
         "name": "Society name"
       }
     }
-  ]
+  ],
+  "pageInfo": {
+    "limit": 25,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "nextCursor": null,
+    "previousCursor": null
+  }
 }
 ```
 
@@ -441,9 +454,9 @@ Status:
 
 ## Orders
 
-### `GET /api/orders?status=...&eventId=...&includeSystem=...&search=...&startDate=...&endDate=...`
+### `GET /api/orders?status=...&eventId=...&includeSystem=...&search=...&startDate=...&endDate=...&limit=...&cursor=...&direction=...`
 
-Returns organisation-scoped orders grouped by event.
+Returns a bounded page of organisation-scoped orders grouped by event.
 
 Rules:
 
@@ -459,31 +472,45 @@ Rules:
 - Returned orders are authorised through `Order.event.organisationId`; `Order.organisationId` is denormalized storage and is not the access source of truth.
 - `search` filters buyer email.
 - `startDate` and `endDate` filter by order `createdAt`.
+- Pagination is cursor-based using stable `(createdAt, id)` ordering.
+- `limit` defaults to `25` and must be between `1` and `100`.
+- `direction` is `next` or `prev`.
+- Invalid pagination params return structured `400`.
+- Groups are page-local; they do not imply complete event totals across all matching orders.
 - Member accounts cannot access this endpoint.
 
 Response:
 
 ```json
-[
-  {
-    "eventId": "event_id",
-    "eventTitle": "Event title",
-    "orders": [
-      {
-        "id": "order_id",
-        "status": "paid",
-        "ticketType": "General Admission",
-        "quantity": 2,
-        "totalAmount": 2400,
-        "createdAt": "2026-04-29T10:00:00.000Z",
-        "paidAt": "2026-04-29T10:05:00.000Z",
-        "failedAt": null,
-        "failureReason": null,
-        "buyerEmail": "buyer@example.com"
-      }
-    ]
+{
+  "groups": [
+    {
+      "eventId": "event_id",
+      "eventTitle": "Event title",
+      "orders": [
+        {
+          "id": "order_id",
+          "status": "paid",
+          "ticketType": "General Admission",
+          "quantity": 2,
+          "totalAmount": 2400,
+          "createdAt": "2026-04-29T10:00:00.000Z",
+          "paidAt": "2026-04-29T10:05:00.000Z",
+          "failedAt": null,
+          "failureReason": null,
+          "buyerEmail": "buyer@example.com"
+        }
+      ]
+    }
+  ],
+  "pageInfo": {
+    "limit": 25,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "nextCursor": null,
+    "previousCursor": null
   }
-]
+}
 ```
 
 ### `GET /api/orders/[orderId]`
@@ -624,6 +651,11 @@ Rules:
 - Shows paid orders only.
 - Pending, expired, and failed orders are internal/system history and are not shown in the member ticket wallet.
 - Shows ticket identifiers when tickets exist.
+- Cursor-paginated using stable `(createdAt, id)` ordering.
+- `limit` defaults to `25` and must be between `1` and `100`.
+- `cursor` is an opaque value from the Previous/Next links.
+- `direction` is `next` or `prev`.
+- Invalid pagination params render the first page with a visible non-blocking warning.
 
 ### `GET /dashboard/orders`
 

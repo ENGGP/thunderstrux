@@ -70,13 +70,18 @@ describe("organisation tenancy", () => {
     );
     expect(filtered.status).toBe(200);
     const body = await parseJsonResponse(filtered);
-    expect(body).toEqual([
-      expect.objectContaining({
-        eventId: ownedEvent.id,
-        eventTitle: ownedEvent.title,
-        orders: expect.any(Array)
+    expect(body).toEqual({
+      groups: [
+        expect.objectContaining({
+          eventId: ownedEvent.id,
+          eventTitle: ownedEvent.title,
+          orders: expect.any(Array)
+        })
+      ],
+      pageInfo: expect.objectContaining({
+        limit: 25
       })
-    ]);
+    });
 
     const wrongEvent = await getOrders(
       jsonRequest(`http://localhost/api/orders?eventId=${otherEvent.id}`)

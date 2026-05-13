@@ -682,9 +682,13 @@ async function main() {
 
       const grouped = await organisationClient.json("/api/orders?status=expired");
       assertStatus(grouped.response, 200, "grouped expired orders", grouped.body);
-      assert(Array.isArray(grouped.body), "grouped orders response was not an array");
+      assert(
+        Array.isArray(grouped.body?.groups),
+        "grouped orders response groups was not an array",
+        JSON.stringify(grouped.body, null, 2)
+      );
 
-      const eventGroup = grouped.body.find((group) => group.eventId === createdEventId);
+      const eventGroup = grouped.body.groups.find((group) => group.eventId === createdEventId);
       assert(eventGroup, "smoke event group missing from grouped orders");
       assert(
         eventGroup.eventTitle?.startsWith("Smoke Test Event"),
@@ -954,7 +958,7 @@ async function main() {
       assertStatus(firstCleanup.response, 200, "first idempotent cleanup", firstCleanup.body);
       const secondCleanup = await organisationClient.json("/api/orders");
       assertStatus(secondCleanup.response, 200, "second idempotent cleanup", secondCleanup.body);
-      const defaultOrderIds = firstCleanup.body.flatMap((group) =>
+      const defaultOrderIds = firstCleanup.body.groups.flatMap((group) =>
         group.orders.map((order) => order.id)
       );
       assert(
@@ -966,7 +970,7 @@ async function main() {
         "/api/orders?includeSystem=true&status=pending"
       );
       assertStatus(systemOrders.response, 200, "system pending orders", systemOrders.body);
-      const systemPendingOrderIds = systemOrders.body.flatMap((group) =>
+      const systemPendingOrderIds = systemOrders.body.groups.flatMap((group) =>
         group.orders.map((order) => order.id)
       );
       assert(

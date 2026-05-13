@@ -1,6 +1,14 @@
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { runStaleOrderCleanup } from "@/lib/orders/stale-orders";
+import {
+  decodeTimestampCursor,
+  descendingCursorWhere,
+  orderByForDirection,
+  pageInfoForPage,
+  type PageInfo,
+  type PaginationDirection
+} from "@/lib/pagination/cursor";
 
 export const orderStatusFilters = [
   "all",
@@ -41,6 +49,32 @@ export type OrganisationOrderQueryFilters = {
   search?: string;
   startDate?: Date;
   endDate?: Date;
+  limit?: number;
+  cursor?: string;
+  direction?: PaginationDirection;
+};
+
+export type GroupedOrganisationOrder = {
+  id: string;
+  status: OrderStatus;
+  ticketType: string;
+  quantity: number;
+  totalAmount: number;
+  createdAt: Date;
+  paidAt: Date | null;
+  failedAt: Date | null;
+  failureReason: string | null;
+  requiresCompensationReview: boolean;
+  fulfilmentFailedAt: Date | null;
+  fulfilmentFailureReason: string | null;
+  isManuallyRefunded: boolean;
+  buyerEmail: string | null;
+};
+
+export type GroupedOrganisationOrderGroup = {
+  eventId: string;
+  eventTitle: string;
+  orders: GroupedOrganisationOrder[];
 };
 
 export async function getGroupedOrganisationOrdersWithContext(
@@ -51,13 +85,16 @@ export async function getGroupedOrganisationOrdersWithContext(
     includeSystemOrders = false,
     search,
     startDate,
-    endDate
+    endDate,
+    limit = 25,
+    cursor,
+    direction = "next"
   }: OrganisationOrderQueryFilters = {}
 ) {
   await runStaleOrderCleanup({ organisationId });
 
-  const eventContext = eventId
-    ? await prisma.event.findFirst({
+  const scopedEvents = eventId
+    ? await prisma.event.findMany({
         where: {
           id: eventId,
           organisationId
@@ -67,20 +104,41 @@ export async function getGroupedOrganisationOrdersWithContext(
           title: true
         }
       })
-    : null;
+    : await prisma.event.findMany({
+        where: {
+          organisationId
+        },
+        select: {
+          id: true,
+          title: true
+        }
+      });
+  const eventContext = eventId ? scopedEvents[0] ?? null : null;
 
   if (eventId && !eventContext) {
     throw new OrganisationOrderEventAccessError();
   }
 
+  const decodedCursor = cursor
+    ? decodeTimestampCursor("createdAt", cursor)
+    : null;
+  const cursorWhere = decodedCursor
+    ? descendingCursorWhere("createdAt", decodedCursor, direction)
+    : {};
+
+  if (scopedEvents.length === 0) {
+    return {
+      event: eventContext,
+      groups: [] as GroupedOrganisationOrderGroup[],
+      pageInfo: emptyPageInfo(limit)
+    };
+  }
+
   const orders = await prisma.order.findMany({
     where: {
-      event: {
-        is: {
-          organisationId
-        }
+      eventId: {
+        in: scopedEvents.map((event) => event.id)
       },
-      ...(eventId ? { eventId } : {}),
       ...(search
         ? {
             user: {
@@ -103,11 +161,14 @@ export async function getGroupedOrganisationOrdersWithContext(
         ? includeSystemOrders
           ? {}
           : { status: { in: ["paid", "expired", "failed"] as OrderStatus[] } }
-        : { status: statusFilter as OrderStatus })
+        : { status: statusFilter as OrderStatus }),
+      ...cursorWhere
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: orderByForDirection("createdAt", direction, "desc"),
+    take: limit + 1,
     select: {
       id: true,
+      eventId: true,
       status: true,
       quantity: true,
       totalAmount: true,
@@ -137,35 +198,22 @@ export async function getGroupedOrganisationOrdersWithContext(
       }
     }
   });
+  const { items: pageOrders, pageInfo } = pageInfoForPage({
+    items: orders,
+    limit,
+    direction,
+    cursor,
+    timestampField: "createdAt"
+  });
+  const eventTitles = new Map(scopedEvents.map((event) => [event.id, event.title]));
 
-  const groups = new Map<
-    string,
-    {
-      eventId: string;
-      eventTitle: string;
-      orders: Array<{
-        id: string;
-        status: OrderStatus;
-        ticketType: string;
-        quantity: number;
-        totalAmount: number;
-        createdAt: Date;
-        paidAt: Date | null;
-        failedAt: Date | null;
-        failureReason: string | null;
-        requiresCompensationReview: boolean;
-        fulfilmentFailedAt: Date | null;
-        fulfilmentFailureReason: string | null;
-        isManuallyRefunded: boolean;
-        buyerEmail: string | null;
-      }>;
-    }
-  >();
+  const groups = new Map<string, GroupedOrganisationOrderGroup>();
 
-  for (const order of orders) {
-    const group = groups.get(order.event.id) ?? {
-      eventId: order.event.id,
-      eventTitle: order.event.title,
+  for (const order of pageOrders) {
+    const eventTitle = eventTitles.get(order.eventId) ?? order.event.title;
+    const group = groups.get(order.eventId) ?? {
+      eventId: order.eventId,
+      eventTitle,
       orders: []
     };
 
@@ -186,12 +234,13 @@ export async function getGroupedOrganisationOrdersWithContext(
       buyerEmail: order.user?.email ?? null
     });
 
-    groups.set(order.event.id, group);
+    groups.set(order.eventId, group);
   }
 
   return {
     event: eventContext,
-    groups: [...groups.values()]
+    groups: [...groups.values()],
+    pageInfo
   };
 }
 
@@ -209,4 +258,14 @@ export async function getGroupedOrganisationOrders(
   );
 
   return result.groups;
+}
+
+function emptyPageInfo(limit: number): PageInfo {
+  return {
+    limit,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextCursor: null,
+    previousCursor: null
+  };
 }

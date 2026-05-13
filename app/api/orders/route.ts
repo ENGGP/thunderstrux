@@ -13,9 +13,13 @@ import {
 } from "@/lib/auth/access";
 import {
   OrganisationOrderEventAccessError,
-  getGroupedOrganisationOrders,
+  getGroupedOrganisationOrdersWithContext,
   parseOrderStatusFilter
 } from "@/lib/orders/grouped-orders";
+import {
+  PaginationError,
+  parsePaginationOptions
+} from "@/lib/pagination/cursor";
 
 function parseDateParam(
   value: string | null,
@@ -54,6 +58,7 @@ export async function GET(request: Request) {
     });
     const eventId = searchParams.get("eventId")?.trim() || undefined;
     const search = searchParams.get("search")?.trim() || undefined;
+    const pagination = parsePaginationOptions(searchParams);
     const startDateResult = parseDateParam(searchParams.get("startDate"), "startDate");
     const endDateResult = parseDateParam(searchParams.get("endDate"), "endDate", {
       endOfDay: true
@@ -67,7 +72,7 @@ export async function GET(request: Request) {
       return endDateResult.error;
     }
 
-    const groups = await getGroupedOrganisationOrders(
+    const result = await getGroupedOrganisationOrdersWithContext(
       organisation.id,
       status,
       eventId,
@@ -75,11 +80,15 @@ export async function GET(request: Request) {
         includeSystemOrders,
         search,
         startDate: startDateResult.date,
-        endDate: endDateResult.date
+        endDate: endDateResult.date,
+        ...pagination
       }
     );
 
-    return NextResponse.json(groups);
+    return NextResponse.json({
+      groups: result.groups,
+      pageInfo: result.pageInfo
+    });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
@@ -91,6 +100,10 @@ export async function GET(request: Request) {
 
     if (error instanceof OrganisationOrderEventAccessError) {
       return forbidden(error.message);
+    }
+
+    if (error instanceof PaginationError) {
+      return badRequest(error.message);
     }
 
     console.error(error);

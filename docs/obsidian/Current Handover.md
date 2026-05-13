@@ -16,7 +16,7 @@ Core model:
 - Public event reads are read-only and never create demo data.
 - Stripe Checkout fulfilment remains webhook-driven.
 - Paid-but-unfulfilled Checkout sessions enter a durable compensation-review state instead of ordinary silent failure.
-- Email delivery is non-blocking and must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
+- Ticket delivery email is outbox-backed and non-blocking; provider failures must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
 
 Implemented product areas:
 
@@ -28,6 +28,7 @@ Implemented product areas:
 - Stripe Connect Express onboarding has explicit local lifecycle states.
 - Public event demo data comes from `prisma/seed.mjs`, not runtime reads.
 - Paid Stripe sessions that cannot issue tickets are stored as failed orders with `requiresCompensationReview=true`.
+- Successful fulfilment transactionally creates durable automatic `EmailOutbox` ticket-delivery jobs; worker processing is separate from webhook reconciliation.
 
 Security hardening now in place:
 
@@ -49,8 +50,9 @@ Implemented migrations:
 - `20260503040000_ticket_email_delivery_tracking`
 - `20260503050000_ticket_event_cursor_index`
 - `20260512060000_order_compensation_review`
+- `20260513010000_ticket_email_outbox`
 
-No schema migration was added for the trusted-origin or rate-limiting slices. The compensation-review slice added order review metadata only.
+No schema migration was added for the trusted-origin or rate-limiting slices. The compensation-review slice added order review metadata. The email-outbox slice added durable ticket email jobs with a raw partial unique index for automatic jobs.
 
 ## Current Routes
 
@@ -229,7 +231,7 @@ Other pending branches:
 - Add pagination hardening tests: same-`createdAt` cursor collision, malformed `limit`, malformed `direction`, and optional empty stale-cursor `pageInfo` cleanup.
 - Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry.
 - API error standardisation and small UI state consistency improvements.
-- Future staff/RBAC, audit logs, QR scanning, and asynchronous email outbox.
+- Future staff/RBAC, audit logs, QR scanning, email outbox monitoring, and explicit failed-job requeue tooling.
 
 Do not implement QR scanning, RBAC/staff invites, microservices, or broad architecture rewrites unless explicitly requested.
 
@@ -246,10 +248,10 @@ Do not implement QR scanning, RBAC/staff invites, microservices, or broad archit
 - Ticket reservations are temporary soft holds; paid tickets are issued only by Stripe Checkout webhook reconciliation.
 - Paid Stripe sessions that cannot locally issue tickets must become compensation-required failed orders, with no tickets and no ticket email.
 - Compensation diagnostics are write-once; successful natural retry may clear `requiresCompensationReview` but should preserve fulfilment diagnostics.
-- Ticket delivery email must only run after paid webhook fulfilment and ticket issuance.
-- Ticket delivery email failure must update `Order.ticketEmailLastError` and must not roll back core payment/order/ticket state.
-- Duplicate webhook delivery must not send automatic ticket email again after `Order.ticketEmailSentAt` is set.
-- Manual ticket email resend must be organisation-scoped and paid-order only.
+- Automatic ticket delivery email must be enqueued in the same transaction as paid webhook fulfilment and ticket issuance.
+- Ticket delivery enqueue/worker failure must update `Order.ticketEmailLastError` where possible and must not roll back core payment/order/ticket state.
+- Duplicate webhook delivery must not enqueue duplicate automatic ticket email jobs.
+- Manual ticket email resend must be organisation-scoped, paid-order only, and queue a manual outbox job.
 - Ticket check-in and check-out may only mutate `Ticket.checkedInAt`.
 - Public event reads must not create organisations, events, ticket types, users, orders, reservations, tickets, or demo data.
 - Stale cleanup may expire pending orders and active reservations, but must not fulfil orders, decrement inventory, or alter paid/failed orders.

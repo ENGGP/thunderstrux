@@ -273,7 +273,12 @@ describe("orders API", () => {
         routeContext({ orderId: order.id })
       );
       expect(resendResponse.status).toBe(200);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      await expect(
+        prisma.emailOutbox.count({
+          where: { orderId: order.id, mode: "manual", status: "pending" }
+        })
+      ).resolves.toBe(1);
     } finally {
       restoreEmailEnv();
       vi.unstubAllGlobals();
@@ -392,7 +397,7 @@ describe("orders API", () => {
     expect(updated.paidAt).toEqual(order.paidAt);
   });
 
-  test("manual resend sends own paid order and updates resend timestamp", async () => {
+  test("manual resend queues own paid order without provider I/O", async () => {
     const restoreEmailEnv = configureEmailEnv();
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -438,22 +443,29 @@ describe("orders API", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await parseJsonResponse(response)).toEqual({ success: true });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(await parseJsonResponse(response)).toEqual({ queued: true });
+      expect(fetchMock).not.toHaveBeenCalled();
 
       const updated = await prisma.order.findUniqueOrThrow({
         where: { id: order.id },
         select: {
           ticketEmailSentAt: true,
           ticketEmailResentAt: true,
-          ticketEmailLastError: true
+          ticketEmailLastError: true,
+          emailOutboxJobs: true
         }
       });
       expect(updated.ticketEmailSentAt).toEqual(
         new Date("2026-05-01T10:00:00.000Z")
       );
-      expect(updated.ticketEmailResentAt).toBeInstanceOf(Date);
+      expect(updated.ticketEmailResentAt).toBeNull();
       expect(updated.ticketEmailLastError).toBeNull();
+      expect(updated.emailOutboxJobs).toHaveLength(1);
+      expect(updated.emailOutboxJobs[0]).toMatchObject({
+        mode: "manual",
+        status: "pending",
+        attempts: 0
+      });
     } finally {
       restoreEmailEnv();
     }
@@ -522,7 +534,7 @@ describe("orders API", () => {
     expect(unpaidDenied.status).toBe(400);
   });
 
-  test("manual resend records provider configuration failure", async () => {
+  test("manual resend queues even when provider is not configured", async () => {
     const previousApiKey = process.env.RESEND_API_KEY;
     const previousFrom = process.env.EMAIL_FROM;
     delete process.env.RESEND_API_KEY;
@@ -554,15 +566,22 @@ describe("orders API", () => {
         }),
         routeContext({ orderId: order.id })
       );
-      expect(response.status).toBe(503);
+      expect(response.status).toBe(200);
+      expect(await parseJsonResponse(response)).toEqual({ queued: true });
 
       await expect(
         prisma.order.findUniqueOrThrow({
           where: { id: order.id },
-          select: { ticketEmailLastError: true }
+          select: { ticketEmailLastError: true, emailOutboxJobs: true }
         })
       ).resolves.toEqual({
-        ticketEmailLastError: "Email provider is not configured"
+        ticketEmailLastError: null,
+        emailOutboxJobs: [
+          expect.objectContaining({
+            mode: "manual",
+            status: "pending"
+          })
+        ]
       });
     } finally {
       if (previousApiKey === undefined) {

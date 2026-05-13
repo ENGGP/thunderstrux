@@ -528,7 +528,7 @@ Rules:
 
 ### `POST /api/orders/[orderId]/resend`
 
-Sends the ticket delivery email again for a paid organiser-owned order.
+Queues ticket delivery email again for a paid organiser-owned order.
 
 Rules:
 
@@ -537,18 +537,18 @@ Rules:
 - Finance access required.
 - The order must belong to an event owned by the current organisation account.
 - Order must be `paid`.
-- Sends even when `ticketEmailSentAt` is already set.
-- On success, updates `Order.ticketEmailResentAt` and clears `Order.ticketEmailLastError`.
-- On failure, updates `Order.ticketEmailLastError`.
+- Queues a manual `EmailOutbox` job even when `ticketEmailSentAt` is already set.
+- Returns queued semantics; provider delivery runs from the outbox worker.
+- On worker success, updates `Order.ticketEmailResentAt` and clears `Order.ticketEmailLastError`.
+- On worker failure, updates `Order.ticketEmailLastError`.
 - Does not modify order payment state, Stripe state, ticket ownership, or ticket check-in state.
 
 Status:
 
-- `400` unpaid order or missing buyer recipient.
+- `400` unpaid order.
 - `401` unauthenticated.
 - `403` non-organisation account.
 - `404` order missing or not owned by the current organisation.
-- `503` email provider configuration missing.
 
 ## Payments
 
@@ -600,16 +600,16 @@ Responsibilities:
 - Mark order paid.
 - Store `paidAt` on success.
 - Persist compensation-review state when Stripe confirms payment but local ticket fulfilment cannot complete.
-- Attempt ticket delivery email only after successful payment fulfilment and ticket issuance.
-- Store `ticketEmailSentAt` on automatic email success.
-- Store `ticketEmailLastError` on automatic email failure.
-- Skip automatic email on duplicate webhook delivery when `ticketEmailSentAt` is already set.
+- Enqueue automatic ticket delivery email only after successful payment fulfilment and ticket issuance.
+- Store `ticketEmailSentAt` after automatic outbox worker success.
+- Store `ticketEmailLastError` on worker failure.
+- Do not enqueue duplicate automatic email jobs on duplicate webhook delivery.
 - Mark normal reservation or Checkout expiry as `expired` without `failureReason`.
 - Store `failedAt` and `failureReason` only on unexpected reconciliation failure.
 - Do not issue tickets or send ticket email for compensation-required orders.
 - Return `200` for signed but unhandled Stripe event types.
 
-Email delivery failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.
+Email delivery enqueue/worker failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.
 
 ## Server-Rendered Order Views
 

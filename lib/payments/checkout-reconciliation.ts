@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
+import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
 import {
   confirmReservationForOrder,
   expireReservationForOrder,
@@ -674,6 +675,8 @@ export async function reconcileCompletedCheckoutSession(
       orderId: localOrder.id,
       ticketCount: localOrder.quantity
     });
+
+    await enqueueAutomaticTicketEmailForOrder(tx, localOrder.id);
 
     result = {
       status: "fulfilled",

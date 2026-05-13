@@ -126,6 +126,7 @@ model Order {
   user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   tickets         Ticket[]
   reservation     TicketReservation?
+  emailOutboxJobs EmailOutbox[]
 
   @@index([organisationId])
   @@index([eventId])
@@ -152,6 +153,27 @@ model Ticket {
   @@index([eventId, checkedInAt])
   @@index([ticketTypeId])
   @@index([organisationId])
+}
+
+model EmailOutbox {
+  id                  String            @id @default(cuid())
+  orderId             String
+  mode                EmailOutboxMode
+  status              EmailOutboxStatus @default(pending)
+  attempts            Int               @default(0)
+  nextAttemptAt       DateTime          @default(now())
+  processingStartedAt DateTime?
+  lastError           String?
+  providerMessageId   String?
+  deliveredToProviderAt DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  sentAt              DateTime?
+  order               Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([status, processingStartedAt])
+  @@index([orderId])
 }
 
 model TicketReservation {
@@ -203,6 +225,18 @@ enum OrderStatus {
   paid
   failed
   expired
+}
+
+enum EmailOutboxMode {
+  automatic
+  manual
+}
+
+enum EmailOutboxStatus {
+  pending
+  processing
+  sent
+  failed
 }
 
 enum ReservationStatus {

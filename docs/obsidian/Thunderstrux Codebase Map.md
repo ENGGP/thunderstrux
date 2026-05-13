@@ -86,7 +86,7 @@ lib/
   api/                               API error helpers
   client/                            Frontend fetch and helper utilities
   db/                                Prisma client and organisation scoping helpers
-  email/                             Ticket delivery email service
+  email/                             Ticket delivery email service and outbox worker helpers
   events/                            Read-only public event loading
   orders/                            Grouped orders and stale pending order cleanup
   payments/                          Shared Checkout reconciliation helper
@@ -122,8 +122,8 @@ docs/obsidian/
 - `Ticket.organisationId` and `Order.organisationId` remain denormalized storage and should not be trusted alone for access decisions.
 - Production payment fulfilment happens only from Stripe webhooks.
 - Non-production `/success?session_id=...` can call the shared reconciliation helper when local webhook forwarding is missing.
-- Ticket delivery email is attempted only after paid webhook fulfilment and ticket issuance.
-- Email delivery failure must not roll back payment, inventory, reservation confirmation, or ticket issuance.
+- Ticket delivery email is enqueued only after paid webhook fulfilment and ticket issuance.
+- Email enqueue or worker failure must not roll back payment, inventory, reservation confirmation, or ticket issuance.
 - Ticket check-in and check-out only mutate `Ticket.checkedInAt`.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
@@ -163,5 +163,5 @@ docs/obsidian/
 - Edit mode allows ticket type quantity `0`; create mode does not. This supports sold-out inventory while still preventing zero-inventory new events.
 - Ticket types with orders or issued tickets can have name, price, and quantity edited for future purchases, but cannot be removed.
 - Manual refund is a local order flag only and does not interact with Stripe.
-- Ticket email delivery requires `RESEND_API_KEY` and `EMAIL_FROM`; without them, fulfilment still succeeds and resend returns a configuration error.
+- Ticket email delivery requires `RESEND_API_KEY` and `EMAIL_FROM` when the outbox worker sends provider email; without them, fulfilment and resend queueing still succeed and worker failure records delivery error state.
 - Running integration tests requires the dev Compose override so the `tests/` directory is bind-mounted into the app container.

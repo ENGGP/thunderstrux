@@ -232,6 +232,23 @@ Order management fields:
 
 Ticket email delivery tracking is operational state only. It must not be used as payment truth, ticket ownership, refund state, or fulfilment truth.
 
+`EmailOutbox` stores durable ticket delivery email jobs.
+
+Important fields:
+
+- `orderId`
+- `mode`: `automatic` or `manual`
+- `status`: `pending`, `processing`, `sent`, or `failed`
+- `attempts`
+- `nextAttemptAt`
+- `processingStartedAt`
+- `lastError`
+- `providerMessageId`
+- `deliveredToProviderAt`
+- `sentAt`
+
+Automatic jobs are unique per order through the raw partial index `EmailOutbox_automatic_order_unique`. Manual jobs are intentionally not unique so organiser resends can queue multiple delivery attempts.
+
 `TicketReservation` is the temporary soft hold created before redirecting to Stripe Checkout.
 
 Important fields:

@@ -340,9 +340,9 @@ On success:
 - ticket type inventory decremented
 - reservation marked `confirmed`
 - one `Ticket` row created per purchased ticket
-- ticket delivery email attempted after fulfilment succeeds and the database transaction commits
-- automatic ticket email success stores `Order.ticketEmailSentAt`
-- automatic ticket email failure stores `Order.ticketEmailLastError` and does not roll back fulfilment
+- automatic ticket delivery email job enqueued inside the same database transaction as fulfilment
+- automatic outbox worker success stores `Order.ticketEmailSentAt`
+- worker failure stores `Order.ticketEmailLastError` and does not roll back fulfilment
 
 On paid reconciliation failure before tickets are issued:
 
@@ -358,7 +358,7 @@ If a later webhook retry naturally succeeds while an active unexpired reservatio
 
 - `requiresCompensationReview` is cleared
 - `fulfilmentFailedAt` and `fulfilmentFailureReason` are preserved as historical diagnostics
-- normal successful fulfilment continues: paid order, confirmed reservation, inventory decrement, tickets, and automatic email
+- normal successful fulfilment continues: paid order, confirmed reservation, inventory decrement, tickets, and transactional automatic email enqueue
 
 On ordinary non-paid reconciliation failure:
 
@@ -418,9 +418,8 @@ lib/payments/checkout-fulfilment-orchestrator.ts
 Responsibilities:
 
 - Call the reconciliation helper.
-- Send automatic ticket delivery email only when reconciliation returns a newly fulfilled order.
-- Do not send ticket email for `compensation_required`, `failed`, `expired`, `ignored`, or `already_paid` results.
-- Keep email failures non-blocking.
+- Preserve the shared call shape for webhook and non-production success fallback.
+- Do not perform provider I/O.
 
 Callers:
 
@@ -435,7 +434,9 @@ Files:
 
 ```text
 lib/email/ticket-delivery.ts
+lib/email/ticket-email-outbox.ts
 app/api/orders/[orderId]/resend/route.ts
+scripts/process-email-outbox.ts
 ```
 
 Provider:
@@ -448,11 +449,12 @@ Provider:
 
 Automatic delivery:
 
-- Runs only after successful paid checkout reconciliation and ticket issuance.
-- Is triggered by the fulfilment orchestrator, not by the reconciliation transaction helper.
-- Skips duplicate automatic sends when `Order.ticketEmailSentAt` is already set.
-- On success, sets `ticketEmailSentAt` and clears `ticketEmailLastError`.
-- On failure, sets `ticketEmailLastError`.
+- Is enqueued inside successful paid checkout reconciliation after ticket issuance and before transaction commit.
+- Uses a raw partial unique index so duplicate webhook delivery cannot enqueue duplicate automatic jobs for the same order.
+- Provider I/O is performed by `pnpm email:outbox:process`, which processes one bounded batch and exits.
+- Provider calls use `Idempotency-Key: ticket-email/{EmailOutbox.id}`.
+- Worker success stores provider metadata on `EmailOutbox.providerMessageId` and `EmailOutbox.deliveredToProviderAt` when available.
+- On worker success, sets `ticketEmailSentAt` and clears `ticketEmailLastError`.
 - Email failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.
 
 Manual resend:
@@ -460,9 +462,9 @@ Manual resend:
 - Route: `POST /api/orders/[orderId]/resend`.
 - Organisation account and finance access required.
 - Order must belong to the current organisation and have `status = paid`.
-- Sends even when `ticketEmailSentAt` is already set.
-- On success, sets `ticketEmailResentAt` and clears `ticketEmailLastError`.
-- On failure, sets `ticketEmailLastError`.
+- Queues a repeatable manual outbox job even when `ticketEmailSentAt` is already set.
+- Worker success sets `ticketEmailResentAt` and clears `ticketEmailLastError`.
+- Worker failure sets `ticketEmailLastError`.
 
 Current MVP email content:
 
@@ -561,9 +563,9 @@ Current coverage:
 - expired reservations do not reduce availability
 - completed Checkout reconciliation marks the order paid, confirms the reservation, creates tickets, and decrements inventory
 - duplicate completed reconciliation is idempotent
-- automatic ticket email sends after successful fulfilment
-- automatic ticket email failure records the error without rolling back fulfilment
-- manual resend sends for paid organiser-owned orders and updates delivery tracking
+- automatic ticket email is enqueued after successful fulfilment
+- email outbox worker success/failure updates delivery tracking without rolling back fulfilment
+- manual resend queues paid organiser-owned orders for worker delivery
 - invalid metadata, amount, or currency does not mark an order paid
 - paid-but-unfulfilled sessions become compensation-required failed orders
 - duplicate compensation webhooks do not issue tickets, send email, or overwrite write-once diagnostics

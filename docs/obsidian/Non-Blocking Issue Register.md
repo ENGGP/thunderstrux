@@ -1,6 +1,6 @@
 # Non-Blocking Issue Register
 
-This register tracks non-blocking risks found during production-readiness and P0 remediation reviews. These are not blockers for the current P0.4 compensation-review commit, but they should be considered before production payments or broader rollout.
+This register tracks non-blocking risks found during production-readiness and P0 remediation reviews. These are not blockers for the current P0 remediation commits, but they should be considered before production payments or broader rollout.
 
 ## P0.4 Compensation Review Follow-Ups
 
@@ -26,7 +26,7 @@ This register tracks non-blocking risks found during production-readiness and P0
 
 | Area | Issue | Risk | Suggested Follow-Up |
 | --- | --- | --- | --- |
-| Email delivery | Automatic ticket email is sent inline after webhook reconciliation. | Slow/failing provider calls can delay webhook response and retries are not durable. | Move delivery to an `EmailOutbox` with retry/backoff and worker processing. |
+| Email outbox operations | Ticket delivery is now durable, but failed jobs are terminal and require future explicit requeue/operator handling. | Provider outage or bad configuration can leave paid orders with unsent tickets until a human intervenes. | Add monitoring for failed jobs plus an explicit, audited requeue tool. |
 | Refund/review workflow | Compensation-required orders have durable state and organiser visibility but no formal operator workflow. | Operators must manually inspect Stripe and communicate/refund outside the app. | Add an operator playbook first; later add controlled admin/review tooling. |
 | Payment lifecycle | Order, payment, reservation, ticket, email, manual refund, and compensation state are spread across fields. | Future lifecycle changes can introduce invalid transitions. | Introduce explicit transition helpers or a formal payment lifecycle model after P0 work. |
 | Real webhook testing | Integration tests mock Stripe sessions and do not exercise real signed Stripe delivery. | Raw signature transport and Stripe event payload drift are under-tested. | Add staging/test-mode webhook E2E with real signed payloads. |

@@ -1,7 +1,5 @@
 import { prisma } from "@/lib/db";
 
-type DeliveryMode = "automatic" | "manual";
-
 type TicketDeliveryOrder = Awaited<ReturnType<typeof loadTicketDeliveryOrder>>;
 
 export class TicketEmailError extends Error {
@@ -39,7 +37,7 @@ export class TicketEmailProviderError extends TicketEmailError {
   }
 }
 
-function truncateError(message: string) {
+export function truncateTicketEmailError(message: string) {
   return message.slice(0, 500);
 }
 
@@ -71,7 +69,7 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-async function loadTicketDeliveryOrder(orderId: string) {
+export async function loadTicketDeliveryOrder(orderId: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
@@ -136,7 +134,7 @@ function buyerName(order: TicketDeliveryOrder) {
   return order.user.displayName ?? (fullName || null);
 }
 
-function renderTicketEmail(order: TicketDeliveryOrder) {
+export function renderTicketEmail(order: TicketDeliveryOrder) {
   const name = buyerName(order);
   const greeting = name ? `Hi ${name},` : "Hi,";
   const ticketIds = order.tickets.map((ticket) => ticket.id);
@@ -193,27 +191,18 @@ function renderTicketEmail(order: TicketDeliveryOrder) {
   return { subject, text, html };
 }
 
-async function recordTicketEmailFailure(orderId: string, error: unknown) {
-  const message = error instanceof Error ? error.message : "Unknown email failure";
-
-  await prisma.order.update({
-    where: { id: orderId },
-    data: {
-      ticketEmailLastError: truncateError(message)
-    }
-  });
-}
-
-async function sendWithResend({
+export async function sendWithResend({
   to,
   subject,
   text,
-  html
+  html,
+  idempotencyKey
 }: {
   to: string;
   subject: string;
   text: string;
   html: string;
+  idempotencyKey?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
@@ -222,12 +211,18 @@ async function sendWithResend({
     throw new TicketEmailConfigurationError();
   }
 
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json"
+  };
+
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
+  }
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json"
-    },
+    headers,
     body: JSON.stringify({
       from,
       to,
@@ -243,68 +238,45 @@ async function sendWithResend({
       `Email provider failed with status ${response.status}${body ? `: ${body}` : ""}`
     );
   }
+
+  const body = await response.json().catch(() => null);
+  return {
+    providerMessageId:
+      body &&
+      typeof body === "object" &&
+      "id" in body &&
+      typeof body.id === "string"
+        ? body.id
+        : null
+  };
 }
 
-export async function sendTicketDeliveryEmail({
-  orderId,
-  mode
-}: {
-  orderId: string;
-  mode: DeliveryMode;
-}) {
+export async function sendTicketDeliveryEmailToProvider(
+  orderId: string,
+  {
+    idempotencyKey
+  }: {
+    idempotencyKey?: string;
+  } = {}
+) {
   const order = await loadTicketDeliveryOrder(orderId);
 
   if (order.status !== "paid") {
     throw new TicketEmailOrderStateError();
   }
 
-  if (mode === "automatic" && order.ticketEmailSentAt) {
-    return { skipped: true as const };
+  const recipient = order.user?.email;
+
+  if (!recipient) {
+    throw new TicketEmailRecipientError();
   }
 
-  try {
-    const recipient = order.user?.email;
+  const email = renderTicketEmail(order);
+  const delivery = await sendWithResend({
+    to: recipient,
+    idempotencyKey,
+    ...email
+  });
 
-    if (!recipient) {
-      throw new TicketEmailRecipientError();
-    }
-
-    const email = renderTicketEmail(order);
-    await sendWithResend({
-      to: recipient,
-      ...email
-    });
-
-    const now = new Date();
-    await prisma.order.update({
-      where: { id: order.id },
-      data:
-        mode === "automatic"
-          ? {
-              ticketEmailSentAt: now,
-              ticketEmailLastError: null
-            }
-          : {
-              ticketEmailResentAt: now,
-              ticketEmailLastError: null
-            }
-    });
-
-    return { skipped: false as const };
-  } catch (error) {
-    await recordTicketEmailFailure(order.id, error);
-    throw error;
-  }
-}
-
-export function isTicketEmailConfigurationError(error: unknown) {
-  return error instanceof TicketEmailConfigurationError;
-}
-
-export function isTicketEmailRecipientError(error: unknown) {
-  return error instanceof TicketEmailRecipientError;
-}
-
-export function isTicketEmailOrderStateError(error: unknown) {
-  return error instanceof TicketEmailOrderStateError;
+  return { order, providerMessageId: delivery.providerMessageId };
 }

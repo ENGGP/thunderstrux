@@ -564,7 +564,21 @@ RESEND_API_KEY
 EMAIL_FROM
 ```
 
-When email values are missing, paid webhook fulfilment still succeeds, automatic email delivery records an error, and manual resend returns an email configuration error.
+When email values are missing, paid webhook fulfilment still succeeds and queues ticket delivery. Provider configuration errors are recorded only when the email outbox worker processes the queued job.
+
+Email outbox worker values:
+
+```text
+EMAIL_OUTBOX_BATCH_SIZE=25
+EMAIL_OUTBOX_MAX_ATTEMPTS=5
+EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS=600
+```
+
+Process one bounded email outbox batch:
+
+```text
+pnpm email:outbox:process
+```
 
 Rate-limit values:
 

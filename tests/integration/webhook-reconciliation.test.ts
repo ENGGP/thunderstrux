@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { setAutomaticOutboxEnqueueTestFailure } from "@/lib/email/ticket-email-outbox";
 import {
   createEvent,
   createMember,
@@ -83,7 +84,7 @@ describe("webhook reconciliation", () => {
 
     const paidOrder = await prisma.order.findUniqueOrThrow({
       where: { id: order.id },
-      include: { reservation: true, tickets: true }
+      include: { reservation: true, tickets: true, emailOutboxJobs: true }
     });
     const updatedTicketType = await prisma.ticketType.findUniqueOrThrow({
       where: { id: ticketType.id }
@@ -94,6 +95,11 @@ describe("webhook reconciliation", () => {
     expect(paidOrder.paidAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
     expect(paidOrder.reservation?.status).toBe("confirmed");
     expect(paidOrder.tickets).toHaveLength(2);
+    expect(paidOrder.emailOutboxJobs).toHaveLength(1);
+    expect(paidOrder.emailOutboxJobs[0]).toMatchObject({
+      mode: "automatic",
+      status: "pending"
+    });
     expect(
       paidOrder.tickets.every((ticket) => ticket.organisationId === event.organisationId)
     ).toBe(true);
@@ -238,7 +244,8 @@ describe("webhook reconciliation", () => {
           fulfilmentFailureReason: true,
           ticketEmailSentAt: true,
           ticketEmailLastError: true,
-          tickets: true
+          tickets: true,
+          emailOutboxJobs: true
         }
       });
       expect(result).toEqual({ status: "fulfilled", orderId: order.id });
@@ -247,6 +254,11 @@ describe("webhook reconciliation", () => {
       expect(updated.fulfilmentFailedAt).toBeNull();
       expect(updated.fulfilmentFailureReason).toBeNull();
       expect(updated.tickets).toHaveLength(1);
+      expect(updated.emailOutboxJobs).toHaveLength(1);
+      expect(updated.emailOutboxJobs[0]).toMatchObject({
+        mode: "automatic",
+        status: "pending"
+      });
       expect(updated.ticketEmailSentAt).toBeNull();
       expect(updated.ticketEmailLastError).toBeNull();
       expect(fetchMock).not.toHaveBeenCalled();
@@ -255,7 +267,74 @@ describe("webhook reconciliation", () => {
     }
   });
 
-  test("successful fulfilment sends ticket email once and tracks sent timestamp", async () => {
+  test("automatic outbox enqueue failure rolls back paid fulfilment", async () => {
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const member = await createMember();
+    const event = await createEvent({
+      organisationId: organisation.id,
+      status: "published",
+      ticketTypes: [{ name: "General", price: 1000, quantity: 3 }]
+    });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      quantity: 2,
+      unitPrice: ticketType.price,
+      stripeSessionId: "cs_outbox_enqueue_failure"
+    });
+    await createReservation({
+      orderId: order.id,
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      quantity: 2,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+    });
+
+    setAutomaticOutboxEnqueueTestFailure(new Error("outbox insert failed"));
+
+    try {
+      await expect(
+        reconcileCompletedCheckoutSession(
+          checkoutSession({
+            id: "cs_outbox_enqueue_failure",
+            orderId: order.id,
+            eventId: event.id,
+            organisationId: organisation.id,
+            ticketTypeId: ticketType.id,
+            quantity: 2,
+            amountTotal: 2000
+          })
+        )
+      ).rejects.toThrow("outbox insert failed");
+    } finally {
+      setAutomaticOutboxEnqueueTestFailure(null);
+    }
+
+    const unchangedOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+      include: { reservation: true, tickets: true, emailOutboxJobs: true }
+    });
+    const unchangedTicketType = await prisma.ticketType.findUniqueOrThrow({
+      where: { id: ticketType.id }
+    });
+
+    expect(unchangedOrder.status).toBe("pending");
+    expect(unchangedOrder.paidAt).toBeNull();
+    expect(unchangedOrder.reservation?.status).toBe("active");
+    expect(unchangedOrder.reservation?.confirmedAt).toBeNull();
+    expect(unchangedOrder.tickets).toHaveLength(0);
+    expect(unchangedOrder.emailOutboxJobs).toHaveLength(0);
+    expect(unchangedTicketType.quantity).toBe(3);
+  });
+
+  test("successful fulfilment enqueues automatic ticket email once", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const restoreEmailEnv = configureEmailEnv();
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
@@ -309,7 +388,8 @@ describe("webhook reconciliation", () => {
           status: true,
           ticketEmailSentAt: true,
           ticketEmailLastError: true,
-          tickets: true
+          tickets: true,
+          emailOutboxJobs: true
         }
       });
       expect(updated.status).toBe("paid");
@@ -318,23 +398,22 @@ describe("webhook reconciliation", () => {
         status: "already_paid",
         orderId: order.id
       });
-      expect(updated.ticketEmailSentAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
+      expect(updated.ticketEmailSentAt).toBeNull();
       expect(updated.ticketEmailLastError).toBeNull();
       expect(updated.tickets).toHaveLength(2);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(fetchMock).toHaveBeenCalledWith(
-        "https://api.resend.com/emails",
-        expect.objectContaining({
-          method: "POST",
-          body: expect.stringContaining("ticket-email@example.com")
-        })
-      );
+      expect(updated.emailOutboxJobs).toHaveLength(1);
+      expect(updated.emailOutboxJobs[0]).toMatchObject({
+        mode: "automatic",
+        status: "pending",
+        attempts: 0
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       restoreEmailEnv();
     }
   });
 
-  test("ticket email failure is recorded without rolling back fulfilment", async () => {
+  test("ticket email enqueue is independent of provider configuration", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const previousApiKey = process.env.RESEND_API_KEY;
     const previousFrom = process.env.EMAIL_FROM;
@@ -384,7 +463,7 @@ describe("webhook reconciliation", () => {
 
       const fulfilled = await prisma.order.findUniqueOrThrow({
         where: { id: order.id },
-        include: { reservation: true, tickets: true }
+        include: { reservation: true, tickets: true, emailOutboxJobs: true }
       });
       const updatedTicketType = await prisma.ticketType.findUniqueOrThrow({
         where: { id: ticketType.id }
@@ -395,11 +474,13 @@ describe("webhook reconciliation", () => {
       expect(fulfilled.reservation?.status).toBe("confirmed");
       expect(updatedTicketType.quantity).toBe(4);
       expect(fulfilled.ticketEmailSentAt).toBeNull();
-      expect(fulfilled.ticketEmailLastError).toBe("Email provider is not configured");
-      expect(error).toHaveBeenCalledWith(
-        "Ticket delivery email failed after checkout reconciliation",
-        expect.objectContaining({ orderId: order.id })
-      );
+      expect(fulfilled.ticketEmailLastError).toBeNull();
+      expect(fulfilled.emailOutboxJobs).toHaveLength(1);
+      expect(fulfilled.emailOutboxJobs[0]).toMatchObject({
+        mode: "automatic",
+        status: "pending"
+      });
+      expect(error).not.toHaveBeenCalled();
     } finally {
       if (previousApiKey === undefined) {
         delete process.env.RESEND_API_KEY;
@@ -477,6 +558,9 @@ describe("webhook reconciliation", () => {
     expect(failed.fulfilmentFailureReason).toBe("webhook_mismatch");
     expect(failed.tickets).toHaveLength(0);
     expect(failed.reservation?.status).toBe("released");
+    await expect(
+      prisma.emailOutbox.count({ where: { orderId: order.id } })
+    ).resolves.toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(
       "Stripe checkout reconciliation failed",
@@ -554,6 +638,9 @@ describe("webhook reconciliation", () => {
     );
     expect(updated.tickets).toHaveLength(0);
     expect(updated.reservation?.status).toBe("released");
+    await expect(
+      prisma.emailOutbox.count({ where: { orderId: order.id } })
+    ).resolves.toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -613,7 +700,7 @@ describe("webhook reconciliation", () => {
 
       const recovered = await prisma.order.findUniqueOrThrow({
         where: { id: order.id },
-        include: { reservation: true, tickets: true }
+        include: { reservation: true, tickets: true, emailOutboxJobs: true }
       });
       expect(result).toEqual({ status: "fulfilled", orderId: order.id });
       expect(recovered.status).toBe("paid");
@@ -626,7 +713,12 @@ describe("webhook reconciliation", () => {
       );
       expect(recovered.reservation?.status).toBe("confirmed");
       expect(recovered.tickets).toHaveLength(1);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(recovered.emailOutboxJobs).toHaveLength(1);
+      expect(recovered.emailOutboxJobs[0]).toMatchObject({
+        mode: "automatic",
+        status: "pending"
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       restoreEmailEnv();
     }

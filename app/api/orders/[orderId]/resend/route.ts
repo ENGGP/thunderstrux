@@ -4,7 +4,6 @@ import {
   forbidden,
   internalError,
   notFound,
-  serviceUnavailable,
   unauthorized
 } from "@/lib/api/errors";
 import {
@@ -18,11 +17,8 @@ import {
   getOrganisationOrderDetail
 } from "@/lib/orders/order-detail";
 import {
-  isTicketEmailConfigurationError,
-  isTicketEmailRecipientError,
-  isTicketEmailOrderStateError,
-  sendTicketDeliveryEmail
-} from "@/lib/email/ticket-delivery";
+  enqueueTicketEmail
+} from "@/lib/email/ticket-email-outbox";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
@@ -59,12 +55,12 @@ export async function POST(request: Request, context: RouteContext) {
       return badRequest("Ticket email can only be resent for paid orders");
     }
 
-    await sendTicketDeliveryEmail({
+    await enqueueTicketEmail({
       orderId: order.id,
       mode: "manual"
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ queued: true });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
@@ -76,14 +72,6 @@ export async function POST(request: Request, context: RouteContext) {
 
     if (error instanceof OrganisationOrderAccessError) {
       return notFound(error.message);
-    }
-
-    if (isTicketEmailConfigurationError(error)) {
-      return serviceUnavailable(error.message);
-    }
-
-    if (isTicketEmailRecipientError(error) || isTicketEmailOrderStateError(error)) {
-      return badRequest(error.message);
     }
 
     console.error("Failed to resend tickets", { orderId, error });

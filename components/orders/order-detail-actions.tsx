@@ -54,7 +54,7 @@ export function OrderDetailActions({
         return;
       }
 
-      setMessage("Ticket resend logged.");
+      setMessage("Ticket resend queued.");
     } finally {
       setIsBusy(false);
     }

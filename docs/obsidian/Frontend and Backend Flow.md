@@ -521,8 +521,8 @@ Rules:
 - Organiser order access uses `Order.event.organisationId` as the ownership source of truth.
 - `Order.organisationId` remains stored but should not be used alone for organiser access decisions.
 - Manual refund only sets `Order.isManuallyRefunded`; it never calls Stripe and never changes order status.
-- Manual resend is paid-order only and sends actual ticket email through the email delivery service.
-- Manual resend updates `ticketEmailResentAt` on success and `ticketEmailLastError` on failure.
+- Manual resend is paid-order only and queues a manual email outbox job.
+- Manual resend updates `ticketEmailResentAt` only after worker success and `ticketEmailLastError` on worker failure.
 - Pending orders remain hidden from normal organiser UI.
 
 ## Ticket Email Delivery
@@ -530,9 +530,11 @@ Rules:
 Files:
 
 - `lib/email/ticket-delivery.ts`
+- `lib/email/ticket-email-outbox.ts`
 - `lib/payments/checkout-fulfilment-orchestrator.ts`
 - `lib/payments/checkout-reconciliation.ts`
 - `app/api/orders/[orderId]/resend/route.ts`
+- `scripts/process-email-outbox.ts`
 
 Automatic webhook flow:
 
@@ -540,17 +542,17 @@ Automatic webhook flow:
 Stripe checkout.session.completed received
   -> fulfilment orchestrator calls checkout reconciliation
   -> reconciliation validates paid session and pending order
-  -> transaction marks order paid, confirms reservation, decrements inventory, and creates tickets
+  -> transaction marks order paid, confirms reservation, decrements inventory, creates tickets, and creates automatic EmailOutbox job
   -> reconciliation returns a typed result
-  -> when result is fulfilled, orchestrator runs sendTicketDeliveryEmail(..., mode="automatic")
-  -> success sets ticketEmailSentAt and clears ticketEmailLastError
-  -> failure sets ticketEmailLastError and logs the error
+  -> worker sends provider email later
+  -> worker success sets ticketEmailSentAt and clears ticketEmailLastError
+  -> enqueue or worker failure sets ticketEmailLastError where possible
 ```
 
 Rules:
 
-- Email is attempted only after successful payment fulfilment and ticket issuance.
-- Email failure is non-blocking and must not roll back order payment, reservation confirmation, inventory decrement, or ticket issuance.
-- Duplicate webhook delivery does not resend automatic ticket email after `ticketEmailSentAt` is set.
-- Manual resend can send again for paid orders and updates `ticketEmailResentAt`.
-- No attachments, QR codes, queues, or notification preferences exist in the MVP.
+- Automatic email is enqueued inside the same transaction as successful payment fulfilment and ticket issuance.
+- Email enqueue or worker failure is non-blocking and must not roll back order payment, reservation confirmation, inventory decrement, or ticket issuance.
+- Duplicate webhook delivery does not enqueue duplicate automatic ticket email jobs.
+- Manual resend can queue additional manual jobs for paid orders.
+- No attachments, QR codes, or notification preferences exist in the MVP.

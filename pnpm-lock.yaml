@@ -48,6 +48,9 @@ importers:
       autoprefixer:
         specifier: latest
         version: 10.5.0(postcss@8.5.10)
+      jiti:
+        specifier: 2.6.1
+        version: 2.6.1
       postcss:
         specifier: latest
         version: 8.5.10

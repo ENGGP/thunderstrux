@@ -305,7 +305,7 @@ describe("rate-limited routes", () => {
     await expect(prisma.ticketReservation.count()).resolves.toBe(5);
   });
 
-  test("resend throttling prevents repeated email sends", async () => {
+  test("resend throttling prevents repeated resend jobs", async () => {
     process.env.RESEND_API_KEY = "re_test";
     process.env.EMAIL_FROM = "Thunderstrux <tickets@example.com>";
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
@@ -347,6 +347,11 @@ describe("rate-limited routes", () => {
     );
 
     expect(throttled.status).toBe(429);
-    expect(fetchMock).toHaveBeenCalledTimes(10);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(
+      prisma.emailOutbox.count({
+        where: { orderId: order.id, mode: "manual" }
+      })
+    ).resolves.toBe(10);
   });
 });

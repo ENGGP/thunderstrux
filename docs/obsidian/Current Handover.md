@@ -53,8 +53,9 @@ Implemented migrations:
 - `20260503050000_ticket_event_cursor_index`
 - `20260512060000_order_compensation_review`
 - `20260513010000_ticket_email_outbox`
+- `20260513020000_composite_query_indexes`
 
-No schema migration was added for the trusted-origin or rate-limiting slices. The compensation-review slice added order review metadata. The email-outbox slice added durable ticket email jobs with a raw partial unique index for automatic jobs.
+No schema migration was added for the trusted-origin or rate-limiting slices. The compensation-review slice added order review metadata. The email-outbox slice added durable ticket email jobs with a raw partial unique index for automatic jobs. The P1.10 composite-index slice added mapped btree indexes for public discovery, member ticket wallet, event/order reads, stale order cleanup, and stale reservation cleanup.
 
 ## Current Routes
 
@@ -186,12 +187,15 @@ pnpm docker:rebuild
 
 ## Latest Verification
 
-Most recent validation after P0 A/C/D follow-up hardening:
+Most recent validation after P1.10 composite-index hardening:
 
+- `pnpm prisma:generate` passed.
 - `pnpm exec tsc --noEmit` passed.
 - `git diff --check` passed with CRLF warnings only.
 - `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 13 files, 87 tests.
 - `docker compose exec app pnpm test:smoke` passed: 22 smoke checks.
+- Dev DB row-count evidence before choosing ordinary migration: `Order=25`, `Event=13`, `TicketReservation=15`.
+- Plain `EXPLAIN` evidence confirmed the new indexes are usable for public event discovery, member ticket wallet, event paid-order aggregation, stale order cleanup, and stale reservation cleanup.
 
 ## Integration Test State
 
@@ -229,6 +233,7 @@ Recommended next implementation branch:
 Other pending branches:
 
 - See [[Non-Blocking Issue Register]] for current non-blocking codebase risks and follow-up candidates.
+- P1.10 added the planned composite indexes, but existing single-column `Order(eventId)` and `Order(userId)` indexes intentionally remain. Review real production index usage before removing any redundant indexes.
 - Production must schedule `pnpm email:outbox:process` every 1 minute or paid buyers may not receive ticket delivery email.
 - `paid_but_unfulfilled_compensation_required` currently uses structured console alerting; route this into real metrics/alerting in P1.
 - Add pagination hardening tests: same-`createdAt` cursor collision, malformed `limit`, malformed `direction`, and optional empty stale-cursor `pageInfo` cleanup.

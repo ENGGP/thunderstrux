@@ -81,6 +81,7 @@ model Event {
 
   @@index([organisationId])
   @@index([organisationId, status])
+  @@index([status, startTime, id], map: "Event_status_startTime_id_idx")
 }
 
 model TicketType {
@@ -130,8 +131,11 @@ model Order {
 
   @@index([organisationId])
   @@index([eventId])
+  @@index([eventId, status, createdAt, id], map: "Order_eventId_status_createdAt_id_idx")
   @@index([ticketTypeId])
   @@index([userId])
+  @@index([userId, status, createdAt, id], map: "Order_userId_status_createdAt_id_idx")
+  @@index([status, createdAt], map: "Order_status_createdAt_idx")
 }
 
 model Ticket {
@@ -197,6 +201,7 @@ model TicketReservation {
   user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([ticketTypeId, status, expiresAt])
+  @@index([status, expiresAt], map: "TicketReservation_status_expiresAt_idx")
   @@index([orderId])
   @@index([userId])
 }

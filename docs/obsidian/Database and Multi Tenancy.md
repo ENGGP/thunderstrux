@@ -310,6 +310,19 @@ Ticket check-in/check-out state:
 - Organiser ticket listing is cursor-paginated by event using stable ordering on `Ticket.createdAt` and `Ticket.id`.
 - `Ticket(eventId, createdAt, id)` is indexed for event ticket cursor pagination.
 
+Composite query indexes added in P1.10:
+
+- `Event(status, startTime, id)` supports public event discovery ordered by start time.
+- `Order(eventId, status, createdAt, id)` supports event/order reads and future event-scoped order pagination.
+- `Order(userId, status, createdAt, id)` supports member ticket wallet and future member order pagination.
+- `Order(status, createdAt)` supports current stale pending order cleanup.
+- `TicketReservation(status, expiresAt)` supports global stale active reservation cleanup.
+
+Non-blocking index notes:
+
+- Existing single-column `Order(eventId)` and `Order(userId)` overlap with the left-most prefixes of the new composite order indexes. They were intentionally kept in P1.10; remove only after production query/index-usage evidence.
+- `TicketReservation(orderId)` overlaps with the unique `TicketReservation(orderId)` backing index and predates P1.10. Treat removal as later DB hygiene, not part of the composite-index slice.
+
 Current follow-up:
 
 - Add pagination hardening coverage for same-`createdAt` cursor collisions and malformed limit/direction params.

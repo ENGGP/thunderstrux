@@ -16,6 +16,7 @@ Core model:
 - Public event reads are read-only and never create demo data.
 - Public event discovery, organiser orders, and member tickets are cursor-paginated for MVP-scale reads.
 - Public event detail returns reservation-aware ticket `availableQuantity` while preserving raw `quantity`.
+- Order, reservation, and ticket lifecycle reads/writes that need organisation scoping must use `Event.organisationId` as canonical ownership, not denormalized `Order.organisationId`, `Ticket.organisationId`, or `TicketReservation.organisationId` alone.
 - Stripe Checkout fulfilment remains webhook-driven.
 - Paid-but-unfulfilled Checkout sessions enter a durable compensation-review state instead of ordinary silent failure.
 - Ticket delivery email is outbox-backed and non-blocking; provider failures must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
@@ -190,11 +191,11 @@ pnpm docker:rebuild
 
 ## Latest Verification
 
-Most recent validation after P1.7 reservation-aware public availability:
+Most recent validation after P1.9 denormalized organisation ownership hardening:
 
 - `pnpm exec tsc --noEmit` passed.
 - `git diff --check` passed with CRLF warnings only.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 15 files, 106 tests.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 15 files, 109 tests.
 - `docker compose exec app pnpm test:smoke` passed: 22 smoke checks.
 
 Recent P1 validation notes:
@@ -203,6 +204,7 @@ Recent P1 validation notes:
 - P1.10 plain `EXPLAIN` evidence confirmed the new indexes are usable for public event discovery, member ticket wallet, event paid-order aggregation, stale order cleanup, and stale reservation cleanup.
 - P1.6 pagination is complete for MVP across organiser orders, member tickets, and public discovery.
 - P1.7 public event detail availability is reservation-aware and strictly read-only.
+- P1.9 checkout reconciliation now validates Stripe organisation metadata against `Event.organisationId`, preserves stale denormalized `Order.organisationId` for drift tolerance, and uses event ownership for organisation-scoped stale cleanup.
 
 ## Integration Test State
 
@@ -234,7 +236,7 @@ Important rules:
 
 Recommended next implementation branch:
 
-- P1.9 denormalized organisation ownership hardening, keeping `Event.organisationId` as the canonical source of ownership.
+- P1.12 stale cleanup worker, keeping checkout-local cleanup authoritative and avoiding lifecycle rewrites.
 - Produce the dedicated CSRF design for P0 Slice B before implementing any token-based CSRF changes.
 - Keep each remediation slice narrow and separately reviewed.
 
@@ -246,7 +248,7 @@ Other pending branches:
 - `paid_but_unfulfilled_compensation_required` currently uses structured console alerting; route this into real metrics/alerting in P1.
 - Public availability can still become stale between page load and checkout; checkout remains authoritative.
 - Optional P1.7 UI test hardening: assert input `max` and disabled button attributes directly.
-- Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry.
+- Add drift-audit or repair tooling for denormalized `Order.organisationId`, `Ticket.organisationId`, and `TicketReservation.organisationId`; P1.9 hardens runtime trust but does not rewrite historical rows.
 - API error standardisation and small UI state consistency improvements.
 - Future staff/RBAC, audit logs, QR scanning, email outbox monitoring, and explicit failed-job requeue tooling.
 

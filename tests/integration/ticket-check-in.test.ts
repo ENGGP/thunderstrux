@@ -389,7 +389,7 @@ describe("ticket visibility and check-in API", () => {
     const member = await createMember();
     const event = await createEvent({ organisationId: organisation.id });
     const ticketType = event.ticketTypes[0];
-    const { ticket } = await createPaidTicket({
+    const { order, ticket } = await createPaidTicket({
       organisationId: other.organisation.id,
       eventId: event.id,
       ticketTypeId: ticketType.id,
@@ -407,9 +407,25 @@ describe("ticket visibility and check-in API", () => {
 
     const updated = await prisma.ticket.findUniqueOrThrow({
       where: { id: ticket.id },
-      select: { checkedInAt: true }
+      select: {
+        checkedInAt: true,
+        organisationId: true,
+        eventId: true,
+        order: {
+          select: {
+            status: true,
+            paidAt: true,
+            stripeSessionId: true
+          }
+        }
+      }
     });
     expect(updated.checkedInAt).toBeInstanceOf(Date);
+    expect(updated.organisationId).toBe(other.organisation.id);
+    expect(updated.eventId).toBe(event.id);
+    expect(updated.order.status).toBe("paid");
+    expect(updated.order.paidAt).toEqual(order.paidAt);
+    expect(updated.order.stripeSessionId).toBe(order.stripeSessionId);
   });
 
   test("organiser can check out their own checked-in ticket without changing order state", async () => {
@@ -512,12 +528,13 @@ describe("ticket visibility and check-in API", () => {
     const member = await createMember();
     const event = await createEvent({ organisationId: other.organisation.id });
     const ticketType = event.ticketTypes[0];
+    const originalCheckedInAt = new Date("2026-05-02T12:00:00.000Z");
     const { ticket } = await createPaidTicket({
       organisationId: other.organisation.id,
       eventId: event.id,
       ticketTypeId: ticketType.id,
       userId: member.id,
-      checkedInAt: new Date("2026-05-02T12:00:00.000Z")
+      checkedInAt: originalCheckedInAt
     });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
@@ -537,7 +554,7 @@ describe("ticket visibility and check-in API", () => {
     const member = await createMember();
     const event = await createEvent({ organisationId: organisation.id });
     const ticketType = event.ticketTypes[0];
-    const { ticket } = await createPaidTicket({
+    const { order, ticket } = await createPaidTicket({
       organisationId: other.organisation.id,
       eventId: event.id,
       ticketTypeId: ticketType.id,
@@ -556,9 +573,25 @@ describe("ticket visibility and check-in API", () => {
 
     const updated = await prisma.ticket.findUniqueOrThrow({
       where: { id: ticket.id },
-      select: { checkedInAt: true }
+      select: {
+        checkedInAt: true,
+        organisationId: true,
+        eventId: true,
+        order: {
+          select: {
+            status: true,
+            paidAt: true,
+            stripeSessionId: true
+          }
+        }
+      }
     });
     expect(updated.checkedInAt).toBeNull();
+    expect(updated.organisationId).toBe(other.organisation.id);
+    expect(updated.eventId).toBe(event.id);
+    expect(updated.order.status).toBe("paid");
+    expect(updated.order.paidAt).toEqual(order.paidAt);
+    expect(updated.order.stripeSessionId).toBe(order.stripeSessionId);
   });
 
   test("member cannot check out a ticket", async () => {

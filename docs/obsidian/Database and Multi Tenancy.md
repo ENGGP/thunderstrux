@@ -208,6 +208,8 @@ Order tenancy:
 - Organiser order list/detail/action queries must scope through `Order.event.organisationId`, not trust `Order.organisationId` alone.
 - Manual refund and manual resend access inherit the same event-based ownership check.
 - Event analytics counts paid orders through event ownership.
+- Checkout reconciliation validates Stripe organisation metadata against `Event.organisationId`. A stale `Order.organisationId` must not block fulfilment when the Stripe metadata matches the event owner, and reconciliation must not silently repair or overwrite the stale denormalized field.
+- Paid Stripe sessions whose organisation metadata does not match `Event.organisationId` enter compensation review. Non-paid mismatches remain ordinary failed/ignored checkout outcomes.
 
 Current statuses:
 
@@ -265,6 +267,12 @@ Important fields:
 - `releasedAt`
 - `releaseReason`
 
+Reservation tenancy:
+
+- `Event.organisationId` is the source of truth for organisation-scoped reservation lifecycle operations.
+- `TicketReservation.organisationId` remains stored as a denormalized field for existing relations/reporting and checkout metadata.
+- Organisation-scoped stale reservation cleanup must scope through `TicketReservation.event.organisationId`, not trust `TicketReservation.organisationId` alone.
+
 Reservation statuses:
 
 - `active`
@@ -279,6 +287,7 @@ Rules:
 - expired reservations do not reduce availability
 - pending orders linked to expired reservations are marked `expired` by app-level stale cleanup
 - legacy pending orders without reservations are marked `expired` by stale cleanup once they are older than 30 minutes
+- organisation-scoped stale order cleanup uses event ownership, so stale denormalized order/reservation ownership cannot expire another organisation's event-owned rows
 - normal reservation expiry does not set `Order.failureReason`
 - Stripe Checkout `expires_at` matches the reservation expiry
 - paid webhook reconciliation confirms reservations atomically with order payment, inventory decrement, and ticket creation
@@ -326,7 +335,7 @@ Non-blocking index notes:
 Current follow-up:
 
 - Add pagination hardening coverage for same-`createdAt` cursor collisions and malformed limit/direction params.
-- Review stale pending cleanup separately because it still uses denormalized order ownership and touches lifecycle state.
+- Add denormalized ownership drift reporting/repair tooling before relying on `Order.organisationId`, `Ticket.organisationId`, or `TicketReservation.organisationId` for performance-sensitive query shortcuts.
 
 ## Multi-Tenant Access Pattern
 

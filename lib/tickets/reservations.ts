@@ -59,9 +59,12 @@ export async function expireOldActiveReservations(
     userId?: string;
   } = {}
 ) {
+  const organisationScope = organisationId
+    ? { event: { is: { organisationId } } }
+    : {};
   const expiredReservations = await tx.ticketReservation.findMany({
     where: {
-      ...(organisationId ? { organisationId } : {}),
+      ...organisationScope,
       ...(eventId ? { eventId } : {}),
       ...(ticketTypeId ? { ticketTypeId } : {}),
       ...(userId ? { userId } : {}),

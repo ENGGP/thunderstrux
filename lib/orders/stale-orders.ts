@@ -19,6 +19,22 @@ export async function runStaleOrderCleanup({
     const legacyPendingCutoff = new Date(
       now.getTime() - stalePreCheckoutOrderMinutes * 60 * 1000
     );
+    const organisationEventIds = organisationId
+      ? (
+          await tx.event.findMany({
+            where: {
+              organisationId,
+              ...(eventId ? { id: eventId } : {})
+            },
+            select: { id: true }
+          })
+        ).map((event) => event.id)
+      : null;
+    const eventScope = organisationEventIds
+      ? { eventId: { in: organisationEventIds } }
+      : eventId
+        ? { eventId }
+        : {};
     const reservations = await expireOldActiveReservations(tx, {
       now,
       organisationId,
@@ -29,8 +45,7 @@ export async function runStaleOrderCleanup({
 
     const reservationBackedOrders = await tx.order.updateMany({
       where: {
-        ...(organisationId ? { organisationId } : {}),
-        ...(eventId ? { eventId } : {}),
+        ...eventScope,
         ...(ticketTypeId ? { ticketTypeId } : {}),
         ...(userId ? { userId } : {}),
         status: "pending",
@@ -55,8 +70,7 @@ export async function runStaleOrderCleanup({
 
     const legacyReservationlessOrders = await tx.order.updateMany({
       where: {
-        ...(organisationId ? { organisationId } : {}),
-        ...(eventId ? { eventId } : {}),
+        ...eventScope,
         ...(ticketTypeId ? { ticketTypeId } : {}),
         ...(userId ? { userId } : {}),
         status: "pending",

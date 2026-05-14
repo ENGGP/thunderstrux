@@ -483,7 +483,7 @@ export async function reconcileCompletedCheckoutSession(
       localOrder.id !== requiredMetadata.orderId ||
       localOrder.eventId !== requiredMetadata.eventId ||
       localOrder.ticketTypeId !== requiredMetadata.ticketTypeId ||
-      localOrder.organisationId !== requiredMetadata.organisationId ||
+      localOrder.event.organisationId !== requiredMetadata.organisationId ||
       localOrder.quantity !== requiredMetadata.quantity
     ) {
       await markCompensationRequired("webhook_mismatch", {
@@ -495,6 +495,7 @@ export async function reconcileCompletedCheckoutSession(
         orderTicketTypeId: localOrder.ticketTypeId,
         metadataTicketTypeId: requiredMetadata.ticketTypeId,
         orderOrganisationId: localOrder.organisationId,
+        eventOrganisationId: localOrder.event.organisationId,
         metadataOrganisationId: requiredMetadata.organisationId,
         orderQuantity: localOrder.quantity,
         metadataQuantity: requiredMetadata.quantity
@@ -670,7 +671,7 @@ export async function reconcileCompletedCheckoutSession(
     });
 
     if (localOrder.organisationId !== localOrder.event.organisationId) {
-      console.error("Ticket organisation mismatch corrected during checkout reconciliation", {
+      console.error("Ticket organisation mismatch tolerated; canonical event ownership used during checkout reconciliation", {
         source,
         orderId: localOrder.id,
         eventId: localOrder.eventId,

@@ -2,7 +2,7 @@
 
 Read this first, then [[Thunderstrux Codebase Map]].
 
-Latest dated handover: [[Handover 2026-05-13 Compensation Review]].
+Latest dated handover: [[Handover 2026-05-14 P1.7 Reservation Aware Availability]].
 
 ## Current State
 
@@ -14,6 +14,8 @@ Core model:
 - Organisation dashboard access is based on `Organisation.accountUserId`.
 - `Event.organisationId` is the canonical ownership source for event-owned resources.
 - Public event reads are read-only and never create demo data.
+- Public event discovery, organiser orders, and member tickets are cursor-paginated for MVP-scale reads.
+- Public event detail returns reservation-aware ticket `availableQuantity` while preserving raw `quantity`.
 - Stripe Checkout fulfilment remains webhook-driven.
 - Paid-but-unfulfilled Checkout sessions enter a durable compensation-review state instead of ordinary silent failure.
 - Ticket delivery email is outbox-backed and non-blocking; provider failures must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
@@ -27,6 +29,7 @@ Implemented product areas:
 - Stripe Checkout uses 30-minute ticket reservations.
 - Stripe Connect Express onboarding has explicit local lifecycle states.
 - Public event demo data comes from `prisma/seed.mjs`, not runtime reads.
+- Public event detail subtracts only active unexpired reservations from displayed availability. Checkout remains the authoritative availability gate.
 - Paid Stripe sessions that cannot issue tickets are stored as failed orders with `requiresCompensationReview=true`.
 - First-time paid-but-unfulfilled compensation transitions emit a redacted `paid_but_unfulfilled_compensation_required` operational alert after the reconciliation transaction commits.
 - Successful fulfilment transactionally creates durable automatic `EmailOutbox` ticket-delivery jobs; worker processing is separate from webhook reconciliation.
@@ -55,7 +58,7 @@ Implemented migrations:
 - `20260513010000_ticket_email_outbox`
 - `20260513020000_composite_query_indexes`
 
-No schema migration was added for the trusted-origin or rate-limiting slices. The compensation-review slice added order review metadata. The email-outbox slice added durable ticket email jobs with a raw partial unique index for automatic jobs. The P1.10 composite-index slice added mapped btree indexes for public discovery, member ticket wallet, event/order reads, stale order cleanup, and stale reservation cleanup.
+No schema migration was added for the trusted-origin, rate-limiting, P1.6 pagination, or P1.7 reservation-aware public availability slices. The compensation-review slice added order review metadata. The email-outbox slice added durable ticket email jobs with a raw partial unique index for automatic jobs. The P1.10 composite-index slice added mapped btree indexes for public discovery, member ticket wallet, event/order reads, stale order cleanup, and stale reservation cleanup.
 
 ## Current Routes
 
@@ -187,15 +190,19 @@ pnpm docker:rebuild
 
 ## Latest Verification
 
-Most recent validation after P1.10 composite-index hardening:
+Most recent validation after P1.7 reservation-aware public availability:
 
-- `pnpm prisma:generate` passed.
 - `pnpm exec tsc --noEmit` passed.
 - `git diff --check` passed with CRLF warnings only.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 13 files, 87 tests.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 15 files, 106 tests.
 - `docker compose exec app pnpm test:smoke` passed: 22 smoke checks.
-- Dev DB row-count evidence before choosing ordinary migration: `Order=25`, `Event=13`, `TicketReservation=15`.
-- Plain `EXPLAIN` evidence confirmed the new indexes are usable for public event discovery, member ticket wallet, event paid-order aggregation, stale order cleanup, and stale reservation cleanup.
+
+Recent P1 validation notes:
+
+- P1.10 dev DB row-count evidence before choosing ordinary migration: `Order=25`, `Event=13`, `TicketReservation=15`.
+- P1.10 plain `EXPLAIN` evidence confirmed the new indexes are usable for public event discovery, member ticket wallet, event paid-order aggregation, stale order cleanup, and stale reservation cleanup.
+- P1.6 pagination is complete for MVP across organiser orders, member tickets, and public discovery.
+- P1.7 public event detail availability is reservation-aware and strictly read-only.
 
 ## Integration Test State
 
@@ -227,8 +234,9 @@ Important rules:
 
 Recommended next implementation branch:
 
+- P1.9 denormalized organisation ownership hardening, keeping `Event.organisationId` as the canonical source of ownership.
 - Produce the dedicated CSRF design for P0 Slice B before implementing any token-based CSRF changes.
-- After CSRF is designed/approved, pick the next item from `production-readiness-remediation-plan.md`, keeping each remediation slice narrow and separately reviewed.
+- Keep each remediation slice narrow and separately reviewed.
 
 Other pending branches:
 
@@ -236,7 +244,8 @@ Other pending branches:
 - P1.10 added the planned composite indexes, but existing single-column `Order(eventId)` and `Order(userId)` indexes intentionally remain. Review real production index usage before removing any redundant indexes.
 - Production must schedule `pnpm email:outbox:process` every 1 minute or paid buyers may not receive ticket delivery email.
 - `paid_but_unfulfilled_compensation_required` currently uses structured console alerting; route this into real metrics/alerting in P1.
-- Add pagination hardening tests: same-`createdAt` cursor collision, malformed `limit`, malformed `direction`, and optional empty stale-cursor `pageInfo` cleanup.
+- Public availability can still become stale between page load and checkout; checkout remains authoritative.
+- Optional P1.7 UI test hardening: assert input `max` and disabled button attributes directly.
 - Review stale pending cleanup consistency. Cleanup still scopes through denormalized `Order.organisationId`; keep this separate because it touches order lifecycle and reservation expiry.
 - API error standardisation and small UI state consistency improvements.
 - Future staff/RBAC, audit logs, QR scanning, email outbox monitoring, and explicit failed-job requeue tooling.
@@ -262,6 +271,7 @@ Do not implement QR scanning, RBAC/staff invites, microservices, or broad archit
 - Manual ticket email resend must be organisation-scoped, paid-order only, and queue a manual outbox job.
 - Ticket check-in and check-out may only mutate `Ticket.checkedInAt`.
 - Public event reads must not create organisations, events, ticket types, users, orders, reservations, tickets, or demo data.
+- Public event detail availability may read active unexpired reservations, but must not mutate reservations or cleanup stale rows.
 - Stale cleanup may expire pending orders and active reservations, but must not fulfil orders, decrement inventory, or alter paid/failed orders.
 - Stripe onboarding must stay hosted by Stripe.
 - Do not collect sensitive onboarding or compliance data in Thunderstrux.

@@ -23,6 +23,28 @@ export type PublicEventsPage = {
   pageInfo: PageInfo;
 };
 
+export type PublicEventTicketType = {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  availableQuantity: number;
+};
+
+export type PublicEventDetail = {
+  id: string;
+  title: string;
+  description: string;
+  startTime: Date;
+  endTime: Date;
+  location: string;
+  organisation: {
+    name: string;
+    slug: string;
+  };
+  ticketTypes: PublicEventTicketType[];
+};
+
 export async function getPublishedEvents({
   limit = 25,
   cursor,
@@ -67,5 +89,78 @@ export async function getPublishedEvents({
   return {
     events: page.items,
     pageInfo: page.pageInfo
+  };
+}
+
+export async function getPublishedEventDetail(
+  eventId: string
+): Promise<PublicEventDetail | null> {
+  const event = await prisma.event.findFirst({
+    where: {
+      id: eventId,
+      status: "published"
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      startTime: true,
+      endTime: true,
+      location: true,
+      organisation: {
+        select: {
+          name: true,
+          slug: true
+        }
+      },
+      ticketTypes: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          quantity: true
+        },
+        orderBy: { createdAt: "asc" }
+      }
+    }
+  });
+
+  if (!event) {
+    return null;
+  }
+
+  const ticketTypeIds = event.ticketTypes.map((ticketType) => ticketType.id);
+  const now = new Date();
+  const activeReservationSums =
+    ticketTypeIds.length > 0
+      ? await prisma.ticketReservation.groupBy({
+          by: ["ticketTypeId"],
+          where: {
+            ticketTypeId: { in: ticketTypeIds },
+            status: "active",
+            expiresAt: { gt: now }
+          },
+          _sum: {
+            quantity: true
+          }
+        })
+      : [];
+
+  const reservedByTicketTypeId = new Map(
+    activeReservationSums.map((reservation) => [
+      reservation.ticketTypeId,
+      reservation._sum.quantity ?? 0
+    ])
+  );
+
+  return {
+    ...event,
+    ticketTypes: event.ticketTypes.map((ticketType) => ({
+      ...ticketType,
+      availableQuantity: Math.max(
+        0,
+        ticketType.quantity - (reservedByTicketTypeId.get(ticketType.id) ?? 0)
+      )
+    }))
   };
 }

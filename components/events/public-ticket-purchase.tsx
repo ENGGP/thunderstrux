@@ -10,6 +10,7 @@ type TicketType = {
   name: string;
   price: number;
   quantity: number;
+  availableQuantity: number;
 };
 
 type CheckoutResponse = {
@@ -63,7 +64,7 @@ export function PublicTicketPurchase({
 
     const quantity = quantities[ticketType.id] ?? 1;
 
-    if (quantity < 1 || quantity > ticketType.quantity) {
+    if (quantity < 1 || quantity > ticketType.availableQuantity) {
       setError("Choose a valid ticket quantity.");
       return;
     }
@@ -119,7 +120,8 @@ export function PublicTicketPurchase({
       <div className="mt-5 grid gap-3">
         {ticketTypes.map((ticketType) => {
           const quantity = quantities[ticketType.id] ?? 1;
-          const isSoldOut = ticketType.quantity <= 0;
+          const isSoldOut =
+            ticketType.quantity <= 0 || ticketType.availableQuantity <= 0;
           const isLoading = activeTicketTypeId === ticketType.id;
 
           return (
@@ -130,7 +132,8 @@ export function PublicTicketPurchase({
               <div>
                 <h3 className="font-medium text-neutral-950">{ticketType.name}</h3>
                 <p className="mt-1 text-sm text-neutral-600">
-                  {formatCurrency(ticketType.price)} - {ticketType.quantity} remaining
+                  {formatCurrency(ticketType.price)} -{" "}
+                  {ticketType.availableQuantity} remaining
                 </p>
               </div>
 
@@ -142,7 +145,7 @@ export function PublicTicketPurchase({
                   className="h-10 w-24 rounded-md border border-neutral-300 px-3 text-sm text-neutral-950 outline-none focus:border-neutral-500 disabled:bg-neutral-100"
                   disabled={isSoldOut || isLoading}
                   id={`quantity-${ticketType.id}`}
-                  max={Math.max(ticketType.quantity, 1)}
+                  max={Math.max(ticketType.availableQuantity, 1)}
                   min={1}
                   onChange={(event) => {
                     setQuantities((current) => ({
@@ -161,7 +164,7 @@ export function PublicTicketPurchase({
                     activeTicketTypeId !== null ||
                     status === "loading" ||
                     quantity < 1 ||
-                    quantity > ticketType.quantity
+                    quantity > ticketType.availableQuantity
                   }
                   onClick={() => startCheckout(ticketType)}
                   type="button"

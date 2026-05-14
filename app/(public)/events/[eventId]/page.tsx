@@ -25,6 +25,7 @@ type PublicEvent = {
     name: string;
     price: number;
     quantity: number;
+    availableQuantity: number;
   }>;
 };
 

@@ -42,9 +42,17 @@ User visits /events/[eventId]
   -> proxy redirects organisation accounts to /dashboard/events/[eventId]
   -> page fetches GET /api/public/events/[eventId]
   -> API returns only published events
+  -> API computes ticketTypes.availableQuantity from active unexpired reservations
   -> page renders event details and ticketTypes
   -> PublicTicketPurchase handles client-side checkout start
 ```
+
+Important current behavior:
+
+- Public detail keeps raw `ticketType.quantity` for compatibility.
+- Public purchase UI uses `ticketType.availableQuantity` for remaining count, sold-out state, quantity input max, client validation, and buy-button disabled state.
+- Public detail reads are read-only. They do not expire reservations, run stale cleanup, create demo data, or write rows.
+- Checkout remains authoritative and revalidates availability before creating a reservation.
 
 Checkout flow:
 

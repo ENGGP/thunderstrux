@@ -153,9 +153,23 @@ Rules:
 
 - No auth required.
 - Event must be `published`.
-- Includes ticket types.
+- Includes ticket types with raw `quantity` preserved and reservation-aware `availableQuantity`.
+- `availableQuantity` is computed as `max(0, quantity - activeReservedQuantity)`.
+- Only active, unexpired reservations reduce public availability.
 - Read-only. Does not run stale pending order cleanup or mutate orders/reservations.
 - Organisation accounts are redirected at the route/proxy layer from `/events/[eventId]` to `/dashboard/events/[eventId]`; this API remains public-safe.
+
+Example ticket type shape:
+
+```json
+{
+  "id": "ticket_type_id",
+  "name": "General Admission",
+  "price": 1200,
+  "quantity": 50,
+  "availableQuantity": 42
+}
+```
 
 ## Organisations
 

@@ -1,6 +1,5 @@
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { runStaleOrderCleanup } from "@/lib/orders/stale-orders";
 import {
   decodeTimestampCursor,
   descendingCursorWhere,
@@ -91,8 +90,6 @@ export async function getGroupedOrganisationOrdersWithContext(
     direction = "next"
   }: OrganisationOrderQueryFilters = {}
 ) {
-  await runStaleOrderCleanup({ organisationId });
-
   const scopedEvents = eventId
     ? await prisma.event.findMany({
         where: {

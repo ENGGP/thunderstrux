@@ -75,7 +75,7 @@ User selects quantity
 Buyer tickets page:
 
 - Requires authentication.
-- Runs stale pending order cleanup for the signed-in member before reading orders.
+- Read-only. Does not run stale pending order cleanup before reading orders.
 - Reads orders by `session.user.id`.
 - Shows paid orders only.
 - Pending, expired, and failed order states remain internal/system history.
@@ -373,7 +373,6 @@ Flow:
 Organisation opens /dashboard/events/[eventId]
   -> proxy allows organisation accounts and redirects member accounts to /
   -> page resolves current organisation through Organisation.accountUserId
-  -> analytics helper runs stale pending order cleanup for that event
   -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
   -> revenue series helper fetches paid order paidAt/totalAmount values for UTC daily grouping
   -> page renders event details, revenue, sold count, remaining count, UTC revenue chart, ticket rows, order link, and ticket visibility link
@@ -493,7 +492,6 @@ Flow:
 ```text
 Page resolves current organisation account
   -> requireOrganisationFinanceAccess(organisation.id)
-  -> stale pending order cleanup runs for the organisation
   -> optionally validates eventId belongs to the current organisation
   -> query orders scoped through Order.event.organisationId with optional eventId/search/date filters
   -> render grouped events, buyer, ticket type, quantity, total, status, and timestamps

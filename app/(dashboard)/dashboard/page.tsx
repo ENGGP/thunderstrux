@@ -10,7 +10,6 @@ import {
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
-import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat("en-AU", {
@@ -56,8 +55,6 @@ function revenueBuckets(orders: Array<{ paidAt: Date | null; totalAmount: number
 async function OrganisationDashboard() {
   const organisation = await requireCurrentOrganisationAccount();
   const startOfMonth = monthStart();
-
-  await failStalePreCheckoutOrders({ organisationId: organisation.id });
 
   const [upcomingEvents, recentOrders, monthlyPaidOrders] = await Promise.all([
     prisma.event.findMany({
@@ -279,8 +276,6 @@ async function OrganisationDashboard() {
 }
 
 async function MemberDashboard({ userId }: { userId: string }) {
-  await failStalePreCheckoutOrders({ userId });
-
   const [user, organisations, orderCount] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },

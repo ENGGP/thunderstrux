@@ -477,7 +477,8 @@ Rules:
 - Auth required.
 - Organisation account required.
 - Finance access required.
-- Runs stale pending order cleanup for the organisation before returning grouped orders.
+- Read-only. Does not run stale pending order cleanup before returning grouped orders.
+- Stale pending orders are expired by the scheduled stale-order worker; checkout still performs local authoritative cleanup before reservation creation.
 - Normal `status` values are `all`, `paid`, `expired`, or `failed`.
 - `pending` is an internal system status and is accepted only when `includeSystem=true`.
 - Default `all` excludes `pending`.

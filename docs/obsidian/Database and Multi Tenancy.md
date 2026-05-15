@@ -285,8 +285,8 @@ Rules:
 - active reservations reduce checkout availability
 - reservation expiry is 30 minutes
 - expired reservations do not reduce availability
-- pending orders linked to expired reservations are marked `expired` by app-level stale cleanup
-- legacy pending orders without reservations are marked `expired` by stale cleanup once they are older than 30 minutes
+- pending orders linked to expired reservations are marked `expired` by the stale-order worker
+- legacy pending orders without reservations are marked `expired` by the stale-order worker once they are older than 30 minutes
 - organisation-scoped stale order cleanup uses event ownership, so stale denormalized order/reservation ownership cannot expire another organisation's event-owned rows
 - normal reservation expiry does not set `Order.failureReason`
 - Stripe Checkout `expires_at` matches the reservation expiry
@@ -324,7 +324,7 @@ Composite query indexes added in P1.10:
 - `Event(status, startTime, id)` supports public event discovery ordered by start time.
 - `Order(eventId, status, createdAt, id)` supports event/order reads and future event-scoped order pagination.
 - `Order(userId, status, createdAt, id)` supports member ticket wallet and future member order pagination.
-- `Order(status, createdAt)` supports current stale pending order cleanup.
+- `Order(status, createdAt)` supports stale pending order worker selection.
 - `TicketReservation(status, expiresAt)` supports global stale active reservation cleanup.
 
 Non-blocking index notes:

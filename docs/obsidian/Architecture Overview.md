@@ -200,7 +200,7 @@ Checkout uses soft holds to prevent overselling:
 - Checkout availability is `TicketType.quantity - activeReservedQuantity`.
 - Stripe Checkout `expires_at` is aligned with the reservation expiry.
 - Webhooks confirm, release, or expire reservations while preserving `Order` history.
-- App-level stale cleanup expires pending orders whose reservations are expired or past `expiresAt`, plus legacy reservationless pending orders older than 30 minutes.
+- A bounded one-shot stale-order worker expires pending orders whose reservations are expired or past `expiresAt`, plus legacy reservationless pending orders older than 30 minutes. Normal read paths do not run this cleanup.
 - `pending` is kept internally for checkout reconciliation but hidden from normal member and organiser UX.
 
 ## Organiser Analytics Model

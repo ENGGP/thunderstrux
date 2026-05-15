@@ -14,6 +14,9 @@ importers:
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      jiti:
+        specifier: 2.6.1
+        version: 2.6.1
       next:
         specifier: 16.2.4
         version: 16.2.4(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -48,9 +51,6 @@ importers:
       autoprefixer:
         specifier: latest
         version: 10.5.0(postcss@8.5.10)
-      jiti:
-        specifier: 2.6.1
-        version: 2.6.1
       postcss:
         specifier: latest
         version: 8.5.10

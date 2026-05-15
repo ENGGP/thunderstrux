@@ -8,7 +8,8 @@ import {
   createEvent,
   createMember,
   createOrder,
-  createOrganisationAccount
+  createOrganisationAccount,
+  createReservation
 } from "@/tests/helpers/test-data";
 import { GET as searchOrganisations } from "@/app/api/orgs/search/route";
 import { POST as joinOrganisationRoute } from "@/app/api/orgs/[orgSlug]/join/route";
@@ -312,5 +313,43 @@ describe("member features", () => {
       "Invalid pagination parameters were ignored. Showing the first page."
     );
     expect(invalidDirectionHtml).toContain(paid.id);
+  });
+
+  test("tickets page does not mutate stale pending orders or reservations", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    setMockSession({
+      userId: member.id,
+      email: member.email,
+      accountRole: "member"
+    });
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const pending = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "pending",
+      unitPrice: ticketType.price
+    });
+    await createReservation({
+      orderId: pending.id,
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      expiresAt: new Date(Date.now() - 60 * 1000)
+    });
+
+    const html = await renderTicketsPage();
+    expect(html).not.toContain(pending.id);
+
+    const persisted = await prisma.order.findUniqueOrThrow({
+      where: { id: pending.id },
+      include: { reservation: true }
+    });
+    expect(persisted.status).toBe("pending");
+    expect(persisted.reservation?.status).toBe("active");
   });
 });

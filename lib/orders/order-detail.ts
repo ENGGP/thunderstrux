@@ -1,6 +1,5 @@
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { runStaleOrderCleanup } from "@/lib/orders/stale-orders";
 
 export class OrganisationOrderAccessError extends Error {
   constructor(message = "Order not found or access denied") {
@@ -28,8 +27,6 @@ export async function getOrganisationOrderDetail(
   organisationId: string,
   orderId: string
 ) {
-  await runStaleOrderCleanup({ organisationId });
-
   const order = await prisma.order.findFirst({
     where: {
       id: orderId,

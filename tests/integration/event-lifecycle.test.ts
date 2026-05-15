@@ -4,8 +4,10 @@ import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import {
   createEvent,
+  createMember,
   createOrder,
   createOrganisationAccount,
+  createReservation,
   futureDate
 } from "@/tests/helpers/test-data";
 import { POST as createEventRoute } from "@/app/api/events/route";
@@ -263,5 +265,38 @@ describe("event lifecycle", () => {
         revenue: ticketType.price * 2
       }
     ]);
+  });
+
+  test("event analytics do not mutate stale pending orders or reservations", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const pending = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "pending",
+      unitPrice: ticketType.price
+    });
+    await createReservation({
+      orderId: pending.id,
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      expiresAt: new Date(Date.now() - 60 * 1000)
+    });
+
+    await getOrganisationEventAnalytics(organisation.id, event.id);
+    await getOrganisationEventRevenueSeries(organisation.id, event.id);
+
+    const persisted = await prisma.order.findUniqueOrThrow({
+      where: { id: pending.id },
+      include: { reservation: true }
+    });
+    expect(persisted.status).toBe("pending");
+    expect(persisted.reservation?.status).toBe("active");
   });
 });

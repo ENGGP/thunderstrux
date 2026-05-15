@@ -236,7 +236,7 @@ Important rules:
 
 Recommended next implementation branch:
 
-- P1.12 stale cleanup worker, keeping checkout-local cleanup authoritative and avoiding lifecycle rewrites.
+- Continue with the next approved P1 slice after P1.12 review. P1.12 added a bounded stale-order worker and removed broad request-time stale cleanup from reads while keeping checkout-local cleanup authoritative.
 - Produce the dedicated CSRF design for P0 Slice B before implementing any token-based CSRF changes.
 - Keep each remediation slice narrow and separately reviewed.
 
@@ -245,6 +245,7 @@ Other pending branches:
 - See [[Non-Blocking Issue Register]] for current non-blocking codebase risks and follow-up candidates.
 - P1.10 added the planned composite indexes, but existing single-column `Order(eventId)` and `Order(userId)` indexes intentionally remain. Review real production index usage before removing any redundant indexes.
 - Production must schedule `pnpm email:outbox:process` every 1 minute or paid buyers may not receive ticket delivery email.
+- Production must schedule `pnpm stale-orders:process` every 1 minute or stale pending orders/reservations may remain until the next manual run. Use `pnpm stale-orders:process -- --dry-run` for non-mutating inspection.
 - `paid_but_unfulfilled_compensation_required` currently uses structured console alerting; route this into real metrics/alerting in P1.
 - Public availability can still become stale between page load and checkout; checkout remains authoritative.
 - Optional P1.7 UI test hardening: assert input `max` and disabled button attributes directly.
@@ -275,6 +276,7 @@ Do not implement QR scanning, RBAC/staff invites, microservices, or broad archit
 - Public event reads must not create organisations, events, ticket types, users, orders, reservations, tickets, or demo data.
 - Public event detail availability may read active unexpired reservations, but must not mutate reservations or cleanup stale rows.
 - Stale cleanup may expire pending orders and active reservations, but must not fulfil orders, decrement inventory, or alter paid/failed orders.
+- Request-time reads must not reintroduce broad stale cleanup writes. Checkout-local cleanup remains the authority before reservation creation.
 - Stripe onboarding must stay hosted by Stripe.
 - Do not collect sensitive onboarding or compliance data in Thunderstrux.
 - `PLATFORM_NOT_READY` is a platform setup block, not a connected-account state.

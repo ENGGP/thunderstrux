@@ -5,7 +5,6 @@ import {
   requireAuthenticatedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
-import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 import {
   PaginationError,
   decodeTimestampCursor,
@@ -155,8 +154,6 @@ export default async function MyTicketsPage({
   if (user.accountRole === "organisation") {
     redirect("/dashboard");
   }
-
-  await failStalePreCheckoutOrders({ userId: user.id });
 
   const {
     limit: limitParam,

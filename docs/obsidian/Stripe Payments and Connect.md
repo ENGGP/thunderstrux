@@ -499,26 +499,33 @@ Design choice:
 
 - Reservation expiry is the source of truth for abandoned checkout cleanup.
 - Stripe/session creation failures still mark orders `failed` and release reservations.
-- No background worker exists; cleanup runs from normal server-side app paths.
+- Broad abandoned-checkout cleanup runs from a bounded one-shot worker, not normal read paths.
+- Checkout-local cleanup remains authoritative before new reservation creation.
 
 Current cleanup paths:
 
 - starting checkout in `POST /api/payments/checkout/event`
 - ticket-type reservation cleanup inside the checkout transaction
-- buyer `/tickets`
-- member `/dashboard`
-- organisation `/dashboard`
-- organiser orders through `/api/orders` and `/dashboard/orders`
-- organiser event analytics through `/dashboard/events/[eventId]`
+- scheduled worker command `pnpm stale-orders:process`
 
-Public event reads are read-only and do not run stale pending order cleanup. Checkout remains authoritative for expiring stale reservations before new reservations are created.
+Public, dashboard, order, ticket, and analytics reads are read-only with respect to stale cleanup. They do not expire reservations or pending orders. Checkout remains authoritative for expiring stale reservations before new reservations are created.
+
+Worker operations:
+
+- Run `pnpm stale-orders:process` every 1 minute in production.
+- Use `pnpm stale-orders:process -- --dry-run` to inspect candidate counts without writes or row locks.
+- Use `pnpm stale-orders:process -- --limit=100` to override the default batch size.
+- The worker processes one bounded batch and exits.
+- Expected output is a structured `staleOrders:` object with selected and expired reservation/order counts.
+- If stale rows remain, rerun the worker or inspect pending/active rows before increasing cadence or limit.
+- Paid users are not affected by stale cleanup; the worker must not be used as payment fulfilment.
 
 Safety rules:
 
 - Paid orders are never changed by stale cleanup.
 - Failed orders are never changed by stale cleanup.
 - Confirmed reservations are never changed by stale cleanup.
-- Cleanup uses batched updates and is safe to run repeatedly.
+- Cleanup uses bounded guarded updates and is safe to run repeatedly or concurrently.
 - Normal organiser and member product views hide pending orders.
 - `/dashboard/orders?includeSystem=true` exposes pending orders for debugging.
 - Expired orders do not count in analytics because analytics queries include only `status = paid`.
@@ -580,6 +587,7 @@ Current coverage:
 - compensation-required orders do not surface as valid member tickets
 - reservation-backed pending orders and legacy reservationless pending orders expire through stale cleanup
 - paid and failed orders are preserved by stale cleanup
+- request-time reads do not mutate stale rows; stale rows may temporarily exist until the worker runs
 
 The webhook integration tests call `lib/payments/checkout-reconciliation.ts` with mocked `Stripe.Checkout.Session` objects. They verify local reconciliation behavior, not Stripe CLI forwarding or raw webhook signature plumbing.
 

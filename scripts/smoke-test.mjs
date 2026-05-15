@@ -1,7 +1,16 @@
 import { PrismaClient } from "@prisma/client";
+import { createJiti } from "jiti";
 
 const baseUrl = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
 const prisma = new PrismaClient();
+const jiti = createJiti(import.meta.url, {
+  alias: {
+    "@/": `${process.cwd().replace(/\\/g, "/")}/`
+  }
+});
+const { processStaleOrderCleanupBatch } = await jiti.import(
+  "@/lib/orders/stale-orders"
+);
 const reservationWindowMs = 30 * 60 * 1000;
 
 function formatCurrency(amountInCents) {
@@ -680,6 +689,9 @@ async function main() {
         data: { expiresAt: past }
       });
 
+      const cleanup = await processStaleOrderCleanupBatch({ limit: 10 });
+      assert(cleanup.ordersExpired >= 1, "stale worker did not expire reservation order");
+
       const grouped = await organisationClient.json("/api/orders?status=expired");
       assertStatus(grouped.response, 200, "grouped expired orders", grouped.body);
       assert(
@@ -743,18 +755,18 @@ async function main() {
       assert(order.totalAmount === order.unitPrice * order.quantity, "order amount history changed");
     });
 
-    await runStep("21. Verify pending order with expired reservation is lazily expired", async () => {
+    await runStep("21. Verify stale worker expires pending order with expired reservation", async () => {
       const ticketType = await prisma.ticketType.findFirst({
         where: { eventId: createdEventId },
         select: { id: true, price: true }
       });
-      assert(ticketType, "ticket type missing for lazy expiry smoke test");
+      assert(ticketType, "ticket type missing for stale worker smoke test");
 
       const member = await prisma.user.findUnique({
         where: { email: "user2@example.com" },
         select: { id: true }
       });
-      assert(member?.id, "user2@example.com missing for lazy expiry smoke test");
+      assert(member?.id, "user2@example.com missing for stale worker smoke test");
 
       const pendingOrder = await prisma.order.create({
         data: {
@@ -784,22 +796,22 @@ async function main() {
       });
       createdSmokeOrderIds.push(pendingOrder.id);
 
-      const grouped = await organisationClient.json("/api/orders?status=expired");
-      assertStatus(grouped.response, 200, "lazy expired grouped orders", grouped.body);
+      const cleanup = await processStaleOrderCleanupBatch({ limit: 10 });
+      assert(cleanup.ordersExpired >= 1, "stale worker did not expire any orders");
 
       const order = await prisma.order.findUnique({
         where: { id: pendingOrder.id },
         select: { status: true, failureReason: true }
       });
       assert(order?.status === "expired", "pending order with expired reservation was not expired");
-      assert(order.failureReason === null, "lazy expiry set failureReason");
+      assert(order.failureReason === null, "worker expiry set failureReason");
 
       const analytics = await organisationClient.fetch(
         `/dashboard/events/${createdEventId}`,
         { redirect: "follow" }
       );
       const analyticsText = await analytics.text();
-      assertStatus(analytics, 200, "analytics after lazy expiry");
+      assertStatus(analytics, 200, "analytics after worker expiry");
       assert(
         !analyticsText.includes(formatCurrency(ticketType.price)),
         "expired order was counted as analytics revenue"
@@ -954,11 +966,14 @@ async function main() {
         "expired reservation reduced public checkout availability"
       );
 
-      const firstCleanup = await organisationClient.json("/api/orders");
-      assertStatus(firstCleanup.response, 200, "first idempotent cleanup", firstCleanup.body);
-      const secondCleanup = await organisationClient.json("/api/orders");
-      assertStatus(secondCleanup.response, 200, "second idempotent cleanup", secondCleanup.body);
-      const defaultOrderIds = firstCleanup.body.groups.flatMap((group) =>
+      const firstCleanup = await processStaleOrderCleanupBatch({ limit: 10 });
+      const secondCleanup = await processStaleOrderCleanupBatch({ limit: 10 });
+      assert(firstCleanup.ordersExpired >= 2, "first stale worker run did not expire stale orders");
+      assert(secondCleanup.ordersExpired === 0, "second stale worker run was not idempotent");
+
+      const defaultOrders = await organisationClient.json("/api/orders");
+      assertStatus(defaultOrders.response, 200, "default grouped orders", defaultOrders.body);
+      const defaultOrderIds = defaultOrders.body.groups.flatMap((group) =>
         group.orders.map((order) => order.id)
       );
       assert(

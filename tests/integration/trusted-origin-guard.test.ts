@@ -7,6 +7,16 @@ import { POST as createOrganisation } from "@/app/api/orgs/route";
 import { POST as paymentsWebhook } from "@/app/api/payments/webhook/route";
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
 
+function parseConsoleJson(spy: ReturnType<typeof vi.spyOn>, index = 0) {
+  const message = spy.mock.calls[index]?.[0];
+
+  if (typeof message !== "string") {
+    throw new Error("Expected structured log string");
+  }
+
+  return JSON.parse(message) as Record<string, unknown>;
+}
+
 function withAppUrlEnv(value: string, run: () => Promise<void>) {
   const previous = process.env.NEXT_PUBLIC_APP_URL;
   process.env.NEXT_PUBLIC_APP_URL = value;
@@ -73,16 +83,15 @@ describe("trusted origin guard", () => {
         }
       });
       await expect(prisma.organisation.count()).resolves.toBe(0);
-      expect(warn).toHaveBeenCalledWith(
-        "Trusted origin guard rejected request",
-        expect.objectContaining({
+      expect(parseConsoleJson(warn)).toMatchObject({
+          level: "warn",
+          event: "trusted_origin.rejected",
           method: "POST",
           path: "/api/orgs",
           origin: "https://evil.example",
           referer: null,
           reason: "untrusted_origin"
-        })
-      );
+      });
     });
   });
 
@@ -104,12 +113,11 @@ describe("trusted origin guard", () => {
       );
 
       expect(response.status).toBe(403);
-      expect(warn).toHaveBeenCalledWith(
-        "Trusted origin guard rejected request",
-        expect.objectContaining({
+      expect(parseConsoleJson(warn)).toMatchObject({
+          level: "warn",
+          event: "trusted_origin.rejected",
           reason: "null_origin"
-        })
-      );
+      });
     });
   });
 
@@ -150,16 +158,15 @@ describe("trusted origin guard", () => {
       );
 
       expect(response.status).toBe(201);
-      expect(warn).toHaveBeenCalledWith(
-        "Trusted origin guard compatibility allow",
-        expect.objectContaining({
+      expect(parseConsoleJson(warn)).toMatchObject({
+          level: "warn",
+          event: "trusted_origin.compat_allowed",
           method: "POST",
           path: "/api/orgs",
           origin: null,
           referer: null,
           reason: "missing_origin_and_referer_allowed"
-        })
-      );
+      });
     });
   });
 
@@ -177,6 +184,49 @@ describe("trusted origin guard", () => {
     });
   });
 
+  test("Stripe checkout webhook invalid signature preserves response and emits structured alert", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const response = await paymentsWebhook(
+      new Request("http://localhost/api/payments/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "invalid-signature" },
+        body: JSON.stringify({ id: "evt_invalid", secret: "do-not-log" })
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(parseJsonResponse(response)).resolves.toEqual({
+      error: "Invalid Stripe signature"
+    });
+
+    expect(parseConsoleJson(error, 0)).toMatchObject({
+      level: "error",
+      event: "stripe.webhook.signature_failed",
+      reason: "invalid_signature",
+      requestBytes: expect.any(Number)
+    });
+    expect(parseConsoleJson(error, 1)).toMatchObject({
+      level: "error",
+      event: "stripe_webhook_signature_failure",
+      reason: "invalid_signature",
+      webhook: "payments"
+    });
+    expect(parseConsoleJson(info)).toMatchObject({
+      level: "info",
+      event: "ops.metric",
+      metricName: "stripe_webhook_signature_failures_total"
+    });
+
+    const output = JSON.stringify([
+      ...error.mock.calls.map((call) => call[0]),
+      ...info.mock.calls.map((call) => call[0])
+    ]);
+    expect(output).not.toContain("do-not-log");
+    expect(output).not.toContain("evt_invalid");
+  });
+
   test("Stripe Connect webhook remains exempt from trusted-origin guard", async () => {
     const response = await connectWebhook(
       new Request("http://localhost/api/stripe/connect/webhook", {
@@ -189,5 +239,51 @@ describe("trusted origin guard", () => {
     await expect(parseJsonResponse(response)).resolves.toEqual({
       error: "Missing Stripe signature"
     });
+  });
+
+  test("Stripe Connect webhook invalid signature preserves response and emits structured alert", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const response = await connectWebhook(
+      new Request("http://localhost/api/stripe/connect/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "invalid-signature" },
+        body: JSON.stringify({ id: "evt_connect_invalid", secret: "do-not-log" })
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(parseJsonResponse(response)).resolves.toEqual({
+      error: "Invalid Stripe signature"
+    });
+
+    expect(parseConsoleJson(error, 0)).toMatchObject({
+      level: "error",
+      event: "stripe_connect.webhook.signature_failed",
+      reason: "invalid_signature",
+      requestBytes: expect.any(Number)
+    });
+    expect(parseConsoleJson(error, 1)).toMatchObject({
+      level: "error",
+      event: "stripe_webhook_signature_failure",
+      reason: "invalid_signature",
+      webhook: "stripe_connect"
+    });
+    expect(parseConsoleJson(info)).toMatchObject({
+      level: "info",
+      event: "ops.metric",
+      metricName: "stripe_webhook_signature_failures_total",
+      tags: {
+        webhook: "stripe_connect"
+      }
+    });
+
+    const output = JSON.stringify([
+      ...error.mock.calls.map((call) => call[0]),
+      ...info.mock.calls.map((call) => call[0])
+    ]);
+    expect(output).not.toContain("do-not-log");
+    expect(output).not.toContain("evt_connect_invalid");
   });
 });

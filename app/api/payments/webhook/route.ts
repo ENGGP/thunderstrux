@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { logError, logInfo, logWarn } from "@/lib/ops/logger";
+import { emitMetric } from "@/lib/ops/metrics";
 import {
   findOrderForCheckoutSession,
   runCheckoutReconciliationTransaction
@@ -13,7 +16,7 @@ import {
 import { expireReservationForOrder } from "@/lib/tickets/reservations";
 
 function reconciliationError(message: string, details: Record<string, unknown>) {
-  console.error("Stripe checkout reconciliation failed", {
+  logError("stripe.webhook.reconciliation_failed", {
     message,
     ...details
   });
@@ -23,7 +26,14 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
 
   if (!signature) {
-    console.warn("Stripe checkout webhook missing signature header");
+    logWarn("stripe.webhook.signature_failed", {
+      reason: "missing_signature"
+    });
+    emitMetric("stripe_webhook_signature_failures_total");
+    emitOperationalAlert("stripe_webhook_signature_failure", {
+      reason: "missing_signature",
+      webhook: "payments"
+    });
     return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
 
@@ -36,7 +46,7 @@ export async function POST(request: Request) {
     webhookSecret = getStripeWebhookSecret();
   } catch (error) {
     if (error instanceof StripeConfigurationError) {
-      console.error("Stripe checkout webhook configuration error", {
+      logError("stripe.webhook.configuration_error", {
         message: error.message
       });
       return NextResponse.json(
@@ -52,19 +62,24 @@ export async function POST(request: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-    console.info("Stripe checkout webhook signature verified", {
-      rawBodyLength: rawBody.length
+    logInfo("stripe.webhook.received", {
+      requestBytes: rawBody.length
     });
   } catch (error) {
-    console.error("WEBHOOK ERROR:", error);
-    console.error("Stripe checkout webhook signature verification failed", {
-      rawBodyLength: rawBody.length,
-      message: error instanceof Error ? error.message : String(error)
+    logError("stripe.webhook.signature_failed", {
+      requestBytes: rawBody.length,
+      reason: "invalid_signature",
+      error
+    });
+    emitMetric("stripe_webhook_signature_failures_total");
+    emitOperationalAlert("stripe_webhook_signature_failure", {
+      reason: "invalid_signature",
+      webhook: "payments"
     });
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
 
-  console.info("Stripe checkout webhook processing", {
+  logInfo("stripe.webhook.received", {
     stripeEventId: event.id,
     eventType: event.type
   });
@@ -73,7 +88,7 @@ export async function POST(request: Request) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      console.info("Stripe checkout webhook received", {
+      logInfo("stripe.webhook.received", {
         stripeEventId: event.id,
         stripeSessionId: session.id,
         paymentStatus: session.payment_status,
@@ -91,7 +106,7 @@ export async function POST(request: Request) {
     case "checkout.session.expired": {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      console.info("Stripe checkout expired webhook received", {
+      logInfo("stripe.webhook.received", {
         stripeEventId: event.id,
         stripeSessionId: session.id,
         metadataOrderId: session.metadata?.orderId
@@ -108,14 +123,14 @@ export async function POST(request: Request) {
           return;
         }
 
-        console.info("Stripe checkout expired order matched", {
+        logInfo("stripe.webhook.received", {
           orderId: order.id,
           stripeSessionId: session.id,
           status: order.status
         });
 
         if (order.status === "paid") {
-          console.info("Stripe checkout expired ignored for paid order", {
+          logInfo("stripe.webhook.ignored", {
             orderId: order.id,
             stripeSessionId: session.id
           });
@@ -132,7 +147,7 @@ export async function POST(request: Request) {
         }
 
         if (order.status === "failed") {
-          console.info("Stripe checkout expired ignored for failed order", {
+          logInfo("stripe.webhook.ignored", {
             orderId: order.id,
             stripeSessionId: session.id,
             failureReason: order.failureReason
@@ -141,7 +156,7 @@ export async function POST(request: Request) {
         }
 
         if (order.status === "expired") {
-          console.info("Stripe checkout expired ignored for expired order", {
+          logInfo("stripe.webhook.ignored", {
             orderId: order.id,
             stripeSessionId: session.id
           });
@@ -174,7 +189,7 @@ export async function POST(request: Request) {
           now
         );
 
-        console.info("Stripe checkout expired order marked expired", {
+        logInfo("stripe.webhook.received", {
           orderId: order.id,
           stripeSessionId: session.id
         });
@@ -184,7 +199,7 @@ export async function POST(request: Request) {
     }
 
     default:
-      console.info("Stripe checkout webhook ignored event", {
+      logInfo("stripe.webhook.ignored", {
         stripeEventId: event.id,
         eventType: event.type
       });

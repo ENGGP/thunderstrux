@@ -15,6 +15,16 @@ const stripeMocks = vi.hoisted(() => ({
   createSession: vi.fn()
 }));
 
+function parseConsoleJson(spy: ReturnType<typeof vi.spyOn>, index = 0) {
+  const message = spy.mock.calls[index]?.[0];
+
+  if (typeof message !== "string") {
+    throw new Error("Expected structured log string");
+  }
+
+  return JSON.parse(message) as Record<string, unknown>;
+}
+
 vi.mock("@/lib/stripe", () => {
   class StripeConfigurationError extends Error {}
 
@@ -84,6 +94,7 @@ describe("checkout and reservation logic", () => {
   });
 
   test("successful mocked checkout creates pending order and active reservation", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     vi.setSystemTime(new Date("2026-05-01T10:00:00.000Z"));
     stripeMocks.createSession.mockResolvedValueOnce({
       id: "cs_integration_success",
@@ -145,6 +156,26 @@ describe("checkout and reservation logic", () => {
         })
       })
     );
+    expect(info.mock.calls.map((call) => JSON.parse(String(call[0])))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "checkout.session.create_started",
+          eventId: event.id,
+          organisationId: event.organisationId,
+          ticketTypeId: event.ticketTypes[0].id,
+          quantity: 2,
+          totalAmount: 5000
+        }),
+        expect.objectContaining({
+          event: "checkout.session.created",
+          orderId: order.id,
+          stripeSessionId: "cs_integration_success",
+          eventId: event.id,
+          organisationId: event.organisationId,
+          ticketTypeId: event.ticketTypes[0].id
+        })
+      ])
+    );
   });
 
   test("active reservations reduce availability and expired reservations do not", async () => {
@@ -201,6 +232,8 @@ describe("checkout and reservation logic", () => {
   });
 
   test("Stripe session creation failure fails order and releases reservation", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     stripeMocks.createSession.mockRejectedValueOnce(new Error("stripe unavailable"));
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const member = await createMember();
@@ -226,5 +259,38 @@ describe("checkout and reservation logic", () => {
     expect(order.status).toBe("failed");
     expect(order.failureReason).toBe("stripe_error");
     expect(order.reservation?.status).toBe("released");
+
+    expect(parseConsoleJson(error, 0)).toMatchObject({
+      level: "error",
+      event: "checkout.session.create_failed",
+      reason: "stripe_error",
+      eventId: event.id,
+      ticketTypeId: event.ticketTypes[0].id,
+      quantity: 1,
+      error: {
+        name: "Error",
+        message: "stripe unavailable"
+      }
+    });
+    expect(parseConsoleJson(error, 1)).toMatchObject({
+      level: "error",
+      event: "checkout_session_creation_failure",
+      reason: "stripe_error",
+      eventId: event.id,
+      ticketTypeId: event.ticketTypes[0].id,
+      quantity: 1
+    });
+    expect(info.mock.calls.map((call) => JSON.parse(String(call[0])))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          event: "ops.metric",
+          metricName: "checkout_session_create_failures_total",
+          tags: {
+            reason: "stripe_error"
+          }
+        })
+      ])
+    );
   });
 });

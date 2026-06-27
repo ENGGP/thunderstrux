@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { logError, logInfo, logWarn } from "@/lib/ops/logger";
+import { emitMetric } from "@/lib/ops/metrics";
 import {
   getStripe,
   getStripeConnectWebhookSecret,
@@ -11,6 +14,16 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
 
   if (!signature) {
+    logWarn("stripe_connect.webhook.signature_failed", {
+      reason: "missing_signature"
+    });
+    emitMetric("stripe_webhook_signature_failures_total", 1, {
+      webhook: "stripe_connect"
+    });
+    emitOperationalAlert("stripe_webhook_signature_failure", {
+      reason: "missing_signature",
+      webhook: "stripe_connect"
+    });
     return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
 
@@ -23,7 +36,7 @@ export async function POST(request: Request) {
     webhookSecret = getStripeConnectWebhookSecret();
   } catch (error) {
     if (error instanceof StripeConfigurationError) {
-      console.error("Stripe Connect webhook configuration error", {
+      logError("stripe_connect.webhook.configuration_error", {
         message: error.message
       });
       return NextResponse.json(
@@ -40,11 +53,22 @@ export async function POST(request: Request) {
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch (error) {
-    console.error(error);
+    logError("stripe_connect.webhook.signature_failed", {
+      requestBytes: rawBody.length,
+      reason: "invalid_signature",
+      error
+    });
+    emitMetric("stripe_webhook_signature_failures_total", 1, {
+      webhook: "stripe_connect"
+    });
+    emitOperationalAlert("stripe_webhook_signature_failure", {
+      reason: "invalid_signature",
+      webhook: "stripe_connect"
+    });
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
 
-  console.info("Stripe Connect webhook processing", {
+  logInfo("stripe_connect.webhook.received", {
     stripeEventId: event.id,
     eventType: event.type
   });
@@ -54,9 +78,12 @@ export async function POST(request: Request) {
     const update = await persistConnectedAccountStatus(account);
 
     if (update.count === 0) {
-      console.error(`No organisation found for Stripe account ${account.id}`);
+      logError("stripe_connect.webhook.ignored", {
+        reason: "stripe_account_not_found",
+        stripeAccountId: account.id
+      });
     } else {
-      console.info("Stripe Connect account status persisted from webhook", {
+      logInfo("stripe_connect.webhook.received", {
         stripeAccountId: account.id,
         updatedOrganisations: update.count
       });

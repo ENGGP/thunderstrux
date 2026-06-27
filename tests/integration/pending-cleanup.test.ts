@@ -14,6 +14,12 @@ import {
   createReservation
 } from "@/tests/helpers/test-data";
 
+function parseConsoleEntries(spy: ReturnType<typeof vi.spyOn>) {
+  return spy.mock.calls.map(
+    (call: unknown[]) => JSON.parse(String(call[0])) as Record<string, unknown>
+  );
+}
+
 describe("pending order cleanup", () => {
   test("expires reservation-backed and old legacy pending orders only", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
@@ -294,6 +300,7 @@ describe("pending order cleanup", () => {
   });
 
   test("worker expires stale reservations and old legacy pending orders in a bounded batch", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();
@@ -398,6 +405,22 @@ describe("pending order cleanup", () => {
     expect(byId.get(alreadyExpiredOrder.id)?.status).toBe("expired");
     expect(byId.get(alreadyExpiredOrder.id)?.failureReason).toBe(
       "already_expired"
+    );
+    expect(parseConsoleEntries(info)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "stale_orders.batch.processed",
+          dryRun: false,
+          reservationsExpired: 1,
+          ordersExpired: 3
+        }),
+        expect.objectContaining({
+          event: "ops.metric",
+          metricName: "stale_orders_expired_total",
+          metricValue: 3,
+          tags: { dryRun: false }
+        })
+      ])
     );
   });
 
@@ -537,6 +560,37 @@ describe("pending order cleanup", () => {
     );
     expect(() => parseStaleOrderCleanupCliOptions(["--unknown"])).toThrow(
       "Unknown stale cleanup option"
+    );
+  });
+
+  test("worker failure emits structured failure event and alert", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(processStaleOrderCleanupBatch({ limit: 0 })).rejects.toThrow(
+      "Stale cleanup limit must be an integer between 1 and 1000."
+    );
+
+    expect(parseConsoleEntries(error)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "stale_orders.batch.failed",
+          dryRun: false,
+          limit: 0,
+          error: {
+            name: "Error",
+            message: "Stale cleanup limit must be an integer between 1 and 1000."
+          }
+        }),
+        expect.objectContaining({
+          event: "stale_order_worker_failed",
+          dryRun: false,
+          limit: 0,
+          error: {
+            name: "Error",
+            message: "Stale cleanup limit must be an integer between 1 and 1000."
+          }
+        })
+      ])
     );
   });
 });

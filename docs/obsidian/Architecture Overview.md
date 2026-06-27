@@ -182,6 +182,18 @@ Failure policy:
 
 Stripe webhook routes are deliberately excluded from both protections because they verify Stripe signatures against the raw request body.
 
+## Operational Logging
+
+Thunderstrux has a small structured operations foundation in `lib/ops/logger.ts`, `lib/ops/metrics.ts`, and `lib/ops/alerts.ts`.
+
+- Logs are emitted as one JSON object per console line with `level`, `event`, `timestamp`, `service`, and `environment`.
+- Redaction is applied by default to sensitive keys such as cookies, authorization headers, tokens, passwords, secrets, raw bodies, payloads, and email HTML.
+- Operational alerts use stable event names such as `paid_but_unfulfilled_compensation_required`, `email_outbox_retry_exhausted`, `checkout_session_creation_failure`, `stripe_webhook_signature_failure`, `stale_order_worker_failed`, `db_migration_failed`, and `app_healthcheck_failed`.
+- P1.13 MVP structured logging is implemented for the health endpoint, alerts, payment/webhook/checkout paths, email outbox, stale cleanup, rate limiting, and trusted-origin guard.
+- Alert records use the alert name as the structured `event` value, so operators should query alert names directly.
+- `db_migration_failed` and `app_healthcheck_failed` are reserved operational alert names. They are not emitted by app runtime code yet; deployment and monitoring must own migration failure and healthcheck non-200 alerting.
+- Console JSON is the MVP transport. Production must route these logs into an aggregation and alerting system before relying on them operationally.
+
 ## Multi-Tenancy Model
 
 - `Organisation` remains the tenant, event owner, order owner, ticket owner, and Stripe Connect owner.

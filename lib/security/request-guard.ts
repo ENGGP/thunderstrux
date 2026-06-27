@@ -1,4 +1,5 @@
 import { forbidden } from "@/lib/api/errors";
+import { logWarn } from "@/lib/ops/logger";
 
 const TRUSTED_ORIGIN_ERROR = "Untrusted request origin";
 const warnedKeys = new Set<string>();
@@ -49,7 +50,7 @@ function getRequestPath(request: Request): string {
 }
 
 function logRejectedRequest(request: Request, reason: RejectReason) {
-  console.warn("Trusted origin guard rejected request", {
+  logWarn("trusted_origin.rejected", {
     method: request.method,
     path: getRequestPath(request),
     origin: request.headers.get("origin"),
@@ -70,7 +71,7 @@ function logCompatibilityWarning(request: Request, reason: WarnReason) {
   }
 
   warnedKeys.add(key);
-  console.warn("Trusted origin guard compatibility allow", {
+  logWarn("trusted_origin.compat_allowed", {
     method: request.method,
     path: getRequestPath(request),
     origin: request.headers.get("origin"),

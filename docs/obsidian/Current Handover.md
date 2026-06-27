@@ -2,7 +2,7 @@
 
 Read this first, then [[Thunderstrux Codebase Map]].
 
-Latest dated handover: [[Handover 2026-05-14 P1.7 Reservation Aware Availability]].
+Latest dated handover: [[Handover 2026-06-27 P1.8 Through P1.13 Completion]].
 
 ## Current State
 
@@ -20,6 +20,7 @@ Core model:
 - Stripe Checkout fulfilment remains webhook-driven.
 - Paid-but-unfulfilled Checkout sessions enter a durable compensation-review state instead of ordinary silent failure.
 - Ticket delivery email is outbox-backed and non-blocking; provider failures must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
+- Operational logs use structured JSON for P1.13-covered paths. Metrics are console/log-derived only for MVP and require production log aggregation for alerting.
 
 Implemented product areas:
 
@@ -34,6 +35,7 @@ Implemented product areas:
 - Paid Stripe sessions that cannot issue tickets are stored as failed orders with `requiresCompensationReview=true`.
 - First-time paid-but-unfulfilled compensation transitions emit a redacted `paid_but_unfulfilled_compensation_required` operational alert after the reconciliation transaction commits.
 - Successful fulfilment transactionally creates durable automatic `EmailOutbox` ticket-delivery jobs; worker processing is separate from webhook reconciliation.
+- `GET /api/health` returns a minimal public-safe health payload for external health checks.
 
 Security hardening now in place:
 
@@ -41,6 +43,7 @@ Security hardening now in place:
 - Central Redis-backed fixed-window rate limiting for credentials login, signup, checkout creation, ticket email resend, organisation create/join/leave, ticket check-in/check-out, and Stripe Connect browser mutations.
 - Rate-limit tests cover side-effect prevention for organisation create, join/leave, ticket check-in/check-out, checkout/resend, and Stripe Connect mutation paths.
 - Stripe webhook routes are exempt from trusted-origin and rate-limit guards; they remain governed by Stripe signature verification over raw request bodies.
+- Payment webhooks, checkout session creation, email outbox processing, stale cleanup, rate limiting, and trusted-origin guard now emit stable structured operational events.
 
 For MVP, organisation committee members may share one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
 
@@ -187,15 +190,18 @@ docker compose exec app pnpm test:smoke
 docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration
 docker compose build app
 pnpm docker:rebuild
+docker compose exec app pnpm email:outbox:process
+docker compose exec app pnpm stale-orders:process
+docker compose exec app pnpm stale-orders:process -- --dry-run
 ```
 
 ## Latest Verification
 
-Most recent validation after P1.9 denormalized organisation ownership hardening:
+Most recent validation after P1.13 structured logging/metrics/alerts MVP slices:
 
 - `pnpm exec tsc --noEmit` passed.
 - `git diff --check` passed with CRLF warnings only.
-- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 15 files, 109 tests.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration` passed: 18 files, 166 tests.
 - `docker compose exec app pnpm test:smoke` passed: 22 smoke checks.
 
 Recent P1 validation notes:
@@ -205,6 +211,7 @@ Recent P1 validation notes:
 - P1.6 pagination is complete for MVP across organiser orders, member tickets, and public discovery.
 - P1.7 public event detail availability is reservation-aware and strictly read-only.
 - P1.9 checkout reconciliation now validates Stripe organisation metadata against `Event.organisationId`, preserves stale denormalized `Order.organisationId` for drift tolerance, and uses event ownership for organisation-scoped stale cleanup.
+- P1.13 adds structured JSON logs, redaction, the health endpoint, stable operational events, console/log-derived metrics, and alert event names. It does not add a metrics backend, dashboard, external alert vendor, or automatic paging.
 
 ## Integration Test State
 
@@ -223,6 +230,7 @@ Current integration suites:
 - `tests/integration/trusted-origin-guard.test.ts`
 - `tests/integration/webhook-reconciliation.test.ts`
 - `tests/integration/email-outbox.test.ts`
+- `tests/integration/ops-logging.test.ts`
 
 Important rules:
 
@@ -236,7 +244,7 @@ Important rules:
 
 Recommended next implementation branch:
 
-- Continue with the next approved P1 slice after P1.12 review. P1.12 added a bounded stale-order worker and removed broad request-time stale cleanup from reads while keeping checkout-local cleanup authoritative.
+- P1.13 implementation is MVP-complete after docs/runbook cleanup and validation. Next work should focus on production deployment wiring: log aggregation, alert routing, scheduler configuration, and healthcheck monitoring.
 - Produce the dedicated CSRF design for P0 Slice B before implementing any token-based CSRF changes.
 - Keep each remediation slice narrow and separately reviewed.
 
@@ -246,12 +254,12 @@ Other pending branches:
 - P1.10 added the planned composite indexes, but existing single-column `Order(eventId)` and `Order(userId)` indexes intentionally remain. Review real production index usage before removing any redundant indexes.
 - Production must schedule `pnpm email:outbox:process` every 1 minute or paid buyers may not receive ticket delivery email.
 - Production must schedule `pnpm stale-orders:process` every 1 minute or stale pending orders/reservations may remain until the next manual run. Use `pnpm stale-orders:process -- --dry-run` for non-mutating inspection.
-- `paid_but_unfulfilled_compensation_required` currently uses structured console alerting; route this into real metrics/alerting in P1.
+- Structured alert events including `paid_but_unfulfilled_compensation_required`, `email_outbox_retry_exhausted`, `stale_order_worker_failed`, `stripe_webhook_signature_failure`, and `checkout_session_creation_failure` still require external production routing.
 - Public availability can still become stale between page load and checkout; checkout remains authoritative.
 - Optional P1.7 UI test hardening: assert input `max` and disabled button attributes directly.
 - Add drift-audit or repair tooling for denormalized `Order.organisationId`, `Ticket.organisationId`, and `TicketReservation.organisationId`; P1.9 hardens runtime trust but does not rewrite historical rows.
 - API error standardisation and small UI state consistency improvements.
-- Future staff/RBAC, audit logs, QR scanning, email outbox monitoring, and explicit failed-job requeue tooling.
+- Future staff/RBAC, audit logs, QR scanning, real metrics backend, external alerting transport, dashboards, email outbox monitoring, and explicit failed-job requeue tooling.
 
 Do not implement QR scanning, RBAC/staff invites, microservices, or broad architecture rewrites unless explicitly requested.
 

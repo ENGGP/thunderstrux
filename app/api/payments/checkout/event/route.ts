@@ -7,6 +7,9 @@ import {
   unauthorized,
   validationError
 } from "@/lib/api/errors";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { logError, logInfo } from "@/lib/ops/logger";
+import { emitMetric } from "@/lib/ops/metrics";
 import {
   AuthenticationRequiredError,
   requireAuthenticatedUser
@@ -37,6 +40,23 @@ class CheckoutAvailabilityError extends Error {
     this.name = "CheckoutAvailabilityError";
     this.details = details;
   }
+}
+
+function emitCheckoutSessionCreationFailure(
+  reason: string,
+  context: Record<string, unknown>
+) {
+  logError("checkout.session.create_failed", {
+    reason,
+    ...context
+  });
+  emitMetric("checkout_session_create_failures_total", 1, {
+    reason
+  });
+  emitOperationalAlert("checkout_session_creation_failure", {
+    reason,
+    ...context
+  });
 }
 
 export async function POST(request: Request) {
@@ -163,7 +183,7 @@ export async function POST(request: Request) {
     const reservationNow = new Date();
     const reservationExpiresAt = getReservationExpiry(reservationNow);
 
-    console.info("Stripe checkout creation started", {
+    logInfo("checkout.session.create_started", {
       eventId: event.id,
       organisationId: authoritativeOrganisationId,
       ticketTypeId: ticketType.id,
@@ -299,6 +319,13 @@ export async function POST(request: Request) {
     );
 
     if (!session.url) {
+      emitCheckoutSessionCreationFailure("missing_redirect_url", {
+        orderId: pendingOrder.id,
+        stripeSessionId: session.id,
+        eventId: event.id,
+        organisationId: authoritativeOrganisationId,
+        ticketTypeId: ticketType.id
+      });
       await prisma.$transaction(async (tx) => {
         await tx.order.update({
           where: { id: pendingOrder.id },
@@ -324,7 +351,7 @@ export async function POST(request: Request) {
       }
     });
 
-    console.info("Stripe checkout session created", {
+    logInfo("checkout.session.created", {
       orderId: pendingOrder.id,
       stripeSessionId: session.id,
       eventId: event.id,
@@ -343,8 +370,11 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof StripeConfigurationError) {
-      console.error("Stripe checkout configuration error", {
-        message: error.message
+      emitCheckoutSessionCreationFailure("stripe_configuration_error", {
+        eventId: validation.data.eventId,
+        quantity: validation.data.quantity,
+        ticketTypeId: validation.data.ticketTypeId,
+        error
       });
       return serviceUnavailable(
         "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
@@ -370,7 +400,7 @@ export async function POST(request: Request) {
       });
     }
 
-    console.error("Failed to create checkout session", {
+    emitCheckoutSessionCreationFailure("stripe_error", {
       eventId: validation.data.eventId,
       quantity: validation.data.quantity,
       ticketTypeId: validation.data.ticketTypeId,

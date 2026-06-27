@@ -35,6 +35,93 @@ Rules:
 - Bucket keys are hashed before Redis storage; warning logs avoid request bodies, cookies, tokens, passwords, raw emails, raw user IDs, raw order IDs, Redis URLs, and unhashed bucket keys.
 - Stripe webhook routes are not rate-limited.
 
+## Health
+
+### `GET /api/health`
+
+Returns a minimal public-safe health payload for external health checks.
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "service": "thunderstrux"
+}
+```
+
+The endpoint does not expose secrets, tenant data, database rows, or runtime configuration.
+
+## Operational Logs, Metrics, And Alerts
+
+Thunderstrux emits MVP operational telemetry as structured JSON lines through `console.info`, `console.warn`, and `console.error`.
+
+Log shape:
+
+```json
+{
+  "level": "error",
+  "event": "checkout.session.create_failed",
+  "timestamp": "2026-06-27T11:00:00.000Z",
+  "service": "thunderstrux",
+  "environment": "production"
+}
+```
+
+Redaction policy:
+
+- Sensitive keys are redacted by default, including cookies, auth headers, tokens, passwords, API keys, secrets, raw request bodies, full payloads, email HTML, and provider secrets.
+- Do not log full Stripe payloads, full webhook bodies, email HTML, cookies, auth headers, session tokens, passwords, or provider credentials.
+- Log identifiers only when operationally necessary, and prefer route-normalised paths for abuse/security events.
+
+Implemented stable events:
+
+- `ops.alert`
+- `ops.metric`
+- `stripe.webhook.signature_failed`
+- `stripe.webhook.received`
+- `stripe.webhook.ignored`
+- `stripe_connect.webhook.signature_failed`
+- `stripe_connect.webhook.received`
+- `stripe_connect.webhook.ignored`
+- `checkout.session.create_started`
+- `checkout.session.created`
+- `checkout.session.create_failed`
+- `email_outbox.batch.processed`
+- `email_outbox.job.failed`
+- `email_outbox.worker.completed`
+- `email_outbox.worker.failed`
+- `stale_orders.batch.processed`
+- `stale_orders.batch.failed`
+- `stale_orders.worker.completed`
+- `stale_orders.worker.failed`
+- `rate_limit.rejected`
+- `rate_limit.backend_unavailable`
+- `trusted_origin.rejected`
+- `trusted_origin.compat_allowed`
+
+Implemented alert names:
+
+- `paid_but_unfulfilled_compensation_required`
+- `stripe_webhook_signature_failure`
+- `checkout_session_creation_failure`
+- `email_outbox_retry_exhausted`
+- `stale_order_worker_failed`
+- `app_healthcheck_failed` is reserved for external healthcheck monitoring and is not emitted by app runtime code.
+- `db_migration_failed` is reserved for deployment/migration automation and is not emitted by app runtime code.
+
+Alert records use the alert name as the structured `event` field. Operators should query alert names directly, for example `event = paid_but_unfulfilled_compensation_required`.
+
+Implemented metric names are console/log-derived only:
+
+- `stripe_webhook_signature_failures_total`
+- `checkout_session_create_failures_total`
+- `email_outbox_jobs_failed_total`
+- `email_outbox_jobs_sent_total`
+- `stale_orders_expired_total`
+
+There is no metrics backend, dashboard, external alert vendor, or automatic paging in the MVP implementation. Production must route these JSON logs through the hosting platform or log aggregator and configure alert rules there.
+
 ## Auth And Profile
 
 ### `POST /api/auth/signup`

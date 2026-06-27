@@ -5,6 +5,9 @@ import {
   sendTicketDeliveryEmailToProvider,
   truncateTicketEmailError
 } from "@/lib/email/ticket-delivery";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { logError, logInfo } from "@/lib/ops/logger";
+import { emitMetric } from "@/lib/ops/metrics";
 
 const defaultBatchSize = 25;
 const defaultMaxAttempts = 5;
@@ -210,6 +213,28 @@ async function markJobFailed({
       }
     })
   ]);
+
+  logError("email_outbox.job.failed", {
+    jobId: job.id,
+    orderId: job.orderId,
+    mode: job.mode,
+    attempts,
+    terminal: exhausted,
+    errorName: error instanceof Error ? error.name : "UnknownError"
+  });
+  emitMetric("email_outbox_jobs_failed_total", 1, {
+    mode: job.mode,
+    terminal: exhausted
+  });
+
+  if (exhausted) {
+    emitOperationalAlert("email_outbox_retry_exhausted", {
+      jobId: job.id,
+      orderId: job.orderId,
+      mode: job.mode,
+      attempts
+    });
+  }
 }
 
 export async function processTicketEmailOutboxBatch({
@@ -270,6 +295,9 @@ export async function processTicketEmailOutboxBatch({
         providerMessageId: delivery.providerMessageId
       });
       result.sent += 1;
+      emitMetric("email_outbox_jobs_sent_total", 1, {
+        mode: job.mode
+      });
     } catch (error) {
       await markJobFailed({ job, error, now, maxAttempts });
 
@@ -280,6 +308,8 @@ export async function processTicketEmailOutboxBatch({
       }
     }
   }
+
+  logInfo("email_outbox.batch.processed", result);
 
   return result;
 }

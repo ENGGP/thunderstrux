@@ -1,5 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { logError, logInfo } from "@/lib/ops/logger";
+import { emitMetric } from "@/lib/ops/metrics";
 import { expireOldActiveReservations } from "@/lib/tickets/reservations";
 
 export const stalePreCheckoutOrderMinutes = 30;
@@ -227,6 +230,39 @@ async function selectAlreadyExpiredReservationBackedOrderCandidates({
 }
 
 export async function processStaleOrderCleanupBatch({
+  limit: requestedLimit,
+  now = new Date(),
+  dryRun = false
+}: StaleOrderCleanupBatchOptions = {}): Promise<StaleOrderCleanupBatchResult> {
+  try {
+    const result = await processStaleOrderCleanupBatchInternal({
+      limit: requestedLimit,
+      now,
+      dryRun
+    });
+
+    logInfo("stale_orders.batch.processed", result);
+    emitMetric("stale_orders_expired_total", result.ordersExpired, {
+      dryRun: result.dryRun
+    });
+
+    return result;
+  } catch (error) {
+    logError("stale_orders.batch.failed", {
+      dryRun,
+      limit: requestedLimit,
+      error
+    });
+    emitOperationalAlert("stale_order_worker_failed", {
+      dryRun,
+      limit: requestedLimit,
+      error
+    });
+    throw error;
+  }
+}
+
+async function processStaleOrderCleanupBatchInternal({
   limit: requestedLimit,
   now = new Date(),
   dryRun = false

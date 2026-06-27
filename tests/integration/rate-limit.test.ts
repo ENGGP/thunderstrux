@@ -100,6 +100,16 @@ async function exhaustRateLimit(
   }
 }
 
+function parseConsoleJson(spy: ReturnType<typeof vi.spyOn>, index = 0) {
+  const message = spy.mock.calls[index]?.[0];
+
+  if (typeof message !== "string") {
+    throw new Error("Expected structured log string");
+  }
+
+  return JSON.parse(message) as Record<string, unknown>;
+}
+
 describe("rate limit helper", () => {
   beforeEach(() => {
     const backend = createTestRateLimitBackend();
@@ -115,6 +125,7 @@ describe("rate limit helper", () => {
   });
 
   test("allows requests below limit, throttles above limit, and isolates buckets", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const request = new Request("http://localhost/api/auth/callback/credentials", {
       method: "POST"
     });
@@ -141,6 +152,14 @@ describe("rate limit helper", () => {
         code: "RATE_LIMITED",
         message: "Too many requests. Please try again later."
       }
+    });
+    expect(parseConsoleJson(warn)).toMatchObject({
+      level: "warn",
+      event: "rate_limit.rejected",
+      policy: "login_ip_email",
+      method: "POST",
+      path: "/api/auth/callback/credentials",
+      reason: "rate_limited"
     });
 
     await expect(
@@ -170,12 +189,15 @@ describe("rate limit helper", () => {
       keyParts: ["user", "event", "127.0.0.1"]
     });
     expect(open).toBeNull();
-    expect(warn).toHaveBeenCalledWith(
-      "Rate limit guard",
-      expect.objectContaining({
+    expect(warn.mock.calls.map((call) => JSON.parse(String(call[0])))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "rate_limit.backend_unavailable",
         policy: "checkout_create",
         reason: "backend_unavailable_fail_open"
-      })
+        })
+      ])
     );
   });
 
@@ -216,13 +238,12 @@ describe("rate limit helper", () => {
       keyParts: ["org", "order", "user"]
     });
 
-    expect(warn).toHaveBeenCalledWith(
-      "Rate limit guard",
-      expect.objectContaining({
+    expect(parseConsoleJson(warn)).toMatchObject({
+      level: "warn",
+      event: "rate_limit.rejected",
         path: "/api/orders/:id/resend",
         reason: "rate_limited"
-      })
-    );
+    });
     expect(JSON.stringify(warn.mock.calls)).not.toContain(
       "cmp2mqct70013nyaulu4bl980"
     );

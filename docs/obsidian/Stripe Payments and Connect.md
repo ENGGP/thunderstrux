@@ -516,9 +516,15 @@ Worker operations:
 - Use `pnpm stale-orders:process -- --dry-run` to inspect candidate counts without writes or row locks.
 - Use `pnpm stale-orders:process -- --limit=100` to override the default batch size.
 - The worker processes one bounded batch and exits.
-- Expected output is a structured `staleOrders:` object with selected and expired reservation/order counts.
+- Expected output is structured JSON with `stale_orders.batch.processed`, `ops.metric` for `stale_orders_expired_total`, and `stale_orders.worker.completed`.
 - If stale rows remain, rerun the worker or inspect pending/active rows before increasing cadence or limit.
 - Paid users are not affected by stale cleanup; the worker must not be used as payment fulfilment.
+
+Operational alerting:
+
+- `stale_orders.batch.failed` is emitted when cleanup fails.
+- `stale_order_worker_failed` is emitted as an alert on cleanup failure.
+- `stale_orders_expired_total` is a console/log-derived metric only.
 
 Safety rules:
 
@@ -590,6 +596,35 @@ Current coverage:
 - request-time reads do not mutate stale rows; stale rows may temporarily exist until the worker runs
 
 The webhook integration tests call `lib/payments/checkout-reconciliation.ts` with mocked `Stripe.Checkout.Session` objects. They verify local reconciliation behavior, not Stripe CLI forwarding or raw webhook signature plumbing.
+
+## Payment Operational Events
+
+Payment and Stripe routes emit structured JSON operational logs.
+
+High-risk event names:
+
+- `stripe.webhook.signature_failed`
+- `stripe.webhook.received`
+- `stripe.webhook.ignored`
+- `stripe_connect.webhook.signature_failed`
+- `stripe_connect.webhook.received`
+- `stripe_connect.webhook.ignored`
+- `checkout.session.create_started`
+- `checkout.session.created`
+- `checkout.session.create_failed`
+
+Alert names:
+
+- `stripe_webhook_signature_failure`
+- `checkout_session_creation_failure`
+- `paid_but_unfulfilled_compensation_required`
+
+Console/log-derived metrics:
+
+- `stripe_webhook_signature_failures_total`
+- `checkout_session_create_failures_total`
+
+Production should alert on any `paid_but_unfulfilled_compensation_required`, on checkout session creation failure spikes, and on Stripe webhook signature failures above the normal baseline in a 5-minute window. These are log-derived only for MVP; there is no built-in metrics backend or alert transport.
 
 ## Local Testing Limits
 
@@ -676,8 +711,7 @@ stripe trigger checkout.session.expired
 
 Expected app logs for a real paid checkout:
 
-- `Stripe checkout webhook signature verified`
-- `Stripe checkout webhook received`
+- `stripe.webhook.received`
 - `Stripe checkout order matched`
 - `Stripe checkout reconciliation validation passed`
 - `Stripe checkout inventory updated`
@@ -701,7 +735,7 @@ stripe listen --events checkout.session.completed,checkout.session.expired --for
 
 Expected app logs for an expired checkout:
 
-- `Stripe checkout expired webhook received`
+- `stripe.webhook.received`
 - `Stripe checkout expired order matched`
 - `Stripe checkout expired order marked expired`
 

@@ -277,6 +277,23 @@ Current test database behavior:
 - truncates app tables before each test
 - runs Vitest sequentially with `--no-file-parallelism --maxWorkers=1 --maxConcurrency=1`
 
+Operational healthcheck:
+
+```bash
+curl -fsS http://localhost:3000/api/health
+```
+
+Expected response:
+
+```json
+{
+  "status": "ok",
+  "service": "thunderstrux"
+}
+```
+
+Production health monitoring should alert on any non-200 response, timeout, or malformed response from `GET /api/health`.
+
 Important:
 
 - Run integration tests from the Docker dev stack because `docker-compose.dev.yml` bind-mounts the local `tests/` directory into the app container.
@@ -580,6 +597,18 @@ Process one bounded email outbox batch:
 pnpm email:outbox:process
 ```
 
+The command emits structured JSON log lines, including `email_outbox.batch.processed` and `email_outbox.worker.completed`. Production should schedule it every 1 minute. If it is not scheduled, paid buyers may have issued ticket rows but no ticket delivery email.
+
+Stale-order cleanup worker:
+
+```text
+pnpm stale-orders:process
+pnpm stale-orders:process -- --dry-run
+pnpm stale-orders:process -- --limit=100
+```
+
+The command emits structured JSON log lines, including `stale_orders.batch.processed` and `stale_orders.worker.completed`. Production should schedule it every 1 minute. Stale rows may temporarily remain until the worker runs; checkout-local cleanup remains authoritative before new reservations.
+
 Rate-limit values:
 
 ```text
@@ -631,3 +660,32 @@ To compare a Stripe CLI webhook secret without printing the full secret:
 ```bash
 docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"
 ```
+
+## Production Observability Runbook
+
+Thunderstrux emits structured JSON logs to stdout/stderr. These logs are machine-parseable but remain console/log-derived only for MVP. There is no built-in metrics backend, alert transport, dashboard, or automatic paging.
+
+Production deployment must provide:
+
+- log aggregation for app stdout/stderr
+- alert routing from selected `event`, `metricName`, and alert names
+- uptime checks for `GET /api/health`
+- scheduler entries for `pnpm email:outbox:process` and `pnpm stale-orders:process`
+
+Alert immediately:
+
+- any `paid_but_unfulfilled_compensation_required`
+- any `email_outbox_retry_exhausted`
+- any `stale_order_worker_failed`
+- app healthcheck non-200, timeout, or malformed response
+
+Alert on threshold:
+
+- `stripe_webhook_signature_failure` or `stripe_webhook_signature_failures_total` above the normal baseline in a 5-minute window
+- spike in `checkout_session_creation_failure` or `checkout_session_create_failures_total`
+- repeated `rate_limit.backend_unavailable`
+- repeated `trusted_origin.rejected` above expected baseline
+
+Future deployment automation should emit or route `db_migration_failed` on migration deploy failure. Until that is implemented, migration failures must be watched through deployment logs and exit codes.
+
+Operational event names are documented in [[API Reference]].

@@ -54,8 +54,9 @@ issued, but buyers may not receive ticket delivery email.
 
 Expected success output:
 
-```text
-Ticket email outbox batch processed { claimed, sent, retried, failed, skipped }
+```json
+{"level":"info","event":"email_outbox.batch.processed","claimed":1,"sent":1,"retried":0,"failed":0,"skipped":0}
+{"level":"info","event":"email_outbox.worker.completed","claimed":1,"sent":1,"retried":0,"failed":0,"skipped":0}
 ```
 
 Worker behavior:
@@ -96,6 +97,16 @@ When failed jobs exist, operators should fix the provider or environment issue,
 identify affected paid orders from `orderId`, and contact buyers manually if
 needed. Terminal failed jobs are not automatically requeued; explicit audited
 requeue tooling is future work.
+
+Operational events:
+
+- `email_outbox.batch.processed`: emitted after each bounded worker batch.
+- `email_outbox.job.failed`: emitted when a job fails and is either retried or marked terminal failed.
+- `email_outbox_retry_exhausted`: alert emitted when a job becomes terminal failed.
+- `email_outbox_jobs_sent_total`: console/log-derived metric emitted for provider success.
+- `email_outbox_jobs_failed_total`: console/log-derived metric emitted for provider failure.
+
+These metrics are log-derived only for MVP. Production must route the JSON logs to an external log aggregator and alert on any `email_outbox_retry_exhausted`.
 
 ## Provider
 

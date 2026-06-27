@@ -664,9 +664,9 @@ docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; cons
 
 Expected logs after a valid signed event:
 
-```text
-Stripe checkout webhook signature verified
-Stripe checkout webhook processing
+```json
+{"level":"info","event":"stripe.webhook.received","requestBytes":1234}
+{"level":"info","event":"stripe.webhook.received","stripeEventId":"evt_...","eventType":"checkout.session.completed"}
 ```
 
 Signed but unrelated events such as `charge.succeeded`, `payment_intent.succeeded`, and `transfer.created` should return `200 Ignored`.

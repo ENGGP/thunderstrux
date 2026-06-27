@@ -549,7 +549,7 @@ async function main() {
 
     await runStep("18. Verify checkout fails before Stripe readiness", async () => {
       const paymentsOrg = await organisationClient.json("/api/orgs/payments-lab");
-      assertStatus(paymentsOrg.response, 403, "organisation account cannot access payments lab");
+      assertStatus(paymentsOrg.response, 404, "organisation account cannot access payments lab");
 
       const publicEvents = await memberClient.json("/api/public/events");
       const paymentsEventListItem = publicEvents.body.events.find(

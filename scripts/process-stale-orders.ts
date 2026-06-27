@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { logError, logInfo } from "@/lib/ops/logger";
 import {
   parseStaleOrderCleanupCliOptions,
   processStaleOrderCleanupBatch
@@ -8,12 +9,12 @@ async function main() {
   const options = parseStaleOrderCleanupCliOptions(process.argv.slice(2));
   const result = await processStaleOrderCleanupBatch(options);
 
-  console.log("staleOrders:", result);
+  logInfo("stale_orders.worker.completed", result);
 }
 
 main()
   .catch((error) => {
-    console.error("Stale order cleanup batch failed", error);
+    logError("stale_orders.worker.failed", { error });
     process.exitCode = 1;
   })
   .finally(async () => {

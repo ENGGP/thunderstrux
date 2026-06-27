@@ -3,6 +3,7 @@ import net from "node:net";
 import tls from "node:tls";
 import { NextResponse } from "next/server";
 import { serviceUnavailable, tooManyRequests } from "@/lib/api/errors";
+import { logWarn } from "@/lib/ops/logger";
 
 const TOO_MANY_REQUESTS_MESSAGE = "Too many requests. Please try again later.";
 const PROTECTION_UNAVAILABLE_MESSAGE =
@@ -147,14 +148,19 @@ function logRateLimitWarning({
     | "backend_unavailable_fail_open";
   error?: unknown;
 }) {
-  console.warn("Rate limit guard", {
-    policy,
-    method: request.method,
-    path: getRequestPath(request),
-    reason,
-    error: error instanceof Error ? error.message : undefined
-  });
-}
+  logWarn(
+      reason === "rate_limited"
+        ? "rate_limit.rejected"
+        : "rate_limit.backend_unavailable",
+      {
+        policy,
+        method: request.method,
+        path: getRequestPath(request),
+        reason,
+        error: error instanceof Error ? error.message : undefined
+      }
+    );
+  }
 
 function getBackend(): RateLimitBackend {
   if (testBackendFailure) {

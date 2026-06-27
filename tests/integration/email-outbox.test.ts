@@ -50,6 +50,12 @@ async function makeOutboxJobsDue(orderId: string, nextAttemptAt: Date) {
   });
 }
 
+function parseConsoleEntries(spy: ReturnType<typeof vi.spyOn>) {
+  return spy.mock.calls.map(
+    (call: unknown[]) => JSON.parse(String(call[0])) as Record<string, unknown>
+  );
+}
+
 function configureEmailEnv() {
   const previousApiKey = process.env.RESEND_API_KEY;
   const previousFrom = process.env.EMAIL_FROM;
@@ -97,6 +103,7 @@ describe("ticket email outbox", () => {
 
   test("worker sends provider email and records automatic success once", async () => {
     const restoreEnv = configureEmailEnv();
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('{"id":"em_automatic"}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -143,6 +150,22 @@ describe("ticket email outbox", () => {
         providerMessageId: "em_automatic",
         lastError: null
       });
+      expect(parseConsoleEntries(info)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event: "ops.metric",
+            metricName: "email_outbox_jobs_sent_total",
+            tags: { mode: "automatic" }
+          }),
+          expect.objectContaining({
+            event: "email_outbox.batch.processed",
+            claimed: 1,
+            sent: 1,
+            retried: 0,
+            failed: 0
+          })
+        ])
+      );
     } finally {
       restoreEnv();
     }
@@ -150,6 +173,8 @@ describe("ticket email outbox", () => {
 
   test("worker retries provider failures and leaves terminal failed jobs unclaimed", async () => {
     const restoreEnv = configureEmailEnv();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("bad", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -200,6 +225,62 @@ describe("ticket email outbox", () => {
         ticketEmailLastError:
           "Email provider failed with status 500: bad"
       });
+      expect(parseConsoleEntries(error)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event: "email_outbox.job.failed",
+            jobId: job.id,
+            orderId: order.id,
+            mode: "automatic",
+            attempts: 1,
+            terminal: false
+          }),
+          expect.objectContaining({
+            event: "email_outbox.job.failed",
+            jobId: job.id,
+            orderId: order.id,
+            mode: "automatic",
+            attempts: 2,
+            terminal: true
+          }),
+          expect.objectContaining({
+            event: "email_outbox_retry_exhausted",
+            jobId: job.id,
+            orderId: order.id,
+            mode: "automatic",
+            attempts: 2
+          })
+        ])
+      );
+      expect(
+        error.mock.calls.filter((call) =>
+          String(call[0]).includes("email_outbox_retry_exhausted")
+        )
+      ).toHaveLength(1);
+      expect(parseConsoleEntries(info)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event: "ops.metric",
+            metricName: "email_outbox_jobs_failed_total",
+            tags: { mode: "automatic", terminal: false }
+          }),
+          expect.objectContaining({
+            event: "ops.metric",
+            metricName: "email_outbox_jobs_failed_total",
+            tags: { mode: "automatic", terminal: true }
+          }),
+          expect.objectContaining({
+            event: "email_outbox.batch.processed",
+            failed: 1
+          })
+        ])
+      );
+      const output = JSON.stringify([
+        ...error.mock.calls.map((call) => call[0]),
+        ...info.mock.calls.map((call) => call[0])
+      ]);
+      expect(output).not.toContain("<html");
+      expect(output).not.toContain("automatic-outbox@example.com");
     } finally {
       restoreEnv();
     }

@@ -1,5 +1,13 @@
+import { logError } from "@/lib/ops/logger";
+
 export type OperationalAlertName =
-  | "paid_but_unfulfilled_compensation_required";
+  | "paid_but_unfulfilled_compensation_required"
+  | "email_outbox_retry_exhausted"
+  | "checkout_session_creation_failure"
+  | "stripe_webhook_signature_failure"
+  | "stale_order_worker_failed"
+  | "db_migration_failed"
+  | "app_healthcheck_failed";
 
 export type OperationalAlertPayload = {
   orderId: string;
@@ -7,14 +15,14 @@ export type OperationalAlertPayload = {
   eventId: string;
   reason: string;
   source: "webhook" | "dev_success_fallback";
-};
+} | Record<string, unknown>;
 
 export function emitOperationalAlert(
   event: OperationalAlertName,
   payload: OperationalAlertPayload
 ) {
   try {
-    console.error("Operational alert", {
+    logError("ops.alert", {
       event,
       ...payload
     });

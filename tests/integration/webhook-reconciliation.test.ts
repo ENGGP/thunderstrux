@@ -13,6 +13,29 @@ import {
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 
 describe("webhook reconciliation", () => {
+  function operationalAlertCalls(error: {
+    mock: { calls: Array<unknown[]> };
+  }) {
+    return error.mock.calls
+      .map(([message]) => {
+        if (typeof message !== "string") {
+          return null;
+        }
+
+        try {
+          return JSON.parse(message) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (entry): entry is Record<string, unknown> =>
+          entry?.level === "error" &&
+          typeof entry.event === "string" &&
+          entry.event.includes("_")
+      );
+  }
+
   function configureEmailEnv() {
     const previousApiKey = process.env.RESEND_API_KEY;
     const previousFrom = process.env.EMAIL_FROM;
@@ -120,9 +143,7 @@ describe("webhook reconciliation", () => {
       "Stripe checkout tickets created",
       expect.any(Object)
     );
-    expect(
-      error.mock.calls.filter(([message]) => message === "Operational alert")
-    ).toHaveLength(0);
+    expect(operationalAlertCalls(error)).toHaveLength(0);
   });
 
   test("stale order organisation does not block fulfilment when metadata matches event organisation", async () => {
@@ -789,11 +810,10 @@ describe("webhook reconciliation", () => {
       prisma.emailOutbox.count({ where: { orderId: order.id } })
     ).resolves.toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
-    const alertCalls = error.mock.calls.filter(
-      ([message]) => message === "Operational alert"
-    );
+    const alertCalls = operationalAlertCalls(error);
     expect(alertCalls).toHaveLength(1);
-    expect(alertCalls[0][1]).toEqual({
+    expect(alertCalls[0]).toMatchObject({
+      level: "error",
       event: "paid_but_unfulfilled_compensation_required",
       orderId: order.id,
       stripeSessionId: "cs_inventory_compensation",
@@ -882,9 +902,7 @@ describe("webhook reconciliation", () => {
         status: "pending"
       });
       expect(fetchMock).not.toHaveBeenCalled();
-      expect(
-        error.mock.calls.filter(([message]) => message === "Operational alert")
-      ).toHaveLength(0);
+      expect(operationalAlertCalls(error)).toHaveLength(0);
     } finally {
       restoreEmailEnv();
     }

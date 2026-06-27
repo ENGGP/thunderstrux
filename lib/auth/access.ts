@@ -1,11 +1,11 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import {
-  canManageEvents,
-  canManageFinance,
-  canManageStripeConnect,
+  hasOrganisationPermission,
+  type OrganisationPermission,
   type OrganisationRole
 } from "@/lib/permissions";
+import type { OrganisationStaffRole } from "@/lib/permissions";
 
 export type AccountRole = "member" | "organisation";
 
@@ -22,6 +22,14 @@ export class OrganisationAccessError extends Error {
     this.name = "OrganisationAccessError";
   }
 }
+
+export type OrganisationManagementContext = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: Date;
+  staffRole: OrganisationStaffRole;
+};
 
 export async function requireAuthenticatedUser() {
   const session = await auth();
@@ -49,7 +57,44 @@ export async function requireAccountRole(accountRole: AccountRole) {
 }
 
 export async function getCurrentOrganisationAccount() {
-  const user = await requireAccountRole("organisation");
+  const user = await requireAuthenticatedUser();
+
+  const staff = await prisma.organisationStaff.findFirst({
+    where: {
+      userId: user.id,
+      status: "active"
+    },
+    orderBy: [
+      {
+        role: "asc"
+      },
+      {
+        createdAt: "asc"
+      }
+    ],
+    select: {
+      role: true,
+      organisation: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true
+        }
+      }
+    }
+  });
+
+  if (staff) {
+    return {
+      ...staff.organisation,
+      staffRole: staff.role as OrganisationStaffRole
+    };
+  }
+
+  if (user.accountRole !== "organisation") {
+    return null;
+  }
 
   const organisation = await prisma.organisation.findUnique({
     where: {
@@ -63,10 +108,26 @@ export async function getCurrentOrganisationAccount() {
     }
   });
 
+  if (organisation) {
+    const existingStaffAuthority = await prisma.organisationStaff.findUnique({
+      where: {
+        organisationId_userId: {
+          organisationId: organisation.id,
+          userId: user.id
+        }
+      },
+      select: { id: true }
+    });
+
+    if (existingStaffAuthority) {
+      return null;
+    }
+  }
+
   return organisation
     ? {
         ...organisation,
-        role: "org_owner" as OrganisationRole
+        staffRole: "owner" as OrganisationStaffRole
       }
     : null;
 }
@@ -86,7 +147,17 @@ export async function getAccessibleOrganisationsForCurrentAccount() {
 
   if (user.accountRole === "organisation") {
     const organisation = await getCurrentOrganisationAccount();
-    return organisation ? [organisation] : [];
+    return organisation
+      ? [
+          {
+            id: organisation.id,
+            name: organisation.name,
+            slug: organisation.slug,
+            createdAt: organisation.createdAt,
+            role: "org_owner" as OrganisationRole
+          }
+        ]
+      : [];
   }
 
   // Member accounts discover their joined organisations from OrganisationMember.
@@ -117,6 +188,81 @@ export async function getAccessibleOrganisationsForCurrentAccount() {
     ...membership.organisation,
     role: membership.role as OrganisationRole
   }));
+}
+
+export async function getCurrentStaffOrganisations() {
+  const user = await requireAuthenticatedUser();
+
+  const staffRows = await prisma.organisationStaff.findMany({
+    where: {
+      userId: user.id,
+      status: "active"
+    },
+    orderBy: {
+      organisation: {
+        name: "asc"
+      }
+    },
+    select: {
+      role: true,
+      organisation: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true
+        }
+      }
+    }
+  });
+
+  if (staffRows.length > 0) {
+    return staffRows.map((staff) => ({
+      ...staff.organisation,
+      staffRole: staff.role as OrganisationStaffRole
+    }));
+  }
+
+  if (user.accountRole !== "organisation") {
+    return [];
+  }
+
+  const legacyOrganisation = await prisma.organisation.findUnique({
+    where: {
+      accountUserId: user.id
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true
+    }
+  });
+
+  if (legacyOrganisation) {
+    const existingStaffAuthority = await prisma.organisationStaff.findUnique({
+      where: {
+        organisationId_userId: {
+          organisationId: legacyOrganisation.id,
+          userId: user.id
+        }
+      },
+      select: { id: true }
+    });
+
+    if (existingStaffAuthority) {
+      return [];
+    }
+  }
+
+  return legacyOrganisation
+    ? [
+        {
+          ...legacyOrganisation,
+          staffRole: "owner" as OrganisationStaffRole
+        }
+      ]
+    : [];
 }
 
 export async function getOrganisationAccessForUser(userId: string) {
@@ -181,8 +327,34 @@ export function mapOrganisationAccessToOrganisations(
 export async function requireOrganisationAccessBySlug(orgSlug: string) {
   const user = await requireAuthenticatedUser();
 
-  // Organisation accounts access their organisation through ownership
-  // (`Organisation.accountUserId`), not through OrganisationMember.
+  const staff = await prisma.organisationStaff.findFirst({
+    where: {
+      userId: user.id,
+      status: "active",
+      organisation: {
+        slug: orgSlug
+      }
+    },
+    select: {
+      role: true,
+      organisation: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true
+        }
+      }
+    }
+  });
+
+  if (staff) {
+    return {
+      ...staff.organisation,
+      role: staff.role as unknown as OrganisationRole
+    };
+  }
+
   if (user.accountRole === "organisation") {
     const organisation = await prisma.organisation.findFirst({
       where: {
@@ -247,8 +419,32 @@ export async function requireOrganisationAccessBySlug(orgSlug: string) {
 export async function requireOrganisationAccessById(organisationId: string) {
   const user = await requireAuthenticatedUser();
 
-  // Organisation accounts access their organisation through ownership
-  // (`Organisation.accountUserId`), not through OrganisationMember.
+  const staff = await prisma.organisationStaff.findFirst({
+    where: {
+      userId: user.id,
+      status: "active",
+      organisationId
+    },
+    select: {
+      role: true,
+      organisation: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true
+        }
+      }
+    }
+  });
+
+  if (staff) {
+    return {
+      ...staff.organisation,
+      role: staff.role as unknown as OrganisationRole
+    };
+  }
+
   if (user.accountRole === "organisation") {
     const organisation = await prisma.organisation.findFirst({
       where: {
@@ -305,75 +501,17 @@ export async function requireOrganisationAccessById(organisationId: string) {
   };
 }
 
-async function requireOwnedOrganisationById(organisationId: string) {
-  const user = await requireAuthenticatedUser();
-
-  if (user.accountRole !== "organisation") {
-    throw new OrganisationAccessError("Organisation account required");
-  }
-
-  // Management authority comes from owning the organisation account, not from
-  // OrganisationMember. This keeps member joins from escalating to staff access.
-  const organisation = await prisma.organisation.findFirst({
-    where: {
-      id: organisationId,
-      accountUserId: user.id
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      createdAt: true
-    }
-  });
-
-  if (!organisation) {
-    throw new OrganisationAccessError("Organisation not found or access denied");
-  }
-
-  return {
-    ...organisation,
-    role: "org_owner" as OrganisationRole
-  };
-}
-
-async function requireOrganisationRoleAccess(
+export async function requireOrganisationPermission(
   organisationId: string,
-  allowedRoles: OrganisationRole[],
-  errorMessage: string
+  permission: OrganisationPermission
 ) {
   const user = await requireAuthenticatedUser();
 
-  if (user.accountRole === "organisation") {
-    const organisation = await prisma.organisation.findFirst({
-      where: {
-        id: organisationId,
-        accountUserId: user.id
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        createdAt: true
-      }
-    });
-
-    if (!organisation || !allowedRoles.includes("org_owner")) {
-      throw new OrganisationAccessError(errorMessage);
-    }
-
-    return {
-      ...organisation,
-      role: "org_owner" as OrganisationRole
-    };
-  }
-
-  const membership = await prisma.organisationMember.findUnique({
+  const staff = await prisma.organisationStaff.findFirst({
     where: {
-      userId_organisationId: {
-        userId: user.id,
-        organisationId
-      }
+      organisationId,
+      userId: user.id,
+      status: "active"
     },
     select: {
       role: true,
@@ -388,64 +526,96 @@ async function requireOrganisationRoleAccess(
     }
   });
 
-  if (!membership || !allowedRoles.includes(membership.role as OrganisationRole)) {
-    throw new OrganisationAccessError(errorMessage);
+  if (!staff) {
+    if (user.accountRole === "organisation") {
+      const legacyOrganisation = await prisma.organisation.findFirst({
+        where: {
+          id: organisationId,
+          accountUserId: user.id
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          createdAt: true
+        }
+      });
+
+      if (legacyOrganisation) {
+        const existingStaffAuthority = await prisma.organisationStaff.findUnique({
+          where: {
+            organisationId_userId: {
+              organisationId,
+              userId: user.id
+            }
+          },
+          select: { id: true }
+        });
+
+        if (existingStaffAuthority) {
+          throw new OrganisationAccessError("Organisation not found or access denied");
+        }
+      }
+
+      if (legacyOrganisation && hasOrganisationPermission("owner", permission)) {
+        return {
+          ...legacyOrganisation,
+          staffRole: "owner" as OrganisationStaffRole
+        };
+      }
+    }
+
+    throw new OrganisationAccessError("Organisation not found or access denied");
+  }
+
+  if (!hasOrganisationPermission(staff.role as OrganisationStaffRole, permission)) {
+    throw new OrganisationAccessError("Insufficient staff permissions");
   }
 
   return {
-    ...membership.organisation,
-    role: membership.role as OrganisationRole
+    ...staff.organisation,
+    staffRole: staff.role as OrganisationStaffRole
   };
 }
 
+export async function requireAnyOrganisationPermission(
+  organisationId: string,
+  permissions: OrganisationPermission[]
+) {
+  let lastAccessError: OrganisationAccessError | null = null;
+
+  for (const permission of permissions) {
+    try {
+      return await requireOrganisationPermission(organisationId, permission);
+    } catch (error) {
+      if (error instanceof OrganisationAccessError) {
+        lastAccessError = error;
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastAccessError ?? new OrganisationAccessError("Organisation access denied");
+}
+
 export async function requireOrganisationStaffAccess(organisationId: string) {
-  return requireOrganisationRoleAccess(
-    organisationId,
-    [
-      "org_owner",
-      "org_admin",
-      "event_manager",
-      "finance_manager",
-      "content_manager"
-    ],
-    "Insufficient staff permissions"
-  );
+  return requireOrganisationPermission(organisationId, "events:manage");
 }
 
 export async function requireOrganisationAdminAccess(organisationId: string) {
-  return requireOrganisationRoleAccess(
-    organisationId,
-    ["org_owner", "org_admin"],
-    "Insufficient admin permissions"
-  );
+  return requireOrganisationPermission(organisationId, "staff:manage");
 }
 
 export async function requireOrganisationEventManagementAccess(organisationId: string) {
-  const organisation = await requireOwnedOrganisationById(organisationId);
-
-  if (!canManageEvents(organisation.role)) {
-    throw new OrganisationAccessError("Insufficient event permissions");
-  }
-
-  return organisation;
+  return requireOrganisationPermission(organisationId, "events:manage");
 }
 
 export async function requireOrganisationFinanceAccess(organisationId: string) {
-  const organisation = await requireOwnedOrganisationById(organisationId);
-
-  if (!canManageFinance(organisation.role)) {
-    throw new OrganisationAccessError("Insufficient finance permissions");
-  }
-
-  return organisation;
+  return requireOrganisationPermission(organisationId, "orders:read");
 }
 
 export async function requireOrganisationStripeConnectAccess(organisationId: string) {
-  const organisation = await requireOwnedOrganisationById(organisationId);
-
-  if (!canManageStripeConnect(organisation.role)) {
-    throw new OrganisationAccessError("Insufficient Stripe Connect permissions");
-  }
-
-  return organisation;
+  return requireOrganisationPermission(organisationId, "stripe:manage");
 }

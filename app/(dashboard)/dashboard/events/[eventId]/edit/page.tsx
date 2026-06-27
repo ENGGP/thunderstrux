@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { CreateEventForm } from "@/components/events/create-event-form";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { requireCurrentOrganisationAccount } from "@/lib/auth/access";
+import {
+  requireCurrentOrganisationAccount,
+  requireOrganisationEventManagementAccess
+} from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 
 type EventFormData = {
@@ -30,6 +33,7 @@ export default async function EditEventPage({
 }) {
   const { eventId } = await params;
   const organisation = await requireCurrentOrganisationAccount();
+  await requireOrganisationEventManagementAccess(organisation.id);
 
   const event = await prisma.event.findFirst({
     where: {

@@ -1,9 +1,13 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { StripeConnectSettings } from "@/components/settings/stripe-connect-settings";
-import { requireCurrentOrganisationAccount } from "@/lib/auth/access";
+import {
+  requireCurrentOrganisationAccount,
+  requireOrganisationPermission
+} from "@/lib/auth/access";
 
 export default async function SettingsPage() {
   const organisation = await requireCurrentOrganisationAccount();
+  await requireOrganisationPermission(organisation.id, "stripe:manage");
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name}>

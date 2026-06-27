@@ -9,7 +9,7 @@ import {
   AuthenticationRequiredError,
   OrganisationAccessError,
   requireCurrentOrganisationAccount,
-  requireOrganisationEventManagementAccess
+  requireOrganisationPermission
 } from "@/lib/auth/access";
 import {
   OrganisationEventTicketsAccessError,
@@ -31,7 +31,7 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const { searchParams } = new URL(request.url);
     const organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationEventManagementAccess(organisation.id);
+    await requireOrganisationPermission(organisation.id, "tickets:check_in");
     const pagination = parseTicketPaginationOptions(searchParams);
     const payload = await getOrganisationEventTickets(
       organisation.id,

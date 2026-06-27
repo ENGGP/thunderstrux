@@ -10,7 +10,6 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireAccountRole,
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
@@ -50,7 +49,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    await requireAccountRole("organisation");
     const validation = await validateJson(request, organisationConnectSchema);
 
     if (!validation.success) {

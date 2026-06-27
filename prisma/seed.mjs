@@ -57,6 +57,31 @@ async function ensureMembership(userId, organisationId, role) {
   });
 }
 
+async function ensureStaff(userId, organisationId, role, status = "active") {
+  await prisma.organisationStaff.upsert({
+    where: {
+      organisationId_userId: {
+        userId,
+        organisationId
+      }
+    },
+    update: {
+      role,
+      status,
+      acceptedAt: status === "active" ? new Date() : null,
+      revokedAt: status === "revoked" ? new Date() : null
+    },
+    create: {
+      userId,
+      organisationId,
+      role,
+      status,
+      acceptedAt: status === "active" ? new Date() : null,
+      revokedAt: status === "revoked" ? new Date() : null
+    }
+  });
+}
+
 async function ensureTicketType({ eventId, name, price, quantity }) {
   const existingTicketType = await prisma.ticketType.findFirst({
     where: {
@@ -401,6 +426,20 @@ async function main() {
     ensureMembership(eventManagerUser.id, roboticsClub.id, "org_owner"),
     ensureMembership(financeUser.id, paymentsLab.id, "org_owner"),
     ensureMembership(emptyUser.id, emptySociety.id, "org_owner")
+  ]);
+
+  await Promise.all([
+    ensureStaff(engineeringOrgUser.id, engineeringSociety.id, "owner"),
+    ensureStaff(artsOrgUser.id, artsSociety.id, "owner"),
+    ensureStaff(roboticsOrgUser.id, roboticsClub.id, "owner"),
+    ensureStaff(paymentsLabOrgUser.id, paymentsLab.id, "owner"),
+    ensureStaff(emptyOrgUser.id, emptySociety.id, "owner"),
+    ensureStaff(adminUser.id, engineeringSociety.id, "admin"),
+    ensureStaff(eventManagerUser.id, engineeringSociety.id, "event_manager"),
+    ensureStaff(financeUser.id, engineeringSociety.id, "finance_manager"),
+    ensureStaff(eventManagerUser.id, roboticsClub.id, "owner"),
+    ensureStaff(financeUser.id, paymentsLab.id, "owner"),
+    ensureStaff(emptyUser.id, emptySociety.id, "owner")
   ]);
 
   const launchEvent = await ensureEvent({

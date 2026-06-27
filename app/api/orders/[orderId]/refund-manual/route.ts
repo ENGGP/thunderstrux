@@ -9,7 +9,7 @@ import {
   AuthenticationRequiredError,
   OrganisationAccessError,
   requireCurrentOrganisationAccount,
-  requireOrganisationFinanceAccess
+  requireOrganisationPermission
 } from "@/lib/auth/access";
 import {
   OrganisationOrderAccessError,
@@ -34,7 +34,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   try {
     const organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationFinanceAccess(organisation.id);
+    await requireOrganisationPermission(organisation.id, "orders:refund_mark");
     const order = await markOrganisationOrderManuallyRefunded(
       organisation.id,
       orderId

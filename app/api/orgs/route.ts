@@ -137,6 +137,16 @@ export async function POST(request: Request) {
           }
         });
 
+        await tx.organisationStaff.create({
+          data: {
+            organisationId: organisation.id,
+            userId: user.id,
+            role: "owner",
+            status: "active",
+            acceptedAt: new Date()
+          }
+        });
+
         return organisation;
       });
 

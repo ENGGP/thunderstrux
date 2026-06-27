@@ -1,5 +1,12 @@
 import { hash } from "bcryptjs";
-import type { AccountRole, EventStatus, OrderStatus, ReservationStatus } from "@prisma/client";
+import type {
+  AccountRole,
+  EventStatus,
+  OrderStatus,
+  OrganisationStaffRole,
+  OrganisationStaffStatus,
+  ReservationStatus
+} from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 let counter = 0;
@@ -68,6 +75,16 @@ export async function createOrganisationAccount({
     }
   });
 
+  await prisma.organisationStaff.create({
+    data: {
+      userId: user.id,
+      organisationId: organisation.id,
+      role: "owner",
+      status: "active",
+      acceptedAt: new Date()
+    }
+  });
+
   return { user, organisation };
 }
 
@@ -83,6 +100,29 @@ export async function joinOrganisation(userId: string, organisationId: string) {
       userId,
       organisationId,
       role: "member"
+    }
+  });
+}
+
+export async function createOrganisationStaff({
+  organisationId,
+  userId,
+  role = "event_manager",
+  status = "active"
+}: {
+  organisationId: string;
+  userId: string;
+  role?: OrganisationStaffRole;
+  status?: OrganisationStaffStatus;
+}) {
+  return prisma.organisationStaff.create({
+    data: {
+      organisationId,
+      userId,
+      role,
+      status,
+      acceptedAt: status === "active" ? new Date() : null,
+      revokedAt: status === "revoked" ? new Date() : null
     }
   });
 }

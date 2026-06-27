@@ -10,7 +10,7 @@ import {
   AuthenticationRequiredError,
   OrganisationAccessError,
   requireCurrentOrganisationAccount,
-  requireOrganisationFinanceAccess
+  requireOrganisationPermission
 } from "@/lib/auth/access";
 import {
   OrganisationOrderAccessError,
@@ -39,7 +39,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationFinanceAccess(organisation.id);
+    await requireOrganisationPermission(organisation.id, "orders:email_resend");
     const order = await getOrganisationOrderDetail(organisation.id, orderId);
     const limitResponse = await enforceRateLimit({
       policy: "order_resend",

@@ -20,6 +20,12 @@ model User {
   onboardingCompletedAt   DateTime?
   createdAt               DateTime             @default(now())
   organisationMemberships OrganisationMember[]
+  organisationStaff       OrganisationStaff[] @relation("StaffUser")
+  staffMembershipsInvited OrganisationStaff[] @relation("StaffInviter")
+  staffInvitesSent        OrganisationStaffInvite[] @relation("StaffInviteInviter")
+  staffInvitesAccepted    OrganisationStaffInvite[] @relation("StaffInviteAcceptor")
+  revokedStaffMemberships OrganisationStaff[] @relation("StaffRevoker")
+  auditLogs               AuditLog[]
   ownedOrganisation       Organisation?        @relation("OrganisationAccount")
   orders                  Order[]
   reservations            TicketReservation[]
@@ -40,6 +46,9 @@ model Organisation {
   createdAt           DateTime             @default(now())
   accountUser         User?                @relation("OrganisationAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
   members             OrganisationMember[]
+  staff               OrganisationStaff[]
+  staffInvites        OrganisationStaffInvite[]
+  auditLogs           AuditLog[]
   events              Event[]
   orders              Order[]
   tickets             Ticket[]
@@ -61,6 +70,69 @@ model OrganisationMember {
   @@unique([userId, organisationId])
   @@index([organisationId])
   @@index([userId])
+}
+
+model OrganisationStaff {
+  id             String                  @id @default(cuid())
+  organisationId String
+  userId         String
+  role           OrganisationStaffRole
+  status         OrganisationStaffStatus @default(active)
+  invitedById    String?
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  revokedById    String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  organisation   Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  user           User                    @relation("StaffUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy      User?                   @relation("StaffInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+  revokedBy      User?                   @relation("StaffRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@unique([organisationId, userId])
+  @@index([userId, status])
+  @@index([organisationId, role, status])
+  @@index([invitedById])
+  @@index([revokedById])
+}
+
+model OrganisationStaffInvite {
+  id             String                @id @default(cuid())
+  organisationId String
+  email          String
+  role           OrganisationStaffRole
+  tokenHash      String                @unique
+  invitedById    String
+  acceptedById   String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime              @default(now())
+  organisation   Organisation          @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  invitedBy      User                  @relation("StaffInviteInviter", fields: [invitedById], references: [id], onDelete: Restrict)
+  acceptedBy     User?                 @relation("StaffInviteAcceptor", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, email])
+  @@index([expiresAt])
+  @@index([invitedById])
+  @@index([acceptedById])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organisationId String
+  actorUserId    String?
+  action         String
+  targetType     String
+  targetId       String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  actor          User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action])
 }
 
 model Event {
@@ -213,6 +285,20 @@ enum OrganisationRole {
   finance_manager
   content_manager
   member
+}
+
+enum OrganisationStaffRole {
+  owner
+  admin
+  event_manager
+  finance_manager
+  check_in_staff
+}
+
+enum OrganisationStaffStatus {
+  invited
+  active
+  revoked
 }
 
 enum AccountRole {

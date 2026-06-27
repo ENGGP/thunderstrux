@@ -5,7 +5,8 @@ const navItems = [
   { label: "Dashboard", href: "", active: true },
   { label: "Events", href: "/events", active: false },
   { label: "Orders", href: "/orders", active: false },
-  { label: "Settings", href: "/settings", active: false }
+  { label: "Settings", href: "/settings", active: false },
+  { label: "Staff", href: "/settings/staff", active: false }
 ];
 
 export function DashboardShell({

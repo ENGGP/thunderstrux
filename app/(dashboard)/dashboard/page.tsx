@@ -6,10 +6,12 @@ import { MemberOrganisationsList } from "@/components/members/member-organisatio
 import {
   OrganisationAccessError,
   getAccessibleOrganisationsForCurrentAccount,
+  getCurrentStaffOrganisations,
   requireAuthenticatedUser,
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { hasOrganisationPermission } from "@/lib/permissions";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat("en-AU", {
@@ -55,6 +57,11 @@ function revenueBuckets(orders: Array<{ paidAt: Date | null; totalAmount: number
 async function OrganisationDashboard() {
   const organisation = await requireCurrentOrganisationAccount();
   const startOfMonth = monthStart();
+  const canManageEvents = hasOrganisationPermission(
+    organisation.staffRole,
+    "events:manage"
+  );
+  const canViewOrders = hasOrganisationPermission(organisation.staffRole, "orders:read");
 
   const [upcomingEvents, recentOrders, monthlyPaidOrders] = await Promise.all([
     prisma.event.findMany({
@@ -73,47 +80,51 @@ async function OrganisationDashboard() {
         status: true
       }
     }),
-    prisma.order.findMany({
-      where: {
-        event: {
-          is: {
-            organisationId: organisation.id
-          }
-        }
-      },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        status: true,
-        quantity: true,
-        totalAmount: true,
-        createdAt: true,
-        paidAt: true,
-        event: {
+    canViewOrders
+      ? prisma.order.findMany({
+          where: {
+            event: {
+              is: {
+                organisationId: organisation.id
+              }
+            }
+          },
+          orderBy: { createdAt: "desc" },
+          take: 5,
           select: {
-            title: true
+            id: true,
+            status: true,
+            quantity: true,
+            totalAmount: true,
+            createdAt: true,
+            paidAt: true,
+            event: {
+              select: {
+                title: true
+              }
+            }
           }
-        }
-      }
-    }),
-    prisma.order.findMany({
-      where: {
-        event: {
-          is: {
-            organisationId: organisation.id
+        })
+      : Promise.resolve([]),
+    canViewOrders
+      ? prisma.order.findMany({
+          where: {
+            event: {
+              is: {
+                organisationId: organisation.id
+              }
+            },
+            status: "paid",
+            paidAt: {
+              gte: startOfMonth
+            }
+          },
+          select: {
+            totalAmount: true,
+            paidAt: true
           }
-        },
-        status: "paid",
-        paidAt: {
-          gte: startOfMonth
-        }
-      },
-      select: {
-        totalAmount: true,
-        paidAt: true
-      }
-    })
+        })
+      : Promise.resolve([])
   ]);
 
   const monthlyRevenue = monthlyPaidOrders.reduce(
@@ -134,70 +145,78 @@ async function OrganisationDashboard() {
                 {organisation.name}
               </h2>
             </div>
-            <Link
-              className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
-              href="/dashboard/events/new"
-            >
-              New event
-            </Link>
+            {canManageEvents ? (
+              <Link
+                className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
+                href="/dashboard/events/new"
+              >
+                New event
+              </Link>
+            ) : null}
           </div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Past month revenue</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {formatCurrency(monthlyRevenue)}
-            </p>
-          </div>
+          {canViewOrders ? (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-neutral-500">Past month revenue</p>
+              <p className="mt-2 text-2xl font-semibold text-neutral-950">
+                {formatCurrency(monthlyRevenue)}
+              </p>
+            </div>
+          ) : null}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-neutral-500">Upcoming events</p>
             <p className="mt-2 text-2xl font-semibold text-neutral-950">
               {upcomingEvents.length}
             </p>
           </div>
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Recent orders</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {recentOrders.length}
-            </p>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-medium text-neutral-950">
-                Revenue summary
-              </h3>
-              <p className="mt-1 text-sm text-neutral-500">
-                Paid orders since {formatDate(startOfMonth)}
+          {canViewOrders ? (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-neutral-500">Recent orders</p>
+              <p className="mt-2 text-2xl font-semibold text-neutral-950">
+                {recentOrders.length}
               </p>
             </div>
-            <Link
-              className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
-              href="/dashboard/orders"
-            >
-              View orders
-            </Link>
-          </div>
-          <div className="mt-6 grid h-40 grid-cols-4 items-end gap-3">
-            {buckets.map((bucket) => (
-              <div className="grid gap-2" key={bucket.label}>
-                <div
-                  className="rounded-t-md bg-neutral-900"
-                  style={{
-                    height: `${Math.max(8, (bucket.total / maxBucket) * 128)}px`
-                  }}
-                />
-                <div className="text-center text-xs text-neutral-500">
-                  <p>{bucket.label}</p>
-                  <p>{formatCurrency(bucket.total)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          ) : null}
         </section>
+
+        {canViewOrders ? (
+          <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-medium text-neutral-950">
+                  Revenue summary
+                </h3>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Paid orders since {formatDate(startOfMonth)}
+                </p>
+              </div>
+              <Link
+                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                href="/dashboard/orders"
+              >
+                View orders
+              </Link>
+            </div>
+            <div className="mt-6 grid h-40 grid-cols-4 items-end gap-3">
+              {buckets.map((bucket) => (
+                <div className="grid gap-2" key={bucket.label}>
+                  <div
+                    className="rounded-t-md bg-neutral-900"
+                    style={{
+                      height: `${Math.max(8, (bucket.total / maxBucket) * 128)}px`
+                    }}
+                  />
+                  <div className="text-center text-xs text-neutral-500">
+                    <p>{bucket.label}</p>
+                    <p>{formatCurrency(bucket.total)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
@@ -231,7 +250,8 @@ async function OrganisationDashboard() {
             )}
           </div>
 
-          <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+          {canViewOrders ? (
+            <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-4">
               <h3 className="text-lg font-medium text-neutral-950">
                 Recent orders
@@ -268,7 +288,8 @@ async function OrganisationDashboard() {
                 ))}
               </ul>
             )}
-          </div>
+            </div>
+          ) : null}
         </section>
       </div>
     </DashboardShell>
@@ -378,8 +399,9 @@ async function MemberDashboard({ userId }: { userId: string }) {
 
 export default async function DashboardPage() {
   const user = await requireAuthenticatedUser();
+  const staffOrganisations = await getCurrentStaffOrganisations();
 
-  if (user.accountRole === "organisation") {
+  if (staffOrganisations.length > 0 || user.accountRole === "organisation") {
     try {
       return await OrganisationDashboard();
     } catch (error) {

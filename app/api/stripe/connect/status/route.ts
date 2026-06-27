@@ -9,7 +9,6 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireAccountRole,
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
@@ -26,7 +25,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   try {
-    await requireAccountRole("organisation");
     const organisationId = requireOrganisationId(searchParams.get("organisationId"));
     await requireOrganisationStripeConnectAccess(organisationId);
 

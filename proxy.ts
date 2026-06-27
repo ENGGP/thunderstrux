@@ -52,13 +52,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (
-    token.accountRole === "member" &&
-    pathname.startsWith("/dashboard/events/")
-  ) {
-    return NextResponse.redirect(new URL("/", request.nextUrl.origin));
-  }
-
   return NextResponse.next();
 }
 

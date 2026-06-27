@@ -5,7 +5,7 @@ import { TicketCheckInButton } from "@/components/tickets/ticket-check-in-button
 import {
   OrganisationAccessError,
   requireCurrentOrganisationAccount,
-  requireOrganisationEventManagementAccess
+  requireOrganisationPermission
 } from "@/lib/auth/access";
 import {
   OrganisationEventTicketsAccessError,
@@ -104,7 +104,7 @@ export default async function OrganiserEventTicketsPage({
 
   try {
     organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationEventManagementAccess(organisation.id);
+    await requireOrganisationPermission(organisation.id, "tickets:check_in");
   } catch (error) {
     if (error instanceof OrganisationAccessError) {
       redirect("/");

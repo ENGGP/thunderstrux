@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import {
   OrganisationAccessError,
-  requireCurrentOrganisationAccount
+  requireCurrentOrganisationAccount,
+  requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import {
   EventAnalyticsAccessError,
@@ -54,6 +55,7 @@ export default async function OrganiserEventPage({
 
   try {
     organisation = await requireCurrentOrganisationAccount();
+    await requireOrganisationEventManagementAccess(organisation.id);
   } catch (error) {
     if (error instanceof OrganisationAccessError) {
       redirect("/");

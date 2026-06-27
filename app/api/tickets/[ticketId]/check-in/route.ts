@@ -10,7 +10,7 @@ import {
   AuthenticationRequiredError,
   OrganisationAccessError,
   requireCurrentOrganisationAccount,
-  requireOrganisationEventManagementAccess
+  requireOrganisationPermission
 } from "@/lib/auth/access";
 import {
   OrganisationTicketAccessError,
@@ -37,7 +37,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationEventManagementAccess(organisation.id);
+    await requireOrganisationPermission(organisation.id, "tickets:check_in");
     const limitResponse = await enforceRateLimit({
       policy: "ticket_check_in_out",
       request,

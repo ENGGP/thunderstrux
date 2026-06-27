@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { setMockSession } from "@/tests/helpers/auth";
+import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import {
   createEvent,
@@ -330,6 +330,137 @@ describe("orders API", () => {
     expect(response.status).toBe(404);
   });
 
+  test("missing and cross-tenant order detail return the same safe 404", async () => {
+    const { user } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: other.organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const otherOrder = await createOrder({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "paid",
+      paidAt: new Date(),
+      unitPrice: ticketType.price
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const missingResponse = await getOrderDetail(
+      jsonRequest("http://localhost/api/orders/missing-order"),
+      routeContext({ orderId: "missing-order" })
+    );
+    const crossTenantResponse = await getOrderDetail(
+      jsonRequest(`http://localhost/api/orders/${otherOrder.id}`),
+      routeContext({ orderId: otherOrder.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
+  });
+
+  test("missing and cross-tenant manual refund return the same safe 404", async () => {
+    const { user } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: other.organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const otherOrder = await createOrder({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "paid",
+      paidAt: new Date(),
+      unitPrice: ticketType.price
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const missingResponse = await markManualRefund(
+      jsonRequest("http://localhost/api/orders/missing-order", undefined, {
+        method: "PATCH"
+      }),
+      routeContext({ orderId: "missing-order" })
+    );
+    const crossTenantResponse = await markManualRefund(
+      jsonRequest(`http://localhost/api/orders/${otherOrder.id}`, undefined, {
+        method: "PATCH"
+      }),
+      routeContext({ orderId: otherOrder.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
+  });
+
+  test("missing and cross-tenant resend return the same safe 404", async () => {
+    const { user } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: other.organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const otherOrder = await createOrder({
+      organisationId: other.organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "paid",
+      paidAt: new Date(),
+      unitPrice: ticketType.price
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const missingResponse = await resendTickets(
+      jsonRequest("http://localhost/api/orders/missing-order/resend", undefined, {
+        method: "POST"
+      }),
+      routeContext({ orderId: "missing-order" })
+    );
+    const crossTenantResponse = await resendTickets(
+      jsonRequest(`http://localhost/api/orders/${otherOrder.id}/resend`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ orderId: otherOrder.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
+  });
+
+  test("unauthenticated order detail returns 401", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "paid",
+      paidAt: new Date(),
+      unitPrice: ticketType.price
+    });
+
+    clearMockSession();
+    const response = await getOrderDetail(
+      jsonRequest(`http://localhost/api/orders/${order.id}`),
+      routeContext({ orderId: order.id })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   test("order pagination handles same createdAt rows with next and previous cursors", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const member = await createMember();
@@ -563,6 +694,30 @@ describe("orders API", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  test("event filter missing and cross-tenant event return the same safe 404", async () => {
+    const owned = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const otherEvent = await createEvent({ organisationId: other.organisation.id });
+
+    setMockSession({
+      userId: owned.user.id,
+      email: owned.user.email,
+      accountRole: "organisation"
+    });
+    const missingResponse = await getOrders(
+      jsonRequest("http://localhost/api/orders?eventId=missing-event")
+    );
+    const crossTenantResponse = await getOrders(
+      jsonRequest(`http://localhost/api/orders?eventId=${otherEvent.id}`)
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
   });
 
   test("manual refund flag updates own order without changing payment status", async () => {

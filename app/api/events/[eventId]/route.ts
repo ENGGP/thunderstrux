@@ -10,6 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
@@ -98,18 +99,27 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { eventId } = await context.params;
 
-  const validation = await validateJson(request, updateEventSchema);
-
-  if (!validation.success) {
-    return validationError(validation.details);
-  }
-
   try {
-    const organisationId = requireOrganisationId(validation.data.organisationId);
-    await requireOrganisationEventManagementAccess(organisationId);
+    const organisation = await requireCurrentOrganisationAccount();
+    await requireOrganisationEventManagementAccess(organisation.id);
+    const validation = await validateJson(request, updateEventSchema);
+
+    if (!validation.success) {
+      return validationError(validation.details);
+    }
+
+    const submittedOrganisationId = requireOrganisationId(
+      validation.data.organisationId
+    );
+
+    if (submittedOrganisationId !== organisation.id) {
+      throw new OrganisationMismatchError(
+        "organisationId does not match current organisation"
+      );
+    }
 
     const existingEvent = await prisma.event.findFirst({
-      where: scopedByOrganisation(organisationId, { id: eventId }),
+      where: scopedByOrganisation(organisation.id, { id: eventId }),
       select: {
         id: true,
         ticketTypes: {
@@ -172,7 +182,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const event = await prisma.$transaction(async (transaction) => {
       await transaction.event.update({
-        where: { id: eventId },
+        where: { id: existingEvent.id },
         data: {
           title: validation.data.title,
           description: validation.data.description,
@@ -189,7 +199,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       if (removedTicketTypeIds.length > 0) {
         await transaction.ticketType.deleteMany({
           where: {
-            eventId,
+            eventId: existingEvent.id,
             id: { in: removedTicketTypeIds }
           }
         });
@@ -210,7 +220,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
           return transaction.ticketType.create({
             data: {
-              eventId,
+              eventId: existingEvent.id,
               name: ticketType.name,
               price: ticketType.price,
               quantity: ticketType.quantity
@@ -220,7 +230,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
 
       return transaction.event.findUniqueOrThrow({
-        where: { id: eventId },
+        where: { id: existingEvent.id },
         select: eventSelect
       });
     });
@@ -261,11 +271,13 @@ export async function DELETE(request: Request, context: RouteContext) {
   const { eventId } = await context.params;
 
   try {
+    const organisation = await requireCurrentOrganisationAccount();
+    await requireOrganisationEventManagementAccess(organisation.id);
+
     const existingEvent = await prisma.event.findFirst({
-      where: { id: eventId },
+      where: scopedByOrganisation(organisation.id, { id: eventId }),
       select: {
         id: true,
-        organisationId: true,
         _count: {
           select: {
             orders: true,
@@ -278,8 +290,6 @@ export async function DELETE(request: Request, context: RouteContext) {
     if (!existingEvent) {
       return notFound("Event was not found in this organisation");
     }
-
-    await requireOrganisationEventManagementAccess(existingEvent.organisationId);
 
     if (existingEvent._count.orders > 0 || existingEvent._count.tickets > 0) {
       return badRequest("Event cannot be deleted after orders or tickets exist", [

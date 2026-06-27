@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { prisma } from "@/lib/db";
-import { setMockSession } from "@/tests/helpers/auth";
+import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import {
   createEvent,
@@ -12,10 +12,12 @@ import {
 } from "@/tests/helpers/test-data";
 import { POST as createEventRoute } from "@/app/api/events/route";
 import {
+  DELETE as deleteEventRoute,
   GET as getEventRoute,
   PATCH as updateEventRoute
 } from "@/app/api/events/[eventId]/route";
 import { PATCH as publishEventRoute } from "@/app/api/events/[eventId]/publish/route";
+import { POST as createTicketTypeRoute } from "@/app/api/events/[eventId]/ticket-types/route";
 import {
   getOrganisationEventAnalytics,
   getOrganisationEventRevenueSeries
@@ -96,6 +98,212 @@ describe("event lifecycle", () => {
     });
   });
 
+  test("missing and cross-tenant event update return the same safe 404", async () => {
+    const owned = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const otherEvent = await createEvent({ organisationId: other.organisation.id });
+    const payload = eventPayload(owned.organisation.id, {
+      title: "Updated Hidden Event"
+    });
+
+    setMockSession({
+      userId: owned.user.id,
+      email: owned.user.email,
+      accountRole: "organisation"
+    });
+    const missingResponse = await updateEventRoute(
+      jsonRequest("http://localhost/api/events/missing-event", payload, {
+        method: "PATCH"
+      }),
+      routeContext({ eventId: "missing-event" })
+    );
+    const crossTenantResponse = await updateEventRoute(
+      jsonRequest(`http://localhost/api/events/${otherEvent.id}`, payload, {
+        method: "PATCH"
+      }),
+      routeContext({ eventId: otherEvent.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
+  });
+
+  test("event update authenticates before validation", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+
+    clearMockSession();
+    const response = await updateEventRoute(
+      jsonRequest(
+        `http://localhost/api/events/${event.id}`,
+        { title: "" },
+        { method: "PATCH" }
+      ),
+      routeContext({ eventId: event.id })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  test("event update rejects mismatched body organisation without updating event", async () => {
+    const owned = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: owned.organisation.id });
+
+    setMockSession({
+      userId: owned.user.id,
+      email: owned.user.email,
+      accountRole: "organisation"
+    });
+    const response = await updateEventRoute(
+      jsonRequest(
+        `http://localhost/api/events/${event.id}`,
+        eventPayload(other.organisation.id, {
+          title: "Should Not Persist"
+        }),
+        { method: "PATCH" }
+      ),
+      routeContext({ eventId: event.id })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(
+      prisma.event.findUniqueOrThrow({
+        where: { id: event.id },
+        select: { title: true, organisationId: true }
+      })
+    ).resolves.toEqual({
+      title: event.title,
+      organisationId: owned.organisation.id
+    });
+  });
+
+  test("missing and cross-tenant event delete return the same safe 404", async () => {
+    const owned = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const otherEvent = await createEvent({ organisationId: other.organisation.id });
+
+    setMockSession({
+      userId: owned.user.id,
+      email: owned.user.email,
+      accountRole: "organisation"
+    });
+    const missingResponse = await deleteEventRoute(
+      jsonRequest("http://localhost/api/events/missing-event", undefined, {
+        method: "DELETE"
+      }),
+      routeContext({ eventId: "missing-event" })
+    );
+    const crossTenantResponse = await deleteEventRoute(
+      jsonRequest(`http://localhost/api/events/${otherEvent.id}`, undefined, {
+        method: "DELETE"
+      }),
+      routeContext({ eventId: otherEvent.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
+  });
+
+  test("missing and cross-tenant event publish return the same safe 404", async () => {
+    const owned = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const otherEvent = await createEvent({ organisationId: other.organisation.id });
+
+    setMockSession({
+      userId: owned.user.id,
+      email: owned.user.email,
+      accountRole: "organisation"
+    });
+    const missingResponse = await publishEventRoute(
+      jsonRequest("http://localhost/api/events/missing-event/publish", undefined, {
+        method: "PATCH"
+      }),
+      routeContext({ eventId: "missing-event" })
+    );
+    const crossTenantResponse = await publishEventRoute(
+      jsonRequest(`http://localhost/api/events/${otherEvent.id}/publish`, undefined, {
+        method: "PATCH"
+      }),
+      routeContext({ eventId: otherEvent.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
+  });
+
+  test("missing and cross-tenant ticket type creation return the same safe 404", async () => {
+    const owned = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const otherEvent = await createEvent({ organisationId: other.organisation.id });
+    const payload = {
+      organisationId: owned.organisation.id,
+      name: "Late Release",
+      price: 1800,
+      quantity: 5
+    };
+
+    setMockSession({
+      userId: owned.user.id,
+      email: owned.user.email,
+      accountRole: "organisation"
+    });
+    const missingResponse = await createTicketTypeRoute(
+      jsonRequest("http://localhost/api/events/missing-event/ticket-types", payload),
+      routeContext({ eventId: "missing-event" })
+    );
+    const crossTenantResponse = await createTicketTypeRoute(
+      jsonRequest(`http://localhost/api/events/${otherEvent.id}/ticket-types`, payload),
+      routeContext({ eventId: otherEvent.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
+  });
+
+  test("member and unauthenticated event mutation access remains forbidden or unauthorized", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const payload = eventPayload(organisation.id, {
+      title: "Member Update Attempt"
+    });
+
+    setMockSession({
+      userId: member.id,
+      email: member.email,
+      accountRole: "member"
+    });
+    const memberResponse = await updateEventRoute(
+      jsonRequest(`http://localhost/api/events/${event.id}`, payload, {
+        method: "PATCH"
+      }),
+      routeContext({ eventId: event.id })
+    );
+    expect(memberResponse.status).toBe(403);
+
+    clearMockSession();
+    const unauthenticatedResponse = await updateEventRoute(
+      jsonRequest(`http://localhost/api/events/${event.id}`, payload, {
+        method: "PATCH"
+      }),
+      routeContext({ eventId: event.id })
+    );
+    expect(unauthenticatedResponse.status).toBe(401);
+  });
+
   test("publish requires ticket types and positive remaining quantity", async () => {
     const { user, organisation } = await createOrganisationAccount();
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
@@ -164,6 +372,22 @@ describe("event lifecycle", () => {
     expect(await parseJsonResponse(response)).toMatchObject({
       error: { code: "BAD_REQUEST", message: expect.any(String) }
     });
+  });
+
+  test("deletes an unsold event with expected response shape", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await deleteEventRoute(
+      jsonRequest(`http://localhost/api/events/${event.id}`, undefined, {
+        method: "DELETE"
+      }),
+      routeContext({ eventId: event.id })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await parseJsonResponse(response)).toEqual({ deleted: true });
   });
 
   test("sold ticket types can be renamed and repriced but not deleted", async () => {

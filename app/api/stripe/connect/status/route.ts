@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import {
   badRequest,
   forbidden,
+  notFound,
   serviceUnavailable,
   unauthorized
 } from "@/lib/api/errors";
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireOrganisationAccessById
+  requireAccountRole,
+  requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
@@ -24,8 +26,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   try {
+    await requireAccountRole("organisation");
     const organisationId = requireOrganisationId(searchParams.get("organisationId"));
-    await requireOrganisationAccessById(organisationId);
+    await requireOrganisationStripeConnectAccess(organisationId);
 
     const organisation = await prisma.organisation.findUnique({
       where: { id: organisationId },
@@ -37,9 +40,7 @@ export async function GET(request: Request) {
     });
 
     if (!organisation) {
-      return badRequest("Invalid organisationId", [
-        { path: ["organisationId"], message: "Organisation does not exist" }
-      ]);
+      return notFound("Organisation was not found");
     }
 
     if (
@@ -87,6 +88,10 @@ export async function GET(request: Request) {
     }
 
     if (error instanceof OrganisationAccessError) {
+      if (error.message === "Organisation not found or access denied") {
+        return notFound("Organisation was not found");
+      }
+
       return forbidden(error.message);
     }
 

@@ -332,6 +332,60 @@ Non-blocking index notes:
 - Existing single-column `Order(eventId)` and `Order(userId)` overlap with the left-most prefixes of the new composite order indexes. They were intentionally kept in P1.10; remove only after production query/index-usage evidence.
 - `TicketReservation(orderId)` overlaps with the unique `TicketReservation(orderId)` backing index and predates P1.10. Treat removal as later DB hygiene, not part of the composite-index slice.
 
+## Database Integrity Audit And Numeric Constraints
+
+P1.8 Phase 1 added a read-only audit. Phase 2 added database-level numeric check constraints. Phase 3 added narrow lifecycle constraints for event time ordering, paid order timestamps, and expired order payment state. It did not add failed-order timestamp constraints, relationship constraints, data repair, triggers, or fixture rewrites.
+
+Run:
+
+```bash
+pnpm db:integrity:audit
+```
+
+The audit remains read-only and exits non-zero if any violations are found. Each check reports a class, violation count, and up to 10 sample ids.
+
+Audit classes:
+
+- `numeric`: low-risk candidates for later check constraints.
+- `lifecycle-risk`: lifecycle candidates that need payment, compensation, webhook, and stale-cleanup review before constraints.
+- `relationship/audit-only`: cross-row consistency checks that are not simple check-constraint candidates.
+
+Active numeric check constraints:
+
+- `TicketType_quantity_nonnegative_chk`: `TicketType.quantity >= 0`
+- `TicketType_price_nonnegative_chk`: `TicketType.price >= 0`
+- `Order_quantity_positive_chk`: `Order.quantity > 0`
+- `Order_unitPrice_nonnegative_chk`: `Order.unitPrice >= 0`
+- `Order_totalAmount_nonnegative_chk`: `Order.totalAmount >= 0`
+- `TicketReservation_quantity_positive_chk`: `TicketReservation.quantity > 0`
+
+Active lifecycle check constraints:
+
+- `Event_endTime_after_startTime_chk`: `Event.endTime > Event.startTime`
+- `Order_paid_requires_paidAt_chk`: paid orders require `paidAt`
+- `Order_expired_has_no_paidAt_chk`: expired orders must not have `paidAt`
+
+Audited checks:
+
+- `TicketType.quantity >= 0`
+- `TicketType.price >= 0`
+- `Order.quantity > 0`
+- `Order.unitPrice >= 0`
+- `Order.totalAmount >= 0`
+- `TicketReservation.quantity > 0`
+- `Event.endTime > Event.startTime`
+- paid orders require `paidAt`
+- failed orders require `failedAt`
+- expired orders must not have `paidAt`
+- pending reservation-backed orders should have active reservations
+- reservation quantity should match order quantity
+- reservation event should match order event
+- reservation ticket type should match order ticket type
+
+Latest local Docker audit before Phase 3 migration: 14 checks, 0 violations.
+
+Failed-order timestamp policy and relationship checks are still audit-only. Do not add constraints for `failed => failedAt`, compensation-shape, ticket-count, or reservation/order cross-row consistency until those are explicitly approved in a later phase.
+
 Current follow-up:
 
 - Add pagination hardening coverage for same-`createdAt` cursor collisions and malformed limit/direction params.

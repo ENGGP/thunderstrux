@@ -3,6 +3,7 @@ import {
   badRequest,
   forbidden,
   internalError,
+  notFound,
   unauthorized
 } from "@/lib/api/errors";
 import {
@@ -99,7 +100,7 @@ export async function GET(request: Request) {
     }
 
     if (error instanceof OrganisationOrderEventAccessError) {
-      return forbidden(error.message);
+      return notFound(error.message);
     }
 
     if (error instanceof PaginationError) {

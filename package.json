@@ -12,6 +12,7 @@
     "test:integration": "node scripts/run-integration-tests.mjs",
     "email:outbox:process": "node scripts/process-email-outbox.mjs",
     "stale-orders:process": "node scripts/process-stale-orders.mjs",
+    "db:integrity:audit": "node scripts/audit-db-integrity.mjs",
     "seed": "prisma db seed",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",

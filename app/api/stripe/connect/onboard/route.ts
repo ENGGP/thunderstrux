@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   badRequest,
   forbidden,
+  notFound,
   serviceUnavailable,
   unauthorized,
   validationError
@@ -9,6 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireAccountRole,
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
@@ -47,13 +49,14 @@ export async function POST(request: Request) {
     return trustedOriginError;
   }
 
-  const validation = await validateJson(request, organisationConnectSchema);
-
-  if (!validation.success) {
-    return validationError(validation.details);
-  }
-
   try {
+    await requireAccountRole("organisation");
+    const validation = await validateJson(request, organisationConnectSchema);
+
+    if (!validation.success) {
+      return validationError(validation.details);
+    }
+
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireOrganisationStripeConnectAccess(organisationId);
     const limitResponse = await enforceRateLimit({
@@ -76,6 +79,10 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof OrganisationAccessError) {
+      if (error.message === "Organisation not found or access denied") {
+        return notFound("Organisation was not found");
+      }
+
       return forbidden(error.message);
     }
 

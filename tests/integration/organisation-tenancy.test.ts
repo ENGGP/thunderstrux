@@ -86,7 +86,7 @@ describe("organisation tenancy", () => {
     const wrongEvent = await getOrders(
       jsonRequest(`http://localhost/api/orders?eventId=${otherEvent.id}`)
     );
-    expect(wrongEvent.status).toBe(403);
+    expect(wrongEvent.status).toBe(404);
     expect(JSON.stringify(await parseJsonResponse(wrongEvent))).not.toContain(
       otherEvent.title
     );

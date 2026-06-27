@@ -9,9 +9,11 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
+import { scopedByOrganisation } from "@/lib/db/organisation-scope";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
@@ -51,11 +53,13 @@ export async function PATCH(request: Request, context: RouteContext) {
   const { eventId } = await context.params;
 
   try {
+    const organisation = await requireCurrentOrganisationAccount();
+    await requireOrganisationEventManagementAccess(organisation.id);
+
     const event = await prisma.event.findFirst({
-      where: { id: eventId },
+      where: scopedByOrganisation(organisation.id, { id: eventId }),
       select: {
         id: true,
-        organisationId: true,
         status: true,
         ticketTypes: {
           select: {
@@ -73,8 +77,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!event) {
       return notFound("Event was not found in this organisation");
     }
-
-    await requireOrganisationEventManagementAccess(event.organisationId);
 
     if (event.status === "draft") {
       if (event.ticketTypes.length === 0) {

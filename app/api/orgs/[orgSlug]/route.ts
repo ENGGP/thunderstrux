@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { forbidden, internalError, unauthorized } from "@/lib/api/errors";
+import { forbidden, internalError, notFound, unauthorized } from "@/lib/api/errors";
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
@@ -25,6 +25,10 @@ export async function GET(_request: Request, context: RouteContext) {
     }
 
     if (error instanceof OrganisationAccessError) {
+      if (error.message === "Organisation not found or access denied") {
+        return notFound("Organisation was not found");
+      }
+
       return forbidden(error.message);
     }
 

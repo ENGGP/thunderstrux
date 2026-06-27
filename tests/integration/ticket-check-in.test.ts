@@ -3,7 +3,7 @@ import { GET as getEventTickets } from "@/app/api/events/[eventId]/tickets/route
 import { POST as checkInTicket } from "@/app/api/tickets/[ticketId]/check-in/route";
 import { POST as checkOutTicket } from "@/app/api/tickets/[ticketId]/check-out/route";
 import { prisma } from "@/lib/db";
-import { setMockSession } from "@/tests/helpers/auth";
+import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import {
   createEvent,
@@ -51,6 +51,24 @@ async function createPaidTicket({
 }
 
 describe("ticket visibility and check-in API", () => {
+  const trustedAppOrigin = "http://localhost:3000";
+  const firstPartyHeaders = { origin: trustedAppOrigin };
+
+  async function withTrustedAppOrigin(run: () => Promise<void>) {
+    const previous = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = trustedAppOrigin;
+
+    try {
+      await run();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.NEXT_PUBLIC_APP_URL;
+      } else {
+        process.env.NEXT_PUBLIC_APP_URL = previous;
+      }
+    }
+  }
+
   test("organiser can list tickets for their own event", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const member = await createMember({ email: "ticket-buyer@example.com" });
@@ -70,6 +88,12 @@ describe("ticket visibility and check-in API", () => {
     );
     expect(response.status).toBe(200);
     const body = await parseJsonResponse(response);
+    expect(Object.keys(body).sort()).toEqual([
+      "counts",
+      "event",
+      "pageInfo",
+      "tickets"
+    ]);
 
     expect(body).toEqual(
       expect.objectContaining({
@@ -189,17 +213,31 @@ describe("ticket visibility and check-in API", () => {
     );
   });
 
-  test("invalid ticket pagination cursor returns bad request", async () => {
+  test("invalid ticket pagination params return bad request", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const event = await createEvent({ organisationId: organisation.id });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    const response = await getEventTickets(
-      jsonRequest(`http://localhost/api/events/${event.id}/tickets?cursor=not-a-cursor`),
-      routeContext({ eventId: event.id })
-    );
 
-    expect(response.status).toBe(400);
+    for (const url of [
+      `http://localhost/api/events/${event.id}/tickets?cursor=not-a-cursor`,
+      `http://localhost/api/events/${event.id}/tickets?direction=back`,
+      `http://localhost/api/events/${event.id}/tickets?limit=abc`,
+      `http://localhost/api/events/${event.id}/tickets?limit=0`,
+      `http://localhost/api/events/${event.id}/tickets?limit=101`
+    ]) {
+      const response = await getEventTickets(
+        jsonRequest(url),
+        routeContext({ eventId: event.id })
+      );
+
+      expect(response.status).toBe(400);
+      await expect(parseJsonResponse(response)).resolves.toMatchObject({
+        error: {
+          code: "BAD_REQUEST"
+        }
+      });
+    }
   });
 
   test("organiser cannot list tickets for another organisation event", async () => {
@@ -222,6 +260,32 @@ describe("ticket visibility and check-in API", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  test("missing and cross-tenant event ticket lists return the same safe 404", async () => {
+    const owned = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const otherEvent = await createEvent({ organisationId: other.organisation.id });
+
+    setMockSession({
+      userId: owned.user.id,
+      email: owned.user.email,
+      accountRole: "organisation"
+    });
+    const missingResponse = await getEventTickets(
+      jsonRequest("http://localhost/api/events/missing-event/tickets"),
+      routeContext({ eventId: "missing-event" })
+    );
+    const crossTenantResponse = await getEventTickets(
+      jsonRequest(`http://localhost/api/events/${otherEvent.id}/tickets`),
+      routeContext({ eventId: otherEvent.id })
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(crossTenantResponse.status).toBe(404);
+    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+      await parseJsonResponse(missingResponse)
+    );
   });
 
   test("ticket listing uses event ownership when ticket organisation is inconsistent", async () => {
@@ -267,6 +331,19 @@ describe("ticket visibility and check-in API", () => {
     expect(response.status).toBe(403);
   });
 
+  test("unauthenticated event ticket list returns 401", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+
+    clearMockSession();
+    const response = await getEventTickets(
+      jsonRequest(`http://localhost/api/events/${event.id}/tickets`),
+      routeContext({ eventId: event.id })
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   test("organiser can check in their own ticket without changing order state", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const member = await createMember();
@@ -288,6 +365,7 @@ describe("ticket visibility and check-in API", () => {
     );
     expect(response.status).toBe(200);
     const body = await parseJsonResponse(response);
+    expect(Object.keys(body).sort()).toEqual(["ticket"]);
     expect(body.ticket).toEqual(
       expect.objectContaining({
         id: ticket.id,
@@ -357,6 +435,79 @@ describe("ticket visibility and check-in API", () => {
       select: { checkedInAt: true }
     });
     expect(updated.checkedInAt).toEqual(originalCheckedInAt);
+  });
+
+  test("missing and cross-tenant ticket check-in return the same safe 404", async () => {
+    await withTrustedAppOrigin(async () => {
+      const { user } = await createOrganisationAccount();
+      const other = await createOrganisationAccount();
+      const member = await createMember();
+      const event = await createEvent({ organisationId: other.organisation.id });
+      const ticketType = event.ticketTypes[0];
+      const { ticket } = await createPaidTicket({
+        organisationId: other.organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id
+      });
+
+      setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+      const missingResponse = await checkInTicket(
+        jsonRequest("http://localhost/api/tickets/missing-ticket/check-in", undefined, {
+          method: "POST",
+          headers: firstPartyHeaders
+        }),
+        routeContext({ ticketId: "missing-ticket" })
+      );
+      const crossTenantResponse = await checkInTicket(
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+          method: "POST",
+          headers: firstPartyHeaders
+        }),
+        routeContext({ ticketId: ticket.id })
+      );
+
+      expect(missingResponse.status).toBe(404);
+      expect(crossTenantResponse.status).toBe(404);
+      expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+        await parseJsonResponse(missingResponse)
+      );
+    });
+  });
+
+  test("member and unauthenticated ticket check-in remain forbidden or unauthorized", async () => {
+    await withTrustedAppOrigin(async () => {
+      const { organisation } = await createOrganisationAccount();
+      const member = await createMember();
+      const event = await createEvent({ organisationId: organisation.id });
+      const ticketType = event.ticketTypes[0];
+      const { ticket } = await createPaidTicket({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id
+      });
+
+      setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
+      const memberResponse = await checkInTicket(
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+          method: "POST",
+          headers: firstPartyHeaders
+        }),
+        routeContext({ ticketId: ticket.id })
+      );
+      expect(memberResponse.status).toBe(403);
+
+      clearMockSession();
+      const unauthenticatedResponse = await checkInTicket(
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+          method: "POST",
+          headers: firstPartyHeaders
+        }),
+        routeContext({ ticketId: ticket.id })
+      );
+      expect(unauthenticatedResponse.status).toBe(401);
+    });
   });
 
   test("organiser cannot check in another organisation ticket", async () => {
@@ -451,6 +602,7 @@ describe("ticket visibility and check-in API", () => {
     );
     expect(response.status).toBe(200);
     const body = await parseJsonResponse(response);
+    expect(Object.keys(body).sort()).toEqual(["ticket"]);
     expect(body.ticket).toEqual({
       id: ticket.id,
       status: "unused",
@@ -548,6 +700,45 @@ describe("ticket visibility and check-in API", () => {
     expect(response.status).toBe(404);
   });
 
+  test("missing and cross-tenant ticket check-out return the same safe 404", async () => {
+    await withTrustedAppOrigin(async () => {
+      const { user } = await createOrganisationAccount();
+      const other = await createOrganisationAccount();
+      const member = await createMember();
+      const event = await createEvent({ organisationId: other.organisation.id });
+      const ticketType = event.ticketTypes[0];
+      const { ticket } = await createPaidTicket({
+        organisationId: other.organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        checkedInAt: new Date("2026-05-02T12:00:00.000Z")
+      });
+
+      setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+      const missingResponse = await checkOutTicket(
+        jsonRequest("http://localhost/api/tickets/missing-ticket/check-out", undefined, {
+          method: "POST",
+          headers: firstPartyHeaders
+        }),
+        routeContext({ ticketId: "missing-ticket" })
+      );
+      const crossTenantResponse = await checkOutTicket(
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+          method: "POST",
+          headers: firstPartyHeaders
+        }),
+        routeContext({ ticketId: ticket.id })
+      );
+
+      expect(missingResponse.status).toBe(404);
+      expect(crossTenantResponse.status).toBe(404);
+      expect(await parseJsonResponse(crossTenantResponse)).toEqual(
+        await parseJsonResponse(missingResponse)
+      );
+    });
+  });
+
   test("check-out uses event ownership when ticket organisation is inconsistent", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const other = await createOrganisationAccount();
@@ -616,5 +807,32 @@ describe("ticket visibility and check-in API", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  test("unauthenticated ticket check-out returns 401", async () => {
+    await withTrustedAppOrigin(async () => {
+      const { organisation } = await createOrganisationAccount();
+      const member = await createMember();
+      const event = await createEvent({ organisationId: organisation.id });
+      const ticketType = event.ticketTypes[0];
+      const { ticket } = await createPaidTicket({
+        organisationId: organisation.id,
+        eventId: event.id,
+        ticketTypeId: ticketType.id,
+        userId: member.id,
+        checkedInAt: new Date("2026-05-02T12:00:00.000Z")
+      });
+
+      clearMockSession();
+      const response = await checkOutTicket(
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+          method: "POST",
+          headers: firstPartyHeaders
+        }),
+        routeContext({ ticketId: ticket.id })
+      );
+
+      expect(response.status).toBe(401);
+    });
   });
 });

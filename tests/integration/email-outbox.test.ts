@@ -38,6 +38,18 @@ async function createPaidTicketOrder(email = "outbox-buyer@example.com") {
   return order;
 }
 
+async function makeOutboxJobsDue(orderId: string, nextAttemptAt: Date) {
+  await prisma.emailOutbox.updateMany({
+    where: {
+      orderId,
+      status: "pending"
+    },
+    data: {
+      nextAttemptAt
+    }
+  });
+}
+
 function configureEmailEnv() {
   const previousApiKey = process.env.RESEND_API_KEY;
   const previousFrom = process.env.EMAIL_FROM;
@@ -91,6 +103,7 @@ describe("ticket email outbox", () => {
     try {
       const order = await createPaidTicketOrder("automatic-outbox@example.com");
       await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+      await makeOutboxJobsDue(order.id, new Date("2026-06-01T12:00:00.000Z"));
 
       const result = await processTicketEmailOutboxBatch({
         now: new Date("2026-06-01T12:05:00.000Z")
@@ -143,6 +156,7 @@ describe("ticket email outbox", () => {
     try {
       const order = await createPaidTicketOrder("retry-outbox@example.com");
       await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+      await makeOutboxJobsDue(order.id, new Date("2026-06-01T11:59:00.000Z"));
       const job = await prisma.emailOutbox.findFirstOrThrow({
         where: { orderId: order.id },
         select: { id: true }
@@ -243,6 +257,7 @@ describe("ticket email outbox", () => {
       const order = await createPaidTicketOrder("manual-outbox@example.com");
       await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
       await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
+      await makeOutboxJobsDue(order.id, new Date("2026-06-01T12:00:00.000Z"));
 
       const result = await processTicketEmailOutboxBatch({
         now: new Date("2026-06-01T12:05:00.000Z"),
@@ -274,6 +289,7 @@ describe("ticket email outbox", () => {
       for (let index = 0; index < 4; index += 1) {
         const order = await createPaidTicketOrder(`concurrent-${index}@example.com`);
         await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+        await makeOutboxJobsDue(order.id, new Date("2026-06-01T12:00:00.000Z"));
       }
 
       const [first, second] = await Promise.all([

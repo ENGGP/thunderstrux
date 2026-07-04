@@ -1,0 +1,69 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["npm"],
+  "dependencyDashboard": true,
+  "rangeStrategy": "pin",
+  "schedule": ["before 5am on monday"],
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 3,
+  "separateMajorMinor": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Group non-major Prisma updates together.",
+      "matchPackageNames": ["prisma", "@prisma/client"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "prisma dependencies"
+    },
+    {
+      "description": "Group non-major Next and React updates together.",
+      "matchPackageNames": [
+        "next",
+        "react",
+        "react-dom",
+        "@types/react",
+        "@types/react-dom"
+      ],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "next and react dependencies"
+    },
+    {
+      "description": "Group non-major Tailwind and PostCSS updates together.",
+      "matchPackageNames": [
+        "tailwindcss",
+        "@tailwindcss/postcss",
+        "postcss",
+        "autoprefixer"
+      ],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "tailwind and postcss dependencies"
+    },
+    {
+      "description": "Group non-major auth updates together.",
+      "matchPackageNames": ["next-auth"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "auth dependencies"
+    },
+    {
+      "description": "Group non-major Stripe updates together.",
+      "matchPackageNames": ["stripe"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "stripe dependencies"
+    },
+    {
+      "description": "Group non-major test and build tooling updates together.",
+      "matchPackageNames": [
+        "vitest",
+        "typescript",
+        "jiti",
+        "@types/node"
+      ],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "test and build tooling dependencies"
+    }
+  ]
+}

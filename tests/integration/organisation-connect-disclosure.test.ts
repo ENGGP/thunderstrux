@@ -5,6 +5,7 @@ import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/ht
 import {
   createMember,
   createOrganisationAccount,
+  createOrganisationStaff,
   joinOrganisation
 } from "@/tests/helpers/test-data";
 import { GET as searchOrganisations } from "@/app/api/orgs/search/route";
@@ -91,6 +92,134 @@ async function withTrustedAppOrigin(run: () => Promise<void>) {
 function connectBody(organisationId: string) {
   return { organisationId };
 }
+
+const connectEndpoints = ["status", "onboard", "continue", "disconnect"] as const;
+type ConnectEndpoint = typeof connectEndpoints[number];
+
+async function invokeConnect(
+  endpoint: ConnectEndpoint,
+  organisationId?: string,
+  origin = trustedAppOrigin
+) {
+  const base = `http://localhost/api/stripe/connect/${endpoint}`;
+  if (endpoint === "status") {
+    return connectStatus(jsonRequest(
+      organisationId ? `${base}?organisationId=${organisationId}` : base
+    ));
+  }
+  const handlers = { onboard: connectOnboard, continue: connectContinue, disconnect: connectDisconnect };
+  return handlers[endpoint](jsonRequest(base, organisationId ? connectBody(organisationId) : {}, {
+    headers: { origin }
+  }));
+}
+
+async function expectAllDenied(organisationId: string | undefined, status: number) {
+  const before = await prisma.organisation.findMany({ orderBy: { id: "asc" } });
+  vi.clearAllMocks();
+  for (const endpoint of connectEndpoints) {
+    const response = await invokeConnect(endpoint, organisationId);
+    expect(response.status, endpoint).toBe(status);
+  }
+  for (const mock of Object.values(connectMocks)) expect(mock).not.toHaveBeenCalled();
+  expect(await prisma.organisation.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+}
+
+async function expectAllAllowed(organisationId: string) {
+  connectMocks.createExpressAccount.mockResolvedValue({ accountId: "acct_staff", orgSlug: "staff-org" });
+  connectMocks.createOnboardingLink.mockResolvedValue("https://connect.stripe.test/staff");
+  connectMocks.getAccountStatus.mockResolvedValue({ state: "READY", ready: true });
+  connectMocks.disconnectAccount.mockResolvedValue(undefined);
+  for (const endpoint of connectEndpoints) {
+    expect((await invokeConnect(endpoint, organisationId)).status, endpoint).toBe(200);
+  }
+}
+
+describe("Stripe Connect broad capability and tenant isolation", () => {
+  test.each(["owner", "admin"] as const)("member-account %s can use every endpoint", async (role) => {
+    await withTrustedAppOrigin(async () => {
+      const { organisation } = await createOrganisationAccount({ stripeReady: true });
+      const user = await createMember();
+      await createOrganisationStaff({ organisationId: organisation.id, userId: user.id, role });
+      setMockSession({ userId: user.id, email: user.email, accountRole: "member" });
+      await expectAllAllowed(organisation.id);
+    });
+  });
+
+  test("authentication and capability precede malformed or missing targets", async () => {
+    await withTrustedAppOrigin(async () => {
+      const { organisation } = await createOrganisationAccount();
+      clearMockSession();
+      for (const target of [organisation.id, "missing-org", undefined]) await expectAllDenied(target, 401);
+      const user = await createMember();
+      await createOrganisationStaff({ organisationId: organisation.id, userId: user.id, role: "finance_manager" });
+      setMockSession({ userId: user.id, email: user.email, accountRole: "member" });
+      for (const target of [organisation.id, "missing-org", undefined]) await expectAllDenied(target, 403);
+    });
+  });
+
+  test("authority elsewhere never grants target access or reveals missing versus unrelated tenants", async () => {
+    await withTrustedAppOrigin(async () => {
+      const a = await createOrganisationAccount();
+      const b = await createOrganisationAccount({ stripeReady: true });
+      const user = await createMember();
+      await createOrganisationStaff({ organisationId: a.organisation.id, userId: user.id, role: "admin" });
+      setMockSession({ userId: user.id, email: user.email, accountRole: "member" });
+      await expectAllDenied(undefined, 400);
+      await expectAllDenied(b.organisation.id, 404);
+      await expectAllDenied("missing-org", 404);
+      for (const endpoint of connectEndpoints) {
+        expect(await parseJsonResponse(await invokeConnect(endpoint, b.organisation.id))).toEqual(
+          await parseJsonResponse(await invokeConnect(endpoint, "missing-org"))
+        );
+      }
+      const staff = await createOrganisationStaff({ organisationId: b.organisation.id, userId: user.id, role: "event_manager" });
+      await expectAllDenied(b.organisation.id, 403);
+      await prisma.organisationStaff.update({ where: { id: staff.id }, data: { status: "revoked" } });
+      await expectAllDenied(b.organisation.id, 404);
+      for (const endpoint of connectEndpoints) {
+        expect(await parseJsonResponse(await invokeConnect(endpoint, b.organisation.id))).toEqual(
+          await parseJsonResponse(await invokeConnect(endpoint, "missing-org"))
+        );
+      }
+    });
+  });
+
+  test("legacy ownership survives an unrelated low-privilege membership", async () => {
+    await withTrustedAppOrigin(async () => {
+      const a = await createOrganisationAccount({ stripeReady: true });
+      const b = await createOrganisationAccount();
+      await prisma.organisationStaff.deleteMany({ where: { organisationId: a.organisation.id, userId: a.user.id } });
+      await createOrganisationStaff({ organisationId: b.organisation.id, userId: a.user.id, role: "check_in_staff" });
+      setMockSession({ userId: a.user.id, email: a.user.email, accountRole: "organisation" });
+      await expectAllAllowed(a.organisation.id);
+      await expectAllDenied(b.organisation.id, 403);
+    });
+  });
+
+  test.each(["revoked", "invited", "downgraded"] as const)("%s bootstrap staff cannot recover legacy authority", async (change) => {
+    await withTrustedAppOrigin(async () => {
+      const { user, organisation } = await createOrganisationAccount({ stripeReady: true });
+      setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+      await expectAllAllowed(organisation.id);
+      await prisma.organisationStaff.update({
+        where: { organisationId_userId: { organisationId: organisation.id, userId: user.id } },
+        data: change === "downgraded" ? { role: "finance_manager" } : { status: change }
+      });
+      await expectAllDenied(organisation.id, 403);
+    });
+  });
+
+  test("untrusted origins are rejected before authentication or capability checks", async () => {
+    await withTrustedAppOrigin(async () => {
+      clearMockSession();
+      vi.clearAllMocks();
+      for (const endpoint of ["onboard", "continue", "disconnect"] as const) {
+        expect((await invokeConnect(endpoint, undefined, "https://untrusted.example")).status).toBe(403);
+      }
+      for (const mock of Object.values(connectMocks)) expect(mock).not.toHaveBeenCalled();
+    });
+  });
+});
 
 describe("organisation and Stripe Connect disclosure", () => {
   test("public organisation search remains intentionally discoverable", async () => {

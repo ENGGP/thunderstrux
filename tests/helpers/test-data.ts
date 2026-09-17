@@ -17,7 +17,7 @@ export function unique(prefix: string) {
 }
 
 export function futureDate(days = 7, hour = 10) {
-  const date = new Date("2026-06-01T00:00:00.000Z");
+  const date = new Date();
   date.setUTCDate(date.getUTCDate() + days + counter);
   date.setUTCHours(hour, 0, 0, 0);
   return date;

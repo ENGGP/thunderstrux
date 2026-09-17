@@ -13,6 +13,11 @@ beforeEach(async () => {
   globalThis.__THUNDERSTRUX_TEST_SESSION__ = null;
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  // No developer .env or real provider credentials are needed in CI.
+  vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_integration_placeholder");
+  vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_integration_placeholder");
+  vi.stubEnv("STRIPE_CONNECT_WEBHOOK_SECRET", "whsec_connect_integration_placeholder");
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input) => {

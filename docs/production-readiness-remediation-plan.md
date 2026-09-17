@@ -573,6 +573,8 @@ Validation:
 
 ### 15. Pin Dependency Ranges And Add Dependency Automation
 
+Status (2026-09-18): implementation in [PR #1](https://github.com/ENGGP/thunderstrux/pull/1), awaiting review/merge. Four pre-existing Stripe Connect failures reproduced on `c8878fe` and fixed separately (185/185 integration tests, typecheck and build pass locally; all three GitHub jobs passed). Dependency graph, vulnerability alerts and main required checks are active. [Advisory triage](obsidian/Dependency%20Advisory%20Triage%202026-09-18.md) inventories all 41 findings and reconciles GitHub's 54 alerts; owners/deadlines and critical/high decisions await approval. Renovate activation, end-to-end bot/security PRs and audit notification evidence remain open. See [Dependency Automation](obsidian/Dependency%20Automation.md). P2.15 is not complete; no dependency upgrades included.
+
 Severity: Low/Medium
 
 Affected areas:
@@ -583,8 +585,8 @@ Affected areas:
 
 Problem:
 
-- Critical packages use `latest`.
-- Lockfile limits current drift but future installs/upgrades are less controlled.
+- Historical baseline: critical packages used `latest`; commit `c8878fe` replaced the remaining floating direct versions and added initial Renovate/typecheck CI.
+- Current gap: GitHub bot/security settings and required checks still need verification. The scheduled audit exposes existing advisories requiring triage.
 
 Solution:
 

@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import {
   hasOrganisationPermission,
+  organisationRolesWithPermission,
   type OrganisationPermission,
   type OrganisationRole
 } from "@/lib/permissions";
@@ -54,6 +55,36 @@ export async function requireAccountRole(accountRole: AccountRole) {
   }
 
   return user;
+}
+
+// Broad capability only: callers must still authorise the requested tenant.
+export async function requireStripeConnectCapability() {
+  const user = await requireAuthenticatedUser();
+  const staff = await prisma.organisationStaff.findFirst({
+    where: {
+      userId: user.id,
+      status: "active",
+      role: { in: organisationRolesWithPermission("stripe:manage") }
+    },
+    select: { id: true }
+  });
+
+  if (staff) return user;
+
+  // Unrelated staff memberships must not hide legacy ownership. Any staff row
+  // for the owned tenant supersedes that legacy authority, including revocation.
+  if (user.accountRole === "organisation") {
+    const legacyOwner = await prisma.organisation.findFirst({
+      where: {
+        accountUserId: user.id,
+        staff: { none: { userId: user.id } }
+      },
+      select: { id: true }
+    });
+    if (legacyOwner) return user;
+  }
+
+  throw new OrganisationAccessError("Insufficient permissions");
 }
 
 export async function getCurrentOrganisationAccount() {

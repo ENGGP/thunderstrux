@@ -77,6 +77,12 @@ export function hasOrganisationPermission(
   return rolePermissions[role].includes(permission);
 }
 
+export function organisationRolesWithPermission(permission: OrganisationPermission) {
+  return (Object.keys(rolePermissions) as OrganisationStaffRole[]).filter((role) =>
+    hasOrganisationPermission(role, permission)
+  );
+}
+
 export function parseRoleHeader(request: Request):
   | { success: true; role: OrganisationRole }
   | { success: false } {

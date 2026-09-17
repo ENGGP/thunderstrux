@@ -10,6 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireStripeConnectCapability,
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    await requireStripeConnectCapability();
     const validation = await validateJson(request, organisationConnectSchema);
 
     if (!validation.success) {

@@ -21,7 +21,7 @@ Repository automation is implemented. P2.15 remains open until the GitHub settin
 
 Security Audit runs Wednesday at 03:00 UTC and manually. It audits all dependencies at severity `high`, including development/build tooling. High/critical findings and registry errors fail the job visibly. This scheduled job is not a required PR check. Subscribe the repository maintainer to workflow failure notifications and triage each failure; never suppress registry failures or use an automatic audit fix.
 
-The baseline audit reports 41 vulnerabilities: 5 critical, 21 high, and 15 moderate. [[Dependency Advisory Triage 2026-09-18]] records all affected installed versions, paths, fixed ranges, exposure assessments and proposed separate remediation work. No upgrades, acceptance or suppression were performed. Accountable owners and deadlines await maintainer confirmation. GitHub reports 54 open alerts; reconcile its inventory separately rather than equating the counts. Advisory counts can change without lockfile changes.
+The baseline audit reports 41 vulnerabilities: 5 critical, 21 high, and 15 moderate. [[Dependency Advisory Triage 2026-09-18]] records all affected installed versions, paths, fixed ranges, exposure assessments and proposed separate remediation work. No upgrades, acceptance or suppression were performed. Accountable owners and deadlines await maintainer confirmation. GitHub's 54 alerts were reconciled by advisory/package pair: no extra pairs; 19 manifest alerts and 35 lockfile alerts. Advisory counts can change without lockfile changes.
 
 ## External rollout checklist
 
@@ -34,7 +34,14 @@ These actions require a repository administrator; configuration files alone do n
 5. Confirm known vulnerability alerts are visible to Renovate and that eligible fixes produce security-labelled PRs. Dispatch Security Audit and confirm failure notifications reach the maintainer.
 6. Only then mark P2.15 complete and record the GitHub run/PR evidence in this note.
 
-GitHub vulnerability alerts were enabled during implementation. Subsequent API reads verified a dependency graph containing 205 packages and 54 open alerts. Dependabot security-update PRs remain disabled to avoid adding a second update bot. Renovate app installation/permissions and a controlled bot PR remain unverified. Required checks must follow green runs of the final job structure. Deployment, migration rollout, health monitoring, backup/restore, and rollback remain P2.17; real browser/Stripe tests remain P2.16.
+GitHub vulnerability alerts were enabled during implementation. Subsequent API reads verified a dependency graph containing 205 packages and 54 open alerts. Dependabot security-update PRs remain disabled to avoid adding a second update bot. Renovate app installation/permissions and a controlled bot PR remain unverified; the available credential cannot list user app installations (HTTP 403), so absence of the app is not asserted. Deployment, migration rollout, health monitoring, backup/restore, and rollback remain P2.17; real browser/Stripe tests remain P2.16.
+
+## GitHub rollout evidence (2026-09-18)
+
+- [Implementation PR #1](https://github.com/ENGGP/thunderstrux/pull/1) contains separate infrastructure, authorization and documentation commits. It is open for human review, not merged or auto-merging. The unrelated local PRD file was excluded.
+- [Validation run 35231538737](https://github.com/ENGGP/thunderstrux/actions/runs/35231538737) passed all three jobs for commit `6b3fb9e176120ac56302239de51a41afcebc29af`.
+- After that green run, `main` branch protection was configured and read back: require `static-validation`, `integration-tests`, `production-build`, bound to the observed GitHub Actions app (15368), require an up-to-date branch, enforce for administrators. No audit check or new reviewer-count requirement was added.
+- Remaining: review/merge the implementation PR, activate/confirm Renovate repository and vulnerability-alert permissions, verify one controlled update plus an eligible immediate security PR, dispatch scheduled/manual audit from the default branch and confirm notifications, and approve advisory owners/deadlines. The new audit workflow is not scheduled on the default branch until merge. P2.15 remains open.
 
 ## Local verification
 

@@ -4,7 +4,7 @@ Read this first, then [[Thunderstrux Codebase Map]].
 
 Latest dated handover: [[Handover 2026-06-27 P1.8 Through P1.13 Completion]].
 
-Dependency automation update (2026-09-18): see [[Dependency Automation]]. P2.15 has three validation jobs, scheduled security auditing, and Renovate coverage for npm, Actions, Dockerfile, and Compose. The four pre-existing Stripe Connect failures were reproduced on `c8878fe` and fixed with additional authorization regressions: 185/185 integration tests, typecheck and production build pass locally. GitHub dependency graph and vulnerability alerts are active. [[Dependency Advisory Triage 2026-09-18]] records all 41 pnpm findings; remediation owners/deadlines await confirmation. Renovate activation, required-check rollout and a real bot PR still need evidence; P2.15 remains open. No dependency upgrades were made.
+Dependency automation update (2026-09-18): see [[Dependency Automation]]. [PR #1](https://github.com/ENGGP/thunderstrux/pull/1) contains three-job validation, scheduled security auditing and broader Renovate coverage. The four pre-existing Stripe Connect failures were reproduced on `c8878fe` and fixed: 185/185 integration tests, typecheck and production build pass locally; all three GitHub jobs passed. GitHub dependency graph/alerts and required checks on `main` are active. [[Dependency Advisory Triage 2026-09-18]] covers all 41 pnpm findings and reconciles GitHub's 54 alerts; owners/deadlines await confirmation. PR review/merge, Renovate activation, real bot/security PRs and audit notification evidence remain pending; P2.15 stays open. No dependency upgrades were made.
 
 ## Current State
 

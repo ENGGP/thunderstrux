@@ -188,3 +188,7 @@ Auth advisory applicability:
 - Recheck GitHub/pnpm inventories at remediation time; the initial 54-alert inventory has been reconciled by advisory/package pair as above.
 - Publish reviewed dependency PRs separately; attach exact resolved versions, lockfile diffs, regression evidence and fresh audit results.
 - P2.15 stays open until deferred Renovate activation and controlled update/security PR evidence are recorded. No zero-advisory requirement is introduced.
+
+## Rollout audit evidence
+
+[Manual Security Audit run 35286130474](https://github.com/ENGGP/thunderstrux/actions/runs/35286130474) executed on merged main `05d9502` at 2026-09-17 23:17 UTC (2026-09-18 Brisbane). Frozen installation passed; audit exited 1 with 41 findings: 5 critical, 21 high, 15 moderate, matching the local audit. GitHub open alerts remained 54 (9 critical, 24 high, 21 moderate), counted separately. This is expected detection evidence, not remediation or risk acceptance. D1-D5 ownership and deadlines above are approved; upgrades remain separate. Repository-side P2.15 is complete; overall P2.15 stays open while Renovate activation and controlled update/security PR verification are deferred.

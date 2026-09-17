@@ -4,7 +4,7 @@
 
 The integration gate passes locally: 185/185 tests, including 22 Stripe Connect disclosure tests. The four original failures were reproduced on `c8878fe` and fixed separately from dependency infrastructure without weakening their expectations. See the evidence below.
 
-Repository automation is implemented. P2.15 remains open until the GitHub settings and a real Renovate PR are verified. Commit `c8878fe` supplied exact direct dependency versions, the lockfile, npm-focused Renovate configuration, and initial typecheck CI; the pnpm pin predates that commit.
+Repository-side P2.15 implementation is complete and merged through [PR #1](https://github.com/ENGGP/thunderstrux/pull/1), merge commit `05d9502`. Overall P2.15 remains **Open - external Renovate verification deferred**: app activation and controlled update/security PR acceptance evidence are explicitly outstanding. Commit `c8878fe` supplied exact direct dependency versions and initial automation; no dependency upgrades were included in this rollout.
 
 ## Validation and update policy
 
@@ -38,10 +38,10 @@ GitHub vulnerability alerts were enabled during implementation. Subsequent API r
 
 ## GitHub rollout evidence (2026-09-18)
 
-- [Implementation PR #1](https://github.com/ENGGP/thunderstrux/pull/1) contains separate infrastructure, authorization and documentation commits. It is open for human review, not merged or auto-merging. The unrelated local PRD file was excluded.
+- [Implementation PR #1](https://github.com/ENGGP/thunderstrux/pull/1) merged with a regular merge commit `05d9502`, preserving the original four commits plus advisory assignment commit `178d431`. There were no upstream conflicts; remote branches were retained.
 - [Validation run 35231538737](https://github.com/ENGGP/thunderstrux/actions/runs/35231538737) passed all three jobs for commit `6b3fb9e176120ac56302239de51a41afcebc29af`.
 - After that green run, `main` branch protection was configured and read back: require `static-validation`, `integration-tests`, `production-build`, bound to the observed GitHub Actions app (15368), require an up-to-date branch, enforce for administrators. No audit check or new reviewer-count requirement was added.
-- Remaining: review/merge the implementation PR, activate/confirm Renovate repository and vulnerability-alert permissions, verify one controlled update plus an eligible immediate security PR, dispatch scheduled/manual audit from the default branch and confirm notifications. The new audit workflow is not scheduled on the default branch until merge. P2.15 remains open.
+- Deferred: Renovate app activation/permissions, controlled update PR and eligible vulnerability PR verification. Dependabot update PRs remain disabled. Maintainer notification delivery has not been independently verified; the completed audit proves detection, not notification receipt.
 
 ## Local verification
 
@@ -54,3 +54,13 @@ After the fix: focused suite 22/22; complete suite 185/185; typecheck and produc
 Validation uses a disposable source copy and database, preserving the running app and workspace build files. The frozen install left `pnpm-lock.yaml` byte-for-byte unchanged; typecheck and the production build passed. The non-test database guard refused a `production` database before attempting a connection.
 
 Both workflows passed actionlint 1.7.7. Renovate configuration passed validator 44.93.4 with Node 24.11.1; installation emitted engine warnings from the bootstrap Node 20 process, and the validator reported its optional RE2 fallback. Action SHAs were resolved from their official upstream release tags.
+
+## Completed rollout evidence (2026-09-18 Australia/Brisbane)
+
+- [Fresh pre-merge validation](https://github.com/ENGGP/thunderstrux/actions/runs/35236969551) passed all three required jobs for `178d431`.
+- Local disposable Docker validation passed frozen installation, Prisma generation, typecheck, all 185 integration tests (including 22 Connect regressions), and production build against PostgreSQL 16 database `p215_test`.
+- [Manual Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35286130474) ran from merged `main` (`05d9502`), started 2026-09-17 23:17:07 UTC (2026-09-18 09:17:07 Brisbane). Installation passed; the audit failed with exit code 1 after reporting 41 findings: 5 critical, 21 high, 15 moderate. This expected failure proves advisory detection; it is not a green audit or vulnerability remediation.
+- GitHub's separately counted open-alert inventory remains 54: 9 critical, 24 high, 21 moderate. D1-D5 owner: ENGGP repository maintainer. Deadlines: D1/D2 2026-09-21; D3/D5 2026-09-25; D4 2026-10-02.
+- Branch protection was read back: strict/up-to-date, administrator enforcement, and the three GitHub Actions checks remain required. Security Audit remains non-required and scheduled Wednesdays at 03:00 UTC.
+- Lockfile unchanged: Windows checkout SHA-256 `6E4D3BD138B75D817D349AB7CB43784B1BEEF47ED0A1965D11C53BE1FFCBA080`; committed LF archive and validated Linux copy both `31d8d163e8b7a81effe7ac97041afec243c18900a8720ecb8967c13662bad95f`. The difference is checkout line endings.
+- This rollout evidence is published through a documentation-only follow-up PR. The production-readiness plan remains a historical status snapshot by explicit instruction; this note is the current rollout status.

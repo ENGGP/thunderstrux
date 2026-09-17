@@ -4,9 +4,9 @@
 
 Fresh `pnpm audit --json` against the unchanged lockfile reported **41 findings: 5 critical, 21 high, 15 moderate** (36 advisory/package records; multiple installed versions account for additional findings). This is a registry snapshot, not proof of exploitation or safety. GitHub reported **54 open alerts: 9 critical, 24 high, 21 moderate**. Reconciliation by advisory ID and package found no additional advisory/package pairs: 19 GitHub alerts target `package.json` and 35 target `pnpm-lock.yaml`. The sources count manifest alerts and installed-version findings differently; neither count is silently substituted for the other.
 
-No packages were upgraded, no overrides added, and no advisories suppressed. The provisional decision for every finding is **remediate in separately reviewed dependency PRs**; feature-specific observations below are not risk acceptances. P2.15 requires documented and approved critical/high decisions, not a zero-advisory audit.
+No packages were upgraded, no overrides added, and no advisories suppressed. The approved remediation direction for every finding is **remediate in separately reviewed dependency PRs**; feature-specific observations below are not risk acceptances. P2.15 requires documented and approved critical/high decisions, not a zero-advisory audit.
 
-**Accountable owner and committed deadlines: awaiting maintainer assignment for D1–D5.** Proposed order is D1/D2 first (critical/runtime), then D3/D5 (high/tooling and startup), then D4. This proposal is not an agreed SLA. Assign an owner/date to each group before closing P2.15; any defer/accept decision must state rationale, expiry, and compensating control.
+**Accountable owner: ENGGP repository maintainer for D1-D5.** Approved deadlines: D1/D2 2026-09-21, D3/D5 2026-09-25, D4 2026-10-02. Remediation will use separately reviewed dependency PRs; these assignments do not accept or suppress the vulnerabilities. Candidate versions still require compatibility validation.
 
 Source: isolated frozen installation of repository `c8878fe` plus repository-side P2.15/auth changes, pnpm 10.0.0. Lockfile SHA-256: `6E4D3BD138B75D817D349AB7CB43784B1BEEF47ED0A1965D11C53BE1FFCBA080`. Fixed versions below were returned by the audit registry; proposed candidate releases were also checked for availability via npm registry metadata. These are candidates, not tested upgrades.
 
@@ -14,11 +14,11 @@ Source: isolated frozen installation of repository `c8878fe` plus repository-sid
 
 | Decision | Proposed change and validation | Owner / deadline |
 | --- | --- | --- |
-| D1 | Next 16.3.3 plus sharp 0.35.4; registry metadata confirms Next's optional sharp range is `^0.35.3`, allowing this patched resolution. Verify actual lockfile resolution, native image handling, image endpoint access, proxy authorization, request/cache behavior and production build. | Pending / pending |
-| D2 | next-auth 5.0.0-beta.32 bringing @auth/core 0.41.3; verify credentials login, session shape, malformed Bearer, protected routes and logout. Review prerelease behavior even without major increment. | Pending / pending |
-| D3 | PostCSS 8.5.23, nanoid 3.3.18, browserslist 4.28.7, baseline-browser-mapping 2.11.0 across all affected paths; prefer compatible parent/lockfile updates, then verify CSS output and production build. Next 16.3.3 declares PostCSS 8.5.23; upgrading root PostCSS alone leaves Next's older exact pin. | Pending / pending |
-| D4 | Vitest 4.1.11 / mocker 4.1.11 and Vite 8.0.16; verify Node engine compatibility and all integration tests. | Pending / pending |
-| D5 | Compatible Prisma-family update resolving effect and deepmerge-ts; deepmerge-ts requires a major update. Identify a compatible parent release before proposing changes; do not force a major transitive override without compatibility testing. Verify generation, migrations on disposable database, startup and integration suite. | Pending / pending |
+| D1 | Next 16.3.3 plus sharp 0.35.4; registry metadata confirms Next's optional sharp range is `^0.35.3`, allowing this patched resolution. Verify actual lockfile resolution, native image handling, image endpoint access, proxy authorization, request/cache behavior and production build. | ENGGP repository maintainer / 2026-09-21 |
+| D2 | next-auth 5.0.0-beta.32 bringing @auth/core 0.41.3; verify credentials login, session shape, malformed Bearer, protected routes and logout. Review prerelease behavior even without major increment. | ENGGP repository maintainer / 2026-09-21 |
+| D3 | PostCSS 8.5.23, nanoid 3.3.18, browserslist 4.28.7, baseline-browser-mapping 2.11.0 across all affected paths; prefer compatible parent/lockfile updates, then verify CSS output and production build. Next 16.3.3 declares PostCSS 8.5.23; upgrading root PostCSS alone leaves Next's older exact pin. | ENGGP repository maintainer / 2026-09-25 |
+| D4 | Vitest 4.1.11 / mocker 4.1.11 and Vite 8.0.16; verify Node engine compatibility and all integration tests. | ENGGP repository maintainer / 2026-10-02 |
+| D5 | Compatible Prisma-family update resolving effect and deepmerge-ts; deepmerge-ts requires a major update. Identify a compatible parent release before proposing changes; do not force a major transitive override without compatibility testing. Verify generation, migrations on disposable database, startup and integration suite. | ENGGP repository maintainer / 2026-09-25 |
 
 Every dependency PR must run the same typecheck, integration and production-build gates. Re-audit afterward to confirm **every installed affected version/path** is gone and identify newly published advisories. Keep actual upgrades outside P2.15 infrastructure/auth changes.
 
@@ -184,7 +184,7 @@ Auth advisory applicability:
 
 ## Closure evidence still required
 
-- Confirm accountable owners/deadlines and approve D1–D5 decisions (or explicitly record time-bounded alternatives).
+- D1-D5 ownership, deadlines and separate-remediation direction are approved above; implementation and compatibility validation remain outstanding.
 - Recheck GitHub/pnpm inventories at remediation time; the initial 54-alert inventory has been reconciled by advisory/package pair as above.
 - Publish reviewed dependency PRs separately; attach exact resolved versions, lockfile diffs, regression evidence and fresh audit results.
-- P2.15 stays open until external automation/required-check evidence and critical/high triage approval are recorded. No zero-advisory requirement is introduced.
+- P2.15 stays open until deferred Renovate activation and controlled update/security PR evidence are recorded. No zero-advisory requirement is introduced.

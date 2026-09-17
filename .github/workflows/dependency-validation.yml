@@ -2,38 +2,105 @@ name: Dependency Validation
 
 on:
   pull_request:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
 
 jobs:
-  dependency-validation:
-    name: Dependency validation
+  static-validation:
+    name: static-validation
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          node-version: 20
-
-      - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.0.0 --activate
-
+          persist-credentials: false
+      - uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d # v4.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
+      - name: Verify lockfile stability
+        run: git diff --exit-code -- pnpm-lock.yaml
       - name: Generate Prisma client
         run: pnpm prisma:generate
-
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        run: pnpm typecheck
+
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: thunderstrux
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: thunderstrux_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U thunderstrux -d thunderstrux_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://thunderstrux:ci-test-only@localhost:5432/thunderstrux_test?schema=public
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d # v4.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # The runner resets only the disposable _test DB and generates Prisma.
+      - name: Integration tests
+        run: pnpm test
+
+  production-build:
+    name: production-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://user:password@localhost:5432/db?schema=public
+      AUTH_SECRET: build-time-only-auth-secret-change-at-runtime
+      AUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d # v4.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Production build
+        run: pnpm build

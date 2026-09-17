@@ -4,6 +4,8 @@ Read this first, then [[Thunderstrux Codebase Map]].
 
 Latest dated handover: [[Handover 2026-06-27 P1.8 Through P1.13 Completion]].
 
+Dependency automation update (2026-09-18): see [[Dependency Automation]]. P2.15 has three validation jobs, scheduled security auditing, and Renovate coverage for npm, Actions, Dockerfile, and Compose. The four pre-existing Stripe Connect failures were reproduced on `c8878fe` and fixed with additional authorization regressions: 185/185 integration tests, typecheck and production build pass locally. GitHub dependency graph and vulnerability alerts are active. [[Dependency Advisory Triage 2026-09-18]] records all 41 pnpm findings; remediation owners/deadlines await confirmation. Renovate activation, required-check rollout and a real bot PR still need evidence; P2.15 remains open. No dependency upgrades were made.
+
 ## Current State
 
 Thunderstrux is a Docker-based Next.js 16 App Router SaaS for student societies.

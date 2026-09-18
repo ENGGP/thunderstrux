@@ -2,18 +2,20 @@
 
 ## Stack
 
-- Next.js 16 App Router
+- Next.js 16.3.5 App Router
 - React 19
 - TypeScript
-- Prisma ORM
+- Prisma ORM 6.19.3
 - PostgreSQL 16
-- Auth.js / NextAuth credentials provider
+- Auth.js / NextAuth 5.0.0-beta.32 credentials provider
 - Stripe Checkout
 - Stripe Connect Express
 - Zod validation
 - Tailwind CSS v4
 - Docker Compose
 - pnpm
+
+Security updates, scoped Prisma override and verification: [[Handover 2026-09-18 Dependency Security Remediation]].
 
 ## Runtime Shape
 

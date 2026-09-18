@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   test: {
     environment: "node",
+    // Auth.js uses Next extensionless imports that need Vite's resolver.
+    server: { deps: { inline: ["next-auth"] } },
     include: ["tests/integration/**/*.test.ts"],
     setupFiles: ["tests/setup/integration.setup.ts"],
     fileParallelism: false,

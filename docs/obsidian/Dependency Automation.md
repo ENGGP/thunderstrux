@@ -1,8 +1,12 @@
 # Dependency Automation
 
+## Current dependency remediation
+
+The updated working-tree lockfile passes `pnpm audit --audit-level high` with no known vulnerabilities. D1-D5 versions and compatibility checks are in [[Handover 2026-09-18 Dependency Security Remediation]]. The failed runs/counts below are historical rollout evidence; publication and a fresh GitHub audit remain separate.
+
 ## P2.15 status
 
-The integration gate passes locally: 185/185 tests, including 22 Stripe Connect disclosure tests. The four original failures were reproduced on `c8878fe` and fixed separately from dependency infrastructure without weakening their expectations. See the evidence below.
+The original P2.15 integration gate passed locally: 185/185 tests, including 22 Stripe Connect disclosure tests. The four original failures were reproduced on `c8878fe` and fixed separately from dependency infrastructure without weakening their expectations. See the evidence below.
 
 Repository-side P2.15 implementation is complete and merged through [PR #1](https://github.com/ENGGP/thunderstrux/pull/1), merge commit `05d9502`. Overall P2.15 remains **Open - external Renovate verification deferred**: app activation and controlled update/security PR acceptance evidence are explicitly outstanding. Commit `c8878fe` supplied exact direct dependency versions and initial automation; no dependency upgrades were included in this rollout.
 
@@ -21,7 +25,7 @@ Repository-side P2.15 implementation is complete and merged through [PR #1](http
 
 Security Audit runs Wednesday at 03:00 UTC and manually. It audits all dependencies at severity `high`, including development/build tooling. High/critical findings and registry errors fail the job visibly. This scheduled job is not a required PR check. Subscribe the repository maintainer to workflow failure notifications and triage each failure; never suppress registry failures or use an automatic audit fix.
 
-The baseline audit reports 41 vulnerabilities: 5 critical, 21 high, and 15 moderate. [[Dependency Advisory Triage 2026-09-18]] records all affected installed versions, paths, fixed ranges, exposure assessments and proposed separate remediation work. No upgrades, acceptance or suppression were performed. ENGGP repository maintainer owns D1-D5: D1/D2 due 2026-09-21, D3/D5 due 2026-09-25, D4 due 2026-10-02. Separate remediation is approved; upgrades remain outstanding. GitHub's 54 alerts were reconciled by advisory/package pair: no extra pairs; 19 manifest alerts and 35 lockfile alerts. Advisory counts can change without lockfile changes.
+The original audit reported 41 vulnerabilities (5 critical, 21 high, 15 moderate), with 54 separately counted GitHub alerts. [[Dependency Advisory Triage 2026-09-18]] retains that historical inventory. D1-D5 are now patched locally; current results, owner, override rationale and rollout limits are in [[Handover 2026-09-18 Dependency Security Remediation]]. No advisory suppression is used. A new high/critical finding or registry failure must still fail the audit.
 
 ## External rollout checklist
 
@@ -43,7 +47,7 @@ GitHub vulnerability alerts were enabled during implementation. Subsequent API r
 - After that green run, `main` branch protection was configured and read back: require `static-validation`, `integration-tests`, `production-build`, bound to the observed GitHub Actions app (15368), require an up-to-date branch, enforce for administrators. No audit check or new reviewer-count requirement was added.
 - Deferred: Renovate app activation/permissions, controlled update PR and eligible vulnerability PR verification. Dependabot update PRs remain disabled. Maintainer notification delivery has not been independently verified; the completed audit proves detection, not notification receipt.
 
-## Local verification
+## Original P2.15 local verification
 
 Before the authorization fix, isolated runs of `organisation-connect-disclosure.test.ts` on both clean commit `c8878fe` and the P2.15 working copy produced the same 9 passes / 4 failures. This demonstrates that the failures predate the infrastructure changes. Both used disposable PostgreSQL 16 databases (`baseline_test` and `current_test`) and equivalent fake Stripe environment values.
 
@@ -55,7 +59,7 @@ Validation uses a disposable source copy and database, preserving the running ap
 
 Both workflows passed actionlint 1.7.7. Renovate configuration passed validator 44.93.4 with Node 24.11.1; installation emitted engine warnings from the bootstrap Node 20 process, and the validator reported its optional RE2 fallback. Action SHAs were resolved from their official upstream release tags.
 
-## Completed rollout evidence (2026-09-18 Australia/Brisbane)
+## Historical completed rollout evidence (2026-09-18 Australia/Brisbane)
 
 - [Fresh pre-merge validation](https://github.com/ENGGP/thunderstrux/actions/runs/35236969551) passed all three required jobs for `178d431`.
 - Local disposable Docker validation passed frozen installation, Prisma generation, typecheck, all 185 integration tests (including 22 Connect regressions), and production build against PostgreSQL 16 database `p215_test`.

@@ -1,5 +1,9 @@
 # Database and Multi Tenancy
 
+## Dependency security update (2026-09-18)
+
+Prisma client and CLI are paired at 6.19.3, retaining the current generator, schema and migration history. Its config package resolves Effect 3.21.0 and a reviewed, parent-scoped deepmerge-ts 8.0.2 override. See [[Handover 2026-09-18 Dependency Security Remediation]] for compatibility evidence and the override removal condition. Test resets use only disposable `_test` databases.
+
 ## Tenant Boundary
 
 The tenant boundary is `Organisation`.

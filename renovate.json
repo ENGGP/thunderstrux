@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "enabledManagers": ["npm", "github-actions", "dockerfile", "docker-compose"],
+  "enabledManagers": ["npm", "github-actions"],
   "automerge": false,
   "vulnerabilityAlerts": {
     "enabled": true,
@@ -22,6 +22,11 @@
     "schedule": ["before 5am on monday"]
   },
   "packageRules": [
+    {
+      "description": "Defer Docker image updates, including GitHub Actions service images.",
+      "matchDatasources": ["docker"],
+      "enabled": false
+    },
     {
       "description": "Group non-major Prisma updates together.",
       "matchPackageNames": ["prisma", "@prisma/client"],

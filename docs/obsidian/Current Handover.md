@@ -4,7 +4,7 @@ Read this first, then [[Thunderstrux Codebase Map]].
 
 Latest dated handover: [[Handover 2026-09-18 Dependency Security Remediation]].
 
-Dependency security update (2026-09-18): D1-D5 patched in the working tree; `pnpm audit --audit-level high` reports no known vulnerabilities. Validation passed: 190/190 tests, typecheck, production build and isolated production HTTP checks. See [[Handover 2026-09-18 Dependency Security Remediation]] for versions, compatibility checks, the scoped Prisma config override, and rollout status. The prior 41-finding audit and 54 GitHub alerts describe the previous lockfile. Local remediation does not update deployed containers or remote alerts. Repository-side P2.15 automation is merged; overall P2.15 remains open for deferred Renovate activation and controlled update/security PR evidence.
+Dependency security update (2026-09-18): D1-D5 fixes merged through PR #3; the post-remediation GitHub audit passed and GitHub reports zero open dependency alerts. Validation passed: 190/190 tests, typecheck, production build and isolated production HTTP checks. PR #4 added generated Next type handling. See [[Handover 2026-09-18 Dependency Security Remediation]] for versions and the scoped Prisma config override, and [[Dependency Automation]] for current evidence. The prior 41-finding audit and 54 GitHub alerts are historical. Windows dependencies have now been refreshed from the frozen lockfile. Overall P2.15 remains open for Renovate activation and controlled PR evidence; security-PR proof awaits a real eligible advisory. Docker image automation is deferred.
 
 ## Current State
 

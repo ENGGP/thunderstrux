@@ -2,7 +2,7 @@
 
 ## Current remediation status
 
-D1-D5 are patched in the working tree and `pnpm audit --audit-level high` now reports **No known vulnerabilities found**. See [[Handover 2026-09-18 Dependency Security Remediation]] for actual resolved versions, compatibility checks, the scoped deepmerge-ts override, and rollout limits. The inventory and failed audit below are preserved as the pre-remediation snapshot; they do not describe the updated lockfile. Remote alerts require reconciliation after publication.
+D1-D5 fixes are merged through PR #3 and `pnpm audit --audit-level high` reports **No known vulnerabilities found**. The post-remediation GitHub audit passed; a 2026-09-18 API check found zero open dependency alerts. See [[Handover 2026-09-18 Dependency Security Remediation]] for resolved versions, compatibility checks and the scoped deepmerge-ts override. The inventory and failed audit below are preserved as the pre-remediation snapshot.
 
 ## Historical status and decision boundary
 

@@ -573,7 +573,7 @@ Validation:
 
 ### 15. Pin Dependency Ranges And Add Dependency Automation
 
-Status (2026-09-18): implementation in [PR #1](https://github.com/ENGGP/thunderstrux/pull/1), awaiting review/merge. Four pre-existing Stripe Connect failures reproduced on `c8878fe` and fixed separately (185/185 integration tests, typecheck and build pass locally; all three GitHub jobs passed). Dependency graph, vulnerability alerts and main required checks are active. [Advisory triage](obsidian/Dependency%20Advisory%20Triage%202026-09-18.md) inventories all 41 findings and reconciles GitHub's 54 alerts; owners/deadlines and critical/high decisions await approval. Renovate activation, end-to-end bot/security PRs and audit notification evidence remain open. See [Dependency Automation](obsidian/Dependency%20Automation.md).
+Status (2026-09-18): repository-side implementation merged through PR #1; advisory ownership/evidence through PR #2; D1-D5 security remediation through PR #3; generated Next type handling through PR #4. All three required checks passed on main `3229578`; the post-remediation Security Audit passed and GitHub reports zero open dependency alerts. The 41 audit findings and 54 GitHub alerts in [Advisory triage](obsidian/Dependency%20Advisory%20Triage%202026-09-18.md) are historical, with approved owners/deadlines. Overall P2.15 remains Open: Renovate activation, controlled bot PR verification, and notification receipt are unverified. Security-PR evidence awaits a real eligible advisory; do not reintroduce vulnerabilities for testing. Docker image automation is deferred. See [Dependency Automation](obsidian/Dependency%20Automation.md).
 
 Severity: Low/Medium
 
@@ -586,7 +586,7 @@ Affected areas:
 Problem:
 
 - Historical baseline: critical packages used `latest`; commit `c8878fe` replaced the remaining floating direct versions and added initial Renovate/typecheck CI.
-- Current gap: GitHub bot/security settings and required checks still need verification. The scheduled audit exposes existing advisories requiring triage.
+- Current gap: Renovate operation and controlled update/security PR evidence still need verification. Required branch checks and audit detection are verified; notification receipt remains unverified.
 
 Solution:
 

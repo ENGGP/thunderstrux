@@ -2,7 +2,7 @@
 
 ## Current status
 
-The updated working-tree lockfile passes `pnpm audit --audit-level high`: **No known vulnerabilities found**. This supersedes the 41-finding snapshot in [[Dependency Advisory Triage 2026-09-18]]. GitHub's historical 54-alert count describes the previous default-branch dependencies; remote alerts and workflow results must be rechecked after these changes are published.
+The patched lockfile was merged through PR #3 (`b81c631`) and passes `pnpm audit --audit-level high`: **No known vulnerabilities found**. The [GitHub Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35290377481) passed, and a 2026-09-18 API check found zero open dependency alerts. The 41-finding snapshot in [[Dependency Advisory Triage 2026-09-18]] and original 54 GitHub alerts describe the previous dependencies.
 
 ## Resolved work packages
 
@@ -39,8 +39,8 @@ Validation passed in disposable Docker source/dependency copies with Node 20.20.
 
 ## Rollout
 
-These changes are local until explicitly published. A historical failed Security Audit run remains failed; rerun it against the updated branch/default-branch commit after publication. Do not claim deployed containers or GitHub alerts are updated from a local audit result.
+These changes were published through PR #3. The historical failed audit remains preserved; the successful post-remediation run is linked above. PR #4 (`3229578`) subsequently added generated Next type handling and passed all three required GitHub checks.
 
-After review, use a frozen install and regenerate Prisma in the intended environment. Rebuild production images to include the patched packages; refresh the development dependency volume using the normal workflow without deleting database volumes. Host node_modules may still contain old packages because lockfile resolution and validation were isolated.
+The development image and dependency volume were refreshed after PR #3 without deleting database volumes. Windows dependencies have now also been refreshed with pnpm 10.0.0 and a frozen install, and Prisma 6.19.3 generation passed. Separate deployments still require their own rollout verification; these observations refer to the local development environment.
 
 Overall P2.15 remains open for the separately deferred Renovate activation and controlled update/security PR evidence. Clearing D1-D5 does not complete that external automation verification.

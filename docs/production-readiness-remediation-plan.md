@@ -573,7 +573,7 @@ Validation:
 
 ### 15. Pin Dependency Ranges And Add Dependency Automation
 
-Status (2026-09-18): repository-side implementation merged through PR #1; advisory ownership/evidence through PR #2; D1-D5 security remediation through PR #3; generated Next type handling through PR #4; and scope/evidence corrections through PR #5. Renovate is authorized, its [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) verifies npm and GitHub Actions discovery with Docker exclusions, and controlled CI-only [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) passed all three required checks and remains open for manual review. The post-remediation Security Audit passed and GitHub reports zero open dependency alerts. Overall P2.15 remains Open only for real eligible security-PR evidence and maintainer audit-notification receipt; do not introduce vulnerabilities for testing. See [Dependency Automation](obsidian/Dependency%20Automation.md).
+Status (2026-09-18): repository-side implementation and rollout evidence are merged through PRs #1-#5 and #8. Renovate is authorized, its [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) verifies npm and GitHub Actions discovery with Docker exclusions, and controlled CI-only [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) passed all three required application checks. PR #7 remains open for manual review while the configured `renovate/stability-days` check enforces the three-day minimum release age. The post-remediation Security Audit passed and GitHub reports zero open dependency alerts. Overall P2.15 remains Open only for a real eligible security-PR and maintainer receipt of the next genuine Security Audit failure notification; do not introduce vulnerabilities or cause registry failures for testing. See [Dependency Automation](obsidian/Dependency%20Automation.md).
 
 Severity: Low/Medium
 
@@ -586,7 +586,7 @@ Affected areas:
 Problem:
 
 - Historical baseline: critical packages used `latest`; commit `c8878fe` replaced the remaining floating direct versions and added initial Renovate/typecheck CI.
-- Current gap: Security-PR evidence and maintainer audit-notification receipt require a real high/critical advisory. Renovate operation, controlled update verification, required branch checks and audit detection are verified.
+- Current gap: Security-PR evidence requires a real high/critical advisory. Maintainer notification evidence requires the next genuine Security Audit failure, whether caused by an eligible advisory or a registry error. Renovate operation, controlled update validation, required branch checks and audit detection are verified; controlled PR #7 is correctly waiting for the configured release-age policy before manual merge.
 
 Solution:
 

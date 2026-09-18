@@ -186,13 +186,13 @@ Auth advisory applicability:
 - `. > next-auth@5.0.0-beta.31 > next@16.2.6 > baseline-browser-mapping@2.10.20`
 - `. > autoprefixer@10.5.0 > browserslist@4.28.2 > baseline-browser-mapping@2.10.20`
 
-## Remaining rollout evidence
+## Current rollout evidence
 
-- D1-D5 have local dependency fixes; current validation is recorded in the linked remediation handover. Owner and originally agreed deadlines remain in the historical table.
-- Recheck GitHub/pnpm inventories at remediation time; the initial 54-alert inventory has been reconciled by advisory/package pair as above.
-- Publish reviewed dependency PRs separately; attach exact resolved versions, lockfile diffs, regression evidence and fresh audit results.
-- P2.15 stays open until deferred Renovate activation and controlled update/security PR evidence are recorded. No zero-advisory requirement is introduced.
+- D1-D5 fixes were merged through PR #3; exact versions, lockfile changes, regression coverage and successful audit results are recorded in the linked remediation handover.
+- The initial 54-alert inventory is historical. The post-remediation audit passed and a 2026-09-18 GitHub API check found zero open dependency alerts.
+- Renovate is authorized. Dashboard #6 verifies npm and GitHub Actions discovery with Docker exclusions; controlled PR #7 passed all required application checks and is waiting for its configured three-day stability check before manual merge.
+- P2.15 remains open only for a security-labelled Renovate PR after a real eligible advisory and maintainer notification receipt after the next genuine Security Audit failure. No vulnerability will be introduced and no registry failure will be caused to manufacture that evidence.
 
 ## Rollout audit evidence
 
-[Manual Security Audit run 35286130474](https://github.com/ENGGP/thunderstrux/actions/runs/35286130474) executed on merged main `05d9502` at 2026-09-17 23:17 UTC (2026-09-18 Brisbane). Frozen installation passed; audit exited 1 with 41 findings: 5 critical, 21 high, 15 moderate, matching the local audit. GitHub open alerts remained 54 (9 critical, 24 high, 21 moderate), counted separately. This is expected detection evidence, not remediation or risk acceptance. D1-D5 ownership and deadlines above are approved; upgrades remain separate. Repository-side P2.15 is complete; overall P2.15 stays open while Renovate activation and controlled update/security PR verification are deferred.
+[Manual Security Audit run 35286130474](https://github.com/ENGGP/thunderstrux/actions/runs/35286130474) executed on merged main `05d9502` at 2026-09-17 23:17 UTC (2026-09-18 Brisbane). Frozen installation passed; audit exited 1 with 41 findings: 5 critical, 21 high, 15 moderate, matching the local audit. GitHub open alerts remained 54 (9 critical, 24 high, 21 moderate), counted separately. This is historical detection evidence, not current vulnerability state or risk acceptance. D1-D5 ownership and deadlines above were approved. The later post-remediation audit passed, GitHub reported zero open alerts, and Renovate activation and controlled-update validation completed. Overall P2.15 remains open only for security-PR evidence after a real eligible advisory and notification-receipt evidence after the next genuine audit failure.

@@ -1,5 +1,9 @@
 # Thunderstrux Codebase Map
 
+## Dependency remediation record
+
+[[Handover 2026-09-18 Dependency Security Remediation]] records patched packages, audit results and rollout limits. `package.json` owns exact pins and the scoped Prisma config override; `pnpm-lock.yaml` owns resolved transitive versions. `tests/integration/dependency-security.test.ts` adds actual Auth.js and Prisma-config compatibility coverage. [[Dependency Advisory Triage 2026-09-18]] retains the original advisory inventory as historical evidence.
+
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. The current product scope is:
 
 - Email/password authentication with Auth.js credentials.

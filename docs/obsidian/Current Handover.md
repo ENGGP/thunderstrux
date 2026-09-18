@@ -2,9 +2,9 @@
 
 Read this first, then [[Thunderstrux Codebase Map]].
 
-Latest dated handover: [[Handover 2026-06-27 P1.8 Through P1.13 Completion]].
+Latest dated handover: [[Handover 2026-09-18 Dependency Security Remediation]].
 
-Dependency automation update (2026-09-18): see [[Dependency Automation]]. Repository-side P2.15 is complete: [PR #1](https://github.com/ENGGP/thunderstrux/pull/1) merged at `05d9502` with all three required checks green. Fresh local typecheck, build and 185/185 integration tests passed, including 22 Connect regressions. [Manual Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35286130474) failed as expected on 5 critical/21 high/15 moderate findings; GitHub separately reports 54 alerts. [[Dependency Advisory Triage 2026-09-18]] records ENGGP repository maintainer ownership and approved D1-D5 deadlines. Overall P2.15 remains Open - external Renovate verification deferred: app activation and controlled update/security PRs are outstanding. No dependency upgrades or lockfile changes were made.
+Dependency security update (2026-09-18): D1-D5 patched in the working tree; `pnpm audit --audit-level high` reports no known vulnerabilities. Validation passed: 190/190 tests, typecheck, production build and isolated production HTTP checks. See [[Handover 2026-09-18 Dependency Security Remediation]] for versions, compatibility checks, the scoped Prisma config override, and rollout status. The prior 41-finding audit and 54 GitHub alerts describe the previous lockfile. Local remediation does not update deployed containers or remote alerts. Repository-side P2.15 automation is merged; overall P2.15 remains open for deferred Renovate activation and controlled update/security PR evidence.
 
 ## Current State
 

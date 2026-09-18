@@ -1,6 +1,10 @@
 # Dependency Advisory Triage — 2026-09-18
 
-## Status and decision boundary
+## Current remediation status
+
+D1-D5 are patched in the working tree and `pnpm audit --audit-level high` now reports **No known vulnerabilities found**. See [[Handover 2026-09-18 Dependency Security Remediation]] for actual resolved versions, compatibility checks, the scoped deepmerge-ts override, and rollout limits. The inventory and failed audit below are preserved as the pre-remediation snapshot; they do not describe the updated lockfile. Remote alerts require reconciliation after publication.
+
+## Historical status and decision boundary
 
 Fresh `pnpm audit --json` against the unchanged lockfile reported **41 findings: 5 critical, 21 high, 15 moderate** (36 advisory/package records; multiple installed versions account for additional findings). This is a registry snapshot, not proof of exploitation or safety. GitHub reported **54 open alerts: 9 critical, 24 high, 21 moderate**. Reconciliation by advisory ID and package found no additional advisory/package pairs: 19 GitHub alerts target `package.json` and 35 target `pnpm-lock.yaml`. The sources count manifest alerts and installed-version findings differently; neither count is silently substituted for the other.
 
@@ -10,7 +14,7 @@ No packages were upgraded, no overrides added, and no advisories suppressed. The
 
 Source: isolated frozen installation of repository `c8878fe` plus repository-side P2.15/auth changes, pnpm 10.0.0. Lockfile SHA-256: `6E4D3BD138B75D817D349AB7CB43784B1BEEF47ED0A1965D11C53BE1FFCBA080`. Fixed versions below were returned by the audit registry; proposed candidate releases were also checked for availability via npm registry metadata. These are candidates, not tested upgrades.
 
-## Separate remediation work packages
+## Original remediation work packages
 
 | Decision | Proposed change and validation | Owner / deadline |
 | --- | --- | --- |
@@ -182,9 +186,9 @@ Auth advisory applicability:
 - `. > next-auth@5.0.0-beta.31 > next@16.2.6 > baseline-browser-mapping@2.10.20`
 - `. > autoprefixer@10.5.0 > browserslist@4.28.2 > baseline-browser-mapping@2.10.20`
 
-## Closure evidence still required
+## Remaining rollout evidence
 
-- D1-D5 ownership, deadlines and separate-remediation direction are approved above; implementation and compatibility validation remain outstanding.
+- D1-D5 have local dependency fixes; current validation is recorded in the linked remediation handover. Owner and originally agreed deadlines remain in the historical table.
 - Recheck GitHub/pnpm inventories at remediation time; the initial 54-alert inventory has been reconciled by advisory/package pair as above.
 - Publish reviewed dependency PRs separately; attach exact resolved versions, lockfile diffs, regression evidence and fresh audit results.
 - P2.15 stays open until deferred Renovate activation and controlled update/security PR evidence are recorded. No zero-advisory requirement is introduced.

@@ -573,7 +573,7 @@ Validation:
 
 ### 15. Pin Dependency Ranges And Add Dependency Automation
 
-Status (2026-09-18): repository-side implementation merged through PR #1; advisory ownership/evidence through PR #2; D1-D5 security remediation through PR #3; generated Next type handling through PR #4. All three required checks passed on main `3229578`; the post-remediation Security Audit passed and GitHub reports zero open dependency alerts. The 41 audit findings and 54 GitHub alerts in [Advisory triage](obsidian/Dependency%20Advisory%20Triage%202026-09-18.md) are historical, with approved owners/deadlines. Overall P2.15 remains Open: Renovate activation, controlled bot PR verification, and notification receipt are unverified. Security-PR evidence awaits a real eligible advisory; do not reintroduce vulnerabilities for testing. Docker image automation is deferred. See [Dependency Automation](obsidian/Dependency%20Automation.md).
+Status (2026-09-18): repository-side implementation merged through PR #1; advisory ownership/evidence through PR #2; D1-D5 security remediation through PR #3; generated Next type handling through PR #4; and scope/evidence corrections through PR #5. Renovate is authorized, its [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) verifies npm and GitHub Actions discovery with Docker exclusions, and controlled CI-only [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) passed all three required checks and remains open for manual review. The post-remediation Security Audit passed and GitHub reports zero open dependency alerts. Overall P2.15 remains Open only for real eligible security-PR evidence and maintainer audit-notification receipt; do not introduce vulnerabilities for testing. See [Dependency Automation](obsidian/Dependency%20Automation.md).
 
 Severity: Low/Medium
 
@@ -586,7 +586,7 @@ Affected areas:
 Problem:
 
 - Historical baseline: critical packages used `latest`; commit `c8878fe` replaced the remaining floating direct versions and added initial Renovate/typecheck CI.
-- Current gap: Renovate operation and controlled update/security PR evidence still need verification. Required branch checks and audit detection are verified; notification receipt remains unverified.
+- Current gap: Security-PR evidence and maintainer audit-notification receipt require a real high/critical advisory. Renovate operation, controlled update verification, required branch checks and audit detection are verified.
 
 Solution:
 

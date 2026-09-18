@@ -31,21 +31,21 @@ The original audit reported 41 vulnerabilities (5 critical, 21 high, 15 moderate
 
 These actions require a repository administrator; configuration files alone do not activate them.
 
-1. Publish the reviewed changes and observe all three Dependency Validation checks passing on GitHub.
-2. Install/authorize the Renovate GitHub app for `ENGGP/thunderstrux` and complete its onboarding. Enable Dependency Graph and Dependabot alerts; grant Renovate read access to vulnerability alerts. Keep a single bot responsible for update PRs.
-3. Require `static-validation`, `integration-tests`, and `production-build` in the protected branch rules after GitHub has reported those checks. Remove the obsolete `Dependency validation` required check if configured. Do not require `security-audit`.
-4. Allow one controlled non-major Renovate update or lockfile-maintenance PR; verify its expected diff and all three checks. Verify npm and Action discovery and exclusion of Docker dependencies, including workflow service images, in the dashboard/logs. Leave the update for manual review.
-5. Confirm Renovate can read vulnerability alerts. Security-PR evidence remains pending until a real eligible advisory exists; never downgrade dependencies to manufacture a finding. Confirm maintainer failure-notification receipt when a genuine audit failure occurs.
-6. Only then mark P2.15 complete and record the GitHub run/PR evidence in this note.
+1. Completed: reviewed changes are published and all three Dependency Validation checks passed.
+2. Completed: Renovate is authorized for `ENGGP/thunderstrux`, created [Dependency Dashboard #6](https://github.com/ENGGP/thunderstrux/issues/6), and Dependabot alerts report zero open findings. Dependabot update PRs remain disabled, leaving Renovate as the only update bot.
+3. Completed: `static-validation`, `integration-tests`, and `production-build` remain strict protected-branch checks; `security-audit` is not required.
+4. Completed: controlled CI-only [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) pins Node 20 to 20.20.2 in four workflow inputs, changed no manifests or lockfile, and passed all three required checks. The dashboard proves npm and GitHub Actions discovery while Dockerfile, Compose and workflow service images are excluded. The PR remains open for manual review.
+5. Pending: security-PR evidence and maintainer failure-notification receipt require a real eligible advisory. Never downgrade dependencies to manufacture a finding.
+6. Mark P2.15 complete only after the pending real-advisory evidence is recorded.
 
-GitHub vulnerability alerts were enabled during implementation. Subsequent API reads verified a dependency graph containing 205 packages and 54 open alerts. Dependabot security-update PRs remain disabled to avoid adding a second update bot. Renovate app installation/permissions and a controlled bot PR remain unverified; the available credential cannot list user app installations (HTTP 403), so absence of the app is not asserted. Deployment, migration rollout, health monitoring, backup/restore, and rollback remain P2.17; real browser/Stripe tests remain P2.16.
+GitHub vulnerability alerts were enabled during implementation. The historical dependency graph contained 205 packages and 54 open alerts; after remediation, a 2026-09-18 API check found zero open alerts. Renovate authorization and repository discovery are evidenced by [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) and controlled PR #7. Deployment, migration rollout, health monitoring, backup/restore, and rollback remain P2.17; real browser/Stripe tests remain P2.16.
 
 ## GitHub rollout evidence (2026-09-18)
 
 - [Implementation PR #1](https://github.com/ENGGP/thunderstrux/pull/1) merged with a regular merge commit `05d9502`, preserving the original four commits plus advisory assignment commit `178d431`. There were no upstream conflicts; remote branches were retained.
 - [Validation run 35231538737](https://github.com/ENGGP/thunderstrux/actions/runs/35231538737) passed all three jobs for commit `6b3fb9e176120ac56302239de51a41afcebc29af`.
 - After that green run, `main` branch protection was configured and read back: require `static-validation`, `integration-tests`, `production-build`, bound to the observed GitHub Actions app (15368), require an up-to-date branch, enforce for administrators. No audit check or new reviewer-count requirement was added.
-- Deferred: Renovate app activation/permissions, controlled update PR and eligible vulnerability PR verification. Dependabot update PRs remain disabled. Maintainer notification delivery has not been independently verified; the completed audit proves detection, not notification receipt.
+- Completed after initial rollout: Renovate authorization, Dependency Dashboard #6 and controlled PR #7. Docker dependencies are absent from the dashboard because their managers and datasource are disabled. Dependabot update PRs remain disabled. Maintainer notification delivery and eligible vulnerability-PR evidence remain pending a real advisory.
 
 ## Original P2.15 local verification
 
@@ -76,5 +76,5 @@ Both workflows passed actionlint 1.7.7. Renovate configuration passed validator 
 - Windows dependencies were refreshed using pnpm 10.0.0 and the frozen lockfile; Prisma 6.19.3 generation passed. This replaces the previously stale host installation.
 - Finalisation validation passed: host typecheck (Node 22.18.0), all 21 installed direct dependency versions match the manifest, and host audit reports no known vulnerabilities. Isolated Node 20 validation passed frozen installation, Prisma generation, typecheck, all 190 integration tests, production build and audit. Production HTTP checks passed for homepage, login, health, compiled CSS, malformed-token redirect and invalid image input. No package or lockfile changes were needed.
 - Renovate 44.93.4 strict configuration validation passed (optional native RE2 unavailable; validator used its documented RegExp fallback). Independent read-only review found no concrete issues. Docker image exclusion includes workflow service images through the Docker datasource rule.
-- Renovate activation requires the account owner's GitHub installation flow; no browser was connected during finalisation. Configuration alone is not proof of app installation, alert permissions, or a bot-created PR.
-- Overall P2.15 remains Open until the external checks above are evidenced. Security-PR proof waits for a real eligible advisory, as explicitly selected by the maintainer.
+- Renovate authorization completed after finalisation. Dashboard #6 and PR #7 provide repository discovery and controlled-update evidence; Docker dependencies are absent as configured.
+- Overall P2.15 remains Open only for security-PR proof and maintainer notification receipt after a real eligible advisory, as explicitly selected by the maintainer.

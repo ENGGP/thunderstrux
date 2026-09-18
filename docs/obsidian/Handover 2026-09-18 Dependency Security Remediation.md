@@ -43,4 +43,4 @@ These changes were published through PR #3. The historical failed audit remains 
 
 The development image and dependency volume were refreshed after PR #3 without deleting database volumes. Windows dependencies have now also been refreshed with pnpm 10.0.0 and a frozen install, and Prisma 6.19.3 generation passed. Separate deployments still require their own rollout verification; these observations refer to the local development environment.
 
-Overall P2.15 remains open for the separately deferred Renovate activation and controlled update/security PR evidence. Clearing D1-D5 does not complete that external automation verification.
+Renovate activation and controlled update evidence are complete: Dashboard #6 detected npm and GitHub Actions dependencies with Docker exclusions, and PR #7 passed all three required checks while remaining open for manual review. Overall P2.15 remains open only for real eligible security-PR evidence and maintainer audit-notification receipt.

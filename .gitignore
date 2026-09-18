@@ -4,6 +4,7 @@ node_modules/
 .codex
 
 # Next.js
+/next-env.d.ts
 .next/
 .next-build/
 out/

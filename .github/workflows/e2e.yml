@@ -1,0 +1,30 @@
+name: Browser E2E
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Runner safety tests
+        run: node --test tests/runner/*.test.mjs
+      - name: Browser and signed webhook tests
+        run: node scripts/run-e2e.mjs
+      - name: Publish allowlisted counts
+        if: always()
+        run: node scripts/e2e-ci-summary.mjs

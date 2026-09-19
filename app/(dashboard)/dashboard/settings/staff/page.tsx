@@ -1,14 +1,10 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { StaffManagement } from "@/components/settings/staff-management";
-import {
-  requireCurrentOrganisationAccount,
-  requireOrganisationPermission
-} from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 import { prisma } from "@/lib/db";
 
 export default async function StaffSettingsPage() {
-  const organisation = await requireCurrentOrganisationAccount();
-  await requireOrganisationPermission(organisation.id, "staff:manage");
+  const organisation = await requireManagementPage("staff:manage", "/dashboard/settings/staff");
 
   const [staff, invites] = await Promise.all([
     prisma.organisationStaff.findMany({

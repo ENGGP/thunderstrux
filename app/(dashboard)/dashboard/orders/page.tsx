@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  requireCurrentOrganisationAccount,
-  requireOrganisationFinanceAccess
-} from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 import {
   OrganisationOrderEventAccessError,
   getGroupedOrganisationOrdersWithContext,
@@ -82,8 +79,7 @@ export default async function OrganisationOrdersPage({
     cursor: cursorParam,
     direction: directionParam
   } = await searchParams;
-  const organisation = await requireCurrentOrganisationAccount();
-  await requireOrganisationFinanceAccess(organisation.id);
+  const organisation = await requireManagementPage("orders:read", "/dashboard/orders");
   const includeSystemOrders = includeSystemParam === "true";
   const activeFilter = parseOrderStatusFilter(statusParam ?? null, {
     includeSystemOrders

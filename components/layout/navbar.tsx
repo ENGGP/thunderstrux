@@ -36,7 +36,7 @@ export default function Navbar() {
             ) : null}
             <button
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-950"
-              onClick={() => signOut({ callbackUrl: "http://localhost:3000/" })}
+              onClick={() => signOut({ callbackUrl: "/" })}
               type="button"
             >
               Sign out

@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: e2e
+      POSTGRES_PASSWORD: e2e-disposable-only
+      POSTGRES_DB: thunderstrux_e2e_test
+    volumes:
+      - test_database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U e2e -d thunderstrux_e2e_test]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  app:
+    image: thunderstrux-p216-app:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        APP_ORIGIN: http://localhost:3100
+    env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:e2e}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
+      AUTH_URL: http://localhost:3100
+      NEXTAUTH_URL: http://localhost:3100
+      NEXT_PUBLIC_APP_URL: http://localhost:3100
+      TRUSTED_APP_ORIGINS: http://localhost:3100
+      RATE_LIMIT_ENABLED: 'false'
+      RESEND_API_KEY: ''
+      EMAIL_FROM: ''
+    ports:
+      - '127.0.0.1:3100:3100'
+    command: [pnpm, exec, next, start, --hostname, 0.0.0.0, --port, '3100']
+    depends_on:
+      db:
+        condition: service_healthy
+  runner:
+    image: thunderstrux-p216-runner:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.e2e
+    network_mode: service:app
+    env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:e2e}
+    environment:
+      DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
+      INTEGRATION_DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
+      E2E_BASE_URL: http://localhost:3100
+      CI: ${CI:-}
+    volumes:
+      - ${E2E_OUTPUT_DIR:?Run through pnpm test:e2e}:/app/test-results
+    profiles: [test]
+  stripe:
+    image: stripe/stripe-cli:v1.33.0
+    env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:payments:staging}
+    command: [listen, --events, 'checkout.session.completed,checkout.session.expired', --forward-to, 'http://app:3100/api/payments/webhook']
+    profiles: [staging]
+volumes:
+  test_database:

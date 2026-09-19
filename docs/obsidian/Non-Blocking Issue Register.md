@@ -31,7 +31,7 @@ This register tracks non-blocking risks found during production-readiness and P0
 | Refund/review workflow | Compensation-required orders have durable state and organiser visibility but no formal operator workflow. | Operators must manually inspect Stripe and communicate/refund outside the app. | Add an operator playbook first; later add controlled admin/review tooling. |
 | Compensation alerts | First-time compensation transitions emit `paid_but_unfulfilled_compensation_required` through structured console alerting only. | Console alerts can be missed unless production log aggregation routes them to an alert channel. | Route this event to production paging/incident response; any occurrence should alert immediately. |
 | Payment lifecycle | Order, payment, reservation, ticket, email, manual refund, and compensation state are spread across fields. | Future lifecycle changes can introduce invalid transitions. | Introduce explicit transition helpers or a formal payment lifecycle model after P0 work. |
-| Real webhook testing | Integration tests mock Stripe sessions and do not exercise real signed Stripe delivery. | Raw signature transport and Stripe event payload drift are under-tested. | Add staging/test-mode webhook E2E with real signed payloads. |
+| Real webhook testing | P2.16 now includes signed HTTP transport tests and observed real Stripe test-mode success, decline, cancellation and forced expiry. | Provider/schema changes still require repeating the guided acceptance flow; synthetic CI is not real provider evidence. | Repeat the documented acceptance campaign when payment integration changes; see [[E2E and Staging Payments]]. |
 | Manual refund flag | `isManuallyRefunded` is local bookkeeping only. | Users/operators may mistake it for Stripe refund truth. | Keep UI copy explicit; later integrate real Stripe refund status if needed. |
 
 ## Data Integrity And Scalability
@@ -80,7 +80,8 @@ This session completed and accepted the P1.8-P1.13 remediation slices for MVP, i
 - **Pagination scale:** organiser-wide order pagination remains bounded and event-owned, but may need future query hardening for very large organisations.
 - **Indexes:** potentially redundant indexes remain intentionally; remove only after production `pg_stat_user_indexes` and query-plan evidence.
 - **Security:** trusted-origin compatibility mode still allows missing `Origin` and `Referer`; token-based CSRF remains a dedicated future design.
-- **Auth model:** organisation accounts remain shared for MVP; named staff users, MFA, audit logs, and per-user permissions are future work.
+- **Auth model:** named staff authority and audit logs are implemented. Legacy organisation accounts remain supported; MFA is separate work.
+- **P2.16 acceptance:** real Stripe scenarios and final implementation qualification passed; E2E is a required CI check. PR #10 awaits merge after all latest-head checks pass. Evidence and limitations are recorded in [[E2E and Staging Payments]].
 
 ## Documentation Notes
 

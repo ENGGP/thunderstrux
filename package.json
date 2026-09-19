@@ -13,6 +13,10 @@
     "security:audit": "pnpm audit --audit-level high",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:integration": "node scripts/run-integration-tests.mjs",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "test:e2e:cleanup": "node scripts/run-e2e.mjs cleanup",
+    "test:payments:staging": "node scripts/run-e2e.mjs staging",
+    "test:e2e:guards": "node --test tests/runner/*.test.mjs",
     "email:outbox:process": "node scripts/process-email-outbox.mjs",
     "stale-orders:process": "node scripts/process-stale-orders.mjs",
     "db:integrity:audit": "node scripts/audit-db-integrity.mjs",
@@ -49,6 +53,7 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.2.4",
     "@types/node": "20.19.25",
     "@types/react": "19.2.14",

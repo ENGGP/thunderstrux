@@ -601,6 +601,8 @@ Validation:
 
 ### 16. Add E2E And Staging Payment Tests
 
+Status (2026-09-19): implementation and acceptance validated, awaiting merge of [PR #10](https://github.com/ENGGP/thunderstrux/pull/10). Final regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified with correlated delivery evidence. `e2e-tests` is required alongside the existing three checks; all four must pass on the final PR head before merge. See [E2E and Staging Payments](obsidian/E2E%20and%20Staging%20Payments.md) for evidence, cleanup and limitations. Synthetic signed events do not substitute for observed Stripe delivery.
+
 Severity: Medium
 
 Affected areas:

@@ -8,12 +8,14 @@ Dependency security update (2026-09-18): D1-D5 fixes merged through PR #3; the p
 
 ## Current State
 
+P2.16 update (2026-09-19): browser and signed HTTP webhook infrastructure is being validated on `codex/p216-e2e-staging-payments`. The unchanged baseline passed 190 integration tests, typecheck, production build and audit. Real Stripe acceptance and required-check rollout remain outstanding. See [[E2E and Staging Payments]] for isolated commands, credentials handling and recovery.
+
 Thunderstrux is a Docker-based Next.js 16 App Router SaaS for student societies.
 
 Core model:
 
 - `Organisation` is the tenant boundary.
-- Organisation dashboard access is based on `Organisation.accountUserId`.
+- Organisation management uses active `OrganisationStaff` authority with the explicit legacy-owner fallback. `OrganisationMember` is join state only.
 - `Event.organisationId` is the canonical ownership source for event-owned resources.
 - Public event reads are read-only and never create demo data.
 - Public event discovery, organiser orders, and member tickets are cursor-paginated for MVP-scale reads.

@@ -80,7 +80,8 @@ This session completed and accepted the P1.8-P1.13 remediation slices for MVP, i
 - **Pagination scale:** organiser-wide order pagination remains bounded and event-owned, but may need future query hardening for very large organisations.
 - **Indexes:** potentially redundant indexes remain intentionally; remove only after production `pg_stat_user_indexes` and query-plan evidence.
 - **Security:** trusted-origin compatibility mode still allows missing `Origin` and `Referer`; token-based CSRF remains a dedicated future design.
-- **Auth model:** organisation accounts remain shared for MVP; named staff users, MFA, audit logs, and per-user permissions are future work.
+- **Auth model:** named staff authority and audit logs are implemented. Legacy organisation accounts remain supported; MFA is separate work.
+- **P2.16 acceptance:** isolated browser and signed-webhook validation is in progress. Real Stripe acceptance and required CI rollout remain tracked in [[E2E and Staging Payments]].
 
 ## Documentation Notes
 

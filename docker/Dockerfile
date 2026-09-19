@@ -27,7 +27,8 @@ ENV DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public"
 ENV AUTH_SECRET="build-time-only-auth-secret-change-at-runtime"
 ENV AUTH_URL="http://localhost:3000"
 ENV NEXTAUTH_URL="http://localhost:3000"
-ENV NEXT_PUBLIC_APP_URL="http://localhost:3000"
+ARG APP_ORIGIN=http://localhost:3000
+ENV NEXT_PUBLIC_APP_URL=$APP_ORIGIN
 
 RUN pnpm build
 

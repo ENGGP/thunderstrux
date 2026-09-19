@@ -601,6 +601,8 @@ Validation:
 
 ### 16. Add E2E And Staging Payment Tests
 
+Status (2026-09-19): implementation and validation in progress on `codex/p216-e2e-staging-payments`. Isolated production-mode browser and signed HTTP webhook tests are implemented; real Stripe acceptance, final CI qualification and required-check activation remain completion gates. See [E2E and Staging Payments](obsidian/E2E%20and%20Staging%20Payments.md). Synthetic signed events do not substitute for observed Stripe delivery.
+
 Severity: Medium
 
 Affected areas:

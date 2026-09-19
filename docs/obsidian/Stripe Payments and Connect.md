@@ -1,5 +1,7 @@
 # Stripe Payments and Connect
 
+For production-mode browser testing, real test-mode payment acceptance and isolated webhook forwarding, see [[E2E and Staging Payments]]. The P2.16 runner does not reuse the development webhook secret or rely on the success-page development fallback.
+
 ## Design Principles
 
 - Use Stripe Checkout hosted pages

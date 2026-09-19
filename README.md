@@ -6,6 +6,10 @@ Last reviewed: 2026-04-28
 
 ## Stack
 
+For isolated browser tests and guided real Stripe test-mode acceptance, see
+[E2E and Staging Payments](docs/obsidian/E2E%20and%20Staging%20Payments.md).
+Run `pnpm test:e2e` with Docker Desktop available; it uses a separate stack on port 3100.
+
 - Next.js 16 App Router with Turbopack
 - React 19
 - Auth.js / NextAuth Credentials provider

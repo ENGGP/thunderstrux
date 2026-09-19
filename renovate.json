@@ -72,6 +72,7 @@
       "description": "Group non-major test and build tooling updates together.",
       "matchPackageNames": [
         "vitest",
+        "@playwright/test",
         "vite",
         "typescript",
         "jiti",

@@ -56,8 +56,8 @@ const rolePermissions: Record<OrganisationStaffRole, OrganisationPermission[]> =
 };
 
 // Role helpers are compatibility checks after access has already been resolved.
-// In the current account model, management entrypoints must first prove
-// Organisation.accountUserId ownership; OrganisationMember is member join state.
+// Management entrypoints resolve active OrganisationStaff authority, with the
+// explicit legacy-owner fallback in auth/access. OrganisationMember is join state.
 export function canManageEvents(userRole: OrganisationRole): boolean {
   return ["org_owner", "org_admin", "event_manager"].includes(userRole);
 }

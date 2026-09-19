@@ -1,13 +1,9 @@
 import { EventsList } from "@/components/events/events-list";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  requireCurrentOrganisationAccount,
-  requireOrganisationEventManagementAccess
-} from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 
 export default async function EventsPage() {
-  const organisation = await requireCurrentOrganisationAccount();
-  await requireOrganisationEventManagementAccess(organisation.id);
+  const organisation = await requireManagementPage("events:manage", "/dashboard/events");
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name}>

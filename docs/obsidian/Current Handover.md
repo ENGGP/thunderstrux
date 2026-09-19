@@ -8,7 +8,7 @@ Dependency security update (2026-09-18): D1-D5 fixes merged through PR #3; the p
 
 ## Current State
 
-P2.16 update (2026-09-19): browser and signed HTTP webhook infrastructure is being validated on `codex/p216-e2e-staging-payments`. The unchanged baseline passed 190 integration tests, typecheck, production build and audit. Real Stripe acceptance and required-check rollout remain outstanding. See [[E2E and Staging Payments]] for isolated commands, credentials handling and recovery.
+P2.16 update (2026-09-19): implementation and acceptance validated on `codex/p216-e2e-staging-payments`, awaiting merge of PR #10. Final regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified. `e2e-tests` is now required alongside the existing three checks; all four must pass on the final PR head. Test containers/volumes and generated credentials were cleaned up. See [[E2E and Staging Payments]] for run references, precise evidence and recovery instructions.
 
 Thunderstrux is a Docker-based Next.js 16 App Router SaaS for student societies.
 

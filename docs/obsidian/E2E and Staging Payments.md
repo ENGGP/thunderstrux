@@ -1,6 +1,6 @@
 # E2E and Staging Payments
 
-P2.16 status: implementation in progress. Automated browser/webhook checks and real Stripe acceptance are separate gates. Do not mark complete from synthetic webhook tests alone.
+P2.16 status: implementation and acceptance validated, awaiting merge of PR #10. Merge remains gated by all four required checks on the PR's latest commit. Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion.
 
 ## Automated checks
 
@@ -59,14 +59,25 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 - Require observed real Stripe success, decline, manual cancel attestation and verified forced expiry with automatic reconciliation. The test explicitly expires unpaid Sessions through Stripe; it does not claim to observe natural timeout. Missing or skipped scenarios remain outstanding.
 - See [[Current Handover]] and the P2.16 section of the remediation plan for current evidence.
 
-## Latest validation attempt
+## Validation evidence
 
-Runner guard/cancellation/recovery tests passed (7/7). Attempt `p216-fe5d873b859c4d3ac41470df` was blocked by Docker being stopped and subsequently cleaned up; it is not a passing run. After Docker started, isolated regression `p216-ccf2ac838fc82aa7bf1e89d2` passed typecheck, all 194 integration tests, production build and audit (no known vulnerabilities), and cleaned up successfully. The independent code review reported no remaining concrete blockers after the recovery finalizer fix. Real Stripe acceptance and final CI qualification remain pending.
+Real Stripe acceptance used API version `2026-03-25.dahlia` and verified correlated HTTP 200 listener delivery and application receipt:
 
-Local E2E qualification for implementation revision `aa3b68c` passed three consecutive runs, each with 8 browser/mobile tests and 6 signed HTTP webhook tests, no skips/retries, and successful resource cleanup:
+- Run `p216-3814760f49ba7ccc6a4560ce`: successful payment event `evt_1UHFpFRuN9MD4SvFgpzvhKO2`; declined payment followed by forced expiry event `evt_1UHFrdRuN9MD4SvF19WpUoFg`. The cancellation prompt timed out before completion, so this run is not counted as a full passing campaign. Open Sessions, generated secrets, containers, database volume and network were cleaned up successfully.
+- Focused run `p216-858bf79cfaff48e96b389719`: cancellation manually attested by the user; unpaid/non-fulfilled state and forced expiry event `evt_1UHHWPRuN9MD4SvFsWDcpe3i` verified automatically. Run and cleanup passed. Application and payment assertion code were unchanged from the earlier run; only explicit scenario selection was added.
+- The combined evidence covers all three scenarios, including destination charge configuration, paid fulfilment, buyer ticket visibility and unpaid inventory preservation. It does not claim natural timeout or actual email delivery.
+- The focused-scenario follow-up passed independent review and 8/8 runner safety tests. Final implementation revision is `5c08512`.
 
-- `p216-6aac79af017ad91cd9eebe22`
-- `p216-beda24bcf47847ab177c0084`
-- `p216-2c6ede69305431871a005891`
+Attempt `p216-fe5d873b859c4d3ac41470df` was blocked by Docker being stopped and subsequently cleaned up; it is not a passing run. Final isolated regression `p216-a2dec49ed9fdfde6d7551779` passed typecheck, all 194 integration tests, production build and audit (no known vulnerabilities), and cleaned up successfully. The independent code review reported no remaining concrete blockers after the recovery finalizer fix.
 
-The occupied-port rejection and repeated cleanup checks passed. Actionlint passed for the new E2E workflow. Development API smoke verification returned HTTP 200. [Draft PR #10](https://github.com/ENGGP/thunderstrux/pull/10) preserves the feature branch for review; it must not be marked ready until real payment acceptance and remaining CI qualification are complete.
+Local E2E qualification for implementation revision `5c08512` passed three consecutive runs, each with 8 browser/mobile tests and 6 signed HTTP webhook tests, no skips/retries, and successful resource cleanup:
+
+- `p216-f8ac5ba275229c8aa2784ad7`
+- `p216-50ed800c2ebd6258c244ccae`
+- `p216-2affa8ad6a05518356b18211`
+
+The occupied-port rejection and repeated cleanup checks passed. Actionlint passed for the new E2E workflow. Development API smoke verification returned HTTP 200. All run-owned containers and test volumes were removed; development containers and data volumes were preserved.
+
+CI qualification on `5c08512` passed [attempt 1](https://github.com/ENGGP/thunderstrux/actions/runs/35425904971/attempts/1), [attempt 2](https://github.com/ENGGP/thunderstrux/actions/runs/35425904971/attempts/2) and [attempt 3](https://github.com/ENGGP/thunderstrux/actions/runs/35425904971/attempts/3). [Static validation, integration tests and production build](https://github.com/ENGGP/thunderstrux/actions/runs/35425904976) also passed. Branch protection requires `static-validation`, `integration-tests`, `production-build` and `e2e-tests`, with strict up-to-date checking preserved; security audit remains non-required.
+
+[PR #10](https://github.com/ENGGP/thunderstrux/pull/10) contains the reviewed implementation and this evidence. Documentation-only updates require another green set of checks on the final PR head, not a repeat of the unchanged implementation's payment campaign. The PR is not merged automatically.

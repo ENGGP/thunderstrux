@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity } from '../../scripts/e2e-guards.mjs';
+import { assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
 
 test('cleanup accepts only generated project identifiers', () => {
   for (const value of ['main', '../thunderstrux', 'thunderstrux', 'p216-', '']) {
@@ -25,4 +25,12 @@ test('recovery refuses a different platform, connected account or run', () => {
   const saved = {platformId: 'acct_platform', connectedAccountId: 'acct_connected', runId: 'original'};
   assertStripeIdentity(saved, {...saved});
   for (const key of Object.keys(saved)) assert.throws(() => assertStripeIdentity(saved, {...saved, [key]: 'different'}));
+});
+
+test('focused staging selection is explicit and rejects unknown or duplicate scenarios', () => {
+  assert.deepEqual(stagingScenarios([]), ['success', 'decline', 'cancel']);
+  for (const scenario of ['success', 'decline', 'cancel']) assert.deepEqual(stagingScenarios([`--scenario=${scenario}`]), [scenario]);
+  for (const args of [['--scenario'], ['--scenario='], ['--scenario=unknown'], ['--scenario=cancel', '--scenario=success']]) {
+    assert.throws(() => stagingScenarios(args));
+  }
 });

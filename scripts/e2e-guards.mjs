@@ -28,3 +28,13 @@ export function assertStripeIdentity(saved, current) {
     throw new Error('Recovery Stripe account identity mismatch');
   }
 }
+
+export function stagingScenarios(args) {
+  const all = ['success', 'decline', 'cancel'];
+  const selected = args.filter(value => value.startsWith('--scenario'));
+  if (selected.length === 0) return all;
+  if (selected.length !== 1 || !selected[0].startsWith('--scenario=') || !all.includes(selected[0].slice('--scenario='.length))) {
+    throw new Error('Use exactly one --scenario=success, --scenario=decline or --scenario=cancel');
+  }
+  return [selected[0].slice('--scenario='.length)];
+}

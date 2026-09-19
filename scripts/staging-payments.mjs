@@ -2,10 +2,11 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { createInterface } from 'node:readline/promises';
-import { assertTestKey } from './e2e-guards.mjs';
+import { assertTestKey, stagingScenarios } from './e2e-guards.mjs';
 
 export async function runStaging({ compose, capture, ready, runtimeFile, directory, runId, manifest, save, signal = new AbortController().signal, recovery = false }) {
   signal.throwIfAborted();
+  const scenarios = stagingScenarios(process.argv);
   const localKey = process.argv.includes('--use-local-test-key');
   const source = parseEnv(await readFile(resolve(localKey ? '.env' : '.env.staging.local'), 'utf8'));
   const values = localKey ? {
@@ -28,6 +29,8 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
       await ready();
     }
     if (!recovery) {
+      manifest.scenarios = scenarios;
+      await save();
       // Capture, never stream listener startup: it contains the signing secret.
       await capture('--profile', 'staging', 'up', '-d', 'stripe');
       let signingSecret;
@@ -46,7 +49,7 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
       await run('preflight');
       if (!process.stdin.isTTY) throw new Error('Run pnpm test:payments:staging in an interactive terminal for manual test-card acceptance');
       input = createInterface({input: process.stdin, output: process.stdout});
-      for (const scenario of ['success', 'decline', 'cancel']) {
+      for (const scenario of scenarios) {
         signal.throwIfAborted();
         manifest.stripeResourcesPossible = true;
         await save();

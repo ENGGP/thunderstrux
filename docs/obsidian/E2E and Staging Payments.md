@@ -36,6 +36,8 @@ pnpm test:payments:staging -- --use-local-test-key
 
 This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into Compose. Stripe CLI obtains a new signing secret from the exact active listener. Existing webhook secrets are not reused. The listener API version must match `2026-03-25.dahlia`; a mismatch blocks acceptance.
 
+To repeat a missing scenario, append exactly one of `--scenario=success`, `--scenario=decline` or `--scenario=cancel`. The manifest records the selected scenarios. A passing focused run is not full payment acceptance: all three scenarios still require evidence, including successful resource cleanup. Previously verified payment evidence can be combined only when the relevant application and assertion code is unchanged.
+
 The command drives the app's real Buy Ticket flow, then presents a private Stripe URL. Complete the success, decline and cancel prompts using Stripe test cards. Each prompt permits 15 minutes, followed by up to 120 seconds for webhook reconciliation. Successful payment verifies destination charge configuration, real event identity, listener HTTP 200, app receipt, database fulfilment and buyer ticket visibility. Decline requires provider error evidence. Cancel navigation is explicitly recorded as manual attestation; pending/unfulfilled state and subsequent real Session expiry are verified automatically.
 
 Email workers/provider delivery stay disabled. An automatic outbox job is verified without sending mail. Rate limiting stays disabled in this isolated functional suite; its existing integration tests remain separate.
@@ -59,4 +61,12 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 
 ## Latest validation attempt
 
-Runner guard/cancellation/recovery tests passed (7/7). Attempt `p216-fe5d873b859c4d3ac41470df` was blocked by Docker being stopped and subsequently cleaned up; it is not a passing run. After Docker started, isolated regression `p216-ccf2ac838fc82aa7bf1e89d2` passed typecheck, all 194 integration tests, production build and audit (no known vulnerabilities), and cleaned up successfully. The independent code review reported no remaining concrete blockers after the recovery finalizer fix. Repeated E2E qualification, real Stripe acceptance and final CI remain pending.
+Runner guard/cancellation/recovery tests passed (7/7). Attempt `p216-fe5d873b859c4d3ac41470df` was blocked by Docker being stopped and subsequently cleaned up; it is not a passing run. After Docker started, isolated regression `p216-ccf2ac838fc82aa7bf1e89d2` passed typecheck, all 194 integration tests, production build and audit (no known vulnerabilities), and cleaned up successfully. The independent code review reported no remaining concrete blockers after the recovery finalizer fix. Real Stripe acceptance and final CI qualification remain pending.
+
+Local E2E qualification for implementation revision `aa3b68c` passed three consecutive runs, each with 8 browser/mobile tests and 6 signed HTTP webhook tests, no skips/retries, and successful resource cleanup:
+
+- `p216-6aac79af017ad91cd9eebe22`
+- `p216-beda24bcf47847ab177c0084`
+- `p216-2c6ede69305431871a005891`
+
+The occupied-port rejection and repeated cleanup checks passed. Actionlint passed for the new E2E workflow. Development API smoke verification returned HTTP 200. [Draft PR #10](https://github.com/ENGGP/thunderstrux/pull/10) preserves the feature branch for review; it must not be marked ready until real payment acceptance and remaining CI qualification are complete.

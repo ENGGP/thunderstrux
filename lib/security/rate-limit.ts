@@ -343,6 +343,14 @@ class RedisRateLimitBackend implements RateLimitBackend {
     };
   }
 
+  async ping() {
+    const replies = await this.runCommands([encodeRedisCommand("PING", [])]);
+
+    if (replies[0] !== "PONG") {
+      throw new Error("Unexpected Redis readiness response");
+    }
+  }
+
   private runCommands(commands: string[]) {
     return new Promise<unknown[]>((resolve, reject) => {
       const url = new URL(this.redisUrl);
@@ -411,6 +419,20 @@ class RedisRateLimitBackend implements RateLimitBackend {
       });
     });
   }
+}
+
+export async function checkRateLimitReadiness() {
+  if (!isRateLimitEnabled()) {
+    return;
+  }
+
+  const redisUrl = process.env.RATE_LIMIT_REDIS_URL?.trim();
+
+  if (!redisUrl) {
+    throw new Error("RATE_LIMIT_REDIS_URL is not configured");
+  }
+
+  await new RedisRateLimitBackend(redisUrl).ping();
 }
 
 export function createTestRateLimitBackend(): RateLimitBackend & { reset(): void } {

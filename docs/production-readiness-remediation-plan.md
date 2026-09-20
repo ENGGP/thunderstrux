@@ -601,7 +601,7 @@ Validation:
 
 ### 16. Add E2E And Staging Payment Tests
 
-Status (2026-09-19): implementation and acceptance validated, awaiting merge of [PR #10](https://github.com/ENGGP/thunderstrux/pull/10). Final regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified with correlated delivery evidence. `e2e-tests` is required alongside the existing three checks; all four must pass on the final PR head before merge. See [E2E and Staging Payments](obsidian/E2E%20and%20Staging%20Payments.md) for evidence, cleanup and limitations. Synthetic signed events do not substitute for observed Stripe delivery.
+Status (2026-09-19): implementation and acceptance merged through [PR #10](https://github.com/ENGGP/thunderstrux/pull/10). Final P2.16 regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified with correlated delivery evidence. `e2e-tests` is required alongside the existing three checks. See [E2E and Staging Payments](obsidian/E2E%20and%20Staging%20Payments.md) for evidence, cleanup and limitations. Synthetic signed events do not substitute for observed Stripe delivery.
 
 Severity: Medium
 
@@ -628,6 +628,8 @@ Validation:
 - Public purchase path reaches Stripe Checkout in test mode.
 
 ### 17. Add CI/CD, Healthchecks, Backup, And Rollback Strategy
+
+Status: Repository implementation and isolated local rehearsal complete on 2026-09-20. Production hosting activation, external monitoring/alerts, platform schedules, and encrypted off-machine backup/restore remain environment-specific rollout work.
 
 Severity: High for production operations
 
@@ -656,6 +658,16 @@ Validation:
 - Failed migration blocks deployment before app rollout.
 - Healthcheck detects broken runtime.
 - Restore procedure is tested on a disposable database.
+
+Implementation evidence:
+
+- Existing static validation, integration, production-build, and E2E checks are preserved; `operations-tests` adds a disposable Docker deployment/recovery drill.
+- `/api/health` remains liveness and `/api/health/ready` checks the application schema plus enabled Redis with bounded failures.
+- The production image runs as non-root and starts without package-manager downloads.
+- Migrations run through a one-shot service before rollout, never from ordinary app startup.
+- The rehearsal proves failed migrations leave writers stopped, unhealthy candidates require reviewed compatibility evidence for one rollback, and custom-format backups restore through application credentials.
+- Final local regression passed 195 integration tests, typecheck, production image build, dependency audit, and the isolated operations rehearsal.
+- Production operations and remaining external activation work are documented in `docs/obsidian/Production Operations.md`.
 
 ## P3 Remediation
 

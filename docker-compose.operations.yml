@@ -1,0 +1,15 @@
+services:
+  app:
+    environment:
+      DATABASE_URL: postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public
+    ports:
+      - "127.0.0.1:${APP_PORT:-3200}:${PORT:-3000}"
+  migration:
+    environment:
+      DATABASE_URL: postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public
+  db:
+    env_file: []
+    environment:
+      POSTGRES_USER: p217
+      POSTGRES_PASSWORD: p217-disposable-only
+      POSTGRES_DB: p217_app_test

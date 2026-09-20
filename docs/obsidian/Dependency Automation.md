@@ -38,7 +38,7 @@ These actions require a repository administrator; configuration files alone do n
 5. Pending: security-PR evidence requires a real eligible advisory. Maintainer failure-notification receipt requires the next genuine audit failure, whether caused by an advisory or a registry error. Never downgrade dependencies, introduce a vulnerability or cause a registry failure to manufacture evidence.
 6. Mark P2.15 complete only after both pending evidence items are recorded.
 
-GitHub vulnerability alerts were enabled during implementation. The historical dependency graph contained 205 packages and 54 open alerts; after remediation, a 2026-09-18 API check found zero open alerts. Renovate authorization and repository discovery are evidenced by [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) and controlled PR #7. Deployment, migration rollout, health monitoring, backup/restore, and rollback remain P2.17; real browser/Stripe tests remain P2.16.
+GitHub vulnerability alerts were enabled during implementation. The historical dependency graph contained 205 packages and 54 open alerts; after remediation, a 2026-09-18 API check found zero open alerts. Renovate authorization and repository discovery are evidenced by [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) and controlled PR #7. P2.17 repository-side deployment, migration, health, backup/restore, and rollback tooling is implemented; external production activation remains outstanding. Real browser/Stripe tests are covered by P2.16.
 
 ## GitHub rollout evidence (2026-09-18)
 

@@ -2,9 +2,12 @@ name: thunderstrux
 
 services:
   app:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        APP_ORIGIN: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -23,12 +26,31 @@ services:
       STRIPE_CONNECT_WEBHOOK_SECRET: ${STRIPE_CONNECT_WEBHOOK_SECRET:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      PORT: ${PORT:-3000}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${APP_PORT:-3000}:${PORT:-3000}"
     depends_on:
       db:
         condition: service_healthy
-    command: pnpm start
+      redis:
+        condition: service_healthy
+    command: ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0"]
+
+  migration:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        APP_ORIGIN: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
   db:
     image: postgres:16
@@ -48,6 +70,11 @@ services:
     restart: unless-stopped
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres_data:

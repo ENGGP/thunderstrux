@@ -14,11 +14,10 @@ import {
 } from "@/lib/auth/access";
 import {
   OrganisationOrderAccessError,
-  getOrganisationOrderDetail
+  OrganisationOrderOperationError,
+  enqueueOrganisationOrderTicketEmail,
+  getOrganisationOrderResendTarget
 } from "@/lib/orders/order-detail";
-import {
-  enqueueTicketEmail
-} from "@/lib/email/ticket-email-outbox";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
@@ -40,7 +39,10 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationPermission(organisation.id, "orders:email_resend");
-    const order = await getOrganisationOrderDetail(organisation.id, orderId);
+    const order = await getOrganisationOrderResendTarget(
+      organisation.id,
+      orderId
+    );
     const limitResponse = await enforceRateLimit({
       policy: "order_resend",
       request,
@@ -51,14 +53,7 @@ export async function POST(request: Request, context: RouteContext) {
       return limitResponse;
     }
 
-    if (order.status !== "paid") {
-      return badRequest("Ticket email can only be resent for paid orders");
-    }
-
-    await enqueueTicketEmail({
-      orderId: order.id,
-      mode: "manual"
-    });
+    await enqueueOrganisationOrderTicketEmail(organisation.id, order.id);
 
     return NextResponse.json({ queued: true });
   } catch (error) {
@@ -72,6 +67,10 @@ export async function POST(request: Request, context: RouteContext) {
 
     if (error instanceof OrganisationOrderAccessError) {
       return notFound(error.message);
+    }
+
+    if (error instanceof OrganisationOrderOperationError) {
+      return badRequest(error.message);
     }
 
     console.error("Failed to resend tickets", { orderId, error });

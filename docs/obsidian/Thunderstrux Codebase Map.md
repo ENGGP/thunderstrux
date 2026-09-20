@@ -91,12 +91,12 @@ lib/
   client/                            Frontend fetch and helper utilities
   db/                                Prisma client and organisation scoping helpers
   email/                             Ticket delivery email service and outbox worker helpers
-  events/                            Read-only public event loading
-  orders/                            Grouped orders and stale pending order cleanup
-  payments/                          Shared Checkout reconciliation helper
+  events/                            Public reads, analytics, and event lifecycle use cases
+  orders/                            Scoped order operations and stale pending cleanup
+  payments/                          Checkout creation and reconciliation use cases
   permissions/                       Legacy role permission helpers
-  stripe/                            Stripe SDK, Connect, and fee helpers
-  tickets/                           Ticket reservations and check-in/check-out helpers
+  stripe/                            Stripe SDK, Connect application service, and fees
+  tickets/                           Reservations and ticket attendance service
   validators/                        Zod schemas
 
 prisma/
@@ -121,6 +121,7 @@ docs/obsidian/
 - `OrganisationMember` is not MVP staff access.
 - Navigation for organisation dashboards belongs in `components/layout/dashboard-shell.tsx`.
 - Private APIs must derive access from the authenticated session and server-side database ownership checks.
+- Security-sensitive API routes are thin adapters: guards and HTTP mapping stay in routes; domain decisions, persistence, transactions, recovery, and external provider composition stay in application services.
 - Do not trust frontend `organisationId` or `x-org-id` as authority. They are inputs, not trust boundaries.
 - Organiser ticket and order access should use event ownership as the source of truth: `Ticket.event.organisationId` and `Order.event.organisationId`.
 - `Ticket.organisationId` and `Order.organisationId` remain denormalized storage and should not be trusted alone for access decisions.

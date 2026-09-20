@@ -12,14 +12,11 @@ import {
   requireStripeConnectCapability,
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
 import { StripeConfigurationError } from "@/lib/stripe";
 import {
-  getAccountStatus,
-  markAccountStatusError,
-  notConnectedStatus,
-  platformNotReadyStatus
+  getOrganisationStripeConnectStatus,
+  OrganisationStripeConnectNotFoundError
 } from "@/lib/stripe/connect";
 
 export async function GET(request: Request) {
@@ -30,58 +27,9 @@ export async function GET(request: Request) {
     const organisationId = requireOrganisationId(searchParams.get("organisationId"));
     await requireOrganisationStripeConnectAccess(organisationId);
 
-    const organisation = await prisma.organisation.findUnique({
-      where: { id: organisationId },
-      select: {
-        id: true,
-        stripeAccountStatus: true,
-        stripeAccountId: true
-      }
-    });
-
-    if (!organisation) {
-      return notFound("Organisation was not found");
-    }
-
-    if (
-      !organisation.stripeAccountId &&
-      organisation.stripeAccountStatus === "PLATFORM_NOT_READY"
-    ) {
-      return NextResponse.json(platformNotReadyStatus());
-    }
-
-    if (!organisation.stripeAccountId) {
-      return NextResponse.json(notConnectedStatus());
-    }
-
-    try {
-      return NextResponse.json(
-        await getAccountStatus(organisation.stripeAccountId)
-      );
-    } catch (error) {
-      console.error("Stripe Connect status refresh failed", {
-        organisationId,
-        stripeAccountId: organisation.stripeAccountId,
-        error
-      });
-
-      if (error instanceof StripeConfigurationError) {
-        return serviceUnavailable(
-          "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
-        );
-      }
-
-      const message =
-        error instanceof Error ? error.message : "Unable to refresh Stripe status";
-
-      return NextResponse.json(
-        await markAccountStatusError(
-          organisationId,
-          organisation.stripeAccountId,
-          message
-        )
-      );
-    }
+    return NextResponse.json(
+      await getOrganisationStripeConnectStatus(organisationId)
+    );
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
@@ -100,6 +48,16 @@ export async function GET(request: Request) {
         { path: ["organisationId"], message: error.message },
         { path: ["x-org-id"], message: error.message }
       ]);
+    }
+
+    if (error instanceof OrganisationStripeConnectNotFoundError) {
+      return notFound(error.message);
+    }
+
+    if (error instanceof StripeConfigurationError) {
+      return serviceUnavailable(
+        "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
+      );
     }
 
     console.error("Stripe Connect status endpoint failed", { error });

@@ -35,8 +35,8 @@ const stripeMocks = vi.hoisted(() => ({
 }));
 
 const stripeConnectMocks = vi.hoisted(() => ({
-  createExpressAccount: vi.fn(),
-  createOnboardingLink: vi.fn(),
+  startOrganisationStripeOnboarding: vi.fn(),
+  continueOrganisationStripeOnboarding: vi.fn(),
   disconnectAccount: vi.fn()
 }));
 
@@ -65,8 +65,10 @@ vi.mock("@/lib/stripe/connect", () => {
 
   return {
     StripeConnectPlatformNotReadyError,
-    createExpressAccount: stripeConnectMocks.createExpressAccount,
-    createOnboardingLink: stripeConnectMocks.createOnboardingLink,
+    startOrganisationStripeOnboarding:
+      stripeConnectMocks.startOrganisationStripeOnboarding,
+    continueOrganisationStripeOnboarding:
+      stripeConnectMocks.continueOrganisationStripeOnboarding,
     disconnectAccount: stripeConnectMocks.disconnectAccount,
     isOrganisationStripeReady: (organisation: {
       stripeAccountId: string | null;
@@ -257,14 +259,13 @@ describe("rate-limited routes", () => {
     setRateLimitTestBackendFailure(null);
     setRateLimitTestEnabled(true);
     stripeMocks.createSession.mockReset();
-    stripeConnectMocks.createExpressAccount.mockReset();
-    stripeConnectMocks.createOnboardingLink.mockReset();
+    stripeConnectMocks.startOrganisationStripeOnboarding.mockReset();
+    stripeConnectMocks.continueOrganisationStripeOnboarding.mockReset();
     stripeConnectMocks.disconnectAccount.mockReset();
-    stripeConnectMocks.createExpressAccount.mockResolvedValue({
-      accountId: "acct_rate_limit",
-      orgSlug: "rate-limit-org"
-    });
-    stripeConnectMocks.createOnboardingLink.mockResolvedValue(
+    stripeConnectMocks.startOrganisationStripeOnboarding.mockResolvedValue(
+      "https://connect.stripe.test/onboard"
+    );
+    stripeConnectMocks.continueOrganisationStripeOnboarding.mockResolvedValue(
       "https://connect.stripe.test/onboard"
     );
     stripeConnectMocks.disconnectAccount.mockResolvedValue(undefined);
@@ -590,8 +591,9 @@ describe("rate-limited routes", () => {
       })
     );
     expect(throttledOnboard.status).toBe(429);
-    expect(stripeConnectMocks.createExpressAccount).not.toHaveBeenCalled();
-    expect(stripeConnectMocks.createOnboardingLink).not.toHaveBeenCalled();
+    expect(
+      stripeConnectMocks.startOrganisationStripeOnboarding
+    ).not.toHaveBeenCalled();
 
     await exhaustRateLimit("stripe_connect_mutation", [organisation.id, "continue"], 20);
     const throttledContinue = await connectContinue(
@@ -600,7 +602,9 @@ describe("rate-limited routes", () => {
       })
     );
     expect(throttledContinue.status).toBe(429);
-    expect(stripeConnectMocks.createOnboardingLink).not.toHaveBeenCalled();
+    expect(
+      stripeConnectMocks.continueOrganisationStripeOnboarding
+    ).not.toHaveBeenCalled();
 
     await exhaustRateLimit("stripe_connect_mutation", [organisation.id, "disconnect"], 20);
     const throttledDisconnect = await connectDisconnect(

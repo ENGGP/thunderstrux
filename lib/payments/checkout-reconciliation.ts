@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { logError, logInfo } from "@/lib/ops/logger";
 import {
   confirmReservationForOrder,
   expireReservationForOrder,
@@ -115,6 +116,117 @@ export async function findOrderForCheckoutSession(
       requiresCompensationReview: true
     }
   });
+}
+
+export async function reconcileExpiredCheckoutSession(
+  session: Stripe.Checkout.Session
+): Promise<CheckoutReconciliationResult> {
+  let result: CheckoutReconciliationResult = {
+    status: "ignored",
+    reason: "not_reconciled"
+  };
+
+  await runCheckoutReconciliationTransaction(async (tx) => {
+    const order = await findOrderForCheckoutSession(session, tx);
+
+    if (!order) {
+      logError("stripe.webhook.reconciliation_failed", {
+        message: "Local order not found for expired Stripe session",
+        stripeSessionId: session.id,
+        metadataOrderId: session.metadata?.orderId
+      });
+      result = { status: "ignored", reason: "order_not_found" };
+      return;
+    }
+
+    logInfo("stripe.webhook.received", {
+      orderId: order.id,
+      stripeSessionId: session.id,
+      status: order.status
+    });
+
+    if (order.status === "paid") {
+      logInfo("stripe.webhook.ignored", {
+        orderId: order.id,
+        stripeSessionId: session.id
+      });
+      result = { status: "already_paid", orderId: order.id };
+      return;
+    }
+
+    if (order.stripeSessionId && order.stripeSessionId !== session.id) {
+      logError("stripe.webhook.reconciliation_failed", {
+        message: "Expired Stripe session id does not match local order",
+        orderId: order.id,
+        stripeSessionId: session.id,
+        orderStripeSessionId: order.stripeSessionId
+      });
+      result = {
+        status: "ignored",
+        orderId: order.id,
+        reason: "session_mismatch"
+      };
+      return;
+    }
+
+    if (order.status === "failed" || order.status === "expired") {
+      logInfo("stripe.webhook.ignored", {
+        orderId: order.id,
+        stripeSessionId: session.id,
+        ...(order.status === "failed"
+          ? { failureReason: order.failureReason }
+          : {})
+      });
+      result =
+        order.status === "expired"
+          ? { status: "expired", orderId: order.id }
+          : {
+              status: "failed",
+              orderId: order.id,
+              reason: order.failureReason ?? "order_already_failed"
+            };
+      return;
+    }
+
+    if (order.status !== "pending") {
+      logError("stripe.webhook.reconciliation_failed", {
+        message: "Expired Stripe session order is not pending",
+        orderId: order.id,
+        stripeSessionId: session.id,
+        status: order.status
+      });
+      result = {
+        status: "ignored",
+        orderId: order.id,
+        reason: "order_not_pending"
+      };
+      return;
+    }
+
+    const now = new Date();
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status: "expired",
+        stripeSessionId: order.stripeSessionId ?? session.id,
+        failureReason: null
+      }
+    });
+    await expireReservationForOrder(
+      tx,
+      order.id,
+      "Stripe Checkout Session expired before payment",
+      now
+    );
+
+    logInfo("stripe.webhook.received", {
+      orderId: order.id,
+      stripeSessionId: session.id
+    });
+    result = { status: "expired", orderId: order.id };
+  });
+
+  return result;
 }
 
 export async function reconcileCompletedCheckoutSession(

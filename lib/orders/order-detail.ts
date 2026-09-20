@@ -1,10 +1,18 @@
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { enqueueTicketEmail } from "@/lib/email/ticket-email-outbox";
 
 export class OrganisationOrderAccessError extends Error {
   constructor(message = "Order not found or access denied") {
     super(message);
     this.name = "OrganisationOrderAccessError";
+  }
+}
+
+export class OrganisationOrderOperationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OrganisationOrderOperationError";
   }
 }
 
@@ -132,4 +140,50 @@ export async function markOrganisationOrderManuallyRefunded(
       isManuallyRefunded: true
     }
   });
+}
+
+export async function getOrganisationOrderResendTarget(
+  organisationId: string,
+  orderId: string
+) {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      event: { is: { organisationId } },
+      status: { in: visibleOrderStatuses }
+    },
+    select: { id: true }
+  });
+
+  if (!order) {
+    throw new OrganisationOrderAccessError();
+  }
+
+  return order;
+}
+
+export async function enqueueOrganisationOrderTicketEmail(
+  organisationId: string,
+  orderId: string
+) {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: orderId,
+      event: { is: { organisationId } },
+      status: { in: visibleOrderStatuses }
+    },
+    select: { id: true, status: true }
+  });
+
+  if (!order) {
+    throw new OrganisationOrderAccessError();
+  }
+
+  if (order.status !== "paid") {
+    throw new OrganisationOrderOperationError(
+      "Ticket email can only be resent for paid orders"
+    );
+  }
+
+  await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
 }

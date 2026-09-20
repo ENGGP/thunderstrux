@@ -1,7 +1,8 @@
 import type Stripe from "stripe";
 import type { Organisation } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getAppUrl, getStripe } from "@/lib/stripe";
+import type { ApiErrorDetail } from "@/lib/api/errors";
+import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 
 export type StripeConnectState =
   | "NOT_CONNECTED"
@@ -44,6 +45,20 @@ export class StripeConnectPlatformNotReadyError extends Error {
   constructor(message = "Stripe platform setup incomplete") {
     super(message);
     this.name = "StripeConnectPlatformNotReadyError";
+  }
+}
+
+export class OrganisationStripeConnectNotFoundError extends Error {
+  constructor(message = "Organisation was not found") {
+    super(message);
+    this.name = "OrganisationStripeConnectNotFoundError";
+  }
+}
+
+export class OrganisationStripeConnectValidationError extends Error {
+  constructor(message: string, readonly details: ApiErrorDetail[] = []) {
+    super(message);
+    this.name = "OrganisationStripeConnectValidationError";
   }
 }
 
@@ -351,4 +366,82 @@ export async function markAccountStatusError(
     dashboard_url: stripeDashboardUrl(accountId),
     error: message
   };
+}
+
+export async function startOrganisationStripeOnboarding(orgId: string) {
+  const { accountId, orgSlug } = await createExpressAccount(orgId);
+  return createOnboardingLink(accountId, orgSlug);
+}
+
+export async function continueOrganisationStripeOnboarding(orgId: string) {
+  const organisation = await prisma.organisation.findUnique({
+    where: { id: orgId },
+    select: { slug: true, stripeAccountId: true }
+  });
+
+  if (!organisation) {
+    throw new OrganisationStripeConnectNotFoundError();
+  }
+
+  if (!organisation.stripeAccountId) {
+    throw new OrganisationStripeConnectValidationError(
+      "Stripe account is not connected",
+      [
+        {
+          path: ["organisationId"],
+          message: "Connect a Stripe account before continuing onboarding"
+        }
+      ]
+    );
+  }
+
+  return createOnboardingLink(
+    organisation.stripeAccountId,
+    organisation.slug
+  );
+}
+
+export async function getOrganisationStripeConnectStatus(orgId: string) {
+  const organisation = await prisma.organisation.findUnique({
+    where: { id: orgId },
+    select: {
+      id: true,
+      stripeAccountStatus: true,
+      stripeAccountId: true
+    }
+  });
+
+  if (!organisation) {
+    throw new OrganisationStripeConnectNotFoundError();
+  }
+
+  if (
+    !organisation.stripeAccountId &&
+    organisation.stripeAccountStatus === "PLATFORM_NOT_READY"
+  ) {
+    return platformNotReadyStatus();
+  }
+
+  if (!organisation.stripeAccountId) {
+    return notConnectedStatus();
+  }
+
+  try {
+    return await getAccountStatus(organisation.stripeAccountId);
+  } catch (error) {
+    console.error("Stripe Connect status refresh failed", {
+      organisationId: orgId,
+      stripeAccountId: organisation.stripeAccountId,
+      error
+    });
+
+    if (error instanceof StripeConfigurationError) {
+      throw error;
+    }
+
+    const message =
+      error instanceof Error ? error.message : "Unable to refresh Stripe status";
+
+    return markAccountStatusError(orgId, organisation.stripeAccountId, message);
+  }
 }

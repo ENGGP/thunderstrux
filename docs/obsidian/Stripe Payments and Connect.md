@@ -35,6 +35,7 @@ Core files:
 - `lib/stripe/connect.ts`
 - `lib/stripe/fees.ts`
 - `lib/payments/checkout-fulfilment-orchestrator.ts`
+- `lib/payments/checkout-creation.ts`
 - `lib/payments/checkout-reconciliation.ts`
 - `lib/email/ticket-delivery.ts`
 - `lib/orders/stale-orders.ts`
@@ -49,7 +50,8 @@ Core files:
 Public event page
   -> user selects ticket type + quantity
   -> POST /api/payments/checkout/event
-  -> API validates auth, event, ticketType, quantity, amount, Stripe readiness
+  -> route validates origin, input, member auth, and rate limit
+  -> checkout creation service validates event, ticket type, amount, and Stripe readiness
   -> serializable transaction creates local pending Order and active TicketReservation
   -> Stripe Checkout Session created with expires_at matching reservation expiry
   -> Checkout Session metadata includes orderId, eventId, organisationId, ticketTypeId, and quantity
@@ -175,6 +177,9 @@ lib/stripe/connect.ts
 
 Responsibilities:
 
+- `startOrganisationStripeOnboarding(orgId)`: composes account creation/reuse with onboarding-link creation.
+- `continueOrganisationStripeOnboarding(orgId)`: validates a connected account and creates a new onboarding link.
+- `getOrganisationStripeConnectStatus(orgId)`: resolves the organisation, returns canonical local states, refreshes connected accounts, and persists readiness.
 - `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`. If Stripe rejects account creation because platform setup is incomplete, stores `PLATFORM_NOT_READY` and throws `StripeConnectPlatformNotReadyError`.
 - `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid `/dashboard/settings` return and refresh URLs.
 - `getAccountStatus(accountId)`: retrieves the live Stripe account, maps it to a lifecycle state, and persists local readiness flags.
@@ -183,7 +188,7 @@ Responsibilities:
 - `platformNotReadyStatus()`: returns the canonical platform setup block payload.
 - `markAccountStatusError(...)`: stores `ERROR` when status refresh cannot retrieve the account.
 
-The service layer does not decide whether the current user is allowed to perform an action. API routes perform auth and role checks before calling service functions.
+The service layer does not decide whether the current user is allowed to perform an action. API routes perform live capability and target-organisation permission checks before calling service functions.
 
 ## Stripe Connect Onboarding Flow
 

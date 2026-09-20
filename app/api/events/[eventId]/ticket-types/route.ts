@@ -12,13 +12,15 @@ import {
   OrganisationAccessError,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
 import {
   OrganisationMismatchError,
   OrganisationScopeError,
-  assertEventBelongsToOrganisation,
   requireOrganisationId
 } from "@/lib/db/organisation-scope";
+import {
+  createOrganisationEventTicketType,
+  EventLifecycleNotFoundError
+} from "@/lib/events/event-lifecycle";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createScopedTicketTypeSchema } from "@/lib/validators/events";
@@ -46,24 +48,11 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireOrganisationEventManagementAccess(organisationId);
-    await assertEventBelongsToOrganisation(eventId, organisationId);
-
-    const ticketType = await prisma.ticketType.create({
-      data: {
-        eventId,
-        name: validation.data.name,
-        price: validation.data.price,
-        quantity: validation.data.quantity
-      },
-      select: {
-        id: true,
-        eventId: true,
-        name: true,
-        price: true,
-        quantity: true,
-        createdAt: true
-      }
-    });
+    const ticketType = await createOrganisationEventTicketType(
+      organisationId,
+      eventId,
+      validation.data
+    );
 
     return NextResponse.json({ ticketType }, { status: 201 });
   } catch (error) {
@@ -87,6 +76,10 @@ export async function POST(request: Request, context: RouteContext) {
         ]);
       }
 
+      return notFound(error.message);
+    }
+
+    if (error instanceof EventLifecycleNotFoundError) {
       return notFound(error.message);
     }
 

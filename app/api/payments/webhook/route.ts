@@ -3,24 +3,13 @@ import Stripe from "stripe";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
-import {
-  findOrderForCheckoutSession,
-  runCheckoutReconciliationTransaction
-} from "@/lib/payments/checkout-reconciliation";
+import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import {
   getStripe,
   getStripeWebhookSecret,
   StripeConfigurationError
 } from "@/lib/stripe";
-import { expireReservationForOrder } from "@/lib/tickets/reservations";
-
-function reconciliationError(message: string, details: Record<string, unknown>) {
-  logError("stripe.webhook.reconciliation_failed", {
-    message,
-    ...details
-  });
-}
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -112,88 +101,7 @@ export async function POST(request: Request) {
         metadataOrderId: session.metadata?.orderId
       });
 
-      await runCheckoutReconciliationTransaction(async (tx) => {
-        const order = await findOrderForCheckoutSession(session, tx);
-
-        if (!order) {
-          reconciliationError("Local order not found for expired Stripe session", {
-            stripeSessionId: session.id,
-            metadataOrderId: session.metadata?.orderId
-          });
-          return;
-        }
-
-        logInfo("stripe.webhook.received", {
-          orderId: order.id,
-          stripeSessionId: session.id,
-          status: order.status
-        });
-
-        if (order.status === "paid") {
-          logInfo("stripe.webhook.ignored", {
-            orderId: order.id,
-            stripeSessionId: session.id
-          });
-          return;
-        }
-
-        if (order.stripeSessionId && order.stripeSessionId !== session.id) {
-          reconciliationError("Expired Stripe session id does not match local order", {
-            orderId: order.id,
-            stripeSessionId: session.id,
-            orderStripeSessionId: order.stripeSessionId
-          });
-          return;
-        }
-
-        if (order.status === "failed") {
-          logInfo("stripe.webhook.ignored", {
-            orderId: order.id,
-            stripeSessionId: session.id,
-            failureReason: order.failureReason
-          });
-          return;
-        }
-
-        if (order.status === "expired") {
-          logInfo("stripe.webhook.ignored", {
-            orderId: order.id,
-            stripeSessionId: session.id
-          });
-          return;
-        }
-
-        if (order.status !== "pending") {
-          reconciliationError("Expired Stripe session order is not pending", {
-            orderId: order.id,
-            stripeSessionId: session.id,
-            status: order.status
-          });
-          return;
-        }
-
-        const now = new Date();
-
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            status: "expired",
-            stripeSessionId: order.stripeSessionId ?? session.id,
-            failureReason: null
-          }
-        });
-        await expireReservationForOrder(
-          tx,
-          order.id,
-          "Stripe Checkout Session expired before payment",
-          now
-        );
-
-        logInfo("stripe.webhook.received", {
-          orderId: order.id,
-          stripeSessionId: session.id
-        });
-      });
+      await reconcileExpiredCheckoutSession(session);
 
       return NextResponse.json({ received: true });
     }

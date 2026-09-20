@@ -701,6 +701,17 @@ Validation:
 - Route handlers become thin adapters.
 - Existing integration tests remain behaviourally unchanged.
 
+Implementation evidence:
+
+- Checkout creation and recovery are isolated in `lib/payments/checkout-creation.ts`; completed and expired session handling share `lib/payments/checkout-reconciliation.ts`.
+- Event reads and lifecycle mutations, organisation-scoped order operations, existing ticket attendance operations, and Stripe Connect orchestration are behind application services.
+- Routes retain transport validation, trusted-origin enforcement, live auth/permission and tenant checks, rate limiting, and HTTP error mapping in their established order.
+- `tests/integration/domain-service-boundaries.test.ts` prevents direct Prisma access from returning to the affected adapters and protects security-sensitive guard ordering.
+- Existing behavioral integration suites remain the contract tests; direct Stripe Connect service coverage validates lifecycle persistence and provider composition.
+- No Prisma schema, migration, dependency, or payment lifecycle model changes are part of P3.18. The formal lifecycle model remains P3.19.
+- Final local qualification passed 205 integration tests, typecheck, production build, `pnpm audit --audit-level high`, 14 isolated browser/webhook E2E tests, and the complete operations rehearsal.
+- E2E validation exposed Windows CRLF checkout of `docker/entrypoint.sh`; `.gitattributes` now enforces LF for shell scripts, and both fresh migration containers and the operations rehearsal pass.
+
 ### 19. Build A Formal Payment Lifecycle Model
 
 Severity: Medium/Long-term

@@ -13,10 +13,13 @@ import {
   requireStripeConnectCapability,
   requireOrganisationStripeConnectAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
 import { StripeConfigurationError } from "@/lib/stripe";
-import { createOnboardingLink } from "@/lib/stripe/connect";
+import {
+  continueOrganisationStripeOnboarding,
+  OrganisationStripeConnectNotFoundError,
+  OrganisationStripeConnectValidationError
+} from "@/lib/stripe/connect";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
@@ -49,27 +52,7 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const organisation = await prisma.organisation.findUnique({
-      where: { id: organisationId },
-      select: {
-        slug: true,
-        stripeAccountId: true
-      }
-    });
-
-    if (!organisation?.stripeAccountId) {
-      return badRequest("Stripe account is not connected", [
-        {
-          path: ["organisationId"],
-          message: "Connect a Stripe account before continuing onboarding"
-        }
-      ]);
-    }
-
-    const url = await createOnboardingLink(
-      organisation.stripeAccountId,
-      organisation.slug
-    );
+    const url = await continueOrganisationStripeOnboarding(organisationId);
 
     return NextResponse.json({ url });
   } catch (error) {
@@ -89,6 +72,14 @@ export async function POST(request: Request) {
       return badRequest(error.message, [
         { path: ["organisationId"], message: error.message }
       ]);
+    }
+
+    if (error instanceof OrganisationStripeConnectNotFoundError) {
+      return notFound(error.message);
+    }
+
+    if (error instanceof OrganisationStripeConnectValidationError) {
+      return badRequest(error.message, error.details);
     }
 
     if (error instanceof StripeConfigurationError) {

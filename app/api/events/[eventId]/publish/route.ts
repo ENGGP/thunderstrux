@@ -12,8 +12,11 @@ import {
   requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
-import { scopedByOrganisation } from "@/lib/db/organisation-scope";
+import {
+  EventLifecycleNotFoundError,
+  EventLifecycleValidationError,
+  toggleOrganisationEventPublished
+} from "@/lib/events/event-lifecycle";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 
 type RouteContext = {
@@ -21,27 +24,6 @@ type RouteContext = {
     eventId: string;
   }>;
 };
-
-const eventSelect = {
-  id: true,
-  organisationId: true,
-  title: true,
-  description: true,
-  startTime: true,
-  endTime: true,
-  location: true,
-  status: true,
-  createdAt: true,
-  ticketTypes: {
-    select: {
-      id: true,
-      name: true,
-      price: true,
-      quantity: true
-    },
-    orderBy: { createdAt: "asc" }
-  }
-} as const;
 
 export async function PATCH(request: Request, context: RouteContext) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
@@ -56,77 +38,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
 
-    const event = await prisma.event.findFirst({
-      where: scopedByOrganisation(organisation.id, { id: eventId }),
-      select: {
-        id: true,
-        status: true,
-        ticketTypes: {
-          select: {
-            quantity: true
-          }
-        },
-        _count: {
-          select: {
-            orders: true
-          }
-        }
-      }
-    });
+    const event = await toggleOrganisationEventPublished(
+      organisation.id,
+      eventId
+    );
 
-    if (!event) {
-      return notFound("Event was not found in this organisation");
-    }
-
-    if (event.status === "draft") {
-      if (event.ticketTypes.length === 0) {
-        return badRequest("Event needs at least one ticket type before publishing", [
-          {
-            path: ["ticketTypes"],
-            message: "Add at least one ticket type before publishing this event"
-          }
-        ]);
-      }
-
-      const totalTicketQuantity = event.ticketTypes.reduce(
-        (total, ticketType) => total + ticketType.quantity,
-        0
-      );
-
-      if (totalTicketQuantity <= 0) {
-        return badRequest("Event needs available tickets before publishing", [
-          {
-            path: ["ticketTypes"],
-            message: "Total ticket quantity must be greater than zero"
-          }
-        ]);
-      }
-
-      const publishedEvent = await prisma.event.update({
-        where: { id: event.id },
-        data: { status: "published" },
-        select: eventSelect
-      });
-
-      return NextResponse.json({ event: publishedEvent });
-    }
-
-    if (event._count.orders > 0) {
-      return badRequest("Event cannot be unpublished after orders exist", [
-        {
-          path: ["eventId"],
-          message: "Keep this event published for purchasers and order history"
-        }
-      ]);
-    }
-
-    const draftEvent = await prisma.event.update({
-      where: { id: event.id },
-      data: { status: "draft" },
-      select: eventSelect
-    });
-
-    return NextResponse.json({ event: draftEvent });
+    return NextResponse.json({ event });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
@@ -134,6 +51,14 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     if (error instanceof OrganisationAccessError) {
       return forbidden(error.message);
+    }
+
+    if (error instanceof EventLifecycleNotFoundError) {
+      return notFound(error.message);
+    }
+
+    if (error instanceof EventLifecycleValidationError) {
+      return badRequest(error.message, error.details);
     }
 
     console.error("Failed to toggle event publish status", { eventId, error });

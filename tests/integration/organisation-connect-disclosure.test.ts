@@ -18,11 +18,10 @@ import { POST as connectContinue } from "@/app/api/stripe/connect/continue/route
 import { POST as connectDisconnect } from "@/app/api/stripe/connect/disconnect/route";
 
 const connectMocks = vi.hoisted(() => ({
-  createExpressAccount: vi.fn(),
-  createOnboardingLink: vi.fn(),
+  startOrganisationStripeOnboarding: vi.fn(),
+  continueOrganisationStripeOnboarding: vi.fn(),
   disconnectAccount: vi.fn(),
-  getAccountStatus: vi.fn(),
-  markAccountStatusError: vi.fn()
+  getOrganisationStripeConnectStatus: vi.fn()
 }));
 
 vi.mock("@/lib/stripe/connect", () => {
@@ -32,13 +31,22 @@ vi.mock("@/lib/stripe/connect", () => {
     actionUrl = "https://dashboard.stripe.com/settings/connect/platform-profile";
   }
 
+  class OrganisationStripeConnectNotFoundError extends Error {}
+  class OrganisationStripeConnectValidationError extends Error {
+    details = [];
+  }
+
   return {
     StripeConnectPlatformNotReadyError,
-    createExpressAccount: connectMocks.createExpressAccount,
-    createOnboardingLink: connectMocks.createOnboardingLink,
+    OrganisationStripeConnectNotFoundError,
+    OrganisationStripeConnectValidationError,
+    startOrganisationStripeOnboarding:
+      connectMocks.startOrganisationStripeOnboarding,
+    continueOrganisationStripeOnboarding:
+      connectMocks.continueOrganisationStripeOnboarding,
     disconnectAccount: connectMocks.disconnectAccount,
-    getAccountStatus: connectMocks.getAccountStatus,
-    markAccountStatusError: connectMocks.markAccountStatusError,
+    getOrganisationStripeConnectStatus:
+      connectMocks.getOrganisationStripeConnectStatus,
     notConnectedStatus: () => ({
       accountId: null,
       connected: false,
@@ -125,9 +133,16 @@ async function expectAllDenied(organisationId: string | undefined, status: numbe
 }
 
 async function expectAllAllowed(organisationId: string) {
-  connectMocks.createExpressAccount.mockResolvedValue({ accountId: "acct_staff", orgSlug: "staff-org" });
-  connectMocks.createOnboardingLink.mockResolvedValue("https://connect.stripe.test/staff");
-  connectMocks.getAccountStatus.mockResolvedValue({ state: "READY", ready: true });
+  connectMocks.startOrganisationStripeOnboarding.mockResolvedValue(
+    "https://connect.stripe.test/staff"
+  );
+  connectMocks.continueOrganisationStripeOnboarding.mockResolvedValue(
+    "https://connect.stripe.test/staff"
+  );
+  connectMocks.getOrganisationStripeConnectStatus.mockResolvedValue({
+    state: "READY",
+    ready: true
+  });
   connectMocks.disconnectAccount.mockResolvedValue(undefined);
   for (const endpoint of connectEndpoints) {
     expect((await invokeConnect(endpoint, organisationId)).status, endpoint).toBe(200);
@@ -388,7 +403,7 @@ describe("organisation and Stripe Connect disclosure", () => {
     );
 
     expect(memberResponse.status).toBe(403);
-    expect(connectMocks.getAccountStatus).not.toHaveBeenCalled();
+    expect(connectMocks.getOrganisationStripeConnectStatus).not.toHaveBeenCalled();
   });
 
   test("Stripe Connect status missing and cross-tenant organisations return the same safe 404", async () => {
@@ -424,19 +439,50 @@ describe("organisation and Stripe Connect disclosure", () => {
       data: { stripeAccountStatus: "PLATFORM_NOT_READY" }
     });
     const connected = await createOrganisationAccount({ stripeReady: true });
-    connectMocks.getAccountStatus.mockResolvedValueOnce({
-      accountId: connected.organisation.stripeAccountId,
-      connected: true,
-      state: "READY",
-      ready: true,
-      charges_enabled: true,
-      payouts_enabled: true,
-      details_submitted: true,
-      currently_due: [],
-      eventually_due: [],
-      disabled_reason: null,
-      dashboard_url: "https://dashboard.stripe.test/connect/accounts/acct_test"
-    });
+    connectMocks.getOrganisationStripeConnectStatus
+      .mockResolvedValueOnce({
+        accountId: null,
+        connected: false,
+        state: "NOT_CONNECTED",
+        ready: false,
+        charges_enabled: false,
+        payouts_enabled: false,
+        details_submitted: false,
+        currently_due: [],
+        eventually_due: [],
+        disabled_reason: null,
+        dashboard_url: null
+      })
+      .mockResolvedValueOnce({
+        accountId: null,
+        connected: false,
+        state: "PLATFORM_NOT_READY",
+        ready: false,
+        charges_enabled: false,
+        payouts_enabled: false,
+        details_submitted: false,
+        currently_due: [],
+        eventually_due: [],
+        disabled_reason: null,
+        dashboard_url: null,
+        actionUrl:
+          "https://dashboard.stripe.com/settings/connect/platform-profile",
+        actionRequired: "Complete Stripe Connect platform profile",
+        error: "Stripe platform setup incomplete"
+      })
+      .mockResolvedValueOnce({
+        accountId: connected.organisation.stripeAccountId,
+        connected: true,
+        state: "READY",
+        ready: true,
+        charges_enabled: true,
+        payouts_enabled: true,
+        details_submitted: true,
+        currently_due: [],
+        eventually_due: [],
+        disabled_reason: null,
+        dashboard_url: "https://dashboard.stripe.test/connect/accounts/acct_test"
+      });
 
     setMockSession({
       userId: notConnected.user.id,
@@ -662,8 +708,8 @@ describe("organisation and Stripe Connect disclosure", () => {
       }
     });
 
-    expect(connectMocks.createExpressAccount).not.toHaveBeenCalled();
-    expect(connectMocks.createOnboardingLink).not.toHaveBeenCalled();
+    expect(connectMocks.startOrganisationStripeOnboarding).not.toHaveBeenCalled();
+    expect(connectMocks.continueOrganisationStripeOnboarding).not.toHaveBeenCalled();
     expect(connectMocks.disconnectAccount).not.toHaveBeenCalled();
   });
 
@@ -671,13 +717,12 @@ describe("organisation and Stripe Connect disclosure", () => {
     const { user, organisation } = await createOrganisationAccount({
       stripeReady: true
     });
-    connectMocks.createExpressAccount.mockResolvedValueOnce({
-      accountId: "acct_success",
-      orgSlug: organisation.slug
-    });
-    connectMocks.createOnboardingLink
-      .mockResolvedValueOnce("https://connect.stripe.test/onboard")
-      .mockResolvedValueOnce("https://connect.stripe.test/continue");
+    connectMocks.startOrganisationStripeOnboarding.mockResolvedValueOnce(
+      "https://connect.stripe.test/onboard"
+    );
+    connectMocks.continueOrganisationStripeOnboarding.mockResolvedValueOnce(
+      "https://connect.stripe.test/continue"
+    );
     connectMocks.disconnectAccount.mockResolvedValueOnce(undefined);
 
     await withTrustedAppOrigin(async () => {

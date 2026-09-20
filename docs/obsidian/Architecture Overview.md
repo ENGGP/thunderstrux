@@ -25,10 +25,23 @@ Browser
   -> Client components submit forms and call route handlers
   -> Route handlers validate input and enforce auth/tenancy
   -> Mutation guards enforce trusted origins and selected abuse limits
-  -> Prisma reads and writes PostgreSQL
-  -> Stripe APIs create checkout sessions and onboarding links
+  -> Application services execute domain use cases
+  -> Services use Prisma and external providers
   -> Stripe webhooks reconcile reservations, payments, tickets, and account readiness
 ```
+
+## Application Service Boundary
+
+Security-sensitive routes are transport adapters. They retain request parsing, trusted-origin checks, authentication, permission and tenant checks, rate limiting, and HTTP error mapping. Domain decisions, persistence, transactions, recovery, and provider composition live in application services:
+
+- `lib/payments/checkout-creation.ts`: checkout validation, reservation/order creation, Stripe session creation, and failure recovery.
+- `lib/payments/checkout-reconciliation.ts`: completed and expired Checkout reconciliation.
+- `lib/events/event-lifecycle.ts`: organisation-scoped event reads, create/edit, ticket-type changes, publish/unpublish, and deletion.
+- `lib/orders/grouped-orders.ts` and `lib/orders/order-detail.ts`: organisation-scoped order reads, refund marking, and paid-order email resend.
+- `lib/tickets/check-in.ts`: ticket attendance reads and mutations.
+- `lib/stripe/connect.ts`: Connect lifecycle operations and Stripe/provider composition.
+
+Application services accept already-authorized tenant identifiers. Routes must perform live server-side permission checks before calling them. The services still scope every persistence operation by the authoritative organisation or event owner; they do not trust client claims.
 
 Docker runtime:
 
@@ -258,7 +271,7 @@ content: [
 Stripe Connect integration is split deliberately:
 
 - `lib/stripe/index.ts` owns Stripe SDK initialisation and webhook secret access.
-- `lib/stripe/connect.ts` owns Express account creation, platform-readiness detection, onboarding link creation, status retrieval, lifecycle mapping, and local disconnect.
+- `lib/stripe/connect.ts` owns high-level onboarding, continuation, status refresh, Express account creation, platform-readiness detection, lifecycle mapping, and local disconnect.
 - API routes own authentication, role checks, validation, and structured JSON responses.
 - `components/settings/stripe-connect-settings.tsx` owns the user guidance and action buttons.
 
@@ -277,5 +290,7 @@ Checkout fulfilment is shared through:
 ```text
 lib/payments/checkout-reconciliation.ts
 ```
+
+Checkout creation and pre-redirect recovery are owned separately by `lib/payments/checkout-creation.ts`. The route keeps origin, schema, member-authentication, and rate-limit checks before invoking that service.
 
 Production fulfilment remains webhook-driven through `POST /api/payments/webhook`. The `/success` page has a non-production-only fallback that retrieves the Checkout Session by `session_id` and calls the same reconciliation helper when local webhook forwarding is missing.

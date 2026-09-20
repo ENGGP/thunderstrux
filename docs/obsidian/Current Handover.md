@@ -8,6 +8,8 @@ Dependency security update (2026-09-18): D1-D5 fixes merged through PR #3; the p
 
 ## Current State
 
+P3.18 update (2026-09-20): checkout creation/recovery, expired checkout reconciliation, event lifecycle, order resend, ticket attendance, and Stripe Connect orchestration now live behind application services. Affected routes retain their original origin/auth/permission/tenant/rate-limit order and HTTP contracts, and direct Prisma access is prohibited by a boundary regression test. Final local qualification passed 205 integration tests, typecheck, production build, a zero-finding high-severity audit, 14 isolated browser/webhook E2E tests, and the complete operations rehearsal. Validation also found and fixed Windows CRLF checkout of `docker/entrypoint.sh`; `.gitattributes` now enforces LF for shell scripts. This is an architecture-only extraction; the formal payment lifecycle model remains P3.19.
+
 P2.17 update (2026-09-20): repository-side operations are implemented on `codex/p217-operations`. The isolated rehearsal passed non-root startup, explicit migrations, database/Redis readiness outages, checksum-verified backup and restore, corrupt-archive quarantine, compatibility-gated rollback, and migration-failure blocking. Current regression passed 195 integration tests, typecheck, production image build, and audit. See [[Production Operations]]. External hosting, alert delivery, worker schedules, and encrypted off-machine backups remain activation work.
 
 P2.16 update (2026-09-19): implementation and acceptance merged through PR #10. Final P2.16 regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified. `e2e-tests` is required alongside the existing three checks. Test containers/volumes and generated credentials were cleaned up. See [[E2E and Staging Payments]] for run references, precise evidence and recovery instructions.
@@ -27,6 +29,7 @@ Core model:
 - Paid-but-unfulfilled Checkout sessions enter a durable compensation-review state instead of ordinary silent failure.
 - Ticket delivery email is outbox-backed and non-blocking; provider failures must not roll back payment fulfilment, reservations, inventory decrement, or ticket issuance.
 - Operational logs use structured JSON for P1.13-covered paths. Metrics are console/log-derived only for MVP and require production log aggregation for alerting.
+- Security-sensitive route handlers are transport adapters; domain persistence, transactions, recovery, and external provider composition are delegated to application services.
 
 Implemented product areas:
 

@@ -15,8 +15,7 @@ import {
 } from "@/lib/auth/access";
 import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
 import {
-  createExpressAccount,
-  createOnboardingLink,
+  startOrganisationStripeOnboarding,
   StripeConnectPlatformNotReadyError
 } from "@/lib/stripe/connect";
 import { StripeConfigurationError } from "@/lib/stripe";
@@ -69,8 +68,7 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const { accountId, orgSlug } = await createExpressAccount(organisationId);
-    const url = await createOnboardingLink(accountId, orgSlug);
+    const url = await startOrganisationStripeOnboarding(organisationId);
 
     return NextResponse.json({ url });
   } catch (error) {

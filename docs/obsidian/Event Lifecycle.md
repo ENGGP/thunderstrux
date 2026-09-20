@@ -29,6 +29,7 @@ Main files:
 - `app/(dashboard)/dashboard/events/layout.tsx`
 - `components/events/create-event-form.tsx`
 - `app/api/events/route.ts`
+- `lib/events/event-lifecycle.ts`
 
 Flow:
 
@@ -38,7 +39,7 @@ Organisation account opens /dashboard/events/new
   -> CreateEventForm resolves the organisation by slug for existing API compatibility
   -> POST /api/events
   -> API validates organisation account ownership and event-management access
-  -> API creates Event and TicketType rows
+  -> event lifecycle service creates Event and TicketType rows
 ```
 
 Access:
@@ -115,7 +116,10 @@ app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
 components/events/create-event-form.tsx
 app/api/events/[eventId]/route.ts
 lib/validators/events.ts
+lib/events/event-lifecycle.ts
 ```
+
+The event API routes and edit page call the same organisation-scoped lifecycle service. Routes retain request validation, authentication, permission checks, tenant mismatch handling, and HTTP responses. The service owns event/ticket-type persistence and the edit transaction.
 
 Important rules:
 

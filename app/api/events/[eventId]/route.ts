@@ -13,13 +13,18 @@ import {
   requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
 import {
   OrganisationMismatchError,
   OrganisationScopeError,
-  requireOrganisationId,
-  scopedByOrganisation
+  requireOrganisationId
 } from "@/lib/db/organisation-scope";
+import {
+  deleteOrganisationEvent,
+  EventLifecycleNotFoundError,
+  EventLifecycleValidationError,
+  getOrganisationEvent,
+  updateOrganisationEvent
+} from "@/lib/events/event-lifecycle";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { updateEventSchema } from "@/lib/validators/events";
@@ -30,27 +35,6 @@ type RouteContext = {
   }>;
 };
 
-const eventSelect = {
-  id: true,
-  organisationId: true,
-  title: true,
-  description: true,
-  startTime: true,
-  endTime: true,
-  location: true,
-  status: true,
-  createdAt: true,
-  ticketTypes: {
-    select: {
-      id: true,
-      name: true,
-      price: true,
-      quantity: true
-    },
-    orderBy: { createdAt: "asc" }
-  }
-} as const;
-
 export async function GET(request: Request, context: RouteContext) {
   const { eventId } = await context.params;
 
@@ -59,14 +43,7 @@ export async function GET(request: Request, context: RouteContext) {
     const organisationId = requireOrganisationId(searchParams.get("orgId"));
     await requireOrganisationEventManagementAccess(organisationId);
 
-    const event = await prisma.event.findFirst({
-      where: scopedByOrganisation(organisationId, { id: eventId }),
-      select: eventSelect
-    });
-
-    if (!event) {
-      return notFound("Event was not found in this organisation");
-    }
+    const event = await getOrganisationEvent(organisationId, eventId);
 
     return NextResponse.json({ event });
   } catch (error) {
@@ -83,6 +60,10 @@ export async function GET(request: Request, context: RouteContext) {
         { path: ["orgId"], message: error.message },
         { path: ["x-org-id"], message: error.message }
       ]);
+    }
+
+    if (error instanceof EventLifecycleNotFoundError) {
+      return notFound(error.message);
     }
 
     console.error("Failed to fetch event", { eventId, error });
@@ -118,122 +99,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const existingEvent = await prisma.event.findFirst({
-      where: scopedByOrganisation(organisation.id, { id: eventId }),
-      select: {
-        id: true,
-        ticketTypes: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            quantity: true,
-            _count: {
-              select: {
-                orders: true,
-                tickets: true
-              }
-            }
-          }
-        }
-      }
-    });
-
-    if (!existingEvent) {
-      return notFound("Event was not found in this organisation");
-    }
-
-    const submittedTicketTypes = validation.data.ticketTypes;
-
-    const isLockedTicketType = (ticketType: (typeof existingEvent.ticketTypes)[number]) =>
-      ticketType._count.orders > 0 || ticketType._count.tickets > 0;
-
-    const existingTicketTypesById = new Map(
-      existingEvent.ticketTypes.map((ticketType) => [ticketType.id, ticketType])
+    const event = await updateOrganisationEvent(
+      organisation.id,
+      eventId,
+      validation.data
     );
-    const submittedIds = submittedTicketTypes
-      .map((ticketType) => ticketType.id)
-      .filter((id): id is string => Boolean(id));
-    const uniqueSubmittedIds = new Set(submittedIds);
-
-    if (uniqueSubmittedIds.size !== submittedIds.length) {
-      return badRequest("Duplicate ticket type IDs are not allowed", [
-        { path: ["ticketTypes"], message: "Each ticket type can only appear once" }
-      ]);
-    }
-
-    const unknownTicketTypeId = submittedIds.find(
-      (ticketTypeId) => !existingTicketTypesById.has(ticketTypeId)
-    );
-
-    if (unknownTicketTypeId) {
-      return badRequest("Ticket type does not belong to this event", [
-        {
-          path: ["ticketTypes"],
-          message: "Ticket type must belong to the event being edited"
-        }
-      ]);
-    }
-
-    const removedTicketTypes = existingEvent.ticketTypes.filter(
-      (ticketType) =>
-        !isLockedTicketType(ticketType) && !uniqueSubmittedIds.has(ticketType.id)
-    );
-
-    const event = await prisma.$transaction(async (transaction) => {
-      await transaction.event.update({
-        where: { id: existingEvent.id },
-        data: {
-          title: validation.data.title,
-          description: validation.data.description,
-          startTime: validation.data.startTime,
-          endTime: validation.data.endTime,
-          location: validation.data.location
-        }
-      });
-
-      const removedTicketTypeIds = removedTicketTypes.map(
-        (ticketType) => ticketType.id
-      );
-
-      if (removedTicketTypeIds.length > 0) {
-        await transaction.ticketType.deleteMany({
-          where: {
-            eventId: existingEvent.id,
-            id: { in: removedTicketTypeIds }
-          }
-        });
-      }
-
-      await Promise.all(
-        submittedTicketTypes.map((ticketType) => {
-          if (ticketType.id) {
-            return transaction.ticketType.update({
-              where: { id: ticketType.id },
-              data: {
-                name: ticketType.name,
-                price: ticketType.price,
-                quantity: ticketType.quantity
-              }
-            });
-          }
-
-          return transaction.ticketType.create({
-            data: {
-              eventId: existingEvent.id,
-              name: ticketType.name,
-              price: ticketType.price,
-              quantity: ticketType.quantity
-            }
-          });
-        })
-      );
-
-      return transaction.event.findUniqueOrThrow({
-        where: { id: existingEvent.id },
-        select: eventSelect
-      });
-    });
 
     return NextResponse.json({ event });
   } catch (error) {
@@ -256,6 +126,14 @@ export async function PATCH(request: Request, context: RouteContext) {
       ]);
     }
 
+    if (error instanceof EventLifecycleNotFoundError) {
+      return notFound(error.message);
+    }
+
+    if (error instanceof EventLifecycleValidationError) {
+      return badRequest(error.message, error.details);
+    }
+
     console.error("Failed to update event", { eventId, error });
     return internalError();
   }
@@ -274,36 +152,7 @@ export async function DELETE(request: Request, context: RouteContext) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
 
-    const existingEvent = await prisma.event.findFirst({
-      where: scopedByOrganisation(organisation.id, { id: eventId }),
-      select: {
-        id: true,
-        _count: {
-          select: {
-            orders: true,
-            tickets: true
-          }
-        }
-      }
-    });
-
-    if (!existingEvent) {
-      return notFound("Event was not found in this organisation");
-    }
-
-    if (existingEvent._count.orders > 0 || existingEvent._count.tickets > 0) {
-      return badRequest("Event cannot be deleted after orders or tickets exist", [
-        {
-          path: ["eventId"],
-          message:
-            "Keep this event for order and ticket history instead of deleting it"
-        }
-      ]);
-    }
-
-    await prisma.event.delete({
-      where: { id: eventId }
-    });
+    await deleteOrganisationEvent(organisation.id, eventId);
 
     return NextResponse.json({ deleted: true });
   } catch (error) {
@@ -319,6 +168,14 @@ export async function DELETE(request: Request, context: RouteContext) {
       return badRequest(error.message, [
         { path: ["x-org-id"], message: error.message }
       ]);
+    }
+
+    if (error instanceof EventLifecycleNotFoundError) {
+      return notFound(error.message);
+    }
+
+    if (error instanceof EventLifecycleValidationError) {
+      return badRequest(error.message, error.details);
     }
 
     console.error("Failed to delete event", { eventId, error });

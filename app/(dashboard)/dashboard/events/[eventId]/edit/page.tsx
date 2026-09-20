@@ -5,7 +5,10 @@ import {
   requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import {
+  EventLifecycleNotFoundError,
+  getOrganisationEventForEditing
+} from "@/lib/events/event-lifecycle";
 
 type EventFormData = {
   id: string;
@@ -35,55 +38,20 @@ export default async function EditEventPage({
   const organisation = await requireCurrentOrganisationAccount();
   await requireOrganisationEventManagementAccess(organisation.id);
 
-  const event = await prisma.event.findFirst({
-    where: {
-      id: eventId,
-      organisationId: organisation.id
-    },
-    select: {
-      id: true,
-      organisationId: true,
-      title: true,
-      description: true,
-      startTime: true,
-      endTime: true,
-      location: true,
-      status: true,
-      ticketTypes: {
-        select: {
-          id: true,
-          name: true,
-          price: true,
-          quantity: true,
-          _count: {
-            select: {
-              orders: true,
-              tickets: true
-            }
-          }
-        },
-        orderBy: { createdAt: "asc" }
-      }
+  let initialEvent: EventFormData;
+
+  try {
+    initialEvent = await getOrganisationEventForEditing(
+      organisation.id,
+      eventId
+    );
+  } catch (error) {
+    if (error instanceof EventLifecycleNotFoundError) {
+      notFound();
     }
-  });
 
-  if (!event) {
-    notFound();
+    throw error;
   }
-
-  const initialEvent: EventFormData = {
-    ...event,
-    startTime: event.startTime.toISOString(),
-    endTime: event.endTime.toISOString(),
-    ticketTypes: event.ticketTypes.map((ticketType) => ({
-      id: ticketType.id,
-      name: ticketType.name,
-      price: ticketType.price,
-      quantity: ticketType.quantity,
-      ordersCount: ticketType._count.orders,
-      ticketsCount: ticketType._count.tickets
-    }))
-  };
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name}>

@@ -11,13 +11,16 @@ import {
   OrganisationAccessError,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
 import {
   OrganisationMismatchError,
   OrganisationScopeError,
-  requireOrganisationId,
-  scopedByOrganisation
+  requireOrganisationId
 } from "@/lib/db/organisation-scope";
+import {
+  createOrganisationEvent,
+  EventLifecycleValidationError,
+  listOrganisationEvents
+} from "@/lib/events/event-lifecycle";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createEventSchema } from "@/lib/validators/events";
@@ -39,55 +42,7 @@ export async function POST(request: Request) {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireOrganisationEventManagementAccess(organisationId);
 
-    const organisation = await prisma.organisation.findUnique({
-      where: { id: organisationId },
-      select: { id: true }
-    });
-
-    if (!organisation) {
-      return badRequest("Invalid organisationId", [
-        { path: ["organisationId"], message: "Organisation does not exist" }
-      ]);
-    }
-
-    const event = await prisma.event.create({
-      data: {
-        organisationId,
-        title: validation.data.title,
-        description: validation.data.description,
-        startTime: validation.data.startTime,
-        endTime: validation.data.endTime,
-        location: validation.data.location,
-        status: validation.data.status,
-        ticketTypes: {
-          create: validation.data.ticketTypes.map((ticketType) => ({
-            name: ticketType.name,
-            price: ticketType.price,
-            quantity: ticketType.quantity
-          }))
-        }
-      },
-      select: {
-        id: true,
-        organisationId: true,
-        title: true,
-        description: true,
-        startTime: true,
-        endTime: true,
-        location: true,
-        status: true,
-        createdAt: true,
-        ticketTypes: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            quantity: true
-          },
-          orderBy: { createdAt: "asc" }
-        }
-      }
-    });
+    const event = await createOrganisationEvent(organisationId, validation.data);
 
     return NextResponse.json({ event }, { status: 201 });
   } catch (error) {
@@ -110,6 +65,10 @@ export async function POST(request: Request) {
       ]);
     }
 
+    if (error instanceof EventLifecycleValidationError) {
+      return badRequest(error.message, error.details);
+    }
+
     console.error(error);
     return internalError();
   }
@@ -121,30 +80,7 @@ export async function GET(request: Request) {
     const organisationId = requireOrganisationId(searchParams.get("orgId"));
     await requireOrganisationEventManagementAccess(organisationId);
 
-    const events = await prisma.event.findMany({
-      where: scopedByOrganisation(organisationId),
-      orderBy: { startTime: "asc" },
-      select: {
-        id: true,
-        organisationId: true,
-        title: true,
-        description: true,
-        startTime: true,
-        endTime: true,
-        location: true,
-        status: true,
-        createdAt: true,
-        ticketTypes: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            quantity: true
-          },
-          orderBy: { createdAt: "asc" }
-        }
-      }
-    });
+    const events = await listOrganisationEvents(organisationId);
 
     return NextResponse.json({ events });
   } catch (error) {

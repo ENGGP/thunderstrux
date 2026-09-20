@@ -1,5 +1,7 @@
 services:
   app:
+    build:
+      target: development
     environment:
       NODE_ENV: development
       THUNDERSTRUX_RUNTIME_CONTAINER: "false"
@@ -8,7 +10,7 @@ services:
     volumes:
       - .:/app
       - node_modules:/app/node_modules
-    command: pnpm dev
+    command: sh -c "pnpm prisma:migrate:deploy && pnpm dev"
 
   db:
     ports:

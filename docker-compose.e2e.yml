@@ -28,11 +28,24 @@ services:
       NEXT_PUBLIC_APP_URL: http://localhost:3100
       TRUSTED_APP_ORIGINS: http://localhost:3100
       RATE_LIMIT_ENABLED: 'false'
+      PORT: '3100'
       RESEND_API_KEY: ''
       EMAIL_FROM: ''
     ports:
       - '127.0.0.1:3100:3100'
-    command: [pnpm, exec, next, start, --hostname, 0.0.0.0, --port, '3100']
+    command: [node, node_modules/next/dist/bin/next, start, --hostname, 0.0.0.0, --port, '3100']
+    depends_on:
+      db:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+  migration:
+    image: thunderstrux-p216-app:local
+    env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:e2e}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
+    command: [node, node_modules/prisma/build/index.js, migrate, deploy]
     depends_on:
       db:
         condition: service_healthy

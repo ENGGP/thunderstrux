@@ -8,7 +8,9 @@ Dependency security update (2026-09-18): D1-D5 fixes merged through PR #3; the p
 
 ## Current State
 
-P2.16 update (2026-09-19): implementation and acceptance validated on `codex/p216-e2e-staging-payments`, awaiting merge of PR #10. Final regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified. `e2e-tests` is now required alongside the existing three checks; all four must pass on the final PR head. Test containers/volumes and generated credentials were cleaned up. See [[E2E and Staging Payments]] for run references, precise evidence and recovery instructions.
+P2.17 update (2026-09-20): repository-side operations are implemented on `codex/p217-operations`. The isolated rehearsal passed non-root startup, explicit migrations, database/Redis readiness outages, checksum-verified backup and restore, corrupt-archive quarantine, compatibility-gated rollback, and migration-failure blocking. Current regression passed 195 integration tests, typecheck, production image build, and audit. See [[Production Operations]]. External hosting, alert delivery, worker schedules, and encrypted off-machine backups remain activation work.
+
+P2.16 update (2026-09-19): implementation and acceptance merged through PR #10. Final P2.16 regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified. `e2e-tests` is required alongside the existing three checks. Test containers/volumes and generated credentials were cleaned up. See [[E2E and Staging Payments]] for run references, precise evidence and recovery instructions.
 
 Thunderstrux is a Docker-based Next.js 16 App Router SaaS for student societies.
 
@@ -248,7 +250,7 @@ Important rules:
 
 Recommended next implementation branch:
 
-- P1.13 implementation is MVP-complete after docs/runbook cleanup and validation. Next work should focus on production deployment wiring: log aggregation, alert routing, scheduler configuration, and healthcheck monitoring.
+- P2.17 repository-side operations are implemented and locally rehearsed. See [[Production Operations]]. The next production step is selecting a host and activating off-machine backups, external health/alert routing, and one-minute worker schedules.
 - Produce the dedicated CSRF design for P0 Slice B before implementing any token-based CSRF changes.
 - Keep each remediation slice narrow and separately reviewed.
 

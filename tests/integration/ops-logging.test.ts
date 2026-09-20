@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { GET as health } from "@/app/api/health/route";
+import { GET as readiness } from "@/app/api/health/ready/route";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { emitMetric } from "@/lib/ops/metrics";
 import { logError, logInfo, redactLogContext } from "@/lib/ops/logger";
@@ -118,6 +119,17 @@ describe("ops logging foundation", () => {
     expect(response.status).toBe(200);
     await expect(parseJsonResponse(response)).resolves.toEqual({
       status: "ok",
+      service: "thunderstrux"
+    });
+  });
+
+  test("readiness endpoint verifies the application database without exposing details", async () => {
+    const response = await readiness();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(parseJsonResponse(response)).resolves.toEqual({
+      status: "ready",
       service: "thunderstrux"
     });
   });

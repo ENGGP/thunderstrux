@@ -8,7 +8,7 @@ services:
     environment:
       DATABASE_URL: postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public
   db:
-    env_file: []
+    env_file: !reset []
     environment:
       POSTGRES_USER: p217
       POSTGRES_PASSWORD: p217-disposable-only

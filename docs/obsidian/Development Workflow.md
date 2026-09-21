@@ -1,5 +1,7 @@
 # Development Workflow
 
+For the end-to-end engineering, review, validation, and PR sequence used by the recent remediation slices, start with [[Engineering Delivery Workflow]] and the latest [[Current Handover]]. This page holds local Docker and command details.
+
 ## Dependency security validation
 
 See [[Handover 2026-09-18 Dependency Security Remediation]] for the current patched versions and Prisma override. Run `pnpm install --frozen-lockfile`, `pnpm prisma:generate`, `pnpm typecheck`, `pnpm test` against a disposable `_test` PostgreSQL database, `pnpm build`, and `pnpm audit --audit-level high`. The audit includes development dependencies and must exit zero. A lockfile-only update does not refresh host node_modules or a running Docker dependency volume. Preserve database volumes when updating dependencies.

@@ -7,9 +7,9 @@
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. The current product scope is:
 
 - Email/password authentication with Auth.js credentials.
-- Two account roles: `member` and `organisation`.
+- Account roles `member` and legacy `organisation`; named organisation staff authority is stored separately from join membership.
 - Member profile onboarding, organisation search/join/leave, public organisation details, public event browsing, ticket purchase, and `/tickets`.
-- Organisation accounts manage exactly one organisation directly at `/dashboard`.
+- Legacy organisation accounts manage their bootstrap organisation; named staff can manage permitted organisations through `/dashboard`.
 - Organisation management routes under `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
 - Organiser order detail, manual refund flag, Stripe session visibility, and paid-order email resend.
 - Organiser event ticket visibility, manual attendee check-in, and check-out.
@@ -26,26 +26,28 @@ Not implemented:
 
 - Email verification.
 - Password reset.
-- Staff invites or multi-user organisation staff access.
+- MFA for staff access.
 - Stripe-integrated refund processing.
 - QR codes.
 - File uploads.
 
-For MVP, organisation committee members may share one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
+Named staff users, invites, audit logs, and per-user permissions are implemented. Legacy organisation logins remain supported; MFA is future work. `OrganisationMember` remains join state, not management authority.
 
 ## Start Here
 
 Read these in order:
 
 1. [[Current Handover]]
-2. [[Architecture Overview]]
-3. [[Development Workflow]]
-4. [[Troubleshooting]]
-5. [[Database and Multi Tenancy]]
-6. [[Frontend and Backend Flow]]
-7. [[Stripe Payments and Connect]]
-8. [[Seeding and Data]]
-9. [[UI Architecture Rules]]
+2. [[Handover 2026-09-21 P3.19 Delivery]]
+3. [[Engineering Delivery Workflow]]
+4. [[Architecture Overview]]
+5. [[Development Workflow]]
+6. [[Troubleshooting]]
+7. [[Database and Multi Tenancy]]
+8. [[Frontend and Backend Flow]]
+9. [[Stripe Payments and Connect]]
+10. [[Seeding and Data]]
+11. [[UI Architecture Rules]]
 
 Dated handover files are historical records:
 

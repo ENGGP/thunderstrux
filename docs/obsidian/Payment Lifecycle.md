@@ -1,5 +1,7 @@
 # Payment Lifecycle
 
+Delivery and defect-resolution evidence: [[Handover 2026-09-21 P3.19 Delivery]]. Repeatable engineering and PR procedure: [[Engineering Delivery Workflow]].
+
 P3.19 adds an append-only business-event journal around the existing `Order`, `TicketReservation`, `Ticket`, refund, and `EmailOutbox` fields. Existing status enums and API response contracts remain authoritative for current state; `OrderLifecycleEvent` explains how that state was reached.
 
 ## Storage
@@ -67,7 +69,7 @@ Migration `20260921010000_formal_payment_lifecycle` is additive: it creates the 
 - Independent review identified an incorrect compensation reservation after-state; the journal now reads the actual resulting reservation, with regression coverage. Follow-up review found no further correctness issues.
 - Real Stripe campaign `p216-20010cf603f4e0763ec530c1` passed success, decline, manually attested cancellation, and forced expiry on API version `2026-03-25.dahlia`. It verified the new lifecycle sequence and real Stripe event correlation, destination-charge configuration, inventory, tickets, outbox, and buyer visibility. Listener HTTP 200 and app receipt were correlated. Stripe cleanup and run-owned resource cleanup passed.
 - Real event evidence: success `evt_1UHz3tRuN9MD4SvFpGbf8zTn`, decline/expiry `evt_1UHz62RuN9MD4SvFMJeKqd9x`, cancellation/expiry `evt_1UHz8uRuN9MD4SvFZRbGqV1c`. This does not claim natural timeout or email-provider delivery.
-- Implementation revision: `138c982`. Merge requires green latest-head PR checks and maintainer review; local evidence does not replace CI.
+- Implementation revision: `138c982`; merged through [PR #13](https://github.com/ENGGP/thunderstrux/pull/13) after five latest-head checks passed. Local evidence did not replace CI.
 - See [[E2E and Staging Payments]] for the real Stripe acceptance procedure required after payment-path changes.
 
 Related: [[Stripe Payments and Connect]], [[Email Delivery Implementation]], [[Database and Multi Tenancy]], [[Production Operations]].

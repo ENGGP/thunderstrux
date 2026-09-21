@@ -93,7 +93,7 @@ lib/
   email/                             Ticket delivery email service and outbox worker helpers
   events/                            Public reads, analytics, and event lifecycle use cases
   orders/                            Scoped order operations and stale pending cleanup
-  payments/                          Checkout creation and reconciliation use cases
+  payments/                          Checkout, reconciliation, and lifecycle history use cases
   permissions/                       Legacy role permission helpers
   stripe/                            Stripe SDK, Connect application service, and fees
   tickets/                           Reservations and ticket attendance service

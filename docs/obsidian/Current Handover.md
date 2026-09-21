@@ -1,5 +1,7 @@
 # Current Handover
 
+P3.19 update (2026-09-21): payment operations now append typed `OrderLifecycleEvent` history across checkout, Stripe reconciliation, compensation, cleanup, manual refund, and email delivery. The organiser order detail page exposes a bounded tenant-scoped timeline with actor attribution. Ambiguous Stripe order matches are rejected without mutation, late-paid failed orders enter compensation review, manual refunds block compensation recovery, and email workers use rotating claim-token fencing. The additive migration does not backfill legacy orders; their first later transition records an incomplete-history baseline. See [[Payment Lifecycle]]. Fresh migration, 213 integration tests, typecheck, production build, three consecutive 15-test browser/webhook runs, 13 runner-safety tests, operations rehearsal, and a zero-finding audit pass. Real Stripe campaign `p216-20010cf603f4e0763ec530c1` passed success, decline, cancellation, forced expiry, and new journal correlation with successful cleanup. Implementation revision `138c982` is locally accepted; merge requires green latest-head PR checks and maintainer review. Drain old email workers before deploying the new claim-token implementation.
+
 Read this first, then [[Thunderstrux Codebase Map]].
 
 Latest dated handover: [[Handover 2026-09-18 Dependency Security Remediation]].
@@ -263,7 +265,7 @@ Other pending branches:
 - P1.10 added the planned composite indexes, but existing single-column `Order(eventId)` and `Order(userId)` indexes intentionally remain. Review real production index usage before removing any redundant indexes.
 - Production must schedule `pnpm email:outbox:process` every 1 minute or paid buyers may not receive ticket delivery email.
 - Production must schedule `pnpm stale-orders:process` every 1 minute or stale pending orders/reservations may remain until the next manual run. Use `pnpm stale-orders:process -- --dry-run` for non-mutating inspection.
-- Structured alert events including `paid_but_unfulfilled_compensation_required`, `email_outbox_retry_exhausted`, `stale_order_worker_failed`, `stripe_webhook_signature_failure`, and `checkout_session_creation_failure` still require external production routing.
+- Structured alert events including `paid_but_unfulfilled_compensation_required`, `payment_reconciliation_ambiguous_order`, `email_outbox_retry_exhausted`, `stale_order_worker_failed`, `stripe_webhook_signature_failure`, and `checkout_session_creation_failure` still require external production routing.
 - Public availability can still become stale between page load and checkout; checkout remains authoritative.
 - Optional P1.7 UI test hardening: assert input `max` and disabled button attributes directly.
 - Add drift-audit or repair tooling for denormalized `Order.organisationId`, `Ticket.organisationId`, and `TicketReservation.organisationId`; P1.9 hardens runtime trust but does not rewrite historical rows.

@@ -62,6 +62,7 @@ Expected success output:
 Worker behavior:
 
 - Claims due `pending` jobs and stale `processing` jobs.
+- Assigns a new `processingToken` on every claim or reclaim; completion and failure writes require that token so stale workers cannot overwrite a newer claim.
 - Does not claim terminal `failed` jobs.
 - Marks jobs `processing` during the batch.
 - Retries with fixed backoff until `EMAIL_OUTBOX_MAX_ATTEMPTS`.
@@ -70,6 +71,9 @@ Worker behavior:
 - Stores `providerMessageId` and `deliveredToProviderAt` after provider success and successful DB update.
 - Updates `Order.ticketEmailSentAt` only after automatic provider success.
 - Updates `Order.ticketEmailResentAt` only after manual provider success.
+- Appends business lifecycle events for enqueue, retry, provider acceptance, and terminal exhaustion. Claim/reclaim leases are not lifecycle events.
+
+When deploying the processing-token migration, stop and drain old workers before starting workers from the new release. Older workers do not enforce token fencing. See [[Payment Lifecycle]].
 
 Operational checks:
 

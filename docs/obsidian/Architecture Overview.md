@@ -36,6 +36,8 @@ Security-sensitive routes are transport adapters. They retain request parsing, t
 
 - `lib/payments/checkout-creation.ts`: checkout validation, reservation/order creation, Stripe session creation, and failure recovery.
 - `lib/payments/checkout-reconciliation.ts`: completed and expired Checkout reconciliation.
+- `lib/payments/order-lifecycle.ts`: locked append-only business transition journal.
+- `lib/payments/order-lifecycle-history.ts`: tenant-scoped operator timeline and cursor parsing.
 - `lib/events/event-lifecycle.ts`: organisation-scoped event reads, create/edit, ticket-type changes, publish/unpublish, and deletion.
 - `lib/orders/grouped-orders.ts` and `lib/orders/order-detail.ts`: organisation-scoped order reads, refund marking, and paid-order email resend.
 - `lib/tickets/check-in.ts`: ticket attendance reads and mutations.

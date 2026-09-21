@@ -57,6 +57,9 @@ test('real HTTP expiry releases pending inventory and unknown event does not mut
   const expired = await state(order.id);
   expect(expired.status).toBe('expired');
   expect(expired.reservation?.status).toBe('expired');
+  const expiryHistory = await prisma.orderLifecycleEvent.findMany({where: {orderId: order.id, type: 'order_expired'}});
+  expect(expiryHistory).toHaveLength(1);
+  expect(expiryHistory[0].stripeEventId).toMatch(/^evt_/);
   expect(expired.tickets).toHaveLength(0);
   expect((await prisma.ticketType.findUniqueOrThrow({where: {id: data.ticket.id}})).quantity).toBe(10);
 });

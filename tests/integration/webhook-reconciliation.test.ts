@@ -499,6 +499,9 @@ describe("webhook reconciliation", () => {
     expect(unchangedOrder.reservation?.confirmedAt).toBeNull();
     expect(unchangedOrder.tickets).toHaveLength(0);
     expect(unchangedOrder.emailOutboxJobs).toHaveLength(0);
+    await expect(prisma.orderLifecycleEvent.count({
+      where: { orderId: order.id }
+    })).resolves.toBe(0);
     expect(unchangedTicketType.quantity).toBe(3);
   });
 
@@ -804,6 +807,12 @@ describe("webhook reconciliation", () => {
     expect(updated.fulfilmentFailureReason).toBe(
       "inventory_unavailable_after_payment"
     );
+    await expect(prisma.orderLifecycleEvent.findMany({
+      where: { orderId: order.id, type: "compensation_required" }
+    })).resolves.toEqual([expect.objectContaining({
+      fromReservationStatus: "active",
+      toReservationStatus: "released"
+    })]);
     expect(updated.tickets).toHaveLength(0);
     expect(updated.reservation?.status).toBe("released");
     await expect(

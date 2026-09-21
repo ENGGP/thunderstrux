@@ -8,6 +8,10 @@ import {
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
+import {
+  appendOrderLifecycleEvent,
+  lockOrder
+} from "@/lib/payments/order-lifecycle";
 
 const defaultBatchSize = 25;
 const defaultMaxAttempts = 5;
@@ -20,6 +24,7 @@ type ClaimedEmailJob = {
   mode: EmailOutboxMode;
   status: EmailOutboxStatus;
   attempts: number;
+  processingToken: string;
 };
 
 type InsertedEmailJob = {
@@ -62,10 +67,12 @@ function nextAttemptAt(attempts: number, now: Date) {
 
 export async function enqueueTicketEmail({
   orderId,
-  mode
+  mode,
+  actorUserId
 }: {
   orderId: string;
   mode: EmailOutboxMode;
+  actorUserId?: string;
 }) {
   if (mode === "automatic") {
     return prisma.$transaction((tx) =>
@@ -73,25 +80,57 @@ export async function enqueueTicketEmail({
     );
   }
 
-  const result = await prisma.emailOutbox.createMany({
-    data: {
+  return prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, orderId))) return { enqueued: false };
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: {
+        status: true,
+        requiresCompensationReview: true,
+        reservation: { select: { status: true } }
+      }
+    });
+    const job = await tx.emailOutbox.create({
+      data: { orderId, mode },
+      select: { id: true }
+    });
+    await appendOrderLifecycleEvent(tx, {
       orderId,
-      mode
-    },
-    skipDuplicates: false
+      type: "email_enqueued",
+      source: "staff_action",
+      actorUserId,
+      emailOutboxId: job.id,
+      fromOrderStatus: order.status,
+      toOrderStatus: order.status,
+      facts: { emailMode: mode },
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
+    return { enqueued: true };
   });
-
-  return { enqueued: result.count > 0 };
 }
 
 export async function enqueueAutomaticTicketEmailForOrder(
   tx: Prisma.TransactionClient,
-  orderId: string
+  orderId: string,
+  source: "stripe_webhook" | "development_fallback" = "stripe_webhook"
 ) {
   if (automaticOutboxEnqueueTestFailure) {
     throw automaticOutboxEnqueueTestFailure;
   }
 
+  if (!(await lockOrder(tx, orderId))) return { enqueued: false };
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      status: true,
+      requiresCompensationReview: true,
+      reservation: { select: { status: true } }
+    }
+  });
   const id = `email_${randomUUID()}`;
   const rows = await tx.$queryRaw<InsertedEmailJob[]>`
     INSERT INTO "EmailOutbox" ("id", "orderId", "mode", "updatedAt")
@@ -100,6 +139,23 @@ export async function enqueueAutomaticTicketEmailForOrder(
     DO NOTHING
     RETURNING "id"
   `;
+
+  if (rows[0]) {
+    await appendOrderLifecycleEvent(tx, {
+      orderId,
+      type: "email_enqueued",
+      source,
+      emailOutboxId: rows[0].id,
+      facts: { emailMode: "automatic" },
+      fromOrderStatus: order.status,
+      toOrderStatus: order.status,
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
+  }
 
   return { enqueued: rows.length > 0 };
 }
@@ -120,6 +176,7 @@ export async function claimTicketEmailOutboxJobs({
     SET
       "status" = 'processing'::"EmailOutboxStatus",
       "processingStartedAt" = ${now},
+      "processingToken" = gen_random_uuid()::text,
       "updatedAt" = ${now}
     WHERE "id" IN (
       SELECT "id"
@@ -137,7 +194,7 @@ export async function claimTicketEmailOutboxJobs({
       FOR UPDATE SKIP LOCKED
       LIMIT ${limit}
     )
-    RETURNING "id", "orderId", "mode", "status", "attempts"
+    RETURNING "id", "orderId", "mode", "status", "attempts", "processingToken"
   `;
 }
 
@@ -150,19 +207,34 @@ async function markJobSent({
   now: Date;
   providerMessageId: string | null;
 }) {
-  await prisma.$transaction([
-    prisma.emailOutbox.update({
-      where: { id: job.id },
+  return prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, job.orderId))) return false;
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: job.orderId },
+      select: {
+        status: true,
+        requiresCompensationReview: true,
+        reservation: { select: { status: true } }
+      }
+    });
+    const updated = await tx.emailOutbox.updateMany({
+      where: {
+        id: job.id,
+        status: "processing",
+        processingToken: job.processingToken
+      },
       data: {
         status: "sent",
         sentAt: now,
         deliveredToProviderAt: now,
         providerMessageId,
         lastError: null,
-        processingStartedAt: null
+        processingStartedAt: null,
+        processingToken: null
       }
-    }),
-    prisma.order.update({
+    });
+    if (updated.count === 0) return false;
+    await tx.order.update({
       where: { id: job.orderId },
       data:
         job.mode === "automatic"
@@ -174,8 +246,23 @@ async function markJobSent({
               ticketEmailResentAt: now,
               ticketEmailLastError: null
             }
-    })
-  ]);
+    });
+    await appendOrderLifecycleEvent(tx, {
+      orderId: job.orderId,
+      type: "email_provider_accepted",
+      source: "email_worker",
+      emailOutboxId: job.id,
+      fromOrderStatus: order.status,
+      toOrderStatus: order.status,
+      facts: { emailMode: job.mode },
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
+    return true;
+  });
 }
 
 async function markJobFailed({
@@ -195,24 +282,57 @@ async function markJobFailed({
   );
   const exhausted = attempts >= maxAttempts;
 
-  await prisma.$transaction([
-    prisma.emailOutbox.update({
-      where: { id: job.id },
+  const applied = await prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, job.orderId))) return false;
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: job.orderId },
+      select: {
+        status: true,
+        requiresCompensationReview: true,
+        reservation: { select: { status: true } }
+      }
+    });
+    const updated = await tx.emailOutbox.updateMany({
+      where: {
+        id: job.id,
+        status: "processing",
+        processingToken: job.processingToken
+      },
       data: {
         status: exhausted ? "failed" : "pending",
         attempts,
         nextAttemptAt: exhausted ? now : nextAttemptAt(attempts, now),
         processingStartedAt: null,
-        lastError: message
+        lastError: message,
+        processingToken: null
       }
-    }),
-    prisma.order.update({
+    });
+    if (updated.count === 0) return false;
+    await tx.order.update({
       where: { id: job.orderId },
       data: {
         ticketEmailLastError: message
       }
-    })
-  ]);
+    });
+    await appendOrderLifecycleEvent(tx, {
+      orderId: job.orderId,
+      type: exhausted ? "email_delivery_exhausted" : "email_retry_scheduled",
+      source: "email_worker",
+      emailOutboxId: job.id,
+      reason: "provider_error",
+      fromOrderStatus: order.status,
+      toOrderStatus: order.status,
+      facts: { emailMode: job.mode, emailTerminal: exhausted },
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
+    return true;
+  });
+
+  if (!applied) return { applied: false, exhausted };
 
   logError("email_outbox.job.failed", {
     jobId: job.id,
@@ -235,6 +355,28 @@ async function markJobFailed({
       attempts
     });
   }
+  return { applied: true, exhausted };
+}
+
+async function markJobAlreadySent(job: ClaimedEmailJob, now: Date) {
+  return prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, job.orderId))) return false;
+    const updated = await tx.emailOutbox.updateMany({
+      where: {
+        id: job.id,
+        status: "processing",
+        processingToken: job.processingToken
+      },
+      data: {
+        status: "sent",
+        sentAt: now,
+        lastError: null,
+        processingStartedAt: null,
+        processingToken: null
+      }
+    });
+    return updated.count > 0;
+  });
 }
 
 export async function processTicketEmailOutboxBatch({
@@ -273,39 +415,53 @@ export async function processTicketEmailOutboxBatch({
       }
 
       if (job.mode === "automatic" && order.ticketEmailSentAt) {
-        await prisma.emailOutbox.update({
-          where: { id: job.id },
-          data: {
-            status: "sent",
-            sentAt: now,
-            lastError: null,
-            processingStartedAt: null
-          }
-        });
+        await markJobAlreadySent(job, now);
         result.skipped += 1;
         continue;
       }
 
-      const delivery = await sendTicketDeliveryEmailToProvider(job.orderId, {
-        idempotencyKey: `ticket-email/${job.id}`
-      });
-      await markJobSent({
-        job,
-        now,
-        providerMessageId: delivery.providerMessageId
-      });
-      result.sent += 1;
-      emitMetric("email_outbox_jobs_sent_total", 1, {
-        mode: job.mode
-      });
-    } catch (error) {
-      await markJobFailed({ job, error, now, maxAttempts });
-
-      if (job.attempts + 1 >= maxAttempts) {
-        result.failed += 1;
-      } else {
-        result.retried += 1;
+      let delivery;
+      try {
+        delivery = await sendTicketDeliveryEmailToProvider(job.orderId, {
+          idempotencyKey: `ticket-email/${job.id}`
+        });
+      } catch (error) {
+        const failure = await markJobFailed({ job, error, now, maxAttempts });
+        if (!failure.applied) result.skipped += 1;
+        else if (failure.exhausted) result.failed += 1;
+        else result.retried += 1;
+        continue;
       }
+
+      try {
+        const applied = await markJobSent({
+          job,
+          now,
+          providerMessageId: delivery.providerMessageId
+        });
+        if (!applied) {
+          result.skipped += 1;
+          continue;
+        }
+        result.sent += 1;
+        emitMetric("email_outbox_jobs_sent_total", 1, { mode: job.mode });
+      } catch (error) {
+        logError("email_outbox.job.finalization_failed", {
+          jobId: job.id,
+          orderId: job.orderId,
+          mode: job.mode,
+          error
+        });
+        result.skipped += 1;
+      }
+    } catch (error) {
+      logError("email_outbox.job.processing_failed", {
+        jobId: job.id,
+        orderId: job.orderId,
+        mode: job.mode,
+        error
+      });
+      result.skipped += 1;
     }
   }
 

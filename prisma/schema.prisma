@@ -26,6 +26,7 @@ model User {
   staffInvitesAccepted    OrganisationStaffInvite[] @relation("StaffInviteAcceptor")
   revokedStaffMemberships OrganisationStaff[] @relation("StaffRevoker")
   auditLogs               AuditLog[]
+  orderLifecycleEvents    OrderLifecycleEvent[]     @relation("OrderLifecycleActor")
   ownedOrganisation       Organisation?        @relation("OrganisationAccount")
   orders                  Order[]
   reservations            TicketReservation[]
@@ -200,6 +201,7 @@ model Order {
   tickets         Ticket[]
   reservation     TicketReservation?
   emailOutboxJobs EmailOutbox[]
+  lifecycleEvents            OrderLifecycleEvent[]
 
   @@index([organisationId])
   @@index([eventId])
@@ -239,6 +241,7 @@ model EmailOutbox {
   attempts            Int               @default(0)
   nextAttemptAt       DateTime          @default(now())
   processingStartedAt DateTime?
+  processingToken       String?
   lastError           String?
   providerMessageId   String?
   deliveredToProviderAt DateTime?
@@ -250,6 +253,33 @@ model EmailOutbox {
   @@index([status, nextAttemptAt, createdAt])
   @@index([status, processingStartedAt])
   @@index([orderId])
+}
+
+model OrderLifecycleEvent {
+  id                    String                  @id @default(cuid())
+  orderId               String
+  sequence              Int
+  type                  OrderLifecycleEventType
+  source                OrderLifecycleSource
+  actorUserId           String?
+  stripeEventId         String?
+  stripeSessionId       String?
+  emailOutboxId         String?
+  reason                String?
+  fromOrderStatus       OrderStatus?
+  toOrderStatus         OrderStatus?
+  fromReservationStatus ReservationStatus?
+  toReservationStatus   ReservationStatus?
+  facts                 Json?
+  createdAt             DateTime                @default(now())
+  order                 Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor                 User?                   @relation("OrderLifecycleActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, sequence])
+  @@index([orderId, createdAt])
+  @@index([stripeEventId])
+  @@index([emailOutboxId])
+  @@index([actorUserId, createdAt])
 }
 
 model TicketReservation {
@@ -335,4 +365,30 @@ enum ReservationStatus {
   confirmed
   released
   expired
+}
+
+enum OrderLifecycleEventType {
+  legacy_baseline
+  order_created
+  stripe_session_attached
+  order_failed
+  order_expired
+  compensation_required
+  payment_fulfilled
+  compensation_recovered
+  manual_refund_marked
+  email_enqueued
+  email_retry_scheduled
+  email_provider_accepted
+  email_delivery_exhausted
+}
+
+enum OrderLifecycleSource {
+  checkout
+  stripe_webhook
+  development_fallback
+  stale_cleanup
+  staff_action
+  email_worker
+  legacy
 }

@@ -92,7 +92,8 @@ describe("domain service boundaries", () => {
       'requireOrganisationPermission(organisation.id, "orders:email_resend")',
       "getOrganisationOrderResendTarget(",
       "enforceRateLimit({",
-      "enqueueOrganisationOrderTicketEmail(organisation.id, order.id)"
+      "requireAuthenticatedUser()",
+      "enqueueOrganisationOrderTicketEmail("
     ]);
   });
 

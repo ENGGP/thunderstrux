@@ -3,6 +3,10 @@ import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
+import {
+  appendOrderLifecycleEvent,
+  lockOrder
+} from "@/lib/payments/order-lifecycle";
 import { expireOldActiveReservations } from "@/lib/tickets/reservations";
 
 export const stalePreCheckoutOrderMinutes = 30;
@@ -69,7 +73,7 @@ export async function runStaleOrderCleanup({
       userId
     });
 
-    const reservationBackedOrders = await tx.order.updateMany({
+    const alreadyExpiredOrders = await tx.order.findMany({
       where: {
         ...eventScope,
         ...(ticketTypeId ? { ticketTypeId } : {}),
@@ -77,24 +81,51 @@ export async function runStaleOrderCleanup({
         status: "pending",
         reservation: {
           is: {
-            OR: [
-              { status: "expired" },
-              {
-                expiresAt: {
-                  lte: now
-                }
-              }
-            ]
+            status: "expired"
           }
         }
       },
-      data: {
-        status: "expired",
-        failureReason: null
-      }
+      select: { id: true },
+      orderBy: { id: "asc" }
     });
+    let alreadyExpiredCount = 0;
+    for (const candidate of alreadyExpiredOrders) {
+      if (!(await lockOrder(tx, candidate.id))) continue;
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id: candidate.id },
+        select: {
+          status: true,
+          requiresCompensationReview: true,
+          reservation: { select: { status: true } }
+        }
+      });
+      if (order.status !== "pending" || order.reservation?.status !== "expired") {
+        continue;
+      }
+      const updated = await tx.order.updateMany({
+        where: { id: candidate.id, status: "pending" },
+        data: { status: "expired", failureReason: null }
+      });
+      if (updated.count === 0) continue;
+      await appendOrderLifecycleEvent(tx, {
+        orderId: candidate.id,
+        type: "order_expired",
+        source: "stale_cleanup",
+        reason: "reservation_already_expired",
+        fromOrderStatus: "pending",
+        toOrderStatus: "expired",
+        fromReservationStatus: "expired",
+        toReservationStatus: "expired",
+        baseline: {
+          orderStatus: order.status,
+          reservationStatus: order.reservation.status,
+          compensationReview: order.requiresCompensationReview
+        }
+      });
+      alreadyExpiredCount += 1;
+    }
 
-    const legacyReservationlessOrders = await tx.order.updateMany({
+    const legacyOrders = await tx.order.findMany({
       where: {
         ...eventScope,
         ...(ticketTypeId ? { ticketTypeId } : {}),
@@ -107,19 +138,55 @@ export async function runStaleOrderCleanup({
           is: null
         }
       },
-      data: {
-        status: "expired",
-        failureReason: null
-      }
+      select: { id: true },
+      orderBy: { id: "asc" }
     });
+    let legacyCount = 0;
+    for (const candidate of legacyOrders) {
+      if (!(await lockOrder(tx, candidate.id))) continue;
+      const order = await tx.order.findUniqueOrThrow({
+        where: { id: candidate.id },
+        select: {
+          status: true,
+          createdAt: true,
+          requiresCompensationReview: true,
+          reservation: { select: { status: true } }
+        }
+      });
+      if (
+        order.status !== "pending" ||
+        order.reservation ||
+        order.createdAt >= legacyPendingCutoff
+      ) continue;
+      const updated = await tx.order.updateMany({
+        where: { id: candidate.id, status: "pending", reservation: { is: null } },
+        data: { status: "expired", failureReason: null }
+      });
+      if (updated.count === 0) continue;
+      await appendOrderLifecycleEvent(tx, {
+        orderId: candidate.id,
+        type: "order_expired",
+        source: "stale_cleanup",
+        reason: "legacy_pending_timeout",
+        fromOrderStatus: "pending",
+        toOrderStatus: "expired",
+        baseline: {
+          orderStatus: order.status,
+          compensationReview: order.requiresCompensationReview
+        }
+      });
+      legacyCount += 1;
+    }
 
-    const ordersUpdated =
-      reservationBackedOrders.count + legacyReservationlessOrders.count;
+    // Preserve the established result contract: reservationsUpdated reports
+    // active reservations handled by the first phase, while ordersUpdated
+    // reports only the follow-up pending-order cleanup phases.
+    const ordersUpdated = alreadyExpiredCount + legacyCount;
 
     return {
       reservationsUpdated: reservations.count,
-      reservationBackedOrdersUpdated: reservationBackedOrders.count,
-      legacyReservationlessOrdersUpdated: legacyReservationlessOrders.count,
+      reservationBackedOrdersUpdated: alreadyExpiredCount,
+      legacyReservationlessOrdersUpdated: legacyCount,
       ordersUpdated
     };
   });
@@ -272,57 +339,34 @@ async function processStaleOrderCleanupBatchInternal({
     now.getTime() - stalePreCheckoutOrderMinutes * 60 * 1000
   );
 
-  const reservationCandidates = dryRun
-    ? await selectExpiredReservationCandidates({ db: prisma, limit, now, lock: false })
-    : await prisma.$transaction((tx) =>
-        selectExpiredReservationCandidates({ db: tx, limit, now, lock: true })
-      );
-  const reservationIds = reservationCandidates.map((reservation) => reservation.id);
-  const reservationOrderIds = reservationCandidates.map(
-    (reservation) => reservation.orderId
-  );
+  const reservationCandidates = await selectExpiredReservationCandidates({
+    db: prisma,
+    limit,
+    now,
+    lock: false
+  });
   const afterReservationLimit = Math.max(0, limit - reservationCandidates.length);
   const alreadyExpiredReservationBackedOrderCandidates =
     afterReservationLimit > 0
-      ? dryRun
-        ? await selectAlreadyExpiredReservationBackedOrderCandidates({
-            db: prisma,
-            limit: afterReservationLimit,
-            lock: false
-          })
-        : await prisma.$transaction((tx) =>
-            selectAlreadyExpiredReservationBackedOrderCandidates({
-              db: tx,
-              limit: afterReservationLimit,
-              lock: true
-            })
-          )
+      ? await selectAlreadyExpiredReservationBackedOrderCandidates({
+          db: prisma,
+          limit: afterReservationLimit,
+          lock: false
+        })
       : [];
-  const alreadyExpiredReservationBackedOrderIds =
-    alreadyExpiredReservationBackedOrderCandidates.map((order) => order.id);
   const remainingLimit = Math.max(
     0,
     afterReservationLimit - alreadyExpiredReservationBackedOrderCandidates.length
   );
   const legacyOrderCandidates =
     remainingLimit > 0
-      ? dryRun
-        ? await selectLegacyPendingOrderCandidates({
-            db: prisma,
-            limit: remainingLimit,
-            legacyPendingCutoff,
-            lock: false
-          })
-        : await prisma.$transaction((tx) =>
-            selectLegacyPendingOrderCandidates({
-              db: tx,
-              limit: remainingLimit,
-              legacyPendingCutoff,
-              lock: true
-            })
-          )
+      ? await selectLegacyPendingOrderCandidates({
+          db: prisma,
+          limit: remainingLimit,
+          legacyPendingCutoff,
+          lock: false
+        })
       : [];
-  const legacyOrderIds = legacyOrderCandidates.map((order) => order.id);
 
   if (dryRun) {
     return {
@@ -342,76 +386,144 @@ async function processStaleOrderCleanupBatchInternal({
     };
   }
 
-  const reservationsExpired =
-    reservationIds.length > 0
-      ? await prisma.ticketReservation.updateMany({
-          where: {
-            id: { in: reservationIds },
-            status: "active"
-          },
-          data: {
-            status: "expired",
-            releasedAt: now,
-            releaseReason: "Reservation expired before checkout completed"
+  let reservationsExpired = 0;
+  let reservationBackedOrdersExpired = 0;
+  for (const candidate of reservationCandidates) {
+    const applied = await prisma.$transaction(async (tx) => {
+      if (!(await lockOrder(tx, candidate.orderId))) return false;
+      const order = await tx.order.findUnique({
+        where: { id: candidate.orderId },
+        select: {
+          status: true,
+          requiresCompensationReview: true,
+          reservation: {
+            select: { id: true, status: true, expiresAt: true }
           }
-        })
-      : { count: 0 };
+        }
+      });
+      if (
+        !order ||
+        order.status !== "pending" ||
+        order.reservation?.id !== candidate.id ||
+        order.reservation.status !== "active" ||
+        order.reservation.expiresAt > now
+      ) return false;
+      const reservation = await tx.ticketReservation.updateMany({
+        where: { id: candidate.id, status: "active", expiresAt: { lte: now } },
+        data: {
+          status: "expired",
+          releasedAt: now,
+          releaseReason: "Reservation expired before checkout completed"
+        }
+      });
+      if (reservation.count === 0) return false;
+      const updated = await tx.order.updateMany({
+        where: { id: candidate.orderId, status: "pending" },
+        data: { status: "expired", failureReason: null }
+      });
+      if (updated.count === 0) return false;
+      await appendOrderLifecycleEvent(tx, {
+        orderId: candidate.orderId,
+        type: "order_expired",
+        source: "stale_cleanup",
+        reason: "reservation_expired",
+        fromOrderStatus: "pending",
+        toOrderStatus: "expired",
+        fromReservationStatus: "active",
+        toReservationStatus: "expired",
+        baseline: {
+          orderStatus: order.status,
+          reservationStatus: order.reservation.status,
+          compensationReview: order.requiresCompensationReview
+        }
+      });
+      return true;
+    });
+    if (applied) {
+      reservationsExpired += 1;
+      reservationBackedOrdersExpired += 1;
+    }
+  }
 
-  const reservationBackedOrdersExpired =
-    reservationOrderIds.length > 0
-      ? await prisma.order.updateMany({
-          where: {
-            id: { in: reservationOrderIds },
-            status: "pending",
-            reservation: {
-              is: {
-                id: { in: reservationIds },
-                status: "expired"
-              }
-            }
-          },
-          data: {
-            status: "expired",
-            failureReason: null
-          }
-        })
-      : { count: 0 };
+  let alreadyExpiredReservationBackedOrdersExpired = 0;
+  for (const candidate of alreadyExpiredReservationBackedOrderCandidates) {
+    const applied = await prisma.$transaction(async (tx) => {
+      if (!(await lockOrder(tx, candidate.id))) return false;
+      const order = await tx.order.findUnique({
+        where: { id: candidate.id },
+        select: {
+          status: true,
+          requiresCompensationReview: true,
+          reservation: { select: { status: true } }
+        }
+      });
+      if (order?.status !== "pending" || order.reservation?.status !== "expired") {
+        return false;
+      }
+      const updated = await tx.order.updateMany({
+        where: { id: candidate.id, status: "pending" },
+        data: { status: "expired", failureReason: null }
+      });
+      if (updated.count === 0) return false;
+      await appendOrderLifecycleEvent(tx, {
+        orderId: candidate.id,
+        type: "order_expired",
+        source: "stale_cleanup",
+        reason: "reservation_already_expired",
+        fromOrderStatus: "pending",
+        toOrderStatus: "expired",
+        fromReservationStatus: "expired",
+        toReservationStatus: "expired",
+        baseline: {
+          orderStatus: order.status,
+          reservationStatus: order.reservation.status,
+          compensationReview: order.requiresCompensationReview
+        }
+      });
+      return true;
+    });
+    if (applied) alreadyExpiredReservationBackedOrdersExpired += 1;
+  }
 
-  const alreadyExpiredReservationBackedOrdersExpired =
-    alreadyExpiredReservationBackedOrderIds.length > 0
-      ? await prisma.order.updateMany({
-          where: {
-            id: { in: alreadyExpiredReservationBackedOrderIds },
-            status: "pending",
-            reservation: {
-              is: {
-                status: "expired"
-              }
-            }
-          },
-          data: {
-            status: "expired",
-            failureReason: null
-          }
-        })
-      : { count: 0 };
-
-  const legacyOrdersExpired =
-    legacyOrderIds.length > 0
-      ? await prisma.order.updateMany({
-          where: {
-            id: { in: legacyOrderIds },
-            status: "pending",
-            reservation: {
-              is: null
-            }
-          },
-          data: {
-            status: "expired",
-            failureReason: null
-          }
-        })
-      : { count: 0 };
+  let legacyOrdersExpired = 0;
+  for (const candidate of legacyOrderCandidates) {
+    const applied = await prisma.$transaction(async (tx) => {
+      if (!(await lockOrder(tx, candidate.id))) return false;
+      const order = await tx.order.findUnique({
+        where: { id: candidate.id },
+        select: {
+          status: true,
+          createdAt: true,
+          requiresCompensationReview: true,
+          reservation: { select: { status: true } }
+        }
+      });
+      if (
+        order?.status !== "pending" ||
+        order.reservation ||
+        order.createdAt >= legacyPendingCutoff
+      ) return false;
+      const updated = await tx.order.updateMany({
+        where: { id: candidate.id, status: "pending", reservation: { is: null } },
+        data: { status: "expired", failureReason: null }
+      });
+      if (updated.count === 0) return false;
+      await appendOrderLifecycleEvent(tx, {
+        orderId: candidate.id,
+        type: "order_expired",
+        source: "stale_cleanup",
+        reason: "legacy_pending_timeout",
+        fromOrderStatus: "pending",
+        toOrderStatus: "expired",
+        baseline: {
+          orderStatus: order.status,
+          compensationReview: order.requiresCompensationReview
+        }
+      });
+      return true;
+    });
+    if (applied) legacyOrdersExpired += 1;
+  }
 
   return {
     dryRun,
@@ -419,18 +531,18 @@ async function processStaleOrderCleanupBatchInternal({
     now: now.toISOString(),
     legacyPendingCutoff: legacyPendingCutoff.toISOString(),
     reservationsSelected: reservationCandidates.length,
-    reservationsExpired: reservationsExpired.count,
-    reservationBackedOrdersExpired: reservationBackedOrdersExpired.count,
+    reservationsExpired,
+    reservationBackedOrdersExpired,
     alreadyExpiredReservationBackedOrdersSelected:
       alreadyExpiredReservationBackedOrderCandidates.length,
     alreadyExpiredReservationBackedOrdersExpired:
-      alreadyExpiredReservationBackedOrdersExpired.count,
+      alreadyExpiredReservationBackedOrdersExpired,
     legacyOrdersSelected: legacyOrderCandidates.length,
-    legacyOrdersExpired: legacyOrdersExpired.count,
+    legacyOrdersExpired,
     ordersExpired:
-      reservationBackedOrdersExpired.count +
-      alreadyExpiredReservationBackedOrdersExpired.count +
-      legacyOrdersExpired.count
+      reservationBackedOrdersExpired +
+      alreadyExpiredReservationBackedOrdersExpired +
+      legacyOrdersExpired
   };
 }
 

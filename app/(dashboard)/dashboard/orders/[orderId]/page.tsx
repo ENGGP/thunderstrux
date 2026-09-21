@@ -10,6 +10,10 @@ import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
 } from "@/lib/orders/order-detail";
+import {
+  getOrganisationOrderLifecycle,
+  parseOrderLifecycleCursor
+} from "@/lib/payments/order-lifecycle-history";
 
 function formatCurrency(amountInCents: number) {
   return new Intl.NumberFormat("en-AU", {
@@ -47,18 +51,31 @@ function buyerName(user: {
 }
 
 export default async function OrganisationOrderDetailPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ historyCursor?: string; historyDirection?: string }>;
 }) {
   const { orderId } = await params;
+  const historySearchParams = await searchParams;
+  const historyQuery = parseOrderLifecycleCursor(
+    historySearchParams.historyCursor,
+    historySearchParams.historyDirection
+  );
   const organisation = await requireCurrentOrganisationAccount();
   await requireOrganisationFinanceAccess(organisation.id);
 
   let order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>;
+  let lifecycle: Awaited<ReturnType<typeof getOrganisationOrderLifecycle>>;
 
   try {
     order = await getOrganisationOrderDetail(organisation.id, orderId);
+    lifecycle = await getOrganisationOrderLifecycle(
+      organisation.id,
+      orderId,
+      historyQuery
+    );
   } catch (error) {
     if (error instanceof OrganisationOrderAccessError) {
       notFound();
@@ -178,6 +195,73 @@ export default async function OrganisationOrderDetailPage({
                 </tr>
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-neutral-950">Order history</h3>
+          {lifecycle.historyIncomplete ? (
+            <p className="mt-2 text-sm text-amber-700">
+              This order predates lifecycle history. Earlier activity may not be shown.
+            </p>
+          ) : null}
+          {lifecycle.events.length === 0 ? (
+            <p className="mt-4 text-sm text-neutral-600">
+              No lifecycle history has been recorded for this order yet.
+            </p>
+          ) : (
+            <ol className="mt-4 divide-y divide-neutral-200">
+              {lifecycle.events.map((event) => (
+                <li className="break-words py-4" key={event.id}>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-neutral-950">
+                        {event.label}
+                      </p>
+                      <p className="mt-1 text-sm text-neutral-600">
+                        {event.actorName ?? event.source.replaceAll("_", " ")}
+                      </p>
+                    </div>
+                    <time className="text-sm text-neutral-500">
+                      {formatDateTime(event.createdAt)}
+                    </time>
+                  </div>
+                  {event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? (
+                    <p className="mt-2 text-sm text-neutral-700">
+                      Order: {event.fromOrderStatus ?? "unknown"} to {event.toOrderStatus}
+                    </p>
+                  ) : null}
+                  {event.fromReservationStatus !== event.toReservationStatus && event.toReservationStatus ? (
+                    <p className="mt-1 text-sm text-neutral-700">
+                      Reservation: {event.fromReservationStatus ?? "none"} to {event.toReservationStatus}
+                    </p>
+                  ) : null}
+                  {event.reason ? (
+                    <p className="mt-1 text-sm text-neutral-600">
+                      Reason: {event.reason.replaceAll("_", " ")}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          )}
+          <div className="mt-4 flex items-center justify-between gap-4">
+            {lifecycle.pageInfo.newerCursor ? (
+              <Link
+                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.newerCursor}&historyDirection=newer`}
+              >
+                Newer activity
+              </Link>
+            ) : <span />}
+            {lifecycle.pageInfo.olderCursor ? (
+              <Link
+                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.olderCursor}&historyDirection=older`}
+              >
+                Older activity
+              </Link>
+            ) : null}
           </div>
         </section>
 

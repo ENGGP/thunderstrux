@@ -27,6 +27,16 @@ try {
         totalAmount: ticketType.price
       }
     });
+    await transaction.orderLifecycleEvent.create({
+      data: {
+        orderId: order.id,
+        sequence: 1,
+        type: "order_created",
+        source: "checkout",
+        toOrderStatus: "pending",
+        facts: { compensationReview: false }
+      }
+    });
     await transaction.ticketReservation.create({
       data: {
         orderId: order.id,

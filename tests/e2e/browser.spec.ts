@@ -1,4 +1,48 @@
 import { test, expect, prisma, login, createEvent, createOrganisationAccount, createMember, createOrganisationStaff } from './fixtures';
+import { createOrder } from '@/tests/helpers/test-data';
+
+test('finance staff can page order history while another tenant cannot read it', async ({ page, data }) => {
+  await prisma.organisationStaff.update({ where: { id: data.staff.id }, data: { role: 'finance_manager' } });
+  const order = await createOrder({
+    organisationId: data.organisation.id,
+    eventId: data.event.id,
+    ticketTypeId: data.ticket.id,
+    userId: data.member.id,
+    status: 'paid',
+    paidAt: new Date()
+  });
+  await prisma.orderLifecycleEvent.createMany({ data: Array.from({ length: 27 }, (_, index) => ({
+    orderId: order.id,
+    sequence: index + 1,
+    type: index === 0 ? 'legacy_baseline' as const : 'email_enqueued' as const,
+    source: index === 0 ? 'legacy' as const : 'staff_action' as const,
+    reason: `history_entry_${index + 1}`,
+    actorUserId: index === 0 ? null : data.manager.id
+  })) });
+  await login(page, data.manager.email, `/dashboard/orders/${order.id}`);
+  const history = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Order history', exact: true }) });
+  await expect(history.getByRole('listitem')).toHaveCount(25);
+  await expect(history.getByText('Reason: history entry 27', { exact: true })).toBeVisible();
+  await expect(history.getByText('This order predates lifecycle history.', { exact: false })).toBeVisible();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(history.getByRole('heading', { name: 'Order history', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await history.screenshot({ path: `test-results/order-history-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await history.getByRole('link', { name: 'Older activity' }).click();
+  await expect(history.getByRole('listitem')).toHaveCount(2);
+  await expect(history.getByText('Reason: history entry 1', { exact: true })).toBeVisible();
+  await history.getByRole('link', { name: 'Newer activity' }).click();
+  await expect(history.getByRole('listitem')).toHaveCount(25);
+  await expect(history.getByText('Reason: history entry 27', { exact: true })).toBeVisible();
+  const foreign = await createOrganisationAccount();
+  const foreignEvent = await createEvent({ organisationId: foreign.organisation.id });
+  const foreignOrder = await createOrder({ organisationId: foreign.organisation.id, eventId: foreignEvent.id, ticketTypeId: foreignEvent.ticketTypes[0].id, status: 'paid', paidAt: new Date() });
+  await page.goto(`/dashboard/orders/${foreignOrder.id}`);
+  await expect(page.getByText('This page could not be found.')).toBeVisible();
+});
 
 test('signup, duplicate email, incorrect password, logout and protected callback', async ({ page, data }) => {
   await page.goto(`/events/${data.event.id}`);

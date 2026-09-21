@@ -108,7 +108,7 @@ Current behavior:
 - Logged-in users see `Dashboard` and `Sign out`
 - Member accounts see `My tickets`
 - Organisation accounts do not see `My tickets`
-- Sign out currently redirects to `http://localhost:3000/`
+- Sign out redirects to `/` on the current site, including isolated staging ports.
 
 ## Organisation Access Helpers
 

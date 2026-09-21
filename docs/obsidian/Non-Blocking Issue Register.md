@@ -79,7 +79,7 @@ This session completed and accepted the P1.8-P1.13 remediation slices for MVP, i
 - **Indexes:** potentially redundant indexes remain intentionally; remove only after production `pg_stat_user_indexes` and query-plan evidence.
 - **Security:** trusted-origin compatibility mode still allows missing `Origin` and `Referer`; token-based CSRF remains a dedicated future design.
 - **Auth model:** named staff authority and audit logs are implemented. Legacy organisation accounts remain supported; MFA is separate work.
-- **P2.16 acceptance:** real Stripe scenarios and final implementation qualification passed; E2E is a required CI check. PR #10 awaits merge after all latest-head checks pass. Evidence and limitations are recorded in [[E2E and Staging Payments]].
+- **P2.16 acceptance:** real Stripe scenarios and final implementation qualification passed; E2E is a required CI check. PR #10 merged. Evidence and limitations are recorded in [[E2E and Staging Payments]]. P3.19 repeated payment acceptance; see [[Handover 2026-09-21 P3.19 Delivery]].
 
 ## Documentation Notes
 

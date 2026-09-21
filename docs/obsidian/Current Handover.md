@@ -1,10 +1,10 @@
 # Current Handover
 
-P3.19 update (2026-09-21): payment operations now append typed `OrderLifecycleEvent` history across checkout, Stripe reconciliation, compensation, cleanup, manual refund, and email delivery. The organiser order detail page exposes a bounded tenant-scoped timeline with actor attribution. Ambiguous Stripe order matches are rejected without mutation, late-paid failed orders enter compensation review, manual refunds block compensation recovery, and email workers use rotating claim-token fencing. The additive migration does not backfill legacy orders; their first later transition records an incomplete-history baseline. See [[Payment Lifecycle]]. Fresh migration, 213 integration tests, typecheck, production build, three consecutive 15-test browser/webhook runs, 13 runner-safety tests, operations rehearsal, and a zero-finding audit pass. Real Stripe campaign `p216-20010cf603f4e0763ec530c1` passed success, decline, cancellation, forced expiry, and new journal correlation with successful cleanup. Implementation revision `138c982` is locally accepted; merge requires green latest-head PR checks and maintainer review. Drain old email workers before deploying the new claim-token implementation.
+P3.19 update (2026-09-21): [PR #13](https://github.com/ENGGP/thunderstrux/pull/13) merged the formal payment lifecycle and operator history to `main` (`b835d18`). Its five latest-head CI checks passed. Local acceptance included 213 integration tests, typecheck, production build, three consecutive 15-test browser/webhook runs, 13 runner-safety tests, operations rehearsal, a zero-finding high-severity audit, and real Stripe test-mode success/decline/cancellation/forced-expiry evidence. See [[Handover 2026-09-21 P3.19 Delivery]] for defects, fixes, evidence, and rollout limits; [[Payment Lifecycle]] for behavior. Drain old email workers before deploying the new claim-token implementation.
 
-Read this first, then [[Thunderstrux Codebase Map]].
+Read this first, then [[Handover 2026-09-21 P3.19 Delivery]], [[Engineering Delivery Workflow]], and [[Thunderstrux Codebase Map]]. Later sections below include historical snapshots; prefer the dated handover and linked topic notes for the current state.
 
-Latest dated handover: [[Handover 2026-09-18 Dependency Security Remediation]].
+Latest dated handover: [[Handover 2026-09-21 P3.19 Delivery]].
 
 Dependency security update (2026-09-18): D1-D5 fixes merged through PR #3; the post-remediation GitHub audit passed and GitHub reports zero open dependency alerts. Renovate is authorized; [Dependency Dashboard #6](https://github.com/ENGGP/thunderstrux/issues/6) and controlled PR #7 prove npm/GitHub Actions discovery, Docker exclusions and required-check validation. PR #7's three application checks passed; it remains open for manual review while the configured three-day stability check is pending. Validation passed: 190/190 tests, typecheck, production build and isolated production HTTP checks. PR #4 added generated Next type handling. See [[Handover 2026-09-18 Dependency Security Remediation]] for versions and the scoped Prisma config override, and [[Dependency Automation]] for current evidence. Overall P2.15 remains open only for security-PR evidence after a real eligible advisory and maintainer notification receipt after the next genuine Security Audit failure. Docker image automation is deferred.
 
@@ -12,7 +12,7 @@ Dependency security update (2026-09-18): D1-D5 fixes merged through PR #3; the p
 
 P3.18 update (2026-09-20): checkout creation/recovery, expired checkout reconciliation, event lifecycle, order resend, ticket attendance, and Stripe Connect orchestration now live behind application services. Affected routes retain their original origin/auth/permission/tenant/rate-limit order and HTTP contracts, and direct Prisma access is prohibited by a boundary regression test. Final local qualification passed 205 integration tests, typecheck, production build, a zero-finding high-severity audit, 14 isolated browser/webhook E2E tests, and the complete operations rehearsal. Validation also found and fixed Windows CRLF checkout of `docker/entrypoint.sh`; `.gitattributes` now enforces LF for shell scripts. This is an architecture-only extraction; the formal payment lifecycle model remains P3.19.
 
-P2.17 update (2026-09-20): repository-side operations are implemented on `codex/p217-operations`. The isolated rehearsal passed non-root startup, explicit migrations, database/Redis readiness outages, checksum-verified backup and restore, corrupt-archive quarantine, compatibility-gated rollback, and migration-failure blocking. Current regression passed 195 integration tests, typecheck, production image build, and audit. See [[Production Operations]]. External hosting, alert delivery, worker schedules, and encrypted off-machine backups remain activation work.
+P2.17 update (2026-09-20): repository-side operations merged through PR #11. The isolated rehearsal passed non-root startup, explicit migrations, database/Redis readiness outages, checksum-verified backup and restore, corrupt-archive quarantine, compatibility-gated rollback, and migration-failure blocking. Current regression passed 195 integration tests, typecheck, production image build, and audit. See [[Production Operations]]. External hosting, alert delivery, worker schedules, and encrypted off-machine backups remain activation work.
 
 P2.16 update (2026-09-19): implementation and acceptance merged through PR #10. Final P2.16 regression passed 194 integration tests, typecheck, production build and audit; 8 runner safety tests and three consecutive local/CI E2E runs passed. Real Stripe success, decline, manually attested cancellation and forced-expiry reconciliation were verified. `e2e-tests` is required alongside the existing three checks. Test containers/volumes and generated credentials were cleaned up. See [[E2E and Staging Payments]] for run references, precise evidence and recovery instructions.
 
@@ -56,7 +56,7 @@ Security hardening now in place:
 - Stripe webhook routes are exempt from trusted-origin and rate-limit guards; they remain governed by Stripe signature verification over raw request bodies.
 - Payment webhooks, checkout session creation, email outbox processing, stale cleanup, rate limiting, and trusted-origin guard now emit stable structured operational events.
 
-For MVP, organisation committee members may share one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
+Named organisation staff, invites, audit logs, and per-user permissions are implemented. Legacy organisation accounts remain supported; MFA remains future work. `OrganisationMember` join rows never grant management access.
 
 ## Latest Migrations
 
@@ -253,9 +253,9 @@ Important rules:
 
 ## Current Next Work
 
-Recommended next implementation branch:
+Recommended next work after this documentation PR merges:
 
-- P2.17 repository-side operations are implemented and locally rehearsed. See [[Production Operations]]. The next production step is selecting a host and activating off-machine backups, external health/alert routing, and one-minute worker schedules.
+- P2.17 repository-side operations are merged and locally rehearsed. See [[Production Operations]]. The next production step is selecting a host and activating off-machine backups, external health/alert routing, and one-minute worker schedules.
 - Produce the dedicated CSRF design for P0 Slice B before implementing any token-based CSRF changes.
 - Keep each remediation slice narrow and separately reviewed.
 
@@ -270,9 +270,9 @@ Other pending branches:
 - Optional P1.7 UI test hardening: assert input `max` and disabled button attributes directly.
 - Add drift-audit or repair tooling for denormalized `Order.organisationId`, `Ticket.organisationId`, and `TicketReservation.organisationId`; P1.9 hardens runtime trust but does not rewrite historical rows.
 - API error standardisation and small UI state consistency improvements.
-- Future staff/RBAC, audit logs, QR scanning, real metrics backend, external alerting transport, dashboards, email outbox monitoring, and explicit failed-job requeue tooling.
+- Future MFA, QR scanning, real metrics backend, external alerting transport, email outbox monitoring, and explicit failed-job requeue tooling.
 
-Do not implement QR scanning, RBAC/staff invites, microservices, or broad architecture rewrites unless explicitly requested.
+Do not undertake new QR scanning, auth-model rewrites, microservices, or broad architecture rewrites unless explicitly requested.
 
 ## High-Risk Rules To Preserve
 
@@ -280,7 +280,7 @@ Do not implement QR scanning, RBAC/staff invites, microservices, or broad archit
 - Keep `Organisation` as the tenant/payment/event/order owner.
 - Member `OrganisationMember` rows must not grant organisation management access.
 - Organisation accounts must not create checkout sessions.
-- Member accounts must not access organiser analytics.
+- A normal member account without active organisation staff authority must not access organiser analytics; a member account may also be authorised staff.
 - Payment fulfilment must remain webhook-driven.
 - Do not mark orders paid from frontend success pages.
 - The `/success` fallback must remain non-production only and must call the same checkout reconciliation helper as the webhook.

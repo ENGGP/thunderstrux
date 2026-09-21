@@ -1,6 +1,10 @@
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { enqueueTicketEmail } from "@/lib/email/ticket-email-outbox";
+import {
+  appendOrderLifecycleEvent,
+  lockOrder
+} from "@/lib/payments/order-lifecycle";
 
 export class OrganisationOrderAccessError extends Error {
   constructor(message = "Order not found or access denied") {
@@ -109,21 +113,53 @@ export async function getOrganisationOrderDetail(
 
 export async function markOrganisationOrderManuallyRefunded(
   organisationId: string,
-  orderId: string
+  orderId: string,
+  actorUserId?: string
 ) {
-  await getOrganisationOrderDetail(organisationId, orderId);
-
-  await prisma.order.updateMany({
-    where: {
-      id: orderId,
-      event: {
-        is: {
-          organisationId
-        }
+  await prisma.$transaction(async (tx) => {
+    const owned = await tx.order.findFirst({
+      where: {
+        id: orderId,
+        event: { is: { organisationId } },
+        status: { in: visibleOrderStatuses }
       },
-      status: { in: visibleOrderStatuses }
-    },
-    data: { isManuallyRefunded: true }
+      select: { id: true }
+    });
+    if (!owned || !(await lockOrder(tx, orderId))) {
+      throw new OrganisationOrderAccessError();
+    }
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: {
+        status: true,
+        isManuallyRefunded: true,
+        requiresCompensationReview: true,
+        reservation: { select: { status: true } }
+      }
+    });
+    if (order.isManuallyRefunded) return;
+    const updated = await tx.order.updateMany({
+      where: {
+        id: orderId,
+        status: { in: visibleOrderStatuses },
+        isManuallyRefunded: false
+      },
+      data: { isManuallyRefunded: true }
+    });
+    if (updated.count === 0) return;
+    await appendOrderLifecycleEvent(tx, {
+      orderId,
+      type: "manual_refund_marked",
+      source: "staff_action",
+      actorUserId,
+      fromOrderStatus: order.status,
+      toOrderStatus: order.status,
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
   });
 
   return prisma.order.findFirstOrThrow({
@@ -164,7 +200,8 @@ export async function getOrganisationOrderResendTarget(
 
 export async function enqueueOrganisationOrderTicketEmail(
   organisationId: string,
-  orderId: string
+  orderId: string,
+  actorUserId?: string
 ) {
   const order = await prisma.order.findFirst({
     where: {
@@ -185,5 +222,5 @@ export async function enqueueOrganisationOrderTicketEmail(
     );
   }
 
-  await enqueueTicketEmail({ orderId: order.id, mode: "manual" });
+  await enqueueTicketEmail({ orderId: order.id, mode: "manual", actorUserId });
 }

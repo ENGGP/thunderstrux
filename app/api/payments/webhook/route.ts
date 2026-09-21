@@ -101,7 +101,7 @@ export async function POST(request: Request) {
         metadataOrderId: session.metadata?.orderId
       });
 
-      await reconcileExpiredCheckoutSession(session);
+      await reconcileExpiredCheckoutSession(session, { stripeEventId: event.id });
 
       return NextResponse.json({ received: true });
     }

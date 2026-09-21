@@ -1,9 +1,15 @@
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { prisma } from "@/lib/db";
+import { isTransactionConflict } from "@/lib/transaction-conflict";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
+import {
+  appendOrderLifecycleEvent,
+  lockOrder,
+  reconciliationLifecycleSource
+} from "@/lib/payments/order-lifecycle";
 import {
   confirmReservationForOrder,
   expireReservationForOrder,
@@ -48,15 +54,6 @@ function parseMetadataQuantity(quantity: string | undefined) {
     : null;
 }
 
-function isPrismaErrorCode(error: unknown, code: string) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === code
-  );
-}
-
 export async function runCheckoutReconciliationTransaction(
   operation: (tx: Prisma.TransactionClient) => Promise<void>
 ) {
@@ -67,7 +64,7 @@ export async function runCheckoutReconciliationTransaction(
       });
       return;
     } catch (error) {
-      if (attempt < maxTransactionAttempts && isPrismaErrorCode(error, "P2034")) {
+      if (attempt < maxTransactionAttempts && isTransactionConflict(error)) {
         console.info("Retrying Stripe webhook transaction after write conflict", {
           attempt
         });
@@ -84,42 +81,38 @@ export async function findOrderForCheckoutSession(
   tx: Prisma.TransactionClient
 ) {
   const orderId = session.metadata?.orderId;
+  const select = {
+    id: true,
+    status: true,
+    stripeSessionId: true,
+    failureReason: true,
+    requiresCompensationReview: true
+  } satisfies Prisma.OrderSelect;
+  const [orderByMetadataId, orderBySessionId] = await Promise.all([
+    orderId
+      ? tx.order.findUnique({
+          where: { id: orderId },
+          select
+        })
+      : null,
+    session.id
+      ? tx.order.findUnique({ where: { stripeSessionId: session.id }, select })
+      : null
+  ]);
 
-  if (orderId) {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        status: true,
-        stripeSessionId: true,
-        failureReason: true,
-        requiresCompensationReview: true
-      }
-    });
-
-    if (order) {
-      return order;
-    }
-  }
-
-  if (!session.id) {
-    return null;
-  }
-
-  return tx.order.findUnique({
-    where: { stripeSessionId: session.id },
-    select: {
-      id: true,
-      status: true,
-      stripeSessionId: true,
-      failureReason: true,
-      requiresCompensationReview: true
-    }
-  });
+  return {
+    order: orderByMetadataId ?? orderBySessionId,
+    ambiguous: Boolean(
+      orderByMetadataId &&
+        orderBySessionId &&
+        orderByMetadataId.id !== orderBySessionId.id
+    )
+  };
 }
 
 export async function reconcileExpiredCheckoutSession(
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
+  { stripeEventId }: { stripeEventId?: string } = {}
 ): Promise<CheckoutReconciliationResult> {
   let result: CheckoutReconciliationResult = {
     status: "ignored",
@@ -127,9 +120,26 @@ export async function reconcileExpiredCheckoutSession(
   };
 
   await runCheckoutReconciliationTransaction(async (tx) => {
-    const order = await findOrderForCheckoutSession(session, tx);
+    const resolution = await findOrderForCheckoutSession(session, tx);
 
-    if (!order) {
+    if (resolution.ambiguous) {
+      logError("stripe.webhook.reconciliation_failed", {
+        message: "Expired Stripe session and metadata resolve different orders",
+        stripeSessionId: session.id,
+        metadataOrderId: session.metadata?.orderId
+      });
+      emitOperationalAlert("payment_reconciliation_ambiguous_order", {
+        stripeSessionId: session.id,
+        metadataOrderId: session.metadata?.orderId,
+        checkoutEvent: "checkout.session.expired"
+      });
+      result = { status: "ignored", reason: "ambiguous_order_match" };
+      return;
+    }
+
+    const foundOrder = resolution.order;
+
+    if (!foundOrder) {
       logError("stripe.webhook.reconciliation_failed", {
         message: "Local order not found for expired Stripe session",
         stripeSessionId: session.id,
@@ -138,6 +148,22 @@ export async function reconcileExpiredCheckoutSession(
       result = { status: "ignored", reason: "order_not_found" };
       return;
     }
+
+    if (!(await lockOrder(tx, foundOrder.id))) {
+      result = { status: "ignored", reason: "order_not_found" };
+      return;
+    }
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: foundOrder.id },
+      select: {
+        id: true,
+        status: true,
+        stripeSessionId: true,
+        failureReason: true,
+        requiresCompensationReview: true,
+        reservation: { select: { status: true } }
+      }
+    });
 
     logInfo("stripe.webhook.received", {
       orderId: order.id,
@@ -218,6 +244,23 @@ export async function reconcileExpiredCheckoutSession(
       "Stripe Checkout Session expired before payment",
       now
     );
+    await appendOrderLifecycleEvent(tx, {
+      orderId: order.id,
+      type: "order_expired",
+      source: "stripe_webhook",
+      stripeEventId,
+      stripeSessionId: session.id,
+      fromOrderStatus: "pending",
+      toOrderStatus: "expired",
+      fromReservationStatus: order.reservation?.status ?? null,
+      toReservationStatus:
+        order.reservation?.status === "active" ? "expired" : order.reservation?.status,
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
 
     logInfo("stripe.webhook.received", {
       orderId: order.id,
@@ -291,6 +334,10 @@ export async function reconcileCompletedCheckoutSession(
       requiresCompensationReview: true,
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
+      isManuallyRefunded: true,
+      reservation: {
+        select: { status: true }
+      },
       event: {
         select: {
           organisationId: true
@@ -306,14 +353,34 @@ export async function reconcileCompletedCheckoutSession(
           select: orderSelect
         })
       : null;
-    const order =
-      orderByMetadataId ??
-      (await tx.order.findUnique({
-        where: { stripeSessionId: session.id },
-        select: orderSelect
-      }));
+    const orderBySessionId = await tx.order.findUnique({
+      where: { stripeSessionId: session.id },
+      select: orderSelect
+    });
 
-    if (!order) {
+    if (
+      orderByMetadataId &&
+      orderBySessionId &&
+      orderByMetadataId.id !== orderBySessionId.id
+    ) {
+      logError("stripe.webhook.reconciliation_failed", {
+        message: "Stripe session and metadata resolve different orders",
+        stripeEventId,
+        stripeSessionId: session.id,
+        metadataOrderId: orderId
+      });
+      emitOperationalAlert("payment_reconciliation_ambiguous_order", {
+        reason: "ambiguous_order_match",
+        stripeEventId,
+        stripeSessionId: session.id
+      });
+      result = { status: "ignored", reason: "ambiguous_order_match" };
+      return;
+    }
+
+    const discoveredOrder = orderByMetadataId ?? orderBySessionId;
+
+    if (!discoveredOrder) {
       reconciliationError("Local order not found for Stripe session", {
         source,
         stripeEventId,
@@ -324,6 +391,36 @@ export async function reconcileCompletedCheckoutSession(
         status: "ignored",
         reason: "order_not_found"
       };
+      return;
+    }
+
+    if (
+      discoveredOrder.stripeSessionId &&
+      discoveredOrder.stripeSessionId !== session.id
+    ) {
+      result = {
+        status: "ignored",
+        orderId: discoveredOrder.id,
+        reason: "session_mismatch"
+      };
+      return;
+    }
+
+    await tx.$queryRaw`
+      SELECT "id" FROM "TicketType"
+      WHERE "id" = ${discoveredOrder.ticketTypeId}
+      FOR UPDATE
+    `;
+    if (!(await lockOrder(tx, discoveredOrder.id))) {
+      result = { status: "ignored", reason: "order_not_found" };
+      return;
+    }
+    const order = await tx.order.findUnique({
+      where: { id: discoveredOrder.id },
+      select: orderSelect
+    });
+    if (!order) {
+      result = { status: "ignored", reason: "order_not_found" };
       return;
     }
 
@@ -384,6 +481,31 @@ export async function reconcileCompletedCheckoutSession(
         await expireReservationForOrder(tx, localOrder.id, reason, now);
       }
 
+      if (!localOrder.requiresCompensationReview) {
+        const resultingReservation = await tx.ticketReservation.findUnique({
+          where: { orderId: localOrder.id },
+          select: { status: true }
+        });
+        await appendOrderLifecycleEvent(tx, {
+          orderId: localOrder.id,
+          type: "compensation_required",
+          source: reconciliationLifecycleSource(source),
+          stripeEventId,
+          stripeSessionId: session.id,
+          reason,
+          fromOrderStatus: localOrder.status,
+          toOrderStatus: "failed",
+          fromReservationStatus: localOrder.reservation?.status ?? null,
+          toReservationStatus: resultingReservation?.status ?? null,
+          facts: { compensationReview: true },
+          baseline: {
+            orderStatus: localOrder.status,
+            reservationStatus: localOrder.reservation?.status,
+            compensationReview: localOrder.requiresCompensationReview
+          }
+        });
+      }
+
       result = {
         status: "compensation_required",
         orderId: localOrder.id,
@@ -410,6 +532,26 @@ export async function reconcileCompletedCheckoutSession(
       });
 
       await releaseReservationForOrder(tx, localOrder.id, reason);
+      await appendOrderLifecycleEvent(tx, {
+        orderId: localOrder.id,
+        type: "order_failed",
+        source: reconciliationLifecycleSource(source),
+        stripeEventId,
+        stripeSessionId: session.id,
+        reason,
+        fromOrderStatus: localOrder.status,
+        toOrderStatus: "failed",
+        fromReservationStatus: localOrder.reservation?.status ?? null,
+        toReservationStatus:
+          localOrder.reservation?.status === "active"
+            ? "released"
+            : localOrder.reservation?.status,
+        baseline: {
+          orderStatus: localOrder.status,
+          reservationStatus: localOrder.reservation?.status,
+          compensationReview: localOrder.requiresCompensationReview
+        }
+      });
       result = {
         status: "failed",
         orderId: localOrder.id,
@@ -435,6 +577,9 @@ export async function reconcileCompletedCheckoutSession(
       return;
     }
 
+    const ordinaryFailedOrder =
+      localOrder.status === "failed" && !localOrder.requiresCompensationReview;
+
     if (localOrder.status === "failed") {
       if (localOrder.requiresCompensationReview) {
         console.info("Retrying compensation-required checkout reconciliation", {
@@ -443,6 +588,15 @@ export async function reconcileCompletedCheckoutSession(
           stripeSessionId: session.id,
           failureReason: localOrder.fulfilmentFailureReason
         });
+        if (localOrder.isManuallyRefunded) {
+          result = {
+            status: "compensation_required",
+            orderId: localOrder.id,
+            reason:
+              localOrder.fulfilmentFailureReason ?? "compensation_review_required"
+          };
+          return;
+        }
         const retryReservation = await findActiveReservationForOrder(
           tx,
           localOrder.id,
@@ -460,14 +614,7 @@ export async function reconcileCompletedCheckoutSession(
           };
           return;
         }
-      } else {
-        reconciliationError("Order is not pending", {
-          source,
-          orderId: localOrder.id,
-          status: localOrder.status,
-          stripeSessionId: session.id,
-          failureReason: localOrder.failureReason
-        });
+      } else if (session.payment_status !== "paid") {
         result = {
           status: "failed",
           orderId: localOrder.id,
@@ -480,6 +627,7 @@ export async function reconcileCompletedCheckoutSession(
     if (
       localOrder.status !== "pending" &&
       localOrder.status !== "expired" &&
+      !ordinaryFailedOrder &&
       !(
         localOrder.status === "failed" &&
         localOrder.requiresCompensationReview
@@ -501,6 +649,17 @@ export async function reconcileCompletedCheckoutSession(
     }
 
     if (session.payment_status !== "paid") {
+      if (localOrder.status !== "pending") {
+        result =
+          localOrder.status === "expired"
+            ? { status: "expired", orderId: localOrder.id }
+            : {
+                status: "failed",
+                orderId: localOrder.id,
+                reason: localOrder.failureReason ?? "order_already_failed"
+              };
+        return;
+      }
       await failOrder("webhook_mismatch", {
         mismatchReason: "Stripe session is not paid",
         paymentStatus: session.payment_status
@@ -614,6 +773,15 @@ export async function reconcileCompletedCheckoutSession(
       }, {
         releaseActiveReservation: true
       });
+      return;
+    }
+
+    if (ordinaryFailedOrder) {
+      await markCompensationRequired(
+        "paid_session_received_after_order_failed",
+        { mismatchReason: "Paid session arrived after local checkout failure" },
+        { releaseActiveReservation: true }
+      );
       return;
     }
 
@@ -808,7 +976,33 @@ export async function reconcileCompletedCheckoutSession(
       ticketCount: localOrder.quantity
     });
 
-    await enqueueAutomaticTicketEmailForOrder(tx, localOrder.id);
+    await appendOrderLifecycleEvent(tx, {
+      orderId: localOrder.id,
+      type: localOrder.requiresCompensationReview
+        ? "compensation_recovered"
+        : "payment_fulfilled",
+      source: reconciliationLifecycleSource(source),
+      stripeEventId,
+      stripeSessionId: session.id,
+      fromOrderStatus: localOrder.status,
+      toOrderStatus: "paid",
+      fromReservationStatus: localOrder.reservation?.status ?? null,
+      toReservationStatus: "confirmed",
+      facts: {
+        compensationReview: false,
+        ticketCount: localOrder.quantity
+      },
+      baseline: {
+        orderStatus: localOrder.status,
+        reservationStatus: localOrder.reservation?.status,
+        compensationReview: localOrder.requiresCompensationReview
+      }
+    });
+    await enqueueAutomaticTicketEmailForOrder(
+      tx,
+      localOrder.id,
+      reconciliationLifecycleSource(source)
+    );
 
     result = {
       status: "fulfilled",

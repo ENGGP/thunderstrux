@@ -62,7 +62,12 @@ async function poll(check) {
   throw new Error('Stripe webhook reconciliation timed out');
 }
 async function orderState(id) {
-  return db.order.findUniqueOrThrow({where: {id}, include: {tickets: true, reservation: true, emailOutboxJobs: true}});
+  return db.order.findUniqueOrThrow({where: {id}, include: {tickets: true, reservation: true, emailOutboxJobs: true, lifecycleEvents: {orderBy: {sequence: 'asc'}}}});
+}
+function assertLifecycle(order, types, event) {
+  assert(JSON.stringify(order.lifecycleEvents.map(item => item.type)) === JSON.stringify(types), 'Lifecycle transition history mismatch');
+  assert(order.lifecycleEvents.every((item, index) => item.sequence === index + 1), 'Lifecycle sequence mismatch');
+  assert(order.lifecycleEvents.some(item => item.stripeEventId === event.id && item.stripeSessionId === event.data.object.id), 'Lifecycle Stripe event correlation missing');
 }
 async function eventFor(sessionId, type) {
   const events = await stripe.events.list({type, created: {gte: Math.floor(Date.now() / 1000) - 3600}, limit: 100});
@@ -116,6 +121,7 @@ try {
       const intent = session.payment_intent;
       assert(session.payment_status === 'paid' && typeof intent === 'object' && intent.application_fee_amount === 120 && intent.transfer_data?.destination === process.env.STRIPE_TEST_CONNECTED_ACCOUNT && intent.on_behalf_of === process.env.STRIPE_TEST_CONNECTED_ACCOUNT, 'Destination charge configuration mismatch');
       event = await eventFor(data.sessionId, 'checkout.session.completed');
+      assertLifecycle(order, ['order_created', 'stripe_session_attached', 'payment_fulfilled', 'email_enqueued'], event);
       const page = await openBuyer(data.email);
       await page.goto(`${baseURL}/tickets`);
       assert(await page.getByText(data.organisationId, {exact: true}).count() > 0, 'Purchased event missing from buyer tickets');
@@ -131,6 +137,7 @@ try {
       assert(order.reservation?.status === 'expired' && order.tickets.length === 0 && order.emailOutboxJobs.length === 0, 'Expiry mismatch');
       assert((await db.ticketType.findUniqueOrThrow({where: {id: data.ticketTypeId}})).quantity === 5, 'Unpaid checkout decremented inventory');
       event = await eventFor(data.sessionId, 'checkout.session.expired');
+      assertLifecycle(order, ['order_created', 'stripe_session_attached', 'order_expired'], event);
     }
     await writeFile(`/app/test-results/payment-${scenario}.json`, JSON.stringify({scenario, sessionId: data.sessionId, eventId: event.id, apiVersion: event.api_version, verifiedAt: new Date().toISOString(), passed: true}));
   } else if (action === 'cleanup') {

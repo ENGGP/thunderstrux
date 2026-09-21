@@ -716,6 +716,8 @@ Implementation evidence:
 
 Severity: Medium/Long-term
 
+Status: Implementation and local acceptance complete (2026-09-21). Merge remains subject to green latest-head PR checks and maintainer review.
+
 Affected areas:
 
 - orders
@@ -732,12 +734,25 @@ Solution:
 
 - Define explicit lifecycle transitions and events.
 - Add state transition helpers.
-- Consider a payment event log if operational needs grow.
+- Persist an append-only, tenant-scoped payment event log for operational reconstruction.
 
 Validation:
 
 - Invalid transitions are impossible or rejected.
 - Operators can reconstruct what happened to an order.
+
+Implementation evidence:
+
+- Additive migration `20260921010000_formal_payment_lifecycle` creates `OrderLifecycleEvent`, typed event/source enums, indexes, and nullable email-worker claim fencing. Existing orders are not backfilled; a first post-migration transition records an explicit legacy baseline.
+- Checkout, completed/expired Stripe reconciliation, stale cleanup, compensation, manual refund, email enqueue/retry/success/exhaustion, and compensation recovery append business transitions through the canonical helper.
+- Stripe metadata/session ambiguity causes no order mutation and emits a redacted operational alert. Late paid sessions for ordinary failed orders enter durable compensation review; manual refund blocks later compensation recovery.
+- Email outbox completion is fenced by a rotating processing token, preventing stale workers from overwriting a reclaimed job. Rollout requires old workers to be drained.
+- Organisation order detail exposes a bounded, tenant-scoped lifecycle timeline with named staff attribution and an incomplete-history warning for legacy orders.
+- Operations backup/restore verification includes lifecycle rows. The migration is additive and compatible with application rollback after new workers are drained.
+- Fresh migration plus the complete integration suite passed 213/213 tests. Typecheck, production build, 15 browser/signed-webhook tests, 13 runner-safety tests, operations rehearsal, and a zero-finding high-severity audit passed.
+- Real Stripe campaign `p216-20010cf603f4e0763ec530c1` passed success, decline, manually attested cancellation, forced expiry, and lifecycle-event correlation. Stripe and local resource cleanup passed; natural timeout and email delivery are not claimed. Final PR checks remain a separate gate.
+- Concurrent-replay validation exposed Prisma raw-query serialization conflicts; bounded whole-transaction retries now recognize PostgreSQL serialization/deadlock SQLSTATEs as well as Prisma write conflicts. The new regression and signed HTTP replay test pass.
+- Detailed behavior and operational constraints are documented in `docs/obsidian/Payment Lifecycle.md`.
 
 ## Issue Coverage Matrix
 

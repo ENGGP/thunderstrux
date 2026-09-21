@@ -1,8 +1,10 @@
 # Stripe Payments and Connect
 
+Payment, reservation, compensation, refund-bookkeeping, and email transitions are now recorded in the append-only lifecycle journal described in [[Payment Lifecycle]]. Current state remains on the existing order/reservation/outbox fields; the journal provides operator reconstruction and does not replace Stripe as provider truth.
+
 For production-mode browser testing, real test-mode payment acceptance and isolated webhook forwarding, see [[E2E and Staging Payments]]. The P2.16 runner does not reuse the development webhook secret or rely on the success-page development fallback.
 
-P2.16 acceptance verified real Stripe success, decline, user-attested cancellation and forced-expiry reconciliation on API version `2026-03-25.dahlia`. Destination charges, tickets, inventory and outbox state were checked; natural expiry and provider email delivery were not claimed. Implementation is validated in PR #10 and awaits merge.
+P2.16 acceptance verified real Stripe success, decline, user-attested cancellation and forced-expiry reconciliation on API version `2026-03-25.dahlia`. Destination charges, tickets, inventory and outbox state were checked; natural expiry and provider email delivery were not claimed. Implementation merged through PR #10. P3.19 repeat acceptance and journal-correlation evidence are recorded in [[Payment Lifecycle]].
 
 ## Design Principles
 
@@ -627,6 +629,7 @@ Alert names:
 - `stripe_webhook_signature_failure`
 - `checkout_session_creation_failure`
 - `paid_but_unfulfilled_compensation_required`
+- `payment_reconciliation_ambiguous_order`
 
 Console/log-derived metrics:
 

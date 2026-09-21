@@ -1,6 +1,6 @@
 # E2E and Staging Payments
 
-P2.16 status: implementation and acceptance validated, awaiting merge of PR #10. Merge remains gated by all four required checks on the PR's latest commit. Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion.
+P2.16 status: implementation and acceptance merged through PR #10 (`59dc563`). Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion. Later payment-path changes must repeat the relevant acceptance campaign.
 
 ## Automated checks
 
@@ -61,6 +61,8 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 
 ## Validation evidence
 
+P3.19 repeat acceptance (2026-09-21): campaign `p216-20010cf603f4e0763ec530c1` passed all three guided scenarios and cleanup after the lifecycle-model changes. The staging driver now verifies exact lifecycle event ordering and Stripe event/session correlation as well as the existing payment invariants. Success event: `evt_1UHz3tRuN9MD4SvFpGbf8zTn`; decline/forced-expiry event: `evt_1UHz62RuN9MD4SvFMJeKqd9x`; manually attested cancellation/forced-expiry event: `evt_1UHz8uRuN9MD4SvFZRbGqV1c`. API version remained `2026-03-25.dahlia`; listener HTTP 200 and application receipt were verified. Email delivery and natural timeout are not claimed. See [[Payment Lifecycle]] for P3.19 regression evidence.
+
 Real Stripe acceptance used API version `2026-03-25.dahlia` and verified correlated HTTP 200 listener delivery and application receipt:
 
 - Run `p216-3814760f49ba7ccc6a4560ce`: successful payment event `evt_1UHFpFRuN9MD4SvFgpzvhKO2`; declined payment followed by forced expiry event `evt_1UHFrdRuN9MD4SvF19WpUoFg`. The cancellation prompt timed out before completion, so this run is not counted as a full passing campaign. Open Sessions, generated secrets, containers, database volume and network were cleaned up successfully.
@@ -80,4 +82,4 @@ The occupied-port rejection and repeated cleanup checks passed. Actionlint passe
 
 CI qualification on `5c08512` passed [attempt 1](https://github.com/ENGGP/thunderstrux/actions/runs/35425904971/attempts/1), [attempt 2](https://github.com/ENGGP/thunderstrux/actions/runs/35425904971/attempts/2) and [attempt 3](https://github.com/ENGGP/thunderstrux/actions/runs/35425904971/attempts/3). [Static validation, integration tests and production build](https://github.com/ENGGP/thunderstrux/actions/runs/35425904976) also passed. Branch protection requires `static-validation`, `integration-tests`, `production-build` and `e2e-tests`, with strict up-to-date checking preserved; security audit remains non-required.
 
-[PR #10](https://github.com/ENGGP/thunderstrux/pull/10) contains the reviewed implementation and this evidence. Documentation-only updates require another green set of checks on the final PR head, not a repeat of the unchanged implementation's payment campaign. The PR is not merged automatically.
+[PR #10](https://github.com/ENGGP/thunderstrux/pull/10) merged the reviewed P2.16 implementation and evidence. Documentation-only updates require green checks on their final PR head, not a repeat of an unchanged implementation's payment campaign.

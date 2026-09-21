@@ -329,6 +329,57 @@ describe("ticket email outbox", () => {
     }
   });
 
+  test("a reclaimed job fences the stale worker from finalizing with its old token", async () => {
+    const restoreEnv = configureEmailEnv();
+    let releaseFirstDelivery: ((response: Response) => void) | undefined;
+    const firstDelivery = new Promise<Response>((resolve) => {
+      releaseFirstDelivery = resolve;
+    });
+    const fetchMock = vi
+      .fn<(_input: RequestInfo | URL, _init?: RequestInit) => Promise<Response>>()
+      .mockImplementationOnce(async () => firstDelivery)
+      .mockImplementationOnce(async () =>
+        new Response('{"id":"em_reclaimed"}', { status: 200 })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const order = await createPaidTicketOrder("fenced-outbox@example.com");
+      await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+      await makeOutboxJobsDue(order.id, new Date("2026-06-01T12:00:00.000Z"));
+
+      const staleWorker = processTicketEmailOutboxBatch({
+        now: new Date("2026-06-01T12:05:00.000Z"),
+        processingTimeoutSeconds: 60
+      });
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+      const reclaimingWorker = await processTicketEmailOutboxBatch({
+        now: new Date("2026-06-01T12:07:00.000Z"),
+        processingTimeoutSeconds: 60
+      });
+      releaseFirstDelivery?.(new Response('{"id":"em_stale"}', { status: 200 }));
+      const staleResult = await staleWorker;
+
+      expect(reclaimingWorker).toMatchObject({ claimed: 1, sent: 1 });
+      expect(staleResult).toMatchObject({ claimed: 1, sent: 0, skipped: 1 });
+      await expect(
+        prisma.emailOutbox.findFirstOrThrow({ where: { orderId: order.id } })
+      ).resolves.toMatchObject({
+        status: "sent",
+        providerMessageId: "em_reclaimed",
+        processingToken: null
+      });
+      await expect(
+        prisma.orderLifecycleEvent.count({
+          where: { orderId: order.id, type: "email_provider_accepted" }
+        })
+      ).resolves.toBe(1);
+    } finally {
+      restoreEnv();
+    }
+  });
+
   test("manual resend jobs use distinct provider idempotency keys", async () => {
     const restoreEnv = configureEmailEnv();
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('{"id":"em_manual"}', { status: 200 }));

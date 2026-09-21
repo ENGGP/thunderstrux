@@ -123,7 +123,7 @@ describe("checkout and reservation logic", () => {
       url: "https://checkout.stripe.test/session"
     });
     const order = await prisma.order.findFirstOrThrow({
-      include: { reservation: true }
+      include: { reservation: true, lifecycleEvents: { orderBy: { sequence: "asc" } } }
     });
     expect(order).toMatchObject({
       organisationId: event.organisationId,
@@ -138,6 +138,21 @@ describe("checkout and reservation logic", () => {
       status: "active",
       quantity: 2
     });
+    expect(order.lifecycleEvents).toEqual([
+      expect.objectContaining({
+        sequence: 1,
+        type: "order_created",
+        source: "checkout",
+        toOrderStatus: "pending",
+        toReservationStatus: "active"
+      }),
+      expect.objectContaining({
+        sequence: 2,
+        type: "stripe_session_attached",
+        source: "checkout",
+        stripeSessionId: "cs_integration_success"
+      })
+    ]);
 
     const expectedExpiresAtSeconds =
       Math.ceil(new Date("2026-05-01T10:00:00.000Z").getTime() / 1000) + 30 * 60;
@@ -254,11 +269,15 @@ describe("checkout and reservation logic", () => {
 
     expect(response.status).toBe(500);
     const order = await prisma.order.findFirstOrThrow({
-      include: { reservation: true }
+      include: { reservation: true, lifecycleEvents: { orderBy: { sequence: "asc" } } }
     });
     expect(order.status).toBe("failed");
     expect(order.failureReason).toBe("stripe_error");
     expect(order.reservation?.status).toBe("released");
+    expect(order.lifecycleEvents.map((event) => event.type)).toEqual([
+      "order_created",
+      "order_failed"
+    ]);
 
     expect(parseConsoleJson(error, 0)).toMatchObject({
       level: "error",

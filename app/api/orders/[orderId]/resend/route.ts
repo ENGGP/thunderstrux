@@ -9,6 +9,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireAuthenticatedUser,
   requireCurrentOrganisationAccount,
   requireOrganisationPermission
 } from "@/lib/auth/access";
@@ -53,7 +54,12 @@ export async function POST(request: Request, context: RouteContext) {
       return limitResponse;
     }
 
-    await enqueueOrganisationOrderTicketEmail(organisation.id, order.id);
+    const actor = await requireAuthenticatedUser();
+    await enqueueOrganisationOrderTicketEmail(
+      organisation.id,
+      order.id,
+      actor.id
+    );
 
     return NextResponse.json({ queued: true });
   } catch (error) {

@@ -185,6 +185,8 @@ Current rule:
 
 `Order` is the checkout and reconciliation record.
 
+`OrderLifecycleEvent` is the append-only operational history for an order. `(orderId, sequence)` is unique and gives deterministic per-order ordering. Organiser reads scope through `Order.event.organisationId`; denormalized `Order.organisationId` is not an independent authority boundary. Existing orders are not backfilled. See [[Payment Lifecycle]].
+
 Important fields:
 
 - `organisationId`
@@ -239,6 +241,8 @@ Order management fields:
 Ticket email delivery tracking is operational state only. It must not be used as payment truth, ticket ownership, refund state, or fulfilment truth.
 
 `EmailOutbox` stores durable ticket delivery email jobs.
+
+`EmailOutbox.processingToken` is a nullable worker lease token. Every claim/reclaim rotates it, and finalization conditionally matches it to fence stale workers.
 
 Important fields:
 

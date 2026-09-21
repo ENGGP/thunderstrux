@@ -640,6 +640,8 @@ Includes:
 - Stripe session id
 - manual refund and ticket email tracking fields
 
+The server-rendered organiser order detail page also reads a separate, bounded lifecycle timeline. It is not included in this API payload. History pages use `historyCursor=<sequence>` and `historyDirection=older|newer`, with 25 events per page and the same event-owned tenant boundary.
+
 ### `PATCH /api/orders/[orderId]/refund-manual`
 
 Sets the local manual refund flag on an organiser-owned order.
@@ -654,6 +656,7 @@ Rules:
 - Does not call Stripe.
 - Does not change Stripe payment state.
 - Does not change order `status`.
+- Appends an actor-attributed `manual_refund_marked` lifecycle event on the first state change.
 
 ### `POST /api/orders/[orderId]/resend`
 
@@ -671,6 +674,7 @@ Rules:
 - On worker success, updates `Order.ticketEmailResentAt` and clears `Order.ticketEmailLastError`.
 - On worker failure, updates `Order.ticketEmailLastError`.
 - Does not modify order payment state, Stripe state, ticket ownership, or ticket check-in state.
+- Appends an actor-attributed manual `email_enqueued` lifecycle event.
 
 Status:
 
@@ -735,6 +739,8 @@ Responsibilities:
 - Do not enqueue duplicate automatic email jobs on duplicate webhook delivery.
 - Mark normal reservation or Checkout expiry as `expired` without `failureReason`.
 - Store `failedAt` and `failureReason` only on unexpected reconciliation failure.
+- Reject metadata/session identities that resolve to different orders without mutating either order and emit `payment_reconciliation_ambiguous_order`.
+- Append typed business transitions to `OrderLifecycleEvent`; duplicate webhook delivery must not append duplicate state changes.
 - Do not issue tickets or send ticket email for compensation-required orders.
 - Return `200` for signed but unhandled Stripe event types.
 

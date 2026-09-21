@@ -4,6 +4,10 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
+import {
+  appendOrderLifecycleEvent,
+  lockOrder
+} from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee } from "@/lib/stripe/fees";
@@ -64,15 +68,76 @@ function emitCheckoutSessionCreationFailure(
 
 async function failPendingOrder(orderId: string, message: string) {
   await prisma.$transaction(async (tx) => {
-    await tx.order.update({
+    if (!(await lockOrder(tx, orderId))) return;
+    const order = await tx.order.findUniqueOrThrow({
       where: { id: orderId },
+      select: {
+        status: true,
+        requiresCompensationReview: true,
+        reservation: { select: { status: true } }
+      }
+    });
+    if (order.status !== "pending") return;
+
+    const updated = await tx.order.updateMany({
+      where: { id: orderId, status: "pending" },
       data: {
         status: "failed",
         failedAt: new Date(),
         failureReason: "stripe_error"
       }
     });
+    if (updated.count === 0) return;
+
     await releaseReservationForOrder(tx, orderId, message);
+    await appendOrderLifecycleEvent(tx, {
+      orderId,
+      type: "order_failed",
+      source: "checkout",
+      reason: "stripe_error",
+      fromOrderStatus: "pending",
+      toOrderStatus: "failed",
+      fromReservationStatus: order.reservation?.status ?? null,
+      toReservationStatus:
+        order.reservation?.status === "active" ? "released" : order.reservation?.status,
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
+  });
+}
+
+async function attachStripeSession(orderId: string, stripeSessionId: string) {
+  await prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, orderId))) {
+      throw new CheckoutCreationInternalError();
+    }
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { status: true, stripeSessionId: true }
+    });
+
+    if (order.stripeSessionId === stripeSessionId) return;
+    if (order.status !== "pending" || order.stripeSessionId) {
+      throw new CheckoutCreationInternalError();
+    }
+
+    const updated = await tx.order.updateMany({
+      where: { id: orderId, status: "pending", stripeSessionId: null },
+      data: { stripeSessionId }
+    });
+    if (updated.count === 0) throw new CheckoutCreationInternalError();
+
+    await appendOrderLifecycleEvent(tx, {
+      orderId,
+      type: "stripe_session_attached",
+      source: "checkout",
+      stripeSessionId,
+      fromOrderStatus: "pending",
+      toOrderStatus: "pending"
+    });
   });
 }
 
@@ -279,6 +344,14 @@ export async function createEventCheckout({
           }
         });
 
+        await appendOrderLifecycleEvent(tx, {
+          orderId: order.id,
+          type: "order_created",
+          source: "checkout",
+          toOrderStatus: "pending",
+          toReservationStatus: "active"
+        });
+
         return order;
       }
     );
@@ -337,10 +410,7 @@ export async function createEventCheckout({
       throw new CheckoutCreationInternalError();
     }
 
-    await prisma.order.update({
-      where: { id: pendingOrder.id },
-      data: { stripeSessionId: session.id }
-    });
+    await attachStripeSession(pendingOrder.id, session.id);
 
     logInfo("checkout.session.created", {
       orderId: pendingOrder.id,

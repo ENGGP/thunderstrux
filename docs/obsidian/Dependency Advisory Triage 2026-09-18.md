@@ -190,7 +190,7 @@ Auth advisory applicability:
 
 - D1-D5 fixes were merged through PR #3; exact versions, lockfile changes, regression coverage and successful audit results are recorded in the linked remediation handover.
 - The initial 54-alert inventory is historical. The post-remediation audit passed and a 2026-09-18 GitHub API check found zero open dependency alerts.
-- Renovate is authorized. Dashboard #6 verifies npm and GitHub Actions discovery with Docker exclusions; controlled PR #7 passed all required application checks and is waiting for its configured three-day stability check before manual merge.
+- Renovate is authorized. Dashboard #6 verifies npm and GitHub Actions discovery with Docker exclusions; controlled [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) merged as `b3f4fce` and all five post-merge checks passed. Its non-required release-age status remained pending for a pin update.
 - P2.15 remains open only for a security-labelled Renovate PR after a real eligible advisory and maintainer notification receipt after the next genuine Security Audit failure. No vulnerability will be introduced and no registry failure will be caused to manufacture that evidence.
 
 ## Rollout audit evidence

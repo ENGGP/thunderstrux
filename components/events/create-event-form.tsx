@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TextArea, TextInput } from "@/components/ui/input";
-import { ClientApiError, getClientErrorMessage } from "@/lib/client/api";
+import { ClientApiError, fetchWithCsrf, getClientErrorMessage } from "@/lib/client/api";
 import {
   fetchOrganisationBySlug,
   type Organisation
@@ -295,7 +295,7 @@ export function CreateEventForm({
       const url = mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events";
       const method = mode === "edit" && eventId ? "PATCH" : "POST";
 
-      const response = await fetch(url, {
+      const response = await fetchWithCsrf(url, {
         method,
         headers: {
           "content-type": "application/json"

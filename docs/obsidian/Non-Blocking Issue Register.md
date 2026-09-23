@@ -1,5 +1,7 @@
 # Non-Blocking Issue Register
 
+2026-09-22 verification update: the open branch `codex/production-readiness-verification` addresses the missing-origin compatibility mode, token CSRF, failed email requeue, failed-order timestamp constraint, and denormalized ownership drift detection/repair. Historical rows below describe the merged baseline until that branch merges. Current evidence and remaining release gates are in [[Production Readiness Verification 2026-09-22]].
+
 This register tracks non-blocking risks found during production-readiness and P0 remediation reviews. These are not blockers for the current P0 remediation commits, but they should be considered before production payments or broader rollout.
 
 ## P0.4 Compensation Review Follow-Ups

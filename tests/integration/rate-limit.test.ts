@@ -29,6 +29,7 @@ import { POST as checkOutTicket } from "@/app/api/tickets/[ticketId]/check-out/r
 import { POST as connectOnboard } from "@/app/api/stripe/connect/onboard/route";
 import { POST as connectContinue } from "@/app/api/stripe/connect/continue/route";
 import { POST as connectDisconnect } from "@/app/api/stripe/connect/disconnect/route";
+import { POST as beginMfaSetup } from "@/app/api/me/mfa/setup/route";
 
 const stripeMocks = vi.hoisted(() => ({
   createSession: vi.fn()
@@ -217,6 +218,25 @@ describe("rate limit helper", () => {
         keyParts: ["127.0.0.1"]
       })
     ).resolves.toBeNull();
+  });
+
+  test("MFA setup throttles by authenticated user when forwarding headers change", async () => {
+    const { user } = await createOrganisationAccount();
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation",
+      mfaSessionId: "rate-limit-session" });
+    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 9).toString("base64"));
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await beginMfaSetup(jsonRequest("http://localhost/api/me/mfa/setup", undefined, {
+        method: "POST", headers: { "x-forwarded-for": `198.51.100.${attempt + 1}` }
+      }));
+      expect(response.status).toBe(200);
+    }
+    const throttled = await beginMfaSetup(jsonRequest("http://localhost/api/me/mfa/setup", undefined, {
+      method: "POST", headers: { "x-forwarded-for": "203.0.113.250" }
+    }));
+    expect(throttled.status).toBe(429);
   });
 
   test("rate-limit logs redact dynamic identifiers from paths", async () => {

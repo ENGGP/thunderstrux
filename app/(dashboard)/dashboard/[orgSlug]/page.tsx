@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { requireAnyOrganisationPermission } from "@/lib/auth/access";
+import { requireAnyOrganisationPermission, StaffMfaRequiredError } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 
 export default async function LegacyDashboardPage({
@@ -27,7 +27,8 @@ export default async function LegacyDashboardPage({
       "stripe:manage",
       "staff:manage"
     ]);
-  } catch {
+  } catch (error) {
+    if (error instanceof StaffMfaRequiredError) redirect(`/mfa?callbackUrl=${encodeURIComponent(`/dashboard/${orgSlug}`)}`);
     notFound();
   }
 

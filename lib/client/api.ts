@@ -87,7 +87,7 @@ export async function fetchJson<T>(
   url: string,
   init?: RequestInit
 ): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetchWithCsrf(url, init);
   const data = await parseJsonSafely(response);
 
   if (!response.ok) {
@@ -102,4 +102,32 @@ export async function fetchJson<T>(
   }
 
   return data as T;
+}
+
+export async function fetchWithCsrf(url: string, init?: RequestInit) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (!["POST", "PATCH", "DELETE", "PUT"].includes(method) || url === "/api/auth/signup") {
+    return fetch(url, init);
+  }
+  async function attempt() {
+    const csrfResponse = await fetch("/api/security/csrf", {
+      credentials: "same-origin",
+      cache: "no-store"
+    });
+    if (!csrfResponse.ok) return csrfResponse;
+    const payload = (await csrfResponse.json()) as { token: string };
+    const headers = new Headers(init?.headers);
+    headers.set("x-thunderstrux-csrf-token", payload.token);
+    return fetch(url, { ...init, headers, credentials: "same-origin" });
+  }
+
+  const response = await attempt();
+  if (response.status !== 403 || init?.body instanceof ReadableStream) return response;
+  const error = await response.clone().json().catch(() => null) as ApiErrorPayload | null;
+  // Auth.js can rotate its cookie between token retrieval and the mutation.
+  // The guard rejects before route execution; retry once only for that exact error.
+  if (error?.error?.code !== "FORBIDDEN" || error.error.message !== "Invalid CSRF token") {
+    return response;
+  }
+  return attempt();
 }

@@ -2,10 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
-import {
-  requireCurrentOrganisationAccount,
-  requireOrganisationFinanceAccess
-} from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
@@ -63,8 +60,7 @@ export default async function OrganisationOrderDetailPage({
     historySearchParams.historyCursor,
     historySearchParams.historyDirection
   );
-  const organisation = await requireCurrentOrganisationAccount();
-  await requireOrganisationFinanceAccess(organisation.id);
+  const organisation = await requireManagementPage("orders:read", `/dashboard/orders/${orderId}`);
 
   let order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>;
   let lifecycle: Awaited<ReturnType<typeof getOrganisationOrderLifecycle>>;

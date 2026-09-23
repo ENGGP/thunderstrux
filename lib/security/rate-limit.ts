@@ -21,7 +21,9 @@ export type RateLimitPolicy =
   | "order_resend"
   | "organisation_join_leave"
   | "ticket_check_in_out"
-  | "stripe_connect_mutation";
+  | "stripe_connect_mutation"
+  | "staff_mfa_setup"
+  | "staff_mfa_verify";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -66,7 +68,9 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
     limit: 20,
     windowSeconds: 10 * 60,
     failureMode: "open"
-  }
+  },
+  staff_mfa_setup: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
+  staff_mfa_verify: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" }
 };
 
 let testBackend: RateLimitBackend | null = null;

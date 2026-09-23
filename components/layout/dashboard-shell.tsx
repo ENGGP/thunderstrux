@@ -39,6 +39,9 @@ export function DashboardShell({
               {item.label}
             </Link>
           ))}
+          <Link href="/mfa" className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900">
+            Staff MFA
+          </Link>
         </nav>
       </aside>
       <div className="md:ml-64">

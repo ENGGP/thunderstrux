@@ -1,10 +1,7 @@
 import { notFound } from "next/navigation";
 import { CreateEventForm } from "@/components/events/create-event-form";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  requireCurrentOrganisationAccount,
-  requireOrganisationEventManagementAccess
-} from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 import {
   EventLifecycleNotFoundError,
   getOrganisationEventForEditing
@@ -35,8 +32,7 @@ export default async function EditEventPage({
   params: Promise<{ eventId: string }>;
 }) {
   const { eventId } = await params;
-  const organisation = await requireCurrentOrganisationAccount();
-  await requireOrganisationEventManagementAccess(organisation.id);
+  const organisation = await requireManagementPage("events:manage", `/dashboard/events/${eventId}/edit`);
 
   let initialEvent: EventFormData;
 

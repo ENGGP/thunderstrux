@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { requireOrganisationPermission } from "@/lib/auth/access";
+import { requireOrganisationPermission, StaffMfaRequiredError } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 
 export default async function LegacyEventsPage({
@@ -21,7 +21,8 @@ export default async function LegacyEventsPage({
 
   try {
     await requireOrganisationPermission(organisation.id, "events:manage");
-  } catch {
+  } catch (error) {
+    if (error instanceof StaffMfaRequiredError) redirect(`/mfa?callbackUrl=${encodeURIComponent(`/dashboard/${orgSlug}/events`)}`);
     notFound();
   }
 

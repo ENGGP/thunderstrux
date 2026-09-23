@@ -107,7 +107,9 @@ test('checkout validates quantities, readiness, origin and absent provider confi
   const body = { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1 };
   expect((await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'https://example.com' }, data: body })).status()).toBe(403);
   await prisma.organisation.update({ where: {id: data.organisation.id}, data: {stripeAccountId: 'acct_synthetic', stripeChargesEnabled: true} });
-  expect((await page.request.post('/api/payments/checkout/event', {headers: { Origin: 'http://localhost:3100' }, data: body})).status()).toBe(503);
+  expect((await page.request.post('/api/payments/checkout/event', {headers: { Origin: 'http://localhost:3100' }, data: body})).status()).toBe(403);
+  const { token } = await (await page.request.get('/api/security/csrf')).json();
+  expect((await page.request.post('/api/payments/checkout/event', {headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token }, data: body})).status()).toBe(503);
   expect(await prisma.order.count({where: {eventId: data.event.id}})).toBe(0);
 });
 
@@ -130,7 +132,8 @@ test('member staff, legacy owner, tenant separation and live-session revocation'
   await prisma.organisationStaff.update({where: {id: data.staff.id}, data: {role: 'finance_manager'}});
   const payload = { organisationId: data.organisation.id, title: data.event.title, description: 'changed', location: 'changed', startTime: data.event.startTime.toISOString(), endTime: data.event.endTime.toISOString(), ticketTypes: [] };
   const before = await prisma.event.findUniqueOrThrow({where: {id: data.event.id}});
-  const mutation = () => page.request.patch(`/api/events/${data.event.id}`, {headers: {Origin: 'http://localhost:3100'}, data: payload});
+  const { token } = await (await page.request.get('/api/security/csrf')).json();
+  const mutation = () => page.request.patch(`/api/events/${data.event.id}`, {headers: {Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token}, data: payload});
   expect((await mutation()).status()).toBe(403);
   expect((await page.request.get('/api/orders')).status()).toBe(200);
   await prisma.organisationStaff.update({where: {id: data.staff.id}, data: {status: 'revoked'}});

@@ -9,6 +9,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireAuthenticatedUser,
   requireCurrentOrganisationAccount,
   requireOrganisationPermission
 } from "@/lib/auth/access";
@@ -48,7 +49,8 @@ export async function POST(request: Request, context: RouteContext) {
       return limitResponse;
     }
 
-    const ticket = await checkInOrganisationTicket(organisation.id, ticketId);
+    const actor = await requireAuthenticatedUser();
+    const ticket = await checkInOrganisationTicket(organisation.id, ticketId, actor.id);
 
     return NextResponse.json({ ticket });
   } catch (error) {

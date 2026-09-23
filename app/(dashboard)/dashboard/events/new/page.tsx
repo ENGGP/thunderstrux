@@ -1,13 +1,9 @@
 import { CreateEventForm } from "@/components/events/create-event-form";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  requireCurrentOrganisationAccount,
-  requireOrganisationEventManagementAccess
-} from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 
 export default async function NewEventPage() {
-  const organisation = await requireCurrentOrganisationAccount();
-  await requireOrganisationEventManagementAccess(organisation.id);
+  const organisation = await requireManagementPage("events:manage", "/dashboard/events/new");
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name}>

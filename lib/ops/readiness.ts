@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { checkRateLimitReadiness } from "@/lib/security/rate-limit";
+import { assertStaffMfaConfiguration } from "@/lib/security/staff-mfa";
 
 const READINESS_TIMEOUT_MS = 2_000;
 
@@ -19,5 +20,6 @@ export async function checkDatabaseReadiness() {
 }
 
 export async function checkApplicationReadiness() {
+  assertStaffMfaConfiguration();
   await Promise.all([checkDatabaseReadiness(), checkRateLimitReadiness()]);
 }

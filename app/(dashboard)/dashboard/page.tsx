@@ -5,6 +5,7 @@ import { MemberProfileForm } from "@/components/members/member-profile-form";
 import { MemberOrganisationsList } from "@/components/members/member-organisations-list";
 import {
   OrganisationAccessError,
+  StaffMfaRequiredError,
   getAccessibleOrganisationsForCurrentAccount,
   getCurrentStaffOrganisations,
   requireAuthenticatedUser,
@@ -405,6 +406,7 @@ export default async function DashboardPage() {
     try {
       return await OrganisationDashboard();
     } catch (error) {
+      if (error instanceof StaffMfaRequiredError) redirect("/mfa?callbackUrl=/dashboard");
       if (error instanceof OrganisationAccessError) {
         redirect("/dashboard/create");
       }

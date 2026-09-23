@@ -4,6 +4,9 @@ import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { createUser, unique } from "@/tests/helpers/test-data";
 import { POST as createOrganisation } from "@/app/api/orgs/route";
+import { POST as signup } from "@/app/api/auth/signup/route";
+import { GET as getCsrfToken } from "@/app/api/security/csrf/route";
+import { createCsrfTokenForRequest } from "@/lib/security/csrf";
 import { POST as paymentsWebhook } from "@/app/api/payments/webhook/route";
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
 
@@ -89,7 +92,7 @@ describe("trusted origin guard", () => {
           method: "POST",
           path: "/api/orgs",
           origin: "https://evil.example",
-          referer: null,
+          refererOrigin: null,
           reason: "untrusted_origin"
       });
     });
@@ -121,6 +124,90 @@ describe("trusted origin guard", () => {
     });
   });
 
+  test("rejects malformed Origin values and does not log Referer query tokens", async () => {
+    await withAppUrlEnv("http://localhost:3000", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const response = await signup(
+        jsonRequest("http://localhost/api/auth/signup", {
+          email: `${unique("signup")}@example.com`,
+          password: "password123",
+          accountRole: "member"
+        }, {
+          headers: {
+            origin: "http://localhost:3000/path?token=origin-do-not-log",
+            referer: "http://localhost:3000/invite?token=do-not-log"
+          }
+        })
+      );
+
+      expect(response.status).toBe(403);
+      const log = parseConsoleJson(warn);
+      expect(log).toMatchObject({
+        event: "trusted_origin.rejected",
+        reason: "untrusted_origin",
+        refererOrigin: "http://localhost:3000"
+      });
+      expect(JSON.stringify(log)).not.toContain("do-not-log");
+      await expect(prisma.user.count()).resolves.toBe(0);
+    });
+  });
+
+  test("signup rejects a missing first-party origin before hashing or writing", async () => {
+    await withAppUrlEnv("http://localhost:3000", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const response = await signup(
+        new Request("http://localhost/api/auth/signup", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: `${unique("signup")}@example.com`,
+            password: "password123",
+            accountRole: "member"
+          })
+        })
+      );
+      expect(response.status).toBe(403);
+      expect(parseConsoleJson(warn)).toMatchObject({
+        reason: "missing_origin_and_referer"
+      });
+      await expect(prisma.user.count()).resolves.toBe(0);
+    });
+  });
+
+  test("session cookie mutations require a session-bound CSRF header", async () => {
+    await withAppUrlEnv("http://localhost:3000", async () => {
+      vi.stubEnv("AUTH_SECRET", "integration-csrf-secret");
+      const user = await createUser({ accountRole: "organisation" });
+      setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+      const cookie = "authjs.session-token=first-session";
+      const tokenResponse = await getCsrfToken(new Request("http://localhost/api/security/csrf", {
+        headers: { cookie }
+      }));
+      expect(tokenResponse.status).toBe(200);
+      expect(tokenResponse.headers.get("cache-control")).toBe("no-store");
+      const { token } = await parseJsonResponse(tokenResponse);
+
+      const missing = await createOrganisation(jsonRequest("http://localhost/api/orgs", {
+        name: unique("Org")
+      }, { headers: { cookie } }));
+      expect(missing.status).toBe(403);
+      await expect(prisma.organisation.count()).resolves.toBe(0);
+
+      const otherSession = createCsrfTokenForRequest(new Request("http://localhost/", {
+        headers: { cookie: "authjs.session-token=other-session" }
+      }));
+      const wrong = await createOrganisation(jsonRequest("http://localhost/api/orgs", {
+        name: unique("Org")
+      }, { headers: { cookie, "x-thunderstrux-csrf-token": otherSession! } }));
+      expect(wrong.status).toBe(403);
+
+      const valid = await createOrganisation(jsonRequest("http://localhost/api/orgs", {
+        name: unique("Org")
+      }, { headers: { cookie, "x-thunderstrux-csrf-token": token } }));
+      expect(valid.status).toBe(201);
+    });
+  });
+
   test("accepts trusted referer when origin is missing", async () => {
     await withAppUrlEnv("http://localhost:3000", async () => {
       const user = await createUser({ accountRole: "organisation" });
@@ -141,7 +228,7 @@ describe("trusted origin guard", () => {
     });
   });
 
-  test("temporarily allows missing origin and referer with compatibility warning", async () => {
+  test("rejects missing origin and referer without writing rows", async () => {
     await withAppUrlEnv("http://localhost:3000", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const user = await createUser({ accountRole: "organisation" });
@@ -152,20 +239,23 @@ describe("trusted origin guard", () => {
       });
 
       const response = await createOrganisation(
-        jsonRequest("http://localhost/api/orgs", { name: unique("Org") }, {
-          method: "POST"
+        new Request("http://localhost/api/orgs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: unique("Org") })
         })
       );
 
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(403);
+      await expect(prisma.organisation.count()).resolves.toBe(0);
       expect(parseConsoleJson(warn)).toMatchObject({
           level: "warn",
-          event: "trusted_origin.compat_allowed",
+          event: "trusted_origin.rejected",
           method: "POST",
           path: "/api/orgs",
           origin: null,
-          referer: null,
-          reason: "missing_origin_and_referer_allowed"
+          refererOrigin: null,
+          reason: "missing_origin_and_referer"
       });
     });
   });

@@ -1,8 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { setMockSession } from "@/tests/helpers/auth";
+import { jsonRequest } from "@/tests/helpers/http";
+import { POST as requeueEmailRoute } from "@/app/api/orders/[orderId]/email-jobs/[jobId]/requeue/route";
 import {
   enqueueTicketEmail,
-  processTicketEmailOutboxBatch
+  processTicketEmailOutboxBatch,
+  requeueFailedTicketEmail
 } from "@/lib/email/ticket-email-outbox";
 import {
   createEvent,
@@ -79,6 +83,77 @@ function configureEmailEnv() {
 }
 
 describe("ticket email outbox", () => {
+  test("authorised operator requeues a terminal job once with audit and lifecycle evidence", async () => {
+    const order = await createPaidTicketOrder("requeue-outbox@example.com");
+    const owner = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+      select: { event: { select: { organisation: { select: { accountUserId: true } } } } }
+    });
+    const actorUserId = owner.event.organisation.accountUserId!;
+    const outsider = await createMember({ email: "requeue-outsider@example.com" });
+    const job = await prisma.emailOutbox.create({
+      data: { orderId: order.id, mode: "automatic", status: "failed", attempts: 5,
+        lastError: "provider unavailable" }
+    });
+    await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId: outsider.id,
+      reason: "Provider issue resolved" })).rejects.toThrow("permission");
+    await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId,
+      reason: "Provider issue resolved" })).resolves.toMatchObject({ orderId: order.id });
+    await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId,
+      reason: "Provider issue resolved" })).rejects.toThrow("terminal failed");
+    await expect(prisma.emailOutbox.findUniqueOrThrow({ where: { id: job.id } }))
+      .resolves.toMatchObject({ status: "pending", attempts: 0, lastError: null });
+    await expect(prisma.auditLog.findFirstOrThrow({ where: { targetId: job.id } }))
+      .resolves.toMatchObject({ actorUserId, action: "email_outbox.requeued" });
+    await expect(prisma.orderLifecycleEvent.findFirstOrThrow({
+      where: { emailOutboxId: job.id, reason: "operator_requeue" }
+    })).resolves.toMatchObject({ actorUserId, type: "email_enqueued" });
+  });
+
+  test("requeue route binds audit attribution to the authenticated tenant staff", async () => {
+    const order = await createPaidTicketOrder("requeue-route@example.com");
+    const owner = await prisma.order.findUniqueOrThrow({ where: { id: order.id },
+      select: { event: { select: { organisation: { select: { accountUser: {
+        select: { id: true, email: true } } } } } } } });
+    const actor = owner.event.organisation.accountUser!;
+    const job = await prisma.emailOutbox.create({ data: {
+      orderId: order.id, mode: "automatic", status: "failed", attempts: 5
+    } });
+    const other = await createOrganisationAccount();
+    const call = () => requeueEmailRoute(jsonRequest(
+      `http://localhost/api/orders/${order.id}/email-jobs/${job.id}/requeue`,
+      { reason: "Provider issue resolved" }),
+      { params: Promise.resolve({ orderId: order.id, jobId: job.id }) }
+    );
+    setMockSession({ userId: other.user.id, email: other.user.email,
+      accountRole: "organisation" });
+    expect((await call()).status).toBe(404);
+    setMockSession({ userId: actor.id, email: actor.email,
+      accountRole: "organisation" });
+    expect((await call()).status).toBe(200);
+    expect((await call()).status).toBe(409);
+    await expect(prisma.auditLog.findFirstOrThrow({ where: { targetId: job.id } }))
+      .resolves.toMatchObject({ actorUserId: actor.id });
+  });
+
+  test("requeue refuses provider-accepted and unpaid jobs", async () => {
+    const order = await createPaidTicketOrder("requeue-ineligible@example.com");
+    const actorUserId = (await prisma.order.findUniqueOrThrow({ where: { id: order.id },
+      select: { event: { select: { organisation: { select: { accountUserId: true } } } } } }))
+      .event.organisation.accountUserId!;
+    const job = await prisma.emailOutbox.create({ data: { orderId: order.id,
+      mode: "manual", status: "failed", deliveredToProviderAt: new Date() } });
+    await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId,
+      reason: "Provider issue resolved" })).rejects.toThrow("unaccepted");
+    await prisma.emailOutbox.update({ where: { id: job.id },
+      data: { deliveredToProviderAt: null } });
+    await prisma.order.update({ where: { id: order.id },
+      data: { status: "failed", failedAt: new Date() } });
+    await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId,
+      reason: "Provider issue resolved" })).rejects.toThrow("not eligible");
+    await expect(prisma.auditLog.count({ where: { targetId: job.id } })).resolves.toBe(0);
+  });
+
   test("automatic enqueue is idempotent while manual enqueue is repeatable", async () => {
     const order = await createPaidTicketOrder();
 

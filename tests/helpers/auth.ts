@@ -7,15 +7,18 @@ export function clearMockSession() {
 export function setMockSession({
   userId,
   email,
-  accountRole
+  accountRole,
+  mfaSessionId = "integration-session"
 }: {
   userId: string;
   email: string;
   accountRole: AccountRole;
+  mfaSessionId?: string;
 }) {
   globalThis.__THUNDERSTRUX_TEST_SESSION__ = {
     user: {
       id: userId,
+      staffMfaSessionId: mfaSessionId,
       email,
       accountRole,
       firstName: null,

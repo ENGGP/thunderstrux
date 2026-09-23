@@ -12,6 +12,7 @@ import {
   appendOrderLifecycleEvent,
   lockOrder
 } from "@/lib/payments/order-lifecycle";
+import { hasOrganisationPermission } from "@/lib/permissions";
 
 const defaultBatchSize = 25;
 const defaultMaxAttempts = 5;
@@ -30,6 +31,8 @@ type ClaimedEmailJob = {
 type InsertedEmailJob = {
   id: string;
 };
+
+export class EmailRequeueError extends Error {}
 
 let automaticOutboxEnqueueTestFailure: Error | null = null;
 
@@ -87,7 +90,8 @@ export async function enqueueTicketEmail({
       select: {
         status: true,
         requiresCompensationReview: true,
-        reservation: { select: { status: true } }
+        reservation: { select: { status: true } },
+        event: { select: { organisationId: true } }
       }
     });
     const job = await tx.emailOutbox.create({
@@ -109,6 +113,13 @@ export async function enqueueTicketEmail({
         compensationReview: order.requiresCompensationReview
       }
     });
+    await tx.auditLog.create({ data: {
+      organisationId: order.event.organisationId,
+      actorUserId: actorUserId ?? null,
+      action: "order.ticket_email_queued",
+      targetType: "Order", targetId: orderId,
+      metadata: { emailOutboxId: job.id }
+    } });
     return { enqueued: true };
   });
 }
@@ -158,6 +169,94 @@ export async function enqueueAutomaticTicketEmailForOrder(
   }
 
   return { enqueued: rows.length > 0 };
+}
+
+export async function requeueFailedTicketEmail({
+  jobId,
+  actorUserId,
+  reason,
+  now = new Date()
+}: {
+  jobId: string;
+  actorUserId: string;
+  reason: string;
+  now?: Date;
+}) {
+  if (reason.trim().length < 8 || reason.length > 500) {
+    throw new EmailRequeueError("A review reason between 8 and 500 characters is required");
+  }
+  return prisma.$transaction(async (tx) => {
+    const job = await tx.emailOutbox.findUnique({
+      where: { id: jobId },
+      select: { id: true, orderId: true, mode: true, status: true, deliveredToProviderAt: true }
+    });
+    if (!job || job.status !== "failed" || job.deliveredToProviderAt) {
+      throw new EmailRequeueError("Only terminal failed, unaccepted email jobs can be requeued");
+    }
+    if (!(await lockOrder(tx, job.orderId))) throw new Error("Order lock failed");
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: job.orderId },
+      select: {
+        status: true,
+        ticketEmailSentAt: true,
+        requiresCompensationReview: true,
+        reservation: { select: { status: true } },
+        event: { select: { organisationId: true, organisation: { select: { accountUserId: true } } } }
+      }
+    });
+    if (order.status !== "paid" || (job.mode === "automatic" && order.ticketEmailSentAt)) {
+      throw new EmailRequeueError("Order is not eligible for email requeue");
+    }
+    const organisationId = order.event.organisationId;
+    const staff = await tx.organisationStaff.findUnique({
+      where: { organisationId_userId: { organisationId, userId: actorUserId } },
+      select: { status: true, role: true }
+    });
+    const authorised = staff
+      ? staff.status === "active" && hasOrganisationPermission(staff.role, "orders:email_resend")
+      : order.event.organisation.accountUserId === actorUserId;
+    if (!authorised) throw new EmailRequeueError("Actor lacks email resend permission for this organisation");
+
+    const updated = await tx.emailOutbox.updateMany({
+      where: { id: job.id, status: "failed", deliveredToProviderAt: null },
+      data: {
+        status: "pending",
+        attempts: 0,
+        nextAttemptAt: now,
+        processingStartedAt: null,
+        processingToken: null,
+        lastError: null
+      }
+    });
+    if (updated.count !== 1) throw new EmailRequeueError("Email job changed during review");
+    await tx.auditLog.create({
+      data: {
+        organisationId,
+        actorUserId,
+        action: "email_outbox.requeued",
+        targetType: "EmailOutbox",
+        targetId: job.id,
+        metadata: { orderId: job.orderId, reason: reason.trim() }
+      }
+    });
+    await appendOrderLifecycleEvent(tx, {
+      orderId: job.orderId,
+      type: "email_enqueued",
+      source: "staff_action",
+      actorUserId,
+      emailOutboxId: job.id,
+      reason: "operator_requeue",
+      fromOrderStatus: order.status,
+      toOrderStatus: order.status,
+      facts: { emailMode: job.mode },
+      baseline: {
+        orderStatus: order.status,
+        reservationStatus: order.reservation?.status,
+        compensationReview: order.requiresCompensationReview
+      }
+    });
+    return { orderId: job.orderId, organisationId };
+  });
 }
 
 export async function claimTicketEmailOutboxJobs({

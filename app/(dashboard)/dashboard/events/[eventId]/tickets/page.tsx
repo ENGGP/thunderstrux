@@ -3,10 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { TicketCheckInButton } from "@/components/tickets/ticket-check-in-button";
 import {
-  OrganisationAccessError,
-  requireCurrentOrganisationAccount,
-  requireOrganisationPermission
+  requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 import {
   OrganisationEventTicketsAccessError,
   TicketPaginationError,
@@ -102,16 +101,7 @@ export default async function OrganiserEventTicketsPage({
     throw error;
   }
 
-  try {
-    organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationPermission(organisation.id, "tickets:check_in");
-  } catch (error) {
-    if (error instanceof OrganisationAccessError) {
-      redirect("/");
-    }
-
-    throw error;
-  }
+  organisation = await requireManagementPage("tickets:check_in", `/dashboard/events/${eventId}/tickets`);
 
   let payload: Awaited<ReturnType<typeof getOrganisationEventTickets>>;
 

@@ -174,5 +174,15 @@ describe("database numeric integrity constraints", () => {
         }
       })
     ).rejects.toThrow();
+
+    await expect(
+      prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: "failed",
+          failedAt: null
+        }
+      })
+    ).rejects.toThrow();
   });
 });

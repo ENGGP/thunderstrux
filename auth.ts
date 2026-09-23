@@ -1,4 +1,5 @@
 import { compare } from "bcryptjs";
+import { randomUUID } from "node:crypto";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db";
@@ -94,6 +95,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user }) {
+      // Only a new password sign-in can establish a persistent MFA login ID.
+      // Server-side auth() reads cannot persist a refreshed JWT for old cookies.
+      if (user?.id) {
+        token.staffMfaSessionId = randomUUID();
+      }
       if (user?.id) {
         token.userId = user.id;
       }
@@ -118,6 +124,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (session.user) {
+        session.user.staffMfaSessionId = token.staffMfaSessionId as string;
         session.user.id = token.userId as string;
         session.user.accountRole = token.accountRole ?? "member";
         session.user.firstName = token.firstName ?? null;

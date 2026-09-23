@@ -1,5 +1,7 @@
 # Current Handover
 
+Production-readiness verification is in progress on branch `codex/production-readiness-verification` (2026-09-22). The current evidence ledger and release gates are in [[Production Readiness Verification 2026-09-22]]. It adds strict origin plus session-bound CSRF protection, an authenticated failed-email requeue route, denormalized ownership drift audit/repair, the failed-order timestamp constraint, and staged staff TOTP MFA with recovery codes. MFA activation, broader sensitive-action audit coverage, and external production operations remain release gates. Do not treat the branch as merged or production-ready until the latest-head PR checks and reviewer acceptance pass.
+
 P3.19 update (2026-09-21): [PR #13](https://github.com/ENGGP/thunderstrux/pull/13) merged the formal payment lifecycle and operator history to `main` (`b835d18`). Its five latest-head CI checks passed. Local acceptance included 213 integration tests, typecheck, production build, three consecutive 15-test browser/webhook runs, 13 runner-safety tests, operations rehearsal, a zero-finding high-severity audit, and real Stripe test-mode success/decline/cancellation/forced-expiry evidence. See [[Handover 2026-09-21 P3.19 Delivery]] for defects, fixes, evidence, and rollout limits; [[Payment Lifecycle]] for behavior. Drain old email workers before deploying the new claim-token implementation.
 
 Read this first, then [[Handover 2026-09-21 P3.19 Delivery]], [[Engineering Delivery Workflow]], and [[Thunderstrux Codebase Map]]. Later sections below include historical snapshots; prefer the dated handover and linked topic notes for the current state.
@@ -56,7 +58,7 @@ Security hardening now in place:
 - Stripe webhook routes are exempt from trusted-origin and rate-limit guards; they remain governed by Stripe signature verification over raw request bodies.
 - Payment webhooks, checkout session creation, email outbox processing, stale cleanup, rate limiting, and trusted-origin guard now emit stable structured operational events.
 
-Named organisation staff, invites, audit logs, and per-user permissions are implemented. Legacy organisation accounts remain supported; MFA remains future work. `OrganisationMember` join rows never grant management access.
+Named organisation staff, invites, audit logs, per-user permissions, and staged TOTP MFA are implemented on the current branch. Legacy organisation accounts remain supported during the individual-account migration. MFA production enrollment and enforcement are release gates. `OrganisationMember` join rows never grant management access.
 
 ## Latest Migrations
 

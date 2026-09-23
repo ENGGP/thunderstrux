@@ -99,8 +99,12 @@ WHERE "status" = 'processing'
 
 When failed jobs exist, operators should fix the provider or environment issue,
 identify affected paid orders from `orderId`, and contact buyers manually if
-needed. Terminal failed jobs are not automatically requeued; explicit audited
-requeue tooling is future work.
+needed. An authenticated staff member with email-resend permission can requeue
+a terminal failed job through `POST /api/orders/<order-id>/email-jobs/<job-id>/requeue`
+with a review reason and the normal trusted-origin/session CSRF headers. The
+operation is audited and appends an order lifecycle event. Check the provider's
+idempotency record first: a failed local finalization does not prove that the
+provider never accepted the email. See [[Production Readiness Verification 2026-09-22]].
 
 Operational events:
 

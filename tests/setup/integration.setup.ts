@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { resetTestDatabase } from "@/tests/helpers/db-reset";
 
 vi.mock("@/auth", () => ({
+  authSecret: "integration-auth-secret",
   auth: vi.fn(async () => globalThis.__THUNDERSTRUX_TEST_SESSION__ ?? null),
   handlers: {},
   signIn: vi.fn(),

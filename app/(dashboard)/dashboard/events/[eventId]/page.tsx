@@ -1,11 +1,7 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  OrganisationAccessError,
-  requireCurrentOrganisationAccount,
-  requireOrganisationEventManagementAccess
-} from "@/lib/auth/access";
+import { requireManagementPage } from "@/lib/auth/page-access";
 import {
   EventAnalyticsAccessError,
   getOrganisationEventAnalytics,
@@ -51,18 +47,7 @@ export default async function OrganiserEventPage({
   params
 }: OrganiserEventPageProps) {
   const { eventId } = await params;
-  let organisation: Awaited<ReturnType<typeof requireCurrentOrganisationAccount>>;
-
-  try {
-    organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationEventManagementAccess(organisation.id);
-  } catch (error) {
-    if (error instanceof OrganisationAccessError) {
-      redirect("/");
-    }
-
-    throw error;
-  }
+  const organisation = await requireManagementPage("events:manage", `/dashboard/events/${eventId}`);
 
   let analytics: Awaited<ReturnType<typeof getOrganisationEventAnalytics>>;
   let revenueSeries: Awaited<ReturnType<typeof getOrganisationEventRevenueSeries>>;

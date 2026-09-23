@@ -293,9 +293,11 @@ export async function getOrganisationEventTickets(
 
 export async function checkInOrganisationTicket(
   organisationId: string,
-  ticketId: string
+  ticketId: string,
+  actorUserId: string
 ) {
-  const existingTicket = await prisma.ticket.findFirst({
+  return prisma.$transaction(async (tx) => {
+  const existingTicket = await tx.ticket.findFirst({
     where: {
       id: ticketId,
       event: {
@@ -317,7 +319,7 @@ export async function checkInOrganisationTicket(
   }
 
   const checkedInAt = new Date();
-  const updated = await prisma.ticket.updateMany({
+  const updated = await tx.ticket.updateMany({
     where: {
       id: ticketId,
       event: {
@@ -334,7 +336,7 @@ export async function checkInOrganisationTicket(
     throw new TicketAlreadyCheckedInError();
   }
 
-  const ticket = await prisma.ticket.findFirstOrThrow({
+  const ticket = await tx.ticket.findFirstOrThrow({
     where: {
       id: ticketId,
       event: {
@@ -347,18 +349,23 @@ export async function checkInOrganisationTicket(
     }
   });
 
+  await tx.auditLog.create({ data: { organisationId, actorUserId,
+    action: "ticket.checked_in", targetType: "Ticket", targetId: ticketId } });
   return {
     id: ticket.id,
     status: ticketStatus(ticket.checkedInAt),
     checkedInAt: ticket.checkedInAt
   };
+  });
 }
 
 export async function checkOutOrganisationTicket(
   organisationId: string,
-  ticketId: string
+  ticketId: string,
+  actorUserId: string
 ) {
-  const existingTicket = await prisma.ticket.findFirst({
+  return prisma.$transaction(async (tx) => {
+  const existingTicket = await tx.ticket.findFirst({
     where: {
       id: ticketId,
       event: {
@@ -379,7 +386,7 @@ export async function checkOutOrganisationTicket(
     throw new TicketNotCheckedInError();
   }
 
-  const updated = await prisma.ticket.updateMany({
+  const updated = await tx.ticket.updateMany({
     where: {
       id: ticketId,
       event: {
@@ -398,7 +405,7 @@ export async function checkOutOrganisationTicket(
     throw new TicketNotCheckedInError();
   }
 
-  const ticket = await prisma.ticket.findFirstOrThrow({
+  const ticket = await tx.ticket.findFirstOrThrow({
     where: {
       id: ticketId,
       event: {
@@ -411,9 +418,12 @@ export async function checkOutOrganisationTicket(
     }
   });
 
+  await tx.auditLog.create({ data: { organisationId, actorUserId,
+    action: "ticket.checked_out", targetType: "Ticket", targetId: ticketId } });
   return {
     id: ticket.id,
     status: ticketStatus(ticket.checkedInAt),
     checkedInAt: ticket.checkedInAt
   };
+  });
 }

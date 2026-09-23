@@ -1,9 +1,13 @@
 export function jsonRequest(url: string, body?: unknown, init: RequestInit = {}) {
+  const method = body === undefined ? init.method ?? "GET" : init.method ?? "POST";
   return new Request(url, {
-    method: body === undefined ? init.method ?? "GET" : init.method ?? "POST",
+    method,
     ...init,
     headers: {
       ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(method !== "GET"
+        ? { origin: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000" }
+        : {}),
       ...(init.headers ?? {})
     },
     body: body === undefined ? init.body : JSON.stringify(body)

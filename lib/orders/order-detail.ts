@@ -160,6 +160,10 @@ export async function markOrganisationOrderManuallyRefunded(
         compensationReview: order.requiresCompensationReview
       }
     });
+    await tx.auditLog.create({ data: {
+      organisationId, actorUserId: actorUserId ?? null,
+      action: "order.manual_refund_marked", targetType: "Order", targetId: orderId
+    } });
   });
 
   return prisma.order.findFirstOrThrow({

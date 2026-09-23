@@ -289,7 +289,20 @@ const checks: AuditCheck[] = [
         LIMIT ${SAMPLE_LIMIT}
       `)
     })
-  }
+  },
+  ...(["Order", "Ticket", "TicketReservation"] as const).map((table) => ({
+    name: `${table.toLowerCase()}_organisation_matches_event`,
+    classification: "relationship/audit-only" as const,
+    recommendation: "Repair denormalized organisationId from Event.organisationId after a verified backup.",
+    run: async () => ({
+      count: await rawCount(prisma.$queryRawUnsafe<RawCount>(
+        `SELECT COUNT(*)::bigint AS count FROM "${table}" row INNER JOIN "Event" event ON event."id" = row."eventId" WHERE row."organisationId" <> event."organisationId"`
+      )),
+      sampleIds: await rawSampleIds(prisma.$queryRawUnsafe<RawIds>(
+        `SELECT row."id" FROM "${table}" row INNER JOIN "Event" event ON event."id" = row."eventId" WHERE row."organisationId" <> event."organisationId" ORDER BY row."id" ASC LIMIT ${SAMPLE_LIMIT}`
+      ))
+    })
+  }))
 ];
 
 export async function runDatabaseIntegrityAudit() {

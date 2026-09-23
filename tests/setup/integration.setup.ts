@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { resetTestDatabase } from "@/tests/helpers/db-reset";
 
 vi.mock("@/auth", () => ({
+  authSecret: "integration-auth-secret",
   auth: vi.fn(async () => globalThis.__THUNDERSTRUX_TEST_SESSION__ ?? null),
   handlers: {},
   signIn: vi.fn(),
@@ -18,6 +19,7 @@ beforeEach(async () => {
   vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_integration_placeholder");
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_integration_placeholder");
   vi.stubEnv("STRIPE_CONNECT_WEBHOOK_SECRET", "whsec_connect_integration_placeholder");
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input) => {

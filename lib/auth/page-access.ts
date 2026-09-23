@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  StaffMfaRequiredError,
   requireCurrentOrganisationAccount,
   requireOrganisationPermission
 } from "@/lib/auth/access";
@@ -18,6 +19,9 @@ export async function requireManagementPage(
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       redirect(`/login?callbackUrl=${encodeURIComponent(callbackPath)}`);
+    }
+    if (error instanceof StaffMfaRequiredError) {
+      redirect(`/mfa?callbackUrl=${encodeURIComponent(callbackPath)}`);
     }
     if (error instanceof OrganisationAccessError) notFound();
     throw error;

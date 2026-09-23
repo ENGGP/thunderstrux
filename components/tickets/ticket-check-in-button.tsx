@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { fetchWithCsrf } from "@/lib/client/api";
 
 type TicketCheckInButtonProps = {
   ticketId: string;
@@ -31,7 +32,7 @@ export function TicketCheckInButton({
     setMessage(null);
 
     try {
-      const response = await fetch(`/api/tickets/${ticketId}/${action}`, {
+      const response = await fetchWithCsrf(`/api/tickets/${ticketId}/${action}`, {
         method: "POST"
       });
       const body = await response.json().catch(() => null);

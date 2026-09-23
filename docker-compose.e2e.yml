@@ -27,7 +27,8 @@ services:
       NEXTAUTH_URL: http://localhost:3100
       NEXT_PUBLIC_APP_URL: http://localhost:3100
       TRUSTED_APP_ORIGINS: http://localhost:3100
-      RATE_LIMIT_ENABLED: 'false'
+      RATE_LIMIT_ENABLED: 'true'
+      RATE_LIMIT_REDIS_URL: redis://redis:6379
       PORT: '3100'
       RESEND_API_KEY: ''
       EMAIL_FROM: ''
@@ -39,6 +40,15 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 30
   migration:
     image: thunderstrux-p216-app:local
     env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:e2e}

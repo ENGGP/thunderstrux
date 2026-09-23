@@ -1,5 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { mfaGrantDigest } from "@/lib/security/csrf";
+import { MfaRequiredError, mfaEnforcementMode, requireStaffMfa } from "@/lib/security/staff-mfa";
 import {
   hasOrganisationPermission,
   organisationRolesWithPermission,
@@ -24,6 +26,23 @@ export class OrganisationAccessError extends Error {
   }
 }
 
+export class StaffMfaRequiredError extends OrganisationAccessError {
+  constructor(message: string) {
+    super(message);
+    this.name = "StaffMfaRequiredError";
+  }
+}
+
+async function requireCurrentStaffMfa(user: { id: string; mfaSessionId?: string }) {
+  if (mfaEnforcementMode() === "off") return;
+  try {
+    await requireStaffMfa(user.id, mfaGrantDigest(user.mfaSessionId));
+  } catch (error) {
+    if (error instanceof MfaRequiredError) throw new StaffMfaRequiredError(error.message);
+    throw error;
+  }
+}
+
 export type OrganisationManagementContext = {
   id: string;
   name: string;
@@ -42,6 +61,7 @@ export async function requireAuthenticatedUser() {
 
   return {
     id: userId,
+    mfaSessionId: session.user.staffMfaSessionId,
     accountRole: session.user.accountRole ?? "member",
     email: session.user.email
   };
@@ -69,7 +89,10 @@ export async function requireStripeConnectCapability() {
     select: { id: true }
   });
 
-  if (staff) return user;
+  if (staff) {
+    await requireCurrentStaffMfa(user);
+    return user;
+  }
 
   // Unrelated staff memberships must not hide legacy ownership. Any staff row
   // for the owned tenant supersedes that legacy authority, including revocation.
@@ -81,7 +104,10 @@ export async function requireStripeConnectCapability() {
       },
       select: { id: true }
     });
-    if (legacyOwner) return user;
+    if (legacyOwner) {
+      await requireCurrentStaffMfa(user);
+      return user;
+    }
   }
 
   throw new OrganisationAccessError("Insufficient permissions");
@@ -169,6 +195,9 @@ export async function requireCurrentOrganisationAccount() {
   if (!organisation) {
     throw new OrganisationAccessError("Organisation account has no organisation");
   }
+
+  const user = await requireAuthenticatedUser();
+  await requireCurrentStaffMfa(user);
 
   return organisation;
 }
@@ -589,6 +618,7 @@ export async function requireOrganisationPermission(
       }
 
       if (legacyOrganisation && hasOrganisationPermission("owner", permission)) {
+        await requireCurrentStaffMfa(user);
         return {
           ...legacyOrganisation,
           staffRole: "owner" as OrganisationStaffRole
@@ -602,6 +632,8 @@ export async function requireOrganisationPermission(
   if (!hasOrganisationPermission(staff.role as OrganisationStaffRole, permission)) {
     throw new OrganisationAccessError("Insufficient staff permissions");
   }
+
+  await requireCurrentStaffMfa(user);
 
   return {
     ...staff.organisation,
@@ -619,6 +651,7 @@ export async function requireAnyOrganisationPermission(
     try {
       return await requireOrganisationPermission(organisationId, permission);
     } catch (error) {
+      if (error instanceof StaffMfaRequiredError) throw error;
       if (error instanceof OrganisationAccessError) {
         lastAccessError = error;
         continue;

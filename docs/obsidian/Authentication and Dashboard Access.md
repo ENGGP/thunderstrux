@@ -1,8 +1,14 @@
 # Authentication and Dashboard Access
 
+## Staff MFA rollout (branch `codex/production-readiness-verification`)
+
+Staff and legacy-owner management access now checks live database staff authority and a login-bound MFA grant when `MFA_ENFORCEMENT_MODE` is `enroll` (for enabled users) or `enforce` (for everyone). Production requires an explicit mode. The `/mfa` page supports authenticator enrollment and verification; successful setup returns ten one-time recovery codes. TOTP secrets are AES-GCM encrypted with `MFA_ENCRYPTION_KEY`, recovery codes are keyed hashes, and grants expire after 12 hours. Auth.js keeps a random login ID across cookie refreshes; a new login needs its own verification. Management page helpers redirect to `/mfa`; API helpers deny access until verification. Member purchases and joined-organisation views remain outside the staff gate.
+
+Enrollment and challenge endpoints require the normal first-party origin and session CSRF token. They fail closed unless Redis-backed rate limiting is enabled and the separate MFA key is configured. `enroll` permits unenrolled staff to work while they are provisioned; `enforce` blocks them. See [[Production Readiness Verification 2026-09-22]] for activation and recovery gates.
+
 ## Dependency security update (2026-09-18)
 
-NextAuth is pinned to 5.0.0-beta.32 with @auth/core 0.41.3. The Credentials provider and JWT/session callbacks are unchanged. `dependency-security.test.ts` exercises actual credential rejection/login/session/logout plus malformed Bearer and valid-cookie proxy handling; this supplements the mocked-auth route suite. See [[Handover 2026-09-18 Dependency Security Remediation]].
+NextAuth is pinned to 5.0.0-beta.32 with @auth/core 0.41.3. The Credentials provider remains in use; this branch adds a random staff MFA login ID to the JWT/session callbacks. `dependency-security.test.ts` exercises actual credential rejection/login/session/logout plus malformed Bearer and valid-cookie proxy handling; this supplements the mocked-auth route suite. See [[Handover 2026-09-18 Dependency Security Remediation]].
 
 ## Auth Provider
 
@@ -40,7 +46,7 @@ Rules:
 - Account role is either `member` or `organisation`.
 - Member accounts represent people.
 - Organisation accounts represent exactly one organisation.
-- For MVP, organisation committee members may share the one organisation login. This is a temporary product tradeoff; future work should add named staff users, invites, MFA, audit logs, and per-user organisation permissions.
+- Named staff users, invites, roles, MFA, and initial audit logging are implemented. The legacy organisation login remains supported during migration and should be retired after all management users have individual accounts.
 
 ## Session Shape
 
@@ -49,9 +55,10 @@ Important session field:
 ```ts
 session.user.id
 session.user.accountRole
+session.user.staffMfaSessionId
 ```
 
-These values are used for dashboard routing and access checks.
+The first two values support dashboard routing and access checks. The random MFA login ID binds verification to one sign-in. Sessions created before this claim was introduced must sign out and sign in again before staff verification.
 
 ## Protected Routes
 

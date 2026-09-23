@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { badRequest, internalError, validationError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
+import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { signupSchema } from "@/lib/validators/auth";
 
@@ -16,6 +17,9 @@ function isPrismaErrorCode(error: unknown, code: string): boolean {
 }
 
 export async function POST(request: Request) {
+  const trustedOriginError = enforceTrustedMutationRequest(request);
+  if (trustedOriginError) return trustedOriginError;
+
   const ip = getRateLimitClientIp(request);
   const ipLimitResponse = await enforceRateLimit({
     policy: "signup_ip",

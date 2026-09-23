@@ -2,6 +2,8 @@
 
 This plan addresses the production-grade review findings across security, payments, data integrity, scalability, testing, DevEx, and operations. It is intentionally implementation-focused, but it is documentation only. No code, schema, config, tests, or dependencies are changed by this file.
 
+Implementation status and release evidence are tracked in [[obsidian/Production Readiness Verification 2026-09-22]]. That ledger records repository verification separately from hosted production activation and is the source of truth for remaining release gates.
+
 ## Goals
 
 - Make Thunderstrux safe to operate with real users, real organisations, and real payments.

@@ -11,6 +11,7 @@ declare module "next-auth" {
   interface Session {
     user: {
       id: string;
+      staffMfaSessionId?: string;
       accountRole: "member" | "organisation";
       email?: string | null;
       image?: string | null;
@@ -24,6 +25,7 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    staffMfaSessionId?: string;
     userId?: string;
     accountRole?: "member" | "organisation";
     firstName?: string | null;

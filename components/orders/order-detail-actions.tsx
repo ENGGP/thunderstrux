@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { fetchWithCsrf } from "@/lib/client/api";
 
 export function OrderDetailActions({
   orderId,
@@ -24,7 +25,7 @@ export function OrderDetailActions({
     setMessage(null);
 
     try {
-      const response = await fetch(`/api/orders/${orderId}/refund-manual`, {
+      const response = await fetchWithCsrf(`/api/orders/${orderId}/refund-manual`, {
         method: "PATCH"
       });
 
@@ -45,7 +46,7 @@ export function OrderDetailActions({
     setMessage(null);
 
     try {
-      const response = await fetch(`/api/orders/${orderId}/resend`, {
+      const response = await fetchWithCsrf(`/api/orders/${orderId}/resend`, {
         method: "POST"
       });
 

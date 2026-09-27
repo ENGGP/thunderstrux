@@ -9,7 +9,7 @@ This is not evidence of a live production deployment. Hosting, external health m
 ## Health
 
 - `GET /api/health` is liveness only and preserves the public `{status: "ok", service: "thunderstrux"}` contract.
-- `GET /api/health/ready` returns `200` only when an application-table query succeeds and Redis responds when rate limiting is enabled. It returns a public-safe `503` otherwise and is never cached.
+- `GET /api/health/ready` returns `200` only when the release's required migration is completed and not rolled back, an application-table query succeeds, MFA/legacy-access configuration is valid, and Redis responds when rate limiting is enabled. It returns a public-safe `503` otherwise and is never cached.
 - The image healthcheck calls readiness on `PORT`, defaulting to `3000`. An unhealthy container is a signal; Docker Compose does not automatically replace it.
 
 ## Deployment
@@ -27,6 +27,7 @@ Pause the platform schedules before deployment. Resume them only after readiness
 ```text
 every minute: node scripts/process-email-outbox.mjs
 every minute: node scripts/process-stale-orders.mjs
+every minute: node scripts/process-compensation-refunds.mjs
 ```
 
 A backup failure occurs before migrations and allows the unchanged release to restart. Once migration begins, a failure leaves writers stopped for inspection. Never use `prisma migrate reset` or automatically mark a failed migration resolved.
@@ -55,7 +56,7 @@ pnpm ops:restore -- --project p217-thunderstrux --env-file .env.production --arc
 
 Restore verifies metadata ownership, checksum, archive completion, grants through application credentials, migration history, and representative domain reads. Failed targets remain quarantined and are never promoted.
 
-For disaster recovery, stop app writers and workers, restore into a new database, verify without Stripe/Resend credentials, reconcile Stripe payments and webhook delivery, inspect email-outbox eligibility, switch the application deliberately, and then resume workers. A database restore cannot reverse external charges or email sends.
+For disaster recovery, stop app writers and workers, restore into a new database, verify without Stripe/Resend credentials, reconcile Stripe payments, refunds and webhook delivery, inspect email-outbox and compensation-refund jobs, switch the application deliberately, and then resume workers. A database restore cannot reverse external charges, refunds, transfers, or email sends.
 
 ## Validation
 

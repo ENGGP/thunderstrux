@@ -77,7 +77,7 @@ services:
   stripe:
     image: stripe/stripe-cli:v1.33.0
     env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:payments:staging}
-    command: [listen, --events, 'checkout.session.completed,checkout.session.expired', --forward-to, 'http://app:3100/api/payments/webhook']
+    command: [listen, --events, 'checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed', --forward-to, 'http://app:3100/api/payments/webhook']
     profiles: [staging]
 volumes:
   test_database:

@@ -160,6 +160,37 @@ describe("auth and role access", () => {
     ]);
   });
 
+  test("legacy organisation ownership can be retired without affecting named staff", async () => {
+    const { user: legacyOwner, organisation } = await createOrganisationAccount();
+    const staffUser = await createMember();
+    await createOrganisationStaff({
+      organisationId: organisation.id,
+      userId: staffUser.id,
+      role: "event_manager"
+    });
+    vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "deny");
+
+    setMockSession({
+      userId: legacyOwner.id,
+      email: legacyOwner.email,
+      accountRole: "organisation"
+    });
+    const denied = await getEvents(
+      jsonRequest(`http://localhost/api/events?orgId=${organisation.id}`)
+    );
+    expect(denied.status).toBe(403);
+
+    setMockSession({
+      userId: staffUser.id,
+      email: staffUser.email,
+      accountRole: "member"
+    });
+    const allowed = await getEvents(
+      jsonRequest(`http://localhost/api/events?orgId=${organisation.id}`)
+    );
+    expect(allowed.status).toBe(200);
+  });
+
   test("revoked staff loses management access without signing out", async () => {
     const { organisation } = await createOrganisationAccount();
     const staffUser = await createMember();

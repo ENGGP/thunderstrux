@@ -47,9 +47,9 @@ Application services accept already-authorized tenant identifiers. Routes must p
 
 Docker runtime:
 
-- base `docker-compose.yml` runs the production-like image with `pnpm start`
-- `docker/entrypoint.sh` runs `pnpm prisma:migrate:deploy` before startup
-- `docker-compose.dev.yml` adds source bind mounts, polling, `pnpm dev`, and the host database port for local tools
+- base `docker-compose.yml` runs the production-like image with `pnpm start`; `ops:deploy` runs the separate one-shot migration service before starting a candidate
+- `docker/entrypoint.sh` only drops into the configured container command and does not own migrations
+- `docker-compose.dev.yml` adds source bind mounts, polling, the host database port, and runs `pnpm prisma:migrate:deploy` before `pnpm dev`
 - Redis 7 is available for central rate limiting when `RATE_LIMIT_ENABLED=true`
 
 ## Product Account Model

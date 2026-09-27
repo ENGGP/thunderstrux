@@ -53,6 +53,7 @@ type EventFormData = FormState & {
   id: string;
   organisationId: string;
   status: "draft" | "published";
+  compensationRefundMode: "manual_review" | "automatic_full";
   ticketTypes: Array<{
     id: string;
     name: string;
@@ -201,6 +202,9 @@ export function CreateEventForm({
   const [ticketTypes, setTicketTypes] = useState<TicketTypeFormState[]>([
     emptyTicketType
   ]);
+  const [compensationRefundMode, setCompensationRefundMode] = useState<
+    "manual_review" | "automatic_full"
+  >("manual_review");
   const [errors, setErrors] = useState<ErrorDetail[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -238,6 +242,7 @@ export function CreateEventForm({
                   }))
                 : [{ ...emptyTicketType }]
             );
+            setCompensationRefundMode(initialEvent.compensationRefundMode);
           }
         }
 
@@ -290,6 +295,7 @@ export function CreateEventForm({
         startTime: form.startTime,
         endTime: form.endTime,
         location: form.location,
+        compensationRefundMode,
         ticketTypes: normaliseTicketTypes(ticketTypes)
       };
       const url = mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events";
@@ -419,6 +425,24 @@ export function CreateEventForm({
           error={fieldError(errors, "location")}
           onChange={(event) => setForm({ ...form, location: event.target.value })}
         />
+        <label className="grid gap-1.5 text-sm font-medium text-neutral-900">
+          Paid but unfulfilled orders
+          <select
+            className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm"
+            value={compensationRefundMode}
+            onChange={(event) =>
+              setCompensationRefundMode(
+                event.target.value as "manual_review" | "automatic_full"
+              )
+            }
+          >
+            <option value="manual_review">Require manual refund review</option>
+            <option value="automatic_full">Automatically issue a full refund</option>
+          </select>
+          <span className="font-normal text-neutral-500">
+            This policy is copied to each new order. Changing it does not affect existing orders.
+          </span>
+        </label>
         <section className="grid gap-3">
           <div className="flex items-center justify-between gap-4">
             <div>

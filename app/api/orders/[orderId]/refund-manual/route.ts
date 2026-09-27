@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  conflict,
   forbidden,
   internalError,
   notFound,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/auth/access";
 import {
   OrganisationOrderAccessError,
+  OrganisationOrderOperationError,
   markOrganisationOrderManuallyRefunded
 } from "@/lib/orders/order-detail";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -55,6 +57,10 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     if (error instanceof OrganisationOrderAccessError) {
       return notFound(error.message);
+    }
+
+    if (error instanceof OrganisationOrderOperationError) {
+      return conflict(error.message);
     }
 
     console.error("Failed to mark order as manually refunded", { orderId, error });

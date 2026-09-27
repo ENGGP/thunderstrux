@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { badRequest, internalError } from "@/lib/api/errors";
+import {
+  badRequest,
+  mapRouteError,
+  routeErrorRule
+} from "@/lib/api/errors";
 import { getPublishedEvents } from "@/lib/events/public-events";
 import {
   PaginationError,
@@ -17,11 +21,14 @@ export async function GET(request: Request) {
       pageInfo: result.pageInfo
     });
   } catch (error) {
-    if (error instanceof PaginationError) {
-      return badRequest(error.message);
-    }
-
-    console.error(error);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "public_events.list",
+      request,
+      rules: [
+        routeErrorRule(PaginationError, (paginationError) =>
+          badRequest(paginationError.message)
+        )
+      ]
+    });
   }
 }

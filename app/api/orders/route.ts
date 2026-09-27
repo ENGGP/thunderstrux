@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import {
   badRequest,
   forbidden,
-  internalError,
+  mapRouteError,
   notFound,
+  routeErrorRule,
   unauthorized
 } from "@/lib/api/errors";
 import {
@@ -91,23 +92,21 @@ export async function GET(request: Request) {
       pageInfo: result.pageInfo
     });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationOrderEventAccessError) {
-      return notFound(error.message);
-    }
-
-    if (error instanceof PaginationError) {
-      return badRequest(error.message);
-    }
-
-    console.error(error);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "organisation_orders.list",
+      request,
+      rules: [
+        routeErrorRule(AuthenticationRequiredError, () => unauthorized()),
+        routeErrorRule(OrganisationAccessError, (accessError) =>
+          forbidden(accessError.message)
+        ),
+        routeErrorRule(OrganisationOrderEventAccessError, (accessError) =>
+          notFound(accessError.message)
+        ),
+        routeErrorRule(PaginationError, (paginationError) =>
+          badRequest(paginationError.message)
+        )
+      ]
+    });
   }
 }

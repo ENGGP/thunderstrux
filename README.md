@@ -60,15 +60,15 @@ postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
 ## Common Commands
 
 ```bash
-docker compose up -d
-docker compose restart app
+pnpm docker:up
+pnpm docker:restart
 docker compose exec app pnpm dev:doctor
 docker compose exec app pnpm dev:webpack
 docker compose exec app pnpm prisma:migrate
 docker compose exec app pnpm prisma:generate
 docker compose exec app pnpm seed
 docker compose build app
-docker compose up -d --build --force-recreate app
+pnpm docker:rebuild
 docker compose logs -f app
 ```
 
@@ -104,8 +104,10 @@ pnpm docker:rebuild
 If an in-container build was already run, recreate the app container:
 
 ```bash
-docker compose up -d --build --force-recreate app
+pnpm docker:rebuild
 ```
+
+The development restart/rebuild helpers recreate the app with both Compose files, so the current command and environment are loaded and `prisma migrate deploy` completes before the dev server listens. They preserve the PostgreSQL and Redis named volumes. Production uses the separate one-shot migration service through `pnpm ops:deploy`; ordinary production app startup does not run migrations.
 
 ## Account Model
 

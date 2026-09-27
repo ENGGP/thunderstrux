@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import net from "node:net";
-import tls from "node:tls";
+import { createClient, type RedisClientType } from "@redis/client";
 import { NextResponse } from "next/server";
 import { serviceUnavailable, tooManyRequests } from "@/lib/api/errors";
 import { logWarn } from "@/lib/ops/logger";
@@ -73,6 +72,22 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   staff_mfa_verify: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" }
 };
 
+const REDIS_CONNECT_TIMEOUT_MS = 1_500;
+const REDIS_COMMAND_TIMEOUT_MS = 1_500;
+const REDIS_MAX_RECONNECT_ATTEMPTS = 3;
+const REDIS_QUEUE_LIMIT = 1_000;
+const DEFAULT_PROXY_HEADER = "x-forwarded-for";
+const PROXY_HEADER_NAME_PATTERN = /^[a-z0-9-]+$/;
+
+const incrementScript = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+  redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+local ttl = redis.call("TTL", KEYS[1])
+return {count, ttl}
+`;
+
 let testBackend: RateLimitBackend | null = null;
 let testEnabled: boolean | null = null;
 let testBackendFailure: Error | null = null;
@@ -90,17 +105,24 @@ function getKeyPrefix() {
 }
 
 export function getRateLimitClientIp(request: Request) {
-  const forwardedFor = request.headers.get("x-forwarded-for");
+  const configuredHeader =
+    process.env.RATE_LIMIT_TRUSTED_PROXY_HEADER?.trim().toLowerCase() ||
+    DEFAULT_PROXY_HEADER;
 
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() || "unknown";
+  if (!PROXY_HEADER_NAME_PATTERN.test(configuredHeader)) {
+    return "unknown";
   }
 
-  return (
-    request.headers.get("x-real-ip") ??
-    request.headers.get("cf-connecting-ip") ??
-    "unknown"
-  );
+  const value = request.headers.get(configuredHeader)?.trim();
+
+  if (!value) {
+    return "unknown";
+  }
+
+  // The edge must overwrite this header with one canonical client address.
+  // Comma-separated chains are rejected because choosing an element here would
+  // make application behavior depend on untrusted proxy input.
+  return value.includes(",") ? "unknown" : value;
 }
 
 function hashBucketKey(policy: RateLimitPolicy, keyParts: EnforceRateLimitInput["keyParts"]) {
@@ -229,113 +251,125 @@ export async function enforceRateLimit({
   }
 }
 
-function encodeRedisCommand(command: string, args: Array<string | number>) {
-  const parts = [command, ...args.map(String)];
-  return `*${parts.length}\r\n${parts
-    .map((part) => `$${Buffer.byteLength(part)}\r\n${part}\r\n`)
-    .join("")}`;
+let redisClient: RedisClientType | null = null;
+let redisClientUrl: string | null = null;
+let redisConnectPromise: Promise<RedisClientType> | null = null;
+let redisClientFactory: typeof createClient = createClient;
+
+function destroyRedisClient(client: RedisClientType | null) {
+  if (!client) return;
+  try {
+    client.destroy();
+  } catch {
+    // A failed or timed-out connection may already be closed.
+  }
 }
 
-class RespParser {
-  private offset = 0;
+function resetRedisClient() {
+  destroyRedisClient(redisClient);
+  redisClient = null;
+  redisClientUrl = null;
+  redisConnectPromise = null;
+}
 
-  constructor(private buffer: Buffer) {}
+export function setRateLimitRedisClientFactoryForTests(
+  factory: typeof createClient | null
+) {
+  resetRedisClient();
+  redisClientFactory = factory ?? createClient;
+}
 
-  get complete() {
-    return this.offset >= this.buffer.length;
+async function withRedisTimeout<T>(operation: Promise<T>, description: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Redis ${description} timed out`)),
+          REDIS_COMMAND_TIMEOUT_MS
+        );
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function getConnectedRedisClient(redisUrl: string) {
+  if (redisClient && redisClientUrl !== redisUrl) {
+    resetRedisClient();
   }
 
-  parse(): unknown {
-    if (this.offset >= this.buffer.length) {
-      throw new Error("Incomplete Redis response");
-    }
+  if (!redisClient) {
+    redisClient = redisClientFactory({
+      url: redisUrl,
+      commandsQueueMaxLength: REDIS_QUEUE_LIMIT,
+      disableOfflineQueue: true,
+      socket: {
+        connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+        reconnectStrategy(retries) {
+          if (retries >= REDIS_MAX_RECONNECT_ATTEMPTS) {
+            return new Error("Redis reconnect limit reached");
+          }
 
-    const prefix = String.fromCharCode(this.buffer[this.offset]);
-    this.offset += 1;
-
-    if (prefix === "+") {
-      return this.readLine();
-    }
-
-    if (prefix === "-") {
-      throw new Error(this.readLine());
-    }
-
-    if (prefix === ":") {
-      return Number(this.readLine());
-    }
-
-    if (prefix === "$") {
-      const length = Number(this.readLine());
-
-      if (length === -1) {
-        return null;
+          return Math.min(50 * 2 ** retries, 500);
+        }
       }
-
-      if (this.buffer.length < this.offset + length + 2) {
-        throw new Error("Incomplete Redis response");
-      }
-
-      const value = this.buffer.toString("utf8", this.offset, this.offset + length);
-      const terminator = this.buffer.toString(
-        "utf8",
-        this.offset + length,
-        this.offset + length + 2
-      );
-
-      if (terminator !== "\r\n") {
-        throw new Error("Malformed Redis bulk string");
-      }
-
-      this.offset += length + 2;
-      return value;
-    }
-
-    if (prefix === "*") {
-      const length = Number(this.readLine());
-
-      if (length === -1) {
-        return null;
-      }
-
-      return Array.from({ length }, () => this.parse());
-    }
-
-    throw new Error("Unsupported Redis response");
+    });
+    redisClient.on("error", () => {
+      // Requests handle and log backend failures according to policy.
+    });
+    redisClientUrl = redisUrl;
   }
 
-  private readLine() {
-    const end = this.buffer.indexOf("\r\n", this.offset);
-
-    if (end === -1) {
-      throw new Error("Incomplete Redis response");
+  if (!redisClient.isReady) {
+    if (!redisConnectPromise && !redisClient.isOpen) {
+      const connectingClient = redisClient;
+      const pending = withRedisTimeout(
+        connectingClient.connect(),
+        "connection"
+      )
+        .then(() => connectingClient)
+        .catch((error) => {
+          destroyRedisClient(connectingClient);
+          if (redisClient === connectingClient) {
+            redisClient = null;
+            redisClientUrl = null;
+          }
+          throw error;
+        })
+        .finally(() => {
+          if (redisConnectPromise === pending) redisConnectPromise = null;
+        });
+      redisConnectPromise = pending;
     }
-
-    const line = this.buffer.toString("utf8", this.offset, end);
-    this.offset = end + 2;
-    return line;
+    if (redisConnectPromise) await redisConnectPromise;
   }
+
+  return redisClient;
 }
 
 class RedisRateLimitBackend implements RateLimitBackend {
   constructor(private redisUrl: string) {}
 
   async increment(key: string, windowSeconds: number): Promise<RateLimitBackendResult> {
-    const replies = await this.runCommands([
-      encodeRedisCommand("MULTI", []),
-      encodeRedisCommand("INCR", [key]),
-      encodeRedisCommand("EXPIRE", [key, windowSeconds, "NX"]),
-      encodeRedisCommand("TTL", [key]),
-      encodeRedisCommand("EXEC", [])
-    ]);
-    const execResult = replies[4];
+    const client = await getConnectedRedisClient(this.redisUrl);
+    const result = await withRedisTimeout(
+      client.eval(incrementScript, {
+        keys: [key],
+        arguments: [String(windowSeconds)]
+      }),
+      "rate-limit command"
+    );
 
-    if (!Array.isArray(execResult)) {
-      throw new Error("Unexpected Redis transaction response");
+    if (!Array.isArray(result) || result.length !== 2) {
+      throw new Error("Unexpected Redis rate-limit response");
     }
 
-    const count = Number(execResult[0]);
-    const ttl = Number(execResult[2]);
+    const count = Number(result[0]);
+    const ttl = Number(result[1]);
 
     if (!Number.isFinite(count)) {
       throw new Error("Unexpected Redis counter response");
@@ -348,80 +382,12 @@ class RedisRateLimitBackend implements RateLimitBackend {
   }
 
   async ping() {
-    const replies = await this.runCommands([encodeRedisCommand("PING", [])]);
+    const client = await getConnectedRedisClient(this.redisUrl);
+    const reply = await withRedisTimeout(client.ping(), "readiness command");
 
-    if (replies[0] !== "PONG") {
+    if (reply !== "PONG") {
       throw new Error("Unexpected Redis readiness response");
     }
-  }
-
-  private runCommands(commands: string[]) {
-    return new Promise<unknown[]>((resolve, reject) => {
-      const url = new URL(this.redisUrl);
-      const port = url.port ? Number(url.port) : url.protocol === "rediss:" ? 6380 : 6379;
-      const socket =
-        url.protocol === "rediss:"
-          ? tls.connect({ host: url.hostname, port })
-          : net.connect({ host: url.hostname, port });
-      let buffer = Buffer.alloc(0);
-      let settled = false;
-
-      function fail(error: Error) {
-        if (!settled) {
-          settled = true;
-          socket.destroy();
-          reject(error);
-        }
-      }
-
-      socket.setTimeout(1500, () => fail(new Error("Redis rate limit timeout")));
-      socket.on("error", fail);
-      socket.on("close", () => {
-        if (!settled) {
-          fail(new Error("Redis rate limit connection closed before response"));
-        }
-      });
-      socket.on("connect", () => {
-        const auth =
-          url.username && url.password
-            ? encodeRedisCommand("AUTH", [
-                decodeURIComponent(url.username),
-                decodeURIComponent(url.password)
-              ])
-            : url.password
-              ? encodeRedisCommand("AUTH", [decodeURIComponent(url.password)])
-              : "";
-        socket.write(`${auth}${commands.join("")}`);
-      });
-      socket.on("data", (chunk) => {
-        buffer = Buffer.concat([buffer, chunk]);
-
-        try {
-          const parser = new RespParser(buffer);
-          const replies: unknown[] = [];
-          const expectedReplies = url.password ? commands.length + 1 : commands.length;
-
-          while (!parser.complete && replies.length < expectedReplies) {
-            replies.push(parser.parse());
-          }
-
-          if (replies.length === expectedReplies) {
-            settled = true;
-            socket.end();
-            resolve(url.password ? replies.slice(1) : replies);
-          }
-        } catch (error) {
-          if (
-            error instanceof Error &&
-            error.message === "Incomplete Redis response"
-          ) {
-            return;
-          }
-
-          fail(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
-    });
   }
 }
 

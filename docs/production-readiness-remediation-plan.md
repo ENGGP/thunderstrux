@@ -193,6 +193,14 @@ Validation:
 - Duplicate webhook delivery does not duplicate compensation actions.
 - Operators can find and resolve affected orders.
 
+Implementation evidence (2026-09-27):
+
+- Additive migration `20260927010000_compensation_refunds` records the event policy, immutable order policy snapshot, durable refund job, provider identifiers, attempts, lease fencing, and deduplicated Stripe refund webhook receipts.
+- Reconciliation creates the compensation job in the same transaction as the failed paid order. Manual review is the default; organisers must explicitly select automatic full refunds for new orders.
+- The worker verifies the paid Checkout Session, PaymentIntent, amount, currency, metadata, destination account, disputes, ticket absence, and existing refunds before requesting a full Stripe refund with transfer reversal, application-fee refund, and a stable idempotency key.
+- Provider webhooks are ordered and deduplicated. The organiser UI can confirm a console-created refund only after the server retrieves it from Stripe and verifies its completed state and identity.
+- Automatic mode still requires the hosted worker schedule, refund webhooks, alert routing, and a real Stripe test-mode campaign before production activation.
+
 ### 5. Move Ticket Email Delivery To An Outbox
 
 Severity: High
@@ -573,6 +581,13 @@ Validation:
 - Staff can be invited, removed, and role-limited.
 - Audit logs show actor identity.
 
+Implementation evidence (2026-09-27):
+
+- The MFA schema migration is part of the required schema contract. Readiness fails when the required migration is absent, unfinished, or rolled back, and the development doctor explains the exact non-destructive rebuild command.
+- `/mfa` has a route-level error boundary so an unexpected server failure produces a safe retry screen instead of exposing a Prisma stack trace. Applying `20260922020000_staff_mfa` restores the underlying `UserMfa` table expected by the page.
+- Production requires an explicit `LEGACY_ORGANISATION_ACCESS_MODE`. `deny` removes the shared-login fallback while preserving named staff access, which provides a measurable retirement switch.
+- Event create, edit, publish, unpublish, delete, and ticket-type creation now write actor-attributed audit entries in the same transaction as the mutation.
+
 ### 15. Pin Dependency Ranges And Add Dependency Automation
 
 Status (2026-09-22): repository-side implementation and rollout evidence are merged through PRs #1-#5, #7 and #8. Renovate is authorized, its [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) verifies npm and GitHub Actions discovery with Docker exclusions, and controlled CI-only [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) merged as `b3f4fce` with all five post-merge checks passing. Its non-required `renovate/stability-days` status remained pending for a pin update; no application test failed. The post-remediation Security Audit passed and GitHub reported zero open dependency alerts on 2026-09-18. Overall P2.15 remains Open only for a real eligible security-PR and maintainer receipt of the next genuine Security Audit failure notification; do not introduce vulnerabilities or cause registry failures for testing. See [Dependency Automation](obsidian/Dependency%20Automation.md).
@@ -664,11 +679,12 @@ Validation:
 Implementation evidence:
 
 - Existing static validation, integration, production-build, and E2E checks are preserved; `operations-tests` adds a disposable Docker deployment/recovery drill.
-- `/api/health` remains liveness and `/api/health/ready` checks the application schema plus enabled Redis with bounded failures.
+- `/api/health` remains liveness and `/api/health/ready` verifies the release's exact required migration plus application schema, enabled Redis, MFA configuration, and legacy-access configuration with bounded failures.
 - The production image runs as non-root and starts without package-manager downloads.
 - Migrations run through a one-shot service before rollout, never from ordinary app startup.
 - The rehearsal proves failed migrations leave writers stopped, unhealthy candidates require reviewed compatibility evidence for one rollback, and custom-format backups restore through application credentials.
-- Final local regression passed 195 integration tests, typecheck, production image build, dependency audit, and the isolated operations rehearsal.
+- The development doctor verifies migration-first Compose startup, checks Prisma migration status with a timeout, and reports the exact app recreation command needed after dependency or schema changes.
+- Final local regression passed 195 integration tests, typecheck, production image build, dependency audit, and the isolated operations rehearsal. The 2026-09-27 additive migration chain was also applied from empty through all 26 migrations on a disposable PostgreSQL database.
 - Production operations and remaining external activation work are documented in `docs/obsidian/Production Operations.md`.
 
 ## P3 Remediation

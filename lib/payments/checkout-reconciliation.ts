@@ -335,6 +335,10 @@ export async function reconcileCompletedCheckoutSession(
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
+      compensationRefundModeSnapshot: true,
+      compensationRefundJob: {
+        select: { id: true, state: true }
+      },
       reservation: {
         select: { status: true }
       },
@@ -467,6 +471,32 @@ export async function reconcileCompletedCheckoutSession(
       });
 
       if (!localOrder.requiresCompensationReview) {
+        const automatic =
+          localOrder.compensationRefundModeSnapshot === "automatic_full";
+        await tx.compensationRefundJob.createMany({
+          data: [{
+            orderId: localOrder.id,
+            state: automatic ? "auto_queued" : "review_required",
+            amount: localOrder.totalAmount,
+            currency: expectedCurrency
+          }],
+          skipDuplicates: true
+        });
+        await tx.auditLog.create({
+          data: {
+            organisationId: localOrder.event.organisationId,
+            actorUserId: null,
+            action: automatic
+              ? "order.compensation_refund_queued"
+              : "order.compensation_refund_review_required",
+            targetType: "Order",
+            targetId: localOrder.id,
+            metadata: { reason }
+          }
+        });
+      }
+
+      if (!localOrder.requiresCompensationReview) {
         compensationAlert = {
           orderId: localOrder.id,
           stripeSessionId: session.id,
@@ -504,6 +534,19 @@ export async function reconcileCompletedCheckoutSession(
             compensationReview: localOrder.requiresCompensationReview
           }
         });
+        if (localOrder.compensationRefundModeSnapshot === "automatic_full") {
+          await appendOrderLifecycleEvent(tx, {
+            orderId: localOrder.id,
+            type: "compensation_refund_queued",
+            source: reconciliationLifecycleSource(source),
+            stripeEventId,
+            stripeSessionId: session.id,
+            reason,
+            fromOrderStatus: "failed",
+            toOrderStatus: "failed",
+            facts: { compensationReview: true }
+          });
+        }
       }
 
       result = {
@@ -589,6 +632,18 @@ export async function reconcileCompletedCheckoutSession(
           failureReason: localOrder.fulfilmentFailureReason
         });
         if (localOrder.isManuallyRefunded) {
+          result = {
+            status: "compensation_required",
+            orderId: localOrder.id,
+            reason:
+              localOrder.fulfilmentFailureReason ?? "compensation_review_required"
+          };
+          return;
+        }
+        if (
+          localOrder.compensationRefundJob &&
+          localOrder.compensationRefundJob.state !== "review_required"
+        ) {
           result = {
             status: "compensation_required",
             orderId: localOrder.id,
@@ -969,6 +1024,24 @@ export async function reconcileCompletedCheckoutSession(
         organisationId: localOrder.event.organisationId
       }))
     });
+
+    if (localOrder.requiresCompensationReview) {
+      const recovered = await tx.compensationRefundJob.updateMany({
+        where: {
+          orderId: localOrder.id,
+          state: "review_required"
+        },
+        data: {
+          state: "recovered",
+          resolvedAt: now,
+          processingToken: null,
+          processingStartedAt: null
+        }
+      });
+      if (recovered.count !== 1) {
+        throw new Error("Compensation state changed while fulfilment was recovering");
+      }
+    }
 
     console.info("Stripe checkout tickets created", {
       source,

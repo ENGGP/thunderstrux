@@ -5,6 +5,7 @@ import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
+import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
 import {
   getStripe,
   getStripeWebhookSecret,
@@ -103,6 +104,13 @@ export async function POST(request: Request) {
 
       await reconcileExpiredCheckoutSession(session, { stripeEventId: event.id });
 
+      return NextResponse.json({ received: true });
+    }
+
+    case "refund.created":
+    case "refund.updated":
+    case "refund.failed": {
+      await reconcileRefundEvent(event);
       return NextResponse.json({ received: true });
     }
 

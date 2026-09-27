@@ -4,29 +4,29 @@ This is the current evidence ledger for all 19 items in [[../production-readines
 
 | Item | Repository evidence and result | Remaining release gate |
 | --- | --- | --- |
-| P0.1 Rate limiting | `lib/security/rate-limit.ts` uses Redis policies; `rate-limit.test.ts` covers login, signup, checkout, resend, organisation, attendance, and Connect denial. | Configure trusted proxy headers at the edge; replace or independently validate custom Redis transport before high-risk scale. |
+| P0.1 Rate limiting | `lib/security/rate-limit.ts` uses the official Redis client with atomic Lua counters, bounded connection/command behavior, and one explicitly configured trusted proxy header; tests cover policy denial and rejection of proxy chains. | Configure the exact trusted proxy header at the edge and run the Docker/real-Redis suite on the release image. |
 | P0.2 CSRF/origin | This branch fails closed on missing or malformed origin, guards signup, redacts rejected header logs, and binds CSRF tokens to the Auth.js session cookie; isolated browser and signed webhook tests pass. | Deploy with exact `NEXT_PUBLIC_APP_URL`/`TRUSTED_APP_ORIGINS`; retest authenticated mutations on hosted origin. |
 | P0.3 Public reads | `lib/events/public-events.ts` and integration tests keep discovery read-only; seed owns demo creation. | Confirm production seed policy. |
-| P0.4 Payment compensation | Reconciliation persists compensation review and emits an urgent structured event; replay and mismatch tests cover no duplicate fulfilment. | Route the event to paging and execute the operator refund/review playbook below. No automatic Stripe refund exists. |
+| P0.4 Payment compensation | Reconciliation transactionally snapshots manual/automatic policy and creates a durable fenced job. The worker performs strict Stripe/local identity checks, uses provider idempotency, reconciles ordered/deduplicated refund webhooks, and supports provider-verified manual confirmation. | Schedule the worker, subscribe refund webhooks, route alerts, and pass a real Stripe test-mode automatic and manual refund campaign before enabling `automatic_full`. |
 | P0.5 Email outbox | Transactional enqueue, fenced worker, retry/exhaustion, and idempotency are tested. This branch adds authenticated, audited requeue of terminal failed jobs. | Schedule the worker every minute; monitor due/stale/failed jobs and verify provider acceptance before requeue. |
 | P1.6 Pagination | Bounded cursor pages exist for orders, tickets, and discovery; same-timestamp tests pass. | Inspect plans on representative production data. |
 | P1.7 Availability | Public detail subtracts active unexpired reservations; checkout remains authoritative. | None for the documented MVP contract. |
 | P1.8 DB constraints | Numeric, event-time, paid, and expired constraints exist. This branch adds `failed => failedAt` and a direct invalid-write regression. | Run integrity audit and verified backup before migration; migration intentionally stops on legacy invalid rows. Cross-row mismatches remain audit-only. |
 | P1.9 Ownership | Runtime reads/cleanup use `Event.organisationId`. This branch audits drift and adds a dry-run, event-based repair tool with mismatch refusal and idempotence tests. | Run audit on a production copy, review each mismatch, back up, then apply repair in a controlled window. Cross-row consistency is not a database constraint. |
 | P1.10 Indexes | Composite indexes match documented bounded reads and cleanup. | Review `EXPLAIN`/index usage with production-scale data before removing overlaps. |
-| P1.11 API errors | Reviewed tenant resource routes use safe 404 behavior with tests. | Central route error mapper and remaining endpoint survey are open. |
+| P1.11 API errors | A central typed route error mapper now emits safe structured responses/logs and is used by representative public, order, and compensation routes with focused tests. | Migrate and survey the remaining route families before claiming complete API normalization. |
 | P1.12 Stale cleanup | Bounded worker and narrow checkout cleanup are tested; read paths avoid broad writes. The scheduled worker also deletes expired MFA grants in bounded batches. | Schedule worker every minute and monitor both stale-order and expired-grant backlog. |
 | P1.13 Logs/metrics/alerts | Structured, redacted JSON and log-derived metrics exist for covered paths. | External aggregation, dashboards, alert transport, health and migration alerts remain unconfigured. |
-| P2.14 Staff accounts | Named staff, roles, invites, live revocation, and initial audit entries exist. This branch adds encrypted TOTP, one-time recovery codes, 12-hour login-bound grants, live management guards, staged enrollment, legacy-session reauthentication, user-bound brute-force limits, and bounded expired-grant cleanup. Enforced browser/HTTP evidence passes. | Enroll every named staff and legacy owner, then set `MFA_ENFORCEMENT_MODE=enforce`. Full sensitive-action audit coverage and legacy shared-login retirement remain open. |
+| P2.14 Staff accounts | Named staff, roles, invites, live revocation, encrypted TOTP, recovery codes, login-bound grants, management guards, staged enforcement, and expired-grant cleanup exist. The MFA migration is now in the readiness contract, `/mfa` has a safe error boundary, event mutations are actor-audited, and an explicit production legacy-access mode can deny the shared-login fallback. | Enroll every staff member, set MFA to `enforce`, set legacy access to `deny` after migration, and finish the sensitive-action audit survey. |
 | P2.15 Dependencies | Versions pinned, Renovate controlled update merged, high-severity audit passes locally. | Next real eligible security PR and maintainer notification receipt cannot be manufactured. |
 | P2.16 E2E/staging | Isolated browser and signed HTTP webhook suites pass. Prior real Stripe campaign is documented in [[E2E and Staging Payments]]. | Repeat real Stripe test-mode campaign after payment-path changes; this branch does not claim a new real-provider run. |
-| P2.17 Operations | CI, one-shot migrations, health/readiness, non-root image, backup/restore and rollback rehearsal exist. | Activate production hosting, schedules, encrypted off-machine backup, external monitoring, and hosted restore drill. |
+| P2.17 Operations | CI, one-shot production migrations, schema-aware readiness, non-root image, backup/restore, and rollback rehearsal exist. Development Compose is migration-first; the doctor detects stale containers/config and gives a non-destructive recreation command. | Activate production hosting, schedules, encrypted off-machine backup, external monitoring, and hosted restore drill. |
 | P3.18 Domain services | Checkout, events, order operations, attendance and Connect service boundaries are checked by integration tests. | Keep new route adapters thin during future changes. |
 | P3.19 Lifecycle | Append-only per-order events cover payment, compensation, refund flag, and email worker; concurrency/fencing tests pass. | Drain old workers during rollout; historical orders are explicitly incomplete. |
 
 ## Release decision
 
-**Production payments and broad staff rollout remain blocked.** The enforced MFA browser run passes, but MFA must still be activated for all staff and legacy owners. Sensitive-action audit coverage is incomplete. The production environment also needs active worker schedules, alert delivery, off-machine backups, and a hosted restore drill. Resolve these gates and rerun the relevant Docker, staging Stripe, and latest-head CI acceptance before launch.
+**Production payments and broad staff rollout remain blocked.** MFA must be activated for all staff and legacy owners, then legacy access must be denied. Automatic refunds require an active worker schedule, refund webhook subscription, alert delivery, and a real Stripe test-mode campaign. Sensitive-action audit coverage, off-machine backups, a hosted restore drill, release-image Docker acceptance, and latest-head CI also remain release gates.
 
 ## Final local acceptance
 
@@ -37,6 +37,15 @@ This is the current evidence ledger for all 19 items in [[../production-readines
 - `pnpm test:e2e:guards`: 13 runner-safety tests passed.
 - Final operations rehearsal `p217-ci-5419aa0686`: production image build, 25 migrations, non-root deployment, readiness outage checks, checksum backup/restore, compatibility-gated rollback, and cleanup passed.
 - Final reviewer found no remaining PR blocker after the dry-run grant-cleanup regression was added.
+
+### 2026-09-27 remediation extension
+
+- A custom-format backup of the development database was created and listed successfully before applying the MFA and failed-order constraint migrations; the failed-order preflight found zero invalid rows.
+- All 26 migrations, including `20260927010000_compensation_refunds`, applied in order to an empty disposable PostgreSQL database.
+- TypeScript passed after the compensation route, UI, worker, schema contract, official Redis client, legacy-access switch, and audit changes.
+- Seventeen runner and schema-contract tests passed when executed directly. The sandbox blocks the aggregate Node/Vitest child-process runner, Docker named-pipe access, registry audit requests, and Prisma binary downloads; those checks must run in Docker/CI before merge.
+- The production build compiled successfully; the sandbox then denied Next's post-compile TypeScript worker with `spawn EPERM`.
+- Independent review findings were applied: refund correlation now requires exact job/order/amount/currency/PaymentIntent identity and a known non-disputed charge; webhook transitions are lock-fenced and monotonic; missed pending webhooks are polled; compensation orders cannot use unverified legacy refund marking; Redis cold-start connection is shared; unknown API exception messages are redacted. The re-review found no remaining blocker or high-severity issue.
 
 ## Staff MFA rollout
 

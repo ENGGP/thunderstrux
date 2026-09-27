@@ -45,7 +45,7 @@ function checkPort(host, port, timeoutMs = 1000) {
 const checks = [];
 const suggestions = [];
 const recreateCommand =
-  "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --force-recreate --no-deps app";
+  "pnpm docker:restart";
 
 const devCacheExists = pathExists(".next", "dev");
 const appManifestExists = pathExists(".next", "dev", "server", "app-paths-manifest.json");

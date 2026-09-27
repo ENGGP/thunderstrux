@@ -1,10 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { isTransactionConflict } from "@/lib/transaction-conflict";
-import {
-  markOrganisationOrderManuallyRefunded,
-  OrganisationOrderAccessError
-} from "@/lib/orders/order-detail";
+import { OrganisationOrderAccessError } from "@/lib/orders/order-detail";
 import {
   getOrganisationOrderLifecycle,
   parseOrderLifecycleCursor
@@ -266,7 +263,7 @@ describe("formal payment lifecycle", () => {
     });
   });
 
-  test("attributes staff actions, isolates tenant history, and blocks refunded recovery", async () => {
+  test("isolates tenant history and blocks verified refunded recovery", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const fixture = await paymentFixture("cs_refunded_compensation");
     const other = await createOrganisationAccount();
@@ -290,11 +287,33 @@ describe("formal payment lifecycle", () => {
       userId: fixture.member.id,
       expiresAt: new Date(Date.now() + 30 * 60 * 1000)
     });
-    await markOrganisationOrderManuallyRefunded(
-      fixture.organisation.id,
-      fixture.order.id,
-      fixture.member.id
-    );
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: fixture.order.id },
+        data: { isManuallyRefunded: true }
+      });
+      await tx.compensationRefundJob.create({
+        data: {
+          orderId: fixture.order.id,
+          state: "refunded",
+          amount: fixture.order.totalAmount,
+          currency: "aud",
+          stripeRefundId: "re_verified",
+          resolvedAt: new Date()
+        }
+      });
+      await tx.orderLifecycleEvent.create({
+        data: {
+          orderId: fixture.order.id,
+          sequence: 1,
+          type: "compensation_refunded",
+          source: "staff_action",
+          actorUserId: fixture.member.id,
+          fromOrderStatus: "failed",
+          toOrderStatus: "failed"
+        }
+      });
+    });
 
     const result = await reconcileCompletedCheckoutSession(
       checkoutSession({
@@ -317,7 +336,7 @@ describe("formal payment lifecycle", () => {
     expect(history.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          type: "manual_refund_marked",
+          type: "compensation_refunded",
           actorName: "Test Member"
         })
       ])

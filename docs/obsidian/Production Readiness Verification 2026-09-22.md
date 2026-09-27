@@ -46,6 +46,7 @@ This is the current evidence ledger for all 19 items in [[../production-readines
 - Seventeen runner and schema-contract tests passed when executed directly. The sandbox blocks the aggregate Node/Vitest child-process runner, Docker named-pipe access, registry audit requests, and Prisma binary downloads; those checks must run in Docker/CI before merge.
 - The production build compiled successfully; the sandbox then denied Next's post-compile TypeScript worker with `spawn EPERM`.
 - Independent review findings were applied: refund correlation now requires exact job/order/amount/currency/PaymentIntent identity and a known non-disputed charge; webhook transitions are lock-fenced and monotonic; missed pending webhooks are polled; compensation orders cannot use unverified legacy refund marking; Redis cold-start connection is shared; unknown API exception messages are redacted. The re-review found no remaining blocker or high-severity issue.
+- Live Docker verification found that the existing named dependency volume masked the rebuilt image, causing `@redis/client` resolution failure; replacing only that cache exposed a second missing generated Prisma Client. The recreation helper now handles both conditions. The repaired stack reports 26 current migrations, resolves `@redis/client`, returns `200` from readiness, and redirects unauthenticated `/mfa` to login.
 
 ## Staff MFA rollout
 

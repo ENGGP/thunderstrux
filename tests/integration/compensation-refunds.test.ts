@@ -49,8 +49,7 @@ async function automaticCompensationFixture() {
     requiresCompensationReview: true,
     fulfilmentFailedAt: new Date(),
     fulfilmentFailureReason: "inventory_unavailable_after_payment",
-    compensationRefundModeSnapshot: "automatic_full",
-    stripeSessionId: "cs_compensation"
+    compensationRefundModeSnapshot: "automatic_full"
   });
   const job = await prisma.compensationRefundJob.create({
     data: {

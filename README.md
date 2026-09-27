@@ -107,7 +107,7 @@ If an in-container build was already run, recreate the app container:
 pnpm docker:rebuild
 ```
 
-The development restart/rebuild helpers recreate the app with both Compose files, so the current command and environment are loaded and `prisma migrate deploy` completes before the dev server listens. They preserve the PostgreSQL and Redis named volumes. Production uses the separate one-shot migration service through `pnpm ops:deploy`; ordinary production app startup does not run migrations.
+The development restart/rebuild helpers rebuild the app, replace only the labelled `node_modules` dependency-cache volume, regenerate Prisma Client, apply migrations, and then start the dev server. They preserve the PostgreSQL and Redis data volumes. Production uses the separate one-shot migration service through `pnpm ops:deploy`; ordinary production app startup does not run migrations.
 
 ## Account Model
 

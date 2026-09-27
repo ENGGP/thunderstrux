@@ -390,7 +390,6 @@ describe("webhook reconciliation", () => {
         quantity: 1,
         expiresAt: new Date(Date.now() + 30 * 60 * 1000)
       });
-
       const result = await reconcileCompletedCheckoutSession(
         checkoutSession({
           id: "cs_reconcile_only",
@@ -619,7 +618,6 @@ describe("webhook reconciliation", () => {
         quantity: 1,
         expiresAt: new Date(Date.now() + 30 * 60 * 1000)
       });
-
       const result = await reconcileCompletedCheckoutSessionWithSideEffects(
         checkoutSession({
           id: "cs_ticket_email_failure",
@@ -876,6 +874,15 @@ describe("webhook reconciliation", () => {
         userId: member.id,
         quantity: 1,
         expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      });
+
+      await prisma.compensationRefundJob.create({
+        data: {
+          orderId: order.id,
+          state: "review_required",
+          amount: order.totalAmount,
+          currency: "aud"
+        }
       });
 
       const result = await reconcileCompletedCheckoutSessionWithSideEffects(

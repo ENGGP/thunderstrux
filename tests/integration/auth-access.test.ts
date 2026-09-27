@@ -16,6 +16,7 @@ import { POST as createStaffInvite } from "@/app/api/orgs/[orgSlug]/staff/invite
 import { PATCH as updateStaff } from "@/app/api/orgs/[orgSlug]/staff/[staffId]/route";
 import { POST as acceptStaffInvite } from "@/app/api/staff/invites/accept/route";
 import { hashStaffInviteToken } from "@/lib/staff/invites";
+import { legacyOrganisationAccessMode } from "@/lib/auth/access";
 
 vi.mock("next-auth/jwt", () => ({
   getToken: vi.fn()
@@ -168,7 +169,16 @@ describe("auth and role access", () => {
       userId: staffUser.id,
       role: "event_manager"
     });
+    await prisma.organisationStaff.delete({
+      where: {
+        organisationId_userId: {
+          organisationId: organisation.id,
+          userId: legacyOwner.id
+        }
+      }
+    });
     vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "deny");
+    expect(legacyOrganisationAccessMode()).toBe("deny");
 
     setMockSession({
       userId: legacyOwner.id,

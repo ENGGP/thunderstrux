@@ -358,7 +358,7 @@ pnpm docker:rebuild
 
 `pnpm docker:build` runs `docker compose build app`. It does not execute `pnpm build` inside the running app container.
 
-`pnpm docker:restart` and `pnpm docker:rebuild` run the development Compose stack with `--build --force-recreate --no-deps app`. Recreation reloads the command and environment while preserving the database and Redis volumes.
+`pnpm docker:restart` and `pnpm docker:rebuild` rebuild the development image, remove only the Compose-labelled `node_modules` cache, and recreate the app. The fresh cache is populated from the rebuilt image; startup regenerates Prisma Client and applies migrations before Next listens. PostgreSQL and Redis volumes are preserved.
 
 Apply the current schema and seed data after pulling schema changes:
 

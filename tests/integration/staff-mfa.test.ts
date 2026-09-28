@@ -32,6 +32,7 @@ describe("staff MFA", () => {
   });
 
   test("enforcement gates live staff and legacy owner access until enrollment and session verification", async () => {
+    vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "allow");
     configureMfa();
     const { user, organisation } = await createOrganisationAccount();
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation",

@@ -49,7 +49,7 @@ Current mitigation:
 Fix order:
 
 1. Hard refresh browser.
-2. `docker compose restart app`
+2. `pnpm docker:restart`
 3. Clear `.next`
 4. Recreate containers
 
@@ -404,7 +404,7 @@ pnpm docker:dev:clean
 
 This recreates the dev app container with bind mounts. It does not remove the Postgres volume.
 
-The `/app/node_modules` mount should be the named Compose volume `thunderstrux_node_modules`. If an anonymous hash-named volume appears mounted at `/app/node_modules`, recreate the dev app container from the current Compose config so it uses the named volume.
+The `/app/node_modules` mount should be the named Compose volume `thunderstrux_node_modules`. If an anonymous hash-named volume appears, or a newly added package fails to resolve after an image rebuild, run `pnpm docker:restart`. The helper rebuilds the image, removes only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, and applies migrations. It preserves PostgreSQL and Redis data volumes.
 
 ## Integration Test Reset Fails
 
@@ -440,7 +440,7 @@ Expected local runtime:
 ```bash
 pnpm docker:dev
 docker compose exec app pnpm seed
-docker compose restart app
+pnpm docker:restart
 ```
 
 Verify:

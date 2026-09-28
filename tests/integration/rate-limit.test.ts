@@ -14,7 +14,10 @@ import {
 } from "@/tests/helpers/test-data";
 import {
   createTestRateLimitBackend,
+  checkRateLimitReadiness,
   enforceRateLimit,
+  getRateLimitClientIp,
+  setRateLimitRedisClientFactoryForTests,
   setRateLimitTestBackend,
   setRateLimitTestBackendFailure,
   setRateLimitTestEnabled
@@ -220,6 +223,47 @@ describe("rate limit helper", () => {
     ).resolves.toBeNull();
   });
 
+  test("uses only the configured edge-owned client IP header", () => {
+    vi.stubEnv("RATE_LIMIT_TRUSTED_PROXY_HEADER", "cf-connecting-ip");
+
+    expect(
+      getRateLimitClientIp(
+        new Request("http://localhost/api/test", {
+          headers: {
+            "cf-connecting-ip": "203.0.113.8",
+            "x-forwarded-for": "198.51.100.20",
+            "x-real-ip": "192.0.2.4"
+          }
+        })
+      )
+    ).toBe("203.0.113.8");
+
+    expect(
+      getRateLimitClientIp(
+        new Request("http://localhost/api/test", {
+          headers: { "x-forwarded-for": "198.51.100.20" }
+        })
+      )
+    ).toBe("unknown");
+  });
+
+  test("rejects proxy chains and invalid configured header names", () => {
+    expect(
+      getRateLimitClientIp(
+        new Request("http://localhost/api/test", {
+          headers: { "x-forwarded-for": "203.0.113.8, 10.0.0.2" }
+        })
+      )
+    ).toBe("unknown");
+
+    vi.stubEnv("RATE_LIMIT_TRUSTED_PROXY_HEADER", "bad header");
+    expect(
+      getRateLimitClientIp(
+        new Request("http://localhost/api/test")
+      )
+    ).toBe("unknown");
+  });
+
   test("MFA setup throttles by authenticated user when forwarding headers change", async () => {
     const { user } = await createOrganisationAccount();
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation",
@@ -269,6 +313,50 @@ describe("rate limit helper", () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain(
       "cmp2mqct70013nyaulu4bl980"
     );
+  });
+});
+
+describe("Redis rate-limit connection", () => {
+  afterEach(() => {
+    setRateLimitRedisClientFactoryForTests(null);
+    setRateLimitTestBackend(null);
+    setRateLimitTestEnabled(null);
+  });
+
+  test("shares one cold-start connection across concurrent readiness checks", async () => {
+    let releaseConnection!: () => void;
+    const connectionGate = new Promise<void>((resolve) => {
+      releaseConnection = resolve;
+    });
+    const fakeClient = {
+      isReady: false,
+      isOpen: false,
+      on: vi.fn(),
+      destroy: vi.fn(),
+      connect: vi.fn(async () => {
+        fakeClient.isOpen = true;
+        await connectionGate;
+        fakeClient.isReady = true;
+        return fakeClient;
+      }),
+      ping: vi.fn(async () => "PONG")
+    };
+    setRateLimitRedisClientFactoryForTests((() => fakeClient) as never);
+    setRateLimitTestBackend(null);
+    setRateLimitTestEnabled(null);
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "redis://rate-limit.test:6379");
+
+    const checks = [
+      checkRateLimitReadiness(),
+      checkRateLimitReadiness(),
+      checkRateLimitReadiness()
+    ];
+    await Promise.resolve();
+    expect(fakeClient.connect).toHaveBeenCalledTimes(1);
+    releaseConnection();
+    await expect(Promise.all(checks)).resolves.toEqual([undefined, undefined, undefined]);
+    expect(fakeClient.ping).toHaveBeenCalledTimes(3);
   });
 });
 

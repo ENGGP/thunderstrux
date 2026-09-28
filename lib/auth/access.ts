@@ -33,6 +33,17 @@ export class StaffMfaRequiredError extends OrganisationAccessError {
   }
 }
 
+export function legacyOrganisationAccessMode() {
+  const mode = process.env.LEGACY_ORGANISATION_ACCESS_MODE ||
+    (process.env.NODE_ENV === "production" ? "unset" : "allow");
+  if (mode !== "allow" && mode !== "deny") {
+    throw new OrganisationAccessError(
+      "LEGACY_ORGANISATION_ACCESS_MODE must be set to allow or deny"
+    );
+  }
+  return mode;
+}
+
 async function requireCurrentStaffMfa(user: { id: string; mfaSessionId?: string }) {
   if (mfaEnforcementMode() === "off") return;
   try {
@@ -96,7 +107,7 @@ export async function requireStripeConnectCapability() {
 
   // Unrelated staff memberships must not hide legacy ownership. Any staff row
   // for the owned tenant supersedes that legacy authority, including revocation.
-  if (user.accountRole === "organisation") {
+  if (user.accountRole === "organisation" && legacyOrganisationAccessMode() === "allow") {
     const legacyOwner = await prisma.organisation.findFirst({
       where: {
         accountUserId: user.id,
@@ -152,6 +163,8 @@ export async function getCurrentOrganisationAccount() {
   if (user.accountRole !== "organisation") {
     return null;
   }
+
+  if (legacyOrganisationAccessMode() === "deny") return null;
 
   const organisation = await prisma.organisation.findUnique({
     where: {
@@ -287,6 +300,8 @@ export async function getCurrentStaffOrganisations() {
     return [];
   }
 
+  if (legacyOrganisationAccessMode() === "deny") return [];
+
   const legacyOrganisation = await prisma.organisation.findUnique({
     where: {
       accountUserId: user.id
@@ -332,6 +347,7 @@ export async function getOrganisationAccessForUser(userId: string) {
   });
 
   if (user?.accountRole === "organisation") {
+    if (legacyOrganisationAccessMode() === "deny") return [];
     const organisation = await prisma.organisation.findUnique({
       where: { accountUserId: userId },
       select: {
@@ -416,6 +432,9 @@ export async function requireOrganisationAccessBySlug(orgSlug: string) {
   }
 
   if (user.accountRole === "organisation") {
+    if (legacyOrganisationAccessMode() === "deny") {
+      throw new OrganisationAccessError("Organisation not found or access denied");
+    }
     const organisation = await prisma.organisation.findFirst({
       where: {
         slug: orgSlug,
@@ -506,6 +525,9 @@ export async function requireOrganisationAccessById(organisationId: string) {
   }
 
   if (user.accountRole === "organisation") {
+    if (legacyOrganisationAccessMode() === "deny") {
+      throw new OrganisationAccessError("Organisation not found or access denied");
+    }
     const organisation = await prisma.organisation.findFirst({
       where: {
         id: organisationId,
@@ -587,7 +609,7 @@ export async function requireOrganisationPermission(
   });
 
   if (!staff) {
-    if (user.accountRole === "organisation") {
+    if (user.accountRole === "organisation" && legacyOrganisationAccessMode() === "allow") {
       const legacyOrganisation = await prisma.organisation.findFirst({
         where: {
           id: organisationId,

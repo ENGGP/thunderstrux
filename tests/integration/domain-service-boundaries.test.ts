@@ -68,7 +68,7 @@ describe("domain service boundaries", () => {
       "enforceTrustedMutationRequest(request)",
       "validateJson(request, createEventSchema)",
       "requireOrganisationEventManagementAccess(organisationId)",
-      "createOrganisationEvent(organisationId, validation.data)"
+      "createOrganisationEvent(organisationId, validation.data, actor.id)"
     ]);
     expectInOrder(eventRoute, [
       "enforceTrustedMutationRequest(request)",

@@ -16,6 +16,7 @@ import { POST as createStaffInvite } from "@/app/api/orgs/[orgSlug]/staff/invite
 import { PATCH as updateStaff } from "@/app/api/orgs/[orgSlug]/staff/[staffId]/route";
 import { POST as acceptStaffInvite } from "@/app/api/staff/invites/accept/route";
 import { hashStaffInviteToken } from "@/lib/staff/invites";
+import { legacyOrganisationAccessMode } from "@/lib/auth/access";
 
 vi.mock("next-auth/jwt", () => ({
   getToken: vi.fn()
@@ -158,6 +159,46 @@ describe("auth and role access", () => {
         title: "Staff Managed Event"
       })
     ]);
+  });
+
+  test("legacy organisation ownership can be retired without affecting named staff", async () => {
+    const { user: legacyOwner, organisation } = await createOrganisationAccount();
+    const staffUser = await createMember();
+    await createOrganisationStaff({
+      organisationId: organisation.id,
+      userId: staffUser.id,
+      role: "event_manager"
+    });
+    await prisma.organisationStaff.delete({
+      where: {
+        organisationId_userId: {
+          organisationId: organisation.id,
+          userId: legacyOwner.id
+        }
+      }
+    });
+    vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "deny");
+    expect(legacyOrganisationAccessMode()).toBe("deny");
+
+    setMockSession({
+      userId: legacyOwner.id,
+      email: legacyOwner.email,
+      accountRole: "organisation"
+    });
+    const denied = await getEvents(
+      jsonRequest(`http://localhost/api/events?orgId=${organisation.id}`)
+    );
+    expect(denied.status).toBe(403);
+
+    setMockSession({
+      userId: staffUser.id,
+      email: staffUser.email,
+      accountRole: "member"
+    });
+    const allowed = await getEvents(
+      jsonRequest(`http://localhost/api/events?orgId=${organisation.id}`)
+    );
+    expect(allowed.status).toBe(200);
   });
 
   test("revoked staff loses management access without signing out", async () => {

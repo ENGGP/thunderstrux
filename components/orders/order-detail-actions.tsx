@@ -9,16 +9,42 @@ export function OrderDetailActions({
   orderId,
   stripeSessionId,
   isManuallyRefunded,
-  canResendTickets
+  canResendTickets,
+  requiresCompensationReview
 }: {
   orderId: string;
   stripeSessionId: string | null;
   isManuallyRefunded: boolean;
   canResendTickets: boolean;
+  requiresCompensationReview: boolean;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [refundId, setRefundId] = useState("");
+
+  async function confirmCompensationRefund() {
+    setIsBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetchWithCsrf(
+        `/api/orders/${orderId}/compensation-refund/confirm`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ refundId })
+        }
+      );
+      if (!response.ok) {
+        setMessage("The Stripe refund could not be verified for this order.");
+        return;
+      }
+      setMessage("Stripe refund verified and compensation resolved.");
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   async function markRefunded() {
     setIsBusy(true);
@@ -72,14 +98,33 @@ export function OrderDetailActions({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Button
-        disabled={isBusy || isManuallyRefunded}
-        onClick={markRefunded}
-        type="button"
-        variant={isManuallyRefunded ? "secondary" : "primary"}
-      >
-        {isManuallyRefunded ? "Refund marked" : "Mark as refunded (manual)"}
-      </Button>
+      {requiresCompensationReview ? (
+        <>
+          <input
+            aria-label="Stripe refund ID"
+            className="h-10 rounded-md border border-neutral-300 px-3 text-sm"
+            onChange={(event) => setRefundId(event.target.value)}
+            placeholder="re_..."
+            value={refundId}
+          />
+          <Button
+            disabled={isBusy || !refundId.trim()}
+            onClick={confirmCompensationRefund}
+            type="button"
+          >
+            Verify completed refund
+          </Button>
+        </>
+      ) : (
+        <Button
+          disabled={isBusy || isManuallyRefunded}
+          onClick={markRefunded}
+          type="button"
+          variant={isManuallyRefunded ? "secondary" : "primary"}
+        >
+          {isManuallyRefunded ? "Refund marked" : "Mark as refunded (manual)"}
+        </Button>
+      )}
       <Button
         disabled={isBusy || !canResendTickets}
         onClick={resendTickets}

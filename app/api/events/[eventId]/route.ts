@@ -10,6 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireAuthenticatedUser,
   requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
@@ -83,6 +84,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
+    const actor = await requireAuthenticatedUser();
     const validation = await validateJson(request, updateEventSchema);
 
     if (!validation.success) {
@@ -102,7 +104,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     const event = await updateOrganisationEvent(
       organisation.id,
       eventId,
-      validation.data
+      validation.data,
+      actor.id
     );
 
     return NextResponse.json({ event });
@@ -151,8 +154,9 @@ export async function DELETE(request: Request, context: RouteContext) {
   try {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
+    const actor = await requireAuthenticatedUser();
 
-    await deleteOrganisationEvent(organisation.id, eventId);
+    await deleteOrganisationEvent(organisation.id, eventId, actor.id);
 
     return NextResponse.json({ deleted: true });
   } catch (error) {

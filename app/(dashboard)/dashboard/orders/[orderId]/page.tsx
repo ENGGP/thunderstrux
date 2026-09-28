@@ -158,9 +158,12 @@ export default async function OrganisationOrderDetailPage({
             </p>
           ) : null}
           {order.requiresCompensationReview ? (
-            <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Payment was received, but ticket fulfilment failed. Review this order in Stripe before contacting the buyer or taking manual action.
-            </p>
+            <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p>Payment was received, but ticket fulfilment failed. Review this order in Stripe before contacting the buyer or taking manual action.</p>
+              {order.compensationRefundJob ? (
+                <p className="mt-1">Refund workflow: {order.compensationRefundJob.state.replaceAll("_", " ")}</p>
+              ) : null}
+            </div>
           ) : null}
         </section>
 
@@ -272,6 +275,7 @@ export default async function OrganisationOrderDetailPage({
             canResendTickets={order.tickets.length > 0}
             isManuallyRefunded={order.isManuallyRefunded}
             orderId={order.id}
+            requiresCompensationReview={order.requiresCompensationReview}
             stripeSessionId={order.stripeSessionId}
           />
           <div className="rounded-lg border border-neutral-200 p-4">

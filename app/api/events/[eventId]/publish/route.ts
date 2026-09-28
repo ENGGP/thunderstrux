@@ -9,6 +9,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireAuthenticatedUser,
   requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
@@ -37,10 +38,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
+    const actor = await requireAuthenticatedUser();
 
     const event = await toggleOrganisationEventPublished(
       organisation.id,
-      eventId
+      eventId,
+      actor.id
     );
 
     return NextResponse.json({ event });

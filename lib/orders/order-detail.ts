@@ -67,6 +67,14 @@ export async function getOrganisationOrderDetail(
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
+      compensationRefundJob: {
+        select: {
+          state: true,
+          providerStatus: true,
+          stripeRefundId: true,
+          lastErrorCode: true
+        }
+      },
       user: {
         select: {
           email: true,
@@ -134,9 +142,15 @@ export async function markOrganisationOrderManuallyRefunded(
         status: true,
         isManuallyRefunded: true,
         requiresCompensationReview: true,
+        compensationRefundJob: { select: { id: true } },
         reservation: { select: { status: true } }
       }
     });
+    if (order.requiresCompensationReview || order.compensationRefundJob) {
+      throw new OrganisationOrderOperationError(
+        "Compensation refunds require verified Stripe refund confirmation"
+      );
+    }
     if (order.isManuallyRefunded) return;
     const updated = await tx.order.updateMany({
       where: {

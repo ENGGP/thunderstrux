@@ -181,6 +181,7 @@ model Event {
   endTime        DateTime
   location       String
   status         EventStatus @default(draft)
+  compensationRefundMode CompensationRefundMode @default(manual_review)
   createdAt      DateTime    @default(now())
   organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   ticketTypes    TicketType[]
@@ -227,6 +228,7 @@ model Order {
   fulfilmentFailedAt DateTime?
   fulfilmentFailureReason String?
   isManuallyRefunded Boolean @default(false)
+  compensationRefundModeSnapshot CompensationRefundMode @default(manual_review)
   ticketEmailSentAt DateTime?
   ticketEmailLastError String?
   ticketEmailResentAt DateTime?
@@ -238,6 +240,7 @@ model Order {
   reservation     TicketReservation?
   emailOutboxJobs EmailOutbox[]
   lifecycleEvents            OrderLifecycleEvent[]
+  compensationRefundJob      CompensationRefundJob?
 
   @@index([organisationId])
   @@index([eventId])
@@ -246,6 +249,44 @@ model Order {
   @@index([userId])
   @@index([userId, status, createdAt, id], map: "Order_userId_status_createdAt_id_idx")
   @@index([status, createdAt], map: "Order_status_createdAt_idx")
+}
+
+model CompensationRefundJob {
+  id                    String                  @id @default(cuid())
+  orderId               String                  @unique
+  state                 CompensationRefundState @default(review_required)
+  stripePaymentIntentId String?
+  stripeRefundId        String?                 @unique
+  amount                Int
+  currency              String                  @default("aud")
+  attempts              Int                     @default(0)
+  nextAttemptAt         DateTime                 @default(now())
+  processingStartedAt   DateTime?
+  processingToken       String?
+  providerStatus        String?
+  lastProviderEventAt   DateTime?
+  lastErrorCode         String?
+  lastErrorAt           DateTime?
+  resolvedAt            DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  order                 Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  webhookEvents         StripeRefundWebhookEvent[]
+
+  @@index([state, nextAttemptAt, createdAt])
+  @@index([state, processingStartedAt])
+  @@index([stripePaymentIntentId])
+}
+
+model StripeRefundWebhookEvent {
+  stripeEventId   String                @id
+  refundJobId     String?
+  eventType       String
+  eventCreatedAt  DateTime
+  processedAt     DateTime              @default(now())
+  refundJob       CompensationRefundJob? @relation(fields: [refundJobId], references: [id], onDelete: SetNull)
+
+  @@index([refundJobId, eventCreatedAt])
 }
 
 model Ticket {
@@ -377,6 +418,21 @@ enum EventStatus {
   published
 }
 
+enum CompensationRefundMode {
+  manual_review
+  automatic_full
+}
+
+enum CompensationRefundState {
+  review_required
+  auto_queued
+  auto_processing
+  refund_pending
+  refunded
+  refund_failed
+  recovered
+}
+
 enum OrderStatus {
   pending
   paid
@@ -413,6 +469,11 @@ enum OrderLifecycleEventType {
   payment_fulfilled
   compensation_recovered
   manual_refund_marked
+  compensation_refund_queued
+  compensation_refund_started
+  compensation_refund_pending
+  compensation_refunded
+  compensation_refund_failed
   email_enqueued
   email_retry_scheduled
   email_provider_accepted
@@ -426,5 +487,6 @@ enum OrderLifecycleSource {
   stale_cleanup
   staff_action
   email_worker
+  refund_worker
   legacy
 }

@@ -158,6 +158,7 @@ export async function createEventCheckout({
         id: true,
         title: true,
         status: true,
+        compensationRefundMode: true,
         organisationId: true,
         organisation: {
           select: {
@@ -327,6 +328,7 @@ export async function createEventCheckout({
             unitPrice: ticketType.price,
             status: "pending",
             totalAmount,
+            compensationRefundModeSnapshot: event.compensationRefundMode,
             userId
           },
           select: { id: true }
@@ -380,7 +382,14 @@ export async function createEventCheckout({
       payment_intent_data: {
         application_fee_amount: platformFeeAmount,
         on_behalf_of: organisation.stripeAccountId,
-        transfer_data: { destination: organisation.stripeAccountId }
+        transfer_data: { destination: organisation.stripeAccountId },
+        metadata: {
+          orderId: pendingOrder.id,
+          eventId: event.id,
+          organisationId: event.organisationId,
+          ticketTypeId: ticketType.id,
+          quantity: String(quantity)
+        }
       },
       success_url: `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/cancel`,

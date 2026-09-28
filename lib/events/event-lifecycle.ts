@@ -35,6 +35,7 @@ export const eventSelect = {
   endTime: true,
   location: true,
   status: true,
+  compensationRefundMode: true,
   createdAt: true,
   ticketTypes: {
     select: {
@@ -113,7 +114,8 @@ export async function getOrganisationEventForEditing(
 
 export async function createOrganisationEvent(
   organisationId: string,
-  input: CreateEventInput
+  input: CreateEventInput,
+  actorUserId?: string
 ) {
   const organisation = await prisma.organisation.findUnique({
     where: { id: organisationId },
@@ -126,8 +128,9 @@ export async function createOrganisationEvent(
     ]);
   }
 
-  return prisma.event.create({
-    data: {
+  return prisma.$transaction(async (transaction) => {
+    const event = await transaction.event.create({
+      data: {
       organisationId,
       title: input.title,
       description: input.description,
@@ -135,6 +138,7 @@ export async function createOrganisationEvent(
       endTime: input.endTime,
       location: input.location,
       status: input.status,
+      compensationRefundMode: input.compensationRefundMode,
       ticketTypes: {
         create: input.ticketTypes.map((ticketType) => ({
           name: ticketType.name,
@@ -143,14 +147,26 @@ export async function createOrganisationEvent(
         }))
       }
     },
-    select: eventSelect
+      select: eventSelect
+    });
+    await transaction.auditLog.create({
+      data: {
+        organisationId,
+        actorUserId: actorUserId ?? null,
+        action: "event.created",
+        targetType: "Event",
+        targetId: event.id
+      }
+    });
+    return event;
   });
 }
 
 export async function updateOrganisationEvent(
   organisationId: string,
   eventId: string,
-  input: UpdateEventInput
+  input: UpdateEventInput,
+  actorUserId?: string
 ) {
   const existingEvent = await prisma.event.findFirst({
     where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -222,7 +238,10 @@ export async function updateOrganisationEvent(
         description: input.description,
         startTime: input.startTime,
         endTime: input.endTime,
-        location: input.location
+        location: input.location,
+        ...(input.compensationRefundMode
+          ? { compensationRefundMode: input.compensationRefundMode }
+          : {})
       }
     });
 
@@ -254,6 +273,16 @@ export async function updateOrganisationEvent(
       )
     );
 
+    await transaction.auditLog.create({
+      data: {
+        organisationId,
+        actorUserId: actorUserId ?? null,
+        action: "event.updated",
+        targetType: "Event",
+        targetId: existingEvent.id
+      }
+    });
+
     return transaction.event.findUniqueOrThrow({
       where: { id: existingEvent.id },
       select: eventSelect
@@ -263,7 +292,8 @@ export async function updateOrganisationEvent(
 
 export async function toggleOrganisationEventPublished(
   organisationId: string,
-  eventId: string
+  eventId: string,
+  actorUserId?: string
 ) {
   const event = await prisma.event.findFirst({
     where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -309,10 +339,22 @@ export async function toggleOrganisationEventPublished(
       );
     }
 
-    return prisma.event.update({
-      where: { id: event.id },
-      data: { status: "published" },
-      select: eventSelect
+    return prisma.$transaction(async (transaction) => {
+      const updated = await transaction.event.update({
+        where: { id: event.id },
+        data: { status: "published" },
+        select: eventSelect
+      });
+      await transaction.auditLog.create({
+        data: {
+          organisationId,
+          actorUserId: actorUserId ?? null,
+          action: "event.published",
+          targetType: "Event",
+          targetId: event.id
+        }
+      });
+      return updated;
     });
   }
 
@@ -328,16 +370,29 @@ export async function toggleOrganisationEventPublished(
     );
   }
 
-  return prisma.event.update({
-    where: { id: event.id },
-    data: { status: "draft" },
-    select: eventSelect
+  return prisma.$transaction(async (transaction) => {
+    const updated = await transaction.event.update({
+      where: { id: event.id },
+      data: { status: "draft" },
+      select: eventSelect
+    });
+    await transaction.auditLog.create({
+      data: {
+        organisationId,
+        actorUserId: actorUserId ?? null,
+        action: "event.unpublished",
+        targetType: "Event",
+        targetId: event.id
+      }
+    });
+    return updated;
   });
 }
 
 export async function deleteOrganisationEvent(
   organisationId: string,
-  eventId: string
+  eventId: string,
+  actorUserId?: string
 ) {
   const event = await prisma.event.findFirst({
     where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -364,13 +419,25 @@ export async function deleteOrganisationEvent(
     );
   }
 
-  await prisma.event.delete({ where: { id: event.id } });
+  await prisma.$transaction(async (transaction) => {
+    await transaction.event.delete({ where: { id: event.id } });
+    await transaction.auditLog.create({
+      data: {
+        organisationId,
+        actorUserId: actorUserId ?? null,
+        action: "event.deleted",
+        targetType: "Event",
+        targetId: event.id
+      }
+    });
+  });
 }
 
 export async function createOrganisationEventTicketType(
   organisationId: string,
   eventId: string,
-  input: CreateTicketTypeInput
+  input: CreateTicketTypeInput,
+  actorUserId?: string
 ) {
   const event = await prisma.event.findFirst({
     where: scopedByOrganisation(organisationId, { id: eventId }),
@@ -381,20 +448,33 @@ export async function createOrganisationEventTicketType(
     throw new EventLifecycleNotFoundError();
   }
 
-  return prisma.ticketType.create({
-    data: {
-      eventId: event.id,
-      name: input.name,
-      price: input.price,
-      quantity: input.quantity
-    },
-    select: {
-      id: true,
-      eventId: true,
-      name: true,
-      price: true,
-      quantity: true,
-      createdAt: true
-    }
+  return prisma.$transaction(async (transaction) => {
+    const ticketType = await transaction.ticketType.create({
+      data: {
+        eventId: event.id,
+        name: input.name,
+        price: input.price,
+        quantity: input.quantity
+      },
+      select: {
+        id: true,
+        eventId: true,
+        name: true,
+        price: true,
+        quantity: true,
+        createdAt: true
+      }
+    });
+    await transaction.auditLog.create({
+      data: {
+        organisationId,
+        actorUserId: actorUserId ?? null,
+        action: "ticket_type.created",
+        targetType: "TicketType",
+        targetId: ticketType.id,
+        metadata: { eventId }
+      }
+    });
+    return ticketType;
   });
 }

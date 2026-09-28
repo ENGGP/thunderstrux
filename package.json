@@ -18,6 +18,7 @@
     "test:payments:staging": "node scripts/run-e2e.mjs staging",
     "test:e2e:guards": "node --test tests/runner/*.test.mjs",
     "email:outbox:process": "node scripts/process-email-outbox.mjs",
+    "compensation-refunds:process": "node scripts/process-compensation-refunds.mjs",
     "stale-orders:process": "node scripts/process-stale-orders.mjs",
     "db:integrity:audit": "node scripts/audit-db-integrity.mjs",
     "db:organisation-drift:repair": "node scripts/repair-organisation-drift.mjs",
@@ -37,9 +38,9 @@
     "docker:reset": "docker compose down -v",
     "docker:logs": "docker compose logs -f app",
     "docker:up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d",
-    "docker:restart": "docker compose restart app",
+    "docker:restart": "node scripts/recreate-dev-app.mjs",
     "docker:build": "docker compose build app",
-    "docker:rebuild": "docker compose up -d --build --force-recreate app",
+    "docker:rebuild": "node scripts/recreate-dev-app.mjs",
     "docker:migrate": "docker compose exec app pnpm prisma:migrate",
     "docker:seed": "docker compose exec app pnpm seed",
     "docker:db:sync": "docker compose exec app pnpm prisma:migrate && docker compose exec app pnpm prisma:generate && docker compose exec app pnpm seed"
@@ -49,6 +50,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@redis/client": "6.2.1",
     "bcryptjs": "3.0.3",
     "jiti": "2.6.1",
     "next": "16.3.5",

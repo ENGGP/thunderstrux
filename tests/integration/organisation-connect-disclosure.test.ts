@@ -200,6 +200,7 @@ describe("Stripe Connect broad capability and tenant isolation", () => {
   });
 
   test("legacy ownership survives an unrelated low-privilege membership", async () => {
+    vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "allow");
     await withTrustedAppOrigin(async () => {
       const a = await createOrganisationAccount({ stripeReady: true });
       const b = await createOrganisationAccount();

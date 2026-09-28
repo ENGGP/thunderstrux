@@ -136,6 +136,7 @@ const runtime = [
   "DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public",
   `AUTH_SECRET=${randomBytes(32).toString("hex")}`,
   "MFA_ENFORCEMENT_MODE=off",
+  "LEGACY_ORGANISATION_ACCESS_MODE=deny",
   `AUTH_URL=${origin}`,
   `NEXTAUTH_URL=${origin}`,
   `NEXT_PUBLIC_APP_URL=${origin}`,

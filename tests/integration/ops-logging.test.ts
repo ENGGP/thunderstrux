@@ -1,10 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import { GET as health } from "@/app/api/health/route";
 import { GET as readiness } from "@/app/api/health/ready/route";
+import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { emitMetric } from "@/lib/ops/metrics";
 import { logError, logInfo, redactLogContext } from "@/lib/ops/logger";
 import { parseJsonResponse } from "@/tests/helpers/http";
+import schemaContract from "@/config/schema-contract.json";
 
 function parseConsoleJson(spy: ReturnType<typeof vi.spyOn>, index = 0) {
   const message = spy.mock.calls[index]?.[0];
@@ -132,5 +134,30 @@ describe("ops logging foundation", () => {
       status: "ready",
       service: "thunderstrux"
     });
+  });
+
+  test("readiness fails closed when the required schema migration is incomplete", async () => {
+    await prisma.$executeRaw`
+      UPDATE "_prisma_migrations"
+      SET rolled_back_at = NOW()
+      WHERE migration_name = ${schemaContract.requiredMigration}
+    `;
+
+    try {
+      const unavailable = await readiness();
+      expect(unavailable.status).toBe(503);
+      await expect(parseJsonResponse(unavailable)).resolves.toEqual({
+        status: "unavailable",
+        service: "thunderstrux"
+      });
+    } finally {
+      await prisma.$executeRaw`
+        UPDATE "_prisma_migrations"
+        SET rolled_back_at = NULL
+        WHERE migration_name = ${schemaContract.requiredMigration}
+      `;
+    }
+
+    expect((await readiness()).status).toBe(200);
   });
 });

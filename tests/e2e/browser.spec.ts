@@ -123,7 +123,7 @@ test('joined members including staff-looking join roles cannot manage', async ({
   expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(403);
 });
 
-test('member staff, legacy owner, tenant separation and live-session revocation', async ({ page, data }) => {
+test('member staff, retired legacy owner, tenant separation and live-session revocation', async ({ page, data }) => {
   await login(page, data.manager.email, '/dashboard/events');
   expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(200);
   const foreign = await createOrganisationAccount();
@@ -143,5 +143,5 @@ test('member staff, legacy owner, tenant separation and live-session revocation'
   await expect(page).toHaveURL('http://localhost:3100/');
   await prisma.organisationStaff.deleteMany({where: {userId: data.owner.id}});
   await login(page, data.owner.email, '/dashboard/events');
-  expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(200);
+  expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(403);
 });

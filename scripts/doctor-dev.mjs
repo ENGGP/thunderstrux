@@ -1,6 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import net from "node:net";
 import { join } from "node:path";
+import {
+  isValidMfaEncryptionKey,
+  migrationStatusIsCurrent,
+  startupAppliesMigrations
+} from "./dev-doctor-guards.mjs";
 
 const projectRoot = process.cwd();
 
@@ -38,6 +44,8 @@ function checkPort(host, port, timeoutMs = 1000) {
 
 const checks = [];
 const suggestions = [];
+const recreateCommand =
+  "pnpm docker:restart";
 
 const devCacheExists = pathExists(".next", "dev");
 const appManifestExists = pathExists(".next", "dev", "server", "app-paths-manifest.json");
@@ -60,7 +68,7 @@ checks.push(`middleware.ts legacy file: ${middlewareExists ? "present" : "not pr
 checks.push(`tsconfig volatile .next type includes: ${hasVolatileNextTypes ? "present" : "not present"}`);
 
 if (devCacheExists && (!appManifestExists || !devRoutesTypesExist)) {
-  suggestions.push("Dev cache looks incomplete. Run: docker compose restart app");
+  suggestions.push(`Dev cache looks incomplete. Run: ${recreateCommand}`);
   suggestions.push("If the route manifest remains stale, run inside the app container: pnpm dev");
 }
 
@@ -76,7 +84,37 @@ const portOpen = await checkPort("127.0.0.1", 3000);
 checks.push(`localhost:3000: ${portOpen ? "accepting connections" : "not accepting connections"}`);
 
 if (!portOpen) {
-  suggestions.push("Dev server is not reachable. Run: docker compose up -d");
+  suggestions.push(`Dev server is not reachable. Run: ${recreateCommand}`);
+}
+
+if (process.env.THUNDERSTRUX_RUNTIME_CONTAINER !== undefined &&
+    process.platform !== "win32" && existsSync("/proc/1/cmdline")) {
+  const pidOneCommand = readFileSync("/proc/1/cmdline", "utf8").replaceAll("\0", " ").trim();
+  const appliesMigrations = startupAppliesMigrations(pidOneCommand);
+  checks.push(`container startup applies migrations: ${appliesMigrations ? "yes" : "no"}`);
+  if (!appliesMigrations) suggestions.push(`Running app command is stale. Run: ${recreateCommand}`);
+}
+
+const migrationStatus = spawnSync("pnpm", ["prisma", "migrate", "status"], {
+  cwd: projectRoot,
+  encoding: "utf8",
+  timeout: 10_000,
+  windowsHide: true,
+  shell: process.platform === "win32"
+});
+const migrationOutput = `${migrationStatus.stdout || ""}\n${migrationStatus.stderr || ""}`;
+const migrationsCurrent = migrationStatusIsCurrent(migrationStatus.status, migrationOutput);
+checks.push(`database migrations: ${migrationsCurrent ? "up to date" : "pending, failed, or unavailable"}`);
+if (!migrationsCurrent) suggestions.push(`Check migration output, then run: ${recreateCommand}`);
+
+const mfaMode = process.env.MFA_ENFORCEMENT_MODE || (process.env.NODE_ENV === "production" ? "unset" : "off");
+const mfaKey = process.env.MFA_ENCRYPTION_KEY || "";
+const mfaKeyValid = isValidMfaEncryptionKey(mfaKey);
+checks.push(`MFA mode: ${mfaMode}`);
+checks.push(`MFA encryption key: ${mfaKeyValid ? "valid 32-byte key configured" : "missing or invalid"}`);
+checks.push(`Redis-backed rate limiting: ${process.env.RATE_LIMIT_ENABLED === "true" ? "enabled" : "disabled"}`);
+if (mfaMode !== "off" && (!mfaKeyValid || process.env.RATE_LIMIT_ENABLED !== "true")) {
+  suggestions.push("MFA enroll/enforce mode requires a valid 32-byte base64 key and RATE_LIMIT_ENABLED=true.");
 }
 
 console.log(["Thunderstrux dev environment report", "", ...checks.map((check) => `- ${check}`)].join("\n"));

@@ -57,7 +57,7 @@ localhost:5433 in dev override only
 - app receives optional `RATE_LIMIT_*` values
 - app uses `restart: unless-stopped`
 - app waits for the database healthcheck
-- app entrypoint runs `pnpm prisma:migrate:deploy`
+- production migrations run once through the separate migration service owned by `pnpm ops:deploy`; ordinary app startup does not migrate
 - database uses the named volume `postgres_data`
 - database port is not exposed to the host
 - Redis 7 is available as `redis` for rate limiting when `RATE_LIMIT_ENABLED=true`
@@ -216,10 +216,10 @@ Run migrations:
 docker compose exec app pnpm prisma:migrate
 ```
 
-Deploy migrations through the production entrypoint/script:
+Deploy production migrations through the guarded one-shot operations workflow:
 
 ```bash
-docker compose exec app pnpm prisma:migrate:deploy
+pnpm ops:deploy -- --project <project> --env-file <environment-file> --url <loopback-url> --release <git-sha>
 ```
 
 Generate Prisma client:
@@ -315,10 +315,10 @@ node scripts/prepare-next-build.mjs && pnpm prisma:generate && next build
 
 This strips `.next/types/**/*.ts` / `.next/dev/types/**/*.ts` from `tsconfig.json`, regenerates Prisma Client from the current schema, then runs production type checking and build.
 
-Restart only the app container:
+Recreate the development app from the current image, command, and environment configuration:
 
 ```bash
-docker compose restart app
+pnpm docker:restart
 ```
 
 Show app logs:
@@ -358,7 +358,7 @@ pnpm docker:rebuild
 
 `pnpm docker:build` runs `docker compose build app`. It does not execute `pnpm build` inside the running app container.
 
-`pnpm docker:rebuild` runs `docker compose up -d --build --force-recreate app`.
+`pnpm docker:restart` and `pnpm docker:rebuild` rebuild the development image, remove only the Compose-labelled `node_modules` cache, and recreate the app. The fresh cache is populated from the rebuilt image; startup regenerates Prisma Client and applies migrations before Next listens. PostgreSQL and Redis volumes are preserved.
 
 Apply the current schema and seed data after pulling schema changes:
 
@@ -376,9 +376,9 @@ Use the dev override for source-editing work.
 3. Refresh the browser for server-rendered pages.
 4. Verify the rendered route actually reflects the source change.
 
-## When To Restart Docker
+## When To Recreate The Docker App
 
-Restart the app container when:
+Recreate the app container when:
 
 - Source code is correct but the browser still shows old UI.
 - The dev server logs are not recompiling.
@@ -386,14 +386,14 @@ Restart the app container when:
 - `.env` changed and the running app needs new runtime variables.
 
 ```bash
-docker compose restart app
+pnpm docker:restart
 ```
 
 ## When To Clear `.next`
 
 Clear `.next` when:
 
-- Restarting the app container does not fix stale output.
+- Recreating the app container does not fix stale output.
 - Runtime HTML contains code that no longer exists in source.
 - Old strings still appear inside `.next`.
 - A valid App Router route exists in source but dev still returns 404.
@@ -403,14 +403,14 @@ PowerShell:
 
 ```powershell
 if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -Force }
-docker compose restart app
+pnpm docker:restart
 ```
 
 Bash:
 
 ```bash
 rm -rf .next
-docker compose restart app
+pnpm docker:restart
 ```
 
 If production build artifacts may also be involved, clear both from inside Docker:

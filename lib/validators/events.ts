@@ -28,6 +28,7 @@ const updateTicketTypeFieldsSchema = z.object({
 
 export const createEventSchema = eventFieldsSchema.extend({
   status: z.enum(["draft", "published"]).default("draft"),
+  compensationRefundMode: z.enum(["manual_review", "automatic_full"]).default("manual_review"),
   ticketTypes: z.array(createTicketTypeSchema).optional().default([])
 });
 
@@ -36,6 +37,7 @@ export const updateTicketTypeSchema = updateTicketTypeFieldsSchema.extend({
 });
 
 export const updateEventSchema = eventFieldsSchema.extend({
+  compensationRefundMode: z.enum(["manual_review", "automatic_full"]).optional(),
   ticketTypes: z.array(updateTicketTypeSchema).optional().default([])
 });
 

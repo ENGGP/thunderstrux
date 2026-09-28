@@ -763,6 +763,47 @@ describe("orders API", () => {
     expect(updated.paidAt).toEqual(order.paidAt);
   });
 
+  test("legacy manual refund mutation rejects compensation orders", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "failed",
+      failedAt: new Date(),
+      paidAt: new Date(),
+      requiresCompensationReview: true,
+      fulfilmentFailedAt: new Date(),
+      fulfilmentFailureReason: "inventory_unavailable_after_payment"
+    });
+    await prisma.compensationRefundJob.create({
+      data: {
+        orderId: order.id,
+        state: "review_required",
+        amount: order.totalAmount,
+        currency: "aud"
+      }
+    });
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await markManualRefund(
+      jsonRequest(`http://localhost/api/orders/${order.id}/refund-manual`, undefined, {
+        method: "PATCH"
+      }),
+      routeContext({ orderId: order.id })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(prisma.order.findUniqueOrThrow({
+      where: { id: order.id },
+      select: { isManuallyRefunded: true }
+    })).resolves.toEqual({ isManuallyRefunded: false });
+  });
+
   test("manual resend queues own paid order without provider I/O", async () => {
     const restoreEmailEnv = configureEmailEnv();
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));

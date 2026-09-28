@@ -10,6 +10,7 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
+  requireAuthenticatedUser,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
 import {
@@ -48,10 +49,12 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const organisationId = requireOrganisationId(validation.data.organisationId);
     await requireOrganisationEventManagementAccess(organisationId);
+    const actor = await requireAuthenticatedUser();
     const ticketType = await createOrganisationEventTicketType(
       organisationId,
       eventId,
-      validation.data
+      validation.data,
+      actor.id
     );
 
     return NextResponse.json({ ticketType }, { status: 201 });

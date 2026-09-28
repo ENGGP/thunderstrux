@@ -1,6 +1,7 @@
 import { hash } from "bcryptjs";
 import type {
   AccountRole,
+  CompensationRefundMode,
   EventStatus,
   OrderStatus,
   OrganisationStaffRole,
@@ -131,6 +132,7 @@ export async function createEvent({
   organisationId,
   title = unique("Test Event"),
   status = "draft",
+  compensationRefundMode = "manual_review",
   ticketTypes = [
     {
       name: "General",
@@ -142,6 +144,7 @@ export async function createEvent({
   organisationId: string;
   title?: string;
   status?: EventStatus;
+  compensationRefundMode?: CompensationRefundMode;
   ticketTypes?: Array<{ name: string; price: number; quantity: number }>;
 }) {
   const startTime = futureDate(14, 9);
@@ -156,6 +159,7 @@ export async function createEvent({
       startTime,
       endTime,
       status,
+      compensationRefundMode,
       ticketTypes: {
         create: ticketTypes
       }
@@ -183,7 +187,8 @@ export async function createOrder({
   failureReason,
   requiresCompensationReview,
   fulfilmentFailedAt,
-  fulfilmentFailureReason
+  fulfilmentFailureReason,
+  compensationRefundModeSnapshot = "manual_review"
 }: {
   organisationId: string;
   eventId: string;
@@ -200,6 +205,7 @@ export async function createOrder({
   requiresCompensationReview?: boolean;
   fulfilmentFailedAt?: Date | null;
   fulfilmentFailureReason?: string | null;
+  compensationRefundModeSnapshot?: CompensationRefundMode;
 }) {
   return prisma.order.create({
     data: {
@@ -218,7 +224,8 @@ export async function createOrder({
       failureReason,
       requiresCompensationReview,
       fulfilmentFailedAt,
-      fulfilmentFailureReason
+      fulfilmentFailureReason,
+      compensationRefundModeSnapshot
     }
   });
 }

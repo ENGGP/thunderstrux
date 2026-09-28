@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logError } from "@/lib/ops/logger";
 
 export type ApiErrorCode =
   | "BAD_REQUEST"
@@ -76,4 +77,47 @@ export function internalError() {
 
 export function serviceUnavailable(message: string) {
   return apiError("SERVICE_UNAVAILABLE", message, 503);
+}
+
+export type RouteErrorRule = {
+  matches(error: unknown): boolean;
+  toResponse(error: Error): NextResponse;
+};
+
+type ErrorConstructor<T extends Error> = abstract new (...args: never[]) => T;
+
+export function routeErrorRule<T extends Error>(
+  errorType: ErrorConstructor<T>,
+  toResponse: (error: T) => NextResponse
+): RouteErrorRule {
+  return {
+    matches: (error) => error instanceof errorType,
+    toResponse: (error) => toResponse(error as T)
+  };
+}
+
+export function mapRouteError(
+  error: unknown,
+  {
+    operation,
+    request,
+    rules = []
+  }: {
+    operation: string;
+    request: Request;
+    rules?: RouteErrorRule[];
+  }
+) {
+  const rule = rules.find((candidate) => candidate.matches(error));
+
+  if (rule) {
+    return rule.toResponse(error as Error);
+  }
+
+  logError("api.request_failed", {
+    operation,
+    method: request.method,
+    errorName: error instanceof Error ? error.name : "UnknownError"
+  });
+  return internalError();
 }

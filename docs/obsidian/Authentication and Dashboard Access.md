@@ -1,6 +1,6 @@
 # Authentication and Dashboard Access
 
-## Staff MFA rollout (branch `codex/production-readiness-verification`)
+## Staff MFA Rollout
 
 Staff and legacy-owner management access now checks live database staff authority and a login-bound MFA grant when `MFA_ENFORCEMENT_MODE` is `enroll` (for enabled users) or `enforce` (for everyone). Production requires an explicit mode. The `/mfa` page supports authenticator enrollment and verification; successful setup returns ten one-time recovery codes. TOTP secrets are AES-GCM encrypted with `MFA_ENCRYPTION_KEY`, recovery codes are keyed hashes, and grants expire after 12 hours. Auth.js keeps a random login ID across cookie refreshes; a new login needs its own verification. Management page helpers redirect to `/mfa`; API helpers deny access until verification. Member purchases and joined-organisation views remain outside the staff gate.
 
@@ -8,7 +8,7 @@ Enrollment and challenge endpoints require the normal first-party origin and ses
 
 ## Dependency security update (2026-09-18)
 
-NextAuth is pinned to 5.0.0-beta.32 with @auth/core 0.41.3. The Credentials provider remains in use; this branch adds a random staff MFA login ID to the JWT/session callbacks. `dependency-security.test.ts` exercises actual credential rejection/login/session/logout plus malformed Bearer and valid-cookie proxy handling; this supplements the mocked-auth route suite. See [[Handover 2026-09-18 Dependency Security Remediation]].
+NextAuth is pinned to 5.0.0-beta.32 with @auth/core 0.41.3. The Credentials provider remains in use; the session includes a random staff MFA login ID in the JWT/session callbacks. `dependency-security.test.ts` exercises actual credential rejection/login/session/logout plus malformed Bearer and valid-cookie proxy handling; this supplements the mocked-auth route suite. See [[Handover 2026-09-18 Dependency Security Remediation]].
 
 ## Auth Provider
 
@@ -159,18 +159,13 @@ Organisation management is now available at:
 
 Legacy `/dashboard/[orgSlug]/*` routes remain as compatibility redirects for organisation accounts that own the slug.
 
-Organisation dashboard access is ultimately authorized by:
+Organisation dashboard access is authorized from the authenticated user, an active `OrganisationStaff` record, its live role and permissions, and the canonical target organisation resolved by the server. Disabling or changing staff authority takes effect without waiting for session expiry.
 
-- session user id
-- `User.accountRole = organisation`
-- `Organisation.accountUserId`
-- server-side organisation ownership checks
-
-If ownership is missing, the organisation dashboard redirects to organisation creation or resolves as `notFound()` on legacy routes.
+The legacy `Organisation.accountUserId` ownership path is used only according to `LEGACY_ORGANISATION_ACCESS_MODE` during migration. Missing authority redirects to an appropriate safe page or resolves as `notFound()` where revealing the tenant would disclose information.
 
 ## Current Role Capabilities
 
-Organisation accounts have full event, finance, settings, and Stripe Connect management access for their one organisation.
+Named staff receive event, finance, settings, administration, and Stripe Connect capabilities from their live role and explicit permissions. Server handlers re-check these capabilities for every protected operation.
 
 Member accounts can complete a profile, join and leave organisations, view public-safe organisation details, browse public events, buy tickets, and view `/tickets`. They cannot access organisation management APIs or pages.
 
@@ -187,7 +182,9 @@ Trusted:
 
 - Auth.js session
 - `session.user.id`
-- `Organisation.accountUserId` for organisation management
+- active `OrganisationStaff` status, role, and permissions from the database
+- the canonical organisation resolved server-side
+- `Organisation.accountUserId` only through the configured legacy migration fallback
 - `OrganisationMember` row for member joins only
 - server-side Prisma query results
 
@@ -198,4 +195,4 @@ Not trusted as authority:
 - request headers such as `x-user-role`
 - request headers such as `x-org-id`
 
-Some helper functions exist for organisation header matching, but access decisions still need server-side database ownership or member-access checks.
+Some helper functions exist for organisation header matching, but access decisions still need live server-side staff authority, the explicitly enabled legacy fallback, or member-access checks as appropriate.

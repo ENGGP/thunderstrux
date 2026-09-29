@@ -9,6 +9,7 @@
     "build": "node scripts/prepare-next-build.mjs && pnpm prisma:generate && next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "next typegen && tsc --noEmit",
+    "docs:check": "node scripts/check-docs.mjs",
     "test": "pnpm test:integration",
     "security:audit": "pnpm audit --audit-level high",
     "test:smoke": "node scripts/smoke-test.mjs",

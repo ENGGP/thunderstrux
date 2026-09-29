@@ -2,7 +2,9 @@
 
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. It supports member and organisation accounts, organisation event management, public event discovery, ticket checkout, and Stripe Connect.
 
-Last reviewed: 2026-04-28
+Last reviewed: 2026-09-29
+
+Future coding agents and contributors should start with the [Documentation Index](docs/obsidian/Documentation%20Index.md), [Current Handover](docs/obsidian/Current%20Handover.md), and [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md).
 
 ## Stack
 
@@ -118,9 +120,9 @@ The development restart/rebuild helpers rebuild the app, replace only the labell
 
 Member accounts can complete a profile, join organisations, browse public events, buy tickets, and view `/tickets`.
 
-Organisation accounts represent exactly one organisation via `Organisation.accountUserId` and manage it at `/dashboard`.
+Organisation management normally uses an active `OrganisationStaff` record, its live role and permissions, and the canonical organisation resolved by the server. Named staff accounts, invitations, live revocation, TOTP MFA, recovery codes, and actor-attributed audit records are implemented.
 
-For MVP, organisation committee members may share one organisation login. Future security work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
+`Organisation.accountUserId` remains a deliberately controlled migration fallback for legacy organisation logins. Production rollout must enroll staff, enforce MFA, and set `LEGACY_ORGANISATION_ACCESS_MODE=deny` before shared access is considered retired. See [Authentication and Dashboard Access](docs/obsidian/Authentication%20and%20Dashboard%20Access.md) and [Production Readiness Verification](docs/obsidian/Production%20Readiness%20Verification%202026-09-22.md).
 
 ## Seeded Accounts
 

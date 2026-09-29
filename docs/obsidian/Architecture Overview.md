@@ -61,9 +61,9 @@ Docker runtime:
 
 Member accounts represent people. They can complete a profile, join organisations, browse published events, buy tickets, and view `/tickets`.
 
-Organisation accounts represent exactly one organisation through `Organisation.accountUserId`. They manage that organisation directly at `/dashboard`.
+Organisation management normally resolves an active `OrganisationStaff` record and its live role and permissions. Named staff accounts, invitations, revocation, TOTP MFA, recovery codes, and actor-attributed audit records are implemented.
 
-For MVP, organisation committee members may share one organisation login. This is a product tradeoff, not the final security model. Future work should add named staff users, staff invites, MFA, audit logs, and per-user permissions.
+`Organisation.accountUserId` remains an explicitly configured legacy migration fallback. Production activation requires staff enrollment, enforced MFA, and `LEGACY_ORGANISATION_ACCESS_MODE=deny` after migration.
 
 ## App Router Structure
 
@@ -108,7 +108,7 @@ app/
 
 - Branches by `session.user.accountRole`.
 - Renders the member dashboard for `member` accounts.
-- Resolves `Organisation.accountUserId` and renders the organisation dashboard for `organisation` accounts.
+- Resolves the current staff organisation, with the configured legacy-owner fallback during migration, and renders its management dashboard.
 - Redirects organisation accounts without an organisation to `/dashboard/create`.
 
 `components/layout/dashboard-shell.tsx`
@@ -143,11 +143,11 @@ app/
 
 `/dashboard/events/new`
 
-- Renders the event creation form for the signed-in organisation account.
+- Renders the event creation form for an authorised management user.
 
 `/dashboard/events/[eventId]/edit`
 
-- Renders the event edit form after verifying the event belongs to the signed-in organisation account.
+- Renders the event edit form after verifying live authority for the event's canonical organisation.
 
 `/dashboard/orders`
 
@@ -172,7 +172,7 @@ app/
 `/dashboard/[orgSlug]/*`
 
 - Legacy compatibility routes.
-- Redirect to the matching slugless organisation dashboard route when the signed-in organisation account owns the slug.
+- Redirect to the matching slugless organisation dashboard route when the caller has live authority for the slug.
 - Return not found when ownership does not match.
 
 ## Authentication Model
@@ -214,7 +214,7 @@ Thunderstrux has a small structured operations foundation in `lib/ops/logger.ts`
 ## Multi-Tenancy Model
 
 - `Organisation` remains the tenant, event owner, order owner, ticket owner, and Stripe Connect owner.
-- Organisation dashboard access is resolved from the authenticated organisation account plus `Organisation.accountUserId`.
+- Organisation dashboard access is resolved from active `OrganisationStaff` authority and live permissions. The legacy `Organisation.accountUserId` path is available only under the configured migration mode.
 - Member join relationships use `OrganisationMember`.
 - `OrganisationMember` is not staff access for the MVP, although legacy compatibility rows may still exist.
 - `Organisation.slug` remains a stable identifier for compatibility, public display, and lookup APIs.

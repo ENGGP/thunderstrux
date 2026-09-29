@@ -406,6 +406,45 @@ This recreates the dev app container with bind mounts. It does not remove the Po
 
 The `/app/node_modules` mount should be the named Compose volume `thunderstrux_node_modules`. If an anonymous hash-named volume appears, or a newly added package fails to resolve after an image rebuild, run `pnpm docker:restart`. The helper rebuilds the image, removes only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, and applies migrations. It preserves PostgreSQL and Redis data volumes.
 
+### `@redis/client` Or Generated Prisma Client Is Missing
+
+This usually means the named dependency volume contains packages from an older image. Rebuilding the image alone does not replace files hidden by that mount. Use:
+
+```bash
+pnpm docker:restart
+```
+
+The helper verifies its target, rebuilds the development image, replaces only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, deploys migrations, and verifies that `@redis/client` and `@prisma/client` resolve. It preserves PostgreSQL and Redis volumes. Check readiness separately after startup. Do not use `docker compose down -v` for this recovery. See resolved defects `DEF-002` and `DEF-003` in [[Non-Blocking Issue Register]].
+
+### `/mfa` Reports That `public.UserMfa` Does Not Exist
+
+The application and database migration state are out of sync. Inspect the non-destructive report first:
+
+```bash
+docker compose exec app pnpm dev:doctor
+```
+
+If the report confirms pending migrations, deploy them:
+
+```bash
+docker compose exec app pnpm prisma:migrate:deploy
+```
+
+Then recreate the development app if the doctor reports a stale container or generated client:
+
+```bash
+pnpm docker:restart
+```
+
+Confirm readiness and the unauthenticated MFA redirect:
+
+```bash
+curl --fail http://localhost:3000/api/health/ready
+curl --head http://localhost:3000/mfa
+```
+
+Do not create the table manually or mark the migration applied without reviewing the database. See `DEF-001` in [[Non-Blocking Issue Register]].
+
 ## Integration Test Reset Fails
 
 The integration runner should not require manual database reset.

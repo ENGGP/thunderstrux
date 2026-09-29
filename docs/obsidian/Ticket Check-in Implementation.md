@@ -28,9 +28,9 @@ Routes:
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Event-management access required.
-- Ownership is verified server-side from `session.user` through `Organisation.accountUserId`.
+- Authority is verified server-side from `session.user` through live `OrganisationStaff` status and capabilities; the legacy owner path is used only when explicitly configured.
 - Ticket access is scoped through `Ticket.event.organisationId`.
 - `Ticket.organisationId` remains stored, but event ownership is the source of truth for ticket visibility and check-in/check-out authorization.
 - Webhook ticket issuance writes `Ticket.organisationId` from `Event.organisationId`, and logs/corrects the ticket organisation value if historical order data is inconsistent.

@@ -369,7 +369,7 @@ docker compose exec app pnpm seed
 
 ## Normal Change Workflow
 
-Use the dev override for source-editing work.
+Follow [[Engineering Delivery Workflow]] for state inspection, branching, risk classification, validation, review, PR, and handover. Use the dev override for source-editing work.
 
 1. Edit source files on the host.
 2. Let Docker hot reload the app through `docker-compose.dev.yml`.
@@ -615,12 +615,33 @@ pnpm stale-orders:process -- --limit=100
 
 The command emits structured JSON log lines, including `stale_orders.batch.processed` and `stale_orders.worker.completed`. Production should schedule it every 1 minute. Stale rows may temporarily remain until the worker runs; checkout-local cleanup remains authoritative before new reservations.
 
+Compensation refund worker:
+
+```text
+pnpm compensation-refunds:process
+pnpm compensation-refunds:process -- --limit=25
+```
+
+The worker processes a bounded, fenced batch and verifies Stripe identity and refund state before finalizing jobs. Production should schedule it every minute, subscribe the required refund webhooks, and keep event policy at `manual_review` until the real Stripe campaign in [[E2E and Staging Payments]] passes.
+
+Staff security and trusted-origin values:
+
+```text
+MFA_ENFORCEMENT_MODE=off
+MFA_ENCRYPTION_KEY=
+LEGACY_ORGANISATION_ACCESS_MODE=allow
+TRUSTED_APP_ORIGINS=
+```
+
+Local development may use `off` and `allow`. Production must set an explicit MFA mode, a separately backed-up 32-byte base64 MFA key for enrollment/enforcement, exact trusted origins, and must move legacy access to `deny` after named-staff enrollment. Follow [[Production Readiness Verification 2026-09-22]] rather than changing these values ad hoc.
+
 Rate-limit values:
 
 ```text
 RATE_LIMIT_ENABLED=false
 RATE_LIMIT_REDIS_URL=redis://redis:6379
 RATE_LIMIT_KEY_PREFIX=thunderstrux
+RATE_LIMIT_TRUSTED_PROXY_HEADER=x-forwarded-for
 ```
 
 Keep `RATE_LIMIT_ENABLED=false` for normal local development unless testing throttling behavior. Production should enable it and point `RATE_LIMIT_REDIS_URL` at a managed or otherwise reliable Redis-compatible service.
@@ -675,14 +696,15 @@ Production deployment must provide:
 
 - log aggregation for app stdout/stderr
 - alert routing from selected `event`, `metricName`, and alert names
-- uptime checks for `GET /api/health`
-- scheduler entries for `pnpm email:outbox:process` and `pnpm stale-orders:process`
+- liveness checks for `GET /api/health` and rollout/readiness checks for `GET /api/health/ready`
+- scheduler entries for `pnpm email:outbox:process`, `pnpm stale-orders:process`, and `pnpm compensation-refunds:process`
 
 Alert immediately:
 
 - any `paid_but_unfulfilled_compensation_required`
 - any `email_outbox_retry_exhausted`
 - any `stale_order_worker_failed`
+- any `compensation_refund.worker.failed`
 - app healthcheck non-200, timeout, or malformed response
 
 Alert on threshold:

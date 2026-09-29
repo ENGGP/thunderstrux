@@ -65,6 +65,7 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 - Review [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) and confirm the documentation-only evidence commit retains all five green latest-head CI checks before merge.
 - Local documentation acceptance passed on 2026-09-29: 40 documentation files checked, all 24 runner tests passed by direct file execution, and `git diff --check` passed. Independent review findings were applied. Clean-environment typecheck/build remain PR CI evidence because the host dependency directory lacks the Next binary.
+- [[Docker Architecture Assessment 2026-09-29]] records the container-boundary review, observed local runtime, production gaps, and recommended managed startup topology. Its findings do not change the existing production release gates.
 - Do not commit `docs/obsidian/.obsidian/workspace.json`; it contains a user-local Obsidian workspace change.
 - After documentation merges, choose a production hosting platform and implement the external release gates above before enabling unrestricted payments.
 - Use the canonical open items in [[Non-Blocking Issue Register]] rather than historical session gap lists.

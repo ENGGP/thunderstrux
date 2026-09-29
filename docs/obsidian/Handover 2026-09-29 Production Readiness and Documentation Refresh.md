@@ -17,6 +17,8 @@ Branch: `codex/documentation-governance-refresh` from `4919703`. Delivery PR: [P
 
 The refresh adds an agent entrypoint, a documentation index, a risk-based engineering workflow, a concise current handover, a centralized issue/defect register, a PR template, and automated internal-link validation. Living documents are corrected against code, Compose, migrations, package scripts, and CI. Historical handovers remain immutable.
 
+The follow-up [[Docker Architecture Assessment 2026-09-29]] evaluates current container placement and startup suitability, distinguishes development strengths from hosted production activation, and prioritizes managed stateful services, scheduled jobs, ingress, secret storage, immutable image delivery, and later runtime hardening.
+
 ## Remaining Release Gates
 
 - Enforced staff MFA and denied legacy shared access

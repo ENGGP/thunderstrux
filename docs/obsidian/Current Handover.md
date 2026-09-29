@@ -15,6 +15,7 @@ Thunderstrux is a Docker-first Next.js 16 App Router SaaS for student societies.
 - [PR #19](https://github.com/ENGGP/thunderstrux/pull/19) updated the pinned `pnpm/action-setup` digest.
 - All five latest-head checks passed for PR #18 and for the two dependency PRs: static validation, integration, production build, browser E2E, and operations validation.
 - [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) contains the documentation-governance refresh on `codex/documentation-governance-refresh`. Its latest-head checks must pass before merge.
+- PR #21 head `6d7b4c5` passed all five required jobs on 2026-09-29. The subsequent documentation-only evidence commit must also receive green latest-head checks before merge.
 
 Read [[Documentation Index]], [[Engineering Delivery Workflow]], [[Non-Blocking Issue Register|Issue and Defect Register]], and [[Handover 2026-09-29 Production Readiness and Documentation Refresh]] before new implementation work.
 
@@ -62,7 +63,7 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Current Work And Next Safe Actions
 
-- Review [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) and require all five latest-head CI checks before merge.
+- Review [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) and confirm the documentation-only evidence commit retains all five green latest-head CI checks before merge.
 - Local documentation acceptance passed on 2026-09-29: 40 documentation files checked, all 24 runner tests passed by direct file execution, and `git diff --check` passed. Independent review findings were applied. Clean-environment typecheck/build remain PR CI evidence because the host dependency directory lacks the Next binary.
 - Do not commit `docs/obsidian/.obsidian/workspace.json`; it contains a user-local Obsidian workspace change.
 - After documentation merges, choose a production hosting platform and implement the external release gates above before enabling unrestricted payments.

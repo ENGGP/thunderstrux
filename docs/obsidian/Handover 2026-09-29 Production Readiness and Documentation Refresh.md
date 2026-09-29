@@ -13,7 +13,7 @@ PR #18 resolved the missing MFA table failure, dependency-volume `@redis/client`
 
 ## Documentation Refresh
 
-Branch: `codex/documentation-governance-refresh` from `4919703`.
+Branch: `codex/documentation-governance-refresh` from `4919703`. Delivery PR: [PR #21](https://github.com/ENGGP/thunderstrux/pull/21).
 
 The refresh adds an agent entrypoint, a documentation index, a risk-based engineering workflow, a concise current handover, a centralized issue/defect register, a PR template, and automated internal-link validation. Living documents are corrected against code, Compose, migrations, package scripts, and CI. Historical handovers remain immutable.
 
@@ -33,4 +33,4 @@ See [[Production Readiness Verification 2026-09-22]], [[Production Operations]],
 
 Local documentation acceptance passed on 2026-09-29: `pnpm docs:check` checked 40 files, all 24 runner tests passed when their six files were executed directly, and `git diff --check` passed. The independent review found stale security, schema, route, workflow, and issue-register claims; those findings were incorporated and the focused checks rerun. Host `pnpm typecheck` could not run because the existing host dependency directory lacks the Next binary, so the frozen-install static-validation and production-build jobs remain the authoritative clean-environment checks.
 
-Open the branch PR, link it in [[Current Handover]], and require all five latest-head checks before merge. The user-local `docs/obsidian/.obsidian/workspace.json` change must remain uncommitted.
+Require all five latest-head checks on [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) before merge. The user-local `docs/obsidian/.obsidian/workspace.json` change must remain uncommitted.

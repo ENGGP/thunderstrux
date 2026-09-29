@@ -14,20 +14,24 @@ Core model:
 User
   -> accountRole member | organisation
 
-Organisation account User
-  -> Organisation.accountUserId
-       -> Event
-            -> TicketType
-       -> Order
-       -> Ticket
-       -> TicketReservation
+Named staff User
+  -> OrganisationStaff (active role and permissions)
+       -> Organisation
+            -> Event
+                 -> TicketType
+            -> Order
+            -> Ticket
+            -> TicketReservation
+
+Legacy organisation User
+  -> Organisation.accountUserId (configured migration fallback only)
 
 Member account User
   -> OrganisationMember
   -> Organisation
 ```
 
-Organisation dashboard access is granted by `Organisation.accountUserId`. `OrganisationMember` remains for member join relationships and migration compatibility, not MVP staff access.
+Organisation dashboard access is normally granted by an active `OrganisationStaff` row and its live role and permissions. `Organisation.accountUserId` is a controlled legacy fallback governed by `LEGACY_ORGANISATION_ACCESS_MODE`. `OrganisationMember` is member join state and grants no management authority.
 
 ## Schema Snapshot
 
@@ -36,18 +40,37 @@ Main models in `prisma/schema.prisma`:
 - `User`
 - `Organisation`
 - `OrganisationMember`
+- `OrganisationStaff`
+- `OrganisationStaffInvite`
+- `AuditLog`
+- `UserMfa`
+- `MfaRecoveryCode`
+- `MfaGrant`
 - `Event`
 - `TicketType`
 - `Order`
+- `CompensationRefundJob`
+- `StripeRefundWebhookEvent`
 - `Ticket`
+- `EmailOutbox`
+- `OrderLifecycleEvent`
 - `TicketReservation`
 
 Enums:
 
 - `OrganisationRole`
+- `OrganisationStaffRole`
+- `OrganisationStaffStatus`
+- `AccountRole`
 - `EventStatus`
+- `CompensationRefundMode`
+- `CompensationRefundState`
 - `OrderStatus`
+- `EmailOutboxMode`
+- `EmailOutboxStatus`
 - `ReservationStatus`
+- `OrderLifecycleEventType`
+- `OrderLifecycleSource`
 
 ## Users
 
@@ -137,7 +160,7 @@ Constraints:
 unique(userId, organisationId)
 ```
 
-Current roles:
+Member relationship roles:
 
 - `org_owner`
 - `org_admin`
@@ -146,7 +169,17 @@ Current roles:
 - `content_manager`
 - `member`
 
-In the target MVP, these rows represent member-account joins. They are not staff invite records. Organisation committee access currently uses a shared organisation account login.
+These rows represent member-account joins. They are not staff invite records and grant no organisation management access.
+
+## Organisation Staff, MFA, And Audit
+
+`OrganisationStaff` is the normal management authority. It records the organisation, named user, role, status, and explicit permissions. Every protected request resolves current database state so revocation and role changes take effect immediately. `OrganisationStaffInvite` holds expiring, hashed invitation tokens and the intended role.
+
+`UserMfa`, `MfaRecoveryCode`, and `MfaGrant` implement encrypted TOTP enrollment, one-time recovery codes, and login-bound verification grants. Grants expire after 12 hours. `AuditLog` records actor-attributed sensitive management actions. See [[Authentication and Dashboard Access]].
+
+## Compensation Refunds
+
+`CompensationRefundJob` persists a fenced, retryable automatic refund workflow for paid orders that could not be fulfilled. `StripeRefundWebhookEvent` deduplicates provider events. Identity, amount, currency, PaymentIntent, charge state, and job ownership are verified before transitions. Manual confirmation requires provider evidence. See [[Payment Lifecycle]] and [[Production Operations]].
 
 ## Events
 
@@ -342,7 +375,7 @@ Non-blocking index notes:
 
 ## Database Integrity Audit And Numeric Constraints
 
-P1.8 Phase 1 added a read-only audit. Phase 2 added database-level numeric check constraints. Phase 3 added narrow lifecycle constraints for event time ordering, paid order timestamps, and expired order payment state. It did not add failed-order timestamp constraints, relationship constraints, data repair, triggers, or fixture rewrites.
+P1.8 added a read-only audit followed by numeric and narrow lifecycle constraints. The production-readiness work later added the failed-order timestamp constraint after a clean preflight. Cross-row relationship checks remain audit-only.
 
 Run:
 
@@ -372,6 +405,7 @@ Active lifecycle check constraints:
 - `Event_endTime_after_startTime_chk`: `Event.endTime > Event.startTime`
 - `Order_paid_requires_paidAt_chk`: paid orders require `paidAt`
 - `Order_expired_has_no_paidAt_chk`: expired orders must not have `paidAt`
+- `Order_failed_requires_failedAt_chk`: failed orders require `failedAt`
 
 Audited checks:
 
@@ -392,20 +426,22 @@ Audited checks:
 
 Latest local Docker audit before Phase 3 migration: 14 checks, 0 violations.
 
-Failed-order timestamp policy and relationship checks are still audit-only. Do not add constraints for `failed => failedAt`, compensation-shape, ticket-count, or reservation/order cross-row consistency until those are explicitly approved in a later phase.
+Compensation shape, ticket count, and reservation/order cross-row relationship checks remain audit-only. Add database enforcement only after production-copy audit and lifecycle review.
 
-Current follow-up:
+Current operational follow-up:
 
-- Add pagination hardening coverage for same-`createdAt` cursor collisions and malformed limit/direction params.
-- Add denormalized ownership drift reporting/repair tooling before relying on `Order.organisationId`, `Ticket.organisationId`, or `TicketReservation.organisationId` for performance-sensitive query shortcuts.
+- Run `pnpm db:integrity:audit` and the ownership-drift tool against representative production data before rollout.
+- Run dry-run `pnpm db:organisation-drift:repair`; apply only with an approved backup and maintenance procedure.
+- Keep canonical relation paths as authorization authority even after repairing denormalized organisation IDs.
 
 ## Multi-Tenant Access Pattern
 
 The backend resolves tenant access through:
 
 - authenticated user
-- account role
-- organisation account ownership through `Organisation.accountUserId`
+- active `OrganisationStaff` status, role, and permissions
+- canonical target organisation resolved server-side
+- explicitly configured legacy ownership through `Organisation.accountUserId` during migration
 - member join relationships through `OrganisationMember`
 
 Common patterns:
@@ -418,7 +454,7 @@ Common patterns:
 - `requireOrganisationFinanceAccess(organisationId)`
 - `requireOrganisationStripeConnectAccess(organisationId)`
 
-Organisation-management decisions are based on organisation-account ownership, not member join rows.
+Organisation-management decisions are based on live named-staff authority, with only the configured legacy fallback. Member join rows never grant management access.
 
 ## Organisation Scope Helpers
 
@@ -438,7 +474,7 @@ Important helpers:
 
 Current note:
 
-- The helper layer supports validating `x-org-id`, but the important security boundary is still the server-side account role and organisation ownership check.
+- The helper layer supports validating `x-org-id`, but the security boundary is the server-resolved tenant and live staff capability or explicitly enabled legacy fallback.
 
 ## Public vs Private Data
 
@@ -450,7 +486,7 @@ Public APIs:
 Private APIs:
 
 - require authentication
-- require organisation account ownership for management routes
-- require management roles for mutations
+- require active staff authority and the needed live capability for management routes
+- allow legacy ownership only when the migration mode explicitly permits it
 
 Checkout is public-facing in URL shape, but still requires an authenticated member account and server-side event resolution.

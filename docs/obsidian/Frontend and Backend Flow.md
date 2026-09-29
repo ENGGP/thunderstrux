@@ -1,5 +1,7 @@
 # Frontend and Backend Flow
 
+Organisation management flows resolve a canonical tenant from active `OrganisationStaff` authority and re-check live role/capability in the backend. `Organisation.accountUserId` remains only as the explicitly configured legacy migration fallback. Member `OrganisationMember` rows never grant management access.
+
 ## Public Homepage
 
 Files:
@@ -123,8 +125,8 @@ Flow:
 User visits /dashboard
   -> server reads authenticated user from session
   -> member account renders member dashboard
-  -> organisation account resolves Organisation.accountUserId
-  -> organisation account renders organisation dashboard directly
+  -> management user resolves canonical organisation from live staff authority or configured legacy fallback
+  -> authorised management dashboard renders directly
 ```
 
 Current UI:
@@ -203,7 +205,7 @@ User submits organisation name
   -> API normalises or generates slug
   -> API creates Organisation
   -> API sets Organisation.accountUserId
-  -> API creates transitional org_owner membership for compatibility
+  -> API creates active owner OrganisationStaff authority and transitional legacy records
   -> frontend redirects to /dashboard
 ```
 
@@ -217,7 +219,7 @@ Files:
 Flow:
 
 ```text
-Page resolves the signed-in organisation account
+Page resolves the authorised user's canonical organisation
   -> requireCurrentOrganisationAccount()
   -> pass organisation.name into DashboardShell
   -> page renders overview, upcoming events, recent orders, and revenue summary
@@ -244,10 +246,10 @@ Files:
 Flow:
 
 ```text
-Events page resolves current organisation account
+Events page resolves the authorised user's canonical organisation
   -> EventsList fetches organisation by slug via /api/orgs/[orgSlug] for API compatibility
   -> EventsList fetches GET /api/events?orgId=...
-  -> API verifies organisation account ownership for organisationId
+  -> API verifies live event-management capability for the canonical organisationId
   -> events render with management actions
 ```
 
@@ -370,9 +372,9 @@ Files:
 Flow:
 
 ```text
-Organisation opens /dashboard/events/[eventId]
+Authorised management user opens /dashboard/events/[eventId]
   -> proxy allows organisation accounts and redirects member accounts to /
-  -> page resolves current organisation through Organisation.accountUserId
+  -> page resolves canonical organisation through live staff authority or configured legacy fallback
   -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
   -> revenue series helper fetches paid order paidAt/totalAmount values for UTC daily grouping
   -> page renders event details, revenue, sold count, remaining count, UTC revenue chart, ticket rows, order link, and ticket visibility link
@@ -401,8 +403,8 @@ Files:
 Flow:
 
 ```text
-Organisation opens /dashboard/events/[eventId]/tickets
-  -> page resolves current organisation through Organisation.accountUserId
+Authorised management user opens /dashboard/events/[eventId]/tickets
+  -> page resolves canonical organisation through live staff authority or configured legacy fallback
   -> server query verifies the event belongs to the current organisation
   -> page parses limit/cursor/direction pagination params
   -> page renders one cursor-paginated slice of issued Ticket rows for that event
@@ -444,7 +446,7 @@ Files:
 Flow:
 
 ```text
-Settings page resolves current organisation account
+Settings page resolves the authorised user's canonical organisation
   -> client resolves organisation via /api/orgs/[orgSlug] for API compatibility
   -> GET /api/stripe/connect/status?organisationId=...
   -> backend maps account into NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
@@ -471,7 +473,7 @@ Current disconnect behavior:
 Important security detail:
 
 - The frontend sends `organisationId` only as an input.
-- Every Connect mutation rechecks the authenticated organisation account ownership on the server.
+- Every Connect mutation rechecks live Stripe Connect capability and canonical tenant ownership on the server.
 
 ## Organiser Orders
 
@@ -490,7 +492,7 @@ Files:
 Flow:
 
 ```text
-Page resolves current organisation account
+Page resolves the authorised user's canonical organisation
   -> requireOrganisationFinanceAccess(organisation.id)
   -> optionally validates eventId belongs to the current organisation
   -> query orders scoped through Order.event.organisationId with optional eventId/search/date filters
@@ -499,7 +501,7 @@ Page resolves current organisation account
 
 Access:
 
-- Organisation account required.
+- Live finance authority or explicitly enabled legacy authority required.
 - Finance access required.
 
 Current UI:
@@ -516,8 +518,8 @@ Current UI:
 Order detail flow:
 
 ```text
-Organisation opens /dashboard/orders/[orderId]
-  -> page resolves current organisation account
+Authorised management user opens /dashboard/orders/[orderId]
+  -> page resolves the authorised user's canonical organisation
   -> query verifies the order belongs to an event owned by the current organisation
   -> page renders order snapshot data, buyer, event link, issued ticket ids, total, and Stripe session id
   -> manual refund action calls PATCH /api/orders/[orderId]/refund-manual

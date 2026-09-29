@@ -34,18 +34,18 @@ Main files:
 Flow:
 
 ```text
-Organisation account opens /dashboard/events/new
-  -> route resolves current organisation from Organisation.accountUserId
+Authorised management user opens /dashboard/events/new
+  -> route resolves the canonical organisation from live staff authority or the configured legacy fallback
   -> CreateEventForm resolves the organisation by slug for existing API compatibility
   -> POST /api/events
-  -> API validates organisation account ownership and event-management access
+  -> API validates live event-management access for the canonical organisation
   -> event lifecycle service creates Event and TicketType rows
 ```
 
 Access:
 
-- Organisation account required.
-- The signed-in organisation account must own the submitted `organisationId`.
+- Active staff authority or explicitly enabled legacy authority is required.
+- The submitted `organisationId` must match the server-resolved canonical organisation.
 - Member accounts cannot create events.
 
 ## Ticket Types
@@ -160,9 +160,9 @@ Current route:
 Rules:
 
 - Organisation account required.
-- The event must belong to the signed-in organisation account.
+- The event must belong to the caller's server-resolved canonical organisation.
 - Member accounts are redirected to `/`.
-- Draft and published events can be viewed by the owning organisation account.
+- Draft and published events can be viewed by management users with live access to the owning organisation.
 - The route shows event details, remaining tickets, sold tickets, and revenue.
 - Sold and revenue values are derived from paid orders.
 - The UI does not show total capacity because original capacity is not stored.

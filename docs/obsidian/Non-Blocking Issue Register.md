@@ -1,90 +1,59 @@
-# Non-Blocking Issue Register
+---
+status: living
+last-reviewed: 2026-09-29
+owner: engineering
+---
 
-2026-09-22 verification update: the open branch `codex/production-readiness-verification` addresses the missing-origin compatibility mode, token CSRF, failed email requeue, failed-order timestamp constraint, and denormalized ownership drift detection/repair. Historical rows below describe the merged baseline until that branch merges. Current evidence and remaining release gates are in [[Production Readiness Verification 2026-09-22]].
+# Issue And Defect Register
 
-This register tracks non-blocking risks found during production-readiness and P0 remediation reviews. These are not blockers for the current P0 remediation commits, but they should be considered before production payments or broader rollout.
+This is the canonical register for open defects, accepted technical debt, external release gates, deferred improvements, and resolved defects. Historical handovers may describe issues that are now resolved; this register owns current status.
 
-## P0.4 Compensation Review Follow-Ups
+Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `superseded`. Resolve an item only with a linked fix and regression or direct verification evidence.
 
-| Area | Issue | Risk | Suggested Follow-Up |
+## Open Product And Engineering Issues
+
+| ID | Severity | Area | Status | Last verified | Issue and impact | Evidence or workaround | Owner / next action |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| API-001 | Medium | API errors | open | 2026-09-29 | Central safe error mapping covers representative routes, while remaining route families still use manual catch blocks. Clients may receive inconsistent shapes. | Cross-tenant event/order/ticket and Connect behavior is tested. | Engineering: survey all routes, migrate remaining families without changing disclosure rules, and add contract coverage. |
+| AUD-001 | High | Audit | open | 2026-09-29 | The sensitive-action audit survey is incomplete. Existing event, refund, attendance, email requeue, MFA, and staff actions are audited, but every checkout-setting and administrative mutation has not been formally accounted for. | Use `AuditLog` action search and route inventory. | Engineering/security: publish a route-to-audit matrix and add missing actor-attributed entries transactionally. |
+| DATA-001 | Medium | Ownership drift | accepted-risk | 2026-09-29 | Denormalized organisation IDs can drift from canonical event ownership. Runtime authorization avoids trusting them, and repair tooling is manual. | Run `pnpm db:integrity:audit` and dry-run `pnpm db:organisation-drift:repair`. | Data/operations: schedule integrity checks or design database enforcement after production-copy review. |
+| PERF-001 | Medium | Indexes | accepted-risk | 2026-09-29 | Composite indexes are implemented, but production-scale `EXPLAIN ANALYZE`, write overhead, and redundant-index usage are unverified. | Checkout remains correct; local plain `EXPLAIN` showed usable plans. | Data/operations: review representative plans and `pg_stat_user_indexes` before removing indexes. |
+| PERF-002 | Low | Analytics | open | 2026-09-29 | Some analytics aggregate by loading matching paid orders into application memory. Large tenants may see avoidable latency and memory use. | Current MVP data is bounded operationally. | Engineering: replace with database aggregation or bounded series queries when representative scale requires it. |
+| LOG-001 | Low | Logging | accepted-risk | 2026-09-29 | Some older reconciliation internals still use legacy console output. | Critical paths also emit structured redacted events. | Engineering: migrate opportunistically without changing payment semantics. |
+| PAY-001 | Low | Webhook diagnostics | open | 2026-09-29 | A repeated compensation webhook with mismatched metadata may report the existing compensation state without a distinct mismatch event. It does not issue tickets or mutate a paid order. | Existing compensation remains safe and idempotent. | Payments: add a focused mismatch log branch and regression test. |
+| TEST-001 | Low | Payment tests | open | 2026-09-29 | Missing direct regressions remain for local-order lookup with absent metadata, reservation quantity mismatch release, and non-paid completed sessions avoiding compensation. | Broader reconciliation suites cover adjacent behavior. | Payments: add focused integration cases when payment reconciliation next changes. |
+| UI-001 | Low | Public availability | accepted-risk | 2026-09-29 | Displayed availability can change between page load and checkout. | Checkout transaction remains authoritative. | Product/engineering: consider refresh/realtime behavior only when demand justifies it. |
+| UI-002 | Low | Server rendering | accepted-risk | 2026-09-29 | Public event detail server-fetches the app's own API route, adding internal HTTP coupling. | Current behavior works and retains the public API. | Engineering: call the shared read service directly in a focused future refactor. |
+
+## External Production Gates
+
+| ID | Severity | Area | Status | Last verified | Required outcome | Owner/next action |
+| --- | --- | --- | --- | --- | --- | --- |
+| OPS-001 | Critical | Workers | external-gate | 2026-09-29 | Schedule compensation, email-outbox, and stale-cleanup workers and monitor backlog/failures. | Hosting owner configures one-minute schedules and alert thresholds. |
+| OPS-002 | Critical | Observability | external-gate | 2026-09-29 | Route structured logs and critical events to external aggregation, dashboards, and paging; monitor health and migration failures. | Hosting owner selects and verifies alert transport. |
+| OPS-003 | Critical | Recovery | external-gate | 2026-09-29 | Enable encrypted off-machine backups and complete a hosted restore drill with an agreed recovery objective. | Operations owner uses [[Production Operations]]. |
+| SEC-001 | Critical | Staff MFA | external-gate | 2026-09-29 | Enroll all active staff, enforce MFA, and deny legacy shared access. | Security/operations follows [[Production Readiness Verification 2026-09-22]]. |
+| SEC-002 | High | Edge security | external-gate | 2026-09-29 | Enable Redis rate limiting and configure an edge-overwritten trusted client-IP header and exact trusted origins. | Security/operations verifies release-image readiness and hosted mutations. |
+| PAY-002 | Critical | Stripe refunds | external-gate | 2026-09-29 | Subscribe refund webhooks and pass real Stripe test-mode automatic and manual compensation campaigns. | Payments/operations follows [[E2E and Staging Payments]] before `automatic_full`. |
+| DEP-001 | Medium | Dependency operations | external-gate | 2026-09-29 | Capture a genuine eligible security-update PR and maintainer receipt of a real Security Audit failure notification. | Engineering/operations must not manufacture vulnerabilities or registry failures. |
+
+## Resolved Defect History
+
+| ID | Resolved | Defect and root cause | Fix and evidence |
 | --- | --- | --- | --- |
-| Checkout reconciliation | A compensation-required failed order with no active reservation returns `compensation_required` before revalidating the incoming completed-session metadata. | A later mismatched webhook may be reported as the existing compensation state rather than logging the new mismatch. It does not create tickets, send email, or mutate paid orders. | Add a narrow test and log branch for duplicate compensation webhooks with mismatched `session.id` or metadata. |
-| Checkout reconciliation | Natural retry recovery is only possible when an active unexpired reservation still exists. Most unsafe failure paths release, expire, or lack such a reservation. | Operators may expect retries to recover more cases than the current reservation model allows. | Document operational expectation and consider a future explicit repair/refund workflow instead of reservation restoration. |
-| Tests | Missing explicit coverage for missing required metadata when the local order is found by `stripeSessionId`. | Current behavior is intended, but the edge case is not directly pinned. | Add integration coverage for paid missing metadata plus local order lookup fallback. |
-| Tests | Missing explicit coverage for reservation quantity mismatch compensation behavior. | Active reservation release on quantity mismatch is not directly pinned. | Add integration test asserting compensation state and released reservation. |
-| Tests | Missing explicit coverage that non-paid completed sessions remain ordinary failed orders without compensation review. | Existing successful and compensation tests imply this, but the branch is not explicit. | Add a small integration test for `payment_status != paid`. |
+| DEF-001 | 2026-09-27 | `/mfa` exposed a Prisma error because the `UserMfa` table migration was not applied. | Required migration added to readiness/schema contract; route error boundary and doctor guidance added. [PR #18](https://github.com/ENGGP/thunderstrux/pull/18) and MFA tests. |
+| DEF-002 | 2026-09-27 | A named Docker dependency volume masked the rebuilt image, causing `@redis/client` resolution failure. | `scripts/recreate-dev-app.mjs` replaces only the labelled dependency cache while preserving database/Redis data. [PR #18](https://github.com/ENGGP/thunderstrux/pull/18) and runner tests. |
+| DEF-003 | 2026-09-27 | Recreated dependencies lacked the generated Prisma Client. | Recreation now generates Prisma Client and applies migrations before starting Next. [PR #18](https://github.com/ENGGP/thunderstrux/pull/18) and schema/doctor tests. |
+| DEF-004 | 2026-09-20 | Windows checkout converted `docker/entrypoint.sh` to CRLF and broke Linux container startup. | `.gitattributes` enforces LF; fresh migration containers and operations rehearsal passed. [PR #12](https://github.com/ENGGP/thunderstrux/pull/12). |
+| DEF-005 | 2026-09-20 | Operations CI inherited an unintended database environment. | Isolated disposable operations database environment and regression coverage. [PR #11](https://github.com/ENGGP/thunderstrux/pull/11). |
+| DEF-006 | 2026-09-19 | Logout used a hard-coded localhost target and failed on isolated E2E ports. | Redirect uses the current site origin; isolated browser logout coverage passed. [PR #10](https://github.com/ENGGP/thunderstrux/pull/10). |
+| DEF-007 | 2026-09-21 | Concurrent webhook replay surfaced PostgreSQL serialization/deadlock conflicts through more than Prisma `P2034`. | Whole-transaction retries recognize reviewed SQLSTATE/Prisma conflict forms; concurrency and signed replay tests passed. [PR #13](https://github.com/ENGGP/thunderstrux/pull/13). |
+| DEF-008 | 2026-09-21 | Compensation lifecycle evidence recorded an inaccurate reservation after-state. | Lifecycle persistence reads the reconciled result and regression coverage verifies it. [PR #13](https://github.com/ENGGP/thunderstrux/pull/13). |
+| DEF-009 | 2026-09-28 | Production rehearsal did not explicitly deny transitional legacy organisation access. | Production E2E/operations configuration sets legacy mode to `deny`; latest-head checks passed. [PR #18](https://github.com/ENGGP/thunderstrux/pull/18). |
 
-## Security And Abuse Controls
+## Register Procedure
 
-| Area | Issue | Risk | Suggested Follow-Up |
-| --- | --- | --- | --- |
-| Trusted origin guard | Compatibility mode allows mutation requests with no `Origin` and no `Referer`. | Some cross-site or non-browser mutation attempts may not be blocked until compatibility mode is tightened. | Observe production logs, then move missing-origin/missing-referer policy to fail closed where safe. |
-| CSRF | No token-based CSRF defence yet; current mitigation is trusted-origin validation. | Origin validation is useful but not a complete browser mutation defence. | Produce the dedicated CSRF design covering token generation, storage, validation, client/server integration, exemptions, rollout, exact routes, and tests before coding. |
-| Rate limiting | Redis limiter is intentionally simple fixed-window logic with custom TCP/RESP implementation. | Less battle-tested than an official Redis client or managed limiter. | Replace with a production Redis client or managed limiter before higher-risk scale. |
-| Rate limiting | IP bucket quality depends on trusted proxy header hygiene. | Misconfigured proxies can collapse users into one bucket or allow spoofed buckets. | Define trusted proxy configuration and sanitize forwarding headers at the edge. |
-| Auth model | Organisation accounts are shared by committee members for MVP. | No individual accountability, offboarding, MFA, or least-privilege controls. | Implement named staff users, staff invites, MFA, audit logs, and per-user roles. |
-
-## Payments, Orders, And Email
-
-| Area | Issue | Risk | Suggested Follow-Up |
-| --- | --- | --- | --- |
-| Email outbox operations | Ticket delivery is now durable, but failed jobs are terminal and require future explicit requeue/operator handling. | Provider outage or bad configuration can leave paid orders with unsent tickets until a human intervenes. | Add monitoring for failed jobs plus an explicit, audited requeue tool. |
-| Email outbox operations | Production email delivery depends on an external scheduler running `pnpm email:outbox:process` every 1 minute. P1.13 emits `email_outbox.batch.processed`, `email_outbox.job.failed`, `email_outbox_retry_exhausted`, and log-derived outbox metrics. | Paid orders can be fulfilled and ticket rows issued while buyers do not receive ticket email if the worker is not scheduled or if logs are not routed to alerts. | Add deployment scheduler configuration, alert on `email_outbox_retry_exhausted`, and add alert rules for due pending or stale processing jobs. |
-| Refund/review workflow | Compensation-required orders have durable state and organiser visibility but no formal operator workflow. | Operators must manually inspect Stripe and communicate/refund outside the app. | Add an operator playbook first; later add controlled admin/review tooling. |
-| Compensation alerts | First-time compensation transitions emit `paid_but_unfulfilled_compensation_required` through structured console alerting only. | Console alerts can be missed unless production log aggregation routes them to an alert channel. | Route this event to production paging/incident response; any occurrence should alert immediately. |
-| Real webhook testing | P2.16 now includes signed HTTP transport tests and observed real Stripe test-mode success, decline, cancellation and forced expiry. | Provider/schema changes still require repeating the guided acceptance flow; synthetic CI is not real provider evidence. | Repeat the documented acceptance campaign when payment integration changes; see [[E2E and Staging Payments]]. |
-| Manual refund flag | `isManuallyRefunded` is local bookkeeping only. | Users/operators may mistake it for Stripe refund truth. | Keep UI copy explicit; later integrate real Stripe refund status if needed. |
-
-## Data Integrity And Scalability
-
-| Area | Issue | Risk | Suggested Follow-Up |
-| --- | --- | --- | --- |
-| Public availability | Public event detail now returns reservation-aware `availableQuantity`, but the value can still become stale between page load and checkout. | Users may see availability that changes before they click buy, especially on popular events. | Keep checkout authoritative; consider future lightweight refresh or realtime availability only if demand warrants it. |
-| Public availability UI tests | P1.7 tests verify sold-out rendering from `availableQuantity`, but do not directly assert the rendered input `max` attribute or disabled button attribute. | A future UI refactor could accidentally stop applying `availableQuantity` to all controls while preserving visible text. | Add a narrow component-level assertion for input `max` and disabled buy button behavior. |
-| Public event detail rendering | `/events/[eventId]` still server-fetches the app's own public detail API route. | Works today, but it adds extra HTTP/runtime coupling compared with calling `getPublishedEventDetail()` directly from the server page. | Consider a later low-risk cleanup to call the read helper directly while preserving the API route for external/public clients. |
-| Pagination | Core P1.6 surfaces now use bounded cursor pagination, but organiser-wide order pagination still depends on an `eventId IN (...)` scope and may degrade for very large organisations. | Large organisations with many events can see slower organiser-wide pages even when each page is bounded. | Keep event-owned tenancy source, and harden organiser-wide query strategy in a future slice only after explicit denormalized ownership drift checks or repair tooling. |
-| Pagination tests | P1.6 added same-timestamp pagination and invalid-param coverage for orders, member tickets, and public discovery. Remaining risk is broader multi-page traversal and planner-behavior validation under larger datasets. | Subtle duplicate/skip issues can still appear under heavy write churn or large datasets not represented in test fixtures. | Add longer multi-page traversal tests and periodic EXPLAIN-based query-plan checks against representative data. |
-| DB constraints | P1.8 Phase 3 adds narrow lifecycle constraints for event time ordering, paid orders requiring `paidAt`, and expired orders forbidding `paidAt`. Failed-order timestamp policy and relationship checks remain audit-only. | Bugs, scripts, or future routes can still create invalid failed-order diagnostics or cross-row data until later constraint phases are reviewed and implemented. | Keep running `pnpm db:integrity:audit`; review every failed-order write path before adding `failed => failedAt` in a future micro-slice. |
-| Denormalized ownership | P1.9 hardens runtime trust boundaries around stale `Order.organisationId`, `Ticket.organisationId`, and `TicketReservation.organisationId`, but it does not add database constraints or repair historical drift. | Reporting or future performance shortcuts could reintroduce trust in stale denormalized fields. | Add drift detection, repair tooling, and only then consider consistency-checked denormalized indexes or shortcuts. |
-| Pagination / indexes | Organiser-wide order pagination preserves event-owned tenancy but may still require sort/query hardening for very large organisations. | Large organisations with many events/orders may see slower organiser-wide order pages even though reads are bounded. | Do not solve by blindly trusting `Order.organisationId`. Future options include a consistency-checked `Order.organisationId` index, a drift-audited repair path, or a dedicated query strategy. |
-| Indexes | P1.10 added the planned composite indexes, but `Order(eventId)` and `Order(userId)` now overlap with the left-most prefixes of the new order composites. | Extra indexes add write overhead and storage cost. This is not a correctness issue and was kept intentionally to avoid risky index removal in the P1.10 slice. | Review production `pg_stat_user_indexes` and query plans after traffic, then remove redundant single-column indexes only with evidence. |
-| Indexes | `TicketReservation(orderId)` and the unique `TicketReservation(orderId)` backing index are redundant with each other. | Extra write/storage overhead on reservation writes. This predates P1.10 and was not introduced by the composite-index slice. | Evaluate removing the non-unique `TicketReservation(orderId)` index in a later DB hygiene slice if no query plan depends on it. |
-| Indexes | On small datasets PostgreSQL may still prefer sequential scans, and competing valid indexes can be chosen depending on data distribution. | Developers may misread local plans as proof that indexes are unused or overfit future indexes around tiny data. | Use representative production/staging data and plain `EXPLAIN` before adding/removing future indexes; reserve `EXPLAIN ANALYZE` for safe/dev datasets. |
-| Stale cleanup operations | Broad stale pending cleanup now depends on an external scheduler running `pnpm stale-orders:process` every 1 minute. P1.13 emits `stale_orders.batch.processed`, `stale_orders.batch.failed`, `stale_order_worker_failed`, and `stale_orders_expired_total`. | Stale pending orders and expired reservations may remain visible in system/debug views until the worker runs, although checkout remains authoritative before new reservations. | Add deployment scheduler configuration, alert on `stale_order_worker_failed`, and alert when stale pending or active expired reservation counts exceed threshold. |
-
-## API, Observability, And Operations
-
-| Area | Issue | Risk | Suggested Follow-Up |
-| --- | --- | --- | --- |
-| API errors | Error shapes and tenant-disclosure behavior are not fully standardized across routes. | Clients handle errors inconsistently and some object existence signals may differ. | Centralize domain error mapping and disclosure rules. |
-| Structured logging | P1.13 MVP structured JSON logging and redaction are implemented for health, alerts, payment/webhook/checkout, email outbox, stale cleanup, rate-limit, and trusted-origin paths. Some older reconciliation internals still emit legacy console output. | Incident triage is much better for covered paths, but mixed legacy logs can still complicate searches. | Continue migrating low-risk legacy logs opportunistically; do not change payment semantics for logging cleanup alone. |
-| Metrics/alerts backend | P1.13 metrics are console/log-derived only and alerts are structured log events only. Alert records use the alert name as the structured `event` field. There is no metrics backend, dashboard, external alert transport, or automatic paging. Reserved `db_migration_failed` and `app_healthcheck_failed` alert names are not emitted by app runtime code yet. | Operators may miss high-severity incidents unless production log aggregation routes these events to alerts. Migration failures and healthcheck non-200 responses require deployment/monitoring-owned alerting. | Configure production log aggregation and alert routing for `paid_but_unfulfilled_compensation_required`, `email_outbox_retry_exhausted`, webhook signature failure spikes, checkout creation failure spikes, `stale_order_worker_failed`, deployment migration failures, and healthcheck failures. |
-| Production operations activation | P2.17 repository tooling now supplies CI checks, liveness/readiness, non-root containers, one-shot migrations, guarded deployment, backup/verified restore, and compatibility-gated rollback. No hosting platform is selected. | Local rehearsal does not provide off-machine disaster protection, external alert delivery, production schedules, or a production recovery objective. | Select hosting, configure encrypted off-machine backups and one-minute workers, route health/migration alerts, then run an environment restore drill. See [[Production Operations]]. |
-| Dependencies | D1-D5 fixes merged through PR #3; GitHub audit passed and zero open dependency alerts were verified on 2026-09-18. Renovate Dashboard #6 and merged PR #7 (`b3f4fce`) verify npm/GitHub Actions discovery and Docker exclusions; all five post-merge checks passed. Windows dependencies were refreshed. See [[Handover 2026-09-18 Dependency Security Remediation]]. | Scoped Prisma override needs review on the next parent update. Security-PR evidence awaits a real eligible advisory; maintainer notification evidence awaits the next genuine Security Audit failure. Docker image automation is deferred. | ENGGP repository maintainer owns rollout and override removal. Keep audits enabled and repeat compatibility tests on dependency updates. Overall P2.15 remains open for both outstanding evidence items. |
-
-## Session Gap Summary - 2026-06-27
-
-This session completed and accepted the P1.8-P1.13 remediation slices for MVP, including database integrity constraints, P1.11 tenant-disclosure hardening, P1.12 stale cleanup worker, and P1.13 structured logging/metrics/alerts. Remaining non-blocking gaps from this session:
-
-- **Observability backend:** structured JSON logs, alert names, and console/log-derived metrics exist, but there is no external metrics backend, alert transport, dashboard, automatic paging, or production alert routing.
-- **Reserved runtime alerts:** `db_migration_failed` and `app_healthcheck_failed` are reserved/documented names, but app runtime code does not emit them; deployment and monitoring must own those signals.
-- **Legacy logging:** some legacy `console.*` output remains outside migrated P1.13 surfaces.
-- **P1.13 tests:** future hardening could add route-level assertions that raw Stripe webhook bodies/full payloads never appear in structured logs and script-wrapper tests for worker completed/failed events.
-- **Schedulers:** production must schedule `pnpm email:outbox:process` and `pnpm stale-orders:process` every 1 minute; otherwise ticket email and stale cleanup are not guaranteed to run.
-- **Email requeue:** terminal failed email outbox jobs require future explicit operator requeue tooling.
-- **Compensation workflow:** compensation-required orders have durable state and alerts, but no in-app refund/review workflow.
-- **P1.8 lifecycle constraints:** failed-order timestamp policy and relationship checks remain audit-only; keep running `pnpm db:integrity:audit`.
-- **P1.9 drift:** runtime trust boundaries are hardened, but there is no denormalized ownership drift repair or database-level consistency enforcement.
-- **P1.11 scope:** tenant-disclosure hardening is MVP-complete for reviewed route groups, but broad central error mapping remains future cleanup.
-- **Public availability:** `availableQuantity` can still become stale between page load and checkout; checkout remains authoritative.
-- **Pagination scale:** organiser-wide order pagination remains bounded and event-owned, but may need future query hardening for very large organisations.
-- **Indexes:** potentially redundant indexes remain intentionally; remove only after production `pg_stat_user_indexes` and query-plan evidence.
-- **Security:** trusted-origin compatibility mode still allows missing `Origin` and `Referer`; token-based CSRF remains a dedicated future design.
-- **Auth model:** named staff authority and audit logs are implemented. Legacy organisation accounts remain supported; MFA is separate work.
-- **P2.16 acceptance:** real Stripe scenarios and final implementation qualification passed; E2E is a required CI check. PR #10 merged. Evidence and limitations are recorded in [[E2E and Staging Payments]]. P3.19 repeated payment acceptance; see [[Handover 2026-09-21 P3.19 Delivery]].
-
-## Documentation Notes
-
-- [[Stripe Payments and Connect]] documents current payment, compensation, reservation, and email behavior.
-- [[Database and Multi Tenancy]] documents the order compensation fields and tenancy rules.
-- `docs/production-readiness-remediation-plan.md` remains the broader remediation roadmap.
+1. Search this file before creating an entry. Reopen a resolved ID if the same root cause recurs.
+2. Record confirmed evidence, user impact, safe workaround, and next action. Do not paste secrets or personal/provider payloads.
+3. Fix an unrelated finding during a task only when it blocks or invalidates that task; otherwise register it without widening scope.
+4. On resolution, add the root cause, fix, regression/direct verification, date, and PR or commit. Update affected troubleshooting and living-reference documents.

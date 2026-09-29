@@ -137,7 +137,7 @@ This means local failures are often caused by:
 
 ## Stripe Connect Lifecycle
 
-Stripe Connect management requires an `organisation` account that owns the organisation through `Organisation.accountUserId`.
+Stripe Connect management requires live staff capability for the canonical organisation, or legacy owner authority only while the configured migration fallback permits it.
 
 Member accounts cannot manage Stripe Connect.
 
@@ -198,7 +198,7 @@ Flow:
 
 ```text
 Settings page
-  -> resolve current organisation account
+  -> resolve canonical organisation and live Stripe Connect capability
   -> GET /api/stripe/connect/status?organisationId=...
   -> UI renders one of NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
   -> user clicks Connect Stripe Account, Continue onboarding, or Fix account
@@ -271,7 +271,7 @@ Then open `/dashboard/settings` and click `Refresh status`.
 
 Behavior:
 
-- verifies organisation account ownership
+- verifies live Stripe Connect capability and canonical organisation ownership
 - loads organisation from Prisma
 - if no connected account and no stored platform setup block, returns `state: NOT_CONNECTED`
 - if no connected account and `stripeAccountStatus = PLATFORM_NOT_READY`, returns `state: PLATFORM_NOT_READY`
@@ -306,7 +306,7 @@ This endpoint is both a status reader and a local state synchronizer.
 
 - Retrieves Stripe account status and maps it to the lifecycle state.
 
-All Stripe Connect mutation routes require an organisation account that owns the target organisation.
+All Stripe Connect mutation routes require live Stripe Connect capability for the canonical target organisation, or the explicitly enabled legacy fallback.
 
 ## Stripe Connect Webhook
 

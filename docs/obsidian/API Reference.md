@@ -10,7 +10,8 @@ Rules:
 
 - If `Origin` exists, it must match `NEXT_PUBLIC_APP_URL` or `TRUSTED_APP_ORIGINS`.
 - If `Origin` is missing and `Referer` exists, the `Referer` origin must be trusted.
-- Compatibility mode: if both are missing, the request is currently allowed and a warning is logged for remediation tracking.
+- If both are missing, the request is rejected.
+- Authenticated cookie mutations must also provide the session-bound CSRF token from `GET /api/security/csrf`.
 - Stripe webhook routes are exempt and remain protected by Stripe signature verification on raw request bodies.
 
 ## Rate Limiting
@@ -26,10 +27,11 @@ Protected routes:
 - organisation create, join, and leave
 - ticket check-in and check-out
 - Stripe Connect onboard, continue, and disconnect
+- staff MFA setup and verification
 
 Rules:
 
-- Login, signup, and organisation creation fail closed if the limiter backend is unavailable.
+- Login, signup, organisation creation, and staff MFA fail closed if the limiter backend is unavailable.
 - Checkout, resend, join/leave, check-in/check-out, and Stripe Connect mutations fail open with a structured warning if the limiter backend is unavailable.
 - Limit responses use `429` with a safe retry message and `Retry-After` when available.
 - Bucket keys are hashed before Redis storage; warning logs avoid request bodies, cookies, tokens, passwords, raw emails, raw user IDs, raw order IDs, Redis URLs, and unhashed bucket keys.
@@ -51,6 +53,10 @@ Response:
 ```
 
 The endpoint does not expose secrets, tenant data, database rows, or runtime configuration.
+
+### `GET /api/health/ready`
+
+Returns the same public-safe shape with `status: "ready"` only when the application-table query, required migration, MFA and legacy-access configuration, and enabled Redis dependency are ready. Returns `503` with `status: "unavailable"` on any failure and never exposes the internal reason.
 
 ## Operational Logs, Metrics, And Alerts
 
@@ -98,7 +104,6 @@ Implemented stable events:
 - `rate_limit.rejected`
 - `rate_limit.backend_unavailable`
 - `trusted_origin.rejected`
-- `trusted_origin.compat_allowed`
 
 Implemented alert names:
 
@@ -153,6 +158,28 @@ Rules:
 - Auth required.
 - Member account required.
 - Stores first name, last name, and optional useful profile fields.
+
+### `GET /api/security/csrf`
+
+Requires an authenticated session and returns a short-lived token bound to that login. Cookie-authenticated browser mutations send it in the configured CSRF header. The response is never cached.
+
+### Staff MFA routes
+
+- `GET /api/me/mfa/status` returns enrollment and enforcement state for an eligible management user.
+- `POST /api/me/mfa/setup` starts encrypted TOTP enrollment and fails closed when Redis rate limiting is unavailable.
+- `POST /api/me/mfa/confirm` verifies setup, enables MFA, and returns the one-time recovery-code set.
+- `POST /api/me/mfa/verify` accepts a TOTP or unused recovery code and creates a login-bound grant.
+
+All MFA mutations require trusted origin, session CSRF, and the dedicated fail-closed MFA rate-limit policy.
+
+## Named Staff
+
+- `GET /api/orgs/[orgSlug]/staff` lists staff for callers with staff-management authority.
+- `POST /api/orgs/[orgSlug]/staff/invites` creates an expiring invite and audit record.
+- `PATCH /api/orgs/[orgSlug]/staff/[staffId]` changes live role/status, prevents removal of the final active owner, and writes an audit record.
+- `POST /api/staff/invites/accept` accepts an invite for the authenticated matching user and writes an audit record.
+
+Management decisions use the canonical tenant and live `OrganisationStaff` capability. `OrganisationMember` never grants management access; legacy ownership is available only under the configured migration mode.
 
 ## Organisation Search And Join
 
@@ -287,12 +314,13 @@ Request:
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Organisation account required for initial tenant creation.
 - An organisation account can create only one organisation.
 - Slug is normalised server-side.
 - Slug uniqueness is enforced.
 - The created organisation stores `accountUserId`.
 - A transitional `org_owner` membership is also created for compatibility.
+- An active owner `OrganisationStaff` row is created as the normal management authority.
 
 ### `GET /api/orgs/[orgSlug]`
 
@@ -301,7 +329,7 @@ Fetches an organisation by slug.
 Rules:
 
 - Auth required.
-- Signed-in organisation account must own the organisation, or a member account must have a membership during compatibility.
+- A management caller must have live staff access or explicitly enabled legacy access; a member caller must have a membership.
 
 ## Events
 
@@ -324,7 +352,7 @@ Creates an event and ticket types.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Signed-in organisation account must own the submitted `organisationId`.
 - `startTime` must be before `endTime`.
 - Ticket prices are integer cents.
@@ -346,7 +374,7 @@ Updates event fields and synchronises ticket types.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Does not own publish/unpublish status transitions.
 - Request must include `organisationId`, but the API revalidates organisation ownership and scopes the event server-side.
 - Existing ticket types are matched by `id`.
@@ -428,7 +456,7 @@ Lists issued tickets for one organiser-owned event with cursor pagination.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Event-management access required for the current organisation.
 - The event must belong to the organisation owned by `session.user`.
 - Access is resolved server-side; the frontend does not provide trusted organisation ownership.
@@ -494,7 +522,7 @@ Marks one issued ticket as checked in.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Event-management access required for the current organisation.
 - Ticket must belong to an event owned by the organisation account.
 - Only `Ticket.checkedInAt` is updated.
@@ -527,7 +555,7 @@ Reverses check-in for one issued ticket.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Event-management access required for the current organisation.
 - Ticket must belong to an event owned by the organisation account.
 - Only `Ticket.checkedInAt` is updated.
@@ -562,7 +590,7 @@ Returns a bounded page of organisation-scoped orders grouped by event.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Finance access required.
 - Read-only. Does not run stale pending order cleanup before returning grouped orders.
 - Stale pending orders are expired by the scheduled stale-order worker; checkout still performs local authoritative cleanup before reservation creation.
@@ -570,7 +598,7 @@ Rules:
 - `pending` is an internal system status and is accepted only when `includeSystem=true`.
 - Default `all` excludes `pending`.
 - `eventId` is optional.
-- When `eventId` is present, the API verifies the event belongs to the signed-in organisation account before filtering.
+- When `eventId` is present, the API verifies the event belongs to the authorised management user before filtering.
 - Returned orders are authorised through `Order.event.organisationId`; `Order.organisationId` is denormalized storage and is not the access source of truth.
 - `search` filters buyer email.
 - `startDate` and `endDate` filter by order `createdAt`.
@@ -622,9 +650,9 @@ Returns a safe organiser order detail payload.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Finance access required.
-- The order must belong to an event owned by the current organisation account.
+- The order must belong to an event owned by the authorised organisation.
 - Ownership is checked through `Order.event.organisationId`.
 - Pending orders are not exposed through normal organiser UI.
 - Unit price and total amount come from the order snapshot, not the current ticket type price.
@@ -649,9 +677,9 @@ Sets the local manual refund flag on an organiser-owned order.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Finance access required.
-- The order must belong to an event owned by the current organisation account.
+- The order must belong to an event owned by the authorised organisation.
 - This is internal bookkeeping only.
 - Does not call Stripe.
 - Does not change Stripe payment state.
@@ -665,9 +693,9 @@ Queues ticket delivery email again for a paid organiser-owned order.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Finance access required.
-- The order must belong to an event owned by the current organisation account.
+- The order must belong to an event owned by the authorised organisation.
 - Order must be `paid`.
 - Queues a manual `EmailOutbox` job even when `ticketEmailSentAt` is already set.
 - Returns queued semantics; provider delivery runs from the outbox worker.
@@ -682,6 +710,14 @@ Status:
 - `401` unauthenticated.
 - `403` non-organisation account.
 - `404` order missing or not owned by the current organisation.
+
+### `POST /api/orders/[orderId]/email-jobs/[jobId]/requeue`
+
+Requeues one terminal failed email job for an order in the caller's canonical tenant. Requires live finance authority, trusted origin, session CSRF, and an actor-attributed audit/lifecycle entry. It never changes payment or ticket state.
+
+### `POST /api/orders/[orderId]/compensation-refund/confirm`
+
+Confirms a manual compensation refund only after retrieving and verifying matching Stripe refund evidence for the order, job, amount, currency, PaymentIntent, and charge. Requires live finance authority, trusted origin, session CSRF, and writes fenced lifecycle/audit evidence. It cannot be used as an unverified local refund marker.
 
 ## Payments
 
@@ -772,15 +808,15 @@ Organiser-facing authenticated dashboard page.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Finance access required.
-- Reads orders scoped through events owned by the current organisation account.
+- Reads orders scoped through events owned by the authorised organisation.
 - Supports optional `eventId` and status filtering.
 - Default view excludes internal pending orders.
 - `Show system orders` exposes pending orders for debugging.
 - Shows event-scoped order headers when filtered by event.
 
-Legacy `/dashboard/[orgSlug]/orders` redirects to `/dashboard/orders` when the signed-in organisation account owns the slug.
+Legacy `/dashboard/[orgSlug]/orders` redirects to `/dashboard/orders` when the authorised management user owns the slug.
 
 ## Stripe Connect
 
@@ -791,7 +827,7 @@ Creates or reuses a Stripe Express account and returns an onboarding link.
 Rules:
 
 - Auth required.
-- Organisation account required.
+- Active staff authority or explicitly enabled legacy authority required.
 - Signed-in organisation account must own the submitted `organisationId`.
 - Organisation is resolved server-side from `organisationId`.
 - Existing `stripeAccountId` is reused and a fresh onboarding link is generated.

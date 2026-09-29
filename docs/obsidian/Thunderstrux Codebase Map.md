@@ -26,28 +26,22 @@ Not implemented:
 
 - Email verification.
 - Password reset.
-- MFA for staff access.
-- Stripe-integrated refund processing.
 - QR codes.
 - File uploads.
 
-Named staff users, invites, audit logs, and per-user permissions are implemented. Legacy organisation logins remain supported; MFA is future work. `OrganisationMember` remains join state, not management authority.
+Named staff users, invites, audit logs, per-user permissions, staged TOTP MFA, and provider-verified compensation refunds are implemented. Legacy organisation logins remain a controlled migration fallback. `OrganisationMember` remains join state, not management authority. Manual refund marking is still local bookkeeping; the separate compensation workflow verifies actual Stripe refunds.
 
 ## Start Here
 
 Read these in order:
 
-1. [[Current Handover]]
-2. [[Handover 2026-09-21 P3.19 Delivery]]
+1. [[Documentation Index]]
+2. [[Current Handover]]
 3. [[Engineering Delivery Workflow]]
-4. [[Architecture Overview]]
-5. [[Development Workflow]]
-6. [[Troubleshooting]]
-7. [[Database and Multi Tenancy]]
-8. [[Frontend and Backend Flow]]
-9. [[Stripe Payments and Connect]]
-10. [[Seeding and Data]]
-11. [[UI Architecture Rules]]
+4. [[Non-Blocking Issue Register|Issue and Defect Register]]
+5. [[Architecture Overview]]
+6. [[Development Workflow]]
+7. The living reference for the subsystem being changed
 
 Dated handover files are historical records:
 
@@ -118,7 +112,7 @@ docs/obsidian/
 ## High-Value Rules
 
 - `Organisation` remains the tenant/payment/event/order boundary.
-- Organisation dashboard access comes from `User.accountRole = organisation` plus `Organisation.accountUserId`.
+- Organisation dashboard access comes from active named `OrganisationStaff` authority, with an explicitly configured legacy-owner fallback during migration.
 - Member join relationships use `OrganisationMember`.
 - `OrganisationMember` is not MVP staff access.
 - Navigation for organisation dashboards belongs in `components/layout/dashboard-shell.tsx`.
@@ -134,7 +128,7 @@ docs/obsidian/
 - Ticket check-in and check-out only mutate `Ticket.checkedInAt`.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
-- Runtime migrations run through `pnpm prisma:migrate:deploy` in `docker/entrypoint.sh`.
+- Production migrations run once through the Compose `migration` service before app rollout. The entrypoint only executes its supplied command. Development startup deploys migrations before Next dev starts.
 - Base Docker Compose requires core app env values before startup and restarts the app with `restart: unless-stopped`.
 - Dev Compose explicitly sets `THUNDERSTRUX_RUNTIME_CONTAINER=false`; production-like runtime sets it to `true`.
 - Integration tests run through Vitest against the disposable `thunderstrux_test` database, never the normal development database.

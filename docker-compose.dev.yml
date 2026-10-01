@@ -1,5 +1,6 @@
 services:
   app:
+    image: ${DEV_APP_IMAGE:-thunderstrux-app:dev}
     build:
       target: development
     environment:
@@ -14,7 +15,7 @@ services:
 
   db:
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
 
 volumes:
   node_modules:

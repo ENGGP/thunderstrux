@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-09-29
+last-reviewed: 2026-10-01
 owner: engineering
 ---
 
@@ -8,14 +8,13 @@ owner: engineering
 
 ## Snapshot
 
-Thunderstrux is a Docker-first Next.js 16 App Router SaaS for student societies. As verified on 2026-09-29, the latest public `main` before this documentation branch was `4919703`.
+Thunderstrux is a Docker-first Next.js 16 App Router SaaS for student societies. As verified on 2026-10-01, documentation PR #21 is merged on `main` at `0b7024e`. Docker foundation hardening is in progress on `codex/docker-foundation-hardening`; see [[Handover 2026-10-01 Docker Foundation Hardening]].
 
 - [PR #18](https://github.com/ENGGP/thunderstrux/pull/18) merged the production-readiness verification work, compensation refunds, strict origin/session-bound CSRF, official Redis client, failed-email requeue, ownership drift tooling, failed-order constraint, staff MFA, and production legacy-access switch.
 - [PR #20](https://github.com/ENGGP/thunderstrux/pull/20) updated CI Node 22 from 22.23.2 to 22.23.3.
 - [PR #19](https://github.com/ENGGP/thunderstrux/pull/19) updated the pinned `pnpm/action-setup` digest.
 - All five latest-head checks passed for PR #18 and for the two dependency PRs: static validation, integration, production build, browser E2E, and operations validation.
-- [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) contains the documentation-governance refresh on `codex/documentation-governance-refresh`. Its latest-head checks must pass before merge.
-- PR #21 head `6d7b4c5` passed all five required jobs on 2026-09-29. The subsequent documentation-only evidence commit must also receive green latest-head checks before merge.
+- [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) merged the documentation-governance refresh as `0b7024e`.
 
 Read [[Documentation Index]], [[Engineering Delivery Workflow]], [[Non-Blocking Issue Register|Issue and Defect Register]], and [[Handover 2026-09-29 Production Readiness and Documentation Refresh]] before new implementation work.
 
@@ -35,7 +34,7 @@ Read [[Documentation Index]], [[Engineering Delivery Workflow]], [[Non-Blocking 
 ## Runtime And Schema
 
 - Development uses `docker-compose.yml` plus `docker-compose.dev.yml`. Development startup generates Prisma Client, deploys migrations, and starts Next dev.
-- Production uses a built non-root image. `pnpm ops:deploy` runs the one-shot `migration` service before starting the candidate app. `docker/entrypoint.sh` only executes its supplied command.
+- Production uses a built non-root image. `pnpm ops:deploy` runs the one-shot `migration` service before starting the candidate app. The hardened overlay adds a read-only root filesystem, dropped capabilities, no-new-privileges, PID/CPU/memory limits, and reviewed writable temporary paths.
 - `/api/health` is liveness. `/api/health/ready` checks database/schema, required migrations, enabled Redis, MFA configuration, and legacy-access configuration with bounded failures.
 - The migration chain contains 26 migrations. The newest are:
   - `20260628010000_staff_accounts_foundation`
@@ -43,7 +42,7 @@ Read [[Documentation Index]], [[Engineering Delivery Workflow]], [[Non-Blocking 
   - `20260922010000_failed_order_timestamp_constraint`
   - `20260922020000_staff_mfa`
   - `20260927010000_compensation_refunds`
-- `package.json` pins production and development dependencies. CI uses Node 22.23.3; the Docker image currently uses the mutable `node:20-bookworm-slim` major-version base tag.
+- Node is aligned on 22.23.3 across the package engine, Docker, E2E, and CI. Runtime images are digest pinned and Renovate submits reviewed digest updates without automerge.
 
 ## Production Release Gates
 
@@ -63,9 +62,9 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Current Work And Next Safe Actions
 
-- Review [PR #21](https://github.com/ENGGP/thunderstrux/pull/21) and confirm the documentation-only evidence commit retains all five green latest-head CI checks before merge.
-- Local documentation acceptance passed on 2026-09-29: 40 documentation files checked, all 24 runner tests passed by direct file execution, and `git diff --check` passed. Independent review findings were applied. Clean-environment typecheck/build remain PR CI evidence because the host dependency directory lacks the Next binary.
-- [[Docker Architecture Assessment 2026-09-29]] records the container-boundary review, observed local runtime, production gaps, and recommended managed startup topology. Its findings do not change the existing production release gates.
+- Finish and merge the Docker foundation PR only after local validation, independent review, and all latest-head checks pass.
+- After it merges, create `codex/docker-immutable-release` from refreshed `origin/main` for standalone web/operations targets, dual-image release evidence, SBOM/provenance publication, and the image-size budget.
+- [[Docker Architecture Assessment 2026-09-29]] records the implemented foundation controls and remaining immutable-release and hosted activation work.
 - Do not commit `docs/obsidian/.obsidian/workspace.json`; it contains a user-local Obsidian workspace change.
 - After documentation merges, choose a production hosting platform and implement the external release gates above before enabling unrestricted payments.
 - Use the canonical open items in [[Non-Blocking Issue Register]] rather than historical session gap lists.

@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS base
+FROM node:22.23.3-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS base
 
 WORKDIR /app
 
@@ -6,9 +6,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
-RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
-
-RUN apt-get update \
+# The base image is digest-pinned and vulnerability-scanned. Debian package
+# versions deliberately follow that reviewed base instead of stale exact pins.
+# hadolint ignore=DL3008
+RUN corepack enable \
+  && corepack prepare pnpm@10.34.5 --activate \
+  && apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/*
 
@@ -21,16 +24,16 @@ FROM deps AS builder
 
 COPY . .
 
-# Build-time placeholders keep image builds deterministic without requiring real secrets.
-# Production runtime still validates AUTH_SECRET from the container environment.
-ENV DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public"
-ENV AUTH_SECRET="build-time-only-auth-secret-change-at-runtime"
-ENV AUTH_URL="http://localhost:3000"
-ENV NEXTAUTH_URL="http://localhost:3000"
 ARG APP_ORIGIN=http://localhost:3000
 ENV NEXT_PUBLIC_APP_URL=$APP_ORIGIN
 
-RUN pnpm build
+# These values are non-secret build placeholders scoped to this command. The
+# runtime image does not retain them and validates its real configuration.
+RUN DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public" \
+  AUTH_SECRET="build-time-only-auth-secret-change-at-runtime" \
+  AUTH_URL="http://localhost:3000" \
+  NEXTAUTH_URL="http://localhost:3000" \
+  pnpm build
 
 FROM deps AS development
 
@@ -57,7 +60,13 @@ COPY --chown=node:node --from=builder /app/tailwind.config.js ./tailwind.config.
 COPY --chown=node:node --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --chown=node:node docker/entrypoint.sh ./docker/entrypoint.sh
 
-RUN chmod +x ./docker/entrypoint.sh
+# Package managers are build tools. Runtime commands invoke Node entrypoints
+# directly, so remove Corepack and its dependency tree from the final image.
+RUN chmod +x ./docker/entrypoint.sh \
+  && rm -rf /usr/local/lib/node_modules/corepack \
+  && rm -rf /usr/local/lib/node_modules/npm \
+  && rm -rf /root/.cache/node/corepack \
+  && rm -f /usr/local/bin/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/pnpm /usr/local/bin/pnpx
 
 USER node
 

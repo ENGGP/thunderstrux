@@ -4,6 +4,8 @@
 
 P2.17 repository-side operations are implemented and locally rehearsed. The repository provides deterministic CI, an operations validation workflow, liveness/readiness endpoints, non-root production containers, a single migration job, guarded deployment, PostgreSQL backup/restore, and compatibility-gated application rollback.
 
+The hardened repository contract is `docker-compose.hosted.yml`. It consumes a prebuilt immutable `APP_IMAGE`, external PostgreSQL and Redis URLs, and file-backed secrets; it contains no database, Redis, source bind mount, or image build. The application, migration, and workers run non-root with a read-only root filesystem, dropped capabilities, no-new-privileges, bounded PIDs, explicit CPU/memory limits, and reviewed writable `tmpfs` paths. Validate a deployment environment with `pnpm docker:hosted:check -- --env-file <path>` before rollout.
+
 This is not evidence of a live production deployment. Hosting, external health monitoring and alert delivery, off-machine encrypted backups, recovery objectives, and the platform scheduler remain deployment-time work.
 
 ## Health
@@ -14,6 +16,8 @@ This is not evidence of a live production deployment. Hosting, external health m
 
 ## Deployment
 
+The `pnpm ops:*` commands below are the existing single-host and recovery-rehearsal path. They use the base Compose stack with its PostgreSQL/Redis services and local backup tooling. They do not deploy `docker-compose.hosted.yml`. A managed hosted rollout must implement the same migration, backup, readiness, writer-shutdown, and compatibility-gated rollback order through provider-specific jobs after the hosted activation gates are verified.
+
 Use a unique immutable release name and an explicit environment file:
 
 ```powershell
@@ -22,7 +26,7 @@ pnpm ops:deploy -- --project p217-thunderstrux --env-file .env.production --url 
 
 The runner acquires a target lock, builds one image, identifies any current app, stops writers, creates a pre-migration backup, runs `prisma migrate deploy` once, starts the candidate, and performs read-only smoke checks. It records image IDs and migration checksums under ignored, access-restricted `tmp/operations/<project>/` state. Ordinary app restarts never run migrations.
 
-Pause the platform schedules before deployment. Resume them only after readiness succeeds:
+Pause the platform schedules before deployment. Resume them only after readiness succeeds. Compose exposes the same bounded jobs through the `workers` profile, while a hosted scheduler should invoke the corresponding service every minute with overlap prevention, timeout, alerts, and backlog monitoring:
 
 ```text
 every minute: node scripts/process-email-outbox.mjs
@@ -60,4 +64,8 @@ For disaster recovery, stop app writers and workers, restore into a new database
 
 ## Validation
 
-`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. The GitHub `operations-tests` job runs the same rehearsal without production credentials.
+`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all three bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. The GitHub `operations-tests` job runs the same rehearsal without production credentials.
+
+The required `static-validation` check validates both Compose contracts, lints the Dockerfiles, builds the production target, and blocks fixable high or critical Trivy findings. Temporary vulnerability exceptions are prohibited unless they identify the CVE, reason, owner, and expiry in the issue register and workflow configuration.
+
+Direct environment variables remain supported for development and legacy deployment. Production secret stores should mount files and set the matching `_FILE` variables for `DATABASE_URL`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `RATE_LIMIT_REDIS_URL`, Stripe credentials, and `RESEND_API_KEY`. Supplying both forms, an unreadable or relative file, or an empty file fails startup without printing the secret.

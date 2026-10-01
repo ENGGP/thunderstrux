@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-09-29
+last-reviewed: 2026-10-01
 owner: engineering
 ---
 
@@ -36,6 +36,7 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 | SEC-002 | High | Edge security | external-gate | 2026-09-29 | Enable Redis rate limiting and configure an edge-overwritten trusted client-IP header and exact trusted origins. | Security/operations verifies release-image readiness and hosted mutations. |
 | PAY-002 | Critical | Stripe refunds | external-gate | 2026-09-29 | Subscribe refund webhooks and pass real Stripe test-mode automatic and manual compensation campaigns. | Payments/operations follows [[E2E and Staging Payments]] before `automatic_full`. |
 | DEP-001 | Medium | Dependency operations | external-gate | 2026-09-29 | Capture a genuine eligible security-update PR and maintainer receipt of a real Security Audit failure notification. | Engineering/operations must not manufacture vulnerabilities or registry failures. |
+| OPS-004 | High | Hosted platform | external-gate | 2026-09-30 | Select and configure a managed container platform, managed PostgreSQL/Redis, secret-file injection, HTTPS ingress, and the documented resource limits before using the hosted Compose contract. | Hosting owner validates `docker-compose.hosted.yml`, performs a restore drill, and records provider evidence. |
 
 ## Resolved Defect History
 
@@ -50,6 +51,8 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 | DEF-007 | 2026-09-21 | Concurrent webhook replay surfaced PostgreSQL serialization/deadlock conflicts through more than Prisma `P2034`. | Whole-transaction retries recognize reviewed SQLSTATE/Prisma conflict forms; concurrency and signed replay tests passed. [PR #13](https://github.com/ENGGP/thunderstrux/pull/13). |
 | DEF-008 | 2026-09-21 | Compensation lifecycle evidence recorded an inaccurate reservation after-state. | Lifecycle persistence reads the reconciled result and regression coverage verifies it. [PR #13](https://github.com/ENGGP/thunderstrux/pull/13). |
 | DEF-009 | 2026-09-28 | Production rehearsal did not explicitly deny transitional legacy organisation access. | Production E2E/operations configuration sets legacy mode to `deny`; latest-head checks passed. [PR #18](https://github.com/ENGGP/thunderstrux/pull/18). |
+| DEF-010 | 2026-09-30 | Mutable container tags, runtime version drift, shared development/release tags, broad writable filesystems, and environment-only secrets weakened reproducibility and containment. | Docker foundation hardening pins runtime images, aligns Node 22.23.3, separates the dev tag, adds file secrets and hosted hardening, and validates these controls through runner, operations, integration, E2E, lint, and vulnerability gates. Docker foundation PR. |
+| DEF-011 | 2026-10-01 | The final release gate detected critical Next.js advisory `GHSA-vcvr-r3jv-pc5j` in 16.3.5. | Updated Next.js to patched 16.3.6 and reran dependency audit, build, integration, browser, operations, and image vulnerability gates. Docker foundation PR. |
 
 ## Register Procedure
 

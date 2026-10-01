@@ -1,6 +1,6 @@
 ---
 status: assessment
-last-reviewed: 2026-09-29
+last-reviewed: 2026-09-30
 owner: engineering
 ---
 
@@ -106,6 +106,12 @@ It is correct for the proxy to remain outside the application image. The chosen 
 Stripe CLI is a development and staging webhook tool. Production uses configured Stripe webhook endpoints and secrets. It should remain ephemeral and outside the permanent production topology.
 
 ## Material Gaps And Tradeoffs
+
+### Foundation remediation status (2026-09-30)
+
+The first hardening slice implements the repository controls identified below: Node 22.23.3 alignment, digest-pinned Node/PostgreSQL/Redis/Stripe CLI images, reviewed Renovate digest updates, a distinct development tag, loopback-only development PostgreSQL, file-backed secrets, profiled one-shot workers, a provider-neutral hosted contract, runtime containment, Dockerfile linting, and fixable high/critical vulnerability blocking. The disposable operations rehearsal verifies the runtime controls and worker commands.
+
+The minimal standalone web image, separate operations image, immutable dual-image release metadata, SBOM/provenance publication, and image-size budget remain the planned second slice after this foundation PR merges. Hosted activation remains gated on the selected platform and the controls listed below.
 
 ### P1: Activate the external production topology
 
@@ -235,12 +241,8 @@ This preserves Docker's environment consistency while transferring high-cost sta
 2. Activate ingress, exact trusted proxy headers, external monitoring, and secret storage.
 3. Configure and monitor all three scheduled worker commands.
 4. Establish encrypted off-machine backups and complete a hosted restore drill.
-5. Align the Node runtime across Docker and CI.
-6. Separate the development image tag from release images.
-7. Bind the development PostgreSQL port to loopback.
-8. Build, scan, attest, publish, and deploy immutable release images from CI.
-9. Pin base images by digest with automated reviewed updates.
-10. Measure and reduce the production image, then test read-only filesystem, capability, and resource controls.
+5. Complete the split web/operations image and immutable release workflow after the foundation PR merges.
+6. Establish and enforce the initial verified image-size budget.
 
 ## Overall Rating
 
@@ -250,11 +252,11 @@ This preserves Docker's environment consistency while transferring high-cost sta
 | Reproducible testing | Strong |
 | Migration safety | Strong |
 | Production image structure | Adequate but oversized |
-| Runtime hardening | Partial |
+| Runtime hardening | Repository contract implemented; hosted proof pending |
 | Worker implementation | Implemented but externally unactivated |
-| Secret handling | Acceptable locally, incomplete for production |
+| Secret handling | File interface implemented; hosted secret-store activation pending |
 | Stateful production resilience | Single-host risk until hosting is chosen |
-| Image supply chain | Incomplete |
+| Image supply chain | Digest pinning and vulnerability gate implemented; publication, SBOM, and provenance pending |
 | External ingress and monitoring | Not yet configured |
 | Overall early-stage engineering | Above average |
 | Ready for unrestricted public production | No |

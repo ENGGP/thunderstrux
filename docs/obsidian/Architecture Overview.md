@@ -2,7 +2,7 @@
 
 ## Stack
 
-- Next.js 16.3.5 App Router
+- Next.js 16.3.6 App Router
 - React 19
 - TypeScript
 - Prisma ORM 6.19.3

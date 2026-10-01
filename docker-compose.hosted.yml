@@ -1,0 +1,164 @@
+x-runtime-security: &runtime-security
+  read_only: true
+  init: true
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  stop_grace_period: 30s
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
+    - /home/node/.cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
+
+x-database-secret: &database-secret
+  source: database_url
+  target: database_url
+  uid: "1000"
+  gid: "1000"
+  mode: 0400
+
+services:
+  app:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: unless-stopped
+    user: "1000:1000"
+    pids_limit: ${APP_PIDS_LIMIT:?APP_PIDS_LIMIT is required}
+    cpus: ${APP_CPUS:?APP_CPUS is required}
+    mem_limit: ${APP_MEMORY_LIMIT:?APP_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      THUNDERSTRUX_RUNTIME_CONTAINER: "true"
+      DATABASE_URL_FILE: /run/secrets/database_url
+      AUTH_SECRET_FILE: /run/secrets/auth_secret
+      MFA_ENFORCEMENT_MODE: ${MFA_ENFORCEMENT_MODE:?MFA_ENFORCEMENT_MODE is required}
+      MFA_ENCRYPTION_KEY_FILE: /run/secrets/mfa_encryption_key
+      LEGACY_ORGANISATION_ACCESS_MODE: ${LEGACY_ORGANISATION_ACCESS_MODE:?LEGACY_ORGANISATION_ACCESS_MODE is required}
+      AUTH_URL: ${AUTH_URL:?AUTH_URL is required}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL is required}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+      TRUSTED_APP_ORIGINS: ${TRUSTED_APP_ORIGINS:?TRUSTED_APP_ORIGINS is required}
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_REDIS_URL_FILE: /run/secrets/rate_limit_redis_url
+      RATE_LIMIT_KEY_PREFIX: ${RATE_LIMIT_KEY_PREFIX:?RATE_LIMIT_KEY_PREFIX is required}
+      RATE_LIMIT_TRUSTED_PROXY_HEADER: ${RATE_LIMIT_TRUSTED_PROXY_HEADER:?RATE_LIMIT_TRUSTED_PROXY_HEADER is required}
+      STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+      STRIPE_WEBHOOK_SECRET_FILE: /run/secrets/stripe_webhook_secret
+      STRIPE_CONNECT_WEBHOOK_SECRET_FILE: /run/secrets/stripe_connect_webhook_secret
+      RESEND_API_KEY_FILE: /run/secrets/resend_api_key
+      EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
+      PORT: ${PORT:-3000}
+    expose: ["${PORT:-3000}"]
+    secrets:
+      - *database-secret
+      - auth_secret
+      - mfa_encryption_key
+      - rate_limit_redis_url
+      - stripe_secret_key
+      - stripe_webhook_secret
+      - stripe_connect_webhook_secret
+      - resend_api_key
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
+      - /home/node/.cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
+      - /app/.next-build/cache:rw,noexec,nosuid,size=256m,uid=1000,gid=1000,mode=0700
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||'3000')+'/api/health/ready',{signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+    command: ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0"]
+
+  migration:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: "no"
+    user: "1000:1000"
+    profiles: ["tools"]
+    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+    cpus: ${OPS_CPUS:?OPS_CPUS is required}
+    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+    secrets:
+      - *database-secret
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+
+  email-worker:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: "no"
+    user: "1000:1000"
+    profiles: ["workers"]
+    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+    cpus: ${OPS_CPUS:?OPS_CPUS is required}
+    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      RESEND_API_KEY_FILE: /run/secrets/resend_api_key
+      EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
+    secrets:
+      - *database-secret
+      - resend_api_key
+    command: ["node", "scripts/process-email-outbox.mjs"]
+
+  stale-order-worker:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: "no"
+    user: "1000:1000"
+    profiles: ["workers"]
+    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+    cpus: ${OPS_CPUS:?OPS_CPUS is required}
+    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+    secrets:
+      - *database-secret
+    command: ["node", "scripts/process-stale-orders.mjs"]
+
+  compensation-worker:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: "no"
+    user: "1000:1000"
+    profiles: ["workers"]
+    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+    cpus: ${OPS_CPUS:?OPS_CPUS is required}
+    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+    secrets:
+      - *database-secret
+      - stripe_secret_key
+    command: ["node", "scripts/process-compensation-refunds.mjs"]
+
+secrets:
+  database_url:
+    external: true
+    name: ${DATABASE_URL_SECRET_NAME:-thunderstrux_database_url}
+  auth_secret:
+    external: true
+    name: ${AUTH_SECRET_NAME:-thunderstrux_auth_secret}
+  mfa_encryption_key:
+    external: true
+    name: ${MFA_ENCRYPTION_KEY_SECRET_NAME:-thunderstrux_mfa_encryption_key}
+  rate_limit_redis_url:
+    external: true
+    name: ${RATE_LIMIT_REDIS_URL_SECRET_NAME:-thunderstrux_rate_limit_redis_url}
+  stripe_secret_key:
+    external: true
+    name: ${STRIPE_SECRET_KEY_SECRET_NAME:-thunderstrux_stripe_secret_key}
+  stripe_webhook_secret:
+    external: true
+    name: ${STRIPE_WEBHOOK_SECRET_NAME:-thunderstrux_stripe_webhook_secret}
+  stripe_connect_webhook_secret:
+    external: true
+    name: ${STRIPE_CONNECT_WEBHOOK_SECRET_NAME:-thunderstrux_stripe_connect_webhook_secret}
+  resend_api_key:
+    external: true
+    name: ${RESEND_API_KEY_SECRET_NAME:-thunderstrux_resend_api_key}

@@ -195,7 +195,9 @@ try {
   }
 
   const secretFile = join(stateDir, "entrypoint-secret.txt");
-  await writeFile(secretFile, "file-backed-test-secret\n", { mode: 0o600 });
+  // The Linux CI container runs as uid 1000, which differs from the host runner uid.
+  // Keep the run-owned parent directory private while making the read-only bind fixture readable.
+  await writeFile(secretFile, "file-backed-test-secret\n", { mode: 0o644 });
   await docker([
     "run", "--rm",
     "--mount", `type=bind,source=${secretFile},target=/run/secrets/auth_secret,readonly`,
@@ -215,7 +217,7 @@ try {
     throw new Error("Secret-loader conflict diagnostic exposed a secret value");
   }
   const emptySecretFile = join(stateDir, "entrypoint-empty-secret.txt");
-  await writeFile(emptySecretFile, "", { mode: 0o600 });
+  await writeFile(emptySecretFile, "", { mode: 0o644 });
   const rejectedSecretCases = [
     ["AUTH_SECRET_FILE=relative-secret", []],
     ["AUTH_SECRET_FILE=/run/secrets/missing", []],

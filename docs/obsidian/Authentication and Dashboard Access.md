@@ -8,7 +8,7 @@ Enrollment and challenge endpoints require the normal first-party origin and ses
 
 ## Dependency security update (2026-09-18)
 
-NextAuth is pinned to 5.0.0-beta.32 with @auth/core 0.41.3. The Credentials provider remains in use; the session includes a random staff MFA login ID in the JWT/session callbacks. `dependency-security.test.ts` exercises actual credential rejection/login/session/logout plus malformed Bearer and valid-cookie proxy handling; this supplements the mocked-auth route suite. See [[Handover 2026-09-18 Dependency Security Remediation]].
+NextAuth is pinned to 5.0.0-beta.32 with @auth/core 0.41.3. The Credentials provider remains in use; the session includes a random staff MFA login ID in the JWT/session callbacks. `dependency-security.test.ts` exercises actual credential rejection/login/session/logout plus malformed Bearer and valid-cookie proxy handling; this supplements the mocked-auth route suite. See [[Dependency Automation]].
 
 ## Auth Provider
 

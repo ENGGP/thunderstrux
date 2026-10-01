@@ -2,7 +2,9 @@
 
 ## Current dependency remediation
 
-The D1-D5 dependency fixes were published through [PR #3](https://github.com/ENGGP/thunderstrux/pull/3), merge `b81c631`. The [post-remediation Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35290377481) passed. GitHub reports zero open dependency alerts on 2026-09-18. Versions and compatibility checks are in [[Handover 2026-09-18 Dependency Security Remediation]]. The failed runs/counts below are historical evidence.
+The D1-D5 dependency fixes were published through [PR #3](https://github.com/ENGGP/thunderstrux/pull/3), merge `b81c631`. The [post-remediation Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35290377481) passed. GitHub reported zero open dependency alerts on 2026-09-18. The failed runs and counts below are historical evidence.
+
+The current security baseline is owned by `package.json` and `pnpm-lock.yaml`: Next.js 16.3.6, NextAuth 5.0.0-beta.32, paired Prisma client/CLI 6.19.3, PostCSS 8.5.28, pnpm 10.34.5, and Node 22.23.3. The reviewed override `@prisma/config@6.19.3>deepmerge-ts=8.0.2` is restricted to that parent. On the next Prisma update, remove it when the selected config package resolves a patched version natively, then rerun the config regression, Prisma generation and migrations, integration tests, production build, and full audit. `tests/integration/dependency-security.test.ts` covers native Sharp processing, JWT/Auth.js behavior, and Prisma config loading.
 
 ## P2.15 status
 
@@ -27,7 +29,7 @@ Routine Renovate evidence advanced on 2026-09-28: [PR #20](https://github.com/EN
 
 Security Audit runs Wednesday at 03:00 UTC and manually. It audits all dependencies at severity `high`, including development/build tooling. High/critical findings and registry errors fail the job visibly. This scheduled job is not a required PR check. Subscribe the repository maintainer to workflow failure notifications and triage each failure; never suppress registry failures or use an automatic audit fix.
 
-The original audit reported 41 vulnerabilities (5 critical, 21 high, 15 moderate), with 54 separately counted GitHub alerts. [[Dependency Advisory Triage 2026-09-18]] retains that historical inventory. D1-D5 fixes are merged; current results, owner, override rationale and rollout limits are in [[Handover 2026-09-18 Dependency Security Remediation]]. No advisory suppression is used. A new high/critical finding or registry failure must still fail the audit.
+The original audit reported 41 vulnerabilities (5 critical, 21 high, 15 moderate), with 54 separately counted GitHub alerts. [[Dependency Advisory Triage 2026-09-18]] retains that historical inventory. D1-D5 fixes are merged; the current baseline, owner, override rationale, removal condition, and rollout limits are recorded above. No advisory suppression is used. A new high/critical finding or registry failure must still fail the audit.
 
 ## External rollout checklist
 

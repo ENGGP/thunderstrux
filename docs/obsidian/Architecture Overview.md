@@ -15,7 +15,7 @@
 - Docker Compose
 - pnpm
 
-Security updates, scoped Prisma override and verification: [[Handover 2026-09-18 Dependency Security Remediation]].
+Security updates, scoped Prisma override, removal conditions, and verification: [[Dependency Automation]].
 
 ## Runtime Shape
 

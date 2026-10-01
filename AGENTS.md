@@ -20,4 +20,4 @@ This repository is a Docker-first Next.js application handling tenant data, tick
 - Update living documentation, the issue register, and `Current Handover` when behavior, operations, risks, or evidence changes.
 - Deliver changes through a PR to protected `main`. Required checks must pass on the latest PR head.
 
-Historical handovers are evidence snapshots. Current code, schema, workflows, `Current Handover`, and the linked living reference for a subsystem take precedence.
+`Current Handover` is the only handover document. Preserve dated implementation and release evidence in the relevant living reference, evidence ledger, PR, and Git history.

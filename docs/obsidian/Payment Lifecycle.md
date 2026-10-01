@@ -1,6 +1,6 @@
 # Payment Lifecycle
 
-Delivery and defect-resolution evidence: [[Handover 2026-09-21 P3.19 Delivery]]. Repeatable engineering and PR procedure: [[Engineering Delivery Workflow]].
+Delivery and defect-resolution evidence is retained in the validation section below and in merged PR #13. Repeatable engineering and PR procedure: [[Engineering Delivery Workflow]].
 
 P3.19 adds an append-only business-event journal around the existing `Order`, `TicketReservation`, `Ticket`, refund, and `EmailOutbox` fields. Existing status enums and API response contracts remain authoritative for current state; `OrderLifecycleEvent` explains how that state was reached.
 

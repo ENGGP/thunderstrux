@@ -2,7 +2,7 @@
 
 ## Dependency audit failures
 
-The old 41-finding audit is historical; the patched lockfile and verification are recorded in [[Handover 2026-09-18 Dependency Security Remediation]]. Run `pnpm audit --audit-level high` from the updated checkout. For a new failure, capture the advisory, installed version and every dependency path, update the affected parent or reviewed transitive resolution, then repeat compatibility validation. Do not suppress advisories or disable audit errors. A failed historical GitHub run will remain failed until a new run audits the updated commit. Existing Docker images and host node_modules must be refreshed separately.
+The old 41-finding audit is historical; [[Dependency Automation]] records the patched baseline, verification, and update policy. Run `pnpm audit --audit-level high` from the updated checkout. For a new failure, capture the advisory, installed version and every dependency path, update the affected parent or reviewed transitive resolution, then repeat compatibility validation. Do not suppress advisories or disable audit errors. A failed historical GitHub run will remain failed until a new run audits the updated commit. Existing Docker images and host node_modules must be refreshed separately.
 
 ## UI Change Not Visible
 

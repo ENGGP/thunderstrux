@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-09-29
+last-reviewed: 2026-10-01
 owner: engineering
 ---
 
@@ -11,7 +11,7 @@ This is the required delivery procedure for code and documentation changes. Scal
 ## 1. Establish State And Acceptance
 
 1. Read [[Documentation Index]], [[Current Handover]], this workflow, the issue register, the PRD, and the living references for the affected subsystem.
-2. Inspect the actual code, schema, migrations, Docker configuration, package scripts, tests, CI, open PRs, and hosted state where relevant. Do not rely on a historical handover as current truth.
+2. Inspect the actual code, schema, migrations, Docker configuration, package scripts, tests, CI, open PRs, and hosted state where relevant. Do not rely on old PR descriptions or Git history as current truth.
 3. Inspect `git status`, preserve unrelated user work, then fetch and prune the remote. If dirty files belong to the requested task, continue deliberately; otherwise create a separate worktree from current `origin/main` or pause and document the conflict. Never stash, reset, overwrite, or carry user work onto a new branch implicitly. Start `codex/<focused-description>` from current `origin/main` and use fast-forward operations.
 4. Trace the affected path end to end: input, authentication, live permission, canonical tenant ownership, validation, transaction/concurrency boundary, provider calls, workers, output, UI, migration, rollout, and recovery.
 5. Write acceptance criteria and classify the risk: documentation, UI, API/domain, schema/data, authentication/tenancy, payment/provider, dependency, or operations.
@@ -58,7 +58,7 @@ For payment-path changes, follow [[E2E and Staging Payments]]. Correlate provide
 ## 5. Handover, Merge, And Cleanup
 
 - Before ending material work, update [[Current Handover]] with branch/PR, exact completed work, evidence, failures, remaining risks, cleanup state, and the next safe command or action.
-- Add or update the dated handover/evidence ledger for a material workstream. Distinguish repository implementation from production activation.
+- Record dated acceptance or release evidence in the relevant subsystem evidence ledger or PR. Keep `Current Handover` as the sole handover and distinguish repository implementation from production activation.
 - After merge, verify current `main` and post-merge checks when required. Delete a branch only after confirming its PR is merged and its commits are contained in `main`.
 - Do not delete backup archives, shared Docker volumes, untracked user files, or historical Git objects as incidental cleanup.
 

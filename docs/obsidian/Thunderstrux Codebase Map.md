@@ -2,7 +2,7 @@
 
 ## Dependency remediation record
 
-[[Handover 2026-09-18 Dependency Security Remediation]] records patched packages, audit results and rollout limits. `package.json` owns exact pins and the scoped Prisma config override; `pnpm-lock.yaml` owns resolved transitive versions. `tests/integration/dependency-security.test.ts` adds actual Auth.js and Prisma-config compatibility coverage. [[Dependency Advisory Triage 2026-09-18]] retains the original advisory inventory as historical evidence.
+[[Dependency Automation]] records the current security baseline, audit results, rollout limits, and scoped Prisma override. `package.json` owns exact pins; `pnpm-lock.yaml` owns resolved transitive versions. `tests/integration/dependency-security.test.ts` adds actual Auth.js and Prisma-config compatibility coverage. [[Dependency Advisory Triage 2026-09-18]] retains the original advisory inventory as historical evidence.
 
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. The current product scope is:
 
@@ -42,14 +42,6 @@ Read these in order:
 5. [[Architecture Overview]]
 6. [[Development Workflow]]
 7. The living reference for the subsystem being changed
-
-Dated handover files are historical records:
-
-- [[Handover 2026-04-24 SaaS Foundation]]
-- [[Handover 2026-04-27 Route Stability and Event Editing]]
-- [[Handover 2026-05-03 Docker Runtime Hardening]]
-- [[Handover 2026-05-03 Ticket Operations and Email Delivery]]
-- [[Handover 2026-05-12 Pagination Ownership and Dev Volume]]
 
 ## Key Directories
 

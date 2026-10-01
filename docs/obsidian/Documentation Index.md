@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-09-29
+last-reviewed: 2026-10-01
 owner: engineering
 ---
 
@@ -28,7 +28,6 @@ Then read the living reference for the subsystem being changed.
 | Current handover | Short current-state and next-action summary | Update before ending material work |
 | Issue and defect register | Canonical open-risk and defect-resolution record | Add discoveries promptly; resolve only with evidence |
 | Evidence ledger | Dated acceptance and release-gate evidence | Append verified evidence; distinguish repository checks from hosted activation |
-| Dated handover | Immutable snapshot of a completed workstream | Do not rewrite to look current; supersede through links |
 | Runbook | Repeatable operational or troubleshooting procedure | Test commands before publishing |
 
 ## Living References
@@ -42,7 +41,6 @@ Then read the living reference for the subsystem being changed.
 - [[Stripe Payments and Connect]], [[Payment Lifecycle]], [[Email Delivery Implementation]], and [[E2E and Staging Payments]] — payments, lifecycle history, delivery, and provider acceptance.
 - [[Production Operations]] and [[Production Readiness Verification 2026-09-22]] — deployment tooling, recovery, evidence, and external release gates.
 - [[Docker Architecture Assessment 2026-09-29]] — point-in-time review of container boundaries, startup suitability, production gaps, and recommended hosting topology.
-- [[Handover 2026-10-01 Docker Foundation Hardening]] — implementation and validation evidence for the first Docker hardening slice.
 - [[Dependency Automation]] — pinned dependencies, Renovate policy, audit behavior, and dependency PR validation.
 - [[Troubleshooting]] — symptom-based diagnosis and safe recovery.
 
@@ -53,7 +51,7 @@ When sources disagree, verify in this order:
 1. Current code, schema, migrations, package manifest, Compose files, and CI workflows.
 2. Current provider or hosted-environment state when the question is operational.
 3. `Current Handover`, the relevant living reference, and the issue register.
-4. Dated evidence ledgers and handovers.
+4. Dated evidence ledgers, merged PRs, and Git history.
 
 Record any discovered disagreement as a documentation defect and correct the living documents in the same PR.
 
@@ -63,4 +61,5 @@ Record any discovered disagreement as a documentation defect and correct the liv
 - Never publish secrets, complete tokens, raw payment payloads, or personal data.
 - Link to durable files, PRs, commits, tests, or runbooks for important claims.
 - State limitations and external activation work alongside completed repository work.
+- Keep `Current Handover` as the sole handover. Put durable behavior in living references, open risks in the issue register, and dated verification in the appropriate evidence ledger or PR.
 - Run `pnpm docs:check` and `git diff --check` before opening a PR.

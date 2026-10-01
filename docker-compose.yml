@@ -56,8 +56,50 @@ services:
         condition: service_healthy
     command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
+  email-worker:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    restart: "no"
+    profiles: ["workers"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_OUTBOX_BATCH_SIZE: ${EMAIL_OUTBOX_BATCH_SIZE:-25}
+      EMAIL_OUTBOX_MAX_ATTEMPTS: ${EMAIL_OUTBOX_MAX_ATTEMPTS:-5}
+      EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS: ${EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS:-600}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "scripts/process-email-outbox.mjs"]
+
+  stale-order-worker:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    restart: "no"
+    profiles: ["workers"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "scripts/process-stale-orders.mjs"]
+
+  compensation-worker:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    restart: "no"
+    profiles: ["workers"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "scripts/process-compensation-refunds.mjs"]
+
   db:
-    image: postgres:16
+    image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
     restart: unless-stopped
     env_file:
       - .env.db
@@ -70,7 +112,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: unless-stopped
     volumes:
       - redis_data:/data

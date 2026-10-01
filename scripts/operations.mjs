@@ -28,6 +28,7 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baseCompose = resolve(root, "docker-compose.yml");
+const hardenedCompose = resolve(root, "docker-compose.hardened.yml");
 const operationsCompose = resolve(root, "docker-compose.operations.yml");
 const commandName = process.argv[2];
 const args = process.argv.slice(3);
@@ -128,7 +129,7 @@ function context() {
   const project = assertOperationsProject(required("--project"));
   const envFile = resolve(root, required("--env-file"));
   const rehearsal = has("--rehearsal");
-  const composeArgs = ["compose", "--env-file", envFile, "-f", baseCompose];
+  const composeArgs = ["compose", "--env-file", envFile, "-f", baseCompose, "-f", hardenedCompose];
   if (rehearsal) composeArgs.push("-f", operationsCompose);
   composeArgs.push("-p", project);
   const stateDir = resolve(root, "tmp", "operations", project);
@@ -301,7 +302,7 @@ async function deploy(ctx) {
       ? await run("docker", ["inspect", "--format", "{{.Image}}", previousContainer], { capture: true })
       : null;
     console.error(`P2.17 deploy: previous release ${previousImageId ? "found" : "not found"}`);
-    if (previousContainer) await compose(ctx, ["stop", "-t", "20", "app"]);
+    if (previousContainer) await compose(ctx, ["stop", "-t", "30", "app"]);
     console.error("P2.17 deploy: creating pre-migration backup");
     const backupResult = await backup(ctx);
     migrationStarted = true;
@@ -313,7 +314,7 @@ async function deploy(ctx) {
       console.error("P2.17 deploy: waiting for readiness");
       await waitReady(url, readinessAttempts);
     } catch (error) {
-      await compose(ctx, ["stop", "-t", "10", "app"]).catch(() => {});
+      await compose(ctx, ["stop", "-t", "30", "app"]).catch(() => {});
       const compatibilityFile = option("--compatibility-file");
       if (!previousImageId) throw new Error("Candidate failed and no previous running app container was found");
       if (!compatibilityFile) throw new Error("Candidate failed and no rollback compatibility declaration was provided");

@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16
+    image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
     environment:
       POSTGRES_USER: e2e
       POSTGRES_PASSWORD: e2e-disposable-only
@@ -43,7 +43,7 @@ services:
       redis:
         condition: service_healthy
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     healthcheck:
       test: [CMD, redis-cli, ping]
       interval: 2s
@@ -75,7 +75,7 @@ services:
       - ${E2E_OUTPUT_DIR:?Run through pnpm test:e2e}:/app/test-results
     profiles: [test]
   stripe:
-    image: stripe/stripe-cli:v1.33.0
+    image: stripe/stripe-cli:v1.33.0@sha256:182ed214675d0807de1983dbf0af810c8287957666d0f2b7a949dc24f81e4902
     env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:payments:staging}
     command: [listen, --events, 'checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed', --forward-to, 'http://app:3100/api/payments/webhook']
     profiles: [staging]

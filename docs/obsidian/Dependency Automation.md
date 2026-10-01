@@ -20,7 +20,7 @@ Routine Renovate evidence advanced on 2026-09-28: [PR #20](https://github.com/EN
 - Test setup supplies fake Stripe credentials; external fetch calls remain blocked. Future event fixtures are relative to the current date.
 - Build uses non-secret placeholders matching the Docker builder. Do not build inside the running application container; use a disposable environment or rebuild the image.
 - Workflows use read-only repository permissions, SHA-pinned Actions, disabled persisted checkout credentials, job timeouts, and cancellation of superseded runs. pnpm is installed before enabling the Node action's pnpm cache.
-- Renovate covers npm and GitHub Actions. Dockerfile and Compose managers are excluded, and a Docker datasource rule also excludes workflow service/container images. All Docker image automation is deferred. Ordinary updates retain Monday scheduling, a three-day release delay, grouped non-major updates, and manual review.
+- Renovate covers npm, GitHub Actions, Dockerfiles, and Compose. Docker digest updates are grouped, scheduled, and require manual review; automerge is disabled. Ordinary updates retain Monday scheduling, a three-day release delay, grouped non-major updates, and manual review.
 - Security-fix PRs are labelled `security`, created immediately without the ordinary release delay, and require manual review. GitHub Action SHA pins are maintained by Renovate.
 
 ## Security audit operations

@@ -2,6 +2,9 @@
   "name": "thunderstrux",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.23.3"
+  },
   "scripts": {
     "dev": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0",
     "dev:webpack": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --webpack --hostname 0.0.0.0",
@@ -41,6 +44,7 @@
     "docker:up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d",
     "docker:restart": "node scripts/recreate-dev-app.mjs",
     "docker:build": "docker compose build app",
+    "docker:hosted:check": "node scripts/check-hosted-compose.mjs",
     "docker:rebuild": "node scripts/recreate-dev-app.mjs",
     "docker:migrate": "docker compose exec app pnpm prisma:migrate",
     "docker:seed": "docker compose exec app pnpm seed",
@@ -54,7 +58,7 @@
     "@redis/client": "6.2.1",
     "bcryptjs": "3.0.3",
     "jiti": "2.6.1",
-    "next": "16.3.5",
+    "next": "16.3.6",
     "next-auth": "5.0.0-beta.32",
     "react": "19.2.5",
     "react-dom": "19.2.5",
@@ -64,7 +68,7 @@
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.2.4",
-    "@types/node": "20.19.25",
+    "@types/node": "22.20.4",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "autoprefixer": "10.5.0",
@@ -86,5 +90,5 @@
       "sharp"
     ]
   },
-  "packageManager": "pnpm@10.0.0"
+  "packageManager": "pnpm@10.34.5"
 }

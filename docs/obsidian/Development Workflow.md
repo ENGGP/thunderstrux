@@ -8,7 +8,7 @@ See [[Handover 2026-09-18 Dependency Security Remediation]] for the current patc
 
 ## Standard Local Setup
 
-Thunderstrux now has two Docker Compose modes.
+Thunderstrux has three Docker Compose contracts: the base production-like runtime, a development override, and a provider-neutral hosted contract.
 
 Production-like local runtime:
 
@@ -61,6 +61,8 @@ localhost:5433 in dev override only
 - database uses the named volume `postgres_data`
 - database port is not exposed to the host
 - Redis 7 is available as `redis` for rate limiting when `RATE_LIMIT_ENABLED=true`
+- the base PostgreSQL and Redis images are digest pinned and updated only through reviewed Renovate PRs
+- bounded `email-worker`, `stale-order-worker`, and `compensation-worker` services are available through the `workers` profile
 
 `docker-compose.dev.yml` only adds development-specific overrides:
 
@@ -75,7 +77,7 @@ environment:
   WATCHPACK_POLLING: "true"
   CHOKIDAR_USEPOLLING: "true"
 ports:
-  - "5433:5432"
+  - "127.0.0.1:5433:5432"
 ```
 
 Why:
@@ -85,6 +87,15 @@ Why:
 - dev override explicitly clears the production runtime marker so build/runtime guard behavior is unambiguous
 - `node_modules:/app/node_modules` avoids host/container dependency conflicts and uses the named Docker volume `thunderstrux_node_modules` instead of an anonymous hash volume
 - DB host port exposure is available for dev tools only
+- the development build uses `thunderstrux-app:dev`, so it cannot replace the production-like local tag
+
+Validate the hosted contract with secret-safe fixture files:
+
+```bash
+pnpm docker:hosted:check -- --env-file <hosted-validation.env>
+```
+
+The hosted contract requires an immutable `APP_IMAGE` reference containing `@sha256:`, external database and Redis endpoints, explicit resource inputs, and file-backed secret names. It deliberately defines no database or Redis service.
 
 Database data lives in the named volume:
 
@@ -604,6 +615,8 @@ pnpm email:outbox:process
 ```
 
 The command emits structured JSON log lines, including `email_outbox.batch.processed` and `email_outbox.worker.completed`. Production should schedule it every 1 minute. If it is not scheduled, paid buyers may have issued ticket rows but no ticket delivery email.
+
+The runtime entrypoint also accepts file-backed forms for sensitive values: append `_FILE` to `DATABASE_URL`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `RATE_LIMIT_REDIS_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`, or `RESEND_API_KEY`. The path must be absolute, readable, a regular non-empty file, and the direct variable must be absent.
 
 Stale-order cleanup worker:
 

@@ -38,6 +38,7 @@ blob-report/
 .env.*
 !.env.example
 !.env.db.example
+!.env.hosted.example
 .env.local
 .env.development.local
 .env.test.local

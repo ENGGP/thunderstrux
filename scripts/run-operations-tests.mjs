@@ -19,12 +19,15 @@ const composeFiles = [
   "-f",
   resolve(root, "docker-compose.yml"),
   "-f",
+  resolve(root, "docker-compose.hardened.yml"),
+  "-f",
   resolve(root, "docker-compose.operations.yml"),
   "-p",
   project
 ];
 let activeChild;
 let passed = false;
+let signalContainer;
 
 function command(executable, args, { capture = false, env = process.env, expectFailure = false } = {}) {
   return new Promise((resolvePromise, reject) => {
@@ -126,6 +129,26 @@ async function migrationChecksum() {
   return migrationDigest(entries);
 }
 
+async function assertContainerHardening(container, label) {
+  const user = await docker(["inspect", "--format", "{{.Config.User}}", container], { capture: true });
+  if (!user.trim() || user.trim() === "0" || user.trim() === "root" || user.trim().startsWith("0:")) {
+    throw new Error(`${label} is not non-root: ${user.trim() || "unset"}`);
+  }
+  const inspect = JSON.parse(await docker([
+    "inspect", "--format", "{{json .}}", container
+  ], { capture: true }));
+  const hardening = inspect.HostConfig;
+  if (!hardening.ReadonlyRootfs) throw new Error(`${label} root filesystem is writable`);
+  if (!hardening.CapDrop?.includes("ALL")) throw new Error(`${label} does not drop all capabilities`);
+  if (!hardening.SecurityOpt?.includes("no-new-privileges:true")) {
+    throw new Error(`${label} does not set no-new-privileges`);
+  }
+  if (!(hardening.PidsLimit > 0) || !(hardening.Memory > 0) || !(hardening.NanoCpus > 0)) {
+    throw new Error(`${label} resource limits are incomplete`);
+  }
+  if (inspect.Config.StopTimeout !== 30) throw new Error(`${label} does not use a 30-second stop period`);
+}
+
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => activeChild?.kill("SIGTERM"));
 }
@@ -160,10 +183,68 @@ try {
   await operation("deploy", ["--url", origin, "--release", `${project}-one`]);
   const release = JSON.parse(await readFile(join(stateDir, "current-release.json"), "utf8"));
   const appContainer = await compose(["ps", "-q", "app"], { capture: true });
-  const appUser = await docker(["inspect", "--format", "{{.Config.User}}", appContainer.trim()], { capture: true });
-  if (!appUser.trim() || appUser.trim() === "0" || appUser.trim() === "root") {
-    throw new Error(`Production app is not non-root: ${appUser.trim() || "unset"}`);
+  await assertContainerHardening(appContainer.trim(), "Production app");
+  await compose(["exec", "-T", "app", "sh", "-c", "touch /tmp/thunderstrux-hardening-check && rm /tmp/thunderstrux-hardening-check"]);
+
+  await compose(["--profile", "workers", "create", "migration", "email-worker", "stale-order-worker", "compensation-worker"], {
+    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+  });
+  for (const service of ["migration", "email-worker", "stale-order-worker", "compensation-worker"]) {
+    const container = await compose(["--profile", "workers", "ps", "-a", "-q", service], { capture: true });
+    await assertContainerHardening(container.trim(), service);
   }
+
+  const secretFile = join(stateDir, "entrypoint-secret.txt");
+  await writeFile(secretFile, "file-backed-test-secret\n", { mode: 0o600 });
+  await docker([
+    "run", "--rm",
+    "--mount", `type=bind,source=${secretFile},target=/run/secrets/auth_secret,readonly`,
+    "-e", "AUTH_SECRET_FILE=/run/secrets/auth_secret",
+    release.candidateImageId,
+    "node", "-e", "if(process.env.AUTH_SECRET!=='file-backed-test-secret')process.exit(1)"
+  ]);
+  const conflictOutput = await command("docker", [
+    "run", "--rm",
+    "--mount", `type=bind,source=${secretFile},target=/run/secrets/auth_secret,readonly`,
+    "-e", "AUTH_SECRET=direct-test-secret",
+    "-e", "AUTH_SECRET_FILE=/run/secrets/auth_secret",
+    release.candidateImageId,
+    "node", "-e", "process.exit(0)"
+  ], { capture: true, expectFailure: true });
+  if (conflictOutput.includes("direct-test-secret") || conflictOutput.includes("file-backed-test-secret")) {
+    throw new Error("Secret-loader conflict diagnostic exposed a secret value");
+  }
+  const emptySecretFile = join(stateDir, "entrypoint-empty-secret.txt");
+  await writeFile(emptySecretFile, "", { mode: 0o600 });
+  const rejectedSecretCases = [
+    ["AUTH_SECRET_FILE=relative-secret", []],
+    ["AUTH_SECRET_FILE=/run/secrets/missing", []],
+    ["AUTH_SECRET_FILE=/run/secrets/auth_secret", ["--mount", `type=bind,source=${emptySecretFile},target=/run/secrets/auth_secret,readonly`]]
+  ];
+  for (const [variable, mounts] of rejectedSecretCases) {
+    const output = await command("docker", [
+      "run", "--rm", ...mounts, "-e", variable, release.candidateImageId,
+      "node", "-e", "process.exit(0)"
+    ], { capture: true, expectFailure: true });
+    if (output.includes("direct-test-secret") || output.includes("file-backed-test-secret")) {
+      throw new Error("Secret-loader rejection diagnostic exposed a secret value");
+    }
+  }
+
+  signalContainer = `${project}-signal-check`;
+  await docker([
+    "run", "-d", "--name", signalContainer, release.candidateImageId,
+    "node", "-e", "process.on('SIGTERM',()=>{console.log('sigterm-forwarded');process.exit(0)});setInterval(()=>{},1000)"
+  ]);
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+  await docker(["stop", "-t", "5", signalContainer]);
+  const signalLogs = await docker(["logs", signalContainer], { capture: true });
+  if (!signalLogs.includes("sigterm-forwarded")) throw new Error("Entrypoint did not forward SIGTERM to Node");
+  await docker(["rm", signalContainer]);
+
+  await compose(["run", "--rm", "email-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+  await compose(["run", "--rm", "stale-order-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+  await compose(["run", "--rm", "compensation-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
 
   await compose(["run", "--rm", "migration", "node", "prisma/seed.mjs"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }
@@ -249,6 +330,7 @@ try {
     const owner = await docker(["inspect", "--format", "{{index .Config.Labels \"com.docker.compose.project\"}}", container], { capture: true });
     if (owner.trim() !== project) throw new Error("Operations cleanup ownership mismatch");
   }
+  if (signalContainer) await docker(["rm", "-f", signalContainer], { capture: true }).catch(() => {});
   await compose(["down", "--volumes", "--remove-orphans", "--timeout", "10"], { capture: true }).catch(() => {});
   if (passed) {
     for (const suffix of ["one", "bad", "migration-fail"]) {

@@ -21,7 +21,7 @@ jobs:
   static-validation:
     name: static-validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -43,6 +43,50 @@ jobs:
         run: pnpm prisma:generate
       - name: Typecheck
         run: pnpm typecheck
+      - name: Lint Dockerfiles
+        run: |
+          docker run --rm -i hadolint/hadolint:v2.14.0-alpine@sha256:7aba693c1442eb31c0b015c129697cb3b6cb7da589d85c7562f9deb435a6657c hadolint - < docker/Dockerfile
+          docker run --rm -i hadolint/hadolint:v2.14.0-alpine@sha256:7aba693c1442eb31c0b015c129697cb3b6cb7da589d85c7562f9deb435a6657c hadolint - < docker/Dockerfile.e2e
+      - name: Validate Compose contracts
+        run: |
+          cat > .env <<'EOF'
+          DATABASE_URL=postgresql://validation:validation@db:5432/validation_test?schema=public
+          AUTH_SECRET=validation-only-secret
+          MFA_ENFORCEMENT_MODE=off
+          LEGACY_ORGANISATION_ACCESS_MODE=deny
+          AUTH_URL=http://localhost:3000
+          NEXTAUTH_URL=http://localhost:3000
+          NEXT_PUBLIC_APP_URL=http://localhost:3000
+          TRUSTED_APP_ORIGINS=http://localhost:3000
+          RATE_LIMIT_ENABLED=true
+          RATE_LIMIT_REDIS_URL=redis://redis:6379
+          RATE_LIMIT_KEY_PREFIX=validation
+          RATE_LIMIT_TRUSTED_PROXY_HEADER=x-forwarded-for
+          EOF
+          cat > .env.db <<'EOF'
+          POSTGRES_USER=validation
+          POSTGRES_PASSWORD=validation
+          POSTGRES_DB=validation_test
+          EOF
+          sed 's/replace-with-64-lowercase-hex-characters/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/' .env.hosted.example > hosted-validation.env
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.hardened.yml config --quiet
+          node scripts/check-hosted-compose.mjs --env-file hosted-validation.env
+      - name: Build production image
+        run: docker build --target runner --tag thunderstrux-container-scan:${{ github.sha }} --file docker/Dockerfile .
+      - name: Scan fixable high and critical vulnerabilities
+        run: |
+          if ! docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v trivy-cache:/root/.cache/ \
+              -v "${RUNNER_TEMP}:/scan" \
+              aquasec/trivy:0.68.2@sha256:05d0126976bdedcd0782a0336f77832dbea1c81b9cc5e4b3a5ea5d2ec863aca7 \
+              image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL --scanners vuln \
+              --skip-version-check --quiet --format json --output /scan/trivy.json \
+              thunderstrux-container-scan:${{ github.sha }}; then
+            jq -r '.Results[] | .Target as $target | (.Vulnerabilities // [])[] | [$target, .VulnerabilityID, .PkgName, .InstalledVersion, .FixedVersion, .Severity] | @tsv' "${RUNNER_TEMP}/trivy.json"
+            exit 1
+          fi
 
   integration-tests:
     name: integration-tests
@@ -50,7 +94,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
         env:
           POSTGRES_USER: thunderstrux
           POSTGRES_PASSWORD: ci-test-only

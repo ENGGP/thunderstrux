@@ -42,6 +42,7 @@ Then read the living reference for the subsystem being changed.
 - [[Stripe Payments and Connect]], [[Payment Lifecycle]], [[Email Delivery Implementation]], and [[E2E and Staging Payments]] — payments, lifecycle history, delivery, and provider acceptance.
 - [[Production Operations]] and [[Production Readiness Verification 2026-09-22]] — deployment tooling, recovery, evidence, and external release gates.
 - [[Docker Architecture Assessment 2026-09-29]] — point-in-time review of container boundaries, startup suitability, production gaps, and recommended hosting topology.
+- [[Handover 2026-10-01 Docker Foundation Hardening]] — implementation and validation evidence for the first Docker hardening slice.
 - [[Dependency Automation]] — pinned dependencies, Renovate policy, audit behavior, and dependency PR validation.
 - [[Troubleshooting]] — symptom-based diagnosis and safe recovery.
 

@@ -63,7 +63,7 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Current Work And Next Safe Actions
 
-- Documentation handover consolidation is on `codex/handover-consolidation`. It removes obsolete dated handovers after moving durable references to living documents; the merged PR and Git history remain the historical record.
+- Documentation handover consolidation is pushed on `codex/handover-consolidation`. It removes obsolete dated handovers after moving durable references to living documents; the merged PR and Git history remain the historical record. Open its PR from [the prepared GitHub comparison](https://github.com/ENGGP/thunderstrux/pull/new/codex/handover-consolidation), then require all five latest-head checks before merge.
 - Create `codex/docker-immutable-release` from refreshed `origin/main` for standalone web/operations targets, dual-image release evidence, SBOM/provenance publication, and the image-size budget.
 - [[Docker Architecture Assessment 2026-09-29]] records the implemented foundation controls and remaining immutable-release and hosted activation work.
 - Do not commit `docs/obsidian/.obsidian/workspace.json`; it contains a user-local Obsidian workspace change.

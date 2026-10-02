@@ -1,8 +1,17 @@
 node_modules
 .npm-cache
 .pnpm-store
+.agents
+.codex
+.worktrees
 .next
 .next-build
+next-env.d.ts
+*.tsbuildinfo
+.cache
+.turbo
+.parcel-cache
+.swc
 .git
 .env*
 !.env.example
@@ -17,3 +26,7 @@ temp
 dist
 coverage
 .DS_Store
+Thumbs.db
+.idea
+.vscode
+docs/obsidian/.obsidian/workspace.json

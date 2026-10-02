@@ -64,10 +64,11 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Current Work And Next Safe Actions
 
-- Solo-maintainer workflow simplification is prepared on `codex/simplify-engineering-workflow`. It reduces routine ceremony to five stages and three risk levels while retaining protected `main`, latest-head CI, and high-risk safeguards. It also makes run-owned temporary-resource and cache cleanup an explicit post-CI, pre-merge gate. Open its PR and require all five latest-head checks before merge.
+- Solo-maintainer workflow simplification and repository ignore hygiene are prepared on `codex/simplify-engineering-workflow`. The change reduces routine ceremony to five stages and three risk levels while retaining protected `main`, latest-head CI, and high-risk safeguards; adds a post-CI cleanup gate; excludes local worktrees and build/tool caches from Git and Docker contexts; and makes Obsidian workspace state local-only. Open its PR and require all five latest-head checks before merge.
+- Local cleanup on 2026-10-02 removed generated build/tool caches, obsolete helper artifacts, and 33 completed E2E run directories. Three E2E directories missing `runtime.env`, operational evidence, and retained database backups remain intentionally; the development stack was rebuilt without deleting volumes and passed `/api/health`, with PostgreSQL now bound to loopback only.
 - Create `codex/docker-immutable-release` from refreshed `origin/main` for standalone web/operations targets, dual-image release evidence, SBOM/provenance publication, and the image-size budget.
 - [[Docker Architecture Assessment 2026-09-29]] records the implemented foundation controls and remaining immutable-release and hosted activation work.
-- Do not commit `docs/obsidian/.obsidian/workspace.json`; it contains a user-local Obsidian workspace change.
+- `docs/obsidian/.obsidian/workspace.json` is local ignored state; do not force-add it.
 - Choose a production hosting platform and implement the external release gates above before enabling unrestricted payments.
 - Use the canonical open items in [[Non-Blocking Issue Register]] rather than old session gap lists.
 

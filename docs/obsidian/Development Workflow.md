@@ -667,7 +667,7 @@ RATE_LIMIT_KEY_PREFIX=thunderstrux
 RATE_LIMIT_TRUSTED_PROXY_HEADER=x-forwarded-for
 ```
 
-Keep `RATE_LIMIT_ENABLED=false` for normal local development unless testing throttling behavior. Production should enable it and point `RATE_LIMIT_REDIS_URL` at a managed or otherwise reliable Redis-compatible service.
+Enable `RATE_LIMIT_ENABLED=true` with the Compose Redis service when exercising signup, verification or MFA. Account-token endpoints deliberately return `503` if protection is disabled or unavailable. Configure the T02 notification encryption key and sender for signup/verification issuance, and run `notification-worker` to deliver queued messages. Isolated E2E uses its private Docker capture service. Production requires reliable Redis, notification scheduling and provider configuration.
 
 Database `.env.db` values:
 

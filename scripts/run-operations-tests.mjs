@@ -326,14 +326,22 @@ try {
   passed = true;
   console.log(JSON.stringify({ status: "passed", project, restore: backupRecord.archive }));
 } finally {
-  const ownedContainers = (await compose(["ps", "-aq"], { capture: true }).catch(() => ""))
+  // Compose ps/down without the workers profile omits its created services.
+  const ownershipFilter = `label=com.docker.compose.project=${project}`;
+  const ownedContainers = (await docker(["ps", "-aq", "--filter", ownershipFilter], { capture: true }))
     .split(/\s+/).filter(Boolean);
   for (const container of ownedContainers) {
     const owner = await docker(["inspect", "--format", "{{index .Config.Labels \"com.docker.compose.project\"}}", container], { capture: true });
     if (owner.trim() !== project) throw new Error("Operations cleanup ownership mismatch");
   }
   if (signalContainer) await docker(["rm", "-f", signalContainer], { capture: true }).catch(() => {});
-  await compose(["down", "--volumes", "--remove-orphans", "--timeout", "10"], { capture: true }).catch(() => {});
+  await compose(["--profile", "workers", "down", "--volumes", "--remove-orphans", "--timeout", "10"], { capture: true });
+  // This is also the cleanup regression: a passing rehearsal must leave no
+  // project-owned container (including stopped workers), network or volume.
+  for (const args of [["ps", "-aq"], ["network", "ls", "-q"], ["volume", "ls", "-q"]]) {
+    const remaining = await docker([...args, "--filter", ownershipFilter], { capture: true });
+    if (remaining.trim()) throw new Error(`Operations cleanup incomplete for ${project}: ${args[0]}`);
+  }
   if (passed) {
     for (const suffix of ["one", "bad", "migration-fail"]) {
       await docker(["image", "rm", `thunderstrux-app:${project}-${suffix}`], { capture: true }).catch(() => {});

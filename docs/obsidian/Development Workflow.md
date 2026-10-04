@@ -8,6 +8,16 @@ See [[Dependency Automation]] for the current security baseline, Prisma override
 
 ## Standard Local Setup
 
+### Safe baseline verification
+
+Start from refreshed local `main` and create a `codex/...` branch in the primary folder as specified by [[Engineering Delivery Workflow]]. Run `node scripts/run-e2e.mjs baseline` for isolated production builds, typecheck, the full integration suite and dependency audit. Use `pnpm test:e2e` for browser/signed-webhook coverage and `pnpm ops:test` for disposable recovery rehearsal. These projects do not reuse development data or its dependency volume.
+
+The integration launcher and SQL reset helper share one URL guard: PostgreSQL only, a single simple database name ending in `_test`, with connection parameters such as `schema=public` retained. A name such as `project_test_archive` is refused before Prisma reset or SQL. The launcher retains precedence `INTEGRATION_DATABASE_URL`, then `TEST_DATABASE_URL`, then its disposable default; the reset helper checks `DATABASE_URL`. E2E fixtures retain their stricter exact Compose URL requirement. A `_test` name is a necessary guard, not evidence that an arbitrary external database is disposable: use only explicitly run-owned test infrastructure.
+
+Do not run type generation/builds in an active production server container or integration resets in the development stack. Prefer the isolated baseline runner so generated Next/Prisma metadata remains inside its container. Record actual revision/counts/run IDs and cleanup rather than copying historical test totals. Run the runner safety suite with `pnpm test:e2e:guards`; unsafe database and occupied-port regressions require no real database or provider credentials.
+
+Port 3100 conflicts are refused before creating an E2E run. Cleanup uses generated project IDs and ownership checks; repeat `pnpm test:e2e:cleanup -- <run-id>` to verify a completed run. Preserve interrupted payment recovery manifests and their required volumes until recovery succeeds. Never delete unrelated Docker resources or the entire `tmp` tree.
+
 Thunderstrux has three Docker Compose contracts: the base production-like runtime, a development override, and a provider-neutral hosted contract.
 
 Production-like local runtime:

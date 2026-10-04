@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-02
+last-reviewed: 2026-10-04
 owner: engineering
 ---
 
@@ -64,6 +64,7 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Current Work And Next Safe Actions
 
+- On 2026-10-04, [PR #27](https://github.com/ENGGP/thunderstrux/pull/27) updates delivery to create feature branches from refreshed local `main` in the primary folder. Its original security scan found CVE-2026-103111 in the pinned base's PCRE2 library; the branch now explicitly installs Debian's patched `libpcre2-8-0`. Local runner build, Hadolint, installed-version query, non-root Node/Prisma smoke and fixable high/critical Trivy scan passed. Require all five checks on the revised PR head before merge; no active development or hosted stack was redeployed. See DEF-012 in the issue register.
 - Solo-maintainer workflow simplification and repository ignore hygiene are prepared on `codex/simplify-engineering-workflow`. The change reduces routine ceremony to five stages and three risk levels while retaining protected `main`, latest-head CI, and high-risk safeguards; adds a post-CI cleanup gate; excludes local worktrees and build/tool caches from Git and Docker contexts; and makes Obsidian workspace state local-only. Open its PR and require all five latest-head checks before merge.
 - Local cleanup on 2026-10-02 removed generated build/tool caches, obsolete helper artifacts, and 33 completed E2E run directories. Three E2E directories missing `runtime.env`, operational evidence, and retained database backups remain intentionally; the development stack was rebuilt without deleting volumes and passed `/api/health`, with PostgreSQL now bound to loopback only.
 - Create `codex/docker-immutable-release` from refreshed `origin/main` for standalone web/operations targets, dual-image release evidence, SBOM/provenance publication, and the image-size budget.

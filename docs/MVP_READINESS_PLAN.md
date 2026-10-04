@@ -25,7 +25,7 @@ Verified documentation discrepancies: proxy.ts currently redirects anonymous eve
 
 1. Read this plan, Current Handover and delivery workflow. Refresh origin/main and inspect the current task implementation; preceding PRs may have superseded this baseline.
 2. Select the lowest-numbered unchecked T task with completed dependencies; where ordered substeps are specified, execute its next dependency-ready unchecked substep. Never rebuild code that now satisfies it: verify its acceptance tests and record evidence instead. If blocked, record the exact missing input and select another dependency-ready task.
-3. Create codex/<task-description> from refreshed origin/main; preserve unrelated changes with an isolated worktree. Write an acceptance note: outcome, exclusions, risk, tests, migration/rollback compatibility and external evidence.
+3. Follow Engineering Delivery Workflow in the primary repository folder: switch to main, fetch/prune origin, fast-forward main to origin/main, then create codex/<task-description> from that updated main. Preserve unrelated changes; resolve any unsafe switch/update with the user rather than discarding work. Write an acceptance note: outcome, exclusions, risk, tests, migration/rollback compatibility and external evidence.
 4. One numbered task is a focused PR target. If necessary, split a large task into ordered a/b substeps with separate definitions of done before coding. The parent stays incomplete until all substeps pass.
 5. Check a task only after its definition of done and latest-head checks pass. Append evidence: date, PR/merge, tested executable revision, migration IDs, test commands/results, limitations and retained resources. Update relevant living references/issue statuses; material current state goes in Current Handover, not a new handover.
 
@@ -146,6 +146,29 @@ Every T task is required before claiming the candidate feature-complete. Credent
 - **Current/goal:** Docker runners, guards and CI already exist; establish fresh evidence, don't rebuild them.
 - **Code:** Verify package scripts, docker-compose.dev.yml, run-integration-tests/run-e2e/operations runners, tests/helpers/test-data.ts and db-reset.ts. Inventory routes/tests/issues. Extend fixtures/reset/cleanup as each later schema lands; keep synthetic seed and public reads separate.
 - **Tests/definition of done:** Isolated full integration/E2E/operations, typecheck/build/audit/docs pass with actual counts/revisions; non-_test refusal, occupied-port and run-owned cleanup checks pass. No development reset, real user data or cache files committed.
+
+**T01 implementation/evidence ledger — 2026-10-04 (qualification pending):**
+
+- Acceptance: verify the current baseline and fix confirmed test-tooling gaps; preserve product routes/services/schema, provider business logic and unrelated work. Branch `codex/t01-baseline-verification` starts at refreshed main `598f922`. Test reset tooling is High risk; no runtime rollout or database migration is needed.
+- Shared integration URL validation requires PostgreSQL, one simple database name ending in `_test`, and refuses malformed paths before reset/truncate. Existing variable precedence and E2E's stricter exact target remain intact. Runner regressions cover unsafe suffixes, paths, malformed inputs, secret-safe errors and actual occupied-port refusal before resources are created.
+- A new integration regression seeds every current Prisma model, including MFA, email, compensation and unlinked refund records, checks reset removes all rows, and repeats reset. Existing CASCADE behavior is retained unless this test proves a gap.
+- Pre-test inventory: development app/db/Redis containers `22a775b9a8a4`, `eea5ff5f14b2`, `e745fe68dac1`; development liveness HTTP 200. Database/Redis/dependency volumes and the unrelated `personal_website_postgres_data` volume must survive. Docker 29.8.0/Compose 5.5.1; host Node 22.18.0 is orchestration only, qualified application/tests use pinned Node 22.23.3 and pnpm 10.34.5.
+- Primary-folder documentation check is affected by the pre-existing deleted tracked remediation plan and untracked `docs/cache/`. Preserve both; validate intended tracked documentation in a temporary snapshot and CI, and record this workspace limitation without weakening the checker.
+- Qualification results, run IDs, executable revision, latest-head CI and cleanup verification are appended below before checking T01 complete. Synthetic checks do not claim actual Stripe/email/hosted acceptance.
+
+| Existing capability | Regression evidence required for T01 | Known remainder stays in later tasks |
+| --- | --- | --- |
+| Auth/onboarding/account contexts | auth-access, dependency-security, member-features; real browser login/signup/callbacks | Verification/reset/settings and full context UX: T03–T05 |
+| Staff/MFA/live permissions | staff-mfa, management-page-access, organisation-tenancy; enforced MFA/browser revocation | Invitation/handover improvements: T06 |
+| Events/public discovery | event-lifecycle, public-safe-pages, pagination-cursor; browser/mobile | Anonymous detail, publication/capacity policy: T11–T15 |
+| Checkout/inventory | checkout-reservations, pending-cleanup, database-constraints | Free/guest/uncertain creation: T12–T16 |
+| Payment fulfilment/history | webhook-reconciliation, payment-lifecycle, signed HTTP webhook E2E | PAY-001/TEST-001 and ordinary refunds: T18 |
+| Connect/disclosure | stripe-connect-service, organisation-connect-disclosure, Connect HTTP webhook | Fee/payout/disconnect improvements: T17 |
+| Tickets/check-in/order views | ticket-check-in, orders-api, dashboard-orders-page, buyer/browser history | Guest/validity/full history UX: T19 |
+| Email/compensation/fencing | email-outbox, compensation-refunds, lifecycle tests | General notifications/commerce: T02, T20–T30 |
+| Origins/CSRF/rate/error controls | trusted-origin-guard, client-csrf-retry, rate-limit, api-error-mapper; real Redis in isolated E2E/operations | Remaining survey: T39 |
+| Docker/schema/recovery | all runner tests, schema contract, isolated operations deployment/restore/rollback | Immutable release and hosted activation: T41–T46, H01–H06 |
+
 
 #### T02 — General notification outbox and templates
 - [ ] Complete. **Dependencies:** T01.

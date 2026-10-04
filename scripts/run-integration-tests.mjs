@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { validateIntegrationDatabaseUrl } from "./integration-test-guards.mjs";
 
 const defaultTestDatabaseUrl =
   "postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public";
@@ -8,13 +9,10 @@ const databaseUrl =
   process.env.TEST_DATABASE_URL ||
   defaultTestDatabaseUrl;
 
-const parsedDatabaseUrl = new URL(databaseUrl);
-const databaseName = parsedDatabaseUrl.pathname.replace(/^\//, "");
-
-if (!databaseName.includes("_test")) {
-  console.error(
-    `Refusing to run integration tests against non-test database "${databaseName}". The database name must contain "_test".`
-  );
+try {
+  validateIntegrationDatabaseUrl(databaseUrl);
+} catch (error) {
+  console.error(error.message);
   process.exit(1);
 }
 

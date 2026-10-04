@@ -1,19 +1,8 @@
 import { prisma } from "@/lib/db";
+import { validateIntegrationDatabaseUrl } from "../../scripts/integration-test-guards.mjs";
 
 export function assertTestDatabaseUrl() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required for integration tests.");
-  }
-
-  const databaseName = new URL(databaseUrl).pathname.replace(/^\//, "");
-
-  if (!databaseName.endsWith("_test")) {
-    throw new Error(
-      `Refusing to run integration tests against non-test database "${databaseName}".`
-    );
-  }
+  validateIntegrationDatabaseUrl(process.env.DATABASE_URL);
 }
 
 export async function resetTestDatabase() {

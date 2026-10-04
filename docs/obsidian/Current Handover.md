@@ -53,7 +53,7 @@ Repository implementation is not hosted production activation. Unrestricted prod
 1. Every staff identity is enrolled and `MFA_ENFORCEMENT_MODE=enforce` is verified.
 2. Legacy shared access is migrated and `LEGACY_ORGANISATION_ACCESS_MODE=deny` is active.
 3. Redis rate limiting and the exact trusted proxy header are configured at the edge.
-4. Compensation, email-outbox, and stale-cleanup workers are scheduled and monitored.
+4. Compensation, email-outbox, general-notification and stale-cleanup workers are scheduled and monitored; the notification key is provisioned for app/worker and separately backed up with recovery proven.
 5. Stripe refund webhooks and external alert delivery are active.
 6. Automatic and manual compensation pass a new real Stripe test-mode campaign.
 7. Encrypted off-machine backups, external health monitoring, and a hosted restore drill are complete.

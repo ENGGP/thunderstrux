@@ -160,4 +160,8 @@ describe("ops logging foundation", () => {
 
     expect((await readiness()).status).toBe(200);
   });
+  test("readiness rejects a missing notification encryption key without disclosing it", async () => {
+    vi.stubEnv("NOTIFICATION_ENCRYPTION_KEY", "");
+    expect((await readiness()).status).toBe(503);
+  });
 });

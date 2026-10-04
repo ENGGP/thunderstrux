@@ -18,7 +18,7 @@ export function validateHostedConfig(config) {
     throw new Error("Hosted Compose must not bundle PostgreSQL or Redis");
   }
 
-  const serviceNames = ["app", "migration", "email-worker", "stale-order-worker", "compensation-worker"];
+  const serviceNames = ["app", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker"];
   for (const name of serviceNames) {
     const service = requireService(config, name);
     assertImmutableImageRef(service.image);
@@ -51,6 +51,7 @@ export function validateHostedConfig(config) {
     "DATABASE_URL",
     "AUTH_SECRET",
     "MFA_ENCRYPTION_KEY",
+    "NOTIFICATION_ENCRYPTION_KEY",
     "RATE_LIMIT_REDIS_URL",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
@@ -66,7 +67,7 @@ export function validateHostedConfig(config) {
     }
   }
 
-  for (const worker of ["email-worker", "stale-order-worker", "compensation-worker"]) {
+  for (const worker of ["email-worker", "notification-worker", "stale-order-worker", "compensation-worker"]) {
     const profiles = requireService(config, worker).profiles ?? [];
     if (!profiles.includes("workers")) throw new Error(`${worker} must remain an explicitly scheduled one-shot service`);
   }

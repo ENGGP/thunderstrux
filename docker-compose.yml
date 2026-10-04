@@ -30,6 +30,7 @@ services:
       STRIPE_CONNECT_WEBHOOK_SECRET: ${STRIPE_CONNECT_WEBHOOK_SECRET:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
       PORT: ${PORT:-3000}
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:${PORT:-3000}"
@@ -72,6 +73,22 @@ services:
       db:
         condition: service_healthy
     command: ["node", "scripts/process-email-outbox.mjs"]
+
+  notification-worker:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    restart: "no"
+    profiles: ["workers"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "scripts/process-notifications.mjs"]
 
   stale-order-worker:
     image: ${APP_IMAGE:-thunderstrux-app:local}

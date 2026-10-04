@@ -30,6 +30,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       AUTH_SECRET_FILE: /run/secrets/auth_secret
       MFA_ENFORCEMENT_MODE: ${MFA_ENFORCEMENT_MODE:?MFA_ENFORCEMENT_MODE is required}
+      NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
       MFA_ENCRYPTION_KEY_FILE: /run/secrets/mfa_encryption_key
       LEGACY_ORGANISATION_ACCESS_MODE: ${LEGACY_ORGANISATION_ACCESS_MODE:?LEGACY_ORGANISATION_ACCESS_MODE is required}
       AUTH_URL: ${AUTH_URL:?AUTH_URL is required}
@@ -51,6 +52,7 @@ services:
       - *database-secret
       - auth_secret
       - mfa_encryption_key
+      - notification_encryption_key
       - rate_limit_redis_url
       - stripe_secret_key
       - stripe_webhook_secret
@@ -102,6 +104,28 @@ services:
       - *database-secret
       - resend_api_key
     command: ["node", "scripts/process-email-outbox.mjs"]
+
+  notification-worker:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: "no"
+    user: "1000:1000"
+    profiles: ["workers"]
+    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+    cpus: ${OPS_CPUS:?OPS_CPUS is required}
+    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      RESEND_API_KEY_FILE: /run/secrets/resend_api_key
+      NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+      EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
+    secrets:
+      - *database-secret
+      - resend_api_key
+      - notification_encryption_key
+    command: ["node", "scripts/process-notifications.mjs"]
 
   stale-order-worker:
     <<: *runtime-security
@@ -162,3 +186,6 @@ secrets:
   resend_api_key:
     external: true
     name: ${RESEND_API_KEY_SECRET_NAME:-thunderstrux_resend_api_key}
+  notification_encryption_key:
+    external: true
+    name: ${NOTIFICATION_ENCRYPTION_KEY_SECRET_NAME:-thunderstrux_notification_encryption_key}

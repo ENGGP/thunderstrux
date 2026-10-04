@@ -1,6 +1,6 @@
 # Production Readiness Verification — 2026-09-22
 
-This is the current evidence ledger for all 19 items in [[../production-readiness-remediation-plan]]. PR #18 merged this repository implementation on 2026-09-28. The ledger separates repository behavior from live production activation. A passing local or CI test is not evidence that a hosted scheduler, alert route, backup, or Stripe delivery is active.
+This is the current evidence ledger for all 19 items in the historical remediation programme, now superseded by [[../MVP_READINESS_PLAN]]. PR #18 merged this repository implementation on 2026-09-28. The ledger separates repository behavior from live production activation. A passing local or CI test is not evidence that a hosted scheduler, alert route, backup, or Stripe delivery is active.
 
 | Item | Repository evidence and result | Remaining release gate |
 | --- | --- | --- |

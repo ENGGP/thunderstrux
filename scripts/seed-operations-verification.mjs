@@ -57,6 +57,7 @@ try {
         nextAttemptAt: new Date("2099-01-01T00:00:00.000Z")
       }
     });
+    await transaction.notificationOutbox.create({ data: { eventKey: "p217-restore", recipient: "synthetic@example.com", template: "password_changed", privacy: "security", encryptedPayload: "restore-check-only", userId: actor.id, nextAttemptAt: new Date("2099-01-01T00:00:00.000Z") } });
     await transaction.auditLog.create({
       data: {
         organisationId: organisation.id,

@@ -4,6 +4,8 @@ import { assertStaffMfaConfiguration } from "@/lib/security/staff-mfa";
 import schemaContract from "@/config/schema-contract.json";
 import { legacyOrganisationAccessMode } from "@/lib/auth/access";
 
+import { assertNotificationConfiguration } from "@/lib/email/notification-crypto";
+
 const READINESS_TIMEOUT_MS = 2_000;
 
 export async function checkDatabaseReadiness() {
@@ -33,6 +35,7 @@ export async function checkDatabaseReadiness() {
 }
 
 export async function checkApplicationReadiness() {
+  assertNotificationConfiguration();
   legacyOrganisationAccessMode();
   assertStaffMfaConfiguration();
   await Promise.all([checkDatabaseReadiness(), checkRateLimitReadiness()]);

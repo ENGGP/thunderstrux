@@ -933,3 +933,7 @@ Responsibilities:
 
 - Verify signature.
 - Persist account status flags on the matching organisation.
+
+## General Notifications
+
+GET `/api/notifications?cursor=...` returns a private 25-job page of failed business notifications and `nextCursor`. Live current-tenant `orders:email_resend` authority is required; security jobs, recipients and encrypted payloads are excluded. Invalid cursor returns 400. POST `/api/notifications/[jobId]/requeue` accepts strict `{ reason }` (8?500 characters), requires trusted origin/session CSRF and resend rate limits, conceals foreign/security targets as 404 and returns `{ queued: true }`. Ineligible or changed jobs return 409; an audit is committed with the queue update. `/dashboard/notifications` uses the same scoped read service.

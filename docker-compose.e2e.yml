@@ -30,8 +30,9 @@ services:
       RATE_LIMIT_ENABLED: 'true'
       RATE_LIMIT_REDIS_URL: redis://redis:6379
       PORT: '3100'
-      RESEND_API_KEY: ''
-      EMAIL_FROM: ''
+      RESEND_API_KEY: re_capture_only
+      EMAIL_FROM: 'Thunderstrux <synthetic@example.com>'
+      THUNDERSTRUX_MAIL_CAPTURE_URL: http://mail-capture:8025/emails
     ports:
       - '127.0.0.1:3100:3100'
     command: [node, node_modules/next/dist/bin/next, start, --hostname, 0.0.0.0, --port, '3100']
@@ -40,8 +41,14 @@ services:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
+      mail-capture:
+        condition: service_started
       redis:
         condition: service_healthy
+  mail-capture:
+    image: thunderstrux-p216-app:local
+    command: [node, scripts/mail-capture.mjs]
+    restart: "no"
   redis:
     image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     healthcheck:
@@ -69,6 +76,10 @@ services:
     environment:
       DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
       INTEGRATION_DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
+      RESEND_API_KEY: re_capture_only
+      EMAIL_FROM: synthetic@example.com
+      NEXT_PUBLIC_APP_URL: http://localhost:3100
+      THUNDERSTRUX_MAIL_CAPTURE_URL: http://mail-capture:8025/emails
       E2E_BASE_URL: http://localhost:3100
       CI: ${CI:-}
     volumes:

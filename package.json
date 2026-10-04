@@ -21,6 +21,7 @@
     "test:e2e:cleanup": "node scripts/run-e2e.mjs cleanup",
     "test:payments:staging": "node scripts/run-e2e.mjs staging",
     "test:e2e:guards": "node --test tests/runner/*.test.mjs",
+    "notifications:process": "node scripts/process-notifications.mjs",
     "email:outbox:process": "node scripts/process-email-outbox.mjs",
     "compensation-refunds:process": "node scripts/process-compensation-refunds.mjs",
     "stale-orders:process": "node scripts/process-stale-orders.mjs",

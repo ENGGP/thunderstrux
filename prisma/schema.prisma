@@ -31,6 +31,7 @@ model User {
   mfaGrants               MfaGrant[]
   orderLifecycleEvents    OrderLifecycleEvent[]     @relation("OrderLifecycleActor")
   ownedOrganisation       Organisation?        @relation("OrganisationAccount")
+  notificationJobs        NotificationOutbox[]
   orders                  Order[]
   reservations            TicketReservation[]
 
@@ -49,6 +50,7 @@ model Organisation {
   stripeDetailsSubmitted Boolean            @default(false)
   createdAt           DateTime             @default(now())
   accountUser         User?                @relation("OrganisationAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
+  notificationJobs    NotificationOutbox[]
   members             OrganisationMember[]
   staff               OrganisationStaff[]
   staffInvites        OrganisationStaffInvite[]
@@ -489,4 +491,35 @@ enum OrderLifecycleSource {
   email_worker
   refund_worker
   legacy
+}
+
+model NotificationOutbox {
+  id String @id @default(cuid())
+  eventKey String
+  recipient String
+  template String
+  templateVersion Int @default(1)
+  privacy String
+  userId String?
+  organisationId String?
+  encryptedPayload String
+  status String @default("pending")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  processingStartedAt DateTime?
+  processingToken String?
+  firstAttemptAt DateTime?
+  expiresAt DateTime?
+  acceptedAt DateTime?
+  providerMessageId String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  @@unique([eventKey, recipient, templateVersion])
+  @@index([status, nextAttemptAt])
+  @@index([status, processingStartedAt])
+  @@index([organisationId, privacy, status, createdAt])
+  @@index([userId])
 }

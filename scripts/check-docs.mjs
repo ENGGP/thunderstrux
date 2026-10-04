@@ -6,7 +6,7 @@ const defaultRequiredFiles = [
   "AGENTS.md",
   "README.md",
   "docs/THUNDERSTRUX_PRD.md",
-  "docs/production-readiness-remediation-plan.md",
+  "docs/MVP_READINESS_PLAN.md",
   "docs/obsidian/Documentation Index.md",
   "docs/obsidian/Current Handover.md",
   "docs/obsidian/Engineering Delivery Workflow.md",

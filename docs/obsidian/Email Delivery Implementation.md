@@ -135,4 +135,14 @@ EMAIL_OUTBOX_MAX_ATTEMPTS=5
 EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS=600
 ```
 
-No attachments, QR codes, notification preferences, or full template system exists in the MVP.
+Ticket delivery has no attachments or QR codes. General notifications use the separate versioned system below.
+
+## General Notification Foundation (T02)
+
+`NotificationOutbox` is independent of ticket `EmailOutbox`. Application transactions insert unique event/recipient/template-version intents using `enqueueNotification`; provider I/O occurs after commit. Payloads (including raw security links) are AES-256-GCM encrypted with a separate 32-byte base64 `NOTIFICATION_ENCRYPTION_KEY`, authenticated to the job ID. Sender/rendered HTML/text are frozen at enqueue. Security jobs have no tenant and are never returned to organisation operators. Escaped templates reject foreign links. No raw provider responses or tokens enter notification diagnostics.
+
+Run `pnpm notifications:process` once per minute using `notification-worker`. Batches are bounded to 25; claims use SKIP LOCKED and rotating ten-minute leases. Five attempts use bounded backoff. Expired jobs cancel; T03 must cancel superseded security intents when the owning account service issues tokens. Provider acceptance is recorded separately from inbox delivery. Retry uses `notification/<job-id>` and the immutable payload; after 23 hours from first attempt, uncertain delivery requires provider review instead of automatic resend (Resend keys last 24 hours). Retry exhaustion emits `notification_outbox_retry_exhausted`. Monitor failed/stale/due counts and oldest due age; any exhaustion or a backlog older than five minutes needs investigation.
+
+`/dashboard/notifications` and GET `/api/notifications` show up to 25 failed business jobs to live `orders:email_resend` staff. POST `/api/notifications/<job-id>/requeue` requires origin/CSRF, rate limit, an 8 to 500 character review reason and live tenant authority; it writes an audit. Security/foreign jobs are concealed. Same-key requeue outside the safe provider window is refused; verify provider truth and let the owning service issue a new intent. Account-security jobs have no tenant requeue interface.
+
+Rollout: back up the notification key independently, deploy the additive migration once before app/worker rollout, and inject the key through `NOTIFICATION_ENCRYPTION_KEY_FILE` on hosted services. Readiness rejects a missing/invalid key. Retain the key with encrypted database backups; restore verification includes notification records. Application rollback retains the table/key and pauses the new worker; older code cannot produce/process these jobs. Hosted scheduling, domain/inbox delivery and alert receipt remain external activation evidence. Docker capture is confined to isolated p216 runs and never publishes a port.

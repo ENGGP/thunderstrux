@@ -48,6 +48,19 @@ services:
       - /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
       - /home/node/.cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
 
+  notification-worker:
+    read_only: true
+    init: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: ${OPS_PIDS_LIMIT:-128}
+    cpus: ${OPS_CPUS:-1.0}
+    mem_limit: ${OPS_MEMORY_LIMIT:-1g}
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
+      - /home/node/.cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
+
   stale-order-worker:
     read_only: true
     init: true

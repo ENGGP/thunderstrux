@@ -159,6 +159,7 @@ const runtime = [
   "DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public",
   `AUTH_SECRET=${randomBytes(32).toString("hex")}`,
   "MFA_ENFORCEMENT_MODE=off",
+  `NOTIFICATION_ENCRYPTION_KEY=${randomBytes(32).toString("base64")}`,
   "LEGACY_ORGANISATION_ACCESS_MODE=deny",
   `AUTH_URL=${origin}`,
   `NEXTAUTH_URL=${origin}`,
@@ -186,10 +187,10 @@ try {
   await assertContainerHardening(appContainer.trim(), "Production app");
   await compose(["exec", "-T", "app", "sh", "-c", "touch /tmp/thunderstrux-hardening-check && rm /tmp/thunderstrux-hardening-check"]);
 
-  await compose(["--profile", "workers", "create", "migration", "email-worker", "stale-order-worker", "compensation-worker"], {
+  await compose(["--profile", "workers", "create", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }
   });
-  for (const service of ["migration", "email-worker", "stale-order-worker", "compensation-worker"]) {
+  for (const service of ["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker"]) {
     const container = await compose(["--profile", "workers", "ps", "-a", "-q", service], { capture: true });
     await assertContainerHardening(container.trim(), service);
   }
@@ -245,6 +246,7 @@ try {
   await docker(["rm", signalContainer]);
 
   await compose(["run", "--rm", "email-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+  await compose(["run", "--rm", "notification-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
   await compose(["run", "--rm", "stale-order-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
   await compose(["run", "--rm", "compensation-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
 

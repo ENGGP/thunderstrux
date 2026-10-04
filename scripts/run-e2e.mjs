@@ -49,7 +49,7 @@ const compose = (...args) => command([...composeArgs, ...args]);
 const capture = (...args) => command([...composeArgs, ...args], true);
 async function save() { await writeFile(manifestFile, JSON.stringify(manifest, null, 2)); }
 async function createRuntime() {
-  await writeFile(runtimeFile, `AUTH_SECRET=${randomBytes(32).toString('hex')}\nMFA_ENFORCEMENT_MODE=${mode === 'test' ? 'enforce' : 'off'}\nMFA_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nLEGACY_ORGANISATION_ACCESS_MODE=deny\nSTRIPE_SECRET_KEY=\nSTRIPE_WEBHOOK_SECRET=whsec_p216_synthetic\nSTRIPE_CONNECT_WEBHOOK_SECRET=whsec_p216_connect\nE2E_RUN_ID=${runId}\n`, {mode: 0o600});
+  await writeFile(runtimeFile, `AUTH_SECRET=${randomBytes(32).toString('hex')}\nNOTIFICATION_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nMFA_ENFORCEMENT_MODE=${mode === 'test' ? 'enforce' : 'off'}\nMFA_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nLEGACY_ORGANISATION_ACCESS_MODE=deny\nSTRIPE_SECRET_KEY=\nSTRIPE_WEBHOOK_SECRET=whsec_p216_synthetic\nSTRIPE_CONNECT_WEBHOOK_SECRET=whsec_p216_connect\nE2E_RUN_ID=${runId}\n`, {mode: 0o600});
 }
 async function retainRecovery() {
   assertOwnedManifest(manifest, runId);
@@ -153,7 +153,7 @@ try {
         await writeFile(runtimeFile, runtime.replace('STRIPE_SECRET_KEY=\n', 'STRIPE_SECRET_KEY=sk_test_synthetic\n'));
         await compose('up', '-d', '--force-recreate', 'app');
         await ready();
-        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'webhooks.spec.ts', '--project=desktop');
+        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'webhooks.spec.ts', 'notifications.spec.ts', '--project=desktop');
       }
     }
     cancellation.signal.throwIfAborted();

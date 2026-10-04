@@ -16,7 +16,7 @@ Read these in order before implementation:
 2. [[Engineering Delivery Workflow]] — required planning, branching, implementation, validation, review, PR, and handover procedure.
 3. [[Non-Blocking Issue Register|Issue and Defect Register]] — open defects, accepted debt, external gates, and resolved defect history.
 4. [[Thunderstrux Codebase Map]] and [[Architecture Overview]] — repository layout and system boundaries.
-5. [[../THUNDERSTRUX_PRD|Thunderstrux PRD]] and [[../production-readiness-remediation-plan|Production Readiness Remediation Plan]] — product intent and production-risk roadmap.
+5. [[../THUNDERSTRUX_PRD|Thunderstrux PRD]] and [[../MVP_READINESS_PLAN|MVP Readiness Plan]] — product intent and production-risk roadmap.
 
 Then read the living reference for the subsystem being changed.
 

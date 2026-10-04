@@ -167,3 +167,7 @@ Current shared visual direction:
 
 - `DashboardShell` does not yet compute the active nav item from the current route; `Dashboard` is always styled active.
 - New event route still shows a top page heading plus the form title.
+
+## Notification Recovery
+
+The shared DashboardShell owns the Notifications navigation link. `/dashboard/notifications` requires live email-resend authority and renders a bounded failed-business-job list, review-reason forms, accessible status/error feedback and pagination. Account-security jobs are private and absent.

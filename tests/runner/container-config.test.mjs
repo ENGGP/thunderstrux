@@ -33,6 +33,7 @@ test("hosted contract requires external services, file secrets, and runtime hard
     "DATABASE_URL",
     "AUTH_SECRET",
     "MFA_ENCRYPTION_KEY",
+    "NOTIFICATION_ENCRYPTION_KEY",
     "RATE_LIMIT_REDIS_URL",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
@@ -43,6 +44,7 @@ test("hosted contract requires external services, file secrets, and runtime hard
     services: {
       app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true" }, healthcheck: { test: ["CMD", "node"] } }),
       migration: hardenedService({ profiles: ["tools"] }),
+      "notification-worker": hardenedService({ profiles: ["workers"] }),
       "email-worker": hardenedService({ profiles: ["workers"] }),
       "stale-order-worker": hardenedService({ profiles: ["workers"] }),
       "compensation-worker": hardenedService({ profiles: ["workers"] })

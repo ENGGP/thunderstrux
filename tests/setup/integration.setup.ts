@@ -16,6 +16,9 @@ beforeEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   // No developer .env or real provider credentials are needed in CI.
+  vi.stubEnv("NOTIFICATION_ENCRYPTION_KEY", Buffer.alloc(32, 8).toString("base64"));
+  vi.stubEnv("EMAIL_FROM", "synthetic@example.com");
+  vi.stubEnv("THUNDERSTRUX_MAIL_CAPTURE_URL", "");
   vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_integration_placeholder");
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_integration_placeholder");
   vi.stubEnv("STRIPE_CONNECT_WEBHOOK_SECRET", "whsec_connect_integration_placeholder");

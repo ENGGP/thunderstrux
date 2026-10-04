@@ -196,16 +196,20 @@ export async function sendWithResend({
   subject,
   text,
   html,
-  idempotencyKey
+  idempotencyKey,
+  from: frozenFrom,
+  notification = false
 }: {
   to: string;
   subject: string;
   text: string;
   html: string;
   idempotencyKey?: string;
+  from?: string;
+  notification?: boolean;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
+  const from = frozenFrom ?? process.env.EMAIL_FROM;
 
   if (!apiKey || !from) {
     throw new TicketEmailConfigurationError();
@@ -220,9 +224,18 @@ export async function sendWithResend({
     headers["Idempotency-Key"] = idempotencyKey;
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
+  let endpoint = "https://api.resend.com/emails";
+  if (notification && process.env.THUNDERSTRUX_MAIL_CAPTURE_URL) {
+    if (!/^p216-[a-f0-9]{24}$/.test(process.env.E2E_RUN_ID ?? "") ||
+        process.env.THUNDERSTRUX_MAIL_CAPTURE_URL !== "http://mail-capture:8025/emails") {
+      throw new TicketEmailConfigurationError("Mail capture requires an isolated E2E run");
+    }
+    endpoint = process.env.THUNDERSTRUX_MAIL_CAPTURE_URL;
+  }
+  const response = await fetch(endpoint, {
     method: "POST",
     headers,
+    signal: AbortSignal.timeout(15000),
     body: JSON.stringify({
       from,
       to,

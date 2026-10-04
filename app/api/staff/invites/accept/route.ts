@@ -1,13 +1,16 @@
+import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
 import {
   badRequest,
+  forbidden,
   internalError,
   unauthorized,
   validationError
 } from "@/lib/api/errors";
 import {
   AuthenticationRequiredError,
-  requireAuthenticatedUser
+  OrganisationAccessError,
+  requireVerifiedUser
 } from "@/lib/auth/access";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { writeAuditLog } from "@/lib/staff/audit";
@@ -32,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const user = await requireAuthenticatedUser();
+    const user = await requireVerifiedUser();
     const result = await acceptOrganisationStaffInvite({
       token: validation.data.token,
       userId: user.id,
@@ -58,6 +61,8 @@ export async function POST(request: Request) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
     }
+
+    if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) return forbidden(error.message);
 
     if (error instanceof StaffInviteError) {
       return badRequest(error.message);

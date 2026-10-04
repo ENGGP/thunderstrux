@@ -6,6 +6,8 @@ export const credentialsSchema = z.object({
 });
 
 export const signupSchema = credentialsSchema.extend({
+  password: z.string().min(8).max(200).refine(value => Buffer.byteLength(value, "utf8") <= 72, "Password must be at most 72 UTF-8 bytes"),
+  callbackUrl: z.string().max(1000).optional(),
   accountRole: z.enum(["member", "organisation"]).default("member"),
   firstName: z.string().trim().max(80).optional(),
   lastName: z.string().trim().max(80).optional()

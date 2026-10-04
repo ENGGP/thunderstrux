@@ -11,6 +11,10 @@ model User {
   id                      String               @id @default(cuid())
   email                   String               @unique
   password                String
+  emailVerifiedAt         DateTime?
+  authVersion             Int                  @default(0)
+  disabledAt              DateTime?
+  authTokens              AuthToken[]
   accountRole             AccountRole          @default(member)
   firstName               String?
   lastName                String?
@@ -36,6 +40,25 @@ model User {
   reservations            TicketReservation[]
 
   @@index([accountRole])
+}
+
+model AuthToken {
+  id             String   @id @default(cuid())
+  tokenHash      String   @unique
+  purpose        String
+  userId         String
+  email          String
+  authVersion    Int
+  callbackPath   String   @default("/dashboard")
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  invalidatedAt  DateTime?
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications  NotificationOutbox[]
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
 }
 
 model Organisation {
@@ -494,6 +517,9 @@ enum OrderLifecycleSource {
 }
 
 model NotificationOutbox {
+  authTokenId         String?
+  authToken           AuthToken? @relation(fields: [authTokenId], references: [id], onDelete: SetNull)
+  @@index([authTokenId])
   id String @id @default(cuid())
   eventKey String
   recipient String

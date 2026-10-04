@@ -1,5 +1,6 @@
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
+import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
@@ -266,6 +267,7 @@ export async function createEventCheckout({
 
     const pendingOrder = await runSerializableReservationTransaction(
       async (tx) => {
+        await lockVerifiedAccount(tx, userId);
         await tx.$queryRaw`SELECT id FROM "TicketType" WHERE id = ${ticketType.id} FOR UPDATE`;
         await expireOldActiveReservations(tx, {
           now: reservationNow,
@@ -431,7 +433,7 @@ export async function createEventCheckout({
 
     return { url: session.url };
   } catch (error) {
-    if (error instanceof CheckoutCreationError) {
+    if (error instanceof CheckoutCreationError || error instanceof AccountVerificationError) {
       throw error;
     }
 

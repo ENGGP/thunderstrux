@@ -148,6 +148,12 @@ Rules:
 - `accountRole` is `member` or `organisation`.
 - Old email/password-only requests default to `member`.
 - Member signup may include `firstName` and `lastName`.
+- Signup returns generic `202 {accepted:true}` for both new and existing normalized emails. It does not return a user DTO or automatically log in. New account/token/encrypted notification creation is atomic; `callbackUrl` is optional and reduced to a safe internal path.
+- New passwords are at least 8 characters and at most 72 UTF-8 bytes. Signup/verification issuance require enabled fail-closed Redis (25/IP/hour, 3/email/hour shared issuance budgets).
+
+### Verification
+
+POST `/api/auth/verification/request` accepts `{email, callbackUrl?}` and returns generic `202 {accepted:true}`. POST `/api/auth/verification/confirm` accepts `{token}` and returns `{verified:true, callbackUrl}` or generic invalid/expired-link `400`; IP/token redemption limits are 50/10 per ten minutes. Both require trusted origin, no-store responses and explicit POST. Email/token authority is independent of session cookies; these anonymous endpoints do not require cookie CSRF. Raw tokens travel in email fragments and POST bodies; no GET consumption. Latest token per purpose wins, expires after 24 hours and is single use. Disabled identities, wrong purpose/email/version, expiry, replay and superseded tokens are denied. Protected purchases/joins/bootstrap/invite acceptance require live verified identity; profile/login remain available while unverified.
 
 ### `PATCH /api/me/profile`
 

@@ -39,7 +39,7 @@ export async function listFailedBusinessNotifications(organisationId: string, cu
 
 export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   eventKey: string; recipient: string; template: NotificationTemplate; payload: unknown;
-  userId?: string; organisationId?: string; expiresAt?: Date; templateVersion?: number;
+  userId?: string; organisationId?: string; expiresAt?: Date; templateVersion?: number; authTokenId?: string;
 }) {
   const recipient = z.string().trim().toLowerCase().email().max(320).parse(input.recipient);
   const template = notificationTemplateSchema.parse(input.template);
@@ -53,8 +53,8 @@ export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   const rendered = renderedNotificationSchema.parse({ ...renderNotification(template, input.payload), from: process.env.EMAIL_FROM });
   const encryptedPayload = encryptNotification(rendered, id);
   const rows = await tx.$queryRaw<Array<{ id: string }>>`
-    INSERT INTO "NotificationOutbox" ("id", "eventKey", "recipient", "template", "templateVersion", "privacy", "userId", "organisationId", "encryptedPayload", "expiresAt", "updatedAt")
-    VALUES (${id}, ${eventKey}, ${recipient}, ${template}, ${templateVersion}, ${privacy}, ${input.userId ?? null}, ${input.organisationId ?? null}, ${encryptedPayload}, ${input.expiresAt ?? null}, NOW())
+    INSERT INTO "NotificationOutbox" ("id", "eventKey", "recipient", "template", "templateVersion", "privacy", "userId", "organisationId", "encryptedPayload", "expiresAt", "authTokenId", "updatedAt")
+    VALUES (${id}, ${eventKey}, ${recipient}, ${template}, ${templateVersion}, ${privacy}, ${input.userId ?? null}, ${input.organisationId ?? null}, ${encryptedPayload}, ${input.expiresAt ?? null}, ${input.authTokenId ?? null}, NOW())
     ON CONFLICT ("eventKey", "recipient", "templateVersion") DO NOTHING RETURNING "id"
   `;
   return { enqueued: rows.length === 1, id: rows[0]?.id ?? null };
@@ -78,6 +78,19 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
   const fence = { id: claim.id, status: "processing", processingToken: claim.processingToken };
   const job = await prisma.notificationOutbox.findFirst({ where: fence });
   if (!job) return "skipped";
+  if (job.eventKey.startsWith("auth/") && !job.authTokenId) {
+    await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
+    return "cancelled";
+  }
+  if (job.authTokenId) {
+    const token = await prisma.authToken.findUnique({ where: { id: job.authTokenId }, include: { user: { select: { disabledAt: true, authVersion: true, email: true, emailVerifiedAt: true } } } });
+    if (!token || token.consumedAt || token.invalidatedAt || token.expiresAt <= now || token.user.disabledAt ||
+        token.authVersion !== token.user.authVersion || token.email !== token.user.email ||
+        (token.purpose === "verify_account" && (token.user.emailVerifiedAt || job.recipient !== token.email || job.userId !== token.userId || job.template !== "verify_account"))) {
+      await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
+      return "cancelled";
+    }
+  }
   if (job.expiresAt && job.expiresAt <= now) {
     await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "expired", processingToken: null } });
     return "cancelled";

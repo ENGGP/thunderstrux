@@ -15,6 +15,9 @@ export type RateLimitPolicy =
   | "login_ip_global"
   | "signup_ip"
   | "signup_email"
+  | "account_token_ip"
+  | "account_token_digest"
+  | "account_security_change"
   | "organisation_create"
   | "checkout_create"
   | "order_resend"
@@ -43,6 +46,7 @@ type EnforceRateLimitInput = {
   policy: RateLimitPolicy;
   request: Request;
   keyParts: Array<string | number | null | undefined>;
+  required?: boolean;
 };
 
 const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
@@ -50,6 +54,9 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   login_ip_global: { limit: 50, windowSeconds: 10 * 60, failureMode: "closed" },
   signup_ip: { limit: 25, windowSeconds: 60 * 60, failureMode: "closed" },
   signup_email: { limit: 3, windowSeconds: 60 * 60, failureMode: "closed" },
+  account_token_ip: { limit: 50, windowSeconds: 600, failureMode: "closed" },
+  account_token_digest: { limit: 10, windowSeconds: 600, failureMode: "closed" },
+  account_security_change: { limit: 5, windowSeconds: 3600, failureMode: "closed" },
   organisation_create: {
     limit: 5,
     windowSeconds: 60 * 60,
@@ -209,10 +216,11 @@ function getBackend(): RateLimitBackend {
 export async function enforceRateLimit({
   policy,
   request,
-  keyParts
+  keyParts,
+  required = false
 }: EnforceRateLimitInput): Promise<NextResponse | null> {
   if (!isRateLimitEnabled()) {
-    return null;
+    return required ? serviceUnavailable(PROTECTION_UNAVAILABLE_MESSAGE) : null;
   }
 
   const config = policies[policy];

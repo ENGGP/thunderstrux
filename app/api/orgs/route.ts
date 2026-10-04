@@ -1,3 +1,4 @@
+import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
 import {
   badRequest,
@@ -12,7 +13,8 @@ import {
   getOrganisationAccessForUser,
   mapOrganisationAccessToOrganisations,
   requireAccountRole,
-  requireAuthenticatedUser
+  requireAuthenticatedUser,
+  requireVerifiedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
@@ -58,12 +60,13 @@ export async function POST(request: Request) {
 
   try {
     user = await requireAccountRole("organisation");
+    await requireVerifiedUser();
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
     }
 
-    if (error instanceof OrganisationAccessError) {
+    if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) {
       return forbidden(error.message);
     }
 
@@ -100,6 +103,7 @@ export async function POST(request: Request) {
 
     try {
       const organisation = await prisma.$transaction(async (tx) => {
+        await lockVerifiedAccount(tx, user.id);
         const existingOrganisation = await tx.organisation.findUnique({
           where: {
             accountUserId: user.id
@@ -156,7 +160,7 @@ export async function POST(request: Request) {
         continue;
       }
 
-      if (error instanceof OrganisationAccessError) {
+      if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) {
         return forbidden(error.message);
       }
 

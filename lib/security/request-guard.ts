@@ -106,9 +106,11 @@ export function enforceTrustedMutationRequest(request: Request) {
 }
 
 function enforceCsrfToken(request: Request) {
-  // Signup is anonymous. Auth.js routes have their own CSRF protection, and
+  // These endpoints use email/token authority, never the session cookie. A
+  // stale login cookie must not prevent anonymous verification or signup.
+  // Auth.js routes have their own CSRF protection, and
   // signed Stripe webhook routes do not call this guard.
-  if (getRequestPath(request) === "/api/auth/signup" || !hasAuthSessionCookie(request)) {
+  if (["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm"].includes(getRequestPath(request)) || !hasAuthSessionCookie(request)) {
     return null;
   }
   if (verifyCsrfTokenForRequest(request)) return null;

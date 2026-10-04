@@ -1,13 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { SignupForm } from "@/components/auth/signup-form";
+import { safeReturnPath } from "@/lib/security/safe-return-path";
 import { Card } from "@/components/ui/card";
-
-function getSafeCallbackUrl(callbackUrl: string | undefined): string {
-  return callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")
-    ? callbackUrl
-    : "/dashboard";
-}
 
 export default async function SignupPage({
   searchParams
@@ -16,7 +11,7 @@ export default async function SignupPage({
 }) {
   const session = await auth();
   const { callbackUrl } = await searchParams;
-  const safeCallbackUrl = getSafeCallbackUrl(callbackUrl);
+  const safeCallbackUrl = safeReturnPath(callbackUrl);
 
   if (session?.user) {
     redirect(safeCallbackUrl);

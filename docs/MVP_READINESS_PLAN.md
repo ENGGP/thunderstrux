@@ -29,7 +29,7 @@ Verified documentation discrepancies: proxy.ts currently redirects anonymous eve
 4. One numbered task is a focused PR target. If necessary, split a large task into ordered a/b substeps with separate definitions of done before coding. The parent stays incomplete until all substeps pass.
 5. Check a task only after its definition of done and latest-head checks pass. Append evidence: date, PR/merge, tested executable revision, migration IDs, test commands/results, limitations and retained resources. Update relevant living references/issue statuses; material current state goes in Current Handover, not a new handover.
 
-**Evidence ledger:** All T/H tasks below start unchecked. This document defines future work; no new feature acceptance is claimed. Add completion entries here as tasks are delivered.
+**Evidence ledger:** Checked tasks below link their implementation and verification evidence. Unchecked tasks remain required work. Baseline/tooling acceptance does not establish acceptance of new product features; add completion entries as each task is delivered.
 
 ### Inherited delivery and testing requirements
 
@@ -142,19 +142,32 @@ Every T task is required before claiming the candidate feature-complete. Credent
 ### Foundation and identity
 
 #### T01 — Verify baseline and safe developer workflow
-- [ ] Complete. **Dependencies:** none.
+- [x] Complete. **Dependencies:** none. Evidence: T01 ledger below and [PR #28](https://github.com/ENGGP/thunderstrux/pull/28); merge only its latest green head.
 - **Current/goal:** Docker runners, guards and CI already exist; establish fresh evidence, don't rebuild them.
 - **Code:** Verify package scripts, docker-compose.dev.yml, run-integration-tests/run-e2e/operations runners, tests/helpers/test-data.ts and db-reset.ts. Inventory routes/tests/issues. Extend fixtures/reset/cleanup as each later schema lands; keep synthetic seed and public reads separate.
 - **Tests/definition of done:** Isolated full integration/E2E/operations, typecheck/build/audit/docs pass with actual counts/revisions; non-_test refusal, occupied-port and run-owned cleanup checks pass. No development reset, real user data or cache files committed.
 
-**T01 implementation/evidence ledger — 2026-10-04 (qualification pending):**
+**T01 implementation/evidence ledger — 2026-10-04 (implemented and qualified):**
 
 - Acceptance: verify the current baseline and fix confirmed test-tooling gaps; preserve product routes/services/schema, provider business logic and unrelated work. Branch `codex/t01-baseline-verification` starts at refreshed main `598f922`. Test reset tooling is High risk; no runtime rollout or database migration is needed.
 - Shared integration URL validation requires PostgreSQL, one simple database name ending in `_test`, and refuses malformed paths before reset/truncate. Existing variable precedence and E2E's stricter exact target remain intact. Runner regressions cover unsafe suffixes, paths, malformed inputs, secret-safe errors and actual occupied-port refusal before resources are created.
-- A new integration regression seeds every current Prisma model, including MFA, email, compensation and unlinked refund records, checks reset removes all rows, and repeats reset. Existing CASCADE behavior is retained unless this test proves a gap.
+- A new integration regression seeds every current Prisma model, including MFA, email, compensation and unlinked refund records, checks reset removes all rows, and repeats reset. It passed for all 18 models; existing CASCADE behavior is retained.
 - Pre-test inventory: development app/db/Redis containers `22a775b9a8a4`, `eea5ff5f14b2`, `e745fe68dac1`; development liveness HTTP 200. Database/Redis/dependency volumes and the unrelated `personal_website_postgres_data` volume must survive. Docker 29.8.0/Compose 5.5.1; host Node 22.18.0 is orchestration only, qualified application/tests use pinned Node 22.23.3 and pnpm 10.34.5.
 - Primary-folder documentation check is affected by the pre-existing deleted tracked remediation plan and untracked `docs/cache/`. Preserve both; validate intended tracked documentation in a temporary snapshot and CI, and record this workspace limitation without weakening the checker.
-- Qualification results, run IDs, executable revision, latest-head CI and cleanup verification are appended below before checking T01 complete. Synthetic checks do not claim actual Stripe/email/hosted acceptance.
+- Unchanged baseline at `598f922`: run `p216-b6cc47e799b8879fd9db34b8` passed 247 integration tests. Revised integration/reset content at `2c17aee`: run `p216-ffdce4baee62a6b0c3b52ae0` passed 249 tests in 30 files, typecheck, production build and dependency audit (no known vulnerabilities). Both passed cleanup. All 30 runner regressions passed again under pinned Node on final executable revision `f5cab84`.
+- Operations run `p217-ci-089550e84f` passed its functional rehearsal but final inventory found three created workers left behind. DEF-014 fixes profile-aware cleanup and adds a real zero-resource assertion to the rehearsal; final run `p217-ci-86f2620c60` exited successfully after deploy, hardening, worker execution, backup/restore, dependency recovery, rollback, migration-failure blocking and verified cleanup. The previous three owned containers were verified and removed individually. Five operations guard tests passed.
+- Both pinned Hadolint checks passed; the production image scan returned zero fixable HIGH/CRITICAL findings with CI-equivalent Trivy flags. The tracked documentation snapshot passed (30 files). The deliberate second-pass review found no route/service/schema/lockfile or production activation changes; no migration or data rollback is needed for this tooling-only change.
+- Final E2E/CI and cleanup qualification is recorded below. Earlier runs on `2c17aee` are not counted after the cleanup change. Synthetic checks do not claim actual Stripe/email/hosted acceptance.
+
+Final executable qualification revision: `f5cab84` ([PR #28](https://github.com/ENGGP/thunderstrux/pull/28)). Three consecutive complete local E2E runs passed unchanged executable/test/configuration content, each with 2 enforced-MFA, 9 desktop/mobile and 6 signed-webhook tests, no failures/skips/timeouts/interruption:
+
+1. `p216-81080d656b7694702add8430`
+2. `p216-4d2a0877049b0abecb29b8ea`
+3. `p216-b99dba70aec488754956db2b`
+
+Each manifest records `passed=true` and `cleanupComplete=true`. Explicit repeated cleanup succeeded for all eight task-owned baseline/E2E runs. Final Docker inspection exactly matched the initial three development container IDs, four volumes and four networks; development liveness remained HTTP 200. The operations run's zero-resource assertion passed. Manifests/reports remain ignored local evidence; unrelated user files and backup archives are preserved.
+
+CI E2E qualification on `f5cab84` passed [attempt 1](https://github.com/ENGGP/thunderstrux/actions/runs/37188274919/attempts/1), [attempt 2](https://github.com/ENGGP/thunderstrux/actions/runs/37188274919/attempts/2) and [attempt 3](https://github.com/ENGGP/thunderstrux/actions/runs/37188274919/attempts/3). [Static validation, integration and production build](https://github.com/ENGGP/thunderstrux/actions/runs/37188274958) and [operations validation](https://github.com/ENGGP/thunderstrux/actions/runs/37188274918) also passed. The final evidence-only commit requires fresh [all five PR checks](https://github.com/ENGGP/thunderstrux/pull/28/checks) before merge; it does not restart executable qualification. After merge and refresh of main, continue with T02.
 
 | Existing capability | Regression evidence required for T01 | Known remainder stays in later tasks |
 | --- | --- | --- |

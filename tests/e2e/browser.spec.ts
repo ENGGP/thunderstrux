@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { test, expect, prisma, login, createEvent, createOrganisationAccount, createMember, createOrganisationStaff } from './fixtures';
 import { createOrder } from '@/tests/helpers/test-data';
 
@@ -55,6 +56,35 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await page.getByLabel('First name').fill('Browser');
   await page.getByLabel('Last name').fill('Member');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'If this address is eligible' })).toBeVisible();
+  await expect(page).toHaveURL(/\/signup\?/);
+  const identity = await prisma.user.findUniqueOrThrow({ where: { email } });
+  expect(identity.emailVerifiedAt).toBeNull();
+  await login(page, email, `/events/${data.event.id}`);
+  await expect(page.getByText('Verify your email to use purchases and society features.')).toBeVisible();
+  const csrf = await (await page.request.get('/api/security/csrf')).json();
+  const blocked = await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': csrf.token }, data: { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1 } });
+  expect(blocked.status()).toBe(403);
+  expect((await blocked.json()).error.message).toContain("Verify your email");
+  execFileSync('node', ['scripts/process-notifications.mjs'], { stdio: 'pipe' });
+  const captured = await (await page.request.get('http://mail-capture:8025/messages')).json();
+  const message = captured.find((item: { data: { to: string } }) => item.data.to === email);
+  const link = message.data.text.split('\n\n').at(-1);
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page).toHaveURL('http://localhost:3100/');
+  await page.goto(link);
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
+  await expect.poll(() => page.url()).not.toContain('#');
+  expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).toBeNull();
+  await page.getByRole('button', { name: 'Verify email', exact: true }).click();
+  await expect(page.getByText('Email verified. Sign in to continue.')).toBeVisible();
+  expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).not.toBeNull();
+  const anonymousSession = await (await page.request.get('/api/auth/session')).json();
+  expect(anonymousSession?.user).toBeFalsy();
+  await page.getByRole('link', { name: 'Sign in to continue', exact: true }).click();
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill('password123');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(`http://localhost:3100/events/${data.event.id}`);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
@@ -68,7 +98,8 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await expect(page.getByText('Use a different email or sign in')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'If this address is eligible' })).toBeVisible();
+  await expect(page).toHaveURL('http://localhost:3100/signup');
 });
 
 test('external callback remains on app origin', async ({ page, data }) => {

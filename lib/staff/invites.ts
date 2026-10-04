@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { OrganisationStaffRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
 
 export class StaffInviteError extends Error {
   constructor(message: string) {
@@ -75,6 +76,8 @@ export async function acceptOrganisationStaffInvite({
   }
 
   return prisma.$transaction(async (tx) => {
+    const liveUser = await lockVerifiedAccount(tx, userId);
+    if (liveUser.email !== normalisedEmail) throw new StaffInviteError("Signed-in email has changed; sign in again");
     const invite = await tx.organisationStaffInvite.findUnique({
       where: { tokenHash },
       select: {

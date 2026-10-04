@@ -70,12 +70,22 @@ export async function requireAuthenticatedUser() {
     throw new AuthenticationRequiredError();
   }
 
+  const liveUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, accountRole: true, disabledAt: true, emailVerifiedAt: true } });
+  if (!liveUser || liveUser.disabledAt) throw new AuthenticationRequiredError();
+
   return {
     id: userId,
     mfaSessionId: session.user.staffMfaSessionId,
-    accountRole: session.user.accountRole ?? "member",
-    email: session.user.email
+    accountRole: liveUser.accountRole,
+    email: liveUser.email,
+    emailVerifiedAt: liveUser.emailVerifiedAt
   };
+}
+
+export async function requireVerifiedUser() {
+  const user = await requireAuthenticatedUser();
+  if (!user.emailVerifiedAt) throw new OrganisationAccessError("Verify your email before using this feature");
+  return user;
 }
 
 export async function requireAccountRole(accountRole: AccountRole) {

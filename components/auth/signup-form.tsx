@@ -1,23 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { signIn } from "next-auth/react";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
-type SignupResponse = {
-  user: {
-    id: string;
-    email: string;
-    accountRole: "member" | "organisation";
-    firstName: string | null;
-    lastName: string | null;
-    onboardingCompletedAt: string | null;
-    createdAt: string;
-  };
-};
+type SignupResponse = { accepted: boolean };
 
 export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
   const [email, setEmail] = useState("");
@@ -45,6 +34,7 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
         },
         body: JSON.stringify({
           email,
+          callbackUrl,
           password,
           accountRole,
           firstName: accountRole === "member" ? firstName : undefined,
@@ -52,20 +42,8 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
         })
       });
 
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false
-      });
-
-      if (result?.error) {
-        setError("Account created, but sign in failed. Please sign in.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      setSuccessMessage("Account created. Redirecting...");
-      window.location.href = callbackUrl;
+      setSuccessMessage("If this address is eligible, a verification email has been sent. Check your inbox, or sign in and request a new link.");
+      setIsSubmitting(false);
     } catch (signupError) {
       setError(
         getClientErrorMessage(
@@ -80,12 +58,12 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </div>
       ) : null}
       {successMessage ? (
-        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <div role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           {successMessage}
         </div>
       ) : null}

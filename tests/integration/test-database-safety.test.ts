@@ -51,6 +51,8 @@ test("reset clears every current model including dependent and unlinked recovery
 
   await prisma.notificationOutbox.create({ data: { eventKey: "reset-fixture", recipient: "synthetic@example.com", template: "password_changed", privacy: "security", encryptedPayload: "synthetic", userId: member.id } });
 
+  await prisma.authToken.create({ data: { userId: member.id, tokenHash: unique("synthetic-auth-token"), purpose: "verify_account", email: member.email, authVersion: 0, expiresAt: new Date(Date.now() + 60000) } });
+
   // Derived from the schema so adding a model requires an intentional fixture
   // update; table names never come from request or environment input.
   const delegates = prisma as unknown as Record<string, { count(): Promise<number> }>;

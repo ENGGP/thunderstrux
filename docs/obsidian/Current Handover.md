@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-04
+last-reviewed: 2026-10-05
 owner: engineering
 ---
 
@@ -8,7 +8,7 @@ owner: engineering
 
 ## Snapshot
 
-Thunderstrux is a Docker-first Next.js 16 App Router SaaS for student societies. As verified on 2026-10-04, PRs #24–#27 are merged; the starting main commit for T01 baseline verification is `598f922`.
+Thunderstrux is a Docker-first Next.js 16 App Router SaaS for student societies. T02 merged through PR #31; refreshed main `cd4fc39` is the T03 implementation base.
 
 - [PR #18](https://github.com/ENGGP/thunderstrux/pull/18) merged the production-readiness verification work, compensation refunds, strict origin/session-bound CSRF, official Redis client, failed-email requeue, ownership drift tooling, failed-order constraint, staff MFA, and production legacy-access switch.
 - [PR #20](https://github.com/ENGGP/thunderstrux/pull/20) updated CI Node 22 from 22.23.2 to 22.23.3.
@@ -38,12 +38,14 @@ Read [[Documentation Index]], [[Engineering Delivery Workflow]], and [[Non-Block
 - Development uses `docker-compose.yml` plus `docker-compose.dev.yml`. Development startup generates Prisma Client, deploys migrations, and starts Next dev.
 - Production uses a built non-root image. `pnpm ops:deploy` runs the one-shot `migration` service before starting the candidate app. The hardened overlay adds a read-only root filesystem, dropped capabilities, no-new-privileges, PID/CPU/memory limits, and reviewed writable temporary paths.
 - `/api/health` is liveness. `/api/health/ready` checks database/schema, required migrations, enabled Redis, MFA configuration, and legacy-access configuration with bounded failures.
-- The migration chain contains 26 migrations. The newest are:
+- The T03 branch migration chain contains 28 migrations; the new verification migration is pending PR qualification, not deployed. The newest are:
   - `20260628010000_staff_accounts_foundation`
   - `20260921010000_formal_payment_lifecycle`
   - `20260922010000_failed_order_timestamp_constraint`
   - `20260922020000_staff_mfa`
   - `20260927010000_compensation_refunds`
+  - `20261004010000_notification_foundation`
+  - `20261004020000_account_verification` (T03 qualification)
 - Node is aligned on 22.23.3 across the package engine, Docker, E2E, and CI. Runtime images are digest pinned and Renovate submits reviewed digest updates without automerge.
 
 ## Production Release Gates
@@ -85,6 +87,8 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Active Account Lifecycle Work
 
-T02 is in progress on `codex/t02-notification-foundation`, based on refreshed main `d852c4e`. Acceptance: additive encrypted general notification outbox, bounded/fenced delivery, private security jobs and scoped business requeue; retain ticket semantics. High risk: full integration/browser/operations, failure/concurrency, migration/reset/restore, typecheck/build/audit/docs and latest-head five checks are required. The user authorised committing the deleted root remediation document; the cached historical copy remains unchanged. T03 and T04 (recovery/settings, email changes, closure) remain required. No production activation or development migration is implied.
+T02 is merged as `cd4fc39` (PR #31) with all five checks on final head `fb35fb2`. T03 starts from refreshed main `cd4fc39` on `codex/t03-account-verification`. Acceptance: generic signup with atomic hashed-token/encrypted-notification issuance, explicit POST verification/resend, live verified identity gates for purchases/joins/bootstrap/invites and browser verification. High risk: full integration/E2E/operations, concurrency/rollback/expiry/replay/disabled/Redis denial, additive migration/reset/restore, typecheck/build/audit/docs and latest-head five checks. Legacy identities remain unverified and can log in/request verification. Roll out migration before app/worker; legacy app rollback retains schema/queued jobs and restores pre-verification purchase rules, so pause protected traffic when rolling back. No development or production migration is authorised by this validation work.
 
-[PR #31](https://github.com/ENGGP/thunderstrux/pull/31) implements T02 at executable revision `f4fc1ae`. Local baseline passed 261 integration tests, typecheck/build/audit; three complete local E2E runs and the operations deployment/restore/rollback rehearsal passed with cleanup. All five CI checks and three repeat CI browser runs passed on this revision; final documentation-head validation remains. Failed operations diagnostics and database backups are retained. Exact run IDs and limitations are in the readiness-plan evidence ledger. Next safe action: complete PR final-head checks/merge, refresh main, then implement T03; T04 has accepted a/b/c definitions for recovery/settings, email changes and permanent closure.
+T02's final evidence-head checks passed before PR #31 merged; detailed local/CI qualification is in the readiness-plan ledger. The user's root remediation-document deletion is now reflected in GitHub; the cache remains unchanged. Development volumes, database backups and failed operations diagnostics are preserved.
+
+T03 PR #32 implements verification at executable revision `76fe73e`. Final baseline passed 273 integration tests, typecheck/build/audit and reset for all 20 models. Three unchanged-content local and CI browser qualification runs and all five executable-head checks passed; final documentation-head CI remains before merge. Operations passed token/notification-row restore and deployment/rollback with cleanup. Detailed IDs and limitations are in the readiness-plan ledger. T04a recovery/settings, T04b email changes and T04c permanent closure remain required. Next safe action: finish final-head checks/merge, refresh main, then implement T04a. Independent review and hosted activation remain external gates.

@@ -62,6 +62,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             id: true,
             email: true,
             password: true,
+            disabledAt: true,
             accountRole: true,
             firstName: true,
             lastName: true,
@@ -69,7 +70,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           }
         });
 
-        if (!user) {
+        if (!user || user.disabledAt) {
           return null;
         }
 

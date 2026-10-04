@@ -95,8 +95,13 @@ Signup:
 ```
 
 - POSTs to `/api/auth/signup`
-- On successful user creation, immediately signs in with credentials
-- Redirects to `callbackUrl`
+- Returns the same `202 {accepted:true}` for eligible new and existing addresses; it does not sign in automatically or disclose duplicate addresses.
+- Atomically creates an unverified account, a purpose-bound token digest and an encrypted notification. New passwords require at least 8 characters and no more than 72 UTF-8 bytes. Existing password login remains compatible.
+- `/verify-email` removes the token fragment from browser history, then requires an explicit POST confirmation; GET/prefetch never consumes a token. Verification lasts 24 hours. Resend invalidates the previous token and cancels its queued/claimed intent; workers independently suppress obsolete tokens.
+- Verification request and confirmation require trusted origin and enabled fail-closed Redis limits. They use email/token authority and deliberately ignore login-cookie CSRF authority, so stale cookies do not block verification. Protected account mutations retain session CSRF.
+- Unverified users may sign in and edit profiles; purchases, society joins/bootstrap and staff invite acceptance require live verified identity, rechecked under an account lock in the write transaction. Legacy users are not silently verified. Disabled users cannot sign in or pass protected access guards.
+- Callback paths use the shared safe-return-path helper. Confirmation never logs in or changes staff authority. Successful confirmation offers sign-in.
+- `User.authVersion` is additive preparation for T04 session invalidation; current verification tokens bind to it. JWT version enforcement is implemented by T04.
 
 ## Navbar Behavior
 

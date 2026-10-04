@@ -1,3 +1,4 @@
+import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
 import {
   forbidden,
@@ -8,7 +9,8 @@ import {
 import {
   AuthenticationRequiredError,
   OrganisationAccessError,
-  requireAccountRole
+  requireAccountRole,
+  requireVerifiedUser
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
@@ -31,6 +33,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const user = await requireAccountRole("member");
+    await requireVerifiedUser();
     const limitResponse = await enforceRateLimit({
       policy: "organisation_join_leave",
       request,
@@ -50,21 +53,24 @@ export async function POST(request: Request, context: RouteContext) {
       return notFound("Organisation was not found");
     }
 
-    await prisma.organisationMember.upsert({
-      where: {
-        userId_organisationId: {
+    await prisma.$transaction(async tx => {
+      await lockVerifiedAccount(tx, user.id);
+      await tx.organisationMember.upsert({
+        where: {
+          userId_organisationId: {
+            userId: user.id,
+            organisationId: organisation.id
+          }
+        },
+        update: {
+          role: "member"
+        },
+        create: {
           userId: user.id,
-          organisationId: organisation.id
+          organisationId: organisation.id,
+          role: "member"
         }
-      },
-      update: {
-        role: "member"
-      },
-      create: {
-        userId: user.id,
-        organisationId: organisation.id,
-        role: "member"
-      }
+      });
     });
 
     return NextResponse.json({
@@ -78,7 +84,7 @@ export async function POST(request: Request, context: RouteContext) {
       return unauthorized();
     }
 
-    if (error instanceof OrganisationAccessError) {
+    if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) {
       return forbidden(error.message);
     }
 

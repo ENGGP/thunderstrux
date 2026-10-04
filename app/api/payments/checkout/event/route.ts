@@ -1,6 +1,8 @@
+import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
 import {
   badRequest,
+  forbidden,
   internalError,
   notFound,
   serviceUnavailable,
@@ -9,7 +11,8 @@ import {
 } from "@/lib/api/errors";
 import {
   AuthenticationRequiredError,
-  requireAuthenticatedUser
+  OrganisationAccessError,
+  requireVerifiedUser
 } from "@/lib/auth/access";
 import {
   CheckoutCreationError,
@@ -35,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const user = await requireAuthenticatedUser();
+    const user = await requireVerifiedUser();
 
     if (user.accountRole !== "member") {
       return badRequest("Member account required", [
@@ -65,6 +68,8 @@ export async function POST(request: Request) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
     }
+
+    if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) return forbidden(error.message);
 
     if (error instanceof CheckoutCreationError) {
       if (

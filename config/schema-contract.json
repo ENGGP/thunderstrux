@@ -1,3 +1,3 @@
 {
-  "requiredMigration": "20261004010000_notification_foundation"
+  "requiredMigration": "20261004020000_account_verification"
 }

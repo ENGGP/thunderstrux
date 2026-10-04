@@ -47,13 +47,18 @@ describe("domain service boundaries", () => {
     }
   });
 
-  test("checkout keeps origin, validation, authentication and rate limiting before creation", async () => {
+  test("checkout keeps origin, validation, verified authentication and rate limiting before creation", async () => {
     expectInOrder(await source(routeFiles[0]), [
       "enforceTrustedMutationRequest(request)",
       "validateJson(request, createEventCheckoutSchema)",
-      "requireAuthenticatedUser()",
+      "requireVerifiedUser()",
       "enforceRateLimit({",
       "createEventCheckout({"
+    ]);
+    expectInOrder(await source("lib/auth/access.ts"), [
+      "export async function requireVerifiedUser()",
+      "requireAuthenticatedUser()",
+      "if (!user.emailVerifiedAt)"
     ]);
   });
 

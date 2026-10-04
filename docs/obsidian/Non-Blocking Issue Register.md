@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-01
+last-reviewed: 2026-10-04
 owner: engineering
 ---
 
@@ -53,6 +53,7 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 | DEF-009 | 2026-09-28 | Production rehearsal did not explicitly deny transitional legacy organisation access. | Production E2E/operations configuration sets legacy mode to `deny`; latest-head checks passed. [PR #18](https://github.com/ENGGP/thunderstrux/pull/18). |
 | DEF-010 | 2026-09-30 | Mutable container tags, runtime version drift, shared development/release tags, broad writable filesystems, and environment-only secrets weakened reproducibility and containment. | Docker foundation hardening pins runtime images, aligns Node 22.23.3, separates the dev tag, adds file secrets and hosted hardening, and validates these controls through runner, operations, integration, E2E, lint, and vulnerability gates. Docker foundation PR. |
 | DEF-011 | 2026-10-01 | The final release gate detected critical Next.js advisory `GHSA-vcvr-r3jv-pc5j` in 16.3.5. | Updated Next.js to patched 16.3.6 and reran dependency audit, build, integration, browser, operations, and image vulnerability gates. Docker foundation PR. |
+| DEF-012 | 2026-10-04 | Required static validation detected high-severity CVE-2026-103111 in `libpcre2-8-0` `10.42-1+deb12u1`, inherited from the pinned Node image. Installing only OpenSSL and certificates did not upgrade that existing library. | Explicitly install the library from Debian's security repository in `docker/Dockerfile`. The final runner contains `10.42-1+deb12u2`; local production build, pinned Hadolint, non-root Node/Prisma smoke and CI-equivalent fixable high/critical Trivy scan passed with zero matching findings. [PR #27](https://github.com/ENGGP/thunderstrux/pull/27); latest-head CI remains the merge gate. |
 
 ## Register Procedure
 

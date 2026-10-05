@@ -19,7 +19,7 @@ test("explicit password recovery revokes existing browsers and settings changes 
   await resetPage.getByLabel("New password", { exact: true }).fill("replacement123");
   await resetPage.getByLabel("Confirm new password", { exact: true }).fill("mismatched123");
   await resetPage.getByRole("button", { name: "Reset password", exact: true }).click();
-  await expect(resetPage.getByRole("alert")).toHaveText("Passwords do not match.");
+  await expect(resetPage.getByRole("alert").filter({ hasText: "Passwords do not match." })).toHaveText("Passwords do not match.");
   await resetPage.getByLabel("Confirm new password", { exact: true }).fill("replacement123");
   await resetPage.getByRole("button", { name: "Reset password", exact: true }).click();
   await expect(resetPage.getByRole("status")).toContainText("Password reset.");

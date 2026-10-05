@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { lockAccount } from "@/lib/auth/account-lifecycle";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const periodMs = 30_000;
@@ -118,16 +119,24 @@ function recoveryHash(userId: string, code: string) {
   return createHmac("sha256", encryptionKey()).update(`recovery:v1:${userId}:${normalized}`).digest("hex");
 }
 
-async function requireStaffEligibility(userId: string, allowEnrolled = false) {
-  if (allowEnrolled && (await prisma.userMfa.findUnique({ where: { userId }, select: { enabledAt: true } }))?.enabledAt) return;
-  const active = await prisma.organisationStaff.findFirst({
+async function requireStaffEligibility(userId: string, allowEnrolled = false, client: Prisma.TransactionClient = prisma) {
+  const user = await client.user.findUnique({ where: { id: userId }, select: { disabledAt: true } });
+  if (!user || user.disabledAt) throw new MfaInputError("Active account required for MFA");
+  if (allowEnrolled && (await client.userMfa.findUnique({ where: { userId }, select: { enabledAt: true } }))?.enabledAt) return;
+  const active = await client.organisationStaff.findFirst({
     where: { userId, status: "active" }, select: { id: true }
   });
   if (active) return;
-  const legacy = await prisma.organisation.findFirst({
+  const legacy = await client.organisation.findFirst({
     where: { accountUserId: userId, staff: { none: { userId } } }, select: { id: true }
   });
   if (!legacy) throw new MfaInputError("Staff access is required for MFA setup");
+}
+
+async function lockMfaAccount(tx: Prisma.TransactionClient, userId: string, allowEnrolled = false) {
+  const user = await lockAccount(tx, userId);
+  if (!user || user.disabledAt) throw new MfaInputError("Active account required for MFA");
+  await requireStaffEligibility(userId, allowEnrolled, tx);
 }
 
 async function auditStaffMfa(tx: Prisma.TransactionClient, userId: string, action: string) {
@@ -157,12 +166,17 @@ export async function beginStaffMfaEnrollment(userId: string, email: string, now
   const existing = await prisma.userMfa.findUnique({ where: { userId }, select: { enabledAt: true } });
   if (existing?.enabledAt) throw new MfaInputError("MFA is already enabled");
   const secret = base32Encode(randomBytes(20));
-  await prisma.userMfa.upsert({
+  await prisma.$transaction(async tx => {
+    await lockMfaAccount(tx, userId);
+    const live = await tx.userMfa.findUnique({ where: { userId }, select: { enabledAt: true } });
+    if (live?.enabledAt) throw new MfaInputError("MFA is already enabled");
+    await tx.userMfa.upsert({
     where: { userId },
     create: { userId, pendingEncryptedSecret: encrypt(secret),
       pendingExpiresAt: new Date(now.getTime() + pendingLifetimeMs) },
     update: { pendingEncryptedSecret: encrypt(secret),
       pendingExpiresAt: new Date(now.getTime() + pendingLifetimeMs) }
+    });
   });
   const label = encodeURIComponent(`Thunderstrux:${email}`);
   return { secret, otpauthUrl: `otpauth://totp/${label}?secret=${secret}&issuer=Thunderstrux&algorithm=SHA1&digits=6&period=30` };
@@ -179,6 +193,7 @@ export async function confirmStaffMfaEnrollment(userId: string, code: string, se
   if (step === null) throw new MfaInputError("Invalid authenticator code");
   const recoveryCodes = Array.from({ length: 10 }, () => randomBytes(10).toString("hex").toUpperCase());
   await prisma.$transaction(async (tx) => {
+    await lockMfaAccount(tx, userId);
     const updated = await tx.userMfa.updateMany({
       where: { userId, enabledAt: null, pendingEncryptedSecret: mfa.pendingEncryptedSecret,
         pendingExpiresAt: { gt: now } },
@@ -208,6 +223,7 @@ export async function verifyStaffMfa(userId: string, code: string, sessionDigest
   const step = acceptedStep(decrypt(mfa.encryptedSecret), code, now, mfa.lastAcceptedStep);
   const codeHash = /^\d{6}$/.test(code) ? null : recoveryHash(userId, recoveryCode);
   await prisma.$transaction(async (tx) => {
+    await lockMfaAccount(tx, userId, true);
     if (step !== null) {
       const changed = await tx.userMfa.updateMany({ where: { userId,
         OR: [{ lastAcceptedStep: null }, { lastAcceptedStep: { lt: BigInt(step) } }] },

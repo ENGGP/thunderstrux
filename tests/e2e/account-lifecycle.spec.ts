@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { test, expect, prisma, login } from "./fixtures";
+import { createOrder } from "@/tests/helpers/test-data";
 
 test("explicit password recovery revokes existing browsers and settings changes sign out", async ({ page, data, browser }) => {
   await login(page, data.member.email, "/account/settings");
@@ -123,4 +124,36 @@ test("account links survive a router URL rewrite before hydration", async ({ pag
   } finally { release(); }
   await expect(page.getByRole("button", { name: "Reset password", exact: true })).toBeEnabled();
   await expect(page).toHaveURL("http://localhost:3100/reset-password");
+});
+
+test("permanent closure rechecks blockers, retains purchases and rejects old browsers and new-signup inheritance", async ({ page, data, browser }) => {
+  const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id });
+  await login(page, data.member.email, "/account/settings");
+  const oldCookies = await page.context().cookies();
+  await expect(page.getByText("Resolve pending orders before closing your account.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Permanently close account", exact: true })).toBeDisabled();
+  await prisma.order.update({ where: { id: order.id }, data: { status: "expired" } });
+  await page.reload();
+  await page.getByLabel("Current password for account closure", { exact: true }).fill("wrong-password");
+  await page.getByLabel("Type CLOSE MY ACCOUNT to confirm", { exact: true }).fill("CLOSE MY ACCOUNT");
+  await page.getByRole("button", { name: "Permanently close account", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Current password is incorrect" })).toBeVisible();
+  await page.getByLabel("Current password for account closure", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "Permanently close account", exact: true }).click();
+  await expect(page).toHaveURL(/\/login\?accountClosed=true/);
+  expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();
+  const retained = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+  expect(retained.userId).toBe(data.member.id); expect(retained.buyerEmailSnapshot).toBe(data.member.email);
+  const stale = await browser.newContext(); await stale.addCookies(oldCookies);
+  expect((await stale.request.get("/api/me/account")).status()).toBe(401); expect((await stale.request.get("/api/security/csrf")).status()).toBe(401); await stale.close();
+  await page.getByLabel("Email", { exact: true }).fill(data.member.email); await page.getByLabel("Password", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click(); await expect(page.getByText("Invalid email or password.")).toBeVisible();
+  expect((await page.request.post("/api/auth/password/request", { headers: { Origin: "http://localhost:3100" }, data: { email: data.member.email } })).status()).toBe(202);
+  expect(await prisma.authToken.count({ where: { userId: data.member.id } })).toBe(0);
+  expect((await page.request.post("/api/auth/signup", { headers: { Origin: "http://localhost:3100" }, data: { email: data.member.email, password: "password123", accountRole: "member" } })).status()).toBe(202);
+  const replacement = await prisma.user.findUniqueOrThrow({ where: { email: data.member.email } });
+  expect(replacement.id).not.toBe(data.member.id); expect(await prisma.order.count({ where: { userId: replacement.id } })).toBe(0);
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const messages = await (await page.request.get("http://mail-capture:8025/messages")).json();
+  expect(messages.some((item: { data: { to: string; subject: string; text: string } }) => item.data.to === data.member.email && item.data.subject === "Your Thunderstrux account is closed" && item.data.text.includes("retained"))).toBe(true);
 });

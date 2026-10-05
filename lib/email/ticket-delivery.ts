@@ -1,3 +1,4 @@
+import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { prisma } from "@/lib/db";
 
 type TicketDeliveryOrder = Awaited<ReturnType<typeof loadTicketDeliveryOrder>>;
@@ -80,6 +81,7 @@ export async function loadTicketDeliveryOrder(orderId: string) {
       totalAmount: true,
       paidAt: true,
       ticketEmailSentAt: true,
+      ...buyerIdentitySelect,
       user: {
         select: {
           email: true,
@@ -118,7 +120,7 @@ export async function loadTicketDeliveryOrder(orderId: string) {
     throw new TicketEmailError("Order not found");
   }
 
-  return order;
+  return { ...order, user: retainedBuyerIdentity(order) };
 }
 
 function buyerName(order: TicketDeliveryOrder) {

@@ -1,3 +1,4 @@
+import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
@@ -138,12 +139,10 @@ export async function getGroupedOrganisationOrdersWithContext(
       },
       ...(search
         ? {
-            user: {
-              email: {
-                contains: search,
-                mode: "insensitive"
-              }
-            }
+            AND: [{ OR: [
+              { buyerEmailSnapshot: { contains: search, mode: "insensitive" } },
+              { buyerIdentityCapturedAt: null, user: { email: { contains: search, mode: "insensitive" } } }
+            ] }]
           }
         : {}),
       ...(startDate || endDate
@@ -177,6 +176,7 @@ export async function getGroupedOrganisationOrdersWithContext(
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
+      ...buyerIdentitySelect,
       user: {
         select: {
           email: true
@@ -228,7 +228,7 @@ export async function getGroupedOrganisationOrdersWithContext(
       fulfilmentFailedAt: order.fulfilmentFailedAt,
       fulfilmentFailureReason: order.fulfilmentFailureReason,
       isManuallyRefunded: order.isManuallyRefunded,
-      buyerEmail: order.user?.email ?? null
+      buyerEmail: retainedBuyerIdentity(order)?.email ?? null
     });
 
     groups.set(order.eventId, group);

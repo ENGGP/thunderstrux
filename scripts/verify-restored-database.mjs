@@ -25,6 +25,9 @@ try {
   const migrationCount = Number(migrations[0]?.count ?? 0);
   const emailChange = await prisma.authToken.findFirst({ where: { purpose: "email_change", newEmail: "p217-change@example.com" } });
   if (!emailChange) throw new Error("Restored email-change binding is missing");
+  const closedBuyer = await prisma.order.findFirst({ where: { buyerEmailSnapshot: "p217-retained@example.com", buyerIdentityProvenance: "current_account_at_capture" }, include: { user: true } });
+  if (!closedBuyer?.buyerIdentityCapturedAt || !closedBuyer.user?.closedAt || !closedBuyer.user?.disabledAt || closedBuyer.user.authVersion !== 1 || closedBuyer.buyerFirstNameSnapshot !== "Retained") throw new Error("Restored closure/retained buyer identity is missing");
+
 
   if (migrationCount < 1 || users < 1 || organisations < 1 || staff < 1 || orders < 1 ||
       tickets < 1 || reservations < 1 || outbox < 1 || lifecycleEvents < 1 || auditLogs < 1 || notifications < 1 || authTokens < 1 || securityEvents < 1) {

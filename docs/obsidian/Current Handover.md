@@ -38,7 +38,7 @@ Read [[Documentation Index]], [[Engineering Delivery Workflow]], and [[Non-Block
 - Development uses `docker-compose.yml` plus `docker-compose.dev.yml`. Development startup generates Prisma Client, deploys migrations, and starts Next dev.
 - Production uses a built non-root image. `pnpm ops:deploy` runs the one-shot `migration` service before starting the candidate app. The hardened overlay adds a read-only root filesystem, dropped capabilities, no-new-privileges, PID/CPU/memory limits, and reviewed writable temporary paths.
 - `/api/health` is liveness. `/api/health/ready` checks database/schema, required migrations, enabled Redis, MFA configuration, and legacy-access configuration with bounded failures.
-- The T04b branch migration chain contains 30 migrations; email-change qualification is in progress, with no deployment. The newest are:
+- The T04c branch migration chain contains 31 migrations; permanent-closure qualification is in progress, with no deployment. The newest are:
   - `20260628010000_staff_accounts_foundation`
   - `20260921010000_formal_payment_lifecycle`
   - `20260922010000_failed_order_timestamp_constraint`
@@ -47,7 +47,8 @@ Read [[Documentation Index]], [[Engineering Delivery Workflow]], and [[Non-Block
   - `20261004010000_notification_foundation`
   - `20261004020000_account_verification`
   - `20261005010000_password_recovery`
-  - `20261005020000_email_change` (T04b qualification)
+  - `20261005020000_email_change`
+  - `20261005030000_account_closure` (T04c qualification)
 - Node is aligned on 22.23.3 across the package engine, Docker, E2E, and CI. Runtime images are digest pinned and Renovate submits reviewed digest updates without automerge.
 
 ## Production Release Gates
@@ -91,8 +92,10 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 T02 notification foundation (PR #31), T03 verification (PR #32) and T04a recovery/settings/session revocation (PR #33, merge `91ecc81`) are merged. Their full qualification is in the readiness-plan ledger. The user's remediation-document deletion is reflected in GitHub. Cache, development database/Redis volumes, retained backups and failed operations diagnostics are preserved. No development or production deployment has occurred; independent high-risk review remains required before production activation.
 
-T04b email changes are on `codex/t04b-email-change`, [PR #36](https://github.com/ENGGP/thunderstrux/pull/36), executable `316dace`, dirty evidence documentation only. Current-password/enrolled-MFA request/confirm/cancel keeps the original email until an explicit 30-minute, single-use, account/original-email/version/new-address-bound confirmation. Atomic new verified address/session/token/grant/private-ledger/notice updates preserve historical user IDs; old verified-address pending invites are revoked. Logged-out recipients sign in explicitly on the same page, with tokens solely in document memory. DEF-016 records the reproduced pre-hydration fragment/event race and deterministic regression.
+T04b email changes merged through [PR #36](https://github.com/ENGGP/thunderstrux/pull/36), executable `316dace`. Current-password/enrolled-MFA request/confirm/cancel keeps the original email until an explicit 30-minute, single-use, account/original-email/version/new-address-bound confirmation. Atomic new verified address/session/token/grant/private-ledger/notice updates preserve historical user IDs; old verified-address pending invites are revoked. Logged-out recipients sign in explicitly on the same page, with tokens solely in document memory. DEF-016 records the reproduced pre-hydration fragment/event race and deterministic regression.
 
-High-risk evidence: final isolated baseline passed 293 integration tests, 21-model reset, typecheck/build/audit; 30 runner tests and 31-file docs check passed. Operations verified the 30-migration backup/restore, email-change binding, dependency/rollback/failure recovery and cleanup; backup retained. Three consecutive final-content complete local E2Es passed with cleanup. Three unchanged-head CI browser repetitions passed; final evidence-head checks are pending. No merge until all qualification passes. Rollout requires `20261005020000_email_change` before app/worker; older workers suppress these tokens, so pause security changes during rollback.
+High-risk evidence: final isolated baseline passed 293 integration tests, 21-model reset, typecheck/build/audit; 30 runner tests and 31-file docs check passed. Operations verified the 30-migration backup/restore, email-change binding, dependency/rollback/failure recovery and cleanup; backup retained. Three consecutive final-content complete local E2Es passed with cleanup. Three unchanged-head CI browser repetitions and all five final evidence-head checks passed. PR #36 merged as `0d2cc0e`. Rollout requires `20261005020000_email_change` before app/worker; older workers suppress these tokens, so pause security changes during rollback.
 
-Next safe action: finish T04b CI/evidence, merge the exact latest green head and refresh main, then implement T04c permanent closure on its focused branch. Closure requires current password/enrolled MFA/acknowledgement, ownership/payment blockers rechecked under account locks, permanent disabled/anonymised login/profile with retained business identity/provenance, revoked credentials/staff/free joins, former-inbox notice, race/rollback/privacy/browser/restore evidence, and the same full high-risk delivery workflow. T04 overall remains incomplete until closure qualifies.
+T04c starts from refreshed main `0d2cc0e` on `codex/t04c-account-closure`. Acceptance: Closure requires current password/enrolled MFA/acknowledgement, ownership/payment blockers rechecked under account locks, permanent disabled/anonymised login/profile with retained business identity/provenance, revoked credentials/staff/free joins, former-inbox notice, race/rollback/privacy/browser/restore evidence, and the same full high-risk delivery workflow. T04 overall remains incomplete until closure qualifies.
+
+T04c release: additive closure/snapshot migration must run before app/workers. Account anonymisation is irreversible through the app; pause closure and buyer contact/delivery flows for rollback to an older image that cannot read retained snapshots. No deployment is authorized or performed. All data-changing validation uses run-owned disposable `_test` databases.

@@ -1,3 +1,4 @@
+import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { enqueueTicketEmail } from "@/lib/email/ticket-email-outbox";
@@ -75,6 +76,7 @@ export async function getOrganisationOrderDetail(
           lastErrorCode: true
         }
       },
+      ...buyerIdentitySelect,
       user: {
         select: {
           email: true,
@@ -115,6 +117,7 @@ export async function getOrganisationOrderDetail(
 
   return {
     ...order,
+    user: retainedBuyerIdentity(order),
     stripeDashboardUrl: getStripeSessionDashboardUrl(order.stripeSessionId)
   };
 }

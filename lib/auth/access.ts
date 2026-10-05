@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { prisma } from "@/lib/db";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { MfaRequiredError, mfaEnforcementMode, requireStaffMfa } from "@/lib/security/staff-mfa";
@@ -63,18 +63,19 @@ export type OrganisationManagementContext = {
 };
 
 export async function requireAuthenticatedUser() {
-  const session = await auth();
+  const session = await getLiveSession();
   const userId = session?.user?.id;
 
   if (!userId) {
     throw new AuthenticationRequiredError();
   }
 
-  const liveUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, accountRole: true, disabledAt: true, emailVerifiedAt: true } });
-  if (!liveUser || liveUser.disabledAt) throw new AuthenticationRequiredError();
+  const liveUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, accountRole: true, disabledAt: true, emailVerifiedAt: true, authVersion: true } });
+  if (!liveUser || liveUser.disabledAt || liveUser.authVersion !== session.user.authVersion) throw new AuthenticationRequiredError();
 
   return {
     id: userId,
+    authVersion: liveUser.authVersion,
     mfaSessionId: session.user.staffMfaSessionId,
     accountRole: liveUser.accountRole,
     email: liveUser.email,

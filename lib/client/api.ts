@@ -108,7 +108,7 @@ export async function fetchWithCsrf(url: string, init?: RequestInit) {
   const method = (init?.method ?? "GET").toUpperCase();
   // These exact endpoints use email/token authority and support anonymous users.
   // Protected mutations still fetch their session-bound CSRF token below.
-  if (!["POST", "PATCH", "DELETE", "PUT"].includes(method) || ["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm"].includes(url)) {
+  if (!["POST", "PATCH", "DELETE", "PUT"].includes(method) || ["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm", "/api/auth/password/request", "/api/auth/password/confirm"].includes(url)) {
     return fetch(url, init);
   }
   async function attempt() {

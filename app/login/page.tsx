@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { CredentialsLoginForm } from "@/components/auth/credentials-login-form";
 import { Card } from "@/components/ui/card";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
@@ -9,7 +9,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ callbackUrl?: string }>;
 }) {
-  const session = await auth();
+  const session = await getLiveSession();
   const { callbackUrl } = await searchParams;
   const safeCallbackUrl = safeReturnPath(callbackUrl);
 

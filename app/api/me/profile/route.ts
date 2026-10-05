@@ -10,7 +10,8 @@ import {
   OrganisationAccessError,
   requireAccountRole
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { updateAccountProfile } from "@/lib/auth/account-settings";
+import { AccountSecurityError } from "@/lib/auth/account-lifecycle";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { memberProfileSchema } from "@/lib/validators/auth";
@@ -30,36 +31,15 @@ export async function PATCH(request: Request) {
 
   try {
     const user = await requireAccountRole("member");
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        firstName: validation.data.firstName,
-        lastName: validation.data.lastName,
-        displayName: validation.data.displayName || null,
-        phone: validation.data.phone || null,
-        studentNumber: validation.data.studentNumber || null,
-        onboardingCompletedAt: new Date()
-      },
-      select: {
-        id: true,
-        email: true,
-        accountRole: true,
-        firstName: true,
-        lastName: true,
-        displayName: true,
-        phone: true,
-        studentNumber: true,
-        onboardingCompletedAt: true
-      }
-    });
+    const updatedUser = await updateAccountProfile(user, validation.data);
 
     return NextResponse.json({ user: updatedUser });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
+    if (error instanceof AuthenticationRequiredError || (error instanceof AccountSecurityError && error.kind === "stale_session")) {
       return unauthorized();
     }
 
-    if (error instanceof OrganisationAccessError) {
+    if (error instanceof OrganisationAccessError || error instanceof AccountSecurityError) {
       return forbidden(error.message);
     }
 

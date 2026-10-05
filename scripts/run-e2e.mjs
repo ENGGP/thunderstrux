@@ -147,7 +147,7 @@ try {
         await writeFile(runtimeFile, afterMfa.replace('MFA_ENFORCEMENT_MODE=enforce\n', 'MFA_ENFORCEMENT_MODE=off\n'));
         await compose('up', '-d', '--force-recreate', 'app');
         await ready();
-        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'browser.spec.ts', 'mobile.spec.ts');
+        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'browser.spec.ts', 'mobile.spec.ts', 'account-lifecycle.spec.ts');
         await compose('stop', 'app');
         const runtime = await readFile(runtimeFile, 'utf8');
         await writeFile(runtimeFile, runtime.replace('STRIPE_SECRET_KEY=\n', 'STRIPE_SECRET_KEY=sk_test_synthetic\n'));

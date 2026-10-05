@@ -110,7 +110,7 @@ function enforceCsrfToken(request: Request) {
   // stale login cookie must not prevent anonymous verification or signup.
   // Auth.js routes have their own CSRF protection, and
   // signed Stripe webhook routes do not call this guard.
-  if (["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm"].includes(getRequestPath(request)) || !hasAuthSessionCookie(request)) {
+  if (["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm", "/api/auth/password/request", "/api/auth/password/confirm"].includes(getRequestPath(request)) || !hasAuthSessionCookie(request)) {
     return null;
   }
   if (verifyCsrfTokenForRequest(request)) return null;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { getSessionIdentity } from "@/lib/auth/session-identity";
 
 const unsafeAuthSecrets = new Set([
   "",
@@ -28,9 +29,10 @@ export async function proxy(request: NextRequest) {
     secret: authSecret
   });
   const pathname = request.nextUrl.pathname;
+  const identity = token ? await getSessionIdentity(token.userId, token.authVersion) : null;
 
   if (
-    token?.accountRole === "organisation" &&
+    identity?.accountRole === "organisation" &&
     pathname.startsWith("/events/")
   ) {
     const eventId = pathname.split("/")[2];
@@ -42,7 +44,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  if (!token) {
+  if (!identity) {
     const loginUrl = new URL("/login", request.nextUrl.origin);
     loginUrl.searchParams.set(
       "callbackUrl",
@@ -56,5 +58,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/events/:path*"]
+  matcher: ["/dashboard/:path*", "/events/:path*", "/account/:path*"]
 };

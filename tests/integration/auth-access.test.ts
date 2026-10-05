@@ -75,14 +75,14 @@ describe("auth and role access", () => {
   test("proxy redirects organisation public event visits and protects logged-out dashboard visits", async () => {
     const { getToken } = await import("next-auth/jwt");
     const { proxy } = await import("@/proxy");
-    const { organisation } = await createOrganisationAccount();
+    const { user: owner, organisation } = await createOrganisationAccount();
     const event = await createEvent({
       organisationId: organisation.id,
       status: "published"
     });
 
     vi.mocked(getToken).mockResolvedValueOnce({
-      accountRole: "organisation"
+      userId: owner.id, authVersion: owner.authVersion, accountRole: "organisation"
     });
     const organisationRedirect = await proxy(
       new NextRequest(`http://localhost/events/${event.id}`)
@@ -92,13 +92,17 @@ describe("auth and role access", () => {
       `/dashboard/events/${event.id}`
     );
 
+    const member = await createMember();
     vi.mocked(getToken).mockResolvedValueOnce({
-      accountRole: "member"
+      userId: member.id, authVersion: member.authVersion, accountRole: "member"
     });
     const memberDashboard = await proxy(
       new NextRequest(`http://localhost/dashboard/events/${event.id}`)
     );
     expect(memberDashboard.status).toBe(200);
+
+    vi.mocked(getToken).mockResolvedValueOnce({ userId: owner.id, accountRole: "organisation" });
+    expect((await proxy(new NextRequest("http://localhost/account/settings"))).headers.get("location")).toContain("/login");
 
     vi.mocked(getToken).mockResolvedValueOnce(null);
     const loginRedirect = await proxy(new NextRequest("http://localhost/dashboard"));

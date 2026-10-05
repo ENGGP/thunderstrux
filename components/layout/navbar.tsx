@@ -9,7 +9,7 @@ export default function Navbar() {
   const isMember = session?.user?.accountRole === "member";
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between border-b border-neutral-200 bg-white px-6 shadow-sm">
+    <header className="fixed inset-x-0 top-0 z-50 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-white px-3 py-2 shadow-sm sm:px-6">
       <Link
         href={isOrganisation ? "/dashboard" : "/"}
         className="text-sm font-semibold text-neutral-950"
@@ -17,8 +17,8 @@ export default function Navbar() {
         Thunderstrux
       </Link>
 
-      <div className="flex items-center gap-6">
-        {session ? (
+      <div className="flex flex-wrap items-center gap-2 sm:gap-6">
+        {session?.user?.id ? (
           <>
             <Link
               href="/dashboard"
@@ -34,8 +34,9 @@ export default function Navbar() {
                 My tickets
               </Link>
             ) : null}
+            <Link className="text-sm font-medium text-neutral-700" href="/account/settings">Settings</Link>
             <button
-              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-950"
+              className="rounded-lg border border-neutral-300 px-2 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-950 sm:px-4"
               onClick={() => signOut({ callbackUrl: "/" })}
               type="button"
             >

@@ -1,0 +1,56 @@
+import { execFileSync } from "node:child_process";
+import { test, expect, prisma, login } from "./fixtures";
+
+test("explicit password recovery revokes existing browsers and settings changes sign out", async ({ page, data, browser }) => {
+  await login(page, data.member.email, "/account/settings");
+  const oldCookies = await page.context().cookies();
+  const recovery = await browser.newContext(); const resetPage = await recovery.newPage();
+  await resetPage.goto("/forgot-password");
+  await resetPage.getByLabel("Email", { exact: true }).fill(data.member.email);
+  await resetPage.getByRole("button", { name: "Send password reset email", exact: true }).click();
+  await expect(resetPage.getByRole("status")).toContainText("If this address is eligible");
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const messages = await (await resetPage.request.get("http://mail-capture:8025/messages")).json();
+  const message = messages.find((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes("Reset"));
+  expect(message).toBeTruthy();
+  await resetPage.goto(message.data.text.split("\n\n").at(-1));
+  await expect.poll(() => resetPage.url()).not.toContain("#");
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).authVersion).toBe(0);
+  await resetPage.getByLabel("New password", { exact: true }).fill("replacement123");
+  await resetPage.getByLabel("Confirm new password", { exact: true }).fill("mismatched123");
+  await resetPage.getByRole("button", { name: "Reset password", exact: true }).click();
+  await expect(resetPage.getByRole("alert").filter({ hasText: "Passwords do not match." })).toHaveText("Passwords do not match.");
+  await resetPage.getByLabel("Confirm new password", { exact: true }).fill("replacement123");
+  await resetPage.getByRole("button", { name: "Reset password", exact: true }).click();
+  await expect(resetPage.getByRole("status")).toContainText("Password reset.");
+  expect(await (await resetPage.request.get("/api/auth/session")).json()).toBeNull();
+  expect((await page.request.get("/api/me/account")).status()).toBe(401);
+  expect((await page.request.get("/api/security/csrf")).status()).toBe(401);
+  expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();
+  await page.context().addCookies(oldCookies);
+  await page.goto("/account/settings"); await expect(page).toHaveURL(/\/login\?/);
+  await page.getByLabel("Email", { exact: true }).fill(data.member.email);
+  await page.getByLabel("Password", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText("Invalid email or password.")).toBeVisible();
+  await page.getByLabel("Password", { exact: true }).fill("replacement123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL("http://localhost:3100/account/settings");
+  await page.getByLabel("First name").fill("Recovered");
+  await page.getByRole("button", { name: "Save profile", exact: true }).click();
+  await expect(page.getByRole("status")).toBeVisible();
+  const dto = await (await page.request.get("/api/me/account")).json();
+  expect(JSON.stringify(dto.user)).not.toMatch(/encryptedSecret|password|authVersion/);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  await page.getByLabel("Current password", { exact: true }).fill("replacement123");
+  await page.getByLabel("New password", { exact: true }).fill("another123");
+  await page.getByLabel("Confirm new password", { exact: true }).fill("another123");
+  await page.getByRole("button", { name: "Change password", exact: true }).click();
+  await expect(page).toHaveURL(/\/login\?passwordChanged=true/);
+  expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).authVersion).toBe(2);
+  await recovery.close();
+});

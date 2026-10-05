@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -18,6 +19,7 @@ export function MemberProfileForm({
 }: {
   initialProfile: Profile;
 }) {
+  const router = useRouter();
   const [profile, setProfile] = useState(initialProfile);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,10 +40,8 @@ export function MemberProfileForm({
         body: JSON.stringify(profile)
       });
 
-      setMessage("Profile saved. Refreshing...");
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      setMessage("Profile saved.");
+      router.refresh();
     } catch (profileError) {
       setError(
         getClientErrorMessage(profileError, "Unable to save profile.")
@@ -54,12 +54,12 @@ export function MemberProfileForm({
   return (
     <form className="grid max-w-2xl gap-4" onSubmit={onSubmit}>
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </div>
       ) : null}
       {message ? (
-        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <div role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           {message}
         </div>
       ) : null}

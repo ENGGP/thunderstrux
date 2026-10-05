@@ -71,6 +71,7 @@ export function CredentialsLoginForm({
       />
 
       <div className="flex flex-wrap items-center gap-3">
+        <Link className="text-sm underline" href={`/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Forgot password?</Link>
         <Button disabled={isSubmitting} type="submit">
           {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>

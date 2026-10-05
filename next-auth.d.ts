@@ -2,6 +2,7 @@ import "next-auth";
 
 declare module "next-auth" {
   interface User {
+    authVersion?: number;
     accountRole?: "member" | "organisation";
     firstName?: string | null;
     lastName?: string | null;
@@ -11,6 +12,8 @@ declare module "next-auth" {
   interface Session {
     user: {
       id: string;
+      authVersion?: number;
+      emailVerifiedAt?: string | null;
       staffMfaSessionId?: string;
       accountRole: "member" | "organisation";
       email?: string | null;
@@ -25,6 +28,7 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    authVersion?: number;
     staffMfaSessionId?: string;
     userId?: string;
     accountRole?: "member" | "organisation";

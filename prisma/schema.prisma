@@ -15,6 +15,7 @@ model User {
   authVersion             Int                  @default(0)
   disabledAt              DateTime?
   authTokens              AuthToken[]
+  securityEvents          AccountSecurityEvent[]
   accountRole             AccountRole          @default(member)
   firstName               String?
   lastName                String?
@@ -59,6 +60,17 @@ model AuthToken {
 
   @@index([userId, purpose, createdAt])
   @@index([expiresAt])
+}
+
+model AccountSecurityEvent {
+  id           String   @id @default(cuid())
+  userId       String
+  type         String
+  authVersion  Int
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
 }
 
 model Organisation {

@@ -10,11 +10,14 @@ export async function readAccountSettings(actor: AccountActor, now = new Date())
   } });
   if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AccountSecurityError("stale_session", "Sign in again to continue");
   const digest = mfaGrantDigest(actor.mfaSessionId);
+  const pendingEmail = await prisma.authToken.findFirst({ where: { userId: user.id, purpose: "email_change", authVersion: user.authVersion, email: user.email,
+    consumedAt: null, invalidatedAt: null, expiresAt: { gt: now } }, orderBy: { createdAt: "desc" }, select: { newEmail: true, expiresAt: true } });
   const grant = user.mfa?.enabledAt && digest ? await prisma.mfaGrant.findFirst({ where: { userId: user.id, sessionDigest: digest, expiresAt: { gt: now }, verifiedAt: { lte: now } }, select: { sessionDigest: true } }) : null;
   return { user: { id: user.id, email: user.email, accountRole: user.accountRole, emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
     firstName: user.firstName, lastName: user.lastName, displayName: user.displayName, phone: user.phone, studentNumber: user.studentNumber,
     onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null },
     mfa: { enabled: Boolean(user.mfa?.enabledAt), verified: Boolean(grant) },
+    pendingEmailChange: pendingEmail?.newEmail ? { email: pendingEmail.newEmail, expiresAt: pendingEmail.expiresAt.toISOString() } : null,
     securityEvents: user.securityEvents.map(event => ({ type: event.type, createdAt: event.createdAt.toISOString() })) };
 }
 export async function updateAccountProfile(actor: AccountActor, input: unknown) {

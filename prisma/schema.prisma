@@ -49,6 +49,7 @@ model AuthToken {
   purpose        String
   userId         String
   email          String
+  newEmail       String?
   authVersion    Int
   callbackPath   String   @default("/dashboard")
   expiresAt      DateTime

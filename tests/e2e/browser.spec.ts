@@ -72,6 +72,7 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   const link = message.data.text.split('\n\n').at(-1);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
+  await page.goto("/verify-email");
   await page.goto(link);
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
   await expect.poll(() => page.url()).not.toContain('#');

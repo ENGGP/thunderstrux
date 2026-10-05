@@ -955,3 +955,7 @@ GET `/api/notifications?cursor=...` returns a private 25-job page of failed busi
 | POST `/api/me/account/password` | Trusted origin/session CSRF, live matching-version session, required five/hour account limit, current password and enrolled MFA; 200 `{changed:true,signInRequired:true}`. |
 
 Reset/signup/verification anonymous exceptions are exact paths and never authorize protected mutations. New password validation rejects more than 72 UTF-8 bytes. Security ledgers/notifications are private to the account and are never included in tenant notification or audit listings.
+
+## Email Change
+
+POST `/api/me/account/email/request` accepts strict `{currentPassword,newEmail}` and returns generic 202 `{accepted:true}`. POST `/api/me/account/email/confirm` accepts `{currentPassword,token}`, adds required IP/token-digest redemption limits, and returns `{changed:true,signInRequired:true}`. POST `/api/me/account/email/cancel` accepts `{currentPassword}` and returns `{cancelled:true}`. All require live matching-version authentication, trusted origin/session CSRF, required account limits and enrolled MFA. Invalid/expired/foreign/occupied-address confirmation is a generic 400; revoked sessions are 401. GET `/api/me/account` adds private `pendingEmailChange:{email,expiresAt}|null`, excluding raw tokens/digests.

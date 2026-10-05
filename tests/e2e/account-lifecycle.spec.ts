@@ -13,6 +13,7 @@ test("explicit password recovery revokes existing browsers and settings changes 
   const messages = await (await resetPage.request.get("http://mail-capture:8025/messages")).json();
   const message = messages.find((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes("Reset"));
   expect(message).toBeTruthy();
+  await resetPage.goto("/reset-password");
   await resetPage.goto(message.data.text.split("\n\n").at(-1));
   await expect.poll(() => resetPage.url()).not.toContain("#");
   expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).authVersion).toBe(0);
@@ -24,6 +25,14 @@ test("explicit password recovery revokes existing browsers and settings changes 
   await resetPage.getByRole("button", { name: "Reset password", exact: true }).click();
   await expect(resetPage.getByRole("status")).toContainText("Password reset.");
   expect(await (await resetPage.request.get("/api/auth/session")).json()).toBeNull();
+  const anotherRequest = await resetPage.request.post("/api/auth/password/request", { headers: { Origin: "http://localhost:3100" }, data: { email: data.member.email } });
+  expect(anotherRequest.status()).toBe(202);
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const laterMessages = await (await resetPage.request.get("http://mail-capture:8025/messages")).json();
+  const nextLink = laterMessages.filter((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes("Reset")).at(-1).data.text.split("\n\n").at(-1);
+  await resetPage.goto(nextLink);
+  await expect(resetPage.getByLabel("New password", { exact: true })).toBeVisible();
+  await expect(resetPage.getByRole("button", { name: "Reset password", exact: true })).toBeEnabled();
   expect((await page.request.get("/api/me/account")).status()).toBe(401);
   expect((await page.request.get("/api/security/csrf")).status()).toBe(401);
   expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();
@@ -53,4 +62,65 @@ test("explicit password recovery revokes existing browsers and settings changes 
   expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();
   expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).authVersion).toBe(2);
   await recovery.close();
+});
+
+test("email change supports cancellation and explicit logged-out confirmation without changing account ownership", async ({ page, data, browser }) => {
+  await login(page, data.member.email, "/account/settings");
+  const oldCookies = await page.context().cookies(); const newEmail = `changed-${data.member.id}@example.com`;
+  await page.getByLabel("Current password for email change", { exact: true }).fill("password123");
+  await page.getByLabel("New email", { exact: true }).fill(newEmail);
+  await page.getByRole("button", { name: "Request email change", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "If the new address is eligible" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel email change", exact: true })).toBeVisible();
+  await page.getByLabel("Current password for email change", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "Cancel email change", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Email change cancelled." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel email change", exact: true })).toHaveCount(0);
+  await page.getByLabel("Current password for email change", { exact: true }).fill("password123");
+  await page.getByLabel("New email", { exact: true }).fill(newEmail);
+  await page.getByRole("button", { name: "Request email change", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "If the new address is eligible" })).toBeVisible();
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const messages = await (await page.request.get("http://mail-capture:8025/messages")).json();
+  const message = messages.filter((item: { data: { to: string } }) => item.data.to === newEmail).at(-1);
+  expect(message).toBeTruthy();
+  const link = message.data.text.split("\n\n").at(-1);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click(); await expect(page).toHaveURL("http://localhost:3100/");
+  await page.goto("/change-email");
+  await page.goto(link); await expect.poll(() => page.url()).not.toContain("#");
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).email).toBe(data.member.email);
+  await page.getByLabel("Current account email", { exact: true }).fill(data.member.email);
+  await page.getByLabel("Current account password", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "Sign in to confirm", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Confirm email change", exact: true })).toBeVisible();
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).email).toBe(data.member.email);
+  await page.getByLabel("Current account password", { exact: true }).fill("password123");
+  await page.getByRole("button", { name: "Confirm email change", exact: true }).click();
+  await expect(page).toHaveURL(/\/login\?emailChanged=true/);
+  const updated = await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } });
+  expect(updated.email).toBe(newEmail); expect(updated.authVersion).toBe(1); expect(updated.emailVerifiedAt).not.toBeNull();
+  const staleContext = await browser.newContext(); await staleContext.addCookies(oldCookies);
+  expect((await staleContext.request.get("/api/me/account")).status()).toBe(401); await staleContext.close();
+  await login(page, newEmail, "/account/settings"); await expect(page.getByText(newEmail, { exact: true })).toBeVisible();
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const notices = await (await page.request.get("http://mail-capture:8025/messages")).json();
+  for (const recipient of [data.member.email, newEmail]) expect(notices.some((item: { data: { to: string; subject: string } }) => item.data.to === recipient && item.data.subject === "Your Thunderstrux email changed")).toBe(true);
+});
+
+
+test("account links survive a router URL rewrite before hydration", async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/_next/static/**/*.js", async route => { await held; await route.continue(); });
+  try {
+    await page.goto("/reset-password", { waitUntil: "commit" });
+    await page.waitForFunction(() => Boolean(document.querySelector("script[data-account-link-capture]")));
+    await page.evaluate(() => {
+      window.location.hash = "token=" + "a".repeat(43);
+      // Model HistoryUpdater replacing a stale canonical URL before hashchange.
+      window.history.replaceState(window.history.state, "", "/reset-password");
+    });
+  } finally { release(); }
+  await expect(page.getByRole("button", { name: "Reset password", exact: true })).toBeEnabled();
+  await expect(page).toHaveURL("http://localhost:3100/reset-password");
 });

@@ -59,6 +59,7 @@ try {
     });
     const authToken = await transaction.authToken.create({ data: { userId: actor.id, tokenHash: "p217-synthetic-restore-digest", purpose: "verify_account", email: actor.email, authVersion: actor.authVersion, expiresAt: new Date("2099-01-01T00:00:00.000Z") } });
     await transaction.accountSecurityEvent.create({ data: { userId: actor.id, type: "password_changed", authVersion: actor.authVersion } });
+    await transaction.authToken.create({ data: { userId: actor.id, tokenHash: "p217-email-change-restore-digest", purpose: "email_change", email: actor.email, newEmail: "p217-change@example.com", authVersion: actor.authVersion, expiresAt: new Date("2099-01-01T00:00:00.000Z") } });
     await transaction.notificationOutbox.create({ data: { eventKey: "p217-restore", recipient: "synthetic@example.com", template: "verify_account", privacy: "security", encryptedPayload: "restore-check-only", userId: actor.id, authTokenId: authToken.id, nextAttemptAt: new Date("2099-01-01T00:00:00.000Z") } });
     await transaction.auditLog.create({
       data: {

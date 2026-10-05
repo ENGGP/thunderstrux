@@ -84,10 +84,12 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
   }
   if (job.authTokenId) {
     const token = await prisma.authToken.findUnique({ where: { id: job.authTokenId }, include: { user: { select: { disabledAt: true, authVersion: true, email: true, emailVerifiedAt: true } } } });
+    const recipient = token?.purpose === "email_change" ? token.newEmail : token?.email;
+    const template = token?.purpose === "email_change" ? "email_change_requested" : token?.purpose;
     if (!token || token.consumedAt || token.invalidatedAt || token.expiresAt <= now || token.user.disabledAt ||
         token.authVersion !== token.user.authVersion || token.email !== token.user.email ||
-        job.recipient !== token.email || job.userId !== token.userId || job.template !== token.purpose ||
-        !["verify_account", "reset_password"].includes(token.purpose) ||
+        !recipient || job.recipient !== recipient || job.userId !== token.userId || job.template !== template ||
+        !["verify_account", "reset_password", "email_change"].includes(token.purpose) ||
         (token.purpose === "verify_account" && token.user.emailVerifiedAt)) {
       await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
       return "cancelled";

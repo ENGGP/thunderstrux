@@ -1,28 +1,24 @@
 "use client";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useAccountLinkToken } from "./account-link-token";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 export function VerificationForm({ callbackUrl }: { callbackUrl: string }) {
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useAccountLinkToken();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [verifiedPath, setVerifiedPath] = useState<string | null>(null);
-  useEffect(() => {
-    const value = new URLSearchParams(window.location.hash.slice(1)).get("token");
-    if (value) setToken(value);
-    window.history.replaceState(null, "", window.location.pathname + window.location.search);
-  }, []);
   async function confirm() {
     setBusy(true); setError("");
     try {
       const result = await fetchJson<{ verified: boolean; callbackUrl: string }>("/api/auth/verification/confirm", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token })
       });
-      setToken(null); setVerifiedPath(result.callbackUrl); setMessage("Email verified. Sign in to continue.");
+      setToken(""); setVerifiedPath(result.callbackUrl); setMessage("Email verified. Sign in to continue.");
     } catch (failure) { setError(getClientErrorMessage(failure, "Could not verify this link.")); }
     finally { setBusy(false); }
   }

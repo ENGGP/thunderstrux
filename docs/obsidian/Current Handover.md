@@ -38,7 +38,7 @@ Read [[Documentation Index]], [[Engineering Delivery Workflow]], and [[Non-Block
 - Development uses `docker-compose.yml` plus `docker-compose.dev.yml`. Development startup generates Prisma Client, deploys migrations, and starts Next dev.
 - Production uses a built non-root image. `pnpm ops:deploy` runs the one-shot `migration` service before starting the candidate app. The hardened overlay adds a read-only root filesystem, dropped capabilities, no-new-privileges, PID/CPU/memory limits, and reviewed writable temporary paths.
 - `/api/health` is liveness. `/api/health/ready` checks database/schema, required migrations, enabled Redis, MFA configuration, and legacy-access configuration with bounded failures.
-- The T04a branch migration chain contains 29 migrations; recovery/settings qualification is in progress, with no deployment. The newest are:
+- The T04b branch migration chain contains 30 migrations; email-change qualification is in progress, with no deployment. The newest are:
   - `20260628010000_staff_accounts_foundation`
   - `20260921010000_formal_payment_lifecycle`
   - `20260922010000_failed_order_timestamp_constraint`
@@ -46,7 +46,8 @@ Read [[Documentation Index]], [[Engineering Delivery Workflow]], and [[Non-Block
   - `20260927010000_compensation_refunds`
   - `20261004010000_notification_foundation`
   - `20261004020000_account_verification`
-  - `20261005010000_password_recovery` (T04a qualification)
+  - `20261005010000_password_recovery`
+  - `20261005020000_email_change` (T04b qualification)
 - Node is aligned on 22.23.3 across the package engine, Docker, E2E, and CI. Runtime images are digest pinned and Renovate submits reviewed digest updates without automerge.
 
 ## Production Release Gates
@@ -93,4 +94,6 @@ T03 merged as `e2f0772` (PR #32), with all five final-head checks passed. T04a s
 
 T02/T03 detailed qualification is recorded in the readiness-plan ledger. PR #32 merged after all five final-head checks passed. The user's root remediation-document deletion is reflected in GitHub; cache, development volumes, retained database backups and failed operations diagnostics are preserved. Next safe action: qualify T04a, then implement T04b email changes and T04c permanent closure. No hosted activation or development deployment has occurred.
 
-T04a executable `de6a03b` is qualified: 281 integration tests, 21-model reset, typecheck/build/audit/docs/runner checks, isolated 29-migration backup/restore/rollback and three consecutive complete local and CI browser passes. All executable-head checks passed. Final evidence-head CI and PR #33 merge remain before refreshing main for T04b. DEF-015 records the profile-save reload race fixed during qualification. Run-owned cleanup passed; backups/diagnostics are retained. Details are in the readiness-plan ledger.
+T04a executable `de6a03b` is qualified: 281 integration tests, 21-model reset, typecheck/build/audit/docs/runner checks, isolated 29-migration backup/restore/rollback and three consecutive complete local and CI browser passes. All executable-head checks passed. PR #33 merged as `91ecc81` after all five final evidence-head checks (396354a) passed. DEF-015 records the profile-save reload race fixed during qualification. Run-owned cleanup passed; backups/diagnostics are retained. Details are in the readiness-plan ledger.
+
+T04b starts from refreshed main `91ecc81` on `codex/t04b-email-change`. Acceptance: authenticated current-password/enrolled-MFA request/confirm/cancel; keep the old email until a 30-minute, single-use, account/original-email/version-bound token verifies the new address. Notify old address on request and both on completion; atomic verified email/version update, token/grant revocation and private ledger; no historical reassignment by email. A logged-out recipient signs in explicitly while the fragment token stays in memory. High risk: races/uniqueness/rollback/MFA/CSRF/Redis/stale tokens, full Docker baseline/E2E/operations, additive migration/restore/reset, three unchanged-content local and CI runs, self-review and latest-head five checks. Rollout migration before app/worker; older workers suppress email-change tokens and old apps cannot enforce the new flow, so pause security changes during rollback. No development/production deployment; independent review before activation. T04c closure follows.

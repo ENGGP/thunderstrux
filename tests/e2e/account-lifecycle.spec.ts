@@ -1,33 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { test, expect, prisma, login } from "./fixtures";
 
-// Diagnose document/navigation races without printing tokens or credentials.
-test.beforeEach(async ({ context }) => {
-  context.on("page", page => {
-    page.on("console", message => { if (message.text().startsWith("account-link-navigation")) console.log(message.text()); });
-  });
-  await context.addInitScript(() => {
-    const documentId = Math.random().toString(36).slice(2);
-    const log = (event: string) => console.log("account-link-navigation", JSON.stringify({ event, documentId, path: location.pathname, hasFragment: Boolean(location.hash), readyState: document.readyState }));
-    log("document");
-    window.addEventListener("hashchange", () => log("hashchange"));
-    window.addEventListener("pagehide", () => log("pagehide"));
-    const replace = history.replaceState.bind(history);
-    history.replaceState = (...args) => { log("replaceState-before"); replace(...args); log("replaceState-after"); };
-  });
-});
-
 test("explicit password recovery revokes existing browsers and settings changes sign out", async ({ page, data, browser }) => {
   await login(page, data.member.email, "/account/settings");
   const oldCookies = await page.context().cookies();
   const recovery = await browser.newContext(); const resetPage = await recovery.newPage();
-  resetPage.on("console", message => { if (message.text().startsWith("account-link-navigation")) console.log(message.text()); });
-  await recovery.addInitScript(() => {
-    const documentId = Math.random().toString(36).slice(2);
-    const log = (event: string) => console.log("account-link-navigation", JSON.stringify({ event, documentId, path: location.pathname, hasFragment: Boolean(location.hash), readyState: document.readyState }));
-    log("document"); window.addEventListener("hashchange", () => log("hashchange")); window.addEventListener("pagehide", () => log("pagehide"));
-    const replace = history.replaceState.bind(history); history.replaceState = (...args) => { log("replaceState-before"); replace(...args); log("replaceState-after"); };
-  });
   await resetPage.goto("/forgot-password");
   await resetPage.getByLabel("Email", { exact: true }).fill(data.member.email);
   await resetPage.getByRole("button", { name: "Send password reset email", exact: true }).click();
@@ -128,4 +105,22 @@ test("email change supports cancellation and explicit logged-out confirmation wi
   execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
   const notices = await (await page.request.get("http://mail-capture:8025/messages")).json();
   for (const recipient of [data.member.email, newEmail]) expect(notices.some((item: { data: { to: string; subject: string } }) => item.data.to === recipient && item.data.subject === "Your Thunderstrux email changed")).toBe(true);
+});
+
+
+test("account links survive a router URL rewrite before hydration", async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/_next/static/**/*.js", async route => { await held; await route.continue(); });
+  try {
+    await page.goto("/reset-password", { waitUntil: "commit" });
+    await page.waitForFunction(() => Boolean(document.querySelector("script[data-account-link-capture]")));
+    await page.evaluate(() => {
+      window.location.hash = "token=" + "a".repeat(43);
+      // Model HistoryUpdater replacing a stale canonical URL before hashchange.
+      window.history.replaceState(window.history.state, "", "/reset-password");
+    });
+  } finally { release(); }
+  await expect(page.getByRole("button", { name: "Reset password", exact: true })).toBeEnabled();
+  await expect(page).toHaveURL("http://localhost:3100/reset-password");
 });

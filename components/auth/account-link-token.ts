@@ -12,16 +12,19 @@ export function useAccountLinkToken(enabled = true) {
   }
   useEffect(() => {
     if (!enabled) return;
-    function capture() {
+    function capture(event?: HashChangeEvent) {
       // Repeated setup after history cleanup must retain the captured link.
       // Also handle a new email link opened in an already mounted page.
       const path = window.location.pathname;
+      const eventUrl = event ? new URL(event.newURL) : new URL(window.location.href);
+      if (eventUrl.pathname !== path) return;
       const capturedLink = window.__thunderstruxAccountLink;
-      if (!window.location.hash) {
+      if (!eventUrl.hash) {
         if (capturedLink?.path === path && Date.now() - capturedLink.capturedAt < 1800000) setTokenState(capturedLink.token);
         return;
       }
-      const value = new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
+      const candidate = new URLSearchParams(eventUrl.hash.slice(1)).get("token") ?? "";
+      const value = /^[A-Za-z0-9_-]{43}$/.test(candidate) ? candidate : "";
       window.__thunderstruxAccountLink = value ? { path, token: value, capturedAt: Date.now() } : null;
       setTokenState(value);
       window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);

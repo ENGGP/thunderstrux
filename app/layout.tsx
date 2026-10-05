@@ -3,6 +3,7 @@ import { getLiveSession } from "@/lib/auth/live-session";
 import Link from "next/link";
 import { AuthSessionProvider } from "@/components/layout/auth-session-provider";
 import Navbar from "@/components/layout/navbar";
+import { accountLinkCaptureScript } from "@/lib/auth/account-link-capture";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en">
+      <head><script data-account-link-capture dangerouslySetInnerHTML={{ __html: accountLinkCaptureScript }} /></head>
       <body>
         <AuthSessionProvider session={session}>
           <Navbar />

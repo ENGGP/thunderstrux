@@ -943,3 +943,15 @@ Responsibilities:
 ## General Notifications
 
 GET `/api/notifications?cursor=...` returns a private 25-job page of failed business notifications and `nextCursor`. Live current-tenant `orders:email_resend` authority is required; security jobs, recipients and encrypted payloads are excluded. Invalid cursor returns 400. POST `/api/notifications/[jobId]/requeue` accepts strict `{ reason }` (8?500 characters), requires trusted origin/session CSRF and resend rate limits, conceals foreign/security targets as 404 and returns `{ queued: true }`. Ineligible or changed jobs return 409; an audit is committed with the queue update. `/dashboard/notifications` uses the same scoped read service.
+
+## Account Recovery And Settings
+
+| Route | Authority and result |
+| --- | --- |
+| POST `/api/auth/password/request` | Trusted origin, required Redis IP/email limits; strict email/callback input; generic 202 `{accepted:true}`. |
+| POST `/api/auth/password/confirm` | Trusted origin, required IP/token-digest limits; explicit token/newPassword; 200 `{reset:true,callbackUrl}` or generic invalid/expired 400; no login. |
+| GET `/api/me/account` | Active matching-version session; private no-store selected profile/MFA/security-events DTO; 401 for stale sessions. |
+| PATCH `/api/me/profile` | Existing member contract plus locked session-version recheck; profile fields only. |
+| POST `/api/me/account/password` | Trusted origin/session CSRF, live matching-version session, required five/hour account limit, current password and enrolled MFA; 200 `{changed:true,signInRequired:true}`. |
+
+Reset/signup/verification anonymous exceptions are exact paths and never authorize protected mutations. New password validation rejects more than 72 UTF-8 bytes. Security ledgers/notifications are private to the account and are never included in tenant notification or audit listings.

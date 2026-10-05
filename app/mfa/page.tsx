@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { StaffMfaForm } from "@/components/auth/staff-mfa-form";
 import { getStaffMfaStatus, MfaInputError } from "@/lib/security/staff-mfa";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
@@ -7,7 +7,7 @@ import { safeReturnPath } from "@/lib/security/safe-return-path";
 export default async function MfaPage({ searchParams }: {
   searchParams: Promise<{ callbackUrl?: string }>;
 }) {
-  const session = await auth();
+  const session = await getLiveSession();
   if (!session?.user?.id) redirect("/login?callbackUrl=/mfa");
   let status;
   try {

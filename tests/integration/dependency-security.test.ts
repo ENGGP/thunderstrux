@@ -7,6 +7,7 @@ import { encode } from "next-auth/jwt";
 import { describe, expect, test, vi } from "vitest";
 import { createMember } from "@/tests/helpers/test-data";
 import { proxy } from "@/proxy";
+import { prisma } from "@/lib/db";
 
 describe("dependency security compatibility", () => {
   test("Next's native Sharp dependency still encodes and resizes images", async () => {
@@ -33,10 +34,11 @@ describe("dependency security compatibility", () => {
   });
 
   test("a valid encrypted session cookie still passes the proxy", async () => {
+    const user = await createMember();
     const token = await encode({
       secret: process.env.AUTH_SECRET || "dev-secret",
       salt: "authjs.session-token",
-      token: { userId: "compatibility-user", accountRole: "member" }
+      token: { userId: user.id, accountRole: "member", authVersion: user.authVersion }
     });
     const response = await proxy(new NextRequest("http://localhost/dashboard", {
       headers: { cookie: `authjs.session-token=${token}` }
@@ -77,8 +79,17 @@ describe("dependency security compatibility", () => {
     });
     expect(accepted.status).toBe(302);
     expect(await (await request("session")).json()).toMatchObject({
-      user: { id: user.id, email: user.email, accountRole: "member" }
+      user: { id: user.id, email: user.email, accountRole: "member", authVersion: 0 }
     });
+    await prisma.user.update({ where: { id: user.id }, data: { authVersion: 1 } });
+    expect(await (await request("session")).json()).toBeNull();
+    expect(await (await request("session")).json()).toBeNull();
+    const stale = await proxy(new NextRequest("http://localhost/account/settings", {
+      headers: { cookie: [...cookies].map(([key, value]) => `${key}=${value}`).join("; ") }
+    }));
+    expect(stale.status).toBe(307);
+    await request("callback/credentials", { csrfToken, email: user.email, password: "password123", callbackUrl: "http://localhost/dashboard" });
+    expect(await (await request("session")).json()).toMatchObject({ user: { id: user.id, authVersion: 1 } });
     await request("signout", { csrfToken, callbackUrl: "http://localhost" });
     expect(await (await request("session")).json()).toBeNull();
   });

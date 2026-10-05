@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db";
+import { getSessionIdentity } from "@/lib/auth/session-identity";
 
 const unsafeAuthSecrets = new Set([
   "",
@@ -36,7 +37,7 @@ function resolveAuthSecret() {
 
 export const authSecret = resolveAuthSecret();
 
-export const { auth, handlers, signIn, signOut } = NextAuth({
+const authRuntime = NextAuth({
   secret: authSecret,
   providers: [
     Credentials({
@@ -63,6 +64,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             email: true,
             password: true,
             disabledAt: true,
+            authVersion: true,
             accountRole: true,
             firstName: true,
             lastName: true,
@@ -82,6 +84,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
         return {
           id: user.id,
+          authVersion: user.authVersion,
           email: user.email,
           accountRole: user.accountRole,
           firstName: user.firstName,
@@ -100,6 +103,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       // Server-side auth() reads cannot persist a refreshed JWT for old cookies.
       if (user?.id) {
         token.staffMfaSessionId = randomUUID();
+        token.authVersion = user.authVersion;
       }
       if (user?.id) {
         token.userId = user.id;
@@ -124,16 +128,38 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
+      const identity = await getSessionIdentity(token.userId, token.authVersion);
+      if (!identity) return { expires: session.expires };
       if (session.user) {
+        session.user.authVersion = token.authVersion;
         session.user.staffMfaSessionId = token.staffMfaSessionId as string;
         session.user.id = token.userId as string;
-        session.user.accountRole = token.accountRole ?? "member";
-        session.user.firstName = token.firstName ?? null;
-        session.user.lastName = token.lastName ?? null;
-        session.user.onboardingCompletedAt = token.onboardingCompletedAt ?? null;
+        session.user.email = identity.email;
+        session.user.accountRole = identity.accountRole;
+        session.user.firstName = identity.firstName;
+        session.user.lastName = identity.lastName;
+        session.user.onboardingCompletedAt = identity.onboardingCompletedAt?.toISOString() ?? null;
+        session.user.emailVerifiedAt = identity.emailVerifiedAt?.toISOString() ?? null;
       }
 
       return session;
     }
   }
 });
+
+export const { auth, signIn, signOut } = authRuntime;
+export const handlers = {
+  POST: authRuntime.handlers.POST,
+  async GET(request: import("next/server").NextRequest) {
+    const response = await authRuntime.handlers.GET(request);
+    if (new URL(request.url).pathname.endsWith("/api/auth/session")) {
+      const session = await response.clone().json().catch(() => null);
+      if (!session?.user?.id) {
+        const headers = new Headers(response.headers);
+        headers.delete("content-length");
+        return new Response("null", { status: response.status, headers });
+      }
+    }
+    return response;
+  }
+};

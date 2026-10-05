@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { PublicTicketPurchase } from "@/components/events/public-ticket-purchase";
 import { getAppUrl } from "@/lib/stripe";
 
@@ -39,7 +39,7 @@ function formatDateTime(value: string) {
 
 export default async function PublicEventPage({ params }: PublicEventPageProps) {
   const { eventId } = await params;
-  const session = await auth();
+  const session = await getLiveSession();
 
   if (session?.user?.accountRole === "organisation") {
     redirect(`/dashboard/events/${eventId}`);

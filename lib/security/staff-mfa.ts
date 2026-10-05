@@ -118,7 +118,8 @@ function recoveryHash(userId: string, code: string) {
   return createHmac("sha256", encryptionKey()).update(`recovery:v1:${userId}:${normalized}`).digest("hex");
 }
 
-async function requireStaffEligibility(userId: string) {
+async function requireStaffEligibility(userId: string, allowEnrolled = false) {
+  if (allowEnrolled && (await prisma.userMfa.findUnique({ where: { userId }, select: { enabledAt: true } }))?.enabledAt) return;
   const active = await prisma.organisationStaff.findFirst({
     where: { userId, status: "active" }, select: { id: true }
   });
@@ -146,7 +147,7 @@ async function auditStaffMfa(tx: Prisma.TransactionClient, userId: string, actio
 }
 
 export async function getStaffMfaStatus(userId: string) {
-  await requireStaffEligibility(userId);
+  await requireStaffEligibility(userId, true);
   const mfa = await prisma.userMfa.findUnique({ where: { userId }, select: { enabledAt: true } });
   return { enabled: Boolean(mfa?.enabledAt), mode: mfaEnforcementMode() };
 }
@@ -201,7 +202,7 @@ export async function verifyStaffMfa(userId: string, code: string, sessionDigest
   if (!/^\d{6}$/.test(code) && (code.length > 32 || !/^[A-F0-9]{20}$/.test(recoveryCode))) {
     throw new MfaInputError("Invalid MFA or recovery code");
   }
-  await requireStaffEligibility(userId);
+  await requireStaffEligibility(userId, true);
   const mfa = await prisma.userMfa.findUnique({ where: { userId } });
   if (!mfa?.enabledAt || !mfa.encryptedSecret) throw new MfaRequiredError("Staff MFA enrollment required");
   const step = acceptedStep(decrypt(mfa.encryptedSecret), code, now, mfa.lastAcceptedStep);

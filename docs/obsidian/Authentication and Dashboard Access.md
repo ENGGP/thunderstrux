@@ -56,6 +56,7 @@ Important session field:
 session.user.id
 session.user.accountRole
 session.user.staffMfaSessionId
+session.user.authVersion
 ```
 
 The first two values support dashboard routing and access checks. The random MFA login ID binds verification to one sign-in. Sessions created before this claim was introduced must sign out and sign in again before staff verification.
@@ -67,6 +68,7 @@ The first two values support dashboard routing and access checks. The random MFA
 ```text
 /dashboard/:path*
 /events/:path*
+/account/:path*
 ```
 
 Behavior:
@@ -101,7 +103,7 @@ Signup:
 - Verification request and confirmation require trusted origin and enabled fail-closed Redis limits. They use email/token authority and deliberately ignore login-cookie CSRF authority, so stale cookies do not block verification. Protected account mutations retain session CSRF.
 - Unverified users may sign in and edit profiles; purchases, society joins/bootstrap and staff invite acceptance require live verified identity, rechecked under an account lock in the write transaction. Legacy users are not silently verified. Disabled users cannot sign in or pass protected access guards.
 - Callback paths use the shared safe-return-path helper. Confirmation never logs in or changes staff authority. Successful confirmation offers sign-in.
-- `User.authVersion` is additive preparation for T04 session invalidation; current verification tokens bind to it. JWT version enforcement is implemented by T04.
+- JWT authVersion is established only at password login. Auth.js session output, application pages, API guards, CSRF and proxy compare it to live active identity. Missing/old versions are rejected; cookie refresh cannot upgrade a revoked session.
 
 ## Navbar Behavior
 
@@ -201,3 +203,13 @@ Not trusted as authority:
 - request headers such as `x-org-id`
 
 Some helper functions exist for organisation header matching, but access decisions still need live server-side staff authority, the explicitly enabled legacy fallback, or member-access checks as appropriate.
+
+## Recovery And Private Settings (T04a)
+
+`/forgot-password` returns generic acceptance for known, absent and disabled accounts. A 30-minute reset token is bound to user/email/authVersion and stored as a digest; the raw link exists only inside an encrypted notification. Latest issuance supersedes earlier links of that purpose. `/reset-password` clears the fragment and requires an explicit POST; opening/prefetching the URL never consumes it. Confirmation never creates a login.
+
+`/account/settings` and GET `/api/me/account` expose only the current user's selected profile, verification/MFA status and ten private security events. Profile writes recheck the session version under the account lock. Password changes require the current password and, whenever an authenticator is enrolled, a login-bound grant even with staff enforcement off. Former staff can verify their existing enrollment without receiving staff authority.
+
+Reset and change atomically update the bcrypt password, advance authVersion, delete every MFA login grant, invalidate outstanding auth tokens/cancel their pending messages, record a private AccountSecurityEvent and enqueue the security notice. MFA enrollment/recovery codes and email verification are preserved. Passwords must have at least eight characters and at most 72 UTF-8 bytes. Anonymous recovery requires first-party origin and fail-closed Redis limits; authenticated changes also retain session CSRF and a five-per-user/hour limit.
+
+Deploy `20261005010000_password_recovery` before the app. Existing versionless cookies require fresh login. Rollback retains additive data; an older executable cannot enforce session revocation, so pause authenticated traffic during rollback. Independent security review is required before production activation. Provider acceptance, inbox delivery and hosted recovery remain separate evidence.

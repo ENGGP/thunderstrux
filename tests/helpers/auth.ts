@@ -8,16 +8,19 @@ export function setMockSession({
   userId,
   email,
   accountRole,
+  authVersion = 0,
   mfaSessionId = "integration-session"
 }: {
   userId: string;
   email: string;
   accountRole: AccountRole;
+  authVersion?: number;
   mfaSessionId?: string;
 }) {
   globalThis.__THUNDERSTRUX_TEST_SESSION__ = {
     user: {
       id: userId,
+      authVersion,
       staffMfaSessionId: mfaSessionId,
       email,
       accountRole,

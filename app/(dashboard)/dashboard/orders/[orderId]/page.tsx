@@ -135,6 +135,7 @@ export default async function OrganisationOrderDetailPage({
               {buyer?.name ? (
                 <p className="mt-1 text-sm text-neutral-600">{buyer.name}</p>
               ) : null}
+              {order.buyerIdentityCapturedAt && <p className="mt-2 text-sm text-neutral-600">Buyer contact details captured from the account profile on {order.buyerIdentityCapturedAt.toISOString().slice(0, 10)}. Original purchase-time profile details were not recorded.</p>}
             </div>
             <div>
               <p className="text-sm text-neutral-500">Event</p>

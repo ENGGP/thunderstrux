@@ -7,10 +7,10 @@ import { safeReturnPath } from "@/lib/security/safe-return-path";
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ callbackUrl?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; accountClosed?: string }>;
 }) {
   const session = await getLiveSession();
-  const { callbackUrl } = await searchParams;
+  const { callbackUrl, accountClosed } = await searchParams;
   const safeCallbackUrl = safeReturnPath(callbackUrl);
 
   if (session?.user) {
@@ -28,6 +28,7 @@ export default async function LoginPage({
         </header>
 
         <Card>
+          {accountClosed === "true" && <p role="status" className="mb-4 text-sm">Closed accounts cannot sign in. A new signup does not recover purchases or records from a closed account.</p>}
           <CredentialsLoginForm callbackUrl={safeCallbackUrl} />
         </Card>
       </div>

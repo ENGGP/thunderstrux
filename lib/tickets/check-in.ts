@@ -1,3 +1,4 @@
+import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { prisma } from "@/lib/db";
 
 export class OrganisationEventTicketsAccessError extends Error {
@@ -221,6 +222,7 @@ export async function getOrganisationEventTickets(
         order: {
           select: {
             id: true,
+            ...buyerIdentitySelect,
             user: {
               select: {
                 email: true,
@@ -272,8 +274,8 @@ export async function getOrganisationEventTickets(
       checkedInAt: ticket.checkedInAt,
       ticketTypeName: ticket.ticketType.name,
       orderId: ticket.order.id,
-      buyerEmail: ticket.order.user?.email ?? null,
-      buyerName: ticket.order.user ? buyerName(ticket.order.user) : null
+      buyerEmail: retainedBuyerIdentity(ticket.order)?.email ?? null,
+      buyerName: retainedBuyerIdentity(ticket.order) ? buyerName(retainedBuyerIdentity(ticket.order)!) : null
     })),
     pageInfo: {
       limit,

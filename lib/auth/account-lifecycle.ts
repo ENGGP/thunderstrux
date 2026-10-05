@@ -8,6 +8,8 @@ import { renderNotification, renderedNotificationSchema } from "@/lib/email/temp
 import { safeReturnPath } from "@/lib/security/safe-return-path";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { newPasswordSchema } from "@/lib/validators/auth";
+import { lockAccount } from "./account-lock";
+export { lockAccount } from "./account-lock";
 
 export class AccountTokenError extends Error {
   constructor() { super("This link is invalid or expired. Request a new link."); }
@@ -21,10 +23,6 @@ function assertIssuanceConfiguration() {
 export function accountTokenDigest(raw: string) { return createHash("sha256").update(raw).digest("hex"); }
 export class AccountVerificationError extends Error {
   constructor() { super("Verify your email before using this feature"); }
-}
-export async function lockAccount(tx: Prisma.TransactionClient, userId: string) {
-  await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
-  return tx.user.findUnique({ where: { id: userId } });
 }
 export async function lockVerifiedAccount(tx: Prisma.TransactionClient, userId: string) {
   const user = await lockAccount(tx, userId);

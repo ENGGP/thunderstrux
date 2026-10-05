@@ -15,7 +15,7 @@ import {
 } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { writeAuditLog } from "@/lib/staff/audit";
+import { StaffUpdateError, updateOrganisationStaff } from "@/lib/staff/management";
 import { validateJson } from "@/lib/validators";
 import { updateStaffSchema } from "@/lib/validators/staff";
 
@@ -54,83 +54,16 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     await requireOrganisationPermission(organisation.id, "staff:manage");
 
-    const existingStaff = await prisma.organisationStaff.findFirst({
-      where: {
-        id: staffId,
-        organisationId: organisation.id
-      },
-      select: {
-        id: true,
-        role: true,
-        status: true
-      }
-    });
-
-    if (!existingStaff) {
-      return notFound("Staff member was not found");
-    }
-
-    const nextRole = validation.data.role ?? existingStaff.role;
-    const nextStatus = validation.data.status ?? existingStaff.status;
-    const removesActiveOwner =
-      existingStaff.role === "owner" &&
-      existingStaff.status === "active" &&
-      (nextRole !== "owner" || nextStatus !== "active");
-
-    if (removesActiveOwner) {
-      const activeOwnerCount = await prisma.organisationStaff.count({
-        where: {
-          organisationId: organisation.id,
-          role: "owner",
-          status: "active"
-        }
-      });
-
-      if (activeOwnerCount <= 1) {
-        return conflict("At least one active owner is required");
-      }
-    }
-
-    const now = new Date();
-    const staff = await prisma.organisationStaff.update({
-      where: { id: staffId },
-      data: {
-        role: nextRole,
-        status: nextStatus,
-        revokedAt: nextStatus === "revoked" ? now : null,
-        revokedById: nextStatus === "revoked" ? user.id : null
-      },
-      select: {
-        id: true,
-        role: true,
-        status: true,
-        acceptedAt: true,
-        revokedAt: true,
-        user: {
-          select: {
-            id: true,
-            email: true
-          }
-        }
-      }
-    });
-
-    await writeAuditLog({
-      organisationId: organisation.id,
-      actorUserId: user.id,
-      action: "staff.updated",
-      targetType: "OrganisationStaff",
-      targetId: staff.id,
-      metadata: {
-        previousRole: existingStaff.role,
-        previousStatus: existingStaff.status,
-        nextRole,
-        nextStatus
-      }
-    });
+    const staff = await updateOrganisationStaff(user, organisation.id, staffId, validation.data);
 
     return NextResponse.json({ staff });
   } catch (error) {
+    if (error instanceof StaffUpdateError) {
+      if (error.kind === "not_found") return notFound(error.message);
+      if (error.kind === "stale_session") return unauthorized();
+      if (error.kind === "conflict") return conflict(error.message);
+      return forbidden(error.message);
+    }
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
     }

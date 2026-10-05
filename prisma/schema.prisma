@@ -14,6 +14,7 @@ model User {
   emailVerifiedAt         DateTime?
   authVersion             Int                  @default(0)
   disabledAt              DateTime?
+  closedAt                DateTime?
   authTokens              AuthToken[]
   securityEvents          AccountSecurityEvent[]
   accountRole             AccountRole          @default(member)
@@ -270,6 +271,12 @@ model Order {
   ticketEmailSentAt DateTime?
   ticketEmailLastError String?
   ticketEmailResentAt DateTime?
+  buyerEmailSnapshot String?
+  buyerFirstNameSnapshot String?
+  buyerLastNameSnapshot String?
+  buyerDisplayNameSnapshot String?
+  buyerIdentityCapturedAt DateTime?
+  buyerIdentityProvenance String?
   organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)

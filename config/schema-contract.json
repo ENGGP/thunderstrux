@@ -1,3 +1,3 @@
 {
-  "requiredMigration": "20261005020000_email_change"
+  "requiredMigration": "20261005030000_account_closure"
 }

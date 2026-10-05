@@ -25,6 +25,14 @@ test("explicit password recovery revokes existing browsers and settings changes 
   await resetPage.getByRole("button", { name: "Reset password", exact: true }).click();
   await expect(resetPage.getByRole("status")).toContainText("Password reset.");
   expect(await (await resetPage.request.get("/api/auth/session")).json()).toBeNull();
+  const anotherRequest = await resetPage.request.post("/api/auth/password/request", { headers: { Origin: "http://localhost:3100" }, data: { email: data.member.email } });
+  expect(anotherRequest.status()).toBe(202);
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const laterMessages = await (await resetPage.request.get("http://mail-capture:8025/messages")).json();
+  const nextLink = laterMessages.filter((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes("Reset")).at(-1).data.text.split("\n\n").at(-1);
+  await resetPage.goto(nextLink);
+  await expect(resetPage.getByLabel("New password", { exact: true })).toBeVisible();
+  await expect(resetPage.getByRole("button", { name: "Reset password", exact: true })).toBeEnabled();
   expect((await page.request.get("/api/me/account")).status()).toBe(401);
   expect((await page.request.get("/api/security/csrf")).status()).toBe(401);
   expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();

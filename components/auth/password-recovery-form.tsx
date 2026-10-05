@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAccountLinkToken } from "./account-link-token";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ export function PasswordRecoveryForm({ mode, callbackUrl }: { mode: "request" | 
   const [password, setPassword] = useState(""); const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [message, setMessage] = useState("");
   const [completedPath, setCompletedPath] = useState<string | null>(null);
+  useEffect(() => { if (token) { setCompletedPath(null); setMessage(""); setError(""); setPassword(""); setConfirmation(""); } }, [token]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setMessage("");
     if (mode === "reset" && password !== confirmation) { setError("Passwords do not match."); return; }

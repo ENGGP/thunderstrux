@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAccountLinkToken } from "./account-link-token";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ export function VerificationForm({ callbackUrl }: { callbackUrl: string }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [verifiedPath, setVerifiedPath] = useState<string | null>(null);
+  useEffect(() => { if (token) { setVerifiedPath(null); setMessage(""); setError(""); } }, [token]);
   async function confirm() {
     setBusy(true); setError("");
     try {

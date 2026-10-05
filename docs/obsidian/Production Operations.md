@@ -64,7 +64,7 @@ For disaster recovery, stop app writers and workers, restore into a new database
 
 ## Validation
 
-`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all three bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. The GitHub `operations-tests` job runs the same rehearsal without production credentials.
+`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all four bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. The GitHub `operations-tests` job runs the same rehearsal without production credentials.
 
 The required `static-validation` check validates both Compose contracts, lints the Dockerfiles, builds the production target, and blocks fixable high or critical Trivy findings. Temporary vulnerability exceptions are prohibited unless they identify the CVE, reason, owner, and expiry in the issue register and workflow configuration.
 

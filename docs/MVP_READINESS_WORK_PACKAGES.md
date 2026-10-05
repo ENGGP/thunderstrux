@@ -4,7 +4,7 @@ These packages group the steps in `MVP_READINESS_PLAN.md` by related implementat
 
 | Package | Steps | Internal checkpoints |
 |---|---|---|
-| 1. Account lifecycle | T02–T04 | Notification foundation → verification → password recovery/settings |
+| 1. Account lifecycle | T02–T04 | Notification foundation → verification → password recovery/settings, email changes and permanent closure |
 | 2. Staff and permissions | T05–T06 | Permissions/context → invitations and handover |
 | 3. Society profiles and discovery | T07–T09 | Safe assets → profiles → discovery/join |
 | 4. Ticket foundations | T10–T13 | Snapshots/readiness → inventory locking → free tickets |
@@ -18,3 +18,7 @@ These packages group the steps in `MVP_READINESS_PLAN.md` by related implementat
 | 12. Security and reliability | T38–T42 | Audit → security → accessibility → integrity/recovery/workers |
 | 13. Release qualification | T43–T44 | Follow their existing ordered substeps |
 | 14. Provider acceptance and final audit | T45–T46 | Real provider verification → final PRD completeness audit |
+
+## Package 1 delivery
+
+T02 notification foundation, T03 verification and T04a recovery/settings and T04b email changes are delivered through PRs #31, #32, #33 and #36. **Package 1 implementation and qualification are complete.** T04c permanent closure is delivered through [PR #37](https://github.com/ENGGP/thunderstrux/pull/37), with three unchanged-content complete local and CI browser passes, migration/restore coverage and protected-main delivery checks. Detailed scope, regressions, migrations, restore/browser evidence and remaining production activation gates are recorded in [MVP Readiness Plan](MVP_READINESS_PLAN.md). Account closure anonymises login/editable profile while retaining business, attendance, buyer contact and audit/security records; a new signup never inherits them. No runtime migration/redeployment or hosted activation has been performed.

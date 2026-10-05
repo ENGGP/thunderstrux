@@ -1,10 +1,33 @@
 import { execFileSync } from "node:child_process";
 import { test, expect, prisma, login } from "./fixtures";
 
+// Diagnose document/navigation races without printing tokens or credentials.
+test.beforeEach(async ({ context }) => {
+  context.on("page", page => {
+    page.on("console", message => { if (message.text().startsWith("account-link-navigation")) console.log(message.text()); });
+  });
+  await context.addInitScript(() => {
+    const documentId = Math.random().toString(36).slice(2);
+    const log = (event: string) => console.log("account-link-navigation", JSON.stringify({ event, documentId, path: location.pathname, hasFragment: Boolean(location.hash), readyState: document.readyState }));
+    log("document");
+    window.addEventListener("hashchange", () => log("hashchange"));
+    window.addEventListener("pagehide", () => log("pagehide"));
+    const replace = history.replaceState.bind(history);
+    history.replaceState = (...args) => { log("replaceState-before"); replace(...args); log("replaceState-after"); };
+  });
+});
+
 test("explicit password recovery revokes existing browsers and settings changes sign out", async ({ page, data, browser }) => {
   await login(page, data.member.email, "/account/settings");
   const oldCookies = await page.context().cookies();
   const recovery = await browser.newContext(); const resetPage = await recovery.newPage();
+  resetPage.on("console", message => { if (message.text().startsWith("account-link-navigation")) console.log(message.text()); });
+  await recovery.addInitScript(() => {
+    const documentId = Math.random().toString(36).slice(2);
+    const log = (event: string) => console.log("account-link-navigation", JSON.stringify({ event, documentId, path: location.pathname, hasFragment: Boolean(location.hash), readyState: document.readyState }));
+    log("document"); window.addEventListener("hashchange", () => log("hashchange")); window.addEventListener("pagehide", () => log("pagehide"));
+    const replace = history.replaceState.bind(history); history.replaceState = (...args) => { log("replaceState-before"); replace(...args); log("replaceState-after"); };
+  });
   await resetPage.goto("/forgot-password");
   await resetPage.getByLabel("Email", { exact: true }).fill(data.member.email);
   await resetPage.getByRole("button", { name: "Send password reset email", exact: true }).click();

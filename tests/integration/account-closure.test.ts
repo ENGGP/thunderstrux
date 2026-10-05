@@ -34,7 +34,8 @@ const actorFor = (user: { id: string; authVersion: number }) => ({ id: user.id, 
 const close = (user: { id: string; authVersion: number }) => closeAccount(actorFor(user), "password123", closureAcknowledgement);
 async function purchase(userId: string, status: "pending" | "paid" | "expired" = "pending", unitPrice = 1200) {
   const society = await createOrganisationAccount({ stripeReady: true }); const event = await createEvent({ organisationId: society.organisation.id, status: "published" });
-  const order = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId, status, unitPrice });
+  const order = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId, status, unitPrice, paidAt: status === "paid" ? new Date() : undefined });
+  if (status === "paid" && unitPrice > 0) await prisma.event.update({ where: { id: event.id }, data: { startTime: new Date(0), endTime: new Date(1000) } });
   return { ...society, event, order };
 }
 test("ownership blocks closure even with another owner or legacy access denied", async () => {
@@ -63,7 +64,7 @@ test("pending, unresolved compensation and upcoming paid purchases block; manual
   await close(user);
 });
 test("closure anonymises profile, revokes credentials/staff/joins and tokens, retains business records and private notice", async () => {
-  const user = await createMember(); const { order, event, organisation, user: owner } = await purchase(user.id, "paid", 0);
+  const user = await createMember(); const { order, event, organisation, user: owner } = await purchase(user.id, "paid");
   await prisma.user.update({ where: { id: user.id }, data: { displayName: "Retained buyer", phone: "123", studentNumber: "456" } });
   await joinOrganisation(user.id, organisation.id); await createOrganisationStaff({ organisationId: organisation.id, userId: user.id });
   const invite = await createOrganisationStaffInvite({ organisationId: organisation.id, invitedById: owner.id, email: user.email, role: "admin" });
@@ -121,9 +122,9 @@ test("enqueue failure rolls back anonymisation, snapshots, joins, staff, MFA and
   expect(await prisma.mfaRecoveryCode.count({ where: { userId: user.id } })).toBe(1); expect(await prisma.mfaGrant.count({ where: { userId: user.id } })).toBe(1);
 });
 test("retained buyers appear in scoped details/search/pagination/check-in and ticket delivery, with honest provenance", async () => {
-  const user = await createMember(); const { order, event, organisation } = await purchase(user.id, "paid", 0);
+  const user = await createMember(); const { order, event, organisation } = await purchase(user.id, "paid");
   await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
-  const another = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: user.id, status: "paid", unitPrice: 0 });
+  const another = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: user.id, status: "paid", unitPrice: 1200, paidAt: new Date() });
   const foreign = await createOrganisationAccount(); await close(user);
   const detail = await getOrganisationOrderDetail(organisation.id, order.id); expect(detail.user?.email).toBe(user.email); expect(detail.user?.firstName).toBe("Test"); expect(detail.buyerIdentityProvenance).toBe("current_account_at_capture");
   const first = await getGroupedOrganisationOrdersWithContext(organisation.id, "all", undefined, { search: user.email, limit: 1 });
@@ -158,7 +159,7 @@ test("closure HTTP preserves private reads, origin/CSRF, strict input, Redis fai
 });
 test("closure and owner promotion serialize; closed accounts cannot be reactivated as staff", async () => {
   const user = await createMember(); const society = await createOrganisationAccount(); const staff = await createOrganisationStaff({ organisationId: society.organisation.id, userId: user.id });
-  const results = await Promise.allSettled([close(user), updateOrganisationStaff(actorFor(society.user), society.organisation.id, staff.id, { role: "owner" })]);
+  const results = await Promise.allSettled([close(user), updateOrganisationStaff(actorFor(society.user), society.organisation.id, staff.id, { role: "owner", status: "active" })]);
   const closed = await prisma.user.findUniqueOrThrow({ where: { id: user.id } }); const liveStaff = await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } });
   if (closed.closedAt) { expect(liveStaff.status).toBe("revoked"); await expect(updateOrganisationStaff(actorFor(society.user), society.organisation.id, staff.id, { status: "active" })).rejects.toMatchObject({ kind: "conflict" }); }
   else { expect(liveStaff).toMatchObject({ status: "active", role: "owner" }); expect(results[0].status).toBe("rejected"); }
@@ -229,4 +230,13 @@ test("concurrent owner demotions retain one active owner and the scoped atomic a
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
   expect(await prisma.organisationStaff.count({ where: { organisationId: society.organisation.id, role: "owner", status: "active" } })).toBe(1);
   expect(await prisma.auditLog.count({ where: { organisationId: society.organisation.id, action: "staff.updated" } })).toBe(1);
+});
+
+test("existing zero-value future tickets are retained while free joins are removed", async () => {
+  // Synthetic legacy/future free-order fixture; free checkout remains T18.
+  const user = await createMember(); const { order, event, organisation } = await purchase(user.id, "paid", 0);
+  const ticket = await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
+  await joinOrganisation(user.id, organisation.id); await close(user);
+  expect(await prisma.ticket.findUnique({ where: { id: ticket.id } })).not.toBeNull();
+  expect(await prisma.organisationMember.count({ where: { userId: user.id } })).toBe(0);
 });

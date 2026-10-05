@@ -233,7 +233,7 @@ test("concurrent owner demotions retain one active owner and the scoped atomic a
 });
 
 test("existing zero-value future tickets are retained while free joins are removed", async () => {
-  // Synthetic legacy/future free-order fixture; free checkout remains T18.
+  // Synthetic legacy/future free-order fixture; free checkout remains T13.
   const user = await createMember(); const { order, event, organisation } = await purchase(user.id, "paid", 0);
   const ticket = await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
   await joinOrganisation(user.id, organisation.id); await close(user);

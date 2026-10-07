@@ -82,7 +82,9 @@
   },
   "pnpm": {
     "overrides": {
-      "@prisma/config@6.19.3>deepmerge-ts": "8.0.2"
+      "@prisma/config@6.19.3>deepmerge-ts": "8.0.2",
+      "sharp": "0.35.5",
+      "source-map-js": "1.2.2"
     },
     "onlyBuiltDependencies": [
       "@prisma/client",

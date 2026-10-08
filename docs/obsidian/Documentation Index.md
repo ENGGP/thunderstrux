@@ -1,65 +1,55 @@
 ---
 status: living
-last-reviewed: 2026-10-01
+last-reviewed: 2026-10-09
 owner: engineering
+related: ["[[Project Handover]]", "[[Thunderstrux Codebase Map]]"]
+sources: [AGENTS.md, scripts/check-docs.mjs]
 ---
 
 # Documentation Index
 
-This is the entry point for engineers and coding agents. Documentation supports the code; it does not override current code, schema, migrations, configuration, or provider behavior.
+The project knowledge map: use [[Project Handover]] for current state, the living notes for behavior/procedures, and historical notes for dated evidence. Repository implementation is not hosted activation. This vault was reviewed against merged main b9a113d on 2026-10-09; review dates describe editorial/code-reference review, not new functionality tests or runtime verification.
 
 ## Start Here
 
-Read these in order before implementation:
+1. [[Project Handover]] ? current delivery from PR #31 onward, active risks and next safe actions.
+2. [[Engineering Delivery Workflow]] ? focused branching, local validation by risk, review, cleanup and PR delivery.
+3. [[Non-Blocking Issue Register|Issue and Defect Register]] ? canonical defects, accepted risks and external gates.
+4. [[../THUNDERSTRUX_PRD|Product Requirements]] and [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] ? product intent and delivery sequence.
+5. Read only the relevant living reference and its code sources. [[../MVP_READINESS_PLAN|Readiness Plan]] owns detailed acceptance and delivery evidence.
 
-1. [[Current Handover]] — current repository state, active work, release gates, and next safe actions.
-2. [[Engineering Delivery Workflow]] — required planning, branching, implementation, validation, review, PR, and handover procedure.
-3. [[Non-Blocking Issue Register|Issue and Defect Register]] — open defects, accepted debt, external gates, and resolved defect history.
-4. [[Thunderstrux Codebase Map]] and [[Architecture Overview]] — repository layout and system boundaries.
-5. [[../THUNDERSTRUX_PRD|Thunderstrux PRD]] and [[../MVP_READINESS_PLAN|MVP Readiness Plan]] — product intent and production-risk roadmap.
+## Find The Right Note
 
-Then read the living reference for the subsystem being changed.
+| Question | Living references |
+| --- | --- |
+| What is implemented and where is the code? | [[Project Handover]], [[Thunderstrux Codebase Map]], [[Architecture Overview]] |
+| How do I implement and validate a change locally? | [[Engineering Delivery Workflow]], [[Development Workflow]] |
+| How do login, verification, recovery, staff authority and closure work? | [[Authentication and Dashboard Access]], [[API Reference]], [[Database and Multi Tenancy]] |
+| How do pages, navigation and requests fit together? | [[Frontend and Backend Flow]], [[UI Architecture Rules]] |
+| How do events and attendance work? | [[Event Lifecycle]], [[Ticket Check-in Implementation]] |
+| What creates seed data and why is it missing? | [[Seeding and Data]], [[Troubleshooting]] |
+| What is payment truth and how do I recover an order? | [[Stripe Payments and Connect]], [[Payment Lifecycle]], [[E2E and Staging Payments]] |
+| How do ticket emails and encrypted account notices work? | [[Email Delivery Implementation]], [[Production Operations]] |
+| How do I deploy, migrate, restore or roll back? | [[Production Operations]], [[Database and Multi Tenancy]], [[Project Handover]] |
+| What versions/overrides are pinned and how are audits handled? | [[Dependency Automation]], [[Troubleshooting]] |
+| Which risks remain open? | [[Non-Blocking Issue Register]], [[../MVP_READINESS_PLAN|Readiness Plan]] |
 
-## Document Classes
+## Historical Evidence
 
-| Class | Purpose | Update rule |
-| --- | --- | --- |
-| Living reference | Current behavior, architecture, development, or operations | Update in the same PR as behavior changes |
-| Current handover | Short current-state and next-action summary | Update before ending material work |
-| Issue and defect register | Canonical open-risk and defect-resolution record | Add discoveries promptly; resolve only with evidence |
-| Evidence ledger | Dated acceptance and release-gate evidence | Append verified evidence; distinguish repository checks from hosted activation |
-| Runbook | Repeatable operational or troubleshooting procedure | Test commands before publishing |
+These notes retain their original findings and dates. They do not define today's runtime or delivery policy:
 
-## Living References
+- [[Dependency Advisory Triage 2026-09-18]] ? original advisory inventory; current patches/override removal conditions are in [[Dependency Automation]].
+- [[Production Readiness Verification 2026-09-22]] ? earlier remediation acceptance; current release procedures and remaining gates are in [[Production Operations]] and the handover.
+- [[Docker Architecture Assessment 2026-09-29]] ? topology/design assessment and subsequent foundation evidence; current runtime uses Node 22 and local validation.
 
-- [[Development Workflow]] — Docker setup, commands, environments, and local recovery.
-- [[Authentication and Dashboard Access]] — sessions, staff authority, MFA, roles, and access behavior.
-- [[Database and Multi Tenancy]] — schema, canonical ownership, migrations, and integrity rules.
-- [[API Reference]] — route contracts and error conventions.
-- [[Frontend and Backend Flow]] and [[UI Architecture Rules]] — request/UI flow and interface conventions.
-- [[Event Lifecycle]], [[Ticket Check-in Implementation]], and [[Seeding and Data]] — event, attendance, and local data behavior.
-- [[Stripe Payments and Connect]], [[Payment Lifecycle]], [[Email Delivery Implementation]], and [[E2E and Staging Payments]] — payments, lifecycle history, delivery, and provider acceptance.
-- [[Production Operations]] and [[Production Readiness Verification 2026-09-22]] — deployment tooling, recovery, evidence, and external release gates.
-- [[Docker Architecture Assessment 2026-09-29]] — point-in-time review of container boundaries, startup suitability, production gaps, and recommended hosting topology.
-- [[Dependency Automation]] — pinned dependencies, Renovate policy, audit behavior, and dependency PR validation.
-- [[Troubleshooting]] — symptom-based diagnosis and safe recovery.
+Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30, with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. Keep the handover focused on PR #31 onward.
 
-## Source-of-Truth Order
+## Sources And Maintenance
 
-When sources disagree, verify in this order:
-
-1. Current code, schema, migrations, package manifest, Compose files, and CI workflows.
-2. Current provider or hosted-environment state when the question is operational.
-3. `Current Handover`, the relevant living reference, and the issue register.
-4. Dated evidence ledgers, merged PRs, and Git history.
-
-Record any discovered disagreement as a documentation defect and correct the living documents in the same PR.
-
-## Documentation Quality Rules
-
-- Use exact dates and label evidence as local, CI, staging, or production.
-- Never publish secrets, complete tokens, raw payment payloads, or personal data.
-- Link to durable files, PRs, commits, tests, or runbooks for important claims.
-- State limitations and external activation work alongside completed repository work.
-- Keep `Current Handover` as the sole handover. Put durable behavior in living references, open risks in the issue register, and dated verification in the appropriate evidence ledger or PR.
-- Run `pnpm docs:check` and `git diff --check` before opening a PR.
+- Code/schema/package/Compose/provider state establish actual behavior; user-authorized [[Engineering Delivery Workflow]] establishes current delivery policy. Record disagreements in the issue register and correct the owning note.
+- `sources` in note metadata lists paths relative to the repository root. `related` links connect concepts without copying their full contracts.
+- `status: current` identifies the sole handover; `living` identifies maintained references/runbooks; `historical` identifies dated evidence/assessments. Preserve original event dates and label evidence local, CI, staging or production.
+- Put each durable contract in its owning reference. Link from the handover; record open risks once in the issue register and detailed acceptance once in the readiness ledger or PR.
+- Update affected notes in the same PR as behavior or operational changes. Review stale claims against code; do not merely advance review dates.
+- Do not store secrets, complete tokens, personal data, raw provider payloads, generated caches or local .obsidian workspace state in Git.
+- Documentation-only delivery uses `pnpm docs:check`, `git diff --check` and claim/reference review. Do not run functionality tests. No routine GitHub checks or repeated E2E campaigns are required.

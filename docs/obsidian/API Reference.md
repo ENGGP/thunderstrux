@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
+sources: [app/api, lib/api/errors.ts]
+---
+
 # API Reference
 
 This is a concise reference for implemented API routes. Security and data-model rules are documented in [[Database and Multi Tenancy]].
@@ -28,10 +36,12 @@ Protected routes:
 - ticket check-in and check-out
 - Stripe Connect onboard, continue, and disconnect
 - staff MFA setup and verification
+- verification/recovery issuance and redemption
+- authenticated password/email/closure mutations
 
 Rules:
 
-- Login, signup, organisation creation, and staff MFA fail closed if the limiter backend is unavailable.
+- Login, signup, verification/recovery, account-security mutations, organisation creation, and staff MFA fail closed if the limiter backend is unavailable.
 - Checkout, resend, join/leave, check-in/check-out, and Stripe Connect mutations fail open with a structured warning if the limiter backend is unavailable.
 - Limit responses use `429` with a safe retry message and `Retry-After` when available.
 - Bucket keys are hashed before Redis storage; warning logs avoid request bodies, cookies, tokens, passwords, raw emails, raw user IDs, raw order IDs, Redis URLs, and unhashed bucket keys.
@@ -463,7 +473,7 @@ Rules:
 
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
-- Event-management access required for the current organisation.
+- Live tickets:check_in permission required for the current organisation.
 - The event must belong to the organisation owned by `session.user`.
 - Access is resolved server-side; the frontend does not provide trusted organisation ownership.
 - Returns actual `Ticket` rows only.
@@ -515,7 +525,7 @@ Response:
 Status:
 
 - `401` unauthenticated.
-- `403` non-organisation account.
+- `403` insufficient live authority/capability or required MFA.
 - `400` malformed `limit`, `cursor`, or `direction`.
 - `404` event missing or not owned by the current organisation.
 
@@ -529,9 +539,9 @@ Rules:
 
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
-- Event-management access required for the current organisation.
+- Live tickets:check_in permission required for the current organisation.
 - Ticket must belong to an event owned by the organisation account.
-- Only `Ticket.checkedInAt` is updated.
+- Ticket.checkedInAt and an actor-attributed AuditLog entry update atomically; payment and ticket ownership are unchanged.
 - Already checked-in tickets are rejected and the original timestamp is preserved.
 - Does not modify order status, Stripe state, ticket ownership, or ticket type data.
 
@@ -550,7 +560,7 @@ Success response:
 Status:
 
 - `401` unauthenticated.
-- `403` non-organisation account.
+- `403` insufficient live authority/capability or required MFA.
 - `404` ticket missing or not owned by the current organisation.
 - `409` ticket is already checked in.
 
@@ -562,9 +572,9 @@ Rules:
 
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
-- Event-management access required for the current organisation.
+- Live tickets:check_in permission required for the current organisation.
 - Ticket must belong to an event owned by the organisation account.
-- Only `Ticket.checkedInAt` is updated.
+- Ticket.checkedInAt and an actor-attributed AuditLog entry update atomically; payment and ticket ownership are unchanged.
 - Only checked-in tickets can be checked out.
 - Does not modify order status, Stripe state, ticket ownership, or ticket type data.
 
@@ -583,7 +593,7 @@ Success response:
 Status:
 
 - `401` unauthenticated.
-- `403` non-organisation account.
+- `403` insufficient live authority/capability or required MFA.
 - `404` ticket missing or not owned by the current organisation.
 - `409` ticket is already unused.
 
@@ -613,7 +623,7 @@ Rules:
 - `direction` is `next` or `prev`.
 - Invalid pagination params return structured `400`.
 - Groups are page-local; they do not imply complete event totals across all matching orders.
-- Member accounts cannot access this endpoint.
+- Member accounts without live staff authority cannot access this endpoint.
 
 Response:
 
@@ -714,7 +724,7 @@ Status:
 
 - `400` unpaid order.
 - `401` unauthenticated.
-- `403` non-organisation account.
+- `403` insufficient live staff authority, finance permission or required MFA.
 - `404` order missing or not owned by the current organisation.
 
 ### `POST /api/orders/[orderId]/email-jobs/[jobId]/requeue`
@@ -786,7 +796,7 @@ Responsibilities:
 - Do not issue tickets or send ticket email for compensation-required orders.
 - Return `200` for signed but unhandled Stripe event types.
 
-Email delivery enqueue/worker failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.
+Automatic EmailOutbox insertion is part of the fulfilment transaction; failure rolls fulfilment back. Provider/worker failure after commit does not reverse payment, inventory, reservations or tickets.
 
 ## Server-Rendered Order Views
 
@@ -942,7 +952,7 @@ Responsibilities:
 
 ## General Notifications
 
-GET `/api/notifications?cursor=...` returns a private 25-job page of failed business notifications and `nextCursor`. Live current-tenant `orders:email_resend` authority is required; security jobs, recipients and encrypted payloads are excluded. Invalid cursor returns 400. POST `/api/notifications/[jobId]/requeue` accepts strict `{ reason }` (8?500 characters), requires trusted origin/session CSRF and resend rate limits, conceals foreign/security targets as 404 and returns `{ queued: true }`. Ineligible or changed jobs return 409; an audit is committed with the queue update. `/dashboard/notifications` uses the same scoped read service.
+GET `/api/notifications?cursor=...` returns a private 25-job page of failed business notifications and `nextCursor`. Live current-tenant `orders:email_resend` authority is required; security jobs, recipients and encrypted payloads are excluded. Invalid cursor returns 400. POST `/api/notifications/[jobId]/requeue` accepts strict `{ reason }` (8 to 500 characters), requires trusted origin/session CSRF and resend rate limits, conceals foreign/security targets as 404 and returns `{ queued: true }`. Ineligible or changed jobs return 409; an audit is committed with the queue update. `/dashboard/notifications` uses the same scoped read service.
 
 ## Account Recovery And Settings
 

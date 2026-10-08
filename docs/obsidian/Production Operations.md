@@ -1,8 +1,16 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Project Handover]]", "[[Database and Multi Tenancy]]"]
+sources: [scripts/operations.mjs, docker-compose.hosted.yml, scripts/run-operations-tests.mjs]
+---
+
 # Production Operations
 
 ## Current Status
 
-P2.17 repository-side operations are implemented and locally rehearsed. The repository provides deterministic CI, an operations validation workflow, liveness/readiness endpoints, non-root production containers, a single migration job, guarded deployment, PostgreSQL backup/restore, and compatibility-gated application rollback.
+P2.17 repository-side operations are implemented and locally rehearsed. The repository provides local Docker validation, optional manual GitHub workflows, liveness/readiness endpoints, non-root production containers, a single migration job, guarded deployment, PostgreSQL backup/restore, and compatibility-gated application rollback.
 
 The hardened repository contract is `docker-compose.hosted.yml`. It consumes a prebuilt immutable `APP_IMAGE`, external PostgreSQL and Redis URLs, and file-backed secrets; it contains no database, Redis, source bind mount, or image build. The application, migration, and workers run non-root with a read-only root filesystem, dropped capabilities, no-new-privileges, bounded PIDs, explicit CPU/memory limits, and reviewed writable `tmpfs` paths. Validate a deployment environment with `pnpm docker:hosted:check -- --env-file <path>` before rollout.
 
@@ -11,7 +19,7 @@ This is not evidence of a live production deployment. Hosting, external health m
 ## Health
 
 - `GET /api/health` is liveness only and preserves the public `{status: "ok", service: "thunderstrux"}` contract.
-- `GET /api/health/ready` returns `200` only when the release's required migration is completed and not rolled back, an application-table query succeeds, MFA/legacy-access configuration is valid, and Redis responds when rate limiting is enabled. It returns a public-safe `503` otherwise and is never cached.
+- `GET /api/health/ready` returns `200` only when the release's required migration is completed and not rolled back, an application-table query succeeds, MFA/legacy-access configuration is valid, and Redis responds when rate limiting is enabled, and the notification encryption key is valid. It returns a public-safe `503` otherwise and is never cached.
 - The image healthcheck calls readiness on `PORT`, defaulting to `3000`. An unhealthy container is a signal; Docker Compose does not automatically replace it.
 
 ## Deployment
@@ -32,6 +40,7 @@ Pause the platform schedules before deployment. Resume them only after readiness
 every minute: node scripts/process-email-outbox.mjs
 every minute: node scripts/process-stale-orders.mjs
 every minute: node scripts/process-compensation-refunds.mjs
+every minute: node scripts/process-notifications.mjs
 ```
 
 A backup failure occurs before migrations and allows the unchanged release to restart. Once migration begins, a failure leaves writers stopped for inspection. Never use `prisma migrate reset` or automatically mark a failed migration resolved.
@@ -66,11 +75,11 @@ For disaster recovery, stop app writers and workers, restore into a new database
 
 `pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all four bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. The GitHub `operations-tests` job runs the same rehearsal without production credentials.
 
-The required `static-validation` check validates both Compose contracts, lints the Dockerfiles, builds the production target, and blocks fixable high or critical Trivy findings. Temporary vulnerability exceptions are prohibited unless they identify the CVE, reason, owner, and expiry in the issue register and workflow configuration.
+For dependency/container changes, local validation follows [[Engineering Delivery Workflow]]: review affected Compose contracts, lint changed Dockerfiles, build the production target and scan fixable high/critical vulnerabilities when that boundary changes. The optional manual static-validation workflow provides the same checks; it is not a merge requirement. Temporary vulnerability exceptions are prohibited unless they identify the CVE, reason, owner, and expiry in the issue register and workflow configuration.
 
 Digest pinning also retains the base image's installed OS packages. The application Dockerfile explicitly installs `libpcre2-8-0` from Debian's security repository alongside its runtime prerequisites, so rebuilding upgrades the inherited library. The 2026-10-04 scan found CVE-2026-103111 in `10.42-1+deb12u1`; Debian's fixed Bookworm package is `10.42-1+deb12u2`. Verify the installed version and scan the final `runner` image after security package changes; do not bypass the vulnerability gate. See the [Debian security tracker](https://security-tracker.debian.org/tracker/CVE-2026-103111).
 
-Direct environment variables remain supported for development and legacy deployment. Production secret stores should mount files and set the matching `_FILE` variables for `DATABASE_URL`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `RATE_LIMIT_REDIS_URL`, Stripe credentials, and `RESEND_API_KEY`. Supplying both forms, an unreadable or relative file, or an empty file fails startup without printing the secret.
+Direct environment variables remain supported for development and legacy deployment. Production secret stores should mount files and set the matching `_FILE` variables for `DATABASE_URL`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `RATE_LIMIT_REDIS_URL`, Stripe credentials, and `RESEND_API_KEY` and `NOTIFICATION_ENCRYPTION_KEY`. Supplying both forms, an unreadable or relative file, or an empty file fails startup without printing the secret.
 
 ## Account Closure Release Compatibility
 

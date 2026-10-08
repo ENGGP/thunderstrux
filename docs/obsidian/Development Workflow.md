@@ -1,6 +1,14 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Engineering Delivery Workflow]]", "[[Seeding and Data]]"]
+sources: [package.json, docker-compose.dev.yml, scripts/run-e2e.mjs]
+---
+
 # Development Workflow
 
-For the end-to-end engineering, review, validation, and PR sequence used by the recent remediation slices, start with [[Engineering Delivery Workflow]] and the latest [[Current Handover]]. This page holds local Docker and command details.
+For the end-to-end engineering, review, validation, and PR sequence used by the recent remediation slices, start with [[Engineering Delivery Workflow]] and the latest [[Project Handover]]. This page holds local Docker and command details.
 
 ## Dependency security validation
 
@@ -275,7 +283,7 @@ If build was somehow run inside a running app container, recreate the app contai
 docker compose up -d --force-recreate app
 ```
 
-For final production-path validation, prefer rebuilding/recreating the base Compose app container rather than relying on a build run inside an already-started process.
+For production-path validation, use the isolated baseline or operations runner selected by risk; rebuilding a development stack is activation work, not a substitute for isolated test evidence.
 
 Smoke tests:
 
@@ -288,16 +296,16 @@ The smoke script checks auth roles, dashboard access, event create/edit, ticket 
 Integration tests:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration
+node scripts/run-e2e.mjs baseline
 ```
 
-The integration runner uses a disposable test database, not the normal development database.
+The isolated baseline builds its own app/runner and run-owned database. It includes typecheck, integration and audit. Do not use the development app/dependency volume for normal validation.
 
 Current test database behavior:
 
 - default database URL: `postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public`
 - override with `INTEGRATION_DATABASE_URL` or `TEST_DATABASE_URL`
-- refuses to run unless the database name contains `_test`
+- refuses to run unless one simple database name ends in `_test`; the database must also be disposable and run-owned
 - ignores accidental host `DATABASE_URL` leakage by setting `DATABASE_URL` from the resolved test URL for all child commands
 - resets the test database through `pnpm prisma migrate reset --force --skip-seed`
 - runs `pnpm prisma:generate` after reset so Prisma Client matches the current schema

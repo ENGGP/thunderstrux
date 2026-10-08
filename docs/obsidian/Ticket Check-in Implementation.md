@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Event Lifecycle]]", "[[Database and Multi Tenancy]]"]
+sources: [lib/tickets/check-in.ts, app/api/tickets]
+---
+
 # Ticket Check-in Implementation
 
 This note documents the current organiser ticket check-in and check-out implementation. Read with [[API Reference]] and [[Database and Multi Tenancy]].
@@ -15,7 +23,7 @@ Meaning:
 - `null`: unused.
 - non-null timestamp: checked in.
 
-No status enum, QR token, check-in actor, audit log, refund validity rule, order mutation, or Stripe mutation exists in this MVP.
+There is no ticket status enum, QR token or provider refund-validity rule. Check-in/out append an actor-attributed AuditLog transactionally; no order/Stripe state or ticket ownership is changed.
 
 ## APIs
 
@@ -29,7 +37,7 @@ Rules:
 
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
-- Event-management access required.
+- The live tickets:check_in capability is required for listing and check-in/out.
 - Authority is verified server-side from `session.user` through live `OrganisationStaff` status and capabilities; the legacy owner path is used only when explicitly configured.
 - Ticket access is scoped through `Ticket.event.organisationId`.
 - `Ticket.organisationId` remains stored, but event ownership is the source of truth for ticket visibility and check-in/check-out authorization.
@@ -63,8 +71,8 @@ Important functions:
 
 - `parseTicketPaginationOptions(searchParams)`
 - `getOrganisationEventTickets(organisationId, eventId, paginationOptions)`
-- `checkInOrganisationTicket(organisationId, ticketId)`
-- `checkOutOrganisationTicket(organisationId, ticketId)`
+- `checkInOrganisationTicket(organisationId, ticketId, actorUserId)`
+- `checkOutOrganisationTicket(organisationId, ticketId, actorUserId)`
 
 Concurrency safety:
 

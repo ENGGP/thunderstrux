@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[API Reference]]", "[[Email Delivery Implementation]]"]
+sources: [auth.ts, proxy.ts, lib/auth/access.ts, lib/auth/account-lifecycle.ts, lib/auth/account-closure.ts]
+---
+
 # Authentication and Dashboard Access
 
 ## Staff MFA Rollout
@@ -76,7 +84,7 @@ Behavior:
 - If no token exists, user is redirected to `/login`
 - Relative callback URL is preserved in the query string
 - Organisation accounts requesting `/events/[eventId]` are redirected to `/dashboard/events/[eventId]`
-- Member accounts requesting `/dashboard/events/[eventId]` are redirected to `/`
+- Management pages resolve live staff/capability/MFA authority; a member accountRole alone neither grants nor prevents staff access.
 - In production, proxy initialization fails for unsafe `AUTH_SECRET` values: empty string, `dev-secret`, or `replace-with-a-non-empty-secret`
 
 ## Login and Signup Flow
@@ -119,7 +127,7 @@ Current behavior:
 - Thunderstrux logo links to `/dashboard` for organisation accounts
 - Thunderstrux logo links to `/` for member and logged-out users
 - Logged-out users see `Sign in`
-- Logged-in users see `Dashboard` and `Sign out`
+- Logged-in users see Dashboard, private Settings (/account/settings), and Sign out; members also see My tickets.
 - Member accounts see `My tickets`
 - Organisation accounts do not see `My tickets`
 - Sign out redirects to `/` on the current site, including isolated staging ports.
@@ -174,7 +182,7 @@ The legacy `Organisation.accountUserId` ownership path is used only according to
 
 Named staff receive event, finance, settings, administration, and Stripe Connect capabilities from their live role and explicit permissions. Server handlers re-check these capabilities for every protected operation.
 
-Member accounts can complete a profile, join and leave organisations, view public-safe organisation details, browse public events, buy tickets, and view `/tickets`. They cannot access organisation management APIs or pages.
+Member accounts can complete a profile, join/leave organisations, browse events and view tickets; purchases/joins require verified identity. Members with active named staff authority can also use permitted management pages/APIs. A join membership alone never grants that access.
 
 Organisation accounts can view public event URLs only as redirects to the organiser event view. They cannot buy tickets.
 

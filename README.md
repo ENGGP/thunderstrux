@@ -2,9 +2,9 @@
 
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. It supports member and organisation accounts, organisation event management, public event discovery, ticket checkout, and Stripe Connect.
 
-Last reviewed: 2026-09-29
+Last reviewed: 2026-10-09
 
-Future coding agents and contributors should start with the [Documentation Index](docs/obsidian/Documentation%20Index.md), [Current Handover](docs/obsidian/Current%20Handover.md), and [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md).
+Future coding agents and contributors should start with the [Documentation Index](docs/obsidian/Documentation%20Index.md), [Project Handover](docs/obsidian/Project%20Handover.md), and [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md).
 
 ## Stack
 

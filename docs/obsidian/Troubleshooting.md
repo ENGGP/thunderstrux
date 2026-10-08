@@ -1,8 +1,26 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Development Workflow]]", "[[Dependency Automation]]"]
+sources: [scripts/doctor-dev.mjs, scripts/integration-test-guards.mjs]
+---
+
 # Troubleshooting
 
 ## Dependency audit failures
 
 The old 41-finding audit is historical; [[Dependency Automation]] records the patched baseline, verification, and update policy. Run `pnpm audit --audit-level high` from the updated checkout. For a new failure, capture the advisory, installed version and every dependency path, update the affected parent or reviewed transitive resolution, then repeat compatibility validation. Do not suppress advisories or disable audit errors. A failed historical GitHub run will remain failed until a new run audits the updated commit. Existing Docker images and host node_modules must be refreshed separately.
+
+## Account Links, Verification And Revoked Sessions
+
+- Signup/recovery returning 202 accepted is intentionally generic; it does not imply a new account, automatic login or inbox delivery. Inspect private notification status and worker configuration without printing link payloads.
+- Verification/reset/email-change links need explicit POST and must match purpose, latest issuance, expiry and live email/authVersion. Fragment capture survives router hydration; do not move raw tokens into query callbacks or browser storage. Request a new link after completion/expiry rather than replaying one.
+- Required security limits fail closed: confirm Redis is enabled/reachable, trusted origins match and the notification key/provider are configured. Private Docker capture is isolated test evidence, not a real delivery service.
+- Password/email changes and closure revoke old sessions. Sign in again after password/email changes; an enrolled authenticator needs a login-bound grant even when staff MFA enforcement is off. Closed accounts cannot sign in or be reopened through the app/seed.
+- Closure blockers require actual ownership/payment/purchase resolution; a manual refund flag is not provider proof.
+
+Contracts: [[Authentication and Dashboard Access]], [[API Reference]], [[Email Delivery Implementation]]. Deployment/rollback: [[Production Operations]].
 
 ## UI Change Not Visible
 
@@ -452,7 +470,7 @@ The integration runner should not require manual database reset.
 Current expected behavior:
 
 - resolves the test database URL from `INTEGRATION_DATABASE_URL`, `TEST_DATABASE_URL`, or the default container URL
-- refuses to run unless the database name contains `_test`
+- refuses to run unless one simple database name ends in `_test`; the database must also be disposable and run-owned
 - runs `pnpm prisma migrate reset --force --skip-seed`
 - runs `pnpm prisma:generate`
 - runs Vitest sequentially

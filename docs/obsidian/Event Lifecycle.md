@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[API Reference]]", "[[Ticket Check-in Implementation]]"]
+sources: [lib/events/event-lifecycle.ts, app/api/events]
+---
+
 # Event Lifecycle
 
 ## Statuses
@@ -46,7 +54,7 @@ Access:
 
 - Active staff authority or explicitly enabled legacy authority is required.
 - The submitted `organisationId` must match the server-resolved canonical organisation.
-- Member accounts cannot create events.
+- Members without live staff authority cannot create events; named staff with events:manage can, regardless of accountRole.
 
 ## Ticket Types
 
@@ -77,8 +85,7 @@ PATCH /api/events/[eventId]/publish
 
 Publishing requires:
 
-- Organisation account.
-- Event-management access to the event organisation.
+- Live events:manage authority (active staff or explicitly allowed legacy owner) for the event organisation.
 - At least one ticket type.
 - Total ticket quantity greater than zero.
 
@@ -159,9 +166,9 @@ Current route:
 
 Rules:
 
-- Organisation account required.
+- Live management authority and the required event capability are required.
 - The event must belong to the caller's server-resolved canonical organisation.
-- Member accounts are redirected to `/`.
+- Users without live event-management authority are denied/redirected by the management-page helper; foreign events are concealed.
 - Draft and published events can be viewed by management users with live access to the owning organisation.
 - The route shows event details, remaining tickets, sold tickets, and revenue.
 - Sold and revenue values are derived from paid orders.

@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
+sources: [app, components, lib/auth/page-access.ts]
+---
+
 # Frontend and Backend Flow
 
 Organisation management flows resolve a canonical tenant from active `OrganisationStaff` authority and re-check live role/capability in the backend. `Organisation.accountUserId` remains only as the explicitly configured legacy migration fallback. Member `OrganisationMember` rows never grant management access.
@@ -69,7 +77,7 @@ User selects quantity
   -> Order row is updated with stripeSessionId
   -> browser redirects to Stripe
   -> payment webhook marks Order paid and issues Ticket rows
-  -> after fulfilment succeeds, webhook flow attempts ticket delivery email
+  -> fulfilment commits its automatic email intent atomically; a bounded worker sends after commit
   -> in non-production only, /success?session_id=... can reconcile paid sessions if local webhook forwarding is absent
   -> buyer sees the result at /tickets
 ```
@@ -99,15 +107,15 @@ Flow:
 ```text
 User signs up
   -> POST /api/auth/signup
-  -> User row created with hashed password and accountRole
-  -> frontend signs in via credentials
-  -> browser redirects to callbackUrl
+  -> generic 202 acceptance for new/existing addresses
+  -> eligible new account, digest token and encrypted notification commit atomically
+  -> verification link requires explicit POST; sign-in is a separate action
 ```
 
 ```text
 User signs in
   -> signIn("credentials")
-  -> auth.ts checks email/password against Prisma
+  -> auth.ts checks email/password and active identity against Prisma, establishes authVersion and MFA login ID
   -> session.user.id and session.user.accountRole are exposed
   -> browser redirects to callbackUrl
 ```
@@ -124,7 +132,7 @@ Flow:
 ```text
 User visits /dashboard
   -> server reads authenticated user from session
-  -> member account renders member dashboard
+  -> active named staff renders a permitted organisation dashboard; other member accounts render the member dashboard
   -> management user resolves canonical organisation from live staff authority or configured legacy fallback
   -> authorised management dashboard renders directly
 ```
@@ -227,7 +235,7 @@ Page resolves the authorised user's canonical organisation
 
 Current UI:
 
-- Sidebar navigation: `Dashboard`, `Events`, `Orders`, `Settings`
+- Sidebar navigation: Dashboard, Events, Orders, Notifications, Settings, Staff and Staff MFA
 - Header shows the organisation name
 - Primary management links use slugless `/dashboard/*` paths.
 - Legacy `/dashboard/[orgSlug]/*` pages redirect for backwards compatibility.
@@ -373,7 +381,7 @@ Flow:
 
 ```text
 Authorised management user opens /dashboard/events/[eventId]
-  -> proxy allows organisation accounts and redirects member accounts to /
+  -> proxy verifies live identity; the management-page helper checks live events:manage authority
   -> page resolves canonical organisation through live staff authority or configured legacy fallback
   -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
   -> revenue series helper fetches paid order paidAt/totalAmount values for UTC daily grouping
@@ -421,12 +429,12 @@ Authorised management user opens /dashboard/events/[eventId]/tickets
 
 Rules:
 
-- Member accounts cannot view event tickets or check tickets in.
-- The current route/API uses organisation event-management access checks.
+- Member accounts without active staff authority cannot view event tickets or check tickets in.
+- Ticket listing/check-in/out requires the live tickets:check_in capability.
 - Frontend ticket ids are inputs only; ownership is verified server-side.
 - Double check-in returns `409` and preserves the original timestamp.
 - Check-out returns `409` when the ticket is already unused.
-- Check-in and check-out only mutate `Ticket.checkedInAt`.
+- Check-in/out update Ticket.checkedInAt and append actor-attributed AuditLog records in the same transaction.
 - Check-in and check-out do not alter order status, Stripe state, ticket ownership, or ticket type data.
 - `GET /api/events/[eventId]/tickets` defaults to 25 tickets per page and supports `limit`, `cursor`, and `direction`.
 - Invalid pagination params return `400` from the API; the server-rendered page redirects invalid pagination back to the first page.
@@ -544,7 +552,7 @@ Files:
 - `lib/payments/checkout-fulfilment-orchestrator.ts`
 - `lib/payments/checkout-reconciliation.ts`
 - `app/api/orders/[orderId]/resend/route.ts`
-- `scripts/process-email-outbox.ts`
+- `scripts/process-email-outbox.mjs`
 
 Automatic webhook flow:
 
@@ -562,7 +570,7 @@ Stripe checkout.session.completed received
 Rules:
 
 - Automatic email is enqueued inside the same transaction as successful payment fulfilment and ticket issuance.
-- Email enqueue or worker failure is non-blocking and must not roll back order payment, reservation confirmation, inventory decrement, or ticket issuance.
+- Automatic email enqueue failure rolls back the fulfilment transaction. Provider/worker failure after commit cannot reverse payment, reservations, inventory or tickets.
 - Duplicate webhook delivery does not enqueue duplicate automatic ticket email jobs.
 - Manual resend can queue additional manual jobs for paid orders.
 - No attachments, QR codes, or notification preferences exist in the MVP.

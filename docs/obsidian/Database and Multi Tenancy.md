@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]"]
+sources: [prisma/schema.prisma, prisma/migrations, lib/db/organisation-scope.ts]
+---
+
 # Database and Multi Tenancy
 
 ## Dependency security update (2026-09-18)
@@ -38,6 +46,9 @@ Organisation dashboard access is normally granted by an active `OrganisationStaf
 Main models in `prisma/schema.prisma`:
 
 - `User`
+- `AuthToken`
+- `AccountSecurityEvent`
+- `NotificationOutbox`
 - `Organisation`
 - `OrganisationMember`
 - `OrganisationStaff`
@@ -87,6 +98,10 @@ Important fields:
 - `studentNumber`
 - `onboardingCompletedAt`
 - `createdAt`
+- `emailVerifiedAt`
+- `authVersion`
+- `disabledAt`
+- `closedAt`
 
 `password` stores the bcrypt hash, not the raw password.
 
@@ -489,4 +504,10 @@ Private APIs:
 - require active staff authority and the needed live capability for management routes
 - allow legacy ownership only when the migration mode explicitly permits it
 
-Checkout is public-facing in URL shape, but still requires an authenticated member account and server-side event resolution.
+Checkout is public-facing in URL shape, but requires a live active verified member identity and server-side event resolution.
+
+## Account Lifecycle And Retained Records
+
+The schema has 21 models and 31 migrations through 20261005030000_account_closure. AuthToken stores purpose-bound digests and email/authVersion/expiry binding; AccountSecurityEvent is a private account ledger. NotificationOutbox stores encrypted immutable versioned intents and rotating worker leases separately from ticket EmailOutbox.
+
+Closure permanently retains the User ID/closedAt and disables credentials. Database guards prevent reopening. Immutable Order buyer email/name captures include provenance/date; closure fills missing captures from current account data without inventing purchase-time facts. Orders, tickets, attendance and audit/security records remain attached to the original user; new signup never inherits them. See [[Authentication and Dashboard Access]] and [[Email Delivery Implementation]] for the transactional fences and contact-reader rules.

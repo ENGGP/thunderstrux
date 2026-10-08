@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Architecture Overview]]", "[[Project Handover]]"]
+sources: [app, lib, package.json]
+---
+
 # Thunderstrux Codebase Map
 
 ## Dependency remediation record
@@ -6,7 +14,7 @@
 
 Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. The current product scope is:
 
-- Email/password authentication with Auth.js credentials.
+- Email/password authentication, verification, recovery, private settings, email change and permanent closure (T02-T04).
 - Account roles `member` and legacy `organisation`; named organisation staff authority is stored separately from join membership.
 - Member profile onboarding, organisation search/join/leave, public organisation details, public event browsing, ticket purchase, and `/tickets`.
 - Legacy organisation accounts manage their bootstrap organisation; named staff can manage permitted organisations through `/dashboard`.
@@ -24,8 +32,6 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. Th
 
 Not implemented:
 
-- Email verification.
-- Password reset.
 - QR codes.
 - File uploads.
 
@@ -36,7 +42,7 @@ Named staff users, invites, audit logs, per-user permissions, staged TOTP MFA, a
 Read these in order:
 
 1. [[Documentation Index]]
-2. [[Current Handover]]
+2. [[Project Handover]]
 3. [[Engineering Delivery Workflow]]
 4. [[Non-Blocking Issue Register|Issue and Defect Register]]
 5. [[Architecture Overview]]
@@ -64,12 +70,12 @@ app/
   api/                               Route handlers
 
 components/
-  auth/                              Login and signup forms
+  auth/                              Login/signup and verification/recovery/email-link forms
   events/                            Event list, event form, public checkout UI
   layout/                            Navbar, session provider, DashboardShell
   members/                           Member profile and organisation search UI
   orgs/                              Organisation creation form
-  settings/                          Stripe Connect settings UI
+  settings/                          Stripe Connect and private account/security settings UI
   tickets/                           Ticket check-in/check-out controls
   ui/                                Small reusable primitives
 
@@ -78,7 +84,9 @@ lib/
   api/                               API error helpers
   client/                            Frontend fetch and helper utilities
   db/                                Prisma client and organisation scoping helpers
-  email/                             Ticket delivery email service and outbox worker helpers
+  email/                             Ticket delivery plus encrypted notification intents, token fences and workers
+  security/                          Origin/CSRF, Redis limits and MFA
+  staff/                             Atomic staff authority updates
   events/                            Public reads, analytics, and event lifecycle use cases
   orders/                            Scoped order operations and stale pending cleanup
   payments/                          Checkout, reconciliation, and lifecycle history use cases
@@ -116,8 +124,8 @@ docs/obsidian/
 - Production payment fulfilment happens only from Stripe webhooks.
 - Non-production `/success?session_id=...` can call the shared reconciliation helper when local webhook forwarding is missing.
 - Ticket delivery email is enqueued only after paid webhook fulfilment and ticket issuance.
-- Email enqueue or worker failure must not roll back payment, inventory, reservation confirmation, or ticket issuance.
-- Ticket check-in and check-out only mutate `Ticket.checkedInAt`.
+- Automatic email enqueue is part of the fulfilment transaction: insertion failure rolls fulfilment back. Later provider/worker failure never reverses committed payment or tickets.
+- Ticket check-in/out mutate attendance and append an actor-attributed AuditLog in the same transaction; they do not change payment or ticket ownership.
 - Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
 - Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
 - Production migrations run once through the Compose `migration` service before app rollout. The entrypoint only executes its supplied command. Development startup deploys migrations before Next dev starts.
@@ -139,7 +147,7 @@ docs/obsidian/
 - Global header is fixed at the top via `components/layout/navbar.tsx`.
 - Organisation dashboard shell uses a fixed left sidebar below the global header and a content header that shows the organisation name.
 - Organisation dashboard primary route is `/dashboard`.
-- Sidebar contains `Dashboard`, `Events`, `Orders`, and `Settings`.
+- Sidebar contains Dashboard, Events, Orders, Notifications, Settings, Staff and Staff MFA. Protected pages enforce live capabilities.
 - Event analytics links to the event ticket list.
 - Order rows link to organiser order detail.
 - Member dashboard does not use the organisation management sidebar.
@@ -157,4 +165,4 @@ docs/obsidian/
 - Ticket types with orders or issued tickets can have name, price, and quantity edited for future purchases, but cannot be removed.
 - Manual refund is a local order flag only and does not interact with Stripe.
 - Ticket email delivery requires `RESEND_API_KEY` and `EMAIL_FROM` when the outbox worker sends provider email; without them, fulfilment and resend queueing still succeed and worker failure records delivery error state.
-- Running integration tests requires the dev Compose override so the `tests/` directory is bind-mounted into the app container.
+- Prefer the isolated local baseline runner for integration tests; it includes tests and a run-owned disposable database without mounting development dependencies.

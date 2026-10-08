@@ -8,7 +8,7 @@ const defaultRequiredFiles = [
   "docs/THUNDERSTRUX_PRD.md",
   "docs/MVP_READINESS_PLAN.md",
   "docs/obsidian/Documentation Index.md",
-  "docs/obsidian/Current Handover.md",
+  "docs/obsidian/Project Handover.md",
   "docs/obsidian/Engineering Delivery Workflow.md",
   "docs/obsidian/Non-Blocking Issue Register.md"
 ];

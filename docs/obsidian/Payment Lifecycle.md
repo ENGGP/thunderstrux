@@ -1,8 +1,20 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Stripe Payments and Connect]]", "[[Email Delivery Implementation]]"]
+sources: [lib/payments/checkout-reconciliation.ts, lib/payments/order-lifecycle.ts]
+---
+
 # Payment Lifecycle
 
 Delivery and defect-resolution evidence is retained in the validation section below and in merged PR #13. Repeatable engineering and PR procedure: [[Engineering Delivery Workflow]].
 
 P3.19 adds an append-only business-event journal around the existing `Order`, `TicketReservation`, `Ticket`, refund, and `EmailOutbox` fields. Existing status enums and API response contracts remain authoritative for current state; `OrderLifecycleEvent` explains how that state was reached.
+
+## Account Closure And Buyer Identity
+
+Closure retains original Order/User identifiers, tickets, attendance and lifecycle records. Buyer contacts use immutable captures with explicit provenance; anonymised login email is not a delivery address. A new signup never inherits old purchases. Later provider payment/refund truth remains authoritative, independently of account closure. See [[Database and Multi Tenancy]] and [[Email Delivery Implementation]].
 
 ## Storage
 

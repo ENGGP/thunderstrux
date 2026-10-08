@@ -1,12 +1,15 @@
 ---
-status: assessment
-last-reviewed: 2026-09-30
+status: historical
+last-reviewed: 2026-10-09
 owner: engineering
+related: ["[[Production Operations]]", "[[Architecture Overview]]"]
 ---
 
 # Docker Architecture Assessment 2026-09-29
 
-This document assesses whether Thunderstrux uses Docker appropriately for an early-stage company and whether each system responsibility is in the right place. It records a point-in-time review of the repository and local development runtime. Read [[Current Handover]], [[Development Workflow]], and [[Production Operations]] for current delivery and operating instructions.
+> Historical evidence and assessment: retain the original dated findings below. Current state and policy are in [[Project Handover]], [[Engineering Delivery Workflow]] and the relevant living reference. This review classifies the note; it does not rerun or renew its old evidence.
+
+This document assesses whether Thunderstrux uses Docker appropriately for an early-stage company and whether each system responsibility is in the right place. It records a point-in-time review of the repository and local development runtime. Read [[Project Handover]], [[Development Workflow]], and [[Production Operations]] for current delivery and operating instructions.
 
 ## Executive Assessment
 

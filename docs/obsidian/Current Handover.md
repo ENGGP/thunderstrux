@@ -69,6 +69,8 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Current Work And Next Safe Actions
 
+- [PR #39](https://github.com/ENGGP/thunderstrux/pull/39) patches the scheduled audit's Sharp/source-map-js findings and newly disclosed Next.js findings with Next 16.3.8. Local baseline `b3f965d` passed build/typecheck, 311 integration tests and audit with no known vulnerabilities; run `p216-4eeb6f57df076e27f533e459` records passed/cleanupComplete. Override removal conditions and evidence are in [[Dependency Automation]]. No deployment was performed: rebuild release images or refresh development dependencies without deleting database/Redis volumes before treating running environments as patched.
+
 - Validation policy updated 2026-10-09: GitHub API confirmed no required status checks or rulesets on `main`; force-push and branch deletion remain disallowed. Test workflows were still active with PR/push triggers, so these triggers are removed in this change and manual dispatch remains available. Local validation follows [[Engineering Delivery Workflow]]: documentation-only changes use docs/diff checks and claim review, one applicable successful functionality run is sufficient for code changes, and repeats need changed inputs, failures or a documented reliability concern. Scheduled Security Audit is retained. Historical CI evidence below remains historical.
 
 - [PR #27](https://github.com/ENGGP/thunderstrux/pull/27) is merged: feature branches start from refreshed local `main` in the primary folder. It also installs patched Debian `libpcre2-8-0` after the base-image PCRE2 finding. All checks passed before merge; no active development or hosted stack was redeployed. See DEF-012.

@@ -18,6 +18,6 @@ This repository is a Docker-first Next.js application handling tenant data, tick
 - Add focused regression coverage for behavior changes. Validate according to the risk matrix in the engineering workflow.
 - Use additive migrations where possible. Production migrations run as a one-shot deployment job before app rollout; ordinary production app startup does not migrate.
 - Update living documentation, the issue register, and `Current Handover` when behavior, operations, risks, or evidence changes.
-- Deliver changes through a PR to protected `main`. Required checks must pass on the latest PR head.
+- Deliver changes through a PR to protected `main` with recorded risk-appropriate local validation. GitHub test checks are not required. Documentation-only changes use docs/diff checks and claim review; do not run functionality tests. Repeat tests only when changed inputs, failures, or identified risks justify it.
 
 `Current Handover` is the only handover document. Preserve dated implementation and release evidence in the relevant living reference, evidence ledger, PR, and Git history.

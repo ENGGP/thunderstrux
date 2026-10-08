@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-05
+last-reviewed: 2026-10-09
 owner: engineering
 ---
 
@@ -69,9 +69,11 @@ See [[Production Readiness Verification 2026-09-22]] and [[Production Operations
 
 ## Current Work And Next Safe Actions
 
+- Validation policy updated 2026-10-09: GitHub API confirmed no required status checks or rulesets on `main`; force-push and branch deletion remain disallowed. Test workflows were still active with PR/push triggers, so these triggers are removed in this change and manual dispatch remains available. Local validation follows [[Engineering Delivery Workflow]]: documentation-only changes use docs/diff checks and claim review, one applicable successful functionality run is sufficient for code changes, and repeats need changed inputs, failures or a documented reliability concern. Scheduled Security Audit is retained. Historical CI evidence below remains historical.
+
 - [PR #27](https://github.com/ENGGP/thunderstrux/pull/27) is merged: feature branches start from refreshed local `main` in the primary folder. It also installs patched Debian `libpcre2-8-0` after the base-image PCRE2 finding. All checks passed before merge; no active development or hosted stack was redeployed. See DEF-012.
 - [PR #26](https://github.com/ENGGP/thunderstrux/pull/26) merged the PRD-to-code implementation plan in [MVP_READINESS_PLAN](../MVP_READINESS_PLAN.md). [PR #28](https://github.com/ENGGP/thunderstrux/pull/28), `codex/t01-baseline-verification`, qualifies T01: shared disposable-database guards, full-schema reset proof, occupied-port refusal and isolated baseline/E2E/recovery evidence. It also fixes operations cleanup omitting profiled workers (DEF-014). See the plan's evidence ledger for final qualification; PR #28 is merged; T02/T03 are also merged, and T04 is also qualified; the next planned product work is T05-T06. Later product tasks remain incomplete.
-- [PR #24](https://github.com/ENGGP/thunderstrux/pull/24) merged the five-stage solo-maintainer workflow and ignore hygiene; PR #25 merged the earlier MVP plan, since replaced by PR #26. Preserve protected main, latest-head checks, run-owned cleanup and local-only Obsidian workspace state.
+- [PR #24](https://github.com/ENGGP/thunderstrux/pull/24) merged the five-stage solo-maintainer workflow and ignore hygiene; PR #25 merged the earlier MVP plan, since replaced by PR #26. Preserve protected main, risk-appropriate local validation, run-owned cleanup and local-only Obsidian workspace state.
 - Local cleanup on 2026-10-02 removed generated build/tool caches, obsolete helper artifacts, and 33 completed E2E run directories. Three E2E directories missing `runtime.env`, operational evidence, and retained database backups remain intentionally; the development stack was rebuilt without deleting volumes and passed `/api/health`, with PostgreSQL now bound to loopback only.
 - Standalone web/operations targets, dual-image release evidence, SBOM/provenance publication and the image-size budget remain T43 in the readiness plan; implement them when its dependencies are complete.
 - [[Docker Architecture Assessment 2026-09-29]] records the implemented foundation controls and remaining immutable-release and hosted activation work.

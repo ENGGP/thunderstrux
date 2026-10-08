@@ -17,7 +17,7 @@ Routine Renovate evidence advanced on 2026-09-28: [PR #20](https://github.com/EN
 ## Validation and update policy
 
 - `pnpm typecheck`, `pnpm test` (the existing integration runner), and `pnpm security:audit` are the local entrypoints. `pnpm build` remains the production build command.
-- Dependency Validation runs on every PR and push targeting `main` or `master`, plus manual dispatch. The job/check names are `static-validation`, `integration-tests`, and `production-build`.
+- Dependency Validation is manual-dispatch only. GitHub checks are optional; dependency PRs require local validation selected using [[Engineering Delivery Workflow]]. Use the isolated baseline for runtime/toolchain changes, frozen installation and lockfile stability, relevant dependency regressions, and audit. For Docker changes also lint changed Dockerfiles, validate affected Compose contracts and scan the resulting image for fixable high/critical vulnerabilities. Action-pin-only changes require configuration review rather than application functionality tests. The optional job names are `static-validation`, `integration-tests`, and `production-build`.
 - Every job installs with the committed pnpm version and `--frozen-lockfile`. Static validation checks lockfile stability, generates Prisma, and typechecks. Integration uses disposable PostgreSQL 16 and `thunderstrux_test`; the runner resets its database and runs sequentially. Never supply an application database URL.
 - Test setup supplies fake Stripe credentials; external fetch calls remain blocked. Future event fixtures are relative to the current date.
 - Build uses non-secret placeholders matching the Docker builder. Do not build inside the running application container; use a disposable environment or rebuild the image.

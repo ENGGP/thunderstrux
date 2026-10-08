@@ -26,7 +26,7 @@ This is the current evidence ledger for all 19 items in the historical remediati
 
 ## Release decision
 
-**Production payments and broad staff rollout remain blocked.** MFA must be activated for all staff and legacy owners, then legacy access must be denied. Automatic refunds require an active worker schedule, refund webhook subscription, alert delivery, and a real Stripe test-mode campaign. Sensitive-action audit coverage, off-machine backups, a hosted restore drill, and release-image Docker acceptance in the chosen environment remain release gates. PR #18 passed all five latest-head checks; any later release candidate must do the same on its own head.
+**Production payments and broad staff rollout remain blocked.** MFA must be activated for all staff and legacy owners, then legacy access must be denied. Automatic refunds require an active worker schedule, refund webhook subscription, alert delivery, and a real Stripe test-mode campaign. Sensitive-action audit coverage, off-machine backups, a hosted restore drill, and release-image Docker acceptance in the chosen environment remain release gates. PR #18 passed all five latest-head checks; later release candidates require risk-appropriate local validation under [[Engineering Delivery Workflow]]; historical CI results do not validate later executable changes.
 
 ## Final local acceptance
 
@@ -43,7 +43,7 @@ This is the current evidence ledger for all 19 items in the historical remediati
 - A custom-format backup of the development database was created and listed successfully before applying the MFA and failed-order constraint migrations; the failed-order preflight found zero invalid rows.
 - All 26 migrations, including `20260927010000_compensation_refunds`, applied in order to an empty disposable PostgreSQL database.
 - TypeScript passed after the compensation route, UI, worker, schema contract, official Redis client, legacy-access switch, and audit changes.
-- Seventeen runner and schema-contract tests passed when executed directly. The sandbox blocks the aggregate Node/Vitest child-process runner, Docker named-pipe access, registry audit requests, and Prisma binary downloads; those checks must run in Docker/CI before merge.
+- Seventeen runner and schema-contract tests passed when executed directly. The sandbox blocks the aggregate Node/Vitest child-process runner, Docker named-pipe access, registry audit requests, and Prisma binary downloads; applicable checks must run in local isolated Docker before merge, with sandbox escalation if required.
 - The production build compiled successfully; the sandbox then denied Next's post-compile TypeScript worker with `spawn EPERM`.
 - Independent review findings were applied: refund correlation now requires exact job/order/amount/currency/PaymentIntent identity and a known non-disputed charge; webhook transitions are lock-fenced and monotonic; missed pending webhooks are polled; compensation orders cannot use unverified legacy refund marking; Redis cold-start connection is shared; unknown API exception messages are redacted. The re-review found no remaining blocker or high-severity issue.
 - Live Docker verification found that the existing named dependency volume masked the rebuilt image, causing `@redis/client` resolution failure; replacing only that cache exposed a second missing generated Prisma Client. The recreation helper now handles both conditions. The repaired stack reports 26 current migrations, resolves `@redis/client`, returns `200` from readiness, and redirects unauthenticated `/mfa` to login.

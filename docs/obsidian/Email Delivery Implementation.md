@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Authentication and Dashboard Access]]", "[[Production Operations]]"]
+sources: [lib/email/ticket-email-outbox.ts, lib/email/notification-outbox.ts, scripts/process-notifications.mjs]
+---
+
 # Email Delivery Implementation
 
 Read with [[Stripe Payments and Connect]].
@@ -13,7 +21,7 @@ Core files:
 - `lib/payments/checkout-fulfilment-orchestrator.ts`
 - `lib/payments/checkout-reconciliation.ts`
 - `app/api/orders/[orderId]/resend/route.ts`
-- `scripts/process-email-outbox.ts`
+- `scripts/process-email-outbox.mjs`
 
 ## Automatic Delivery Flow
 

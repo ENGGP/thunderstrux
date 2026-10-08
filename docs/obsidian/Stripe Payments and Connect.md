@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]"]
+sources: [lib/stripe/connect.ts, lib/payments/checkout-creation.ts]
+---
+
 # Stripe Payments and Connect
 
 Payment, reservation, compensation, refund-bookkeeping, and email transitions are now recorded in the append-only lifecycle journal described in [[Payment Lifecycle]]. Current state remains on the existing order/reservation/outbox fields; the journal provides operator reconstruction and does not replace Stripe as provider truth.
@@ -139,7 +147,7 @@ This means local failures are often caused by:
 
 Stripe Connect management requires live staff capability for the canonical organisation, or legacy owner authority only while the configured migration fallback permits it.
 
-Member accounts cannot manage Stripe Connect.
+Member accounts without active staff authority cannot manage Stripe Connect; live stripe:manage capability is authoritative.
 
 Thunderstrux uses strict internal lifecycle states:
 
@@ -449,7 +457,7 @@ Files:
 lib/email/ticket-delivery.ts
 lib/email/ticket-email-outbox.ts
 app/api/orders/[orderId]/resend/route.ts
-scripts/process-email-outbox.ts
+scripts/process-email-outbox.mjs
 ```
 
 Provider:
@@ -469,7 +477,7 @@ Automatic delivery:
 - Provider calls use `Idempotency-Key: ticket-email/{EmailOutbox.id}`.
 - Worker success stores provider metadata on `EmailOutbox.providerMessageId` and `EmailOutbox.deliveredToProviderAt` when available.
 - On worker success, sets `ticketEmailSentAt` and clears `ticketEmailLastError`.
-- Email failure is non-blocking and must not roll back payment, inventory, reservation confirmation, or ticket issuance.
+- Provider/worker failure after commit does not reverse payment or tickets. Automatic outbox insertion failure rolls the fulfilment transaction back.
 
 Manual resend:
 

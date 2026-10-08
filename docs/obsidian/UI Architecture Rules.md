@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
+sources: [components/layout/dashboard-shell.tsx, components/layout/navbar.tsx]
+---
+
 # UI Architecture Rules
 
 ## Dashboard Navigation Rule
@@ -13,7 +21,10 @@ Current nav items:
 - `Dashboard`
 - `Events`
 - `Orders`
+- `Notifications`
 - `Settings`
+- `Staff`
+- `Staff MFA`
 
 Do not duplicate these links in page files.
 
@@ -21,7 +32,7 @@ Do not duplicate these links in page files.
 
 `/dashboard` is role-aware.
 
-Member accounts:
+Member accounts without active staff authority:
 
 - See profile completion.
 - See joined organisations.
@@ -29,7 +40,7 @@ Member accounts:
 - Can browse public events and view `/tickets`.
 - Must not see organisation management navigation.
 
-Organisation accounts:
+Active named staff and permitted legacy organisation accounts:
 
 - See the organisation dashboard directly at `/dashboard`.
 - Use `DashboardShell`.
@@ -51,9 +62,9 @@ components/layout/navbar.tsx
 Current header behavior:
 
 - Fixed at the top
-- Height `h-16`
+- Minimum height `min-h-16`, with controls wrapping on narrow screens
 - Left side: `Thunderstrux`
-- Right side when signed in: `Dashboard`, `Sign out`
+- Right side when signed in: Dashboard, private Settings and Sign out; members also see My tickets.
 
 ## Layout Responsibilities
 
@@ -66,7 +77,7 @@ Current header behavior:
 
 `app/(dashboard)/dashboard/page.tsx`
 
-- Branches by account role.
+- Selects the management dashboard for active staff or an organisation account; otherwise selects the member dashboard.
 - Renders member dashboard without `DashboardShell`.
 - Renders organisation dashboard inside `DashboardShell`.
 
@@ -116,13 +127,13 @@ Current header behavior:
 Organisation dashboard:
 
 - Shows `New event`.
-- Sidebar shows `Dashboard`, `Events`, `Orders`, `Settings`.
+- Sidebar shows Dashboard, Events, Orders, Notifications, Settings, Staff and Staff MFA.
 - Page content may link to event/order drilldowns.
 
 Member dashboard:
 
 - Shows `Search organisations`, `Browse`, and `/tickets` entry points.
-- Must not show event-management, order-management, or settings controls.
+- Must not show management controls without live staff authority. Private account Settings remains available to all active authenticated accounts.
 
 ## Current Heading Rules
 

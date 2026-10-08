@@ -14,7 +14,7 @@ Read the complete PRD, previous MVP plan, relevant Second Brain references and c
 
 Relevant references:
 
-- [Documentation Index](obsidian/Documentation%20Index.md), [Current Handover](obsidian/Current%20Handover.md), [Engineering Delivery Workflow](obsidian/Engineering%20Delivery%20Workflow.md), [Issue Register](obsidian/Non-Blocking%20Issue%20Register.md).
+- [Documentation Index](obsidian/Documentation%20Index.md), [Project Handover](obsidian/Project%20Handover.md), [Engineering Delivery Workflow](obsidian/Engineering%20Delivery%20Workflow.md), [Issue Register](obsidian/Non-Blocking%20Issue%20Register.md).
 - [Codebase Map](obsidian/Thunderstrux%20Codebase%20Map.md), [Architecture](obsidian/Architecture%20Overview.md), [Database and Multi Tenancy](obsidian/Database%20and%20Multi%20Tenancy.md), [Authentication](obsidian/Authentication%20and%20Dashboard%20Access.md), [Event Lifecycle](obsidian/Event%20Lifecycle.md).
 - [Stripe Payments](obsidian/Stripe%20Payments%20and%20Connect.md), [Payment Lifecycle](obsidian/Payment%20Lifecycle.md), [Email Delivery](obsidian/Email%20Delivery%20Implementation.md), [UI Rules](obsidian/UI%20Architecture%20Rules.md).
 - [Development Workflow](obsidian/Development%20Workflow.md), [E2E and Staging Payments](obsidian/E2E%20and%20Staging%20Payments.md), [Production Operations](obsidian/Production%20Operations.md), [Docker Assessment](obsidian/Docker%20Architecture%20Assessment%202026-09-29.md).
@@ -23,11 +23,11 @@ Verified documentation discrepancies: proxy.ts currently redirects anonymous eve
 
 ### Responding to “Continue with the next incomplete step”
 
-1. Read this plan, Current Handover and delivery workflow. Refresh origin/main and inspect the current task implementation; preceding PRs may have superseded this baseline.
+1. Read this plan, Project Handover and delivery workflow. Refresh origin/main and inspect the current task implementation; preceding PRs may have superseded this baseline.
 2. Select the lowest-numbered unchecked T task with completed dependencies; where ordered substeps are specified, execute its next dependency-ready unchecked substep. Never rebuild code that now satisfies it: verify its acceptance tests and record evidence instead. If blocked, record the exact missing input and select another dependency-ready task.
 3. Follow Engineering Delivery Workflow in the primary repository folder: switch to main, fetch/prune origin, fast-forward main to origin/main, then create codex/<task-description> from that updated main. Preserve unrelated changes; resolve any unsafe switch/update with the user rather than discarding work. Write an acceptance note: outcome, exclusions, risk, tests, migration/rollback compatibility and external evidence.
 4. One numbered task is a focused PR target. If necessary, split a large task into ordered a/b substeps with separate definitions of done before coding. The parent stays incomplete until all substeps pass.
-5. Check a task only after its definition of done and risk-appropriate local validation pass. Append evidence: date, PR/merge, tested executable revision, migration IDs, test commands/results, limitations and retained resources. Update relevant living references/issue statuses; material current state goes in Current Handover, not a new handover.
+5. Check a task only after its definition of done and risk-appropriate local validation pass. Append evidence: date, PR/merge, tested executable revision, migration IDs, test commands/results, limitations and retained resources. Update relevant living references/issue statuses; material current state goes in Project Handover, not a new handover.
 
 **Evidence ledger:** Checked tasks below link their implementation and verification evidence. Unchecked tasks remain required work. Baseline/tooling acceptance does not establish acceptance of new product features; add completion entries as each task is delivered.
 
@@ -519,7 +519,7 @@ Each substep is High risk; select local regression, migration and operations cov
 
 #### T46 — Final PRD audit and pre-hosting candidate packet
 - [ ] Complete. **Dependencies:** T01–T45.
-- **Deliverable:** Reconcile section 8 against current code; update docs/issue states/Current Handover, honest public feature/privacy/support/refund copy. Candidate records artifact pair, schema digest, flags/jobs, tests/provider evidence, support owner, rollback and H gates.
+- **Deliverable:** Reconcile section 8 against current code; update docs/issue states/Project Handover, honest public feature/privacy/support/refund copy. Candidate records artifact pair, schema digest, flags/jobs, tests/provider evidence, support owner, rollback and H gates.
 - **Done:** No locally implementable PRD feature omitted/placeholder/deferred. Disclose AUD/fee/term/pickup/AI policies, no live payout/hosting/certified accessibility claim. Founder fee/value review uses sample buyer/seller amounts; competitive market pricing not asserted without actual evidence.
 
 ## 5. Required event-to-email specification

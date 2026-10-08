@@ -1,10 +1,18 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Engineering Delivery Workflow]]", "[[Stripe Payments and Connect]]"]
+sources: [scripts/run-e2e.mjs, scripts/staging-payments.mjs, docker-compose.e2e.yml]
+---
+
 # E2E and Staging Payments
 
 P2.16 status: implementation and acceptance merged through PR #10 (`59dc563`). Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion. Later payment-path changes must repeat the relevant acceptance campaign.
 
 ## Automated checks
 
-Run `pnpm test:e2e` from the repository root with Docker Desktop running. No host Playwright installation or browser download is required. The command builds a production-mode app and a Node 22 Chromium runner; the application remains on Node 20. The exact Playwright package determines the browser version.
+Run `pnpm test:e2e` from the repository root with Docker Desktop running. No host Playwright installation or browser download is required. The command builds a production-mode app and a Node 22.23.3 Chromium runner; the application also runs Node 22.23.3. The exact Playwright package determines the browser version.
 
 The standalone Compose project publishes `127.0.0.1:3100`, creates its own database and volume, and never mounts the development source or dependency volumes. Port conflicts fail without reusing another app. The runner shares the app network namespace so Auth.js, server-side event fetches and browser navigation use the same origin. Production builds receive that origin through the non-secret `APP_ORIGIN` build argument.
 
@@ -40,7 +48,7 @@ To repeat a missing scenario, append exactly one of `--scenario=success`, `--sce
 
 The command drives the app's real Buy Ticket flow, then presents a private Stripe URL. Complete the success, decline and cancel prompts using Stripe test cards. Each prompt permits 15 minutes, followed by up to 120 seconds for webhook reconciliation. Successful payment verifies destination charge configuration, real event identity, listener HTTP 200, app receipt, database fulfilment and buyer ticket visibility. Decline requires provider error evidence. Cancel navigation is explicitly recorded as manual attestation; pending/unfulfilled state and subsequent real Session expiry are verified automatically.
 
-Email workers/provider delivery stay disabled. An automatic outbox job is verified without sending mail. Rate limiting stays disabled in this isolated functional suite; its existing integration tests remain separate.
+The isolated stack uses enabled Redis rate limiting and a private mail-capture service. Automated account-lifecycle/notification scenarios process captured messages with synthetic credentials; they do not establish real provider or inbox delivery. Guided Stripe acceptance verifies ticket outbox state separately from real email acceptance.
 
 ## Recovery and evidence
 
@@ -52,12 +60,12 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 
 ## Completion gates
 
-- Existing baseline: 190 integration tests, typecheck, production build and audit passed before application changes.
+- Historical P2.16 baseline: 190 integration tests. Latest dependency baseline: 311 tests in 36 files with build/typecheck/audit; see [[Dependency Automation]] for its exact revision and limitations.
 - Select local regression and E2E coverage using [[Engineering Delivery Workflow]]. One complete successful applicable run with cleanup is sufficient; repeat only for changed inputs, failures or a documented reliability concern. Cancelled, skipped or partial required scenarios do not qualify.
 - GitHub E2E and operations workflows are manual-only and are not merge requirements. Documentation-only evidence updates run docs/diff checks and claim review, without functionality tests or a new provider campaign.
 - Preserve tested-revision evidence and explain its applicability to the reviewed diff. Historical repeated local/CI campaigns below remain evidence of past delivery, not current repetition requirements.
 - Require observed real Stripe success, decline, manual cancel attestation and verified forced expiry with automatic reconciliation. The test explicitly expires unpaid Sessions through Stripe; it does not claim to observe natural timeout. Missing or skipped scenarios remain outstanding.
-- See [[Current Handover]] and the P2.16 section of the remediation plan for current evidence.
+- See [[Project Handover]] and the evidence ledger in [[../MVP_READINESS_PLAN]] for current evidence.
 
 ## Validation evidence
 

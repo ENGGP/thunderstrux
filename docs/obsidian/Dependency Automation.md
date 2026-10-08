@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Engineering Delivery Workflow]]", "[[Troubleshooting]]"]
+sources: [package.json, pnpm-lock.yaml, .github/workflows/security-audit.yml]
+---
+
 # Dependency Automation
 
 ## Current dependency remediation

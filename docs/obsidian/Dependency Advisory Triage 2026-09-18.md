@@ -1,4 +1,13 @@
+---
+status: historical
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Dependency Automation]]", "[[Non-Blocking Issue Register]]"]
+---
+
 # Dependency Advisory Triage — 2026-09-18
+
+> Historical evidence and assessment: retain the original dated findings below. Current state and policy are in [[Project Handover]], [[Engineering Delivery Workflow]] and the relevant living reference. This review classifies the note; it does not rerun or renew its old evidence.
 
 ## Current remediation status
 

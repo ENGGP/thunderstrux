@@ -1,3 +1,11 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Database and Multi Tenancy]]", "[[Authentication and Dashboard Access]]"]
+sources: [prisma/seed.mjs]
+---
+
 # Seeding and Data
 
 ## Seed File
@@ -22,6 +30,12 @@ docker compose exec app pnpm seed
 ```
 
 The script is intentionally idempotent and can be rerun after migrations or resets.
+
+## Account Lifecycle Prerequisites
+
+The seed also upserts named OrganisationStaff authority; the membership role list below describes join/legacy compatibility rows, not access grants. It does not set emailVerifiedAt or clear closedAt/disabledAt. Fresh seeded identities therefore remain unverified until the normal verification flow completes, and a seed rerun must not be treated as reopening a closed account. Purchases, joins, tenant bootstrap and invite acceptance require verification; management also observes live staff/MFA/legacy policy. See [[Authentication and Dashboard Access]].
+
+Seed credentials are synthetic development data. Seeding updates passwords and other core values, so run it only against an explicitly selected development/disposable database; do not use it as a production migration or closure-recovery tool.
 
 ## Seed Guarantees
 

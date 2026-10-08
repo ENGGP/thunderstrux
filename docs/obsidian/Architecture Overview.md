@@ -1,8 +1,16 @@
+---
+status: living
+last-reviewed: 2026-10-09
+owner: engineering
+related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]"]
+sources: [package.json, prisma/schema.prisma, docker-compose.yml]
+---
+
 # Architecture Overview
 
 ## Stack
 
-- Next.js 16.3.6 App Router
+- Next.js 16.3.8 App Router
 - React 19
 - TypeScript
 - Prisma ORM 6.19.3
@@ -13,7 +21,7 @@
 - Zod validation
 - Tailwind CSS v4
 - Docker Compose
-- pnpm
+- Node 22.23.3 and pnpm 10.34.6
 
 Security updates, scoped Prisma override, removal conditions, and verification: [[Dependency Automation]].
 
@@ -59,7 +67,7 @@ Docker runtime:
 - `member`
 - `organisation`
 
-Member accounts represent people. They can complete a profile, join organisations, browse published events, buy tickets, and view `/tickets`.
+Member accounts represent people. Live verified identity is required for joins and purchases. Active named staff can manage permitted organisations regardless of accountRole; ordinary member joins never grant that authority.
 
 Organisation management normally resolves an active `OrganisationStaff` record and its live role and permissions. Named staff accounts, invitations, revocation, TOTP MFA, recovery codes, and actor-attributed audit records are implemented.
 
@@ -106,8 +114,8 @@ app/
 
 `app/(dashboard)/dashboard/page.tsx`
 
-- Branches by `session.user.accountRole`.
-- Renders the member dashboard for `member` accounts.
+- Resolves live named staff first; otherwise branches by account role.
+- Renders the member dashboard for member accounts without active staff organisations.
 - Resolves the current staff organisation, with the configured legacy-owner fallback during migration, and renders its management dashboard.
 - Redirects organisation accounts without an organisation to `/dashboard/create`.
 
@@ -128,7 +136,7 @@ app/
 
 `/dashboard`
 
-- Member accounts see profile completion, joined organisations, member organisation actions, organisation search, public event discovery, and ticket links.
+- Members without active staff authority see profile completion, joined organisations, organisation search, public events and ticket links; active staff see their permitted management dashboard.
 - Organisation accounts see their organisation dashboard directly with upcoming events, recent orders, past-month revenue, and management navigation.
 
 `/dashboard/events`
@@ -139,7 +147,7 @@ app/
 
 - Renders organisation-only event details and analytics.
 - Shows event metadata, revenue, sold tickets, remaining tickets, and ticket-type analytics.
-- Redirects member accounts away through the proxy before rendering.
+- Uses the management-page helper to verify live events:manage authority and conceal foreign events; the proxy does not deny all member-role users.
 
 `/dashboard/events/new`
 
@@ -179,22 +187,22 @@ app/
 
 - Auth uses the Credentials provider in `auth.ts`.
 - Passwords are stored hashed with bcrypt.
-- JWT callback stores `userId`, `accountRole`, profile names, and onboarding timestamp in the token.
-- Session callback exposes `session.user.id` and `session.user.accountRole`.
+- JWT login establishes userId, authVersion and a random MFA login ID. Session/route checks compare the version to a live active identity; refresh never upgrades a revoked session.
+- Session callback exposes live identity, accountRole, authVersion and the login-bound MFA ID. See [[Authentication and Dashboard Access]] for verified identity, recovery, email changes and permanent closure.
 - Custom sign-in page is `/login`.
 
 ## Request Protection Model
 
 Custom cookie-authenticated mutation routes use two central protections:
 
-- `lib/security/request-guard.ts` validates first-party `Origin` or `Referer` headers for browser mutation routes.
+- `lib/security/request-guard.ts` validates first-party Origin/Referer and session-bound CSRF for authenticated mutations. Exact anonymous signup/verification/recovery exceptions use origin, token authority and fail-closed limits.
 - `lib/security/rate-limit.ts` applies Redis-backed fixed-window rate limits to high-abuse routes.
 
 The rate limiter hashes bucket parts before constructing Redis keys. It does not store raw emails, user IDs, order IDs, tokens, cookies, passwords, Redis URLs, or unhashed bucket keys.
 
 Failure policy:
 
-- Login, signup, and organisation creation fail closed when rate limiting is unavailable.
+- Login, signup, verification, recovery, account-security mutations, staff MFA and organisation creation fail closed when required rate limiting is unavailable.
 - Checkout creation, ticket email resend, organisation join/leave, ticket check-in/check-out, and Stripe Connect browser mutations fail open with a structured warning when rate limiting is unavailable.
 
 Stripe webhook routes are deliberately excluded from both protections because they verify Stripe signatures against the raw request body.

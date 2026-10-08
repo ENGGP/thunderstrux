@@ -2,6 +2,8 @@
 status: living
 last-reviewed: 2026-10-09
 owner: engineering
+related: ["[[Development Workflow]]", "[[Non-Blocking Issue Register]]"]
+sources: [AGENTS.md, package.json]
 ---
 
 # Engineering Delivery Workflow
@@ -10,7 +12,7 @@ This is the minimum delivery workflow for a solo-maintained startup. Keep routin
 
 ## 1. Start From Known State
 
-1. Read [[Current Handover]], the issue register, the PRD, and only the living references relevant to the change. Inspect current code, schema, configuration, tests, and hosted state where relevant; documentation does not override them.
+1. Read [[Project Handover]], the issue register, the PRD, and only the living references relevant to the change. Inspect current code, schema, configuration, tests, and hosted state where relevant; documentation does not override them.
 2. Run `git status` and preserve unrelated work. Switch to `main`, fetch and prune `origin`, then fast-forward local `main` to `origin/main` with `git merge --ff-only origin/main`. Confirm you are on the updated `main`, then create and switch to `codex/<focused-description>` with `git switch -c codex/<focused-description>`. Work in the primary repository folder on that branch. If unrelated changes prevent switching or updating safely, resolve that first with the user. Never stash, reset, overwrite, or carry user work implicitly.
 3. Write a short acceptance note covering:
 
@@ -79,6 +81,6 @@ After applicable local validation and review are complete and the PR is ready to
 4. Confirm `git status` contains only intended tracked changes and no generated artifacts. Record cleanup success or retained recovery resources in the PR.
 5. Merge only the reviewed head covered by the recorded local evidence. Switch to local `main`, fetch `origin`, and fast-forward with `git merge --ff-only origin/main`. Verify the merge is contained in local `main` before deleting the completed feature branch.
 
-Update [[Current Handover]] only when the work changes behavior, operations, release state, material risk/evidence, or the next safe action. A routine documentation or low-risk UI PR does not need handover churn when the PR itself is sufficient. Update the relevant living reference and issue register whenever their current claims or risk status change.
+Update [[Project Handover]] only when the work changes behavior, operations, release state, material risk/evidence, or the next safe action. A routine documentation or low-risk UI PR does not need handover churn when the PR itself is sufficient. Update the relevant living reference and issue register whenever their current claims or risk status change.
 
 If work stops while incomplete, leave one compact note containing the branch/PR, HEAD, dirty files, completed checks, remaining work or blocker, retained resources, and exact next action.

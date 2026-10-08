@@ -2,6 +2,7 @@
 status: living
 last-reviewed: 2026-10-09
 owner: engineering
+related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]"]
 ---
 
 # Issue And Defect Register
@@ -44,6 +45,7 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 
 | ID | Resolved | Defect and root cause | Fix and evidence |
 | --- | --- | --- | --- |
+| DEF-019 | 2026-10-09 | The handover mixed pre-PR31 history with current delivery, and living notes contradicted implemented account lifecycle, staff authority, attendance audit, transactional email and local validation policy. | Canonical note renamed Project Handover; repository references/checker updated. All 25 Obsidian notes received status/source/review classification and cross-reference review; stale claims corrected against code/schema/Compose. Historical evidence stays dated. Documentation checker and diff/reference/metadata review are the appropriate verification. |
 | DEF-018 | 2026-10-09 | Scheduled audit failed on vulnerable Sharp/source-map-js; PR review found six additional Next.js advisories, including high-severity image-optimization SSRF. | [PR #39](https://github.com/ENGGP/thunderstrux/pull/39) pins Next 16.3.8 and overrides Sharp 0.35.5/source-map-js 1.2.2. Local baseline `b3f965d` passed frozen install, build/typecheck, 311 integration tests including Sharp processing, and audit with no known vulnerabilities; run-owned cleanup passed. [[Dependency Automation]] records override removal conditions and the outstanding running-image refresh. |
 | DEF-017 | 2026-10-05 | Closure review found staff activation and MFA writes lacked a shared target-account lock, allowing a request already past authentication to recreate credentials or authority after closure. | Staff changes lock actor/target, recheck live permission/version/MFA and prevent disabled activation; MFA setup/confirmation/verification lock the active account before credential writes. A database-only lock primitive keeps HTTP auth/CSRF imports out of workers; operations/browser startup exposed and verified that dependency boundary. Closure race regressions and the T04c qualification ledger record evidence. |
 | DEF-016 | 2026-10-05 | Account-link forms could miss new fragments in mounted pages or lose a captured link through repeated setup/router remounts. Two local passes preceded a failure; a module-cache fix then failed CI repetition two, and a document cache alone failed CI repetition three. Navigation diagnostics showed router rewriting the fragment before queued event delivery. | Static parser-time capture and event newURL handling preserve pre-hydration links; the shared fragment handler captures hash changes, shares one bounded document-memory link across client bundles, preserves router history state when removing the fragment, and clears captured data after success. Verification, reset and email-change journeys open links from already mounted pages. T04b qualification ledger records final evidence. |

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-05
+last-reviewed: 2026-10-09
 owner: engineering
 ---
 
@@ -14,6 +14,7 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 
 | ID | Severity | Area | Status | Last verified | Issue and impact | Evidence or workaround | Owner / next action |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| VALID-001 | Medium | Delivery evidence | accepted-risk | 2026-10-09 | The maintainer removed required GitHub test checks; merges no longer automatically enforce test completion. | [[Engineering Delivery Workflow]] requires proportionate local evidence, review and run-owned cleanup; docs-only changes do not run functionality tests. Test workflows are manual-only; scheduled Security Audit remains. GitHub protection/rulesets were read back. | Maintainer: verify applicable local results in each PR and retain independent review/hosted release gates for high-risk activation. |
 | API-001 | Medium | API errors | open | 2026-09-29 | Central safe error mapping covers representative routes, while remaining route families still use manual catch blocks. Clients may receive inconsistent shapes. | Cross-tenant event/order/ticket and Connect behavior is tested. | Engineering: survey all routes, migrate remaining families without changing disclosure rules, and add contract coverage. |
 | AUD-001 | High | Audit | open | 2026-10-05 | The sensitive-action audit survey is incomplete. Existing event, refund, attendance, email requeue, MFA, and staff actions are audited; T04 adds private transactional password-reset/change and email-request/change/cancellation/closure security events and atomic staff updates. Every checkout-setting and administrative mutation has not been formally accounted for. | Use `AuditLog` action search and route inventory. | Engineering/security: publish a route-to-audit matrix and add missing actor-attributed entries transactionally. |
 | DATA-001 | Medium | Ownership drift | accepted-risk | 2026-09-29 | Denormalized organisation IDs can drift from canonical event ownership. Runtime authorization avoids trusting them, and repair tooling is manual. | Run `pnpm db:integrity:audit` and dry-run `pnpm db:organisation-drift:repair`. | Data/operations: schedule integrity checks or design database enforcement after production-copy review. |
@@ -59,7 +60,7 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 | DEF-009 | 2026-09-28 | Production rehearsal did not explicitly deny transitional legacy organisation access. | Production E2E/operations configuration sets legacy mode to `deny`; latest-head checks passed. [PR #18](https://github.com/ENGGP/thunderstrux/pull/18). |
 | DEF-010 | 2026-09-30 | Mutable container tags, runtime version drift, shared development/release tags, broad writable filesystems, and environment-only secrets weakened reproducibility and containment. | Docker foundation hardening pins runtime images, aligns Node 22.23.3, separates the dev tag, adds file secrets and hosted hardening, and validates these controls through runner, operations, integration, E2E, lint, and vulnerability gates. Docker foundation PR. |
 | DEF-011 | 2026-10-01 | The final release gate detected critical Next.js advisory `GHSA-vcvr-r3jv-pc5j` in 16.3.5. | Updated Next.js to patched 16.3.6 and reran dependency audit, build, integration, browser, operations, and image vulnerability gates. Docker foundation PR. |
-| DEF-012 | 2026-10-04 | Required static validation detected high-severity CVE-2026-103111 in `libpcre2-8-0` `10.42-1+deb12u1`, inherited from the pinned Node image. Installing only OpenSSL and certificates did not upgrade that existing library. | Explicitly install the library from Debian's security repository in `docker/Dockerfile`. The final runner contains `10.42-1+deb12u2`; local production build, pinned Hadolint, non-root Node/Prisma smoke and CI-equivalent fixable high/critical Trivy scan passed with zero matching findings. [PR #27](https://github.com/ENGGP/thunderstrux/pull/27); latest-head CI remains the merge gate. |
+| DEF-012 | 2026-10-04 | Required static validation detected high-severity CVE-2026-103111 in `libpcre2-8-0` `10.42-1+deb12u1`, inherited from the pinned Node image. Installing only OpenSSL and certificates did not upgrade that existing library. | Explicitly install the library from Debian's security repository in `docker/Dockerfile`. The final runner contains `10.42-1+deb12u2`; local production build, pinned Hadolint, non-root Node/Prisma smoke and CI-equivalent fixable high/critical Trivy scan passed with zero matching findings. [PR #27](https://github.com/ENGGP/thunderstrux/pull/27); latest-head CI was the merge gate at the time; current validation follows [[Engineering Delivery Workflow]]. |
 
 ## Register Procedure
 

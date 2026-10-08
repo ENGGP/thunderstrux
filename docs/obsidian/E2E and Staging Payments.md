@@ -53,9 +53,9 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 ## Completion gates
 
 - Existing baseline: 190 integration tests, typecheck, production build and audit passed before application changes.
-- Require the post-change full regression suite and three consecutive complete local E2E runs on unchanged executable/test/configuration content, including successful cleanup. Cancelled, skipped or partial runs do not qualify.
-- Require three green CI E2E runs on the qualification revision and green final-commit CI. Executable changes restart qualification; documentation-only evidence updates require final-commit CI, not another payment campaign.
-- Require all five checks on the final head: static validation, integration tests, production build, browser E2E, and operations validation. Keep `e2e-tests` in branch protection after qualification.
+- Select local regression and E2E coverage using [[Engineering Delivery Workflow]]. One complete successful applicable run with cleanup is sufficient; repeat only for changed inputs, failures or a documented reliability concern. Cancelled, skipped or partial required scenarios do not qualify.
+- GitHub E2E and operations workflows are manual-only and are not merge requirements. Documentation-only evidence updates run docs/diff checks and claim review, without functionality tests or a new provider campaign.
+- Preserve tested-revision evidence and explain its applicability to the reviewed diff. Historical repeated local/CI campaigns below remain evidence of past delivery, not current repetition requirements.
 - Require observed real Stripe success, decline, manual cancel attestation and verified forced expiry with automatic reconciliation. The test explicitly expires unpaid Sessions through Stripe; it does not claim to observe natural timeout. Missing or skipped scenarios remain outstanding.
 - See [[Current Handover]] and the P2.16 section of the remediation plan for current evidence.
 

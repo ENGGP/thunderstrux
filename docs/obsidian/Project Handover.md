@@ -13,7 +13,7 @@ This is the only current handover. It covers delivery from **PR #31 onward**, ve
 
 ## Current State
 
-**Package 1, Account lifecycle (T02-T04), is implemented and qualified. Next product work is Package 2, T05-T06.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Package 1, Account lifecycle (T02-T04), and T05 permissions/context are implemented and locally qualified. Next product work is T06 invitations and committee handover.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Merged PR | Delivered result |
 | --- | --- |
@@ -38,6 +38,8 @@ PR numbers are delivery references, not merge chronology: #40 merged before #39.
 - Latest dependency baseline: executable b3f965d, run p216-4eeb6f57df076e27f533e459, passed frozen install, production build, typecheck, 31 migrations and 311 integration tests in 36 files, including native Sharp compatibility. Audit reported no known vulnerabilities on 2026-10-09; passed and cleanupComplete are recorded. [[Dependency Automation]] owns override removal conditions and dated evidence.
 - Canonical tenant authority is Event.organisationId for event-owned records. Live OrganisationStaff authority grants management access; OrganisationMember is join state. Stripe remains payment truth and production fulfilment is webhook-driven.
 
+- T05 qualification: [PR #42](https://github.com/ENGGP/thunderstrux/pull/42), executable 1ed2031, baseline p216-f4a2251f076fd4c1d88be743 passed build/typecheck, 317 integration tests and audit with no known vulnerabilities. Browser revision cad21f9 passed campaign p216-da9f8fb4aeaf890bad145932: 2 MFA, 14 browser/mobile/account-lifecycle and 7 webhook/notification checks. Cleanup completed; the readiness ledger records corrected failed attempts and review. Member staff now start personal and select a live authorized tenant; only owners change owner authority, and event managers receive nonfinancial analytics.
+
 ## Runtime And Validation
 
 Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 31 migrations, ending in 20261005030000_account_closure; current schema has 21 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
@@ -48,7 +50,7 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 
 ## Next Safe Actions
 
-1. Implement T05-T06 from the work packages, including STAFF-001: invite acceptance can demote an existing owner without the shared last-owner guard.
+1. Deliver T06 invitations and handover after [PR #42](https://github.com/ENGGP/thunderstrux/pull/42), including STAFF-001: invite acceptance can demote an existing owner without the shared last-owner guard.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 3. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work; do it when its dependencies are met.
 

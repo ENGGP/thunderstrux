@@ -51,7 +51,7 @@ export default async function EditEventPage({
   }
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name}>
+    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl px-6 py-10">
         <CreateEventForm
           basePath="/dashboard"

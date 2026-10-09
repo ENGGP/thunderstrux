@@ -11,6 +11,8 @@ import {
   requireAuthenticatedUser,
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
+import { readAccountContext } from "@/lib/auth/context";
+import { ContextSelector } from "@/components/layout/context-selector";
 import { prisma } from "@/lib/db";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
@@ -68,6 +70,7 @@ async function OrganisationDashboard() {
     prisma.event.findMany({
       where: {
         organisationId: organisation.id,
+        ...(organisation.staffRole === "check_in_staff" ? { status: "published" as const } : {}),
         startTime: {
           gte: new Date()
         }
@@ -136,7 +139,7 @@ async function OrganisationDashboard() {
   const maxBucket = Math.max(...buckets.map((bucket) => bucket.total), 1);
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name}>
+    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-6">
@@ -400,9 +403,8 @@ async function MemberDashboard({ userId }: { userId: string }) {
 
 export default async function DashboardPage() {
   const user = await requireAuthenticatedUser();
-  const staffOrganisations = await getCurrentStaffOrganisations();
-
-  if (staffOrganisations.length > 0 || user.accountRole === "organisation") {
+  const context = await readAccountContext();
+  if (context.selected) {
     try {
       return await OrganisationDashboard();
     } catch (error) {
@@ -415,5 +417,11 @@ export default async function DashboardPage() {
     }
   }
 
-  return <MemberDashboard userId={user.id} />;
+  if (user.accountRole === "organisation") {
+    const owned = await prisma.organisation.findUnique({ where: { accountUserId: user.id }, select: { id: true } });
+    if (!owned && context.organisations.length === 0) redirect("/dashboard/create");
+    return <main className="mx-auto max-w-5xl p-6"><h1>Choose a staff organisation</h1><ContextSelector />
+      {context.organisations.length === 0 && <p>No active organisation access. Contact an owner.</p>}</main>;
+  }
+  return <><ContextSelector /><MemberDashboard userId={user.id} /></>;
 }

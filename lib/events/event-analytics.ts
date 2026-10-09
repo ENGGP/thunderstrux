@@ -1,4 +1,6 @@
 import { cache } from "react";
+import { requireOrganisationPermission } from "@/lib/auth/access";
+import { hasOrganisationPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 
 export class EventAnalyticsAccessError extends Error {
@@ -12,6 +14,8 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
   organisationId: string,
   eventId: string
 ) {
+  const authority = await requireOrganisationPermission(organisationId, "analytics:read");
+  const financial = hasOrganisationPermission(authority.staffRole, "orders:read");
   const [event, paidOrderGroups] = await prisma.$transaction([
     prisma.event.findFirst({
       where: {
@@ -49,7 +53,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
       },
       _sum: {
         quantity: true,
-        totalAmount: true
+        ...(financial ? { totalAmount: true } : {})
       }
     })
   ]);
@@ -63,7 +67,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
       group.ticketTypeId,
       {
         sold: group._sum.quantity ?? 0,
-        revenue: group._sum.totalAmount ?? 0
+        revenue: financial ? group._sum.totalAmount ?? 0 : null
       }
     ])
   );
@@ -71,7 +75,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
   const ticketTypes = event.ticketTypes.map((ticketType) => {
     const paid = paidOrdersByTicketType.get(ticketType.id) ?? {
       sold: 0,
-      revenue: 0
+      revenue: financial ? 0 : null
     };
 
     return {
@@ -95,7 +99,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
     },
     ticketTypes,
     totals: {
-      revenue: ticketTypes.reduce((total, ticketType) => total + ticketType.revenue, 0),
+      revenue: financial ? ticketTypes.reduce((total, ticketType) => total + (ticketType.revenue ?? 0), 0) : null,
       sold: ticketTypes.reduce((total, ticketType) => total + ticketType.sold, 0),
       remaining: ticketTypes.reduce(
         (total, ticketType) => total + ticketType.remaining,
@@ -110,6 +114,7 @@ export const getOrganisationEventRevenueSeries = cache(
     organisationId: string,
     eventId: string
   ) {
+    await requireOrganisationPermission(organisationId, "orders:read");
     const [event, paidOrders] = await prisma.$transaction([
       prisma.event.findFirst({
         where: {

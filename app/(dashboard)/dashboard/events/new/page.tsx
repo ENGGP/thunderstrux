@@ -6,7 +6,7 @@ export default async function NewEventPage() {
   const organisation = await requireManagementPage("events:manage", "/dashboard/events/new");
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name}>
+    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl px-6 py-10">
         <div className="grid gap-4">
           <h1 className="text-2xl font-semibold text-neutral-950">Create Event</h1>

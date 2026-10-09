@@ -203,7 +203,7 @@ export default async function OrganisationOrdersPage({
   }
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name}>
+    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <header className="space-y-2">
           <h2 className="text-3xl font-semibold text-neutral-950">Orders</h2>

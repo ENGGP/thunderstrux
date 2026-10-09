@@ -1,5 +1,6 @@
 import { getLiveSession } from "@/lib/auth/live-session";
 import { prisma } from "@/lib/db";
+import { readAccountContext } from "./context";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { MfaRequiredError, mfaEnforcementMode, requireStaffMfa } from "@/lib/security/staff-mfa";
 import {
@@ -136,81 +137,7 @@ export async function requireStripeConnectCapability() {
 }
 
 export async function getCurrentOrganisationAccount() {
-  const user = await requireAuthenticatedUser();
-
-  const staff = await prisma.organisationStaff.findFirst({
-    where: {
-      userId: user.id,
-      status: "active"
-    },
-    orderBy: [
-      {
-        role: "asc"
-      },
-      {
-        createdAt: "asc"
-      }
-    ],
-    select: {
-      role: true,
-      organisation: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true
-        }
-      }
-    }
-  });
-
-  if (staff) {
-    return {
-      ...staff.organisation,
-      staffRole: staff.role as OrganisationStaffRole
-    };
-  }
-
-  if (user.accountRole !== "organisation") {
-    return null;
-  }
-
-  if (legacyOrganisationAccessMode() === "deny") return null;
-
-  const organisation = await prisma.organisation.findUnique({
-    where: {
-      accountUserId: user.id
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      createdAt: true
-    }
-  });
-
-  if (organisation) {
-    const existingStaffAuthority = await prisma.organisationStaff.findUnique({
-      where: {
-        organisationId_userId: {
-          organisationId: organisation.id,
-          userId: user.id
-        }
-      },
-      select: { id: true }
-    });
-
-    if (existingStaffAuthority) {
-      return null;
-    }
-  }
-
-  return organisation
-    ? {
-        ...organisation,
-        staffRole: "owner" as OrganisationStaffRole
-      }
-    : null;
+  return (await readAccountContext()).selected;
 }
 
 export async function requireCurrentOrganisationAccount() {
@@ -300,18 +227,8 @@ export async function getCurrentStaffOrganisations() {
     }
   });
 
-  if (staffRows.length > 0) {
-    return staffRows.map((staff) => ({
-      ...staff.organisation,
-      staffRole: staff.role as OrganisationStaffRole
-    }));
-  }
-
-  if (user.accountRole !== "organisation") {
-    return [];
-  }
-
-  if (legacyOrganisationAccessMode() === "deny") return [];
+  const result = staffRows.map(staff => ({ ...staff.organisation, staffRole: staff.role as OrganisationStaffRole }));
+  if (user.accountRole !== "organisation" || legacyOrganisationAccessMode() === "deny") return result;
 
   const legacyOrganisation = await prisma.organisation.findUnique({
     where: {
@@ -336,19 +253,10 @@ export async function getCurrentStaffOrganisations() {
       select: { id: true }
     });
 
-    if (existingStaffAuthority) {
-      return [];
-    }
+    if (existingStaffAuthority) return result;
+    result.push({ ...legacyOrganisation, staffRole: "owner" });
   }
-
-  return legacyOrganisation
-    ? [
-        {
-          ...legacyOrganisation,
-          staffRole: "owner" as OrganisationStaffRole
-        }
-      ]
-    : [];
+  return result;
 }
 
 export async function getOrganisationAccessForUser(userId: string) {

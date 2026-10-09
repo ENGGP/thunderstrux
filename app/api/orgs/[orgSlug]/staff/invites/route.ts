@@ -51,7 +51,8 @@ export async function POST(request: Request, context: RouteContext) {
       return notFound("Organisation was not found");
     }
 
-    await requireOrganisationPermission(organisation.id, "staff:manage");
+    const authority = await requireOrganisationPermission(organisation.id, "staff:manage");
+    if (validation.data.role === "owner" && authority.staffRole !== "owner") return forbidden("Only owners can invite owners");
 
     const { invite, token } = await createOrganisationStaffInvite({
       organisationId: organisation.id,

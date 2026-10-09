@@ -22,37 +22,19 @@ export type OrganisationStaffRole =
   | "finance_manager"
   | "check_in_staff";
 
-export type OrganisationPermission =
-  | "events:manage"
-  | "orders:read"
-  | "orders:refund_mark"
-  | "orders:email_resend"
-  | "stripe:manage"
-  | "tickets:check_in"
-  | "staff:manage";
-
-const rolePermissions: Record<OrganisationStaffRole, OrganisationPermission[]> = {
-  owner: [
-    "events:manage",
-    "orders:read",
-    "orders:refund_mark",
-    "orders:email_resend",
-    "stripe:manage",
-    "tickets:check_in",
-    "staff:manage"
-  ],
-  admin: [
-    "events:manage",
-    "orders:read",
-    "orders:refund_mark",
-    "orders:email_resend",
-    "stripe:manage",
-    "tickets:check_in",
-    "staff:manage"
-  ],
-  event_manager: ["events:manage", "tickets:check_in"],
-  finance_manager: ["orders:read", "orders:refund_mark", "orders:email_resend"],
-  check_in_staff: ["tickets:check_in"]
+export const organisationPermissions = [
+  "events:read", "events:manage", "orders:read", "orders:refund_mark", "orders:refund",
+  "orders:email_resend", "stripe:manage", "tickets:check_in", "staff:manage",
+  "organisation:settings", "members:read", "members:manage", "memberships:manage",
+  "merchandise:manage", "merchandise:fulfil", "analytics:read", "audit:read", "openclaw:use"
+] as const;
+export type OrganisationPermission = typeof organisationPermissions[number];
+const rolePermissions: Record<OrganisationStaffRole, readonly OrganisationPermission[]> = {
+  owner: organisationPermissions,
+  admin: organisationPermissions,
+  event_manager: ["events:read", "events:manage", "tickets:check_in", "analytics:read", "openclaw:use"],
+  finance_manager: ["events:read", "orders:read", "orders:refund_mark", "orders:refund", "orders:email_resend", "analytics:read", "openclaw:use"],
+  check_in_staff: ["events:read", "tickets:check_in"]
 };
 
 // Role helpers are compatibility checks after access has already been resolved.

@@ -459,7 +459,8 @@ describe("event lifecycle", () => {
   });
 
   test("event analytics use event ownership when order organisation is inconsistent", async () => {
-    const { organisation } = await createOrganisationAccount();
+    const { user, organisation } = await createOrganisationAccount();
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const other = await createOrganisationAccount();
     const event = await createEvent({ organisationId: organisation.id });
     const ticketType = event.ticketTypes[0];
@@ -492,7 +493,7 @@ describe("event lifecycle", () => {
   });
 
   test("event analytics do not mutate stale pending orders or reservations", async () => {
-    const { organisation } = await createOrganisationAccount();
+    const { user, organisation } = await createOrganisationAccount();
     const member = await createMember();
     const event = await createEvent({ organisationId: organisation.id });
     const ticketType = event.ticketTypes[0];
@@ -513,6 +514,7 @@ describe("event lifecycle", () => {
       expiresAt: new Date(Date.now() - 60 * 1000)
     });
 
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     await getOrganisationEventAnalytics(organisation.id, event.id);
     await getOrganisationEventRevenueSeries(organisation.id, event.id);
 

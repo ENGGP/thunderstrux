@@ -40,7 +40,7 @@ export default async function StaffSettingsPage() {
   ]);
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name}>
+    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <div>
           <h2 className="text-2xl font-semibold text-neutral-950">Staff</h2>
@@ -49,6 +49,7 @@ export default async function StaffSettingsPage() {
           </p>
         </div>
         <StaffManagement
+          canManageOwners={organisation.staffRole === "owner"}
           initialInvites={invites}
           initialStaff={staff}
           orgSlug={organisation.slug}

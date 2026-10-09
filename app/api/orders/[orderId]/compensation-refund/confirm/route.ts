@@ -41,7 +41,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   try {
     const organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationPermission(organisation.id, "orders:refund_mark");
+    await requireOrganisationPermission(organisation.id, "orders:refund");
     const actor = await requireAuthenticatedUser();
     await confirmCompensationRefund(
       organisation.id,

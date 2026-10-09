@@ -1,6 +1,9 @@
+import { createJiti } from "jiti";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+const jiti = createJiti(import.meta.url);
+const { decryptNotification } = await jiti.import("../lib/email/notification-crypto.ts");
 
 try {
   const [users, organisations, staff, orders, tickets, reservations, outbox, lifecycleEvents, auditLogs, refundJobs, refundWebhookEvents, notifications, authTokens, securityEvents, migrations] = await Promise.all([
@@ -22,6 +25,10 @@ try {
     prisma.accountSecurityEvent.count(),
     prisma.$queryRawUnsafe(`SELECT count(*)::int AS count FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`)
   ]);
+  const inviteJob = await prisma.notificationOutbox.findUnique({ where: { id: "p217-invite-notification" }, include: { staffInvite: true } });
+  if (!inviteJob || inviteJob.privacy !== "security" || inviteJob.organisationId || inviteJob.staffInviteVersion !== 2 || inviteJob.staffInvite?.version !== 2 || inviteJob.staffInvite.email !== inviteJob.recipient) throw new Error("Restored invitation version/private linkage is missing");
+  const rendered = decryptNotification(inviteJob.encryptedPayload, inviteJob.id);
+  if (rendered.text !== `http://localhost/staff/invites/accept#token=${Buffer.alloc(32, 5).toString("base64url")}`) throw new Error("Restored invitation payload cannot be decrypted with the recovered notification key");
   const migrationCount = Number(migrations[0]?.count ?? 0);
   const emailChange = await prisma.authToken.findFirst({ where: { purpose: "email_change", newEmail: "p217-change@example.com" } });
   if (!emailChange) throw new Error("Restored email-change binding is missing");
@@ -38,6 +45,7 @@ try {
 
   console.log(JSON.stringify({
     status: "verified",
+    invitationVersionAndDecryption: true,
     users,
     organisations,
     staff,

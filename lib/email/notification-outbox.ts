@@ -8,6 +8,7 @@ import { sendWithResend } from "./ticket-delivery";
 import { logInfo } from "@/lib/ops/logger";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { hasOrganisationPermission } from "@/lib/permissions";
+import { invitationIssuerRole } from "@/lib/staff/invite-authority";
 
 const retrySeconds = [60, 300, 900, 3600, 21600];
 const safeRetryWindowMs = 23 * 60 * 60 * 1000;
@@ -40,9 +41,12 @@ export async function listFailedBusinessNotifications(organisationId: string, cu
 export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   eventKey: string; recipient: string; template: NotificationTemplate; payload: unknown;
   userId?: string; organisationId?: string; expiresAt?: Date; templateVersion?: number; authTokenId?: string;
+  staffInviteId?: string; staffInviteVersion?: number;
 }) {
   const recipient = z.string().trim().toLowerCase().email().max(320).parse(input.recipient);
   const template = notificationTemplateSchema.parse(input.template);
+  if (template === "staff_invite" && (!input.staffInviteId || !Number.isInteger(input.staffInviteVersion) || (input.staffInviteVersion ?? 0) < 1))
+    throw new Error("Staff invitations require versioned linkage");
   const privacy = template === "business_notice" ? "business" : "security";
   if (privacy === "business" && !input.organisationId) throw new Error("Business notifications require a tenant");
   if (privacy === "security" && input.organisationId) throw new Error("Security notifications cannot belong to a tenant");
@@ -53,8 +57,8 @@ export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   const rendered = renderedNotificationSchema.parse({ ...renderNotification(template, input.payload), from: process.env.EMAIL_FROM });
   const encryptedPayload = encryptNotification(rendered, id);
   const rows = await tx.$queryRaw<Array<{ id: string }>>`
-    INSERT INTO "NotificationOutbox" ("id", "eventKey", "recipient", "template", "templateVersion", "privacy", "userId", "organisationId", "encryptedPayload", "expiresAt", "authTokenId", "updatedAt")
-    VALUES (${id}, ${eventKey}, ${recipient}, ${template}, ${templateVersion}, ${privacy}, ${input.userId ?? null}, ${input.organisationId ?? null}, ${encryptedPayload}, ${input.expiresAt ?? null}, ${input.authTokenId ?? null}, NOW())
+    INSERT INTO "NotificationOutbox" ("id", "eventKey", "recipient", "template", "templateVersion", "privacy", "userId", "organisationId", "encryptedPayload", "expiresAt", "authTokenId", "staffInviteId", "staffInviteVersion", "updatedAt")
+    VALUES (${id}, ${eventKey}, ${recipient}, ${template}, ${templateVersion}, ${privacy}, ${input.userId ?? null}, ${input.organisationId ?? null}, ${encryptedPayload}, ${input.expiresAt ?? null}, ${input.authTokenId ?? null}, ${input.staffInviteId ?? null}, ${input.staffInviteVersion ?? null}, NOW())
     ON CONFLICT ("eventKey", "recipient", "templateVersion") DO NOTHING RETURNING "id"
   `;
   return { enqueued: rows.length === 1, id: rows[0]?.id ?? null };
@@ -78,6 +82,16 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
   const fence = { id: claim.id, status: "processing", processingToken: claim.processingToken };
   const job = await prisma.notificationOutbox.findFirst({ where: fence });
   if (!job) return "skipped";
+  if (job.template === "staff_invite" || job.staffInviteId || job.eventKey.startsWith("staff-invite/")) {
+    const invite = job.staffInviteId ? await prisma.organisationStaffInvite.findUnique({ where: { id: job.staffInviteId } }) : null;
+    const issuer = invite ? await invitationIssuerRole(prisma, invite.organisationId, invite.invitedById) : null;
+    if (!invite || invite.version !== job.staffInviteVersion || invite.email !== job.recipient ||
+        invite.acceptedAt || invite.revokedAt || invite.expiresAt <= now || job.template !== "staff_invite" ||
+        job.privacy !== "security" || job.organisationId || !issuer || (invite.role === "owner" && issuer !== "owner")) {
+      await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_invite", processingToken: null } });
+      return "cancelled";
+    }
+  }
   if (job.eventKey.startsWith("auth/") && !job.authTokenId) {
     await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
     return "cancelled";

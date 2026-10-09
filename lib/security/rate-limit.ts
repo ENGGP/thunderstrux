@@ -24,6 +24,8 @@ export type RateLimitPolicy =
   | "organisation_join_leave"
   | "ticket_check_in_out"
   | "stripe_connect_mutation"
+  | "staff_invite_actor"
+  | "staff_invite_email"
   | "staff_mfa_setup"
   | "staff_mfa_verify";
 
@@ -75,6 +77,8 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
     windowSeconds: 10 * 60,
     failureMode: "open"
   },
+  staff_invite_actor: { limit: 20, windowSeconds: 3600, failureMode: "closed" },
+  staff_invite_email: { limit: 3, windowSeconds: 3600, failureMode: "closed" },
   staff_mfa_setup: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
   staff_mfa_verify: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" }
 };

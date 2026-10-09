@@ -1,3 +1,4 @@
+import { readStaffInviteToken } from "@/tests/helpers/staff-invites";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { signupAccount, requestVerification, consumeVerification, AccountTokenError } from "@/lib/auth/account-lifecycle";
@@ -100,10 +101,10 @@ test("unverified joins/bootstrap and disabled session access are denied using li
 test("direct checkout and invite transactions reject unverified identities before writes", async () => {
   const user = await createUser(); const society = await createOrganisationAccount({ stripeReady: true });
   const event = await createEvent({ organisationId: society.organisation.id, status: "published" });
-  const invite = await createOrganisationStaffInvite({ organisationId: society.organisation.id, invitedById: society.user.id, email: user.email, role: "event_manager" });
+  const invite = await createOrganisationStaffInvite({ organisationId: society.organisation.id, actor: { id: society.user.id, authVersion: society.user.authVersion }, email: user.email, role: "event_manager" });
   await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: null } });
   await expect(createEventCheckout({ userId: user.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1 })).rejects.toThrow("Verify your email");
-  await expect(acceptOrganisationStaffInvite({ token: invite.token, userId: user.id, userEmail: user.email })).rejects.toThrow("Verify your email");
+  await expect(acceptOrganisationStaffInvite({ token: await readStaffInviteToken(invite.invite.id), actor: { id: user.id, authVersion: user.authVersion } })).rejects.toThrow("Verify your email");
   expect(await prisma.order.count()).toBe(0); expect(await prisma.ticketReservation.count()).toBe(0);
   expect(await prisma.organisationStaff.count({ where: { userId: user.id } })).toBe(0);
 });

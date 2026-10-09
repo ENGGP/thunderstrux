@@ -9,11 +9,11 @@ sources: [package.json, prisma/schema.prisma]
 
 # Project Handover
 
-This is the only current handover. It covers delivery from **PR #31 onward**, verified against merged repository state `b9a113d` (PR #39). Earlier implementation remains background in the linked references and Git history. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
+This is the only current handover. It covers delivery from **PR #31 onward**, with current contracts and dated validation evidence recorded below. Earlier implementation remains background in the linked references and Git history. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
 
 ## Current State
 
-**Package 1, Account lifecycle (T02-T04), and T05 permissions/context are implemented and locally qualified. Next product work is T06 invitations and committee handover.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Package 1, Account lifecycle (T02-T04), and T05 permissions/context and T06a private invitations are implemented and locally qualified. Next product work is T06b committee handover.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Merged PR | Delivered result |
 | --- | --- |
@@ -42,7 +42,9 @@ PR numbers are delivery references, not merge chronology: #40 merged before #39.
 
 ## Runtime And Validation
 
-Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 31 migrations, ending in 20261005030000_account_closure; current schema has 21 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
+- T06a qualification: [PR #43](https://github.com/ENGGP/thunderstrux/pull/43), baseline `3fc0f32`/`p216-b6b9e916630758d020500c61` passed build/typecheck, 330 integration tests and clean audit. Browser `a00ab6e`/`p216-25a6a1f4b0428b6f62720c72` passed 24 checks; operations `d07d1a8`/`p217-ci-1b4452dd29` passed migration/restore/key-decryption/rollback. All run-owned cleanup passed; the readiness ledger records corrected failures and final-content coverage. Invitation activation requires migration 20261009010000_private_staff_invites before app/workers; pause acceptance/delivery when rolling back older code.
+
+Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 32 migrations, ending in 20261009010000_private_staff_invites; current schema has 21 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
 
 PR #40 removes PR/push triggers from test workflows. Local checks follow the risk table: documentation-only changes use docs/diff checks and claim review, with no functionality tests; code changes need one successful applicable run, with repeats justified by changed inputs, failures or a documented reliability concern. Scheduled Security Audit remains enabled. GitHub protection readback on 2026-10-09 found no required status checks/rulesets; force pushes and branch deletion were disallowed. Review local evidence in every PR (VALID-001).
 
@@ -50,7 +52,7 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 
 ## Next Safe Actions
 
-1. Deliver T06 invitations and handover after [PR #42](https://github.com/ENGGP/thunderstrux/pull/42), including STAFF-001: invite acceptance can demote an existing owner without the shared last-owner guard.
+1. Deliver T06b owner handover after [PR #43](https://github.com/ENGGP/thunderstrux/pull/43); clear the legacy ownership pointer and preserve business/Stripe history. STAFF-001 is resolved by role-preserving invitation acceptance.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 3. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work; do it when its dependencies are met.
 

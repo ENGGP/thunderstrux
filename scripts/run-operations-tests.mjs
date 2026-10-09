@@ -155,11 +155,12 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 const port = await availablePort();
 const origin = `http://127.0.0.1:${port}`;
+const notificationKey = randomBytes(32).toString("base64");
 const runtime = [
   "DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public",
   `AUTH_SECRET=${randomBytes(32).toString("hex")}`,
   "MFA_ENFORCEMENT_MODE=off",
-  `NOTIFICATION_ENCRYPTION_KEY=${randomBytes(32).toString("base64")}`,
+  `NOTIFICATION_ENCRYPTION_KEY=${notificationKey}`,
   "LEGACY_ORGANISATION_ACCESS_MODE=deny",
   `AUTH_URL=${origin}`,
   `NEXTAUTH_URL=${origin}`,
@@ -253,8 +254,8 @@ try {
   await compose(["run", "--rm", "migration", "node", "prisma/seed.mjs"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }
   });
-  await compose(["run", "--rm", "migration", "node", "scripts/seed-operations-verification.mjs"], {
-    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+  await compose(["run", "--rm", "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/seed-operations-verification.mjs"], {
+    env: { ...process.env, APP_IMAGE: release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey }
   });
   const backupOutput = await operation("backup", [], { capture: true });
   const backupRecord = JSON.parse(backupOutput.split(/\r?\n/).filter(Boolean).at(-1));

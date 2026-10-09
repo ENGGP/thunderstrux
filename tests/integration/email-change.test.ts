@@ -49,7 +49,7 @@ test("taken and available addresses have identical request and pending-state beh
 test("parallel confirmation consumes once, revokes all sessions/grants/tokens, sends both notices and retains order ownership", async () => {
   const user = await createMember(); const society = await createOrganisationAccount(); const event = await createEvent({ organisationId: society.organisation.id });
   const order = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: user.id });
-  const invite = await createOrganisationStaffInvite({ organisationId: society.organisation.id, invitedById: society.user.id, email: user.email, role: "event_manager" });
+  const invite = await createOrganisationStaffInvite({ organisationId: society.organisation.id, actor: { id: society.user.id, authVersion: society.user.authVersion }, email: user.email, role: "event_manager" });
   await prisma.mfaGrant.create({ data: { userId: user.id, sessionDigest: "old-grant", verifiedAt: new Date(), expiresAt: new Date(Date.now() + 60000) } });
   await requestPasswordReset(user.email); await requestEmailChange({ id: user.id, authVersion: 0 }, "password123", "changed@example.com");
   const { raw } = await tokenFor(user.id); const actor = { id: user.id, authVersion: 0 };
@@ -62,6 +62,7 @@ test("parallel confirmation consumes once, revokes all sessions/grants/tokens, s
   expect((await prisma.notificationOutbox.findMany({ where: { template: "email_changed" } })).map(job => job.recipient).sort()).toEqual([user.email, "changed@example.com"].sort());
   expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).userId).toBe(user.id);
   expect((await prisma.organisationStaffInvite.findUniqueOrThrow({ where: { id: invite.invite.id } })).revokedAt).not.toBeNull();
+  expect(await prisma.notificationOutbox.count({ where: { staffInviteId: invite.invite.id, status: "cancelled" } })).toBe(1);
 });
 test("two accounts racing for the same new address cannot overwrite or merge identity", async () => {
   const users = await Promise.all([createMember(), createMember()]);

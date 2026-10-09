@@ -401,8 +401,11 @@ async function restore(ctx) {
     if (!sourceDatabaseUrl) throw new Error("DATABASE_URL is missing from the explicit environment file");
     const restoredUrl = databaseUrlForRestore(sourceDatabaseUrl, target);
     const release = JSON.parse(await readFile(join(ctx.stateDir, "current-release.json"), "utf8"));
-    await compose(ctx, ["run", "--rm", "-e", `DATABASE_URL=${restoredUrl}`, "migration", "node", "scripts/verify-restored-database.mjs"], {
-      env: { ...process.env, APP_IMAGE: release.candidateImageId }
+    // Only the restore verifier receives the separately recovered key; ordinary
+    // migration jobs continue without notification/auth/provider secrets.
+    const notificationKey = parseEnv(await readFile(ctx.envFile, "utf8")).NOTIFICATION_ENCRYPTION_KEY;
+    await compose(ctx, ["run", "--rm", "-e", `DATABASE_URL=${restoredUrl}`, "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/verify-restored-database.mjs"], {
+      env: { ...process.env, APP_IMAGE: release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
     });
     console.log(JSON.stringify({ status: "restored-and-verified", target }));
   } catch (error) {

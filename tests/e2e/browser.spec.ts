@@ -218,3 +218,49 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await login(page, data.manager.email);
   await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
 });
+
+
+test('private staff invitation email supports explicit acceptance, resend and revocation', async ({ page, data, browser }) => {
+  await login(page, data.owner.email, '/dashboard/settings/staff');
+  await page.getByLabel('Email', { exact: true }).fill(data.member.email);
+  await page.getByLabel('Invitation role', { exact: true }).selectOption('finance_manager');
+  const responsePromise = page.waitForResponse(response => response.url().endsWith(`/api/orgs/${data.organisation.slug}/staff/invites`) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create invite', exact: true }).click();
+  const response = await responsePromise; expect(response.status()).toBe(201);
+  const metadata = await response.json(); expect(Object.keys(metadata)).toEqual(['invite']);
+  await expect(page.getByText('Invitation email queued.', { exact: false })).toBeVisible();
+  execFileSync('node', ['scripts/process-notifications.mjs'], { stdio: 'pipe' });
+  const messages = await (await page.request.get('http://mail-capture:8025/messages')).json();
+  const message = messages.find((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes('staff invitation'));
+  expect(message).toBeTruthy(); const firstLink = message.data.text.split('\n\n').at(-1);
+  expect(firstLink).toContain('/staff/invites/accept#token=');
+  const context = await browser.newContext({ baseURL: 'http://localhost:3100' });
+  try {
+    const recipient = await context.newPage();
+    await login(recipient, data.member.email);
+    await recipient.goto('/staff/invites/accept'); await recipient.goto(firstLink);
+    await expect.poll(() => recipient.url()).not.toContain('#');
+    expect(await prisma.organisationStaff.count({ where: { userId: data.member.id } })).toBe(0);
+    const pending = page.getByRole('listitem').filter({ hasText: data.member.email });
+    await pending.getByRole('button', { name: 'Resend invitation' }).click();
+    await expect(page.getByText('New invitation email queued.', { exact: false })).toBeVisible();
+    await recipient.getByRole('button', { name: 'Accept staff invitation' }).click();
+    await expect(recipient.locator('main').getByRole('alert')).toContainText('Invitation is unavailable');
+    execFileSync('node', ['scripts/process-notifications.mjs'], { stdio: 'pipe' });
+    const updated = await (await page.request.get('http://mail-capture:8025/messages')).json();
+    const nextLink = updated.filter((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes('staff invitation')).at(-1).data.text.split('\n\n').at(-1);
+    await recipient.goto(nextLink);
+    await recipient.getByRole('button', { name: 'Accept staff invitation' }).click();
+    await expect(recipient.getByRole('status')).toContainText('Staff access accepted');
+    expect(await prisma.organisationStaff.findUniqueOrThrow({ where: { organisationId_userId: { organisationId: data.organisation.id, userId: data.member.id } } })).toMatchObject({ role: 'finance_manager', status: 'active' });
+    await recipient.getByRole('link', { name: 'Open dashboard' }).click();
+    await expect(recipient.getByLabel('Dashboard context')).toHaveValue('personal');
+    await recipient.getByLabel('Dashboard context').selectOption(data.organisation.id);
+    await expect(recipient.getByText('Organisation dashboard', { exact: true })).toBeVisible();
+  } finally { await context.close(); }
+  await page.getByLabel('Email', { exact: true }).fill(data.manager.email);
+  await page.getByRole('button', { name: 'Create invite', exact: true }).click();
+  const pending = page.getByRole('listitem').filter({ hasText: data.manager.email });
+  await expect(pending).toBeVisible(); await pending.getByRole('button', { name: 'Revoke invitation' }).click();
+  await expect(pending).toHaveCount(0);
+});

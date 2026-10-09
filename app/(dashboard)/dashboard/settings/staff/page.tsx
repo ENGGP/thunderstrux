@@ -8,6 +8,7 @@ export default async function StaffSettingsPage() {
 
   const [staff, invites] = await Promise.all([
     prisma.organisationStaff.findMany({
+      take: 100,
       where: { organisationId: organisation.id },
       orderBy: [{ status: "asc" }, { role: "asc" }, { createdAt: "asc" }],
       select: {
@@ -29,6 +30,7 @@ export default async function StaffSettingsPage() {
         acceptedAt: null,
         revokedAt: null
       },
+      take: 100,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,

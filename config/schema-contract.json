@@ -1,3 +1,3 @@
 {
-  "requiredMigration": "20261005030000_account_closure"
+  "requiredMigration": "20261009010000_private_staff_invites"
 }

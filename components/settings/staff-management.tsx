@@ -64,7 +64,7 @@ export function StaffManagement({
   const [invites, setInvites] = useState(initialInvites);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<StaffRole>("event_manager");
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -80,18 +80,16 @@ export function StaffManagement({
   async function inviteStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    setInviteToken(null);
+    setNotice(null);
     setIsSubmitting(true);
 
     try {
-      const payload = await fetchJson<{
-        token: string;
-      }>(`/api/orgs/${orgSlug}/staff/invites`, {
+      await fetchJson<{ invite: InviteRow }>(`/api/orgs/${orgSlug}/staff/invites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role })
       });
-      setInviteToken(payload.token);
+      setNotice("Invitation email queued. Ask the recipient to sign in with their verified email and accept the link.");
       setEmail("");
       await refreshStaff();
     } catch (inviteError) {
@@ -120,6 +118,16 @@ export function StaffManagement({
     }
   }
 
+  async function manageInvite(inviteId: string, action: "resend" | "revoke") {
+    setError(null); setNotice(null); setIsSubmitting(true);
+    try {
+      await fetchJson(`/api/orgs/${orgSlug}/staff/invites/${inviteId}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      setNotice(action === "resend" ? "New invitation email queued. The previous link is now invalid." : "Invitation revoked.");
+      await refreshStaff();
+    } catch (failure) { setError(getClientErrorMessage(failure, "Could not update invitation.")); }
+    finally { setIsSubmitting(false); }
+  }
+
   return (
     <div className="grid gap-6">
       {error ? (
@@ -128,9 +136,9 @@ export function StaffManagement({
         </div>
       ) : null}
 
-      {inviteToken ? (
+      {notice ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Invite token: <span className="break-all font-mono">{inviteToken}</span>
+          {notice}
         </div>
       ) : null}
 
@@ -153,6 +161,7 @@ export function StaffManagement({
               className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900"
               onChange={(event) => setRole(event.target.value as StaffRole)}
               value={role}
+              aria-label="Invitation role"
             >
               {roles.filter(item => canManageOwners || item !== "owner").map((item) => (
                 <option key={item} value={item}>
@@ -168,7 +177,7 @@ export function StaffManagement({
       </form>
 
       <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-neutral-950">Active staff</h3>
+        <h3 className="text-lg font-semibold text-neutral-950">Staff access (up to 100)</h3>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full border-collapse text-left text-sm">
             <thead>
@@ -221,7 +230,7 @@ export function StaffManagement({
 
       {invites.length > 0 ? (
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-neutral-950">Pending invites</h3>
+          <h3 className="text-lg font-semibold text-neutral-950">Pending invites (latest 100)</h3>
           <ul className="mt-4 grid gap-3">
             {invites.map((invite) => (
               <li
@@ -233,6 +242,10 @@ export function StaffManagement({
                   {roleLabels[invite.role]} expires{" "}
                   {new Date(invite.expiresAt).toLocaleDateString()}
                 </span>
+                {(canManageOwners || invite.role !== "owner") && <div className="mt-2 flex gap-3">
+                  <button type="button" className="underline" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")}>Resend invitation</button>
+                  <button type="button" className="underline" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "revoke")}>Revoke invitation</button>
+                </div>}
               </li>
             ))}
           </ul>

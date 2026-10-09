@@ -1,3 +1,4 @@
+import { cancelAccountStaffInvites } from "@/lib/staff/invite-cancellation";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -40,7 +41,7 @@ export async function confirmEmailChange(actor: AccountActor, currentPassword: s
       await invalidateAccountTokens(tx, user.id, undefined, now);
       await tx.notificationOutbox.updateMany({ where: { authTokenId: token.id, status: { in: ["pending", "processing"] } }, data: { status: "cancelled", lastError: "consumed", processingToken: null } });
       // Verified addresses must not leave invitations a recycled address can accept.
-      if (user.emailVerifiedAt) await tx.organisationStaffInvite.updateMany({ where: { email: user.email, acceptedAt: null, revokedAt: null }, data: { revokedAt: now } });
+      await cancelAccountStaffInvites(tx, user, false, now);
       const event = await tx.accountSecurityEvent.create({ data: { userId: user.id, type: "email_changed", authVersion: updated.authVersion, createdAt: now } });
       for (const recipient of [user.email, updated.email]) await enqueueNotification(tx, { eventKey: `account-security/${event.id}`, userId: user.id, recipient, template: "email_changed",
         payload: { message: "Your Thunderstrux account email changed. All devices are signed out. Sign in using the new address. If this was not you, contact support.", link: new URL("/login", process.env.NEXT_PUBLIC_APP_URL).toString() } });

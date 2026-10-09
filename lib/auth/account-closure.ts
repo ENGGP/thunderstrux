@@ -1,3 +1,4 @@
+import { cancelAccountStaffInvites } from "@/lib/staff/invite-cancellation";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -45,7 +46,7 @@ export async function closeAccount(actor: AccountActor, currentPassword: string,
     await tx.userMfa.deleteMany({ where: { userId: user.id } });
     await tx.organisationStaff.updateMany({ where: { userId: user.id, status: "active" }, data: { status: "revoked", revokedAt: now, revokedById: user.id } });
     await tx.organisationMember.deleteMany({ where: { userId: user.id } });
-    if (user.emailVerifiedAt) await tx.organisationStaffInvite.updateMany({ where: { email: user.email, acceptedAt: null, revokedAt: null }, data: { revokedAt: now } });
+    await cancelAccountStaffInvites(tx, user, true, now);
     const closed = await tx.user.update({ where: { id: user.id }, data: {
       closedAt: now, disabledAt: now, authVersion: { increment: 1 }, email: `${randomUUID()}@closed.invalid`, password: `!closed:${randomBytes(32).toString("base64url")}`,
       emailVerifiedAt: null, firstName: null, lastName: null, displayName: null, phone: null, studentNumber: null, onboardingCompletedAt: null

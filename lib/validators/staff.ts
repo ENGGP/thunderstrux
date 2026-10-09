@@ -11,7 +11,7 @@ export const staffRoleSchema = z.enum([
 export const createStaffInviteSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(320),
   role: staffRoleSchema
-});
+}).strict();
 
 export const updateStaffSchema = z.object({
   role: staffRoleSchema.optional(),
@@ -21,5 +21,5 @@ export const updateStaffSchema = z.object({
 });
 
 export const acceptStaffInviteSchema = z.object({
-  token: z.string().trim().min(32).max(256)
-});
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/)
+}).strict();

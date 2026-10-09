@@ -144,6 +144,8 @@ model OrganisationStaffInvite {
   organisationId String
   email          String
   role           OrganisationStaffRole
+  version        Int                   @default(1)
+  notifications  NotificationOutbox[]
   tokenHash      String                @unique
   invitedById    String
   acceptedById   String?
@@ -157,6 +159,7 @@ model OrganisationStaffInvite {
 
   @@index([organisationId, email])
   @@index([expiresAt])
+  @@index([email, acceptedAt, revokedAt])
   @@index([invitedById])
   @@index([acceptedById])
 }
@@ -537,6 +540,10 @@ enum OrderLifecycleSource {
 }
 
 model NotificationOutbox {
+  staffInviteId String?
+  staffInviteVersion Int?
+  staffInvite OrganisationStaffInvite? @relation(fields: [staffInviteId], references: [id], onDelete: SetNull)
+  @@index([staffInviteId])
   authTokenId         String?
   authToken           AuthToken? @relation(fields: [authTokenId], references: [id], onDelete: SetNull)
   @@index([authTokenId])

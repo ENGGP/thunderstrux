@@ -30,6 +30,7 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 | [#42](https://github.com/ENGGP/thunderstrux/pull/42) | T05 live permissions, explicit personal/staff context, role-aware navigation and nonfinancial event-manager analytics |
 | [#43](https://github.com/ENGGP/thunderstrux/pull/43) | T06a private versioned invitation delivery, explicit acceptance, resend/revoke and active-role preservation |
 | [#44](https://github.com/ENGGP/thunderstrux/pull/44) | T06b atomic owner handover, legacy pointer retirement and retained business/Stripe history |
+| [#45](https://github.com/ENGGP/thunderstrux/pull/45) | Local development stale-module recovery, Next 16.3.8 activation, backed-up migration and notification-key configuration; hosted activation remains separate |
 
 PR numbers are delivery references, not merge chronology: #40 merged before #39.
 

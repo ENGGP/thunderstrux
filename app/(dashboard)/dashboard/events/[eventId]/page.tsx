@@ -1,3 +1,4 @@
+import { hasOrganisationPermission } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -47,15 +48,18 @@ export default async function OrganiserEventPage({
   params
 }: OrganiserEventPageProps) {
   const { eventId } = await params;
-  const organisation = await requireManagementPage("events:manage", `/dashboard/events/${eventId}`);
+  const organisation = await requireManagementPage("analytics:read", `/dashboard/events/${eventId}`);
 
+  const financial = hasOrganisationPermission(organisation.staffRole, "orders:read");
+  const canEdit = hasOrganisationPermission(organisation.staffRole, "events:manage");
+  const attendance = hasOrganisationPermission(organisation.staffRole, "tickets:check_in");
   let analytics: Awaited<ReturnType<typeof getOrganisationEventAnalytics>>;
   let revenueSeries: Awaited<ReturnType<typeof getOrganisationEventRevenueSeries>>;
 
   try {
     [analytics, revenueSeries] = await Promise.all([
       getOrganisationEventAnalytics(organisation.id, eventId),
-      getOrganisationEventRevenueSeries(organisation.id, eventId)
+      financial ? getOrganisationEventRevenueSeries(organisation.id, eventId) : Promise.resolve([])
     ]);
   } catch (error) {
     if (error instanceof EventAnalyticsAccessError) {
@@ -71,7 +75,7 @@ export default async function OrganiserEventPage({
   );
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name}>
+    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-6">
@@ -87,24 +91,24 @@ export default async function OrganiserEventPage({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link
+              {canEdit && <Link
                 className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
                 href={`/dashboard/events/${analytics.event.id}/edit`}
               >
                 Edit event
-              </Link>
-              <Link
+              </Link>}
+              {attendance && <Link
                 className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
                 href={`/dashboard/events/${analytics.event.id}/tickets`}
               >
                 View tickets
-              </Link>
-              <Link
+              </Link>}
+              {financial && <Link
                 className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
                 href={`/dashboard/orders?eventId=${analytics.event.id}`}
               >
                 View orders
-              </Link>
+              </Link>}
             </div>
           </div>
 
@@ -125,12 +129,12 @@ export default async function OrganiserEventPage({
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+          {financial && <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-neutral-500">Revenue</p>
             <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {formatCurrency(analytics.totals.revenue)}
+              {formatCurrency(analytics.totals.revenue ?? 0)}
             </p>
-          </div>
+          </div>}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-neutral-500">Sold</p>
             <p className="mt-2 text-2xl font-semibold text-neutral-950">
@@ -145,7 +149,7 @@ export default async function OrganiserEventPage({
           </div>
         </section>
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        {financial && <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-neutral-950">
               Revenue (UTC)
@@ -193,7 +197,7 @@ export default async function OrganiserEventPage({
               </div>
             </div>
           )}
-        </section>
+        </section>}
 
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-4">
@@ -215,15 +219,15 @@ export default async function OrganiserEventPage({
                     <th className="py-3 pr-4 font-medium">Ticket</th>
                     <th className="py-3 pr-4 font-medium">Remaining</th>
                     <th className="py-3 pr-4 font-medium">Sold</th>
-                    <th className="py-3 pr-4 font-medium">Revenue</th>
-                    <th className="py-3 font-medium">Revenue share</th>
+                    {financial && <th className="py-3 pr-4 font-medium">Revenue</th>}
+                    {financial && <th className="py-3 font-medium">Revenue share</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {analytics.ticketTypes.map((ticketType) => {
                     const revenueShare =
-                      analytics.totals.revenue > 0
-                        ? (ticketType.revenue / analytics.totals.revenue) * 100
+                      (analytics.totals.revenue ?? 0) > 0
+                        ? ((ticketType.revenue ?? 0) / (analytics.totals.revenue ?? 1)) * 100
                         : 0;
 
                     return (
@@ -240,8 +244,8 @@ export default async function OrganiserEventPage({
                         <td className="py-3 pr-4 text-neutral-700">
                           {ticketType.sold}
                         </td>
-                        <td className="py-3 pr-4 text-neutral-700">
-                          {formatCurrency(ticketType.revenue)}
+                        {financial && <><td className="py-3 pr-4 text-neutral-700">
+                          {formatCurrency(ticketType.revenue ?? 0)}
                         </td>
                         <td className="py-3 text-neutral-700">
                           <div className="flex min-w-36 items-center gap-3">
@@ -255,7 +259,7 @@ export default async function OrganiserEventPage({
                               {revenueShare.toFixed(0)}%
                             </span>
                           </div>
-                        </td>
+                        </td></>}
                       </tr>
                     );
                   })}

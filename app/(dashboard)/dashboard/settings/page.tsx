@@ -6,7 +6,7 @@ export default async function SettingsPage() {
   const organisation = await requireManagementPage("stripe:manage", "/dashboard/settings");
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name}>
+    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl px-6 py-10">
         <div className="grid gap-4">
           <h2 className="text-2xl font-semibold text-neutral-950">Settings</h2>

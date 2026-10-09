@@ -34,3 +34,10 @@ export async function login(page: Page, email: string, callback = '/dashboard') 
 }
 
 export { expect, prisma, createEvent, createMember, createOrganisationAccount, createOrganisationStaff };
+
+export async function selectStaffContext(page: Page, organisationId: string) {
+  const { token } = await (await page.request.get('/api/security/csrf')).json();
+  const response = await page.request.post('/api/me/context', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token }, data: { mode: 'staff', organisationId } });
+  expect(response.status()).toBe(200);
+  await page.goto('/dashboard');
+}

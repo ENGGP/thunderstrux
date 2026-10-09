@@ -1,3 +1,4 @@
+import { requireOrganisationPermission } from "@/lib/auth/access";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { prisma } from "@/lib/db";
 
@@ -153,10 +154,13 @@ export async function getOrganisationEventTickets(
     direction = "next"
   }: TicketPaginationOptions = {}
 ) {
+  const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
+  const publishedOnly = authority.staffRole === "check_in_staff" ? { status: "published" as const } : {};
   const event = await prisma.event.findFirst({
     where: {
       id: eventId,
-      organisationId
+      organisationId,
+      ...publishedOnly
     },
     select: {
       id: true,
@@ -197,7 +201,8 @@ export async function getOrganisationEventTickets(
   const ticketWhere = {
       eventId,
       event: {
-        organisationId
+        organisationId,
+        ...publishedOnly
       },
       ...cursorWhere
     };
@@ -239,7 +244,8 @@ export async function getOrganisationEventTickets(
       where: {
         eventId,
         event: {
-          organisationId
+          organisationId,
+        ...publishedOnly
         }
       }
     }),
@@ -250,7 +256,8 @@ export async function getOrganisationEventTickets(
           not: null
         },
         event: {
-          organisationId
+          organisationId,
+        ...publishedOnly
         }
       }
     })
@@ -298,12 +305,15 @@ export async function checkInOrganisationTicket(
   ticketId: string,
   actorUserId: string
 ) {
+  const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
+  const publishedOnly = authority.staffRole === "check_in_staff" ? { status: "published" as const } : {};
   return prisma.$transaction(async (tx) => {
   const existingTicket = await tx.ticket.findFirst({
     where: {
       id: ticketId,
       event: {
-        organisationId
+        organisationId,
+        ...publishedOnly
       }
     },
     select: {
@@ -325,7 +335,8 @@ export async function checkInOrganisationTicket(
     where: {
       id: ticketId,
       event: {
-        organisationId
+        organisationId,
+        ...publishedOnly
       },
       checkedInAt: null
     },
@@ -342,7 +353,8 @@ export async function checkInOrganisationTicket(
     where: {
       id: ticketId,
       event: {
-        organisationId
+        organisationId,
+        ...publishedOnly
       }
     },
     select: {
@@ -366,12 +378,15 @@ export async function checkOutOrganisationTicket(
   ticketId: string,
   actorUserId: string
 ) {
+  const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
+  const publishedOnly = authority.staffRole === "check_in_staff" ? { status: "published" as const } : {};
   return prisma.$transaction(async (tx) => {
   const existingTicket = await tx.ticket.findFirst({
     where: {
       id: ticketId,
       event: {
-        organisationId
+        organisationId,
+        ...publishedOnly
       }
     },
     select: {
@@ -392,7 +407,8 @@ export async function checkOutOrganisationTicket(
     where: {
       id: ticketId,
       event: {
-        organisationId
+        organisationId,
+        ...publishedOnly
       },
       checkedInAt: {
         not: null
@@ -411,7 +427,8 @@ export async function checkOutOrganisationTicket(
     where: {
       id: ticketId,
       event: {
-        organisationId
+        organisationId,
+        ...publishedOnly
       }
     },
     select: {

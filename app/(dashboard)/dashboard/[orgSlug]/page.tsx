@@ -1,3 +1,4 @@
+import { readAccountContext } from "@/lib/auth/context";
 import { notFound, redirect } from "next/navigation";
 import { requireAnyOrganisationPermission, StaffMfaRequiredError } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
@@ -31,6 +32,8 @@ export default async function LegacyDashboardPage({
     if (error instanceof StaffMfaRequiredError) redirect(`/mfa?callbackUrl=${encodeURIComponent(`/dashboard/${orgSlug}`)}`);
     notFound();
   }
+
+  if ((await readAccountContext()).selected?.id !== organisation.id) redirect("/dashboard");
 
   redirect("/dashboard");
 }

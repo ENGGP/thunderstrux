@@ -188,11 +188,16 @@ Requires an authenticated session and returns a short-lived token bound to that 
 
 All MFA mutations require trusted origin, session CSRF, and the dedicated fail-closed MFA rate-limit policy.
 
+## Dashboard context
+
+- `GET /api/me/context`: live authorized staff organisations, role capabilities and selected context; private/no-store.
+- `POST /api/me/context`: strict `{mode:"personal"}` or `{mode:"staff",organisationId}`; session CSRF/trusted origin and live staff permission/MFA for staff selection. Sets a signed login-bound preference; it never grants authority. Member staff start personal on each login.
+
 ## Named Staff
 
 - `GET /api/orgs/[orgSlug]/staff` lists staff for callers with staff-management authority.
 - `POST /api/orgs/[orgSlug]/staff/invites` creates an expiring invite and audit record.
-- `PATCH /api/orgs/[orgSlug]/staff/[staffId]` changes live role/status, prevents removal of the final active owner, and writes an audit record.
+- `PATCH /api/orgs/[orgSlug]/staff/[staffId]` changes live role/status, prevents removal of the final active owner, and writes an audit record. Only owners may change an owner row or grant owner authority.
 - `POST /api/staff/invites/accept` accepts an invite for the authenticated matching user and writes an audit record.
 
 Management decisions use the canonical tenant and live `OrganisationStaff` capability. `OrganisationMember` never grants management access; legacy ownership is available only under the configured migration mode.

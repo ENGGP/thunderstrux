@@ -249,6 +249,9 @@ Each substep is High risk; select local regression, migration and operations cov
 - Deliberate second-pass review covers ownership/payment blockers under User/order locks, checkout/join/bootstrap/invite/staff/MFA races, live actor/version/permission/MFA and last-owner fencing, enqueue rollback, irreversible closure/immutable provenance constraints, private records, canonical Event tenant scoping and retained worker contacts. STAFF-001 records a pre-existing invite role-demotion path for T06. No development or production deployment; independent high-risk review remains required before activation.
 
 #### T05 — Permissions and explicit personal/staff context
+
+Implementation acceptance (2026-10-09): explicit signed login-bound personal/staff selection, live tenant/role/MFA checks, role-filtered responsive navigation, financial analytics separation and owner-only owner changes. High risk: Docker baseline (build/typecheck/full integration/audit) and full browser campaign required. No schema change; rollout requires independent security review; rollback reverts app only. Future capability names reserve policy for later packages; they do not implement those products.
+
 - [ ] Complete. **Dependencies:** T04.
 - **Code:** Extend lib/permissions/index.ts and auth/access/page-access. Add organisation:settings, members:read/manage, memberships:manage, merchandise:manage/fulfil, analytics:read, orders:refund, audit:read, openclaw:use.
 - **Policy/UI:** Owner/admin management; event manager events/attendance/nonfinancial event analytics; finance financial reads/refunds/analytics; check-in staff attendance only. Personal/staff mode and selector use live authorized societies; no member bootstrap tenant. Separate profile settings from stripe:manage; nav capability-filtered but APIs independently checked.

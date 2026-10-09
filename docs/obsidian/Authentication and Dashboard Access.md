@@ -157,7 +157,7 @@ Important helpers:
 Dashboard protection is layered:
 
 1. Proxy blocks unauthenticated users from `/dashboard/*`
-2. Dashboard pages resolve the current account role
+2. Dashboard pages resolve the signed context preference against live staff authority
 3. API handlers verify ownership or member access again on mutations
 
 Organisation management is now available at:
@@ -172,11 +172,17 @@ Organisation management is now available at:
 /dashboard/settings
 ```
 
-Legacy `/dashboard/[orgSlug]/*` routes remain as compatibility redirects for organisation accounts that own the slug.
+Legacy `/dashboard/[orgSlug]/*` routes authorize their target and forward only when it matches the selected tenant; otherwise they return to the dashboard chooser. A GET never changes context.
 
 Organisation dashboard access is authorized from the authenticated user, an active `OrganisationStaff` record, its live role and permissions, and the canonical target organisation resolved by the server. Disabling or changing staff authority takes effect without waiting for session expiry.
 
 The legacy `Organisation.accountUserId` ownership path is used only according to `LEGACY_ORGANISATION_ACCESS_MODE` during migration. Missing authority redirects to an appropriate safe page or resolves as `notFound()` where revealing the tenant would disclose information.
+
+## Explicit dashboard context
+
+GET `/api/me/context` lists only live authorized staff organisations and role capabilities. POST selects personal or staff mode with trusted origin/session CSRF; staff selection rechecks target permission and MFA. A signed HttpOnly SameSite cookie binds the preference to the account, authVersion and password-login ID. It carries no authority. Revocation, tampering or stale selection never selects another tenant. Member staff start in personal mode on a fresh login; selected staff context lasts only that login. Organisation accounts without a preference retain their first live staff context for bootstrap compatibility. Personal tickets and private account settings stay available to individual accounts.
+
+The desktop sidebar and mobile menu filter links by current capabilities and mark the active page. Check-in staff see published events and attendance only. Event managers see event/attendance analytics without financial values or the revenue query; finance sees orders/refunds and financial analytics. Only owners may invite owners or change any owner row; other staff management still permits admins. Last-owner changes serialize on the organisation and audit atomically.
 
 ## Current Role Capabilities
 

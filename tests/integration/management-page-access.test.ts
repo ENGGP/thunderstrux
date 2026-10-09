@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { requireManagementPage } from '@/lib/auth/page-access';
-import { setMockSession } from '@/tests/helpers/auth';
+import { setMockSession, selectMockContext } from '@/tests/helpers/auth';
 import { createMember, createOrganisationAccount, createOrganisationStaff } from '@/tests/helpers/test-data';
 import { prisma } from '@/lib/db';
 
@@ -25,6 +25,7 @@ describe('management page access', () => {
     const member = await createMember();
     const staff = await createOrganisationStaff({organisationId: organisation.id, userId: member.id});
     setMockSession({userId: member.id, email: member.email, accountRole: 'member'});
+    selectMockContext({mode: "staff", organisationId: organisation.id});
     expect((await requireManagementPage('events:manage', '/dashboard/events')).id).toBe(organisation.id);
     await expect(requireManagementPage('orders:read', '/dashboard/orders')).rejects.toThrow('NOT_FOUND');
     await prisma.organisationStaff.update({where: {id: staff.id}, data: {status: 'revoked'}});
@@ -33,7 +34,7 @@ describe('management page access', () => {
   test('database errors remain errors rather than access-denied pages', async () => {
     const member = await createMember();
     setMockSession({userId: member.id, email: member.email, accountRole: 'member'});
-    vi.spyOn(prisma.organisationStaff, 'findFirst').mockRejectedValueOnce(new Error('Database unavailable'));
+    vi.spyOn(prisma.organisationStaff, 'findMany').mockRejectedValueOnce(new Error('Database unavailable'));
     await expect(requireManagementPage('events:manage', '/dashboard/events')).rejects.toThrow('Database unavailable');
   });
 });

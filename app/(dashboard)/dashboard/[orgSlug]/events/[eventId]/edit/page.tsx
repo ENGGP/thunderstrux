@@ -1,3 +1,4 @@
+import { readAccountContext } from "@/lib/auth/context";
 import { notFound, redirect } from "next/navigation";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
@@ -20,6 +21,8 @@ export default async function LegacyEditEventPage({
   if (!organisation) {
     notFound();
   }
+
+  if ((await readAccountContext()).selected?.id !== organisation.id) redirect("/dashboard");
 
   redirect(`/dashboard/events/${eventId}/edit`);
 }

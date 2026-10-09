@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { test, expect, prisma, login, createEvent, createOrganisationAccount, createMember, createOrganisationStaff } from './fixtures';
+import { test, expect, prisma, login, selectStaffContext, createEvent, createOrganisationAccount, createMember, createOrganisationStaff } from './fixtures';
 import { createOrder } from '@/tests/helpers/test-data';
 
 test('finance staff can page order history while another tenant cannot read it', async ({ page, data }) => {
@@ -20,7 +20,9 @@ test('finance staff can page order history while another tenant cannot read it',
     reason: `history_entry_${index + 1}`,
     actorUserId: index === 0 ? null : data.manager.id
   })) });
-  await login(page, data.manager.email, `/dashboard/orders/${order.id}`);
+  await login(page, data.manager.email);
+  await selectStaffContext(page, data.organisation.id);
+  await page.goto(`/dashboard/orders/${order.id}`);
   const history = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Order history', exact: true }) });
   await expect(history.getByRole('listitem')).toHaveCount(25);
   await expect(history.getByText('Reason: history entry 27', { exact: true })).toBeVisible();
@@ -156,7 +158,9 @@ test('joined members including staff-looking join roles cannot manage', async ({
 });
 
 test('member staff, retired legacy owner, tenant separation and live-session revocation', async ({ page, data }) => {
-  await login(page, data.manager.email, '/dashboard/events');
+  await login(page, data.manager.email);
+  await selectStaffContext(page, data.organisation.id);
+  await page.goto('/dashboard/events');
   expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(200);
   const foreign = await createOrganisationAccount();
   expect((await page.request.get(`/api/events?orgId=${foreign.organisation.id}`)).status()).toBe(403);
@@ -176,4 +180,38 @@ test('member staff, retired legacy owner, tenant separation and live-session rev
   await prisma.organisationStaff.deleteMany({where: {userId: data.owner.id}});
   await login(page, data.owner.email, '/dashboard/events');
   expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(403);
+});
+
+
+test('member staff choose a tenant, retain it during this login and see role-aware mobile navigation', async ({ page, data }) => {
+  const second = await createOrganisationAccount();
+  await createOrganisationStaff({ organisationId: second.organisation.id, userId: data.manager.id, role: 'finance_manager' });
+  await login(page, data.manager.email);
+  await expect(page.getByRole('heading', { name: 'Your organisations' })).toBeVisible();
+  const chooser = page.getByLabel('Dashboard context');
+  await chooser.selectOption(data.organisation.id);
+  await expect(page.getByText('Organisation dashboard', { exact: true })).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Organisation navigation' }).first();
+  await expect(nav.getByRole('link', { name: 'Events', exact: true })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Orders', exact: true })).toHaveCount(0);
+  await page.goto(`/dashboard/events/${data.event.id}`);
+  await expect(nav.getByRole('link', { name: 'Events', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByText('Revenue', { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel('Dashboard context').first()).toHaveValue(data.organisation.id);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByText('Organisation menu', { exact: true }).click();
+  const mobile = page.locator('details');
+  await mobile.getByLabel('Dashboard context').selectOption(second.organisation.id);
+  await expect(page.getByText('Current organisation', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: second.organisation.name, exact: true }).first()).toBeVisible();
+  await page.getByText('Organisation menu', { exact: true }).click();
+  await expect(mobile.getByRole('link', { name: 'Orders', exact: true })).toBeVisible();
+  await prisma.organisationStaff.updateMany({ where: { userId: data.manager.id, organisationId: second.organisation.id }, data: { status: 'revoked' } });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Your organisations' })).toBeVisible();
+  await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await login(page, data.manager.email);
+  await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
 });

@@ -52,8 +52,10 @@ function staffName(staff: StaffRow) {
 export function StaffManagement({
   orgSlug,
   initialStaff,
-  initialInvites
+  initialInvites,
+  canManageOwners
 }: {
+  canManageOwners: boolean;
   orgSlug: string;
   initialStaff: StaffRow[];
   initialInvites: InviteRow[];
@@ -152,7 +154,7 @@ export function StaffManagement({
               onChange={(event) => setRole(event.target.value as StaffRole)}
               value={role}
             >
-              {roles.map((item) => (
+              {roles.filter(item => canManageOwners || item !== "owner").map((item) => (
                 <option key={item} value={item}>
                   {roleLabels[item]}
                 </option>
@@ -184,13 +186,14 @@ export function StaffManagement({
                   <td className="py-3 pr-4">
                     <select
                       className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900"
-                      disabled={row.status !== "active"}
+                      aria-label={`Role for ${row.user.email}`}
+                      disabled={row.status !== "active" || (!canManageOwners && row.role === "owner")}
                       onChange={(event) =>
                         updateStaff(row.id, { role: event.target.value as StaffRole })
                       }
                       value={row.role}
                     >
-                      {roles.map((item) => (
+                      {roles.filter(item => canManageOwners || item !== "owner" || row.role === "owner").map((item) => (
                         <option key={item} value={item}>
                           {roleLabels[item]}
                         </option>
@@ -199,7 +202,7 @@ export function StaffManagement({
                   </td>
                   <td className="py-3 pr-4 text-neutral-700">{row.status}</td>
                   <td className="py-3">
-                    {row.status === "active" ? (
+                    {row.status === "active" && (canManageOwners || row.role !== "owner") ? (
                       <button
                         className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
                         onClick={() => updateStaff(row.id, { status: "revoked" })}

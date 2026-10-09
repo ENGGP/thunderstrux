@@ -33,6 +33,8 @@ export async function updateOrganisationStaff(actor: AccountActor, organisationI
     const existing = await tx.organisationStaff.findFirst({ where: { id: staffId, organisationId }, include: { user: { select: { disabledAt: true } } } });
     if (!existing) throw new StaffUpdateError("not_found", "Staff member was not found");
     const nextRole = input.role ?? existing.role; const nextStatus = input.status ?? existing.status;
+    if ((existing.role === "owner" || nextRole === "owner") && authority && authority.role !== "owner")
+      throw new StaffUpdateError("authority", "Only owners can change owner authority");
     if (nextStatus === "active" && existing.user.disabledAt) throw new StaffUpdateError("conflict", "Disabled accounts cannot hold active staff access");
     if (existing.role === "owner" && existing.status === "active" && (nextRole !== "owner" || nextStatus !== "active") &&
         await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active" } }) <= 1) throw new StaffUpdateError("conflict", "At least one active owner is required");

@@ -1,11 +1,12 @@
-import { test, expect, login, prisma } from './fixtures';
+import { test, expect, login, prisma, selectStaffContext } from './fixtures';
 import { totpCode } from '@/lib/security/staff-mfa';
 import { decode, encode } from 'next-auth/jwt';
 
 test('enforced staff MFA survives session refresh and denies a new password-only session', async ({ page, browser, data }) => {
   await login(page, data.manager.email, '/mfa');
-  await page.goto('/dashboard/events');
-  await expect(page).toHaveURL(/\/mfa\?callbackUrl=/);
+  const { token: contextToken } = await (await page.request.get('/api/security/csrf')).json();
+  expect((await page.request.post('/api/me/context', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': contextToken }, data: { mode: 'staff', organisationId: data.organisation.id } })).status()).toBe(403);
+  await page.goto('/mfa?callbackUrl=/dashboard');
   expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(403);
 
   await page.getByRole('button', { name: 'Set up authenticator' }).click();
@@ -16,7 +17,9 @@ test('enforced staff MFA survives session refresh and denies a new password-only
   await expect(page.getByRole('heading', { name: 'Save these recovery codes' })).toBeVisible();
   await expect(page.locator('main li')).toHaveCount(10);
   await page.getByRole('button', { name: 'I saved my codes' }).click();
-  await expect(page).toHaveURL('http://localhost:3100/dashboard/events');
+  await expect(page).toHaveURL('http://localhost:3100/dashboard');
+  await selectStaffContext(page, data.organisation.id);
+  await page.goto('/dashboard/events');
   expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(200);
 
   await page.evaluate(async () => { await fetch('/api/auth/session', { cache: 'no-store' }); });
@@ -38,8 +41,7 @@ test('enforced staff MFA survives session refresh and denies a new password-only
   try {
     const secondPage = await secondContext.newPage();
     await login(secondPage, data.manager.email, '/mfa');
-    await secondPage.goto('/dashboard/events');
-    await expect(secondPage).toHaveURL(/\/mfa\?callbackUrl=/);
+    await secondPage.goto('/mfa?callbackUrl=/dashboard');
     expect((await secondPage.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(403);
   } finally {
     await secondContext.close();
@@ -57,8 +59,7 @@ test('pre-rollout staff session asks for a fresh password sign-in', async ({ pag
   const oldCookie = await encode({ token: oldToken!, secret, salt: cookie!.name });
   await page.context().addCookies([{ ...cookie!, value: oldCookie }]);
 
-  await page.goto('/dashboard/events');
-  await expect(page).toHaveURL(/\/mfa\?callbackUrl=/);
+  await page.goto('/mfa?callbackUrl=/dashboard');
   await expect(page.getByRole('button', { name: 'Sign out and sign in again' })).toBeVisible();
   await page.getByRole('button', { name: 'Sign out and sign in again' }).click();
   await expect(page).toHaveURL(/\/login\?callbackUrl=/);

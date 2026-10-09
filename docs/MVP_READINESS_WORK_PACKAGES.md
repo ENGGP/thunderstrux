@@ -22,3 +22,7 @@ These packages group the steps in `MVP_READINESS_PLAN.md` by related implementat
 ## Package 1 delivery
 
 T02 notification foundation, T03 verification and T04a recovery/settings and T04b email changes are delivered through PRs #31, #32, #33 and #36. **Package 1 implementation and qualification are complete.** T04c permanent closure is delivered through [PR #37](https://github.com/ENGGP/thunderstrux/pull/37), with three unchanged-content complete local and CI browser passes, migration/restore coverage and protected-main delivery checks. Detailed scope, regressions, migrations, restore/browser evidence and remaining production activation gates are recorded in [MVP Readiness Plan](MVP_READINESS_PLAN.md). Account closure anonymises login/editable profile while retaining business, attendance, buyer contact and audit/security records; a new signup never inherits them. No runtime migration/redeployment or hosted activation has been performed.
+
+## Package 2 delivery
+
+T05 permissions and explicit personal/staff context are implemented and locally qualified in [PR #42](https://github.com/ENGGP/thunderstrux/pull/42). T06 invitations and committee handover remain pending. The readiness plan records the baseline/browser evidence and independent review gate. No runtime or hosted activation has been performed.

@@ -252,10 +252,12 @@ Each substep is High risk; select local regression, migration and operations cov
 
 Implementation acceptance (2026-10-09): explicit signed login-bound personal/staff selection, live tenant/role/MFA checks, role-filtered responsive navigation, financial analytics separation and owner-only owner changes. High risk: Docker baseline (build/typecheck/full integration/audit) and full browser campaign required. No schema change; rollout requires independent security review; rollback reverts app only. Future capability names reserve policy for later packages; they do not implement those products.
 
-- [ ] Complete. **Dependencies:** T04.
+- [x] Complete. **Dependencies:** T04.
 - **Code:** Extend lib/permissions/index.ts and auth/access/page-access. Add organisation:settings, members:read/manage, memberships:manage, merchandise:manage/fulfil, analytics:read, orders:refund, audit:read, openclaw:use.
 - **Policy/UI:** Owner/admin management; event manager events/attendance/nonfinancial event analytics; finance financial reads/refunds/analytics; check-in staff attendance only. Personal/staff mode and selector use live authorized societies; no member bootstrap tenant. Separate profile settings from stripe:manage; nav capability-filtered but APIs independently checked.
 - **Tests/done:** Every role/action, fake headers/join roles, multi-society selection, same-session revoke/downgrade, MFA and foreign concealment pass. Named member staff can return to personal tickets.
+
+T05 qualification (2026-10-09), [PR #42](https://github.com/ENGGP/thunderstrux/pull/42): executable `1ed2031` passed Docker baseline `p216-f4a2251f076fd4c1d88be743` (production build/typecheck, 317 tests in 37 files, audit with no known vulnerabilities). Browser revision `cad21f9` passed full campaign `p216-da9f8fb4aeaf890bad145932` (2 enforced-MFA, 14 browser/mobile/account-lifecycle, 7 signed-webhook/notification checks). Its only later executable/test change is browser sign-out synchronization and a personal-ticket assertion; the browser build covers that final test input. Both manifests record passed and cleanupComplete. Prior failed build/fixture/browser runs were diagnosed, corrected and cleaned; no repeated-pass qualification was required. Second-pass review covered login/version binding, live authority, no tenant fallback on revocation, owner-only changes, financial query/DTO separation, published-only attendance and trusted-origin/CSRF/MFA guards. Independent security review remains required before activation; no running development/hosted stack was changed.
 
 #### T06 — Staff invites and committee handover
 - [ ] Complete. **Dependencies:** T02, T03, T05.

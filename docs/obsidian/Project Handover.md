@@ -13,9 +13,9 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 
 ## Current State
 
-**Package 1, Account lifecycle (T02-T04), and T05 permissions/context and T06a private invitations are implemented and locally qualified. Next product work is T06b committee handover.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Package 1, Account lifecycle (T02-T04), and Package 2 staff/permissions (T05-T06) are implemented and locally qualified. Next product work is Package 3 society profiles/discovery (T07-T09).** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
-| Merged PR | Delivered result |
+| Delivery PR | Delivered result |
 | --- | --- |
 | [#31](https://github.com/ENGGP/thunderstrux/pull/31) | T02 encrypted general notifications, bounded worker and tenant-scoped business recovery; the user's remediation-document deletion is reflected in GitHub |
 | [#32](https://github.com/ENGGP/thunderstrux/pull/32) | T03 verification, generic signup, live verified-identity gates and session-version fencing |
@@ -27,6 +27,9 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 | [#38](https://github.com/ENGGP/thunderstrux/pull/38) | Recorded final account-lifecycle checks and merged delivery evidence |
 | [#39](https://github.com/ENGGP/thunderstrux/pull/39) | Sharp 0.35.5/source-map-js 1.2.2 overrides and Next.js 16.3.8 security patches; merged as b9a113d |
 | [#40](https://github.com/ENGGP/thunderstrux/pull/40) | Proportionate local validation; GitHub tests are manual-only and are not merge requirements |
+| [#42](https://github.com/ENGGP/thunderstrux/pull/42) | T05 live permissions, explicit personal/staff context, role-aware navigation and nonfinancial event-manager analytics |
+| [#43](https://github.com/ENGGP/thunderstrux/pull/43) | T06a private versioned invitation delivery, explicit acceptance, resend/revoke and active-role preservation |
+| [#44](https://github.com/ENGGP/thunderstrux/pull/44) | T06b atomic owner handover, legacy pointer retirement and retained business/Stripe history |
 
 PR numbers are delivery references, not merge chronology: #40 merged before #39.
 
@@ -43,6 +46,8 @@ PR numbers are delivery references, not merge chronology: #40 merged before #39.
 ## Runtime And Validation
 
 - T06a qualification: [PR #43](https://github.com/ENGGP/thunderstrux/pull/43), baseline `3fc0f32`/`p216-b6b9e916630758d020500c61` passed build/typecheck, 330 integration tests and clean audit. Browser `a00ab6e`/`p216-25a6a1f4b0428b6f62720c72` passed 24 checks; operations `d07d1a8`/`p217-ci-1b4452dd29` passed migration/restore/key-decryption/rollback. All run-owned cleanup passed; the readiness ledger records corrected failures and final-content coverage. Invitation activation requires migration 20261009010000_private_staff_invites before app/workers; pause acceptance/delivery when rolling back older code.
+- T06b qualification: [PR #44](https://github.com/ENGGP/thunderstrux/pull/44), executable `45c7e26`: baseline `p216-a78d9deb3001e890a85cafe7` passed build/typecheck, 339 integration tests and clean audit; E2E `p216-15b482330aafdb4263f4f282` passed 25 MFA/browser/webhook checks, including enforced committee handover. Operations `p217-ci-e7063f6faa` passed retired ownership/staff/audit restore, encrypted key recovery and rollback. Owned-resource cleanup passed. Owner handover requires current password/enrolled-login MFA, promotes the target before outgoing admin/revocation, clears the legacy pointer and audits atomically. No credentials, business or Stripe history move. Pointer retirement stays in place after code rollback.
+
 
 Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 32 migrations, ending in 20261009010000_private_staff_invites; current schema has 21 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
 
@@ -52,7 +57,7 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 
 ## Next Safe Actions
 
-1. Deliver T06b owner handover after [PR #43](https://github.com/ENGGP/thunderstrux/pull/43); clear the legacy ownership pointer and preserve business/Stripe history. STAFF-001 is resolved by role-preserving invitation acceptance.
+1. Plan Package 3 society profiles/discovery (T07-T09) from refreshed main after [PR #44](https://github.com/ENGGP/thunderstrux/pull/44). Package 2 is complete locally; STAFF-001 is resolved.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 3. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work; do it when its dependencies are met.
 

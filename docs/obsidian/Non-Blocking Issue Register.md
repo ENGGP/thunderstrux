@@ -73,4 +73,3 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 2. Record confirmed evidence, user impact, safe workaround, and next action. Do not paste secrets or personal/provider payloads.
 3. Fix an unrelated finding during a task only when it blocks or invalidates that task; otherwise register it without widening scope.
 4. On resolution, add the root cause, fix, regression/direct verification, date, and PR or commit. Update affected troubleshooting and living-reference documents.
-

@@ -65,6 +65,8 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 | DEF-011 | 2026-10-01 | The final release gate detected critical Next.js advisory `GHSA-vcvr-r3jv-pc5j` in 16.3.5. | Updated Next.js to patched 16.3.6 and reran dependency audit, build, integration, browser, operations, and image vulnerability gates. Docker foundation PR. |
 | DEF-012 | 2026-10-04 | Required static validation detected high-severity CVE-2026-103111 in `libpcre2-8-0` `10.42-1+deb12u1`, inherited from the pinned Node image. Installing only OpenSSL and certificates did not upgrade that existing library. | Explicitly install the library from Debian's security repository in `docker/Dockerfile`. The final runner contains `10.42-1+deb12u2`; local production build, pinned Hadolint, non-root Node/Prisma smoke and CI-equivalent fixable high/critical Trivy scan passed with zero matching findings. [PR #27](https://github.com/ENGGP/thunderstrux/pull/27); latest-head CI was the merge gate at the time; current validation follows [[Engineering Delivery Workflow]]. |
 
+| STAFF-001 | 2026-10-09 | Lower-role invite acceptance could demote an existing owner without the last-owner guard. | [PR #43](https://github.com/ENGGP/thunderstrux/pull/43) preserves every active role and accepted replay never restores revoked access. Baseline 330 tests includes all-role/owner preservation, parallel acceptance and audit idempotency; full browser and migration/restore qualification passed. |
+
 ## Register Procedure
 
 1. Search this file before creating an entry. Reopen a resolved ID if the same root cause recurs.
@@ -72,4 +74,3 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 3. Fix an unrelated finding during a task only when it blocks or invalidates that task; otherwise register it without widening scope.
 4. On resolution, add the root cause, fix, regression/direct verification, date, and PR or commit. Update affected troubleshooting and living-reference documents.
 
-| STAFF-001 | 2026-10-09 | Lower-role invite acceptance could demote an existing owner without the last-owner guard. | [PR #43](https://github.com/ENGGP/thunderstrux/pull/43) preserves every active role and accepted replay never restores revoked access. Baseline 330 tests includes all-role/owner preservation, parallel acceptance and audit idempotency; full browser and migration/restore qualification passed. |

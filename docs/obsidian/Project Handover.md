@@ -13,7 +13,7 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 
 ## Current State
 
-**Package 1, Account lifecycle (T02-T04), and T05 permissions/context are implemented and locally qualified. Next product work is T06 invitations and committee handover.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Package 1, Account lifecycle (T02-T04), and T05 permissions/context and T06a private invitations are implemented and locally qualified. Next product work is T06b committee handover.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Merged PR | Delivered result |
 | --- | --- |
@@ -50,7 +50,7 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 
 ## Next Safe Actions
 
-1. Deliver T06 invitations and handover after [PR #42](https://github.com/ENGGP/thunderstrux/pull/42), including STAFF-001: invite acceptance can demote an existing owner without the shared last-owner guard.
+1. Deliver T06b owner handover after [PR #43](https://github.com/ENGGP/thunderstrux/pull/43); clear the legacy ownership pointer and preserve business/Stripe history. STAFF-001 is resolved by role-preserving invitation acceptance.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 3. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work; do it when its dependencies are met.
 
@@ -70,3 +70,5 @@ Unrestricted payments and broad staff rollout remain blocked pending:
 ## Resource And Recovery Rules
 
 Use only run-owned disposable test databases with simple names ending in _test. Never reset development or real-user data. Preserve retained backups (including tmp/thunderstrux-before-p319-20260921.dump if present), failed-run recovery manifests and unrelated caches/resources until their retention or recovery decision is explicit. Local Obsidian workspace state is ignored and must not be committed. Closure anonymisation is not reversed by code rollback; pause account mutations and buyer contact/ticket delivery before rolling back to incompatible older code.
+
+T06a qualification: [PR #43](https://github.com/ENGGP/thunderstrux/pull/43), baseline `3fc0f32`/`p216-b6b9e916630758d020500c61` passed build/typecheck, 330 integration tests and clean audit. Browser `a00ab6e`/`p216-25a6a1f4b0428b6f62720c72` passed 24 checks; operations `d07d1a8`/`p217-ci-1b4452dd29` passed migration/restore/key-decryption/rollback. All run-owned cleanup passed; the readiness ledger records corrected failures and final-content coverage. Invitation activation requires migration 20261009010000_private_staff_invites before app/workers; pause acceptance/delivery when rolling back older code.

@@ -25,4 +25,4 @@ T02 notification foundation, T03 verification and T04a recovery/settings and T04
 
 ## Package 2 delivery
 
-T05 permissions and explicit personal/staff context are implemented and locally qualified in [PR #42](https://github.com/ENGGP/thunderstrux/pull/42). T06 invitations and committee handover remain pending. The readiness plan records the baseline/browser evidence and independent review gate. No runtime or hosted activation has been performed.
+T05 permissions and explicit personal/staff context are implemented and locally qualified in [PR #42](https://github.com/ENGGP/thunderstrux/pull/42). T06a private invitations are implemented and locally qualified in [PR #43](https://github.com/ENGGP/thunderstrux/pull/43). T06b committee handover remains pending. The readiness plan records the baseline/browser evidence and independent review gate. No runtime or hosted activation has been performed.

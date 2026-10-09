@@ -211,7 +211,10 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Your organisations' })).toBeVisible();
   await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
+  await page.goto('/tickets');
+  await expect(page.getByRole('heading', { name: 'My tickets', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL('http://localhost:3100/');
   await login(page, data.manager.email);
   await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
 });

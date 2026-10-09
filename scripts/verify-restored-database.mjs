@@ -29,6 +29,10 @@ try {
   if (!inviteJob || inviteJob.privacy !== "security" || inviteJob.organisationId || inviteJob.staffInviteVersion !== 2 || inviteJob.staffInvite?.version !== 2 || inviteJob.staffInvite.email !== inviteJob.recipient) throw new Error("Restored invitation version/private linkage is missing");
   const rendered = decryptNotification(inviteJob.encryptedPayload, inviteJob.id);
   if (rendered.text !== `http://localhost/staff/invites/accept#token=${Buffer.alloc(32, 5).toString("base64url")}`) throw new Error("Restored invitation payload cannot be decrypted with the recovered notification key");
+  const handover = await prisma.organisation.findUnique({ where: { slug: "p217-handover-restore" }, include: { staff: { include: { user: true } }, auditLogs: true } });
+  if (!handover || handover.accountUserId !== null || handover.staff.filter(row => row.role === "owner" && row.status === "active").length !== 1 ||
+      !handover.staff.some(row => row.status === "revoked" && row.user.email === "p217-outgoing-owner@example.com") ||
+      !handover.auditLogs.some(row => row.action === "staff.ownership.handed_over" && row.metadata?.legacyOwnershipRetired === true)) throw new Error("Restored ownership retirement/staff/audit continuity is missing");
   const migrationCount = Number(migrations[0]?.count ?? 0);
   const emailChange = await prisma.authToken.findFirst({ where: { purpose: "email_change", newEmail: "p217-change@example.com" } });
   if (!emailChange) throw new Error("Restored email-change binding is missing");
@@ -46,6 +50,7 @@ try {
   console.log(JSON.stringify({
     status: "verified",
     invitationVersionAndDecryption: true,
+    ownershipHandoverContinuity: true,
     users,
     organisations,
     staff,

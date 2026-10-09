@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -60,6 +61,7 @@ export function StaffManagement({
   initialStaff: StaffRow[];
   initialInvites: InviteRow[];
 }) {
+  const router = useRouter();
   const [staff, setStaff] = useState(initialStaff);
   const [invites, setInvites] = useState(initialInvites);
   const [email, setEmail] = useState("");
@@ -75,6 +77,7 @@ export function StaffManagement({
     }>(`/api/orgs/${orgSlug}/staff`);
     setStaff(payload.staff);
     setInvites(payload.invites);
+    router.refresh();
   }
 
   async function inviteStaff(event: FormEvent<HTMLFormElement>) {

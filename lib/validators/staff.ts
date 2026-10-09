@@ -23,3 +23,11 @@ export const updateStaffSchema = z.object({
 export const acceptStaffInviteSchema = z.object({
   token: z.string().regex(/^[A-Za-z0-9_-]{43}$/)
 }).strict();
+
+export const handoverAcknowledgement = "HAND OVER OWNERSHIP";
+export const staffHandoverSchema = z.object({
+  incomingStaffId: z.string().min(1).max(200),
+  outgoingAccess: z.enum(["admin", "revoked"]),
+  currentPassword: z.string().min(1).max(200),
+  acknowledgement: z.literal(handoverAcknowledgement)
+}).strict();

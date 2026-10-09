@@ -515,3 +515,7 @@ Closure permanently retains the User ID/closedAt and disables credentials. Datab
 ## Invitation version migration
 
 `20261009010000_private_staff_invites` adds positive invitation versions, nullable outbox invite/version linkage, indexes and foreign-key/check constraints. Existing invitations start at version 1; no raw tokens are recovered and old invites are not automatically mailed. New private invitation mail and audits commit with their invitation mutation. Sorted User locks precede Organisation then invite/staff locks, shared with account closure, email change and staff management. The full migration chain is now 32 migrations with 21 models.
+
+## Ownership retirement
+
+Handover atomically promotes incoming owner, changes outgoing access, checks an active owner remains, clears Organisation.accountUserId and writes staff.ownership.handed_over with actor/incoming/outgoing/retired-pointer identities and roles. No new migration is needed beyond the existing Package 2 chain. Event.organisationId and all business/payment/Stripe records retain their ownership. User -> Organisation locking includes any separate legacy account pointer so closure cannot race retirement. Backup/restore qualification includes active incoming owner, revoked outgoing owner, null pointer and retirement audit.

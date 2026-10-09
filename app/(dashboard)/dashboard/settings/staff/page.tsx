@@ -2,9 +2,18 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { StaffManagement } from "@/components/settings/staff-management";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { prisma } from "@/lib/db";
+import { requireAuthenticatedUser } from "@/lib/auth/access";
+import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
+import { StaffHandover } from "@/components/settings/staff-handover";
 
 export default async function StaffSettingsPage() {
   const organisation = await requireManagementPage("staff:manage", "/dashboard/settings/staff");
+  const actor = await requireAuthenticatedUser();
+  const handoverTargets = organisation.staffRole === "owner" ? await prisma.organisationStaff.findMany({
+    where: { organisationId: organisation.id, status: "active", userId: { not: actor.id }, user: {
+      disabledAt: null, emailVerifiedAt: { not: null }, ...(mfaEnforcementMode() === "enforce" ? { mfa: { is: { enabledAt: { not: null } } } } : {})
+    } }, take: 100, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, user: { select: { email: true } } }
+  }) : [];
 
   const [staff, invites] = await Promise.all([
     prisma.organisationStaff.findMany({
@@ -56,6 +65,8 @@ export default async function StaffSettingsPage() {
           initialStaff={staff}
           orgSlug={organisation.slug}
         />
+        {organisation.staffRole === "owner" && <StaffHandover orgSlug={organisation.slug} orgName={organisation.name}
+          targets={handoverTargets.map(item => ({ id: item.id, email: item.user.email }))} />}
       </div>
     </DashboardShell>
   );

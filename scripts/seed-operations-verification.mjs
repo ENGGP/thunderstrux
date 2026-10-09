@@ -70,6 +70,12 @@ try {
     const jobId = "p217-invite-notification";
     await transaction.notificationOutbox.create({ data: { id: jobId, eventKey: "p217-invite-restore", recipient: invite.email, template: "staff_invite", privacy: "security", staffInviteId: invite.id, staffInviteVersion: 2,
       encryptedPayload: encryptNotification({ subject: "Staff invitation restore check", text: `http://localhost/staff/invites/accept#token=${token}`, html: "<p>Synthetic restore check</p>", from: "synthetic@example.com" }, jobId), nextAttemptAt: new Date("2099-01-01T00:00:00.000Z") } });
+    const outgoingOwner = await transaction.user.create({ data: { email: "p217-outgoing-owner@example.com", password: "synthetic-recovery-only", emailVerifiedAt: new Date() } });
+    const incomingOwner = await transaction.user.create({ data: { email: "p217-incoming-owner@example.com", password: "synthetic-recovery-only", emailVerifiedAt: new Date() } });
+    const handoverOrg = await transaction.organisation.create({ data: { name: "Synthetic handover restore", slug: "p217-handover-restore", accountUserId: null } });
+    await transaction.organisationStaff.create({ data: { organisationId: handoverOrg.id, userId: outgoingOwner.id, role: "owner", status: "revoked", revokedAt: new Date(), revokedById: outgoingOwner.id } });
+    const incomingStaff = await transaction.organisationStaff.create({ data: { organisationId: handoverOrg.id, userId: incomingOwner.id, role: "owner", status: "active", acceptedAt: new Date() } });
+    await transaction.auditLog.create({ data: { organisationId: handoverOrg.id, actorUserId: outgoingOwner.id, action: "staff.ownership.handed_over", targetType: "OrganisationStaff", targetId: incomingStaff.id, metadata: { retiredAccountUserId: outgoingOwner.id, incomingUserId: incomingOwner.id, outgoingStatus: "revoked", legacyOwnershipRetired: true } } });
     const closed = await transaction.user.create({ data: { email: "p217-closed@closed.invalid", password: "!closed:synthetic", closedAt: new Date(), disabledAt: new Date(), authVersion: 1 } });
     await transaction.order.create({ data: { userId: closed.id, organisationId: ticketType.event.organisationId, eventId: ticketType.eventId, ticketTypeId: ticketType.id, status: "expired", quantity: 1, unitPrice: 0, totalAmount: 0,
       buyerEmailSnapshot: "p217-retained@example.com", buyerFirstNameSnapshot: "Retained", buyerLastNameSnapshot: "Buyer", buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "current_account_at_capture" } });

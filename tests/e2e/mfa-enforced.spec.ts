@@ -64,3 +64,49 @@ test('pre-rollout staff session asks for a fresh password sign-in', async ({ pag
   await page.getByRole('button', { name: 'Sign out and sign in again' }).click();
   await expect(page).toHaveURL(/\/login\?callbackUrl=/);
 });
+
+
+test('committee handover with enforced MFA retires legacy ownership and removes the outgoing live session', async ({ page, browser, data }) => {
+  const context = await browser.newContext({ baseURL: 'http://localhost:3100' });
+  async function enroll(targetPage: typeof page, email: string) {
+    await login(targetPage, email, '/mfa');
+    await targetPage.goto('/mfa?callbackUrl=/dashboard');
+    await targetPage.getByRole('button', { name: 'Set up authenticator' }).click();
+    const secret = await targetPage.locator('code').textContent(); expect(secret).toMatch(/^[A-Z2-7]{32}$/);
+    await targetPage.getByLabel('Authenticator code').fill(totpCode(secret!, Math.floor(Date.now() / 30000)));
+    await targetPage.getByRole('button', { name: 'Confirm setup' }).click();
+    await expect(targetPage.getByRole('heading', { name: 'Save these recovery codes' })).toBeVisible();
+    await targetPage.getByRole('button', { name: 'I saved my codes' }).click();
+    await expect(targetPage).toHaveURL('http://localhost:3100/dashboard');
+    await selectStaffContext(targetPage, data.organisation.id);
+  }
+  try {
+    const incoming = await context.newPage(); await enroll(incoming, data.manager.email);
+    await login(page, data.owner.email, '/mfa');
+    const { token } = await (await page.request.get('/api/security/csrf')).json();
+    expect((await page.request.post(`/api/orgs/${data.organisation.slug}/staff/handover`, { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token }, data: { incomingStaffId: data.staff.id, outgoingAccess: 'revoked', currentPassword: 'password123', acknowledgement: 'HAND OVER OWNERSHIP' } })).status()).toBe(403);
+    await page.getByRole('button', { name: 'Set up authenticator' }).click();
+    const secret = await page.locator('code').textContent();
+    await page.getByLabel('Authenticator code').fill(totpCode(secret!, Math.floor(Date.now() / 30000)));
+    await page.getByRole('button', { name: 'Confirm setup' }).click();
+    await expect(page.getByRole('heading', { name: 'Save these recovery codes' })).toBeVisible();
+    await page.getByRole('button', { name: 'I saved my codes' }).click();
+    await expect(page).toHaveURL('http://localhost:3100/dashboard');
+    await page.goto('/dashboard/settings/staff');
+    await page.getByLabel('Incoming owner', { exact: true }).selectOption(data.staff.id);
+    await page.getByLabel('Your access after handover', { exact: true }).selectOption('revoked');
+    await expect(page.locator('main').getByRole('status')).toContainText(data.manager.email);
+    await page.getByLabel('Current password for handover').fill('password123');
+    await page.getByLabel('Type HAND OVER OWNERSHIP to confirm').fill('HAND OVER OWNERSHIP');
+    const result = page.waitForResponse(response => response.url().endsWith('/staff/handover') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Hand over ownership', exact: true }).click(); expect((await result).status()).toBe(200);
+    await expect(page).toHaveURL(/\/dashboard(\/create)?$/);
+    expect((await page.request.get(`/api/orgs/${data.organisation.slug}/staff`)).status()).toBe(403);
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: data.organisation.id } })).accountUserId).toBeNull();
+    await incoming.goto('/dashboard/settings/staff');
+    await expect(incoming.getByRole('heading', { name: 'Committee handover' })).toBeVisible();
+    expect(await prisma.organisationStaff.findUniqueOrThrow({ where: { id: data.staff.id } })).toMatchObject({ role: 'owner', status: 'active' });
+    expect(await prisma.auditLog.count({ where: { organisationId: data.organisation.id, action: 'staff.ownership.handed_over' } })).toBe(1);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: data.event.id } })).organisationId).toBe(data.organisation.id);
+  } finally { await context.close(); }
+});

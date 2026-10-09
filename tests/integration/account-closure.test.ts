@@ -122,7 +122,7 @@ test("enqueue failure rolls back anonymisation, snapshots, joins, staff, MFA and
   expect(await prisma.mfaRecoveryCode.count({ where: { userId: user.id } })).toBe(1); expect(await prisma.mfaGrant.count({ where: { userId: user.id } })).toBe(1);
 });
 test("retained buyers appear in scoped details/search/pagination/check-in and ticket delivery, with honest provenance", async () => {
-  const user = await createMember(); const { order, event, organisation } = await purchase(user.id, "paid");
+  const user = await createMember(); const { user: staffOwner, order, event, organisation } = await purchase(user.id, "paid");
   await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
   const another = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: user.id, status: "paid", unitPrice: 1200, paidAt: new Date() });
   const foreign = await createOrganisationAccount(); await close(user);
@@ -131,6 +131,7 @@ test("retained buyers appear in scoped details/search/pagination/check-in and ti
   expect(first.groups[0].orders[0].buyerEmail).toBe(user.email);
   const next = await getGroupedOrganisationOrdersWithContext(organisation.id, "all", undefined, { search: user.email, limit: 1, cursor: first.pageInfo.nextCursor! });
   expect(next.groups[0].orders[0].buyerEmail).toBe(user.email); expect(new Set([first.groups[0].orders[0].id, next.groups[0].orders[0].id])).toEqual(new Set([order.id, another.id]));
+  setMockSession({ userId: staffOwner.id, email: staffOwner.email, accountRole: "organisation" });
   expect((await getOrganisationEventTickets(organisation.id, event.id)).tickets[0].buyerEmail).toBe(user.email);
   const mail = await loadTicketDeliveryOrder(order.id); expect(mail.user?.email).toBe(user.email); expect(renderTicketEmail(mail).text).toContain("Test Member");
   await expect(getOrganisationOrderDetail(foreign.organisation.id, order.id)).rejects.toThrow("access denied");

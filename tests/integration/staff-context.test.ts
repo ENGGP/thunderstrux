@@ -40,6 +40,8 @@ describe("explicit staff context and capabilities", () => {
     setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
     expect((await POST(jsonRequest("http://localhost/api/me/context", { mode: "staff", organisationId: organisation.id }))).status).toBe(403);
     expect((await POST(jsonRequest("http://localhost/api/me/context", { mode: "personal" }, { headers: { origin: "https://foreign.invalid" } }))).status).toBe(403);
+    delete globalThis.__THUNDERSTRUX_TEST_SESSION__!.user.staffMfaSessionId;
+    expect((await POST(jsonRequest("http://localhost/api/me/context", { mode: "personal" }))).status).toBe(403);
   });
   test("event managers get attendance without money and check-in staff cannot read drafts", async () => {
     const { organisation } = await createOrganisationAccount();
@@ -50,7 +52,7 @@ describe("explicit staff context and capabilities", () => {
     const analytics = await getOrganisationEventAnalytics(organisation.id, event.id);
     expect(analytics.totals.revenue).toBeNull();
     expect(analytics.ticketTypes.every(row => row.revenue === null)).toBe(true);
-    await expect(getOrganisationEventRevenueSeries(organisation.id, event.id)).rejects.toThrow("Insufficient permissions");
+    await expect(getOrganisationEventRevenueSeries(organisation.id, event.id)).rejects.toThrow("Insufficient staff permissions");
     await prisma.organisationStaff.update({ where: { id: staff.id }, data: { role: "check_in_staff" } });
     await expect(getOrganisationEventTickets(organisation.id, event.id)).rejects.toThrow("Event not found");
     await prisma.event.update({ where: { id: event.id }, data: { status: "published" } });

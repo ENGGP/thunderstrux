@@ -23,6 +23,7 @@ export async function POST(request: Request) {
   const input = await validateJson(request, schema); if (!input.success) return validationError(input.details);
   try {
     const user = await requireAuthenticatedUser();
+    if (!user.mfaSessionId) return forbidden("Sign out and sign in again before choosing a dashboard context");
     if (input.data.mode === "staff") await requireOrganisationPermission(input.data.organisationId, "events:read");
     const response = NextResponse.json({ selected: true }, { headers: { "Cache-Control": "no-store" } });
     response.cookies.set(contextCookieName, encodeContext(input.data, user), {

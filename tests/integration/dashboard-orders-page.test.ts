@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { setMockSession } from "@/tests/helpers/auth";
 import {
   createEvent,
@@ -11,6 +11,12 @@ import {
 import { prisma } from "@/lib/db";
 import DashboardPage from "@/app/(dashboard)/dashboard/page";
 import OrganisationOrdersPage from "@/app/(dashboard)/dashboard/orders/page";
+
+vi.mock("next/navigation", async importOriginal => ({
+  ...await importOriginal<typeof import("next/navigation")>(),
+  usePathname: () => "/dashboard/orders",
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() })
+}));
 
 async function renderOrdersPage(
   searchParams: {

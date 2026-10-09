@@ -1,5 +1,6 @@
 import { getLiveSession } from "@/lib/auth/live-session";
 import { prisma } from "@/lib/db";
+import { readAccountContext } from "./context";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { MfaRequiredError, mfaEnforcementMode, requireStaffMfa } from "@/lib/security/staff-mfa";
 import {
@@ -136,7 +137,6 @@ export async function requireStripeConnectCapability() {
 }
 
 export async function getCurrentOrganisationAccount() {
-  const { readAccountContext } = await import("./context");
   return (await readAccountContext()).selected;
 }
 

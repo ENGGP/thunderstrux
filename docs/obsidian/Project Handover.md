@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-10
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]"]
@@ -53,7 +53,7 @@ Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CL
 
 PR #40 removes PR/push triggers from test workflows. Local checks follow the risk table: documentation-only changes use docs/diff checks and claim review, with no functionality tests; code changes need one successful applicable run, with repeats justified by changed inputs, failures or a documented reliability concern. Scheduled Security Audit remains enabled. GitHub protection readback on 2026-10-09 found no required status checks/rulesets; force pushes and branch deletion were disallowed. Review local evidence in every PR (VALID-001).
 
-**Repository delivery has not activated the account migrations or security patches in development/hosted stacks.** Rebuild release images or refresh development dependencies to activate PR #39. Apply additive migrations once before app/worker rollout. Preserve database/Redis volumes. [[Production Operations]] owns deployment, backup and compatibility-gated rollback; qualified test stacks are disposable and do not establish hosted rollout.
+**Local development was refreshed on 2026-10-10 after a stale Turbopack module-resolution error. Hosted activation remains unverified.** The existing recovery helper rebuilt the app and replaced its labelled dependency cache: installed Next is 16.3.8, Prisma is generated, all 32 migrations are applied and /api/health/ready returns 200. The pre-refresh development archive is retained at tmp/dev-before-context-refresh-20261009.dump (UTC date; SHA-256 93359d6b4809dc0086e3223926c81d3295c2415b4f1ccaf182194f783b58f880), with a readable archive listing. A missing notification key was provisioned only after confirming no existing key/jobs; ignored .env and a separate Windows-user-only key backup retain it. Database/Redis data volumes were preserved. Dashboard/settings compilation and unauthenticated context denial passed. See [[Troubleshooting]]; no production deployment or new full-suite campaign was performed. Apply additive migrations once before future app/worker rollout. [[Production Operations]] owns deployment, backup and compatibility-gated rollback; qualified test stacks are disposable and do not establish hosted rollout.
 
 ## Next Safe Actions
 

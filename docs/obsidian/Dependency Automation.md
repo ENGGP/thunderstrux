@@ -100,3 +100,7 @@ Both workflows passed actionlint 1.7.7. Renovate configuration passed validator 
 - Renovate 44.93.4 strict configuration validation passed (optional native RE2 unavailable; validator used its documented RegExp fallback). Independent read-only review found no concrete issues. Docker image exclusion includes workflow service images through the Docker datasource rule.
 - Renovate authorization completed after finalisation. Dashboard #6 and merged PR #7 provide repository discovery and controlled-update evidence; Docker dependencies are absent as configured. PR #7's five post-merge checks passed; its non-required release-age status remained pending for a pin update.
 - Overall P2.15 remains Open only for security-PR proof after a real eligible advisory and maintainer notification receipt after the next genuine audit failure, as explicitly selected by the maintainer.
+
+## Local runtime refresh (2026-10-10)
+
+The local development dependency volume still held Next 16.3.5 while package.json pinned 16.3.8. `node scripts/recreate-dev-app.mjs` refreshed the development image and verified dependency cache without changing package/lockfile pins or database/Redis volumes. Runtime Next 16.3.8, generated Prisma Client, 32 applied migrations, affected dashboard compilation and readiness 200 were observed. [[Troubleshooting]] and [[Project Handover]] record the archive/key retention and local configuration recovery. This activates the dependency patches in local development only; hosted release images still need separate rollout and verification.

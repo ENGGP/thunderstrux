@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-10
 owner: engineering
 related: ["[[Development Workflow]]", "[[Dependency Automation]]"]
 sources: [scripts/doctor-dev.mjs, scripts/integration-test-guards.mjs]
@@ -423,6 +423,12 @@ pnpm docker:dev:clean
 This recreates the dev app container with bind mounts. It does not remove the Postgres volume.
 
 The `/app/node_modules` mount should be the named Compose volume `thunderstrux_node_modules`. If an anonymous hash-named volume appears, or a newly added package fails to resolve after an image rebuild, run `pnpm docker:restart`. The helper rebuilds the image, removes only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, and applies migrations. It preserves PostgreSQL and Redis data volumes.
+
+### New Source Module Exists But Turbopack Cannot Resolve It
+
+If the browser reports `Cannot resolve ./context` from lib/auth/access.ts after pulling new source, confirm lib/auth/context.ts exists both on the host and in `/app`. Compare the installed Next version inside the container with package.json. A running dev process and its dependency volume can remain stale even though the bind mount sees current files. Use `pnpm docker:restart`; its app recreation replaces only the verified dependency volume and normal startup clears volatile development cache. Do not change a valid import to mask stale runtime state. Back up the development database before startup applies pending migrations; preserve database/Redis volumes. Verify `/api/health/ready` and compilation of `/dashboard/settings` after recovery.
+
+Local recovery on 2026-10-10 found the file present but installed Next 16.3.5 versus pinned 16.3.8. The helper refreshed Next 16.3.8, generated Prisma Client and applied the invitation migration (31 -> 32 total). The pre-migration custom archive and its readable pg_restore listing were retained; this was an archive check, not another restore drill. Readiness then identified an absent notification key: no key and zero encrypted notification jobs existed, so a fresh development key was stored in ignored .env with a separate Windows-user-only key backup. Never replace a missing key when encrypted rows already exist; recover that key. Final readiness returned 200; dashboard/settings compiled and redirected unauthenticated requests to login, and the context API returned 401. No production activation or integration reset of development data occurred.
 
 ### `@redis/client` Or Generated Prisma Client Is Missing
 

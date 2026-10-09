@@ -11,6 +11,17 @@ import { getOrganisationEventTickets } from "@/lib/tickets/check-in";
 import { updateOrganisationStaff } from "@/lib/staff/management";
 
 describe("explicit staff context and capabilities", () => {
+  test("bootstrap defaults stay on the owned tenant and never switch after its revocation", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const second = await createOrganisationAccount();
+    await createOrganisationStaff({ organisationId: second.organisation.id, userId: user.id });
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    expect((await readAccountContext()).selected?.id).toBe(organisation.id);
+    await prisma.organisationStaff.updateMany({ where: { userId: user.id, organisationId: organisation.id }, data: { status: "revoked" } });
+    expect((await readAccountContext()).selected).toBeNull();
+    globalThis.__THUNDERSTRUX_TEST_CONTEXT__ = "tampered";
+    expect((await readAccountContext()).selected).toBeNull();
+  });
   test("member login is personal; tenant selection is live and never falls through on revocation", async () => {
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();

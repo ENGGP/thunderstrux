@@ -245,7 +245,7 @@ test('private staff invitation email supports explicit acceptance, resend and re
     await pending.getByRole('button', { name: 'Resend invitation' }).click();
     await expect(page.getByText('New invitation email queued.', { exact: false })).toBeVisible();
     await recipient.getByRole('button', { name: 'Accept staff invitation' }).click();
-    await expect(recipient.getByRole('alert')).toContainText('Invitation is unavailable');
+    await expect(recipient.locator('main').getByRole('alert')).toContainText('Invitation is unavailable');
     execFileSync('node', ['scripts/process-notifications.mjs'], { stdio: 'pipe' });
     const updated = await (await page.request.get('http://mail-capture:8025/messages')).json();
     const nextLink = updated.filter((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes('staff invitation')).at(-1).data.text.split('\n\n').at(-1);

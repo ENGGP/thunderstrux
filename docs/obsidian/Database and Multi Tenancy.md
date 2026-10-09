@@ -511,3 +511,7 @@ Checkout is public-facing in URL shape, but requires a live active verified memb
 The schema has 21 models and 31 migrations through 20261005030000_account_closure. AuthToken stores purpose-bound digests and email/authVersion/expiry binding; AccountSecurityEvent is a private account ledger. NotificationOutbox stores encrypted immutable versioned intents and rotating worker leases separately from ticket EmailOutbox.
 
 Closure permanently retains the User ID/closedAt and disables credentials. Database guards prevent reopening. Immutable Order buyer email/name captures include provenance/date; closure fills missing captures from current account data without inventing purchase-time facts. Orders, tickets, attendance and audit/security records remain attached to the original user; new signup never inherits them. See [[Authentication and Dashboard Access]] and [[Email Delivery Implementation]] for the transactional fences and contact-reader rules.
+
+## Invitation version migration
+
+`20261009010000_private_staff_invites` adds positive invitation versions, nullable outbox invite/version linkage, indexes and foreign-key/check constraints. Existing invitations start at version 1; no raw tokens are recovered and old invites are not automatically mailed. New private invitation mail and audits commit with their invitation mutation. Sorted User locks precede Organisation then invite/staff locks, shared with account closure, email change and staff management. The full migration chain is now 32 migrations with 21 models.

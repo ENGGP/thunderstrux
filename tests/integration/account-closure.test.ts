@@ -1,3 +1,4 @@
+import { readStaffInviteToken } from "@/tests/helpers/staff-invites";
 import { beforeEach, afterEach, test, expect, vi } from "vitest";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/db";
@@ -67,7 +68,7 @@ test("closure anonymises profile, revokes credentials/staff/joins and tokens, re
   const user = await createMember(); const { order, event, organisation, user: owner } = await purchase(user.id, "paid");
   await prisma.user.update({ where: { id: user.id }, data: { displayName: "Retained buyer", phone: "123", studentNumber: "456" } });
   await joinOrganisation(user.id, organisation.id); await createOrganisationStaff({ organisationId: organisation.id, userId: user.id });
-  const invite = await createOrganisationStaffInvite({ organisationId: organisation.id, invitedById: owner.id, email: user.email, role: "admin" });
+  const invite = await createOrganisationStaffInvite({ organisationId: organisation.id, actor: { id: owner.id, authVersion: owner.authVersion }, email: user.email, role: "admin" });
   const ticket = await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id, checkedInAt: new Date() } });
   await prisma.mfaGrant.create({ data: { userId: user.id, sessionDigest: "discard", verifiedAt: new Date(), expiresAt: new Date(Date.now() + 60000) } });
   await requestPasswordReset(user.email); const queued = await prisma.notificationOutbox.findFirstOrThrow({ where: { userId: user.id, authTokenId: { not: null } } });
@@ -77,6 +78,7 @@ test("closure anonymises profile, revokes credentials/staff/joins and tokens, re
   expect(await prisma.authToken.count({ where: { userId: user.id } })).toBe(0); expect(await prisma.mfaGrant.count({ where: { userId: user.id } })).toBe(0);
   expect(await prisma.organisationMember.count({ where: { userId: user.id } })).toBe(0); expect(await prisma.organisationStaff.count({ where: { userId: user.id, status: "active" } })).toBe(0);
   expect((await prisma.organisationStaffInvite.findUniqueOrThrow({ where: { id: invite.invite.id } })).revokedAt).not.toBeNull();
+  expect(await prisma.notificationOutbox.count({ where: { staffInviteId: invite.invite.id, status: "cancelled" } })).toBe(1);
   expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).checkedInAt).not.toBeNull();
   expect((await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: queued.id } })).status).toBe("cancelled");
   const retained = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -167,8 +169,9 @@ test("closure and owner promotion serialize; closed accounts cannot be reactivat
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
 });
 test("racing invite acceptance and closure cannot leave live authority on a closed account", async () => {
-  const user = await createMember(); const society = await createOrganisationAccount(); const invite = await createOrganisationStaffInvite({ organisationId: society.organisation.id, invitedById: society.user.id, email: user.email, role: "owner" });
-  const results = await Promise.allSettled([close(user), acceptOrganisationStaffInvite({ token: invite.token, userId: user.id, userEmail: user.email })]);
+  const user = await createMember(); const society = await createOrganisationAccount(); const invite = await createOrganisationStaffInvite({ organisationId: society.organisation.id, actor: { id: society.user.id, authVersion: society.user.authVersion }, email: user.email, role: "owner" });
+  const token = await readStaffInviteToken(invite.invite.id);
+  const results = await Promise.allSettled([close(user), acceptOrganisationStaffInvite({ token, actor: { id: user.id, authVersion: user.authVersion } })]);
   const closed = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
   if (closed.closedAt) expect(await prisma.organisationStaff.count({ where: { userId: user.id, status: "active" } })).toBe(0);
   else expect((await readAccountClosureEligibility(actorFor(user))).eligible).toBe(false);

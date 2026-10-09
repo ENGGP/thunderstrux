@@ -1,4 +1,6 @@
-import { describe, expect, test, vi } from "vitest";
+import { readStaffInviteToken } from "@/tests/helpers/staff-invites";
+import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
@@ -23,6 +25,8 @@ vi.mock("next-auth/jwt", () => ({
 }));
 
 describe("auth and role access", () => {
+  beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend()); });
+  afterEach(() => { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); });
   test("unauthenticated and member users cannot access organiser events API", async () => {
     const { organisation } = await createOrganisationAccount();
 
@@ -393,7 +397,7 @@ describe("auth and role access", () => {
     expect(management.status).toBe(200);
   });
 
-  test("staff invite token is hashed, single-use, and grants staff access on accept", async () => {
+  test("staff invite is privately delivered, hashed and consumed once with safe replay", async () => {
     const { user: owner, organisation } = await createOrganisationAccount();
     const invitee = await createMember({ email: "staff-invitee@example.com" });
     setMockSession({
@@ -415,14 +419,16 @@ describe("auth and role access", () => {
     );
     expect(inviteResponse.status).toBe(201);
     const inviteBody = await parseJsonResponse(inviteResponse);
-    expect(inviteBody.token).toEqual(expect.any(String));
+    expect(inviteBody.token).toBeUndefined();
+    expect(inviteBody.acceptUrl).toBeUndefined();
 
+    const token = await readStaffInviteToken(inviteBody.invite.id);
     const storedInvite = await prisma.organisationStaffInvite.findUniqueOrThrow({
       where: { id: inviteBody.invite.id },
       select: { tokenHash: true }
     });
-    expect(storedInvite.tokenHash).toBe(hashStaffInviteToken(inviteBody.token));
-    expect(storedInvite.tokenHash).not.toBe(inviteBody.token);
+    expect(storedInvite.tokenHash).toBe(hashStaffInviteToken(token));
+    expect(storedInvite.tokenHash).not.toBe(token);
 
     setMockSession({
       userId: invitee.id,
@@ -432,7 +438,7 @@ describe("auth and role access", () => {
     const acceptResponse = await acceptStaffInvite(
       jsonRequest(
         "http://localhost/api/staff/invites/accept",
-        { token: inviteBody.token },
+        { token },
         { method: "POST" }
       )
     );
@@ -448,11 +454,12 @@ describe("auth and role access", () => {
     const secondAccept = await acceptStaffInvite(
       jsonRequest(
         "http://localhost/api/staff/invites/accept",
-        { token: inviteBody.token },
+        { token },
         { method: "POST" }
       )
     );
-    expect(secondAccept.status).toBe(400);
+    expect(secondAccept.status).toBe(200);
+    expect((await secondAccept.json()).alreadyAccepted).toBe(true);
   });
 
   test("revoked staff invite cannot be accepted", async () => {
@@ -475,6 +482,7 @@ describe("auth and role access", () => {
       routeContext({ orgSlug: organisation.slug })
     );
     const inviteBody = await parseJsonResponse(inviteResponse);
+    const token = await readStaffInviteToken(inviteBody.invite.id);
     await prisma.organisationStaffInvite.update({
       where: { id: inviteBody.invite.id },
       data: { revokedAt: new Date() }
@@ -488,7 +496,7 @@ describe("auth and role access", () => {
     const acceptResponse = await acceptStaffInvite(
       jsonRequest(
         "http://localhost/api/staff/invites/accept",
-        { token: inviteBody.token },
+        { token },
         { method: "POST" }
       )
     );

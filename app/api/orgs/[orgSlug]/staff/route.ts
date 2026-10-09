@@ -35,6 +35,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const [staff, invites] = await Promise.all([
       prisma.organisationStaff.findMany({
+        take: 100,
         where: { organisationId: organisation.id },
         orderBy: [{ status: "asc" }, { role: "asc" }, { createdAt: "asc" }],
         select: {
@@ -60,6 +61,7 @@ export async function GET(_request: Request, context: RouteContext) {
           acceptedAt: null,
           revokedAt: null
         },
+        take: 100,
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -71,7 +73,7 @@ export async function GET(_request: Request, context: RouteContext) {
       })
     ]);
 
-    return NextResponse.json({ staff, invites });
+    return NextResponse.json({ staff, invites }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();

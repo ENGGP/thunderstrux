@@ -1,98 +1,26 @@
 import { NextResponse } from "next/server";
-import {
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAuthenticatedUser,
-  requireOrganisationPermission
-} from "@/lib/auth/access";
+import { forbidden, notFound, validationError } from "@/lib/api/errors";
+import { requireVerifiedUser, requireOrganisationPermission } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { writeAuditLog } from "@/lib/staff/audit";
 import { createOrganisationStaffInvite } from "@/lib/staff/invites";
+import { invitationIssuanceLimits, staffInviteFailure } from "@/lib/staff/invite-http";
 import { validateJson } from "@/lib/validators";
 import { createStaffInviteSchema } from "@/lib/validators/staff";
 
-type RouteContext = {
-  params: Promise<{
-    orgSlug: string;
-  }>;
-};
-
-export async function POST(request: Request, context: RouteContext) {
-  const trustedOriginError = enforceTrustedMutationRequest(request);
-
-  if (trustedOriginError) {
-    return trustedOriginError;
-  }
-
-  const validation = await validateJson(request, createStaffInviteSchema);
-
-  if (!validation.success) {
-    return validationError(validation.details);
-  }
-
-  const { orgSlug } = await context.params;
-
+export async function POST(request: Request, context: { params: Promise<{ orgSlug: string }> }) {
+  const denied = enforceTrustedMutationRequest(request); if (denied) return denied;
+  const input = await validateJson(request, createStaffInviteSchema); if (!input.success) return validationError(input.details);
   try {
-    const user = await requireAuthenticatedUser();
-    const organisation = await prisma.organisation.findUnique({
-      where: { slug: orgSlug },
-      select: { id: true, slug: true }
-    });
-
-    if (!organisation) {
-      return notFound("Organisation was not found");
-    }
-
+    const actor = await requireVerifiedUser();
+    const { orgSlug } = await context.params;
+    const organisation = await prisma.organisation.findUnique({ where: { slug: orgSlug }, select: { id: true } });
+    if (!organisation) return notFound("Organisation was not found");
     const authority = await requireOrganisationPermission(organisation.id, "staff:manage");
-    if (validation.data.role === "owner" && authority.staffRole !== "owner") return forbidden("Only owners can invite owners");
-
-    const { invite, token } = await createOrganisationStaffInvite({
-      organisationId: organisation.id,
-      invitedById: user.id,
-      email: validation.data.email,
-      role: validation.data.role
+    if (input.data.role === "owner" && authority.staffRole !== "owner") return forbidden("Only owners can invite owners");
+    const limited = await invitationIssuanceLimits(request, actor.id, organisation.id, input.data.email); if (limited) return limited;
+    return NextResponse.json(await createOrganisationStaffInvite({ organisationId: organisation.id, actor, ...input.data }), {
+      status: 201, headers: { "Cache-Control": "private, no-store" }
     });
-
-    await writeAuditLog({
-      organisationId: organisation.id,
-      actorUserId: user.id,
-      action: "staff.invite.created",
-      targetType: "OrganisationStaffInvite",
-      targetId: invite.id,
-      metadata: {
-        email: invite.email,
-        role: invite.role
-      }
-    });
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
-
-    return NextResponse.json(
-      {
-        invite,
-        token,
-        acceptUrl: appUrl ? `${appUrl}/staff/invites/accept?token=${token}` : null
-      },
-      { status: 201 }
-    );
-  } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    console.error("Failed to create staff invite", { orgSlug, error });
-    return internalError();
-  }
+  } catch (error) { return staffInviteFailure(error); }
 }

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const notificationTemplateSchema = z.enum([
   "verify_account", "reset_password", "password_changed", "email_change_requested",
-  "email_changed", "account_closed", "business_notice"
+  "email_changed", "account_closed", "staff_invite", "business_notice"
 ]);
 export type NotificationTemplate = z.infer<typeof notificationTemplateSchema>;
 export const notificationPayloadSchema = z.object({
@@ -18,6 +18,7 @@ const subjects: Record<NotificationTemplate, string> = {
   verify_account: "Verify your Thunderstrux email", reset_password: "Reset your Thunderstrux password",
   password_changed: "Your Thunderstrux password changed", email_change_requested: "Thunderstrux email change requested",
   email_changed: "Your Thunderstrux email changed", account_closed: "Your Thunderstrux account is closed",
+  staff_invite: "Your Thunderstrux staff invitation",
   business_notice: "Thunderstrux notification"
 };
 export function escapeEmailHtml(value: string) {

@@ -9,7 +9,7 @@ sources: [package.json, prisma/schema.prisma]
 
 # Project Handover
 
-This is the only current handover. It covers delivery from **PR #31 onward**, verified against merged repository state `b9a113d` (PR #39). Earlier implementation remains background in the linked references and Git history. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
+This is the only current handover. It covers delivery from **PR #31 onward**, with current contracts and dated validation evidence recorded below. Earlier implementation remains background in the linked references and Git history. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
 
 ## Current State
 
@@ -42,7 +42,7 @@ PR numbers are delivery references, not merge chronology: #40 merged before #39.
 
 ## Runtime And Validation
 
-Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 31 migrations, ending in 20261005030000_account_closure; current schema has 21 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
+Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 32 migrations, ending in 20261009010000_private_staff_invites; current schema has 21 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
 
 PR #40 removes PR/push triggers from test workflows. Local checks follow the risk table: documentation-only changes use docs/diff checks and claim review, with no functionality tests; code changes need one successful applicable run, with repeats justified by changed inputs, failures or a documented reliability concern. Scheduled Security Audit remains enabled. GitHub protection readback on 2026-10-09 found no required status checks/rulesets; force pushes and branch deletion were disallowed. Review local evidence in every PR (VALID-001).
 

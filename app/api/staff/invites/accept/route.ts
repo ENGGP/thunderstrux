@@ -1,74 +1,21 @@
-import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
-import {
-  badRequest,
-  forbidden,
-  internalError,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireVerifiedUser
-} from "@/lib/auth/access";
+import { requireVerifiedUser } from "@/lib/auth/access";
+import { validationError } from "@/lib/api/errors";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { writeAuditLog } from "@/lib/staff/audit";
-import {
-  StaffInviteError,
-  acceptOrganisationStaffInvite
-} from "@/lib/staff/invites";
+import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
+import { acceptOrganisationStaffInvite, hashStaffInviteToken } from "@/lib/staff/invites";
+import { staffInviteFailure } from "@/lib/staff/invite-http";
 import { validateJson } from "@/lib/validators";
 import { acceptStaffInviteSchema } from "@/lib/validators/staff";
 
 export async function POST(request: Request) {
-  const trustedOriginError = enforceTrustedMutationRequest(request);
-
-  if (trustedOriginError) {
-    return trustedOriginError;
-  }
-
-  const validation = await validateJson(request, acceptStaffInviteSchema);
-
-  if (!validation.success) {
-    return validationError(validation.details);
-  }
-
+  const denied = enforceTrustedMutationRequest(request); if (denied) return denied;
+  const input = await validateJson(request, acceptStaffInviteSchema); if (!input.success) return validationError(input.details);
+  const limited = await enforceRateLimit({ policy: "account_token_ip", request, keyParts: ["staff_invite", getRateLimitClientIp(request)], required: true }) ??
+    await enforceRateLimit({ policy: "account_token_digest", request, keyParts: ["staff_invite", hashStaffInviteToken(input.data.token)], required: true });
+  if (limited) return limited;
   try {
-    const user = await requireVerifiedUser();
-    const result = await acceptOrganisationStaffInvite({
-      token: validation.data.token,
-      userId: user.id,
-      userEmail: user.email
-    });
-
-    await writeAuditLog({
-      organisationId: result.staff.organisationId,
-      actorUserId: user.id,
-      action: "staff.invite.accepted",
-      targetType: "OrganisationStaffInvite",
-      targetId: result.inviteId,
-      metadata: {
-        staffId: result.staff.id,
-        role: result.staff.role
-      }
-    });
-
-    return NextResponse.json({
-      staff: result.staff
-    });
-  } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) return forbidden(error.message);
-
-    if (error instanceof StaffInviteError) {
-      return badRequest(error.message);
-    }
-
-    console.error("Failed to accept staff invite", { error });
-    return internalError();
-  }
+    const actor = await requireVerifiedUser();
+    return NextResponse.json(await acceptOrganisationStaffInvite({ token: input.data.token, actor }), { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return staffInviteFailure(error); }
 }

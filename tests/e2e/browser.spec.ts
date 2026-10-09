@@ -223,7 +223,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
 test('private staff invitation email supports explicit acceptance, resend and revocation', async ({ page, data, browser }) => {
   await login(page, data.owner.email, '/dashboard/settings/staff');
   await page.getByLabel('Email', { exact: true }).fill(data.member.email);
-  await page.getByLabel('Role', { exact: true }).selectOption('finance_manager');
+  await page.getByLabel('Invitation role', { exact: true }).selectOption('finance_manager');
   const responsePromise = page.waitForResponse(response => response.url().endsWith(`/api/orgs/${data.organisation.slug}/staff/invites`) && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Create invite', exact: true }).click();
   const response = await responsePromise; expect(response.status()).toBe(201);

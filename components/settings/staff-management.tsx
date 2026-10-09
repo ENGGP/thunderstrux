@@ -161,6 +161,7 @@ export function StaffManagement({
               className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900"
               onChange={(event) => setRole(event.target.value as StaffRole)}
               value={role}
+              aria-label="Invitation role"
             >
               {roles.filter(item => canManageOwners || item !== "owner").map((item) => (
                 <option key={item} value={item}>

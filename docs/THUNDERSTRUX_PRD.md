@@ -1,5 +1,7 @@
 # Thunderstrux Product Requirements Document
 
+**Document authority (reconciled 11 October 2026):** [PRD](THUNDERSTRUX_PRD.md) owns product outcomes. [Readiness Plan](MVP_READINESS_PLAN.md) owns accepted scope, domain/security invariants, dependencies and acceptance evidence; [Engineering Delivery Workflow](obsidian/Engineering%20Delivery%20Workflow.md) owns validation and PR policy. Within those constraints, [Database Specification](THUNDERSTRUX_DATABASE_ARCHITECTURE_AND_SCHEMA_SPEC.md) owns target persistence/integrity, [UX Specification](THUNDERSTRUX_UX_USER_FLOW_SPEC.md) owns journeys/interactions, and [Visual Design](THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) owns presentation tokens/composition. Visual Design supersedes the earlier UX token proposal, but cannot change behaviour. Live code/schema/provider observations establish implementation facts; [Project Handover](obsidian/Project%20Handover.md) and the readiness ledger record current delivery. A target requirement is not evidence of deployed behaviour. Resolve disagreements in the owning document; do not use presentation or proposed SQL to override a domain/security invariant.
+
 ## 1. Product Summary
 
 Thunderstrux is a student society and community organisation platform designed to centralise event hosting, ticketing, organisation management, member engagement, payments, and operational workflows into one product.
@@ -135,7 +137,7 @@ Thunderstrux should support user accounts with clear role-based experiences.
 - Users should have an account type that determines their dashboard experience.
 - Member accounts should represent individuals.
 - Organisation accounts should represent organisations.
-- Organisation accounts should manage exactly one primary organisation unless the product explicitly supports multi-organisation management.
+- Organisation accounts bootstrap one primary organisation and manage at most one active primary organisation unless the product explicitly supports multi-organisation management. Handover may leave the outgoing account with no active organisation authority; historical associations do not grant access. Named personal member accounts may hold explicitly scoped staff roles in multiple societies.
 - Member onboarding should collect relevant personal profile information.
 - Organisation onboarding should collect relevant organisation information.
 - Navigation should be role-aware.
@@ -241,6 +243,7 @@ Thunderstrux should provide a safe checkout flow for ticket purchases.
 - Payment completion should result in ticket issuance.
 - Failed, expired, or incomplete payments should not issue tickets.
 - The system should avoid duplicate fulfilment.
+- Free purchases support audited whole-order local cancellation without a provider refund; retain purchase/attendance/collection history, revoke the relevant entitlement, and keep any stock restoration a separately reviewed action.
 - Organisers should be able to review orders.
 - Order records should preserve important purchase details.
 
@@ -256,7 +259,7 @@ Thunderstrux should support organisation-level payment setup so societies can re
 
 - Organisations should be able to connect a payment account.
 - Payment readiness should be clearly displayed.
-- Public checkout should only be available when the organisation can receive payments.
+- Paid public checkout should only be available when the organisation can receive payments. Zero-total fulfilment must work without Stripe when identity, publication, entitlement and inventory checks pass; a mixed event may offer eligible free types while paid types are unavailable.
 - Payment failures or setup issues should be communicated clearly.
 - Platform fees, if applied, should be transparent and consistently calculated.
 
@@ -288,7 +291,7 @@ Memberships should allow organisations to manage ongoing relationships with memb
 - Organisations should be able to offer memberships where applicable.
 - Members should be able to join organisations or purchase memberships.
 - Membership status should be visible to both members and organisations.
-- Memberships should support society-specific access, pricing, or engagement features where needed.
+- Memberships should support society-specific access, pricing, or engagement features where needed. A fulfilled free or paid fixed-term membership product may grant these rights; eligibility depends on its active entitlement policy, not whether money was charged. Free joining/following alone grants no such entitlement or staff authority.
 
 ### Product Expectations
 

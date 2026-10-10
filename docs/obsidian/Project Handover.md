@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-11
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]"]
@@ -57,6 +57,8 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 **Local development was refreshed on 2026-10-10 after a stale Turbopack module-resolution error. Hosted activation remains unverified.** The existing recovery helper rebuilt the app and replaced its labelled dependency cache: installed Next is 16.3.8, Prisma is generated, all 32 migrations are applied and /api/health/ready returns 200. The pre-refresh development archive is retained at tmp/dev-before-context-refresh-20261009.dump (UTC date; SHA-256 93359d6b4809dc0086e3223926c81d3295c2415b4f1ccaf182194f783b58f880), with a readable archive listing. A missing notification key was provisioned only after confirming no existing key/jobs; ignored .env and a separate Windows-user-only key backup retain it. Database/Redis data volumes were preserved. Dashboard/settings compilation and unauthenticated context denial passed. See [[Troubleshooting]]; no production deployment or new full-suite campaign was performed. Apply additive migrations once before future app/worker rollout. [[Production Operations]] owns deployment, backup and compatibility-gated rollback; qualified test stacks are disposable and do not establish hosted rollout.
 
 ## Next Safe Actions
+
+The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. These are target contracts, not new deployed features: free/paid membership entitlement parity, free-purchase cancellation, mixed-event publication without Stripe for eligible free types and a single visual token source. Source review found BOOT-001: T08 must extend the pointer-only bootstrap check to active staff authority after T06 pointer retirement. The single-primary traceability row is now partial until that guard and regressions land. Existing T01-T06 delivery evidence and hosted gates are unchanged. Validation for this reconciliation is documentation/diff/claim review only.
 
 1. Plan Package 3 society profiles/discovery (T07-T09) from refreshed main after [PR #44](https://github.com/ENGGP/thunderstrux/pull/44). Package 2 is complete locally; STAFF-001 is resolved.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.

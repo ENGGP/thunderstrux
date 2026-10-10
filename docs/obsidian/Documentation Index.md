@@ -17,6 +17,7 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 3. [[Non-Blocking Issue Register|Issue and Defect Register]] ? canonical defects, accepted risks and external gates.
 4. [[../THUNDERSTRUX_PRD|Product Requirements]] and [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] ? product intent and delivery sequence.
 5. Read only the relevant living reference and its code sources. [[../MVP_READINESS_PLAN|Readiness Plan]] owns detailed acceptance and delivery evidence.
+6. [[../THUNDERSTRUX_PRD|Product Requirements]] defines authority by subject for the [[../THUNDERSTRUX_DATABASE_ARCHITECTURE_AND_SCHEMA_SPEC|Database Specification]], [[../THUNDERSTRUX_UX_USER_FLOW_SPEC|UX Specification]] and [[../THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]]. These are target contracts; the readiness ledger and handover record delivery, and code/provider observations establish implementation facts.
 
 ## Find The Right Note
 

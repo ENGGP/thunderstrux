@@ -1,5 +1,7 @@
 # Thunderstrux PRD-Complete Technical Implementation Plan
 
+**Document authority:** Follow the [PRD authority contract](THUNDERSTRUX_PRD.md), reconciled 11 October 2026. This document governs its assigned subject within accepted product scope and readiness-plan invariants; it is not evidence of deployed features.
+
 Status: implementation queue, not feature acceptance or release approval. Assessed 2026-10-04 against b2ef999bd4ef266d0150917cf8c0ba76eb11e161 (main after PR #25).
 
 ## 1. Objective and execution protocol
@@ -33,12 +35,12 @@ Verified documentation discrepancies: proxy.ts currently redirects anonymous eve
 
 ### Inherited delivery and testing requirements
 
-Every task inherits sections 3–4 contracts. Schema, auth, tenancy, payments, workers, dependencies and operations are High risk; ordinary UI/query logic is Standard; documentation alone is Low. Follow the risk matrix in Engineering Delivery Workflow rather than inventing a parallel process.
+Every task inherits sections 3–4 contracts. Schema, auth, tenancy, payments, workers, dependencies and operations are High risk; ordinary UI/query logic is Standard; documentation-only changes use the Documentation only row (docs/diff checks and claim review, no functionality tests). Follow the risk matrix in Engineering Delivery Workflow rather than inventing a parallel process.
 
 - Always run focused regression/direct verification, git diff --check, and pnpm docs:check when documentation changes.
 - Standard: denial cases, typecheck, production build, affected integration/browser coverage.
 - High: applicable full integration/E2E, concurrency/idempotency/failure, migration/integrity/backup/restore, audit, provider campaign or operations rehearsal.
-- Development is Docker-first. Integration resets only disposable databases whose names contain _test. Test containers/networks/ports/volumes must be run-owned. Never wipe development volumes or blanket-delete tmp/backups.
+- Development is Docker-first. Integration resets only run-owned disposable PostgreSQL databases with simple names ending in `_test`; retain stricter exact runner target checks. Test containers/networks/ports/volumes must be run-owned. Never wipe development volumes or blanket-delete tmp/backups.
 - Existing entrypoints: pnpm typecheck, pnpm build, pnpm test:integration, pnpm test:e2e, pnpm test:e2e:guards, pnpm security:audit, pnpm ops:test, pnpm db:integrity:audit and pnpm db:organisation-drift:repair. Run builds in disposable images/environments, never inside an active next start container.
 - Deliver through protected-main PRs with recorded local validation selected by [Engineering Delivery Workflow](obsidian/Engineering%20Delivery%20Workflow.md). GitHub test checks are not required. Documentation-only changes use docs/diff checks and claim review without functionality tests. One successful applicable run is sufficient; repeat only for failures, changed inputs or a documented reliability concern. Cleanup task-owned runs before merge; preserve interrupted-run recovery manifests. Independent review is required before high-risk production activation.
 
@@ -119,7 +121,7 @@ Keep proven ticket Order/TicketReservation relations. Add CommerceOrder/Commerce
 
 CommerceOrder stores member or verified guest identity (merch only), buyer/seller snapshots, currency/totals/fees, paymentKind, pending/paid/failed/expired projection, fulfilledAt, provider identity and compensation/refund state. Lines store positive quantity, price/total/name/variant/product snapshots and membership terms. Provider Sessions/operation keys are unique; typed domain dispatch rejects conflicting metadata/session identities. CommerceLifecycleEvent has unique per-order sequence and safe facts.
 
-Membership is a one-off fixed-term product, not a subscription. Product defines startsAt/endsAt/price/versioned entitlements. Grant binds verified member, society and fulfilled line; unique purchase/term and locked member+society checks prevent duplicates/disallowed overlap. Effective upcoming/active/expired/revoked derives from [start,end) UTC and revokedAt, independent of scheduled email timing. Renewal buys the next non-overlapping term. Leaving a free join doesn't erase a paid grant. Confirmed full refund revokes its grant. Member-price/access checks are server-side; hold-time grant/policy/price is snapshotted.
+Membership is a one-off fixed-term product, not a subscription. Product defines startsAt/endsAt/price/versioned entitlements. Grant binds verified member, society and fulfilled line; unique purchase/term and locked member+society checks prevent duplicates/disallowed overlap. Effective upcoming/active/expired/revoked derives from [start,end) UTC and revokedAt, independent of scheduled email timing. Renewal buys the next non-overlapping term. Leaving a free join doesn't erase a paid grant. Confirmed full refund revokes its grant. Member-price/access checks require an active grant carrying the relevant entitlement, whether its product was free or paid; hold-time grant/policy/price is snapshotted.
 
 Merchandise products have publication/archive state, safe images and variants with remaining stock and optional size/colour. Cart maximum 10 lines/10 units per line, one society, duplicate variants merged. Holds last 30 minutes; lock all variants sorted, then order. Commit all line decrements/hold confirmations/order history/receipt together on verified fulfilment. Pickup-only: location/instructions disclosed before payment; ready/collected states are separate from finance.
 
@@ -127,9 +129,11 @@ RefundRequest links one ticket or commerce purchase, provider identity, amount/c
 
 Provider refund calls occur outside DB transactions with stable keys; uncertain outcomes are polled before retry. Confirmed full refund atomically projects provider truth, voids ticket validity/revokes grant or marks commerce refund, and queues notification. Do not erase attendance. Do not auto-restock merchandise or reopen tickets: an audited return/stock-adjustment action can apply reviewed quantities once, under holds/capacity checks. Collected goods may not have returned.
 
+**Free-purchase cancellation (T18, T23, T28):** A fulfilled `paymentKind=free` purchase has no provider charge to refund. An authorised staff actor with `orders:refund`, live MFA and a reason may cancel the whole order through an idempotent local transaction: record a distinct cancellation fact/time/actor, void ticket validity or revoke its membership grant, fence future pickup, append lifecycle/audit and queue a cancellation notice. Keep the original free fulfilment, buyer snapshots, attendance and collection history. Preserve the compatible order status and expose a separate `cancelledAt` or equivalent cancellation fact in read DTOs; cancellation takes display precedence over fulfilled and fences later fulfilment/collection retries. Use `Cancelled - free purchase`, never `Refunded`; provider refund rows/totals remain unchanged. Ticket/merchandise stock restoration is a separate reviewed, audited, exactly-once adjustment. This is a target for the owning T tasks, not a claim of current support.
+
 ### 3.4 Guest, email and controlled actions
 
-Guests browse and buy public/unlisted tickets and merchandise; paid memberships require a verified member. Verify email ownership before checkout hold creation. A typed email alone doesn't grant previous-order access. Purpose-bound expiring tokens are hashed in storage; raw-token delivery payloads must be encrypted at rest and never logged. Redeem via POST into HttpOnly Secure/SameSite access sessions and clean redirects; GET/prefetch doesn't consume tokens. Guest grants are purchase-scoped; Session/order IDs alone reveal nothing.
+Guests browse and buy public/unlisted tickets and merchandise; all fixed-term membership products, free or paid, require a verified member account. Verify email ownership before checkout hold creation. A typed email alone doesn't grant previous-order access. Purpose-bound expiring tokens are hashed in storage; raw-token delivery payloads must be encrypted at rest and never logged. Redeem via POST into HttpOnly Secure/SameSite access sessions and clean redirects; GET/prefetch doesn't consume tokens. Guest grants are purchase-scoped; Session/order IDs alone reveal nothing.
 
 Keep existing ticket EmailOutbox and automatic-order partial unique index. Add NotificationOutbox for non-ticket triggers rather than breaking its required order relation. Both use tested provider/lease helpers. Business transaction inserts intent; provider I/O follows commit. Unique event+recipient+templateVersion dedupes; manual resend uses a new audited operation. Rotating lease tokens fence stale workers; bounded retries end in visible failed state. Provider acceptance is not proof of inbox delivery.
 
@@ -299,7 +303,9 @@ T06b implementation and qualification (2026-10-09), [PR #44](https://github.com/
 - **Schema:** Organisation description<=5000, logo/cover Asset refs, public support/contact email, refund/pickup policy, IANA timezone default Australia/Brisbane, onboardingCompletedAt/profileVersion.
 - **Backend/UI:** Extract bootstrap/profile services into lib/organisations; scoped PATCH /api/orgs/[orgSlug]/profile and public DTO. Profile/settings wizard, public branding/description/events and later membership/merch tabs. Slug stable; completion requires name/description/contact; paid-sale readiness separate.
 - **Authority/rules:** organisation:settings, optimistic version conflicts, escaped content and owner asset validation. Existing one primary tenant/active named owner bootstrap remains atomic and audited.
-- **Tests/done:** Bootstrap/slug races, second tenant denial, stale edit, member denial/public leakage and branded/empty/mobile/keyboard profile flows pass.
+- **Tests/done:** Bootstrap/slug races, post-retirement active-staff and concurrent second-tenant denial, stale edit, member denial/public leakage and branded/empty/mobile/keyboard profile flows pass.
+
+**Primary-organisation lifecycle (T08 target):** `accountUserId` is a nullable legacy/bootstrap association, not current staff authority. T06 handover clears it permanently; never transfer or restore it. Live active `OrganisationStaff` rows govern owner/admin access. Under the single-primary policy, a new organisation-account bootstrap must reject either a retained bootstrap association or active staff authority in an existing society, under sorted User then Organisation locks. Once handover revokes all outgoing authority and retires the association, that account may bootstrap a new primary society; historical rows alone do not block it. Inspect current bootstrap before implementing: the existing pointer-only lookup does not yet enforce the post-retirement active-staff case (BOOT-001).
 
 #### T09 — Society discovery, profile and join relationships
 - [ ] Complete. **Dependencies:** T03, T08.
@@ -318,7 +324,7 @@ T06b implementation and qualification (2026-10-09), [PR #44](https://github.com/
 #### T11 — Common publication/readiness and event policy
 - [ ] Complete. **Dependencies:** T10.
 - **Schema/API:** Event.capacity nullable positive, visibility public|unlisted|members_only, salesCloseAt default startTime, saleState open|closed, version. Shared lib/events/event-readiness used by create/edit/publish/public/checkout.
-- **Rules/UI:** Always create draft; explicit target-status/version publish replaces replay-unsafe toggle. Require details/times/types/future sales/stock; paid types require charge readiness, free-only doesn't. Mixed event can offer free types while paid unavailable. Close sales independently of unpublish; existing order-backed delete/unpublish restrictions retained. Block members_only publication until T24 exists.
+- **Rules/UI:** Always create draft; explicit target-status/version publish replaces replay-unsafe toggle. Require details/times/types/future sales/stock and at least one checkout-eligible type. Initial publication and continued sale of a mixed event are allowed without charge readiness when a zero-standard-price type passes the other checks; paid types remain unavailable. A paid-only event requires charge readiness to publish. Publication readiness and per-type checkout eligibility are separate predicates from the same service. Close sales independently of unpublish; existing order-backed delete/unpublish restrictions retained. Block members_only publication until T24 exists.
 - **Tests/done:** Direct published-create bypass, missing tickets/details, past/closed/free/mixed/not-ready, protected edits and capacity below commitments pass with clear blocker messages; no fake capacity backfill.
 
 #### T12 — Inventory/capacity locks and sold-edit safety
@@ -348,7 +354,7 @@ T06b implementation and qualification (2026-10-09), [PR #44](https://github.com/
 #### T16 — Verified guest purchase and private access
 - [ ] Complete. **Dependencies:** T02, T03, T13, T14, T15.
 - **Schema/API:** GuestIdentity/GuestAccessGrant with purpose/hash/expiry/email verification and purchase scope; /api/guest/email/request/confirm, guest checkout/session-CSRF cookie and receipt recovery. Origin and fail-closed IP/email acquisition/token limits.
-- **Rules/UI:** Verify email before hold; guest public/unlisted free/paid ticket only, no paid memberships/member discounts. POST token redemption to clean URL; no Session/order-ID access. Explicit verified member claim transaction, not matching submitted emails. No token/referrer/cookie secrets logged; no-store private views.
+- **Rules/UI:** Verify email before hold; guest public/unlisted free/paid ticket only, no membership products/member discounts. POST token redemption to clean URL; no Session/order-ID access. Explicit verified member claim transaction, not matching submitted emails. No token/referrer/cookie secrets logged; no-store private views.
 - **Tests/done:** Wrong/stolen/replayed/expired token, GET prefetch, guessed order, changed recipient, concurrent claim, cookie expiry/CSRF/rate failure and guest free/paid recovery journey pass.
 
 #### T17 — Connect safety and fee/payout disclosure
@@ -368,7 +374,7 @@ T06b implementation and qualification (2026-10-09), [PR #44](https://github.com/
 - [ ] Complete. **Dependencies:** T13, T16, T18.
 - **Code/UI:** /purchases and protected order-status read; guest grant equivalent. success/cancel displays actual projection and never claims success from URL or fulfils in production. Wallet valid fulfilled units; history pending/failed/expired/compensation/refunds.
 - **Attendance:** Extend check-in service/page/button with scoped ticket/name/email search, validity checks, actor history and server-state refresh on uncertain network outcome; retain conditional check-in/out.
-- **Tests/done:** Foreign buyer/guest receipt denial, delayed webhook/email failure, duplicate admission/out, void/refund-review arrival, check-in-only staff and timeout/retry pass. No offline success promise.
+- **Tests/done:** Free whole-order cancellation/replay/notice/stock separation; foreign buyer/guest receipt denial, delayed webhook/email failure, duplicate admission/out, void/refund-review arrival, check-in-only staff and timeout/retry pass. No offline success promise.
 
 ### Commerce and memberships
 
@@ -387,13 +393,13 @@ T06b implementation and qualification (2026-10-09), [PR #44](https://github.com/
 #### T22 — Membership products and fixed terms
 - [ ] Complete. **Dependencies:** T08, T20.
 - **Schema/API:** MembershipProduct(owner/name/description/price/start/end/publication/archive/entitlement version); MembershipGrant(user/society/line/term snapshots/revocation). lib/memberships/products and tenant product CRUD/publish/public listing.
-- **Rules/UI:** memberships:manage, members:read separate. Nonnegative cents, end>start, future purchasable term; one society-wide tier per term initially. Sold terms/entitlements immutable; next term new product version; archive not delete. Product creation UI supports semester/year terms.
+- **Rules/UI:** memberships:manage, members:read separate. Nonnegative cents, end>start, current or upcoming purchasable term with `now < endsAt`; reject expired terms; one society-wide tier per term initially. Sold terms/entitlements immutable; next term new product version; archive not delete. Product creation UI supports semester/year terms.
 - **Tests/done:** Invalid term/price, foreign edit, sold term mutation, published/private DTO, archive/history and concurrent publish pass.
 
 #### T23 — Membership fulfilment, renewal and roster
 - [ ] Complete. **Dependencies:** T03, T09, T21, T22.
 - **Services:** lib/memberships/fulfilment/entitlements and member/scoped roster queries. Verified member quantity=1; member+society locking and term claim uniqueness prevent concurrent duplicate/overlap.
-- **Rules:** Grant only from verified paid webhook or server free completion. Time derives effective state; reminder worker never grants/extends. Renew next non-overlapping term. Leave join preserves grant; full provider refund revokes. Exceptional admin revoke reason/audit plus separate financial review, not fabricated refund.
+- **Rules:** Grant only from verified paid webhook or server free completion. Time derives effective state; reminder worker never grants/extends. Renew next non-overlapping term. Leave join preserves grant; full provider refund revokes. Exceptional admin revoke reason/audit plus separate financial review, not fabricated refund. Free-purchase cancellation follows section 3.3; cancellation and confirmed full refund both revoke the source grant.
 - **Tests/done:** Exact start/end, future/expired/revoked, double checkout/webhook, next-term renewal, refund/revoke race and atomic grant/receipt pass; member/organiser can inspect bounded status roster.
 
 #### T24 — Membership UI and ticket entitlements
@@ -426,7 +432,7 @@ T06b implementation and qualification (2026-10-09), [PR #44](https://github.com/
 - [ ] Complete. **Dependencies:** T18, T27.
 - **Schema/API/UI:** Independent pending/ready/collected with actor/time/version; scoped collection/returns routes, merchandise:fulfil. Ordinary refund adapters use provider truth; unique returned-line effect applies reviewed restock once.
 - **Rules:** Only fulfilled non-review orders collect. Refund doesn't prove return; collected history survives. Ready/collected emails triggered by committed transitions. No manual paid edits, automatic stock return or hidden partial-refund assumptions.
-- **Tests/done:** Parallel collect/return, foreign staff, refund after collect, partial review, return retry and ready-email replay pass; local operator pickup workflow complete.
+- **Tests/done:** Free cancellation versus ready/collection, distinct cancellation notice and no provider/refund totals; parallel collect/return, foreign staff, refund after collect, partial review, return retry and ready-email replay pass; local operator pickup workflow complete.
 
 #### T29 — Unified purchase and organiser order views
 - [ ] Complete. **Dependencies:** T19, T23, T28.
@@ -566,6 +572,7 @@ T02 builds infrastructure; owning services insert intent atomically; T30 complet
 | Merchandise fulfilment | Buyer; items/receipt/pickup | Order fulfilled | Variant/quantity/amount snapshots and purchase-scoped guest link. |
 | Ready/collected merchandise | Buyer; pickup/confirmation | Collection version | Only committed transitions, retry buttons don't duplicate. |
 | Confirmed refund | Buyer; amount/result | Verified refund/state | Never say Refunded for request/pending/bookkeeping flag. |
+| Free purchase cancelled | Buyer; cancellation/result | Purchase/local cancellation operation | No cash-refund claim; preserve original fulfilment and historical attendance/collection. |
 | Paid-but-unfulfilled | Buyer; processing/support; operator alert | Compensation transition | No valid entitlement claim; no raw provider payload. |
 | Material event schedule/location change | Valid holders; old/new summary | Event version/purchase/recipient | Bounded resumable fanout, no marketing to unrelated users. |
 | Exhausted job | Authorized operator support queue | Job/exhaustion transition | Local alert sink before hosted paging; no secrets/PII in generic logs. |
@@ -639,7 +646,7 @@ Current status is baseline, not future qualification. COMPLETE capabilities map 
 | 6.1 secure signup/signin | COMPLETE | T03–T04, T39, T44 | Auth.js/browser/token tests | COMPLETE |
 | 6.1 account type/dashboard experience | COMPLETE | T05, T34 | Personal/staff/org nav | COMPLETE |
 | 6.1 individual member/society account identity | COMPLETE | T04–T06, T08 | Profile/bootstrap schema tests | COMPLETE |
-| 6.1 one primary organisation | COMPLETE | T08 | Concurrent second-bootstrap denial | COMPLETE |
+| 6.1 one primary organisation | PARTIAL (BOOT-001) | T08 | Concurrent second-bootstrap and post-retirement active-staff denial | COMPLETE |
 | 6.1 member profile onboarding | PARTIAL | T03–T04, T09 | Completion/edit/privacy | COMPLETE |
 | 6.1 organisation information onboarding | PARTIAL | T08, T17 | Wizard/readiness | COMPLETE |
 | 6.1 role-aware nav/access | PARTIAL | T05, T34 | Mobile/revoked/role tests | COMPLETE |
@@ -765,7 +772,7 @@ DEP-001 genuine advisory PR/failure-notification receipt cannot be manufactured;
 - [ ] T45 observed provider campaigns pass or explicitly block candidate qualification; synthetic transport isn't provider evidence.
 
 ### End-to-end journeys
-- [ ] Every section 7 row passes on exact production-mode artifacts with required qualification/CI and cleanup.
+- [ ] Every section 7 row passes on exact production-mode artifacts with risk-appropriate recorded local qualification and cleanup; GitHub checks are optional.
 - [ ] Honest buyer statuses and personal/staff modes; no guessed guest or foreign private data.
 
 ### UX/accessibility
@@ -775,7 +782,7 @@ DEP-001 genuine advisory PR/failure-notification receipt cannot be manufactured;
 ### Operational readiness
 - [ ] Immutable pair/schema digest/SBOM/provenance/scan, all jobs/fencing/backlogs/readiness, local alert and recovery/rollback rehearsals pass.
 - [ ] Runbooks list schedules/thresholds/retained secrets/provider reconciliation/response owner.
-- [ ] Latest-head five CI checks and risk-specific evidence current; task-owned cleanup done, backups/recovery retained.
+- [ ] Risk-appropriate local evidence covers the reviewed executable/test/schema/configuration inputs; optional GitHub checks do not replace that evidence. Task-owned cleanup done, backups/recovery retained.
 
 ### Remaining hosted verification
 - [ ] H01–H06 evidenced before declaring real-user testing successful: actual ingress/private access/MFA/provider delivery/jobs/paging/off-machine restore.

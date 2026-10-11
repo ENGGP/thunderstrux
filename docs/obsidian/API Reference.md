@@ -212,6 +212,10 @@ Management decisions use the canonical tenant and live `OrganisationStaff` capab
 
 ## Organisation Search And Join
 
+### `GET /api/public/organisations/search`
+
+Anonymous public-safe discovery: `q` is a literal name/slug substring, trimmed and bounded to 120 characters; `limit` defaults to 25 and accepts 1..50. Forward `cursor` uses name ASC, id ASC and must match the query. Invalid bounds/cursors return 400. Returns `{organisations, pageInfo}` with public name/slug/description excerpt/logo and the next upcoming published event, never personalized joined state, staff, account email or Stripe fields. Public cache lifetime is 60 seconds. `/organisations` consumes the shared read service directly.
+
 ### `GET /api/orgs/search?q=...`
 
 Searches organisations by name or slug.
@@ -221,6 +225,7 @@ Rules:
 - Auth required.
 - Member account required.
 - Returns public-safe organisation fields and whether the member has joined.
+- Uses the same bounded literal search and cursor ordering. Default requests preserve `{organisations:[{id,name,slug,joined}]}`; specifying limit or cursor also returns pageInfo. Responses are private/no-store.
 
 ### `POST /api/orgs/[orgSlug]/join`
 
@@ -231,6 +236,7 @@ Rules:
 - Auth required.
 - Member account required.
 - Creates or updates an `OrganisationMember` row with role `member`.
+- Requires live verified identity, trusted origin/CSRF and existing join/leave rate protection. User then Organisation locks fence session/version/closure races; replay returns success without duplicate relationships.
 
 ### `POST /api/orgs/[orgSlug]/leave`
 
@@ -243,6 +249,7 @@ Rules:
 - Deletes only the signed-in member account's `OrganisationMember` row for the resolved organisation.
 - Organisation accounts cannot use this endpoint.
 - If the member is already not joined, the endpoint still returns success.
+- Retains trusted origin/CSRF, live identity/version and rate checks. Unverified callers may remove their existing affiliation. Staff authority, other users, paid orders and tickets are unaffected; joins never grant paid entitlements.
 
 ## Public Events
 

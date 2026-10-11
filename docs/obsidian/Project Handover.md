@@ -13,7 +13,7 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 
 ## Current State
 
-**Package 1, Account lifecycle (T02-T04), and Package 2 staff/permissions (T05-T06) are implemented and locally qualified. Next product work is Package 3 society profiles/discovery (T07-T09).** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Packages 1 and 2 are implemented and locally qualified. Package 3 T07 safe assets is implemented and locally qualified; T08 profiles/onboarding and T09 discovery/join are next.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Delivery PR | Delivered result |
 | --- | --- |
@@ -50,7 +50,9 @@ PR numbers are delivery references, not merge chronology: #40 merged before #39.
 - T06b qualification: [PR #44](https://github.com/ENGGP/thunderstrux/pull/44), executable `45c7e26`: baseline `p216-a78d9deb3001e890a85cafe7` passed build/typecheck, 339 integration tests and clean audit; E2E `p216-15b482330aafdb4263f4f282` passed 25 MFA/browser/webhook checks, including enforced committee handover. Operations `p217-ci-e7063f6faa` passed retired ownership/staff/audit restore, encrypted key recovery and rollback. Owned-resource cleanup passed. Owner handover requires current password/enrolled-login MFA, promotes the target before outgoing admin/revocation, clears the legacy pointer and audits atomically. No credentials, business or Stripe history move. Pointer retirement stays in place after code rollback.
 
 
-Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 32 migrations, ending in 20261009010000_private_staff_invites; current schema has 21 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
+T07 executable `4e6eedd`: baseline `p216-6dfa74ac94482c7b81ab2ae4` passed build/typecheck, 346 integration checks and clean audit. Operations `p217-ci-f0f9ce05fd` passed persistent object restart, database/object restore with hash verification, secrets, migration and rollback. Patched storage/app image scans, Dockerfile lint and 30 runner guards pass; run-owned cleanup completed. [[Society Profiles and Assets]] owns quotas, sanitisation, private previews, reference-gated public delivery and delayed cleanup. No development migration/redeployment or hosted activation occurred; backup both metadata and bytes before rollout.
+
+Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 33 migrations, ending in 20261011010000_safe_assets; current schema has 22 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
 
 PR #40 removes PR/push triggers from test workflows. Local checks follow the risk table: documentation-only changes use docs/diff checks and claim review, with no functionality tests; code changes need one successful applicable run, with repeats justified by changed inputs, failures or a documented reliability concern. Scheduled Security Audit remains enabled. GitHub protection readback on 2026-10-09 found no required status checks/rulesets; force pushes and branch deletion were disallowed. Review local evidence in every PR (VALID-001).
 
@@ -60,7 +62,7 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 
 The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. These are target contracts, not new deployed features: free/paid membership entitlement parity, free-purchase cancellation, mixed-event publication without Stripe for eligible free types and a single visual token source. Source review found BOOT-001: T08 must extend the pointer-only bootstrap check to active staff authority after T06 pointer retirement. The single-primary traceability row is now partial until that guard and regressions land. Existing T01-T06 delivery evidence and hosted gates are unchanged. Validation for this reconciliation is documentation/diff/claim review only.
 
-1. Plan Package 3 society profiles/discovery (T07-T09) from refreshed main after [PR #44](https://github.com/ENGGP/thunderstrux/pull/44). Package 2 is complete locally; STAFF-001 is resolved.
+1. Continue Package 3 with T08 profiles/onboarding (including BOOT-001), then T09 discovery/join, from refreshed main after each qualified checkpoint. Package 2 and T07 are complete locally; STAFF-001 is resolved.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 3. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work; do it when its dependencies are met.
 

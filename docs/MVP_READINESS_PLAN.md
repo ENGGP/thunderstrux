@@ -293,10 +293,16 @@ T06b implementation and qualification (2026-10-09), [PR #44](https://github.com/
 ### Identity, assets and discovery
 
 #### T07 — Safe branding/product image assets
-- [ ] Complete. **Dependencies:** T05.
+- [x] Implemented and locally qualified (2026-10-11); hosted activation separate. **Dependencies:** T05.
 - **Schema/API:** Asset(owner/uploader/key/type/bytes/dimensions/hash/state); lib/assets storage interface with local Docker object-store and configured hosted adapter; scoped asset POST/delete. Ready same-tenant assets only.
 - **Rules:** JPEG/PNG/WebP, <=5 MB input, <=4096x4096 dimensions, decode/re-encode/strip metadata; reject SVG/HTML/polyglots/traversal/decompression bombs and arbitrary remote fetch. Opaque object keys; fail-closed upload limits/quotas, MFA+management permission. Delete only unreferenced assets; delayed orphan GC.
 - **Tests/done:** Malicious content, tenant association/deletion, interrupted upload, object loss, persistence and cleanup pass. Public delivery safe content/cache headers; credentials server-only; local adapter works before hosting.
+
+**Local delivery evidence (executable `4e6eedd`):** `node scripts/run-e2e.mjs baseline`, `p216-6dfa74ac94482c7b81ab2ae4`, passed frozen install, production build/typecheck, all 33 migrations, 346 integration checks in 40 files and audit with no known vulnerabilities. Earlier baseline `p216-288ad18f088af1062e084449` exposed an MFA fixture missing real enforcement configuration; the fixture was corrected without weakening the denial assertion. The subsequent full baseline passed; focused final public-endpoint follow-up `p216-e2b1b801aba6514d283c9edb` passed build/typecheck and seven asset regressions. The final Debian runtime refresh then justified the final full baseline above.
+
+`node scripts/run-operations-tests.mjs`, `p217-ci-f0f9ce05fd`, passed migration/deploy, synthetic file secrets, persistent object-store restart, database plus object restore/hash verification, unsafe-database refusal and rollback. Initial object-store and app image scans failed; patched final images pass pinned Trivy's fixable high/critical gate with zero matching findings. Both changed Dockerfiles pass pinned Hadolint; runner guards pass 30/30. Docs/diff checks pass. Owned-resource cleanup is confirmed by run manifests/operations inventory; logs and evidence are retained, development data/backups preserved.
+
+Second-pass self-review covered parser/body bounds, permissions/tenant concealment, live session/MFA under locks, reserved quota concurrency, recoverable provider failures, reference-gated delivery and deletion/GC ordering. [[obsidian/Society Profiles and Assets|Society Profiles and Assets]] owns the contracts. Apply 20261011010000_safe_assets once before rollout; preserve additive metadata/objects on rollback. Independent security/migration review, real hosted storage acceptance, worker scheduling and off-machine metadata/object recovery remain activation gates. No development or hosted rollout is claimed.
 
 #### T08 — Editable society profiles and onboarding
 - [ ] Complete. **Dependencies:** T06, T07.

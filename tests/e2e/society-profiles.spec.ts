@@ -70,7 +70,7 @@ test("society profile saves branding, keeps conflicting edits and remains public
   });
   await page.getByLabel("Society name").fill("Unsaved local edit");
   await page.getByRole("button", { name: "Save profile", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("profile changed");
+  await expect(page.locator("form").getByRole("alert")).toContainText("profile changed");
   await expect(page.getByLabel("Society name")).toHaveValue(
     "Unsaved local edit",
   );

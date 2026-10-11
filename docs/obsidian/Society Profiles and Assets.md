@@ -32,7 +32,7 @@ JPEG/PNG/WebP input is limited to 5 MiB and 4096 by 4096 decoded dimensions. Str
 
 `GET /api/orgs/[orgSlug]/assets/[assetId]` is an authorised preview with private/no-store headers. `DELETE` denies referenced or uploading assets and creates an audited tombstone before deleting bytes. Repeat deletion recovers interrupted storage deletion without duplicate audit entries. Uploaded images are not automatically public.
 
-`GET /api/public/assets/[assetId]` serves only ready images referenced by public content, with an explicit WebP content type, nosniff, content-hash ETag and five-minute cache lifetime. Unattached/pending/deleted assets return 404. T08 adds the first public reference consumer (profile logo/cover); before that checkpoint uploads remain private previews.
+`GET /api/public/assets/[assetId]` serves only ready images referenced by public content, with an explicit WebP content type, nosniff, content-hash ETag and five-minute cache lifetime. Unattached/pending/deleted assets return 404. Profile logos/covers are the current public reference consumer; other uploads remain private previews.
 
 Uploads move pending -> ready only after storage verification and a transaction rechecking session version, live permission and MFA. Provider/authority failures retain a failed record/key for recovery. No provider call occurs while database locks are held. Lock ordering is User -> Organisation -> Asset.
 

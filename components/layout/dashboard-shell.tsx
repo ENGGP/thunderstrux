@@ -8,6 +8,7 @@ const navItems: Array<{ label: string; href: string; permission?: OrganisationPe
   { label: "Dashboard", href: "" }, { label: "Events", href: "/events", permission: "events:read" },
   { label: "Orders", href: "/orders", permission: "orders:read" },
   { label: "Notifications", href: "/notifications", permission: "orders:email_resend" },
+  { label: "Society profile", href: "/settings/profile", permission: "organisation:settings" },
   { label: "Stripe settings", href: "/settings", permission: "stripe:manage" },
   { label: "Staff", href: "/settings/staff", permission: "staff:manage" }
 ];

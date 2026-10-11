@@ -13,7 +13,7 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 
 ## Current State
 
-**Packages 1 and 2 are implemented and locally qualified. Package 3 T07 safe assets is implemented and locally qualified; T08 profiles/onboarding and T09 discovery/join are next.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Packages 1 and 2 are implemented and locally qualified. Package 3 T07 safe assets and T08 profiles/onboarding are implemented and locally qualified; T09 discovery/join is next.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Delivery PR | Delivered result |
 | --- | --- |
@@ -31,6 +31,8 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 | [#43](https://github.com/ENGGP/thunderstrux/pull/43) | T06a private versioned invitation delivery, explicit acceptance, resend/revoke and active-role preservation |
 | [#44](https://github.com/ENGGP/thunderstrux/pull/44) | T06b atomic owner handover, legacy pointer retirement and retained business/Stripe history |
 | [#45](https://github.com/ENGGP/thunderstrux/pull/45) | Local development stale-module recovery, Next 16.3.8 activation, backed-up migration and notification-key configuration; hosted activation remains separate |
+| [#47](https://github.com/ENGGP/thunderstrux/pull/47) | T07 sanitised tenant assets, recoverable S3 storage, patched local object-store and metadata/object restore |
+| [#48](https://github.com/ENGGP/thunderstrux/pull/48) | T08 public profiles/resumable setup, optimistic image references and post-retirement bootstrap fencing |
 
 PR numbers are delivery references, not merge chronology: #40 merged before #39.
 
@@ -52,7 +54,9 @@ PR numbers are delivery references, not merge chronology: #40 merged before #39.
 
 T07 executable `4e6eedd`: baseline `p216-6dfa74ac94482c7b81ab2ae4` passed build/typecheck, 346 integration checks and clean audit. Operations `p217-ci-f0f9ce05fd` passed persistent object restart, database/object restore with hash verification, secrets, migration and rollback. Patched storage/app image scans, Dockerfile lint and 30 runner guards pass; run-owned cleanup completed. [[Society Profiles and Assets]] owns quotas, sanitisation, private previews, reference-gated public delivery and delayed cleanup. No development migration/redeployment or hosted activation occurred; backup both metadata and bytes before rollout.
 
-Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 33 migrations, ending in 20261011010000_safe_assets; current schema has 22 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
+T08 executable `4303195`: baseline `p216-60f24b14c577aa799a8af31f` passes build/typecheck, 350 integration checks and clean audit. Browser revision `67b348d`, run `p216-d64be0b22f4859dac91c2d28`, passes 27 complete MFA/browser/webhook checks; public/mobile/form screenshots were reviewed. Operations `p217-ci-4e79bc4abe` passes profile/image association restore and rollback. Owned-resource cleanup completed. BOOT-001 is resolved under User/sorted Organisation locks; profile completion is separate from Stripe readiness. [[Society Profiles and Assets]] and the readiness ledger record contracts and corrected failed attempts. Hosted activation and independent production review remain separate.
+
+Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 34 migrations, ending in 20261011020000_society_profiles; current schema has 22 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
 
 PR #40 removes PR/push triggers from test workflows. Local checks follow the risk table: documentation-only changes use docs/diff checks and claim review, with no functionality tests; code changes need one successful applicable run, with repeats justified by changed inputs, failures or a documented reliability concern. Scheduled Security Audit remains enabled. GitHub protection readback on 2026-10-09 found no required status checks/rulesets; force pushes and branch deletion were disallowed. Review local evidence in every PR (VALID-001).
 
@@ -60,9 +64,9 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 
 ## Next Safe Actions
 
-The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. These are target contracts, not new deployed features: free/paid membership entitlement parity, free-purchase cancellation, mixed-event publication without Stripe for eligible free types and a single visual token source. Source review found BOOT-001: T08 must extend the pointer-only bootstrap check to active staff authority after T06 pointer retirement. The single-primary traceability row is now partial until that guard and regressions land. Existing T01-T06 delivery evidence and hosted gates are unchanged. Validation for this reconciliation is documentation/diff/claim review only.
+The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. Free/paid membership entitlement parity, free-purchase cancellation and mixed-event publication remain later implementation targets. T08 introduces the scoped visual token source and resolves the BOOT-001 guard discovered during reconciliation, restoring single-primary traceability. Earlier delivery evidence and hosted gates remain dated; documentation reconciliation itself did not establish functionality/deployment evidence.
 
-1. Continue Package 3 with T08 profiles/onboarding (including BOOT-001), then T09 discovery/join, from refreshed main after each qualified checkpoint. Package 2 and T07 are complete locally; STAFF-001 is resolved.
+1. Finish Package 3 with T09 discovery/join from refreshed main. Package 2, T07 and T08 are complete locally; STAFF-001 and BOOT-001 are resolved.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 3. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work; do it when its dependencies are met.
 

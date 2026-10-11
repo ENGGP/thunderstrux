@@ -1,102 +1,92 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/db";
-
-type OrganisationDetailsPageProps = {
-  params: Promise<{
-    orgSlug: string;
-  }>;
-};
-
-function formatDateTime(value: Date) {
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
-
+import { publicOrganisation } from "@/lib/organisations/public-organisations";
 export default async function OrganisationDetailsPage({
-  params
-}: OrganisationDetailsPageProps) {
-  const { orgSlug } = await params;
-  const organisation = await prisma.organisation.findUnique({
-    where: { slug: orgSlug },
-    select: {
-      id: true,
-      name: true,
-      slug: true
-    }
-  });
-
-  if (!organisation) {
-    notFound();
-  }
-
-  const upcomingEvents = await prisma.event.findMany({
-    where: {
-      organisationId: organisation.id,
-      status: "published",
-      startTime: {
-        gte: new Date()
-      }
-    },
-    orderBy: {
-      startTime: "asc"
-    },
-    select: {
-      id: true,
-      title: true,
-      startTime: true,
-      location: true
-    }
-  });
-
+  params,
+}: {
+  params: Promise<{ orgSlug: string }>;
+}) {
+  const organisation = await publicOrganisation((await params).orgSlug);
+  if (!organisation) notFound();
+  const formatDate = (value: Date) =>
+    new Intl.DateTimeFormat("en-AU", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: organisation.timeZone,
+    }).format(value);
   return (
-    <main className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-6 lg:px-8">
+    <main className="society-surface min-h-screen px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-sm text-neutral-500">Organisation</p>
-          <h1 className="mt-2 text-3xl font-semibold text-neutral-950">
-            {organisation.name}
-          </h1>
-          <p className="mt-2 text-sm text-neutral-500">{organisation.slug}</p>
-        </section>
-
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-neutral-950">
-              Upcoming events
-            </h2>
-            <p className="mt-1 text-sm text-neutral-500">
-              Published events from {organisation.name}.
+        <section className="society-panel overflow-hidden">
+          {organisation.coverAssetId && (
+            <img
+              src={`/api/public/assets/${organisation.coverAssetId}`}
+              alt=""
+              className="max-h-72 w-full object-cover"
+            />
+          )}
+          <div className="space-y-4 p-6">
+            {organisation.logoAssetId && (
+              <img
+                src={`/api/public/assets/${organisation.logoAssetId}`}
+                alt={`${organisation.name} logo`}
+                className="h-24 w-24 object-contain"
+              />
+            )}
+            <p className="text-sm">Society</p>
+            <h1 className="text-3xl font-semibold">{organisation.name}</h1>
+            <p className="whitespace-pre-wrap">
+              {organisation.description ||
+                "This society is getting its profile ready."}
             </p>
+            {organisation.supportEmail && (
+              <a href={`mailto:${organisation.supportEmail}`}>
+                {organisation.supportEmail}
+              </a>
+            )}
           </div>
-
-          {upcomingEvents.length === 0 ? (
-            <p className="text-sm text-neutral-600">
-              No upcoming events.
-            </p>
+        </section>
+        <nav aria-label="Society sections" className="flex gap-6 border-b pb-3">
+          <a href="#overview">Overview</a>
+          <a href="#events">Events</a>
+        </nav>
+        <section id="overview" className="society-panel space-y-4 p-6">
+          <h2 className="text-xl font-semibold">About this society</h2>
+          <p>Times are shown in {organisation.timeZone}.</p>
+          {organisation.refundPolicy && (
+            <div>
+              <h3 className="font-semibold">Refund policy</h3>
+              <p className="whitespace-pre-wrap">{organisation.refundPolicy}</p>
+            </div>
+          )}
+          {organisation.pickupPolicy && (
+            <div>
+              <h3 className="font-semibold">Pickup policy</h3>
+              <p className="whitespace-pre-wrap">{organisation.pickupPolicy}</p>
+            </div>
+          )}
+        </section>
+        <section id="events" className="society-panel p-6">
+          <h2 className="mb-4 text-xl font-semibold">Upcoming events</h2>
+          {!organisation.events.length ? (
+            <p>No upcoming events.</p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {upcomingEvents.map((event) => (
-                <article
-                  className="rounded-lg border border-neutral-200 p-4"
-                  key={event.id}
-                >
-                  <h3 className="font-medium text-neutral-950">{event.title}</h3>
-                  <dl className="mt-3 grid gap-2 text-sm text-neutral-700">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {organisation.events.map((event) => (
+                <article key={event.id} className="rounded-lg border p-4">
+                  <h3 className="font-semibold">{event.title}</h3>
+                  <dl className="mt-3 space-y-2">
                     <div>
-                      <dt className="font-medium text-neutral-950">Date</dt>
-                      <dd className="mt-1">{formatDateTime(event.startTime)}</dd>
+                      <dt className="font-medium">Date</dt>
+                      <dd>{formatDate(event.startTime)}</dd>
                     </div>
                     <div>
-                      <dt className="font-medium text-neutral-950">Location</dt>
-                      <dd className="mt-1">{event.location}</dd>
+                      <dt className="font-medium">Location</dt>
+                      <dd>{event.location}</dd>
                     </div>
                   </dl>
                   <Link
-                    className="mt-4 inline-flex h-9 items-center justify-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition hover:bg-neutral-700"
+                    className="society-link mt-4 inline-block"
                     href={`/events/${event.id}`}
                   >
                     View event

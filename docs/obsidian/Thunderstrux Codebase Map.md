@@ -34,7 +34,9 @@ Not implemented:
 
 - QR codes.
 
-Safe society image uploads, private previews and recoverable deletion are implemented in `lib/assets` and scoped organisation APIs (T07). See [[Society Profiles and Assets]]; profile attachment is the next checkpoint.
+Safe society image uploads, private previews and recoverable deletion are implemented in `lib/assets` and scoped organisation APIs (T07). T08 attaches ready profile logos/covers. See [[Society Profiles and Assets]].
+
+T08 adds `lib/organisations/bootstrap.ts`, `profile.ts` and `public-organisations.ts`, scoped profile APIs and `/dashboard/settings/profile`. Organisation settings authority controls editable public profile fields; optimistic versions and ready tenant-owned image references protect concurrent edits. Existing society detail URLs remain stable.
 
 Named staff users, invites, audit logs, per-user permissions, staged TOTP MFA, and provider-verified compensation refunds are implemented. Legacy organisation logins remain a controlled migration fallback. `OrganisationMember` remains join state, not management authority. Manual refund marking is still local bookkeeping; the separate compensation workflow verifies actual Stripe refunds.
 

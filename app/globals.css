@@ -6,6 +6,13 @@
     color-scheme: light;
     --background: #f7f8fa;
     --foreground: #171717;
+    --ts-ink: #24143b;
+    --ts-brand: #5b2acb;
+    --ts-brand-hover: #4c22af;
+    --ts-paper: #fbfafd;
+    --ts-surface: #ffffff;
+    --ts-border: #ddd6e7;
+    --ts-focus: #1e72d8;
   }
 
   * {
@@ -27,4 +34,17 @@
   a {
     text-decoration: none;
   }
+}
+
+@layer components {
+  .society-surface { background: var(--ts-paper); color: var(--ts-ink); overflow-wrap: anywhere; }
+  .society-panel { background: var(--ts-surface); border: 1px solid var(--ts-border); border-radius: 14px; }
+  .society-action { background: var(--ts-brand); color: white; }
+  .society-action:hover { background: var(--ts-brand-hover); }
+  .society-link, .society-surface a { color: var(--ts-brand); text-decoration: underline; text-underline-offset: 3px; }
+}
+
+.society-surface :is(a, button, input, textarea):focus-visible, .society-action:focus-visible {
+  outline: 2px solid var(--ts-focus);
+  outline-offset: 3px;
 }

@@ -50,6 +50,7 @@ Main models in `prisma/schema.prisma`:
 - `AccountSecurityEvent`
 - `NotificationOutbox`
 - `Organisation`
+- `Asset`
 - `OrganisationMember`
 - `OrganisationStaff`
 - `OrganisationStaffInvite`
@@ -508,13 +509,17 @@ Checkout is public-facing in URL shape, but requires a live active verified memb
 
 ## Account Lifecycle And Retained Records
 
-The schema has 21 models and 31 migrations through 20261005030000_account_closure. AuthToken stores purpose-bound digests and email/authVersion/expiry binding; AccountSecurityEvent is a private account ledger. NotificationOutbox stores encrypted immutable versioned intents and rotating worker leases separately from ticket EmailOutbox.
+The account-lifecycle delivery reached 21 models and 31 migrations through 20261005030000_account_closure. AuthToken stores purpose-bound digests and email/authVersion/expiry binding; AccountSecurityEvent is a private account ledger. NotificationOutbox stores encrypted immutable versioned intents and rotating worker leases separately from ticket EmailOutbox.
 
 Closure permanently retains the User ID/closedAt and disables credentials. Database guards prevent reopening. Immutable Order buyer email/name captures include provenance/date; closure fills missing captures from current account data without inventing purchase-time facts. Orders, tickets, attendance and audit/security records remain attached to the original user; new signup never inherits them. See [[Authentication and Dashboard Access]] and [[Email Delivery Implementation]] for the transactional fences and contact-reader rules.
 
 ## Invitation version migration
 
-`20261009010000_private_staff_invites` adds positive invitation versions, nullable outbox invite/version linkage, indexes and foreign-key/check constraints. Existing invitations start at version 1; no raw tokens are recovered and old invites are not automatically mailed. New private invitation mail and audits commit with their invitation mutation. Sorted User locks precede Organisation then invite/staff locks, shared with account closure, email change and staff management. The full migration chain is now 32 migrations with 21 models.
+`20261009010000_private_staff_invites` adds positive invitation versions, nullable outbox invite/version linkage, indexes and foreign-key/check constraints. Existing invitations start at version 1; no raw tokens are recovered and old invites are not automatically mailed. New private invitation mail and audits commit with their invitation mutation. Sorted User locks precede Organisation then invite/staff locks, shared with account closure, email change and staff management. That delivery reached 32 migrations with 21 models.
+
+## Society assets and profiles
+
+T07/T08 bring the current chain to 34 migrations and 22 models, ending in 20261011020000_society_profiles. Asset metadata retains tenant/uploader ownership, processed-byte hash and recoverable state; object bytes live separately. Profile logo/cover references use `(assetId, Organisation.id)` composite foreign keys to `(Asset.id, organisationId)`. Profile version and derived completion protect concurrent editable public fields, while event/payment authority is unchanged. Existing societies remain visible with empty public defaults. [[Society Profiles and Assets]] owns reference locks, delayed cleanup, bootstrap eligibility and metadata/object restore compatibility.
 
 ## Ownership retirement
 

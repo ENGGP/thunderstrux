@@ -14,6 +14,10 @@ This is a concise reference for implemented API routes. Security and data-model 
 
 `POST /api/orgs/[orgSlug]/assets?kind=logo|cover|event|product` uploads one multipart file. Scoped asset GET provides private previews; DELETE rejects references and records recoverable tombstones. Public asset GET serves only ready public references. [[Society Profiles and Assets]] owns format, quota, permission, recovery and storage contracts.
 
+## Society Profiles
+
+`GET/PATCH /api/orgs/[orgSlug]/profile` requires organisation settings permission and staff MFA and returns private/no-store `{profile}`. PATCH supplies name, description, supportEmail, refundPolicy, pickupPolicy, timeZone, nullable logoAssetId/coverAssetId and expectedProfileVersion. Unknown fields are rejected; conflicts return 409 without saving. Completion requires name/description/public contact, and Stripe readiness is separate. Bootstrap retains its 201 `{organisation}` contract while rejecting a retained association or active staff authority. [[Society Profiles and Assets]] owns validation, locks, public output and recovery.
+
 ## Mutation Origin Guard
 
 Custom cookie-authenticated mutation routes (`POST`, `PATCH`, `DELETE`) use a central trusted-origin guard.

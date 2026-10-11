@@ -29,4 +29,4 @@ T05 permissions and explicit personal/staff context are implemented and locally 
 
 ## Package 3 delivery
 
-T07 introduces bounded, sanitised tenant-owned image assets and S3-compatible storage, including a patched local Docker adapter and database/object recovery rehearsal. T08 profiles/onboarding and T09 discovery/join follow as separate checkpoints. [Society Profiles and Assets](obsidian/Society%20Profiles%20and%20Assets.md) owns the current contracts; the readiness plan records local qualification. Hosted storage and independent production review remain activation gates.
+T07 safe assets and T08 editable profiles/onboarding are implemented and locally qualified. T08 also closes BOOT-001 after ownership-pointer retirement; profile completion is separate from Stripe readiness. T09 discovery/join follows as the final checkpoint. [Society Profiles and Assets](obsidian/Society%20Profiles%20and%20Assets.md) owns the current contracts; the readiness plan records local qualification. Hosted storage and independent production review remain activation gates.

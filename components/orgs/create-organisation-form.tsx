@@ -38,7 +38,7 @@ export function CreateOrganisationForm() {
       });
 
       setSuccessMessage("Organisation created. Redirecting...");
-      router.push("/dashboard");
+      router.push("/dashboard/settings/profile");
       router.refresh();
     } catch (createError) {
       setError(

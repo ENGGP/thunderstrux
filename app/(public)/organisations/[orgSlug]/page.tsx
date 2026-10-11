@@ -1,6 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
+import {
+  AuthenticationRequiredError,
+  requireAuthenticatedUser,
+} from "@/lib/auth/access";
+import { prisma } from "@/lib/db";
+import {
+  SocietyJoin,
+  type JoinState,
+} from "@/components/organisations/society-join";
+export const dynamic = "force-dynamic";
 export default async function OrganisationDetailsPage({
   params,
 }: {
@@ -8,6 +18,29 @@ export default async function OrganisationDetailsPage({
 }) {
   const organisation = await publicOrganisation((await params).orgSlug);
   if (!organisation) notFound();
+  let joinState: JoinState = "anonymous";
+  try {
+    const user = await requireAuthenticatedUser();
+    if (user.accountRole === "organisation") joinState = "organisation";
+    else {
+      const joined = await prisma.organisationMember.findUnique({
+        where: {
+          userId_organisationId: {
+            userId: user.id,
+            organisationId: organisation.id,
+          },
+        },
+        select: { id: true },
+      });
+      joinState = joined
+        ? "joined"
+        : user.emailVerifiedAt
+          ? "available"
+          : "verify";
+    }
+  } catch (error) {
+    if (!(error instanceof AuthenticationRequiredError)) throw error;
+  }
   const formatDate = (value: Date) =>
     new Intl.DateTimeFormat("en-AU", {
       dateStyle: "medium",
@@ -44,6 +77,7 @@ export default async function OrganisationDetailsPage({
                 {organisation.supportEmail}
               </a>
             )}
+            <SocietyJoin slug={organisation.slug} state={joinState} />
           </div>
         </section>
         <nav aria-label="Society sections" className="flex gap-6 border-b pb-3">

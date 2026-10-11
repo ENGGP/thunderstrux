@@ -1,64 +1,42 @@
 import { NextResponse } from "next/server";
-import {
-  forbidden,
-  internalError,
-  unauthorized
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAccountRole
-} from "@/lib/auth/access";
+import { requireAccountRole } from "@/lib/auth/access";
 import { prisma } from "@/lib/db";
-
+import {
+  discoveryInput,
+  discoverOrganisations,
+} from "@/lib/organisations/discovery";
+import { organisationError } from "@/lib/organisations/http";
 export async function GET(request: Request) {
   try {
     const user = await requireAccountRole("member");
-    const { searchParams } = new URL(request.url);
-    const query = searchParams.get("q")?.trim() ?? "";
-
-    const organisations = await prisma.organisation.findMany({
-      where:
-        query.length > 0
-          ? {
-              OR: [
-                { name: { contains: query, mode: "insensitive" } },
-                { slug: { contains: query.toLowerCase(), mode: "insensitive" } }
-              ]
-            }
-          : undefined,
-      orderBy: { name: "asc" },
-      take: 25,
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        members: {
-          where: { userId: user.id },
-          select: { id: true },
-          take: 1
-        }
-      }
-    });
-
-    return NextResponse.json({
-      organisations: organisations.map((organisation) => ({
-        id: organisation.id,
-        name: organisation.name,
-        slug: organisation.slug,
-        joined: organisation.members.length > 0
-      }))
-    });
+    const params = new URL(request.url).searchParams;
+    const page = await discoverOrganisations(discoveryInput(params));
+    const joined = new Set(
+      (
+        await prisma.organisationMember.findMany({
+          where: {
+            userId: user.id,
+            organisationId: { in: page.organisations.map((row) => row.id) },
+          },
+          select: { organisationId: true },
+        })
+      ).map((row) => row.organisationId),
+    );
+    return NextResponse.json(
+      {
+        organisations: page.organisations.map(({ id, name, slug }) => ({
+          id,
+          name,
+          slug,
+          joined: joined.has(id),
+        })),
+        ...(params.has("limit") || params.has("cursor")
+          ? { pageInfo: page.pageInfo }
+          : {}),
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    console.error("Failed to search organisations", error);
-    return internalError();
+    return organisationError(error);
   }
 }

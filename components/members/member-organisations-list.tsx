@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type MemberOrganisation = {
@@ -13,15 +13,19 @@ type MemberOrganisation = {
 };
 
 export function MemberOrganisationsList({
-  organisations
+  organisations,
 }: {
   organisations: MemberOrganisation[];
 }) {
   const router = useRouter();
-  const [visibleOrganisations, setVisibleOrganisations] = useState(organisations);
+  const [visibleOrganisations, setVisibleOrganisations] =
+    useState(organisations);
   const [leavingSlug, setLeavingSlug] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setVisibleOrganisations(organisations);
+  }, [organisations]);
 
   async function leaveOrganisation(organisation: MemberOrganisation) {
     const confirmed = window.confirm(`Leave ${organisation.name}?`);
@@ -36,16 +40,16 @@ export function MemberOrganisationsList({
 
     try {
       await fetchJson(`/api/orgs/${organisation.slug}/leave`, {
-        method: "POST"
+        method: "POST",
       });
       setVisibleOrganisations((current) =>
-        current.filter((item) => item.id !== organisation.id)
+        current.filter((item) => item.id !== organisation.id),
       );
       setMessage(`Left ${organisation.name}.`);
       router.refresh();
     } catch (leaveError) {
       setError(
-        getClientErrorMessage(leaveError, "Unable to leave organisation.")
+        getClientErrorMessage(leaveError, "Unable to leave organisation."),
       );
     } finally {
       setLeavingSlug(null);

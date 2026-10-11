@@ -8,6 +8,11 @@ services:
       THUNDERSTRUX_RUNTIME_CONTAINER: "false"
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
+      ASSET_STORAGE_ENDPOINT: http://object-store:8333
+      ASSET_STORAGE_BUCKET: thunderstrux-assets
+      ASSET_STORAGE_PATH_STYLE: "true"
+      ASSET_STORAGE_ACCESS_KEY: local-assets
+      ASSET_STORAGE_SECRET_KEY: local-disposable-storage-only
     volumes:
       - .:/app
       - node_modules:/app/node_modules
@@ -17,5 +22,26 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
 
+  object-store:
+    image: thunderstrux-assets:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.assets
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: local-assets
+      AWS_SECRET_ACCESS_KEY: local-disposable-storage-only
+      S3_BUCKET: thunderstrux-assets
+    volumes:
+      - asset_data:/data
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000"]
+
 volumes:
   node_modules:
+  asset_data:

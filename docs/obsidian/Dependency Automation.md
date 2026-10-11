@@ -8,6 +8,10 @@ sources: [package.json, pnpm-lock.yaml, .github/workflows/security-audit.yml]
 
 # Dependency Automation
 
+## Asset runtime qualification (2026-10-11)
+
+T07 adds explicit Sharp 0.35.5 and AWS S3 SDK 3.1149.0 pins. The checksum-pinned SeaweedFS 4.48 upstream binary failed its fixable high/critical scan (x/net CVE-2026-78669 and Go stdlib CVE-2026-78667/78669/97031). `docker/Dockerfile.assets` rebuilds that exact source with digest-pinned Go 1.27.2 and x/net 0.60.0; the delivery image scan passes. The existing Node base also inherited vulnerable perl-base 5.36.0-7+deb12u3; explicit security-repository refresh in `docker/Dockerfile` installs the patched package. Pinned Trivy 0.68.2 scans of both final images report no fixable high/critical findings. Both Dockerfiles pass pinned Hadolint. This is dated local evidence, not ongoing advisory clearance or hosted activation.
+
 ## Current dependency remediation
 
 The D1-D5 dependency fixes were published through [PR #3](https://github.com/ENGGP/thunderstrux/pull/3), merge `b81c631`. The [post-remediation Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35290377481) passed. GitHub reported zero open dependency alerts on 2026-09-18. The failed runs and counts below are historical evidence.

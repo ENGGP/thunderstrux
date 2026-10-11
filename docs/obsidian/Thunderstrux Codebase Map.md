@@ -33,7 +33,8 @@ Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. Th
 Not implemented:
 
 - QR codes.
-- File uploads.
+
+Safe society image uploads, private previews and recoverable deletion are implemented in `lib/assets` and scoped organisation APIs (T07). See [[Society Profiles and Assets]]; profile attachment is the next checkpoint.
 
 Named staff users, invites, audit logs, per-user permissions, staged TOTP MFA, and provider-verified compensation refunds are implemented. Legacy organisation logins remain a controlled migration fallback. `OrganisationMember` remains join state, not management authority. Manual refund marking is still local bookkeeping; the separate compensation workflow verifies actual Stripe refunds.
 

@@ -7,13 +7,12 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
 # Keep the digest-pinned base, but refresh required Debian packages from its
-# security repository. Explicitly install libpcre2-8-0 so a vulnerable version
-# inherited from the base is upgraded (CVE-2026-103111).
+# security repository, including vulnerable PCRE and Perl inherited from the base.
 # hadolint ignore=DL3008
 RUN corepack enable \
   && corepack prepare pnpm@10.34.5 --activate \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl \
+  && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base \
   && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps

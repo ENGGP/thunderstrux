@@ -4,6 +4,7 @@ import { createUser } from "@/tests/helpers/test-data";
 
 test("society profile saves branding, keeps conflicting edits and remains public on mobile", async ({
   page,
+  browser,
   data,
 }) => {
   await login(page, data.owner.email);
@@ -95,20 +96,18 @@ test("society profile saves branding, keeps conflicting edits and remains public
   await expect(
     page.getByRole("img", { name: "Committee updated name logo" }),
   ).toBeVisible();
-  expect(await page.locator("body").textContent()).not.toContain(
-    data.owner.email,
-  );
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 900 });
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    ).toBe(true);
-    await page.screenshot({
-      path: `test-results/society-profile-${width}.png`,
-    });
-  }
+  const anonymous = await browser.newContext({ baseURL: "http://localhost:3100" });
+  try {
+    const publicPage = await anonymous.newPage();
+    await publicPage.goto(`/organisations/${data.organisation.slug}`);
+    await expect(publicPage.getByRole("heading", { name: "Committee updated name" })).toBeVisible();
+    expect(await publicPage.locator("body").textContent()).not.toContain(data.owner.email);
+    for (const width of [1280, 390]) {
+      await publicPage.setViewportSize({ width, height: 900 });
+      expect(await publicPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await publicPage.screenshot({ path: `test-results/society-profile-${width}.png` });
+    }
+  } finally { await anonymous.close(); }
 });
 test("new organisation bootstrap selects its resumable profile without a stale personal context", async ({
   page,

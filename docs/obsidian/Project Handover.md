@@ -31,6 +31,8 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 | [#43](https://github.com/ENGGP/thunderstrux/pull/43) | T06a private versioned invitation delivery, explicit acceptance, resend/revoke and active-role preservation |
 | [#44](https://github.com/ENGGP/thunderstrux/pull/44) | T06b atomic owner handover, legacy pointer retirement and retained business/Stripe history |
 | [#45](https://github.com/ENGGP/thunderstrux/pull/45) | Local development stale-module recovery, Next 16.3.8 activation, backed-up migration and notification-key configuration; hosted activation remains separate |
+| [#47](https://github.com/ENGGP/thunderstrux/pull/47) | T07 sanitised tenant assets, recoverable S3 storage, patched local object-store and metadata/object restore |
+| [#48](https://github.com/ENGGP/thunderstrux/pull/48) | T08 public profiles/resumable setup, optimistic image references and post-retirement bootstrap fencing |
 
 PR numbers are delivery references, not merge chronology: #40 merged before #39.
 
@@ -62,7 +64,7 @@ PR #40 removes PR/push triggers from test workflows. Local checks follow the ris
 
 ## Next Safe Actions
 
-The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. These are target contracts, not new deployed features: free/paid membership entitlement parity, free-purchase cancellation, mixed-event publication without Stripe for eligible free types and a single visual token source. Source review found BOOT-001: T08 must extend the pointer-only bootstrap check to active staff authority after T06 pointer retirement. The single-primary traceability row is now partial until that guard and regressions land. Existing T01-T06 delivery evidence and hosted gates are unchanged. Validation for this reconciliation is documentation/diff/claim review only.
+The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. Free/paid membership entitlement parity, free-purchase cancellation and mixed-event publication remain later implementation targets. T08 introduces the scoped visual token source and resolves the BOOT-001 guard discovered during reconciliation, restoring single-primary traceability. Earlier delivery evidence and hosted gates remain dated; documentation reconciliation itself did not establish functionality/deployment evidence.
 
 1. Finish Package 3 with T09 discovery/join from refreshed main. Package 2, T07 and T08 are complete locally; STAFF-001 and BOOT-001 are resolved.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.

@@ -14,9 +14,10 @@ type SearchOrganisation = {
   joined: boolean;
 };
 
-export function OrganisationSearch() {
+export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
   const router = useRouter();
   const revision = useRef(0);
+  const joinedRevision = useRef(joinedIds);
   const [query, setQuery] = useState("");
   const [organisations, setOrganisations] = useState<SearchOrganisation[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -66,6 +67,18 @@ export function OrganisationSearch() {
       revision.current++;
     };
   }, []);
+
+  useEffect(() => {
+    if (joinedRevision.current !== joinedIds) {
+      revision.current++;
+      setIsLoading(false);
+      joinedRevision.current = joinedIds;
+    }
+    const joined = new Set(joinedIds);
+    setOrganisations((current) =>
+      current.map((row) => ({ ...row, joined: joined.has(row.id) })),
+    );
+  }, [joinedIds]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

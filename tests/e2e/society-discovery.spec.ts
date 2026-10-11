@@ -43,6 +43,21 @@ test("anonymous society discovery and verified join/leave show fresh personal st
     page.getByRole("status").filter({ hasText: /^Joined$/ }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Manage joined societies" }).click();
+  await page
+    .getByLabel("Search organisations")
+    .fill("Discovery campus society");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const searchCard = page
+    .locator("article")
+    .filter({
+      has: page.getByRole("link", {
+        name: "Discovery campus society",
+        exact: true,
+      }),
+    });
+  await expect(
+    searchCard.getByRole("button", { name: "Joined", exact: true }),
+  ).toBeVisible();
   const card = page
     .locator("section")
     .filter({
@@ -63,6 +78,9 @@ test("anonymous society discovery and verified join/leave show fresh personal st
     .getByRole("button", { name: "Leave organisation", exact: true })
     .click();
   await expect(card).toHaveCount(0);
+  await expect(
+    searchCard.getByRole("button", { name: "Join", exact: true }),
+  ).toBeEnabled();
   await page.goto(`/organisations/${data.organisation.slug}`);
   await expect(
     page.getByRole("button", { name: "Join society", exact: true }),

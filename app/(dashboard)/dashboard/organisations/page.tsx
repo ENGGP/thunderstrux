@@ -44,7 +44,9 @@ export default async function MemberOrganisationsPage() {
           <MemberOrganisationsList organisations={organisations} />
         </section>
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <OrganisationSearch />
+          <OrganisationSearch
+            joinedIds={organisations.map((organisation) => organisation.id)}
+          />
         </section>
       </div>
     </main>

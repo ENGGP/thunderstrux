@@ -80,6 +80,18 @@ model Organisation {
   id                  String               @id @default(cuid())
   name                String
   slug                String               @unique
+  description         String               @default("")
+  supportEmail        String               @default("")
+  refundPolicy        String               @default("")
+  pickupPolicy        String               @default("")
+  timeZone            String               @default("Australia/Brisbane")
+  onboardingCompletedAt DateTime?
+  profileVersion      Int                  @default(1)
+  updatedAt           DateTime             @default(now()) @updatedAt
+  logoAssetId         String?
+  coverAssetId        String?
+  logoAsset           Asset?               @relation("SocietyLogo", fields: [logoAssetId, id], references: [id, organisationId], onDelete: Restrict)
+  coverAsset          Asset?               @relation("SocietyCover", fields: [coverAssetId, id], references: [id, organisationId], onDelete: Restrict)
   accountUserId       String?              @unique
   stripeAccountId     String?
   stripeAccountStatus String?
@@ -101,6 +113,7 @@ model Organisation {
 
   @@index([accountUserId])
   @@index([stripeAccountId])
+  @@index([name, id])
 }
 
 model Asset {
@@ -121,7 +134,10 @@ model Asset {
   unreferencedAt   DateTime?    @default(now())
   organisation     Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   uploadedBy       User         @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  logoProfiles     Organisation[] @relation("SocietyLogo")
+  coverProfiles    Organisation[] @relation("SocietyCover")
 
+  @@unique([id, organisationId])
   @@index([organisationId, status])
   @@index([status, createdAt])
   @@index([uploadedByUserId])

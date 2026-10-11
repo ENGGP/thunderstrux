@@ -10,6 +10,20 @@ sources: [lib/assets, lib/organisations, prisma/schema.prisma, docker-compose.de
 
 Package 3 is being delivered in dependency order: safe assets (T07), profiles/onboarding (T08), then discovery/join (T09). Implementation is not hosted activation; qualification evidence belongs in the readiness ledger and PR.
 
+## Profiles and Onboarding
+
+`/dashboard/settings/profile` requires live organisation settings authority and staff MFA. Its four steps save identity, optional branding and public operating policies, then show completion and links to implemented staff/security/payment settings. Saves retain unsaved local edits on failure; an optimistic version conflict requires an explicit reload, with confirmation before discarding edits. Continuing between steps keeps edits; save publishes the supplied profile fields.
+
+Profile completion requires a name, description and separately supplied valid public contact email. Existing profiles remain discoverable while incomplete. Contact does not default to the account's private email. Optional refund/pickup policies and IANA timezone are public; these fields do not change existing checkout/refund rules or Stripe readiness. Slug, tenant owner, Stripe fields and server completion/version timestamps cannot be edited through PATCH.
+
+`GET/PATCH /api/orgs/[orgSlug]/profile` exposes an explicit profile DTO. PATCH accepts the full editable field set plus expectedProfileVersion, bounds the body, requires origin/CSRF and fail-closed rate protection, then rechecks live session/permission/MFA under User -> Organisation -> sorted Asset locks. Version conflicts return 409; valid ready logo/cover images must match both society and slot. Composite database foreign keys additionally prevent cross-tenant references. Attaching clears the orphan clock; detaching starts a new 24-hour grace. Public delivery and all-reference deletion checks are separate predicates so future private content cannot accidentally become public.
+
+Bootstrap reserves the verified organisation account under its User lock and locks existing societies in ID order. Either a retained bootstrap pointer or active staff authority blocks another primary society, including after handover retires the pointer. Historical revoked rows alone do not block a new primary. Bootstrap creates the compatibility join row, active named owner and audit atomically; only slug uniqueness conflicts are retried. The new society clears stale dashboard context and opens profile setup. Handover never restores a retired pointer.
+
+Public `/organisations/[orgSlug]` uses a whitelisted profile DTO and at most 50 upcoming published events. All text is escaped; only implemented Overview/Events sections appear. Namespaced purple tokens in app/globals.css apply to these society surfaces and the explicit society button variant; existing button defaults and other pages keep their current styling.
+
+Apply 20261011020000_society_profiles before the profile app release. Its fields/defaults are additive; existing societies gain empty public contact/policies and Australia/Brisbane timezone. Keep fields/references when rolling code back. Recovery verifies profile completion/version/contact and logo metadata/object association together.
+
 ## Safe Asset Contract
 
 `POST /api/orgs/[orgSlug]/assets?kind=logo|cover|event|product` accepts one multipart `file`. Logo/cover requires organisation settings permission, event requires event management and product requires merchandise management. Requests retain trusted origin/CSRF, live identity, staff authority, MFA and fail-closed upload protection. Actor and tenant upload buckets each allow 20 attempts/hour. Delete allows 30 requests/10 minutes per actor/tenant. Quotas reserve pending and retained objects under tenant locks: 100 assets and 250 MiB per society.

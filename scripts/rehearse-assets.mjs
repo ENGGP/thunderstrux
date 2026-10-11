@@ -23,11 +23,18 @@ try {
     await storage.put(key, bytes);
     const asset = await prisma.asset.create({ data: { organisationId: organisation.id, uploadedByUserId: user.id, storageKey: key,
       kind: 'logo', status: 'ready', readyAt: new Date(), width: 8, height: 6, byteSize: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') } });
+    await prisma.organisation.update({ where: { id: organisation.id }, data: { logoAssetId: asset.id, description: 'Synthetic recovery society', supportEmail: 'recovery@example.com',
+      timeZone: 'Australia/Brisbane', profileVersion: 2, onboardingCompletedAt: new Date() } });
+    await prisma.asset.update({ where: { id: asset.id }, data: { unreferencedAt: null } });
     await writeFile(archive, JSON.stringify({ id: asset.id, key, bytes: bytes.toString('base64'), sha256: asset.sha256 }), { mode: 0o600 });
   } else {
     const record = JSON.parse(await readFile(archive, 'utf8'));
     const asset = await prisma.asset.findUniqueOrThrow({ where: { id: record.id } });
     if (asset.storageKey !== record.key || asset.sha256 !== record.sha256) throw new Error('Asset metadata did not survive restore');
+    const profile = await prisma.organisation.findUniqueOrThrow({ where: { id: asset.organisationId } });
+    if (profile.logoAssetId !== asset.id || profile.description !== 'Synthetic recovery society' || profile.supportEmail !== 'recovery@example.com' ||
+      profile.timeZone !== 'Australia/Brisbane' || profile.profileVersion !== 2 || !profile.onboardingCompletedAt || asset.unreferencedAt !== null)
+      throw new Error('Profile and image association did not survive restore');
     if (mode === 'remove') { await storage.delete(record.key); if (await storage.head(record.key)) throw new Error('Object removal failed'); }
     if (mode === 'restore') {
       const bytes = Buffer.from(record.bytes, 'base64');

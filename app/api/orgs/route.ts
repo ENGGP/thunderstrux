@@ -1,11 +1,11 @@
-import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
+import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import {
   badRequest,
   forbidden,
   internalError,
   unauthorized,
-  validationError
+  validationError,
 } from "@/lib/api/errors";
 import {
   AuthenticationRequiredError,
@@ -13,163 +13,76 @@ import {
   getOrganisationAccessForUser,
   mapOrganisationAccessToOrganisations,
   requireAccountRole,
+  requireVerifiedUser,
   requireAuthenticatedUser,
-  requireVerifiedUser
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
-import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
+import {
+  enforceRateLimit,
+  getRateLimitClientIp,
+} from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createOrganisationSchema } from "@/lib/validators/orgs";
 import { normaliseSlug } from "@/lib/validators/slug";
+import { bootstrapOrganisation } from "@/lib/organisations/bootstrap";
+import { contextCookieName } from "@/lib/auth/context-cookie";
 
-function isPrismaErrorCode(error: unknown, code: string): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === code
+function failure(error: unknown) {
+  if (error instanceof AuthenticationRequiredError) return unauthorized();
+  if (
+    error instanceof OrganisationAccessError &&
+    error.message === "Unable to generate a unique organisation slug"
+  )
+    return badRequest(error.message, [
+      { path: ["slug"], message: "Try a more specific organisation slug" },
+    ]);
+  if (
+    error instanceof OrganisationAccessError ||
+    error instanceof AccountVerificationError
+  )
+    return forbidden(error.message);
+  console.error(
+    "Organisation bootstrap failed",
+    error instanceof Error ? error.name : "UnknownError",
   );
+  return internalError();
 }
-
 export async function GET() {
   try {
     const user = await requireAuthenticatedUser();
-    const accessRows = await getOrganisationAccessForUser(user.id);
-    const organisations = mapOrganisationAccessToOrganisations(accessRows);
-
-    return NextResponse.json({ organisations });
+    return NextResponse.json({
+      organisations: mapOrganisationAccessToOrganisations(
+        await getOrganisationAccessForUser(user.id),
+      ),
+    });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    console.error(error);
-    return internalError();
+    return failure(error);
   }
 }
-
 export async function POST(request: Request) {
-  const trustedOriginError = enforceTrustedMutationRequest(request);
-
-  if (trustedOriginError) {
-    return trustedOriginError;
-  }
-
-  let user: { id: string };
-
+  const denied = enforceTrustedMutationRequest(request);
+  if (denied) return denied;
   try {
-    user = await requireAccountRole("organisation");
+    const user = await requireAccountRole("organisation");
     await requireVerifiedUser();
+    const limited = await enforceRateLimit({
+      policy: "organisation_create",
+      request,
+      keyParts: [user.id, getRateLimitClientIp(request)],
+    });
+    if (limited) return limited;
+    const input = await validateJson(request, createOrganisationSchema);
+    if (!input.success) return validationError(input.details);
+    if (!normaliseSlug(input.data.slug ?? input.data.name))
+      return badRequest("Organisation slug must contain letters or numbers", [
+        { path: ["slug"], message: "Slug could not be generated from input" },
+      ]);
+    const organisation = await bootstrapOrganisation(user, input.data);
+    const response = NextResponse.json({ organisation }, { status: 201 });
+    // A retired/personal context must not hide the newly bootstrapped society.
+    response.cookies.delete(contextCookieName);
+    return response;
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) {
-      return forbidden(error.message);
-    }
-
-    console.error(error);
-    return internalError();
+    return failure(error);
   }
-
-  const limitResponse = await enforceRateLimit({
-    policy: "organisation_create",
-    request,
-    keyParts: [user.id, getRateLimitClientIp(request)]
-  });
-
-  if (limitResponse) {
-    return limitResponse;
-  }
-
-  const validation = await validateJson(request, createOrganisationSchema);
-
-  if (!validation.success) {
-    return validationError(validation.details);
-  }
-
-  const baseSlug = normaliseSlug(validation.data.slug ?? validation.data.name);
-
-  if (!baseSlug) {
-    return badRequest("Organisation slug must contain letters or numbers", [
-      { path: ["slug"], message: "Slug could not be generated from input" }
-    ]);
-  }
-
-  for (let suffix = 0; suffix < 100; suffix += 1) {
-    const slug = suffix === 0 ? baseSlug : `${baseSlug}-${suffix + 1}`;
-
-    try {
-      const organisation = await prisma.$transaction(async (tx) => {
-        await lockVerifiedAccount(tx, user.id);
-        const existingOrganisation = await tx.organisation.findUnique({
-          where: {
-            accountUserId: user.id
-          },
-          select: {
-            id: true
-          }
-        });
-
-        if (existingOrganisation) {
-          throw new OrganisationAccessError(
-            "Organisation account already has an organisation"
-          );
-        }
-
-        const organisation = await tx.organisation.create({
-          data: {
-            name: validation.data.name,
-            slug,
-            accountUserId: user.id
-          },
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            createdAt: true
-          }
-        });
-
-        await tx.organisationMember.create({
-          data: {
-            organisationId: organisation.id,
-            userId: user.id,
-            role: "org_owner"
-          }
-        });
-
-        await tx.organisationStaff.create({
-          data: {
-            organisationId: organisation.id,
-            userId: user.id,
-            role: "owner",
-            status: "active",
-            acceptedAt: new Date()
-          }
-        });
-
-        return organisation;
-      });
-
-      return NextResponse.json({ organisation }, { status: 201 });
-    } catch (error) {
-      if (isPrismaErrorCode(error, "P2002")) {
-        continue;
-      }
-
-      if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) {
-        return forbidden(error.message);
-      }
-
-      console.error(error);
-      return internalError();
-    }
-  }
-
-  return badRequest("Unable to generate a unique organisation slug", [
-    { path: ["slug"], message: "Try a more specific organisation slug" }
-  ]);
 }

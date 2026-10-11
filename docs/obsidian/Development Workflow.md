@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Seeding and Data]]"]
 sources: [package.json, docker-compose.dev.yml, scripts/run-e2e.mjs]
@@ -65,6 +65,8 @@ localhost:5433 in dev override only
 ```
 
 ## Docker Configuration
+
+Society images require the development object-store service and its persistent asset_data volume. Normal `pnpm docker:dev` starts it. For an existing stack, start it with `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build object-store` before `pnpm docker:restart`; the recovery helper recreates only the app/dependency cache. Back up PostgreSQL before additive migration and retain object bytes alongside metadata. Never remove database, Redis or asset volumes to fix a stale app.
 
 `docker-compose.yml` is production-like:
 

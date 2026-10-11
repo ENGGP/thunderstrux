@@ -320,10 +320,16 @@ Final browser revision `67b348d`, complete `node scripts/run-e2e.mjs`, `p216-d64
 Final operations `p217-ci-4e79bc4abe` passed full migration/deploy, profile completion/version/contact plus logo metadata/object restore, secrets, rollback and failed-migration blocking. Runner guards pass 30/30; hosted asset overlay syntax passes with synthetic configuration; docs/diff checks pass. Owned-resource cleanup is complete for passing and failed runs, with logs/manifests/screenshots retained. Second-pass self-review covered bootstrap/version fencing, sorted locks, optimistic conflicts, composite tenant references, public DTOs, escaped output, resumable edits and compatibility with handover/payments. Additive migration 20261011020000_society_profiles precedes rollout; independent security/migration review and hosted activation remain separate gates.
 
 #### T09 — Society discovery, profile and join relationships
-- [ ] Complete. **Dependencies:** T03, T08.
-- **Code/API:** Bounded lib/organisations/public-organisations, /api/public/organisations/search; extend existing org search/join/leave, organisation-search/member-organisations-list and profile settings.
+
+Implementation acceptance (2026-10-11): anonymous safe `/organisations` directory and bounded literal/cursor search; explicit verification-aware profile join controls, caller-only idempotent joins/leaves, fresh personal join lists and stale-search fencing. Preserve default private search envelope and all existing guards. High risk for shared identity/domain/navigation: full Docker baseline and E2E, plus runner guards for the new browser entry. No schema/dependency/provider/worker change; reuse T08 migration/restore and T07 image evidence. Rollback app only; retain free affiliations and additive schema/assets. No paid commerce, future tabs or T15 anonymous event detail work. MembershipGrant survival becomes a T22/T24 regression when that model exists; current coverage verifies staff, paid orders and tickets remain intact.
+- [x] Complete locally. **Dependencies:** T03, T08.
+- **Code/API:** Bounded lib/organisations/discovery and live-locked join services, /api/public/organisations/search, anonymous /organisations directory and dynamic profile controls; extend existing org search/join/leave and personal organisation-search/member-organisations-list.
 - **Rules:** Anonymous public-safe society search; verified member joins only OrganisationMember. Leave deletes only caller relationship; paid grants remain. Joined badge != paid active membership; no staff authority or private roster exposure. Bounded q and cursor searches.
-- **Tests/done:** Anonymous search/escaped inputs, join/leave concurrency/replay, no cross-user deletion, fresh onboarding state and later paid-grant survival pass.
+- **Tests/done:** Anonymous search/escaped inputs, join/leave concurrency/replay, no cross-user deletion, public DTO privacy and fresh joined/search state. Preserve current staff, paid orders and tickets; add paid-grant survival coverage in T22/T24 when MembershipGrant exists.
+
+T09 local qualification (2026-10-12): domain/API/integration executable `15a1e4b`, baseline `p216-e62123415fe7e1788a49219e`, passed production build/typecheck, 34 migrations, all 354 tests in 42 files and dependency audit with no known vulnerabilities. Final browser/UI executable `5931086`, full campaign `p216-86e01a93979f3ffc3d963f33`, passed 3 enforced-MFA, 20 desktop/mobile/account/profile/discovery and 7 signed-webhook/notification checks. Later UI-only commits add pagination/stale-response coverage and synchronise search badges after leave; the final browser production build/typecheck covers those inputs. Shared server/domain inputs remain the tested baseline. Mobile profile/header screenshot reviewed; 30 runner guards and docs/diff checks pass. Both manifests record passed and cleanupComplete; evidence is retained.
+
+Second-pass self-review covered bounded literal queries, stable same-name cursors, public DTO/cache separation, caller-only affiliation, live version/verification/account-role fencing under User -> Organisation locks, preserved transport/rate guards, no staff/payment authority, callback/no-auto-join and fresh joined/search state. Existing response envelopes and commerce/tenant/closure/handover assertions remain intact. No T09 schema/dependency/operations change: T08 recovery and T07 image qualification remain applicable. Independent production review and hosted activation stay separate.
 
 ### Event and ticket completion
 
@@ -662,7 +668,7 @@ Current status is baseline, not future qualification. COMPLETE capabilities map 
 | 6.1 member profile onboarding | PARTIAL | T03–T04, T09 | Completion/edit/privacy | COMPLETE |
 | 6.1 organisation information onboarding | PARTIAL | T08, T17 | Wizard/readiness | COMPLETE |
 | 6.1 role-aware nav/access | PARTIAL | T05, T34 | Mobile/revoked/role tests | COMPLETE |
-| 6.2 name/description/branding/public profile | PARTIAL | T07–T08 | Safe assets/profile DTO/E2E | COMPLETE |
+| 6.2 name/description/branding/public profile | COMPLETE | T07–T08 | Safe assets/profile DTO/E2E | COMPLETE |
 | 6.2 display public events | COMPLETE | T08, T15 | Visibility/date filter | COMPLETE |
 | 6.2 private admin settings | PARTIAL | T05, T08, T17 | Field separation/denial | COMPLETE |
 | 6.2 society identity/events/membership home base | PARTIAL | T09, T24, T26, T34 | Profile tab journeys | COMPLETE |

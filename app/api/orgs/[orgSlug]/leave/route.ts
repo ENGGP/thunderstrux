@@ -1,78 +1,28 @@
 import { NextResponse } from "next/server";
-import {
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAccountRole
-} from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { requireAccountRole } from "@/lib/auth/access";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-
-type RouteContext = {
-  params: Promise<{
-    orgSlug: string;
-  }>;
-};
-
-export async function POST(request: Request, context: RouteContext) {
-  const trustedOriginError = enforceTrustedMutationRequest(request);
-
-  if (trustedOriginError) {
-    return trustedOriginError;
-  }
-
-  const { orgSlug } = await context.params;
-
+import { setSocietyJoin } from "@/lib/organisations/join";
+import { organisationError } from "@/lib/organisations/http";
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ orgSlug: string }> },
+) {
+  const denied = enforceTrustedMutationRequest(request);
+  if (denied) return denied;
   try {
     const user = await requireAccountRole("member");
-    const limitResponse = await enforceRateLimit({
+    const { orgSlug } = await context.params;
+    const limited = await enforceRateLimit({
       policy: "organisation_join_leave",
       request,
-      keyParts: [user.id, orgSlug, "leave"]
+      keyParts: [user.id, orgSlug, "leave"],
     });
-
-    if (limitResponse) {
-      return limitResponse;
-    }
-
-    const organisation = await prisma.organisation.findUnique({
-      where: { slug: orgSlug },
-      select: { id: true, name: true, slug: true }
-    });
-
-    if (!organisation) {
-      return notFound("Organisation was not found");
-    }
-
-    await prisma.organisationMember.deleteMany({
-      where: {
-        userId: user.id,
-        organisationId: organisation.id
-      }
-    });
-
+    if (limited) return limited;
     return NextResponse.json({
-      organisation: {
-        ...organisation,
-        joined: false
-      }
+      organisation: await setSocietyJoin(user, orgSlug, false),
     });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    console.error("Failed to leave organisation", error);
-    return internalError();
+    return organisationError(error);
   }
 }

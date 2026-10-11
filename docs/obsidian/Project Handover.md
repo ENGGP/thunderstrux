@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-11
+last-reviewed: 2026-10-12
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]"]
@@ -13,7 +13,7 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 
 ## Current State
 
-**Packages 1 and 2 are implemented and locally qualified. Package 3 T07 safe assets and T08 profiles/onboarding are implemented and locally qualified; T09 discovery/join is next.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Packages 1, 2 and 3 are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Delivery PR | Delivered result |
 | --- | --- |
@@ -33,6 +33,7 @@ This is the only current handover. It covers delivery from **PR #31 onward**, wi
 | [#45](https://github.com/ENGGP/thunderstrux/pull/45) | Local development stale-module recovery, Next 16.3.8 activation, backed-up migration and notification-key configuration; hosted activation remains separate |
 | [#47](https://github.com/ENGGP/thunderstrux/pull/47) | T07 sanitised tenant assets, recoverable S3 storage, patched local object-store and metadata/object restore |
 | [#48](https://github.com/ENGGP/thunderstrux/pull/48) | T08 public profiles/resumable setup, optimistic image references and post-retirement bootstrap fencing |
+| [#49](https://github.com/ENGGP/thunderstrux/pull/49) | T09 anonymous directory, bounded search, explicit verified free affiliations and fresh personal join state |
 
 PR numbers are delivery references, not merge chronology: #40 merged before #39.
 
@@ -56,17 +57,21 @@ T07 executable `4e6eedd`: baseline `p216-6dfa74ac94482c7b81ab2ae4` passed build/
 
 T08 executable `4303195`: baseline `p216-60f24b14c577aa799a8af31f` passes build/typecheck, 350 integration checks and clean audit. Browser revision `67b348d`, run `p216-d64be0b22f4859dac91c2d28`, passes 27 complete MFA/browser/webhook checks; public/mobile/form screenshots were reviewed. Operations `p217-ci-4e79bc4abe` passes profile/image association restore and rollback. Owned-resource cleanup completed. BOOT-001 is resolved under User/sorted Organisation locks; profile completion is separate from Stripe readiness. [[Society Profiles and Assets]] and the readiness ledger record contracts and corrected failed attempts. Hosted activation and independent production review remain separate.
 
+T09 baseline executable `15a1e4b`, run `p216-e62123415fe7e1788a49219e`, passes build/typecheck, 354 integration checks and clean audit. Final UI/browser executable `5931086`, run `p216-86e01a93979f3ffc3d963f33`, passes 30 MFA/browser/webhook checks, including explicit verified join, caller-only leave, fresh search badges, pagination and delayed-response fencing. Mobile screenshot reviewed; 30 runner guards and both owned-resource cleanups pass. Anonymous directory/DTOs and personalized profile controls preserve search contracts, staff and payment authority. No additional migration is required. The readiness ledger records final-content coverage and independent hosted gates.
+
 Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CLI 6.19.3. The migration chain has 34 migrations, ending in 20261011020000_society_profiles; current schema has 22 models. [[Architecture Overview]], [[Database and Multi Tenancy]] and [[Development Workflow]] provide the details.
 
 PR #40 removes PR/push triggers from test workflows. Local checks follow the risk table: documentation-only changes use docs/diff checks and claim review, with no functionality tests; code changes need one successful applicable run, with repeats justified by changed inputs, failures or a documented reliability concern. Scheduled Security Audit remains enabled. GitHub protection readback on 2026-10-09 found no required status checks/rulesets; force pushes and branch deletion were disallowed. Review local evidence in every PR (VALID-001).
 
-**Local development was refreshed on 2026-10-10 after a stale Turbopack module-resolution error. Hosted activation remains unverified.** The existing recovery helper rebuilt the app and replaced its labelled dependency cache: installed Next is 16.3.8, Prisma is generated, all 32 migrations are applied and /api/health/ready returns 200. The pre-refresh development archive is retained at tmp/dev-before-context-refresh-20261009.dump (UTC date; SHA-256 93359d6b4809dc0086e3223926c81d3295c2415b4f1ccaf182194f783b58f880), with a readable archive listing. A missing notification key was provisioned only after confirming no existing key/jobs; ignored .env and a separate Windows-user-only key backup retain it. Database/Redis data volumes were preserved. Dashboard/settings compilation and unauthenticated context denial passed. See [[Troubleshooting]]; no production deployment or new full-suite campaign was performed. Apply additive migrations once before future app/worker rollout. [[Production Operations]] owns deployment, backup and compatibility-gated rollback; qualified test stacks are disposable and do not establish hosted rollout.
+**Local Package 3 activation completed on 2026-10-12; hosted activation remains unverified.** A fresh custom PostgreSQL archive tmp/dev-before-package3-20261012.dump and matching .list are retained with Windows-user-only ACLs (SHA-256 7977c8df5b377e4a9e03ad41fefda02d5045a1aed0b21bf21d9f6a765e192f10). The earlier 20261011 archive and all prior backups remain. Started the patched local object store, then used the existing app recovery helper to refresh only the verified node_modules cache and deploy additive migrations. All 34 migrations are current; database/Redis volumes were preserved and thunderstrux_asset_data is persistent. Readiness, anonymous directory/search/profile return 200, anonymous protected profile returns 401, missing public image returns 404, and bounded object inspection succeeds with zero missing metadata. No development reset/seed, destructive cleanup or production deployment occurred. Logs are retained under tmp/package3-development-*.
+
+Prior local refresh (2026-10-10) resolved a stale Turbopack module error, installed Next 16.3.8 and applied 32 migrations. Its archive tmp/dev-before-context-refresh-20261009.dump remains (SHA-256 93359d6b4809dc0086e3223926c81d3295c2415b4f1ccaf182194f783b58f880). The missing notification key was provisioned only after confirming no existing key/jobs; ignored .env and a separate Windows-user-only key backup retain it. See [[Troubleshooting]] and [[Production Operations]] for backup and compatibility-gated rollback. Disposable qualification does not establish hosted rollout.
 
 ## Next Safe Actions
 
 The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. Free/paid membership entitlement parity, free-purchase cancellation and mixed-event publication remain later implementation targets. T08 introduces the scoped visual token source and resolves the BOOT-001 guard discovered during reconciliation, restoring single-primary traceability. Earlier delivery evidence and hosted gates remain dated; documentation reconciliation itself did not establish functionality/deployment evidence.
 
-1. Finish Package 3 with T09 discovery/join from refreshed main. Package 2, T07 and T08 are complete locally; STAFF-001 and BOOT-001 are resolved.
+1. Start Package 4 ticket foundations (T10 -> T11 -> T12 -> T13) from refreshed main. Packages 1–3 are complete locally; STAFF-001 and BOOT-001 are resolved. Paid memberships/merchandise and T15 anonymous event details remain later packages.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 3. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work; do it when its dependencies are met.
 

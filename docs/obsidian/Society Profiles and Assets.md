@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-11
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[API Reference]]", "[[Database and Multi Tenancy]]", "[[Production Operations]]"]
 sources: [lib/assets, lib/organisations, prisma/schema.prisma, docker-compose.dev.yml]
@@ -8,7 +8,7 @@ sources: [lib/assets, lib/organisations, prisma/schema.prisma, docker-compose.de
 
 # Society Profiles and Assets
 
-Package 3 is being delivered in dependency order: safe assets (T07), profiles/onboarding (T08), then discovery/join (T09). Implementation is not hosted activation; qualification evidence belongs in the readiness ledger and PR.
+Package 3 follows dependency order: safe assets (T07), profiles/onboarding (T08), then discovery/join (T09). Implementation is not hosted activation; qualification evidence belongs in the readiness ledger and PR.
 
 ## Profiles and Onboarding
 
@@ -24,6 +24,18 @@ Public `/organisations/[orgSlug]` uses a whitelisted profile DTO and at most 50 
 
 Apply 20261011020000_society_profiles before the profile app release. Its fields/defaults are additive; existing societies gain empty public contact/policies and Australia/Brisbane timezone. Keep fields/references when rolling code back. Recovery verifies profile completion/version/contact and logo metadata/object association together.
 
+## Discovery and Free Affiliation
+
+`/organisations` is an anonymous directory, linked from the responsive shared navbar. Cards expose name, slug, a bounded description, public logo and the next upcoming published event. Incomplete profiles remain visible. Search treats wildcard characters literally, bounds queries to 120 characters and pages to 50 societies (default 25), and orders by name then ID. Opaque forward cursors are bound to the same query; the first-page link resets navigation. Empty, loading, invalid-cursor and recoverable error states are explicit.
+
+The public search API contains no join state, account contact, staff, Stripe or private roster fields. The authenticated search endpoint preserves its original default response envelope; explicit limit/cursor requests opt into pagination. Its joined flags and the dynamic profile join control belong only to the current caller and cannot enter public response caches.
+
+Anonymous profile visitors sign in with a return callback; unverified accounts are offered verification. Neither navigation nor authentication automatically joins a society. Verified member accounts explicitly join; organisation accounts do not. A Joined badge means free affiliation, not paid benefits or staff authority. `/dashboard/organisations` manages joins, including for named member staff without changing their selected staff context.
+
+Join and leave retain origin/CSRF, session, account-role and rate checks. The service locks and rechecks the live User before the Organisation; idempotent upsert/delete affects only that caller's OrganisationMember row. Leave preserves staff authority, other users, paid orders and tickets. Paid MembershipGrant does not exist yet; its survival regression belongs to T22/T24 when that model is introduced. Client refresh synchronises joined lists, and obsolete search responses cannot replace newer results.
+
+T09 adds no schema, provider or worker change. Rollback reverts app code while retaining joins and the additive T07/T08 schema and object storage.
+
 ## Safe Asset Contract
 
 `POST /api/orgs/[orgSlug]/assets?kind=logo|cover|event|product` accepts one multipart `file`. Logo/cover requires organisation settings permission, event requires event management and product requires merchandise management. Requests retain trusted origin/CSRF, live identity, staff authority, MFA and fail-closed upload protection. Actor and tenant upload buckets each allow 20 attempts/hour. Delete allows 30 requests/10 minutes per actor/tenant. Quotas reserve pending and retained objects under tenant locks: 100 assets and 250 MiB per society.
@@ -37,6 +49,8 @@ JPEG/PNG/WebP input is limited to 5 MiB and 4096 by 4096 decoded dimensions. Str
 Uploads move pending -> ready only after storage verification and a transaction rechecking session version, live permission and MFA. Provider/authority failures retain a failed record/key for recovery. No provider call occurs while database locks are held. Lock ordering is User -> Organisation -> Asset.
 
 ## Local Storage and Recovery
+
+Local activation on 2026-10-12 preserved development database/Redis and prior backups, refreshed the app dependency cache and applied all 34 migrations after verifying a private database archive. The patched object store now uses persistent thunderstrux_asset_data; bounded object inspection passes. Anonymous directory/profile/read APIs and protected/missing-image denials pass. [[Project Handover]] records archive/hash and evidence paths. Hosted activation remains separate.
 
 Development Compose builds SeaweedFS 4.48 from checksum-pinned upstream source with digest-pinned Go 1.27.2/Alpine images and the patched x/net 0.60.0 dependency. The upstream binary failed the initial fixable high/critical scan, so it is not the delivery image. The local image uses S3 authentication, a non-root/read-only runtime and a persistent `asset_data` volume. Its synthetic credentials are local-only and the storage ports are not published. Restarting the app must preserve the volume. Existing development resources are not recreated by validation.
 

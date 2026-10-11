@@ -59,7 +59,9 @@ test("anonymous society discovery and verified join/leave show fresh personal st
       }),
     });
   page.once("dialog", (dialog) => dialog.accept());
-  await card.getByRole("button", { name: "Leave", exact: true }).click();
+  await card
+    .getByRole("button", { name: "Leave organisation", exact: true })
+    .click();
   await expect(card).toHaveCount(0);
   await page.goto(`/organisations/${data.organisation.slug}`);
   await expect(
@@ -81,6 +83,77 @@ test("anonymous society discovery and verified join/leave show fresh personal st
     ),
   ).toBe(true);
   await page.screenshot({ path: "test-results/society-discovery-mobile.png" });
+});
+
+test("personal search paginates and ignores an older response", async ({
+  page,
+  data,
+}) => {
+  let releaseSlow!: () => void;
+  const slowGate = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
+  let slowStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    slowStarted = resolve;
+  });
+  await page.route("**/api/orgs/search?**", async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const q = params.get("q");
+    if (q === "slow") {
+      slowStarted();
+      await slowGate;
+    }
+    const name =
+      q === "slow"
+        ? "Older search result"
+        : q === "fresh"
+          ? "Fresh search result"
+          : params.has("cursor")
+            ? "Second search result"
+            : "First search result";
+    await route.fulfill({
+      json: {
+        organisations: [
+          { id: name, name, slug: name.replaceAll(" ", "-"), joined: false },
+        ],
+        pageInfo: { nextCursor: !q && !params.has("cursor") ? "next" : null },
+      },
+    });
+  });
+  await login(page, data.member.email, "/dashboard/organisations");
+  await expect(
+    page.getByRole("heading", { name: "First search result" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "More organisations" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Second search result" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "First search result" }),
+  ).toBeVisible();
+  const query = page.getByLabel("Search organisations");
+  await query.fill("slow");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await started;
+  await query.fill("fresh");
+  await query.evaluate((input) =>
+    (input as HTMLInputElement).form!.requestSubmit(),
+  );
+  await expect(
+    page.getByRole("heading", { name: "Fresh search result" }),
+  ).toBeVisible();
+  const oldResponse = page.waitForResponse(
+    (response) => new URL(response.url()).searchParams.get("q") === "slow",
+  );
+  releaseSlow();
+  await oldResponse;
+  await expect(
+    page.getByRole("heading", { name: "Older search result" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Fresh search result" }),
+  ).toBeVisible();
 });
 test("unverified discovery offers verification and empty searches remain usable", async ({
   page,

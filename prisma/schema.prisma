@@ -32,6 +32,7 @@ model User {
   staffInvitesAccepted    OrganisationStaffInvite[] @relation("StaffInviteAcceptor")
   revokedStaffMemberships OrganisationStaff[] @relation("StaffRevoker")
   auditLogs               AuditLog[]
+  uploadedAssets          Asset[]
   mfa                     UserMfa?
   mfaRecoveryCodes        MfaRecoveryCode[]
   mfaGrants               MfaGrant[]
@@ -96,9 +97,34 @@ model Organisation {
   orders              Order[]
   tickets             Ticket[]
   reservations        TicketReservation[]
+  assets              Asset[]
 
   @@index([accountUserId])
   @@index([stripeAccountId])
+}
+
+model Asset {
+  id               String       @id @default(cuid())
+  organisationId   String
+  uploadedByUserId String
+  storageKey       String       @unique
+  kind             String
+  contentType      String       @default("image/webp")
+  byteSize         Int
+  width            Int
+  height           Int
+  sha256           String
+  status           String       @default("pending")
+  createdAt        DateTime     @default(now())
+  readyAt          DateTime?
+  deletedAt        DateTime?
+  unreferencedAt   DateTime?    @default(now())
+  organisation     Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  uploadedBy       User         @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organisationId, status])
+  @@index([status, createdAt])
+  @@index([uploadedByUserId])
 }
 
 model OrganisationMember {

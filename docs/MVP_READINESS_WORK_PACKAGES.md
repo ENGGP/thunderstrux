@@ -26,3 +26,7 @@ T02 notification foundation, T03 verification and T04a recovery/settings and T04
 ## Package 2 delivery
 
 T05 permissions and explicit personal/staff context are implemented and locally qualified in [PR #42](https://github.com/ENGGP/thunderstrux/pull/42). T06a private invitations are implemented and locally qualified in [PR #43](https://github.com/ENGGP/thunderstrux/pull/43). T06b committee handover is implemented and locally qualified in [PR #44](https://github.com/ENGGP/thunderstrux/pull/44). **Package 2 implementation and local qualification are complete.** Handover preserves business/Stripe history, promotes incoming ownership before outgoing admin/revocation, and retires the legacy ownership pointer without transferring credentials. The readiness plan records the baseline/browser evidence and independent review gate. No runtime or hosted activation has been performed.
+
+## Package 3 delivery
+
+T07 introduces bounded, sanitised tenant-owned image assets and S3-compatible storage, including a patched local Docker adapter and database/object recovery rehearsal. T08 profiles/onboarding and T09 discovery/join follow as separate checkpoints. [Society Profiles and Assets](obsidian/Society%20Profiles%20and%20Assets.md) owns the current contracts; the readiness plan records local qualification. Hosted storage and independent production review remain activation gates.

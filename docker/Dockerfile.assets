@@ -1,0 +1,18 @@
+FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+WORKDIR /src
+ADD --checksum=sha256:217b507e7457d10629e837cebea6542d8b7685819dafbb56ef910330594af0e1 https://codeload.github.com/seaweedfs/seaweedfs/tar.gz/530be3e37337488ecc34d58441e0bc476e121c93 /tmp/source.tar.gz
+# Rebuild upstream 4.48 with fixes for its Go runtime and x/net advisories.
+RUN tar -xzf /tmp/source.tar.gz --strip-components=1 \
+  && go mod edit -require=golang.org/x/net@v0.60.0 \
+  && go mod tidy \
+  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /weed ./weed
+
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates \
+  && mkdir /data \
+  && chown 1000:1000 /data
+COPY --from=builder /weed /usr/bin/weed
+USER 1000:1000
+ENTRYPOINT ["/usr/bin/weed"]
+CMD ["mini", "-dir=/data"]

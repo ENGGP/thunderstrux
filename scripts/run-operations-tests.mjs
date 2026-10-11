@@ -184,6 +184,9 @@ await writeFile(runtimeFile, runtime, { mode: 0o600 });
 try {
   await operation("deploy", ["--url", origin, "--release", `${project}-one`]);
   const release = JSON.parse(await readFile(join(stateDir, "current-release.json"), "utf8"));
+  await compose(["up", "-d", "object-store"]);
+  const assetRehearsal = (mode, extra = []) => compose(["--profile", "tools", "run", "--rm", "--no-deps", "-v", `${stateDir}:/recovery`, ...extra,
+    "asset-tools", "node", "scripts/rehearse-assets.mjs", mode, "/recovery/assets.json"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
   const appContainer = await compose(["ps", "-q", "app"], { capture: true });
   await assertContainerHardening(appContainer.trim(), "Production app");
   await compose(["exec", "-T", "app", "sh", "-c", "touch /tmp/thunderstrux-hardening-check && rm /tmp/thunderstrux-hardening-check"]);
@@ -207,6 +210,10 @@ try {
     release.candidateImageId,
     "node", "-e", "if(process.env.AUTH_SECRET!=='file-backed-test-secret')process.exit(1)"
   ]);
+  for (const name of ["ASSET_STORAGE_ACCESS_KEY", "ASSET_STORAGE_SECRET_KEY"]) {
+    await docker(["run", "--rm", "--mount", `type=bind,source=${secretFile},target=/run/secrets/storage,readonly`,
+      "-e", `${name}_FILE=/run/secrets/storage`, release.candidateImageId, "node", "-e", `if(process.env.${name}!=='file-backed-test-secret')process.exit(1)`]);
+  }
   const conflictOutput = await command("docker", [
     "run", "--rm",
     "--mount", `type=bind,source=${secretFile},target=/run/secrets/auth_secret,readonly`,
@@ -257,6 +264,17 @@ try {
   await compose(["run", "--rm", "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/seed-operations-verification.mjs"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey }
   });
+  await assetRehearsal("seed");
+  await compose(["--profile", "tools", "run", "--rm", "--no-deps", "asset-tools", "node", "scripts/maintain-assets.mjs", "--integrity"], {
+    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+  });
+  const unsafeAssets = await compose(["--profile", "tools", "run", "--rm", "--no-deps", "-e", "DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/production",
+    "asset-tools", "node", "scripts/rehearse-assets.mjs", "remove", "/recovery/assets.json"], {
+      env: { ...process.env, APP_IMAGE: release.candidateImageId }, capture: true, expectFailure: true
+    });
+  if (!unsafeAssets.includes("Refusing integration database access")) throw new Error("Asset rehearsal database refusal missing");
+  await compose(["restart", "object-store"]);
+  await assetRehearsal("verify");
   const backupOutput = await operation("backup", [], { capture: true });
   const backupRecord = JSON.parse(backupOutput.split(/\r?\n/).filter(Boolean).at(-1));
   const archive = join(stateDir, backupRecord.archive);
@@ -277,6 +295,8 @@ try {
   ], { capture: true, expectFailure: true });
   if (!corruptRestore.includes("quarantined")) throw new Error("Corrupt restore was not quarantined");
   await operation("restore", ["--archive", archive, "--target-database", `${project.replace(/-/g, "_")}_restore_test`]);
+  await assetRehearsal("remove");
+  await assetRehearsal("restore", ["-e", `DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/${project.replace(/-/g, "_")}_restore_test?schema=public`]);
 
   await compose(["stop", "db"]);
   await expectStatus(origin, "/api/health", 200);
@@ -338,7 +358,7 @@ try {
     if (owner.trim() !== project) throw new Error("Operations cleanup ownership mismatch");
   }
   if (signalContainer) await docker(["rm", "-f", signalContainer], { capture: true }).catch(() => {});
-  await compose(["--profile", "workers", "down", "--volumes", "--remove-orphans", "--timeout", "10"], { capture: true });
+  await compose(["--profile", "*", "down", "--volumes", "--remove-orphans", "--timeout", "10"], { capture: true });
   // This is also the cleanup regression: a passing rehearsal must leave no
   // project-owned container (including stopped workers), network or volume.
   for (const args of [["ps", "-aq"], ["network", "ls", "-q"], ["volume", "ls", "-q"]]) {

@@ -27,7 +27,10 @@ export type RateLimitPolicy =
   | "staff_invite_actor"
   | "staff_invite_email"
   | "staff_mfa_setup"
-  | "staff_mfa_verify";
+  | "staff_mfa_verify"
+  | "asset_upload"
+  | "asset_delete"
+  | "organisation_profile";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -52,6 +55,9 @@ type EnforceRateLimitInput = {
 };
 
 const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
+  asset_upload: { limit: 20, windowSeconds: 3600, failureMode: "closed" },
+  asset_delete: { limit: 30, windowSeconds: 600, failureMode: "closed" },
+  organisation_profile: { limit: 30, windowSeconds: 600, failureMode: "closed" },
   login_ip_email: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" },
   login_ip_global: { limit: 50, windowSeconds: 10 * 60, failureMode: "closed" },
   signup_ip: { limit: 25, windowSeconds: 60 * 60, failureMode: "closed" },

@@ -33,6 +33,11 @@ services:
       RESEND_API_KEY: re_capture_only
       EMAIL_FROM: 'Thunderstrux <synthetic@example.com>'
       THUNDERSTRUX_MAIL_CAPTURE_URL: http://mail-capture:8025/emails
+      ASSET_STORAGE_ENDPOINT: http://object-store:8333
+      ASSET_STORAGE_BUCKET: test-assets
+      ASSET_STORAGE_PATH_STYLE: "true"
+      ASSET_STORAGE_ACCESS_KEY: test-assets
+      ASSET_STORAGE_SECRET_KEY: disposable-test-storage-only
     ports:
       - '127.0.0.1:3100:3100'
     command: [node, node_modules/next/dist/bin/next, start, --hostname, 0.0.0.0, --port, '3100']
@@ -45,6 +50,26 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+      object-store:
+        condition: service_started
+  object-store:
+    image: thunderstrux-assets:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.assets
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: test-assets
+      AWS_SECRET_ACCESS_KEY: disposable-test-storage-only
+      S3_BUCKET: test-assets
+    volumes:
+      - test_assets:/data
+    mem_limit: 512m
+    cpus: 1
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000"]
   mail-capture:
     image: thunderstrux-p216-app:local
     command: [node, scripts/mail-capture.mjs]
@@ -76,6 +101,11 @@ services:
     environment:
       DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
       INTEGRATION_DATABASE_URL: postgresql://e2e:e2e-disposable-only@db:5432/thunderstrux_e2e_test
+      ASSET_STORAGE_ENDPOINT: http://object-store:8333
+      ASSET_STORAGE_BUCKET: test-assets
+      ASSET_STORAGE_PATH_STYLE: "true"
+      ASSET_STORAGE_ACCESS_KEY: test-assets
+      ASSET_STORAGE_SECRET_KEY: disposable-test-storage-only
       RESEND_API_KEY: re_capture_only
       EMAIL_FROM: synthetic@example.com
       NEXT_PUBLIC_APP_URL: http://localhost:3100
@@ -92,3 +122,4 @@ services:
     profiles: [staging]
 volumes:
   test_database:
+  test_assets:

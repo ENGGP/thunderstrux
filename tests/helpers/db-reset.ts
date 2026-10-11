@@ -13,6 +13,7 @@ export async function resetTestDatabase() {
       "NotificationOutbox",
       "OrderLifecycleEvent",
       "AuditLog",
+      "Asset",
       "OrganisationStaffInvite",
       "OrganisationStaff",
       "Ticket",

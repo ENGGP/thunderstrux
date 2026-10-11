@@ -10,6 +10,10 @@ sources: [app/api, lib/api/errors.ts]
 
 This is a concise reference for implemented API routes. Security and data-model rules are documented in [[Database and Multi Tenancy]].
 
+## Society Assets
+
+`POST /api/orgs/[orgSlug]/assets?kind=logo|cover|event|product` uploads one multipart file. Scoped asset GET provides private previews; DELETE rejects references and records recoverable tombstones. Public asset GET serves only ready public references. [[Society Profiles and Assets]] owns format, quota, permission, recovery and storage contracts.
+
 ## Mutation Origin Guard
 
 Custom cookie-authenticated mutation routes (`POST`, `PATCH`, `DELETE`) use a central trusted-origin guard.

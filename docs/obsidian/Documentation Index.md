@@ -28,6 +28,7 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 | How do login, verification, recovery, staff authority and closure work? | [[Authentication and Dashboard Access]], [[API Reference]], [[Database and Multi Tenancy]] |
 | How do pages, navigation and requests fit together? | [[Frontend and Backend Flow]], [[UI Architecture Rules]] |
 | How do events and attendance work? | [[Event Lifecycle]], [[Ticket Check-in Implementation]] |
+| How do society profiles and safe image assets work? | [[Society Profiles and Assets]] |
 | What creates seed data and why is it missing? | [[Seeding and Data]], [[Troubleshooting]] |
 | What is payment truth and how do I recover an order? | [[Stripe Payments and Connect]], [[Payment Lifecycle]], [[E2E and Staging Payments]] |
 | How do ticket emails and encrypted account notices work? | [[Email Delivery Implementation]], [[Production Operations]] |

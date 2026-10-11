@@ -6,7 +6,6 @@ ALTER TABLE "Organisation"
   ADD COLUMN "timeZone" TEXT NOT NULL DEFAULT 'Australia/Brisbane',
   ADD COLUMN "onboardingCompletedAt" TIMESTAMP(3),
   ADD COLUMN "profileVersion" INTEGER NOT NULL DEFAULT 1,
-  ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   ADD COLUMN "logoAssetId" TEXT,
   ADD COLUMN "coverAssetId" TEXT,
   ADD CONSTRAINT "Organisation_profile_bounds_chk" CHECK (length("description") <= 5000 AND length("supportEmail") <= 254 AND length("refundPolicy") <= 5000 AND length("pickupPolicy") <= 5000 AND length("timeZone") <= 64 AND "profileVersion" > 0);

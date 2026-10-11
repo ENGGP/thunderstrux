@@ -87,7 +87,6 @@ model Organisation {
   timeZone            String               @default("Australia/Brisbane")
   onboardingCompletedAt DateTime?
   profileVersion      Int                  @default(1)
-  updatedAt           DateTime             @default(now()) @updatedAt
   logoAssetId         String?
   coverAssetId        String?
   logoAsset           Asset?               @relation("SocietyLogo", fields: [logoAssetId, id], references: [id, organisationId], onDelete: Restrict)

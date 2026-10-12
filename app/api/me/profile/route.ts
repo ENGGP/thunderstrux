@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import {
   forbidden,
-  internalError,
-  unauthorized,
+  mapRouteError,
+  routeErrorRule,
   validationError
 } from "@/lib/api/errors";
 import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAccountRole
-} from "@/lib/auth/access";
+  authenticationRule,
+  organisationAccessRule,
+  staleSessionRule
+} from "@/lib/api/route-rules";
+import { requireAccountRole } from "@/lib/auth/access";
 import { updateAccountProfile } from "@/lib/auth/account-settings";
 import { AccountSecurityError } from "@/lib/auth/account-lifecycle";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -35,15 +36,15 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ user: updatedUser });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError || (error instanceof AccountSecurityError && error.kind === "stale_session")) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError || error instanceof AccountSecurityError) {
-      return forbidden(error.message);
-    }
-
-    console.error("Failed to update member profile", error);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "account.profile_update",
+      request,
+      rules: [
+        authenticationRule,
+        staleSessionRule,
+        organisationAccessRule,
+        routeErrorRule(AccountSecurityError, (failure) => forbidden(failure.message))
+      ]
+    });
   }
 }

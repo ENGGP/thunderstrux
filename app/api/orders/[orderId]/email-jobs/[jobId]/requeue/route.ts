@@ -7,8 +7,7 @@ import {
   requireCurrentOrganisationAccount,
   requireOrganisationPermission
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
-import { EmailRequeueError, requeueFailedTicketEmail } from "@/lib/email/ticket-email-outbox";
+import { EmailRequeueError, requeueFailedTicketEmail, ticketEmailJobExists } from "@/lib/email/ticket-email-outbox";
 import { OrganisationOrderAccessError, OrganisationOrderOperationError, getOrganisationOrderResendTarget } from "@/lib/orders/order-detail";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -23,10 +22,7 @@ export async function POST(request: Request, context: RouteContext) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationPermission(organisation.id, "orders:email_resend");
     await getOrganisationOrderResendTarget(organisation.id, orderId);
-    const job = await prisma.emailOutbox.findFirst({
-      where: { id: jobId, orderId }, select: { id: true }
-    });
-    if (!job) return notFound("Email job not found");
+    if (!(await ticketEmailJobExists(jobId, orderId))) return notFound("Email job not found");
     const limit = await enforceRateLimit({
       policy: "order_resend", request, keyParts: [organisation.id, orderId]
     });

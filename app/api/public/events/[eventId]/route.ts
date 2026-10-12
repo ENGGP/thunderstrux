@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { internalError, notFound } from "@/lib/api/errors";
+import { mapRouteError, notFound } from "@/lib/api/errors";
 import { getPublishedEventDetail } from "@/lib/events/public-events";
 
 type RouteContext = {
@@ -8,7 +8,7 @@ type RouteContext = {
   }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { eventId } = await context.params;
 
   try {
@@ -20,7 +20,6 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({ event });
   } catch (error) {
-    console.error(error);
-    return internalError();
+    return mapRouteError(error, { operation: "public_events.detail", request });
   }
 }

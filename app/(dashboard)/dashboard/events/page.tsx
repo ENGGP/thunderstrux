@@ -1,17 +1,14 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
 import { EventsList } from "@/components/events/events-list";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { listOrganisationEventLinks } from "@/lib/events/event-lifecycle";
 
 export default async function EventsPage() {
   const organisation = await requireManagementPage("events:read", "/dashboard/events");
 
   const canEdit = ["owner", "admin", "event_manager"].includes(organisation.staffRole);
-  const events = canEdit ? [] : await prisma.event.findMany({ where: { organisationId: organisation.id,
-    ...(organisation.staffRole === "check_in_staff" ? { status: "published" as const } : {}) },
-    orderBy: [{ startTime: "asc" }, { id: "asc" }], take: 100,
-    select: { id: true, title: true, startTime: true, location: true } });
+  const events = canEdit ? [] : await listOrganisationEventLinks(organisation.id, organisation.staffRole === "check_in_staff");
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl px-6 py-10">

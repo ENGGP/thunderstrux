@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { internalError, validationError } from "@/lib/api/errors";
+import { mapRouteError, validationError } from "@/lib/api/errors";
 import { signupAccount } from "@/lib/auth/account-lifecycle";
 import { lifecycleIpLimit, lifecycleEmailLimit } from "@/lib/auth/lifecycle-http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -13,5 +13,5 @@ export async function POST(request: Request) {
   try {
     await signupAccount(body.data);
     return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } });
-  } catch { return internalError(); }
+  } catch (error) { return mapRouteError(error, { operation: "auth.signup", request }); }
 }

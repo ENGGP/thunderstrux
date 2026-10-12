@@ -5,7 +5,8 @@ import {
   AuthenticationRequiredError,
   requireAuthenticatedUser,
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { formatDateTime } from "@/lib/format";
+import { joinedOrganisationIds } from "@/lib/organisations/join";
 import {
   SocietyJoin,
   type JoinState,
@@ -23,15 +24,9 @@ export default async function OrganisationDetailsPage({
     const user = await requireAuthenticatedUser();
     if (user.accountRole === "organisation") joinState = "organisation";
     else {
-      const joined = await prisma.organisationMember.findUnique({
-        where: {
-          userId_organisationId: {
-            userId: user.id,
-            organisationId: organisation.id,
-          },
-        },
-        select: { id: true },
-      });
+      const joined = (
+        await joinedOrganisationIds(user.id, [organisation.id])
+      ).has(organisation.id);
       joinState = joined
         ? "joined"
         : user.emailVerifiedAt
@@ -41,12 +36,6 @@ export default async function OrganisationDetailsPage({
   } catch (error) {
     if (!(error instanceof AuthenticationRequiredError)) throw error;
   }
-  const formatDate = (value: Date) =>
-    new Intl.DateTimeFormat("en-AU", {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: organisation.timeZone,
-    }).format(value);
   return (
     <main className="society-surface min-h-screen px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -112,7 +101,11 @@ export default async function OrganisationDetailsPage({
                   <dl className="mt-3 space-y-2">
                     <div>
                       <dt className="font-medium">Date</dt>
-                      <dd>{formatDate(event.startTime)}</dd>
+                      <dd>
+                        {formatDateTime(event.startTime, {
+                          timeZone: organisation.timeZone,
+                        })}
+                      </dd>
                     </div>
                     <div>
                       <dt className="font-medium">Location</dt>

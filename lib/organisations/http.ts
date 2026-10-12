@@ -1,16 +1,16 @@
 import { ZodError } from "zod";
 import { AuthenticationRequiredError, OrganisationAccessError, requireAuthenticatedUser, requireOrganisationPermission } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { organisationIdBySlug } from "./authority";
 import { forbidden, internalError, notFound, unauthorized, validationError, apiError } from "@/lib/api/errors";
 import { AssetError } from "@/lib/assets/image";
 import type { OrganisationPermission } from "@/lib/permissions";
 
 export async function organisationActor(orgSlug: string, permission: OrganisationPermission) {
   const actor = await requireAuthenticatedUser();
-  const organisation = await prisma.organisation.findUnique({ where: { slug: orgSlug }, select: { id: true } });
-  if (!organisation) throw new OrganisationAccessError("Organisation not found or access denied");
-  await requireOrganisationPermission(organisation.id, permission);
-  return { actor, organisationId: organisation.id };
+  const organisationId = await organisationIdBySlug(orgSlug);
+  if (!organisationId) throw new OrganisationAccessError("Organisation not found or access denied");
+  await requireOrganisationPermission(organisationId, permission);
+  return { actor, organisationId };
 }
 export function organisationError(error: unknown) {
   if (error instanceof AuthenticationRequiredError) return unauthorized();

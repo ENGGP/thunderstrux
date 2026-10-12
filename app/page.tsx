@@ -1,23 +1,12 @@
 import Link from "next/link";
 import { getPublishedEvents } from "@/lib/events/public-events";
+import { formatDateTime } from "@/lib/format";
 import {
   PaginationError,
   parsePaginationOptionsOrDefault
 } from "@/lib/pagination/cursor";
 
 export const dynamic = "force-dynamic";
-
-function formatDateTime(value: Date) {
-  if (Number.isNaN(value.getTime())) {
-    return "Date unavailable";
-  }
-
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
 
 export default async function Home({
   searchParams
@@ -106,7 +95,7 @@ export default async function Home({
                   <dl className="mt-4 grid gap-3 text-sm text-neutral-700">
                     <div>
                       <dt className="font-medium text-neutral-950">Date</dt>
-                      <dd className="mt-1">{formatDateTime(event.startTime)}</dd>
+                      <dd className="mt-1">{formatDateTime(event.startTime, { fallback: "Date unavailable" })}</dd>
                     </div>
                     <div>
                       <dt className="font-medium text-neutral-950">Location</dt>

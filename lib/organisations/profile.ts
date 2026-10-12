@@ -46,6 +46,13 @@ export const profileSelect = {
   profileVersion: true,
 } as const;
 
+export async function readProfile(organisationId: string) {
+  return prisma.organisation.findUnique({
+    where: { id: organisationId },
+    select: profileSelect,
+  });
+}
+
 export async function updateProfile(
   actor: AccountActor,
   organisationId: string,

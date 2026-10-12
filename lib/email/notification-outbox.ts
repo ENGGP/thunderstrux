@@ -38,6 +38,10 @@ export async function listFailedBusinessNotifications(organisationId: string, cu
     ? Buffer.from(JSON.stringify({ time: last.createdAt.toISOString(), id: last.id })).toString("base64url") : null };
 }
 
+export async function businessNotificationExists(jobId: string, organisationId: string) {
+  return !!await prisma.notificationOutbox.findFirst({ where: { id: jobId, organisationId, privacy: "business" }, select: { id: true } });
+}
+
 export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   eventKey: string; recipient: string; template: NotificationTemplate; payload: unknown;
   userId?: string; organisationId?: string; expiresAt?: Date; templateVersion?: number; authTokenId?: string;

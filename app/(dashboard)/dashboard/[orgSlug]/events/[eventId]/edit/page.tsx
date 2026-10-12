@@ -1,7 +1,4 @@
-import { readAccountContext } from "@/lib/auth/context";
-import { notFound, redirect } from "next/navigation";
-import { requireAuthenticatedUser } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { redirectLegacyOrganisationPage } from "@/lib/auth/page-access";
 
 export default async function LegacyEditEventPage({
   params
@@ -9,20 +6,11 @@ export default async function LegacyEditEventPage({
   params: Promise<{ eventId: string; orgSlug: string }>;
 }) {
   const { eventId, orgSlug } = await params;
-  const user = await requireAuthenticatedUser();
-  const organisation = await prisma.organisation.findFirst({
-    where: {
-      slug: orgSlug,
-      accountUserId: user.id
-    },
-    select: { id: true }
-  });
 
-  if (!organisation) {
-    notFound();
-  }
-
-  if ((await readAccountContext()).selected?.id !== organisation.id) redirect("/dashboard");
-
-  redirect(`/dashboard/events/${eventId}/edit`);
+  return redirectLegacyOrganisationPage(
+    orgSlug,
+    ["events:manage"],
+    `/dashboard/${orgSlug}/events/${eventId}/edit`,
+    `/dashboard/events/${eventId}/edit`
+  );
 }

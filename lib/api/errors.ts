@@ -104,7 +104,7 @@ export function mapRouteError(
     rules = []
   }: {
     operation: string;
-    request: Request;
+    request?: Request;
     rules?: RouteErrorRule[];
   }
 ) {
@@ -116,7 +116,7 @@ export function mapRouteError(
 
   logError("api.request_failed", {
     operation,
-    method: request.method,
+    method: request?.method,
     errorName: error instanceof Error ? error.name : "UnknownError"
   });
   return internalError();

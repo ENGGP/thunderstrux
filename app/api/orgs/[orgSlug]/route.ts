@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { forbidden, internalError, notFound, unauthorized } from "@/lib/api/errors";
 import {
-  AuthenticationRequiredError,
+  forbidden,
+  mapRouteError,
+  notFound,
+  routeErrorRule
+} from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import {
   OrganisationAccessError,
   requireOrganisationAccessBySlug
 } from "@/lib/auth/access";
@@ -12,7 +17,7 @@ type RouteContext = {
   }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { orgSlug } = await context.params;
 
   try {
@@ -20,19 +25,17 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({ organisation });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      if (error.message === "Organisation not found or access denied") {
-        return notFound("Organisation was not found");
-      }
-
-      return forbidden(error.message);
-    }
-
-    console.error(error);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "organisations.read",
+      request,
+      rules: [
+        authenticationRule,
+        routeErrorRule(OrganisationAccessError, (denied) =>
+          denied.message === "Organisation not found or access denied"
+            ? notFound("Organisation was not found")
+            : forbidden(denied.message)
+        )
+      ]
+    });
   }
 }

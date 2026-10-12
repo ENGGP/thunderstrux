@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { formatMoney } from "@/lib/format";
 
 type TicketType = {
   id: string;
@@ -16,13 +17,6 @@ type TicketType = {
 type CheckoutResponse = {
   url: string;
 };
-
-function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD"
-  }).format(amountInCents / 100);
-}
 
 export function PublicTicketPurchase({
   eventId,
@@ -132,7 +126,7 @@ export function PublicTicketPurchase({
               <div>
                 <h3 className="font-medium text-neutral-950">{ticketType.name}</h3>
                 <p className="mt-1 text-sm text-neutral-600">
-                  {formatCurrency(ticketType.price)} -{" "}
+                  {formatMoney(ticketType.price)} -{" "}
                   {ticketType.availableQuantity} remaining
                 </p>
               </div>

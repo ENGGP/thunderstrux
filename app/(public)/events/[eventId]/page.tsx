@@ -1,41 +1,14 @@
 import { notFound, redirect } from "next/navigation";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { PublicTicketPurchase } from "@/components/events/public-ticket-purchase";
-import { getAppUrl } from "@/lib/stripe";
+import { getPublishedEventDetail } from "@/lib/events/public-events";
+import { formatDateTime } from "@/lib/format";
 
 type PublicEventPageProps = {
   params: Promise<{
     eventId: string;
   }>;
 };
-
-type PublicEvent = {
-  id: string;
-  title: string;
-  description: string;
-  startTime: string;
-  endTime: string;
-  location: string;
-  organisation: {
-    name: string;
-    slug: string;
-  };
-  ticketTypes: Array<{
-    id: string;
-    name: string;
-    price: number;
-    quantity: number;
-    availableQuantity: number;
-  }>;
-};
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "full",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(new Date(value));
-}
 
 export default async function PublicEventPage({ params }: PublicEventPageProps) {
   const { eventId } = await params;
@@ -45,19 +18,11 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
     redirect(`/dashboard/events/${eventId}`);
   }
 
-  const response = await fetch(`${getAppUrl()}/api/public/events/${eventId}`, {
-    cache: "no-store"
-  });
+  const event = await getPublishedEventDetail(eventId);
 
-  if (response.status === 404) {
+  if (!event) {
     notFound();
   }
-
-  if (!response.ok) {
-    throw new Error("Unable to load event");
-  }
-
-  const { event } = (await response.json()) as { event: PublicEvent };
 
   return (
     <main className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-6 lg:px-8">
@@ -73,11 +38,11 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
           <div className="mt-6 grid gap-4 text-sm text-neutral-700 sm:grid-cols-2">
             <div>
               <p className="font-medium text-neutral-950">Starts</p>
-              <p className="mt-1">{formatDateTime(event.startTime)}</p>
+              <p className="mt-1">{formatDateTime(event.startTime, { dateStyle: "full" })}</p>
             </div>
             <div>
               <p className="font-medium text-neutral-950">Ends</p>
-              <p className="mt-1">{formatDateTime(event.endTime)}</p>
+              <p className="mt-1">{formatDateTime(event.endTime, { dateStyle: "full" })}</p>
             </div>
             <div className="sm:col-span-2">
               <p className="font-medium text-neutral-950">Location</p>

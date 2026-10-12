@@ -93,14 +93,15 @@ lib/
   auth/                              Auth/session and account/organisation access helpers
   assets/                            Safe image processing, S3, references and maintenance
   organisations/                     Bootstrap, profiles, public discovery and joins
-  api/                               API error helpers
-  client/                            Frontend fetch and helper utilities
+  api/                               API error envelope, mapRouteError and shared guard rules
+  client/                            Frontend fetch helpers
+  format.ts                          Shared money and date formatting
   db/                                Prisma client and organisation scoping helpers
   email/                             Ticket delivery plus encrypted notification intents, token fences and workers
   security/                          Origin/CSRF, Redis limits and MFA
   staff/                             Atomic staff authority updates
   events/                            Public reads, analytics, and event lifecycle use cases
-  orders/                            Scoped order operations and stale pending cleanup
+  orders/                            Scoped order operations, member ticket reads and stale pending cleanup
   payments/                          Checkout, reconciliation, and lifecycle history use cases
   permissions/                       Live staff capability mapping and legacy compatibility helpers
   stripe/                            Stripe SDK, Connect application service, and fees
@@ -129,6 +130,7 @@ docs/obsidian/
 - `OrganisationMember` is not MVP staff access.
 - Navigation for organisation dashboards belongs in `components/layout/dashboard-shell.tsx`.
 - Private APIs must derive access from the authenticated session and server-side database ownership checks.
+- No file under `app/` imports Prisma; pages and routes call `lib` services.
 - Security-sensitive API routes are thin adapters: guards and HTTP mapping stay in routes; domain decisions, persistence, transactions, recovery, and external provider composition stay in application services.
 - Do not trust frontend `organisationId` or `x-org-id` as authority. They are inputs, not trust boundaries.
 - Organiser ticket and order access should use event ownership as the source of truth: `Ticket.event.organisationId` and `Order.event.organisationId`.

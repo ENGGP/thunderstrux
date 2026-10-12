@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   EventAnalyticsAccessError,
   getOrganisationEventAnalytics,
@@ -14,21 +15,6 @@ type OrganiserEventPageProps = {
     eventId: string;
   }>;
 };
-
-function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD"
-  }).format(amountInCents / 100);
-}
-
-function formatDateTime(value: Date) {
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "full",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
 
 function statusBadgeClassName(status: "draft" | "published") {
   return status === "published"
@@ -115,11 +101,11 @@ export default async function OrganiserEventPage({
           <dl className="mt-6 grid gap-4 text-sm text-neutral-700 sm:grid-cols-3">
             <div>
               <dt className="font-medium text-neutral-950">Starts</dt>
-              <dd className="mt-1">{formatDateTime(analytics.event.startTime)}</dd>
+              <dd className="mt-1">{formatDateTime(analytics.event.startTime, { dateStyle: "full" })}</dd>
             </div>
             <div>
               <dt className="font-medium text-neutral-950">Ends</dt>
-              <dd className="mt-1">{formatDateTime(analytics.event.endTime)}</dd>
+              <dd className="mt-1">{formatDateTime(analytics.event.endTime, { dateStyle: "full" })}</dd>
             </div>
             <div>
               <dt className="font-medium text-neutral-950">Location</dt>
@@ -132,7 +118,7 @@ export default async function OrganiserEventPage({
           {financial && <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-neutral-500">Revenue</p>
             <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {formatCurrency(analytics.totals.revenue ?? 0)}
+              {formatMoney(analytics.totals.revenue ?? 0)}
             </p>
           </div>}
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
@@ -166,8 +152,8 @@ export default async function OrganiserEventPage({
           ) : (
             <div className="grid min-h-56 grid-cols-[auto_1fr] gap-4">
               <div className="flex flex-col justify-between py-1 text-xs text-neutral-500">
-                <span>{formatCurrency(maxDailyRevenue)}</span>
-                <span>{formatCurrency(0)}</span>
+                <span>{formatMoney(maxDailyRevenue)}</span>
+                <span>{formatMoney(0)}</span>
               </div>
               <div className="grid h-56 items-end gap-3 border-b border-l border-neutral-200 px-3 pb-6 sm:grid-flow-col sm:auto-cols-fr">
                 {revenueSeries.map((bucket) => {
@@ -184,7 +170,7 @@ export default async function OrganiserEventPage({
                       <div
                         className="rounded-t-md bg-neutral-900"
                         style={{ height: `${height}px` }}
-                        title={`${formatShortDate(bucket.date)}: ${formatCurrency(
+                        title={`${formatShortDate(bucket.date)}: ${formatMoney(
                           bucket.revenue
                         )}`}
                       />
@@ -245,7 +231,7 @@ export default async function OrganiserEventPage({
                           {ticketType.sold}
                         </td>
                         {financial && <><td className="py-3 pr-4 text-neutral-700">
-                          {formatCurrency(ticketType.revenue ?? 0)}
+                          {formatMoney(ticketType.revenue ?? 0)}
                         </td>
                         <td className="py-3 text-neutral-700">
                           <div className="flex min-w-36 items-center gap-3">

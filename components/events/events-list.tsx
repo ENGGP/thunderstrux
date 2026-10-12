@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { formatDateTime } from "@/lib/client/dates";
+import { formatDateTime } from "@/lib/format";
 import {
   fetchOrganisationBySlug,
   type Organisation
@@ -268,10 +268,10 @@ export function EventsList({
                         {event.title}
                       </td>
                       <td className="py-3 text-neutral-700">
-                        {formatDateTime(event.startTime)}
+                        {formatDateTime(event.startTime, { fallback: "Invalid date" })}
                       </td>
                       <td className="py-3 text-neutral-700">
-                        {formatDateTime(event.endTime)}
+                        {formatDateTime(event.endTime, { fallback: "Invalid date" })}
                       </td>
                       <td className="py-3">
                         <span className={statusBadgeClassName(event.status)}>

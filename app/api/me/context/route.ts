@@ -1,22 +1,21 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { AuthenticationRequiredError, OrganisationAccessError, requireAuthenticatedUser, requireOrganisationPermission } from "@/lib/auth/access";
+import { requireAuthenticatedUser, requireOrganisationPermission } from "@/lib/auth/access";
 import { readAccountContext } from "@/lib/auth/context";
 import { contextCookieName, encodeContext } from "@/lib/auth/context-cookie";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
-import { unauthorized, forbidden, internalError, validationError } from "@/lib/api/errors";
+import { forbidden, mapRouteError, validationError } from "@/lib/api/errors";
+import { authenticationRule, organisationAccessRule } from "@/lib/api/route-rules";
 
 const schema = z.discriminatedUnion("mode", [z.object({ mode: z.literal("personal") }).strict(),
   z.object({ mode: z.literal("staff"), organisationId: z.string().min(1).max(100) }).strict()]);
-function failure(error: unknown) {
-  if (error instanceof AuthenticationRequiredError) return unauthorized();
-  if (error instanceof OrganisationAccessError) return forbidden(error.message);
-  return internalError();
+function failure(error: unknown, request?: Request) {
+  return mapRouteError(error, { operation: "account.context", request, rules: [authenticationRule, organisationAccessRule] });
 }
-export async function GET() {
+export async function GET(request?: Request) {
   try { return NextResponse.json(await readAccountContext(), { headers: { "Cache-Control": "no-store" } }); }
-  catch (error) { return failure(error); }
+  catch (error) { return failure(error, request); }
 }
 export async function POST(request: Request) {
   const denied = enforceTrustedMutationRequest(request); if (denied) return denied;
@@ -30,5 +29,5 @@ export async function POST(request: Request) {
       httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/"
     });
     return response;
-  } catch (error) { return failure(error); }
+  } catch (error) { return failure(error, request); }
 }

@@ -568,3 +568,10 @@ export async function processTicketEmailOutboxBatch({
 
   return result;
 }
+
+export async function ticketEmailJobExists(jobId: string, orderId: string) {
+  return !!(await prisma.emailOutbox.findFirst({
+    where: { id: jobId, orderId },
+    select: { id: true }
+  }));
+}

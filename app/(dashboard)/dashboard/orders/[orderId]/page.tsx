@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
@@ -11,25 +12,6 @@ import {
   getOrganisationOrderLifecycle,
   parseOrderLifecycleCursor
 } from "@/lib/payments/order-lifecycle-history";
-
-function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD"
-  }).format(amountInCents / 100);
-}
-
-function formatDateTime(value: Date | null) {
-  if (!value) {
-    return "Not available";
-  }
-
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
 
 function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
   return status.charAt(0).toUpperCase() + status.slice(1);
@@ -149,7 +131,7 @@ export default async function OrganisationOrderDetailPage({
             <div>
               <p className="text-sm text-neutral-500">Total amount</p>
               <p className="mt-1 text-sm font-medium text-neutral-950">
-                {formatCurrency(order.totalAmount)}
+                {formatMoney(order.totalAmount)}
               </p>
             </div>
           </div>
@@ -187,10 +169,10 @@ export default async function OrganisationOrderDetailPage({
                   </td>
                   <td className="py-3 pr-4 text-neutral-700">{order.quantity}</td>
                   <td className="py-3 pr-4 text-neutral-700">
-                    {formatCurrency(order.unitPrice)}
+                    {formatMoney(order.unitPrice)}
                   </td>
                   <td className="py-3 text-neutral-700">
-                    {formatCurrency(order.totalAmount)}
+                    {formatMoney(order.totalAmount)}
                   </td>
                 </tr>
               </tbody>

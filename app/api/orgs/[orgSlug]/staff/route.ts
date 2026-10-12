@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
-import {
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireOrganisationPermission
-} from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { mapRouteError, notFound } from "@/lib/api/errors";
+import { authenticationRule, organisationAccessRule } from "@/lib/api/route-rules";
+import { requireOrganisationPermission } from "@/lib/auth/access";
+import { organisationIdBySlug } from "@/lib/organisations/authority";
+import { listOrganisationStaff } from "@/lib/staff/management";
 
 type RouteContext = {
   params: Promise<{
@@ -18,72 +11,26 @@ type RouteContext = {
   }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { orgSlug } = await context.params;
 
   try {
-    const organisation = await prisma.organisation.findUnique({
-      where: { slug: orgSlug },
-      select: { id: true }
-    });
+    const organisationId = await organisationIdBySlug(orgSlug);
 
-    if (!organisation) {
+    if (!organisationId) {
       return notFound("Organisation was not found");
     }
 
-    await requireOrganisationPermission(organisation.id, "staff:manage");
+    await requireOrganisationPermission(organisationId, "staff:manage");
 
-    const [staff, invites] = await Promise.all([
-      prisma.organisationStaff.findMany({
-        take: 100,
-        where: { organisationId: organisation.id },
-        orderBy: [{ status: "asc" }, { role: "asc" }, { createdAt: "asc" }],
-        select: {
-          id: true,
-          role: true,
-          status: true,
-          createdAt: true,
-          acceptedAt: true,
-          revokedAt: true,
-          user: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true
-            }
-          }
-        }
-      }),
-      prisma.organisationStaffInvite.findMany({
-        where: {
-          organisationId: organisation.id,
-          acceptedAt: null,
-          revokedAt: null
-        },
-        take: 100,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          expiresAt: true,
-          createdAt: true
-        }
-      })
-    ]);
-
-    return NextResponse.json({ staff, invites }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json(await listOrganisationStaff(organisationId), {
+      headers: { "Cache-Control": "private, no-store" }
+    });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    console.error("Failed to list organisation staff", { orgSlug, error });
-    return internalError();
+    return mapRouteError(error, {
+      operation: "staff.list",
+      request,
+      rules: [authenticationRule, organisationAccessRule]
+    });
   }
 }

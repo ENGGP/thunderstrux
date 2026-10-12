@@ -45,3 +45,24 @@ export async function updateOrganisationStaff(actor: AccountActor, organisationI
     return staff;
   }, { timeout: 15000 });
 }
+
+export async function listOrganisationStaff(organisationId: string) {
+  const [staff, invites] = await Promise.all([
+    prisma.organisationStaff.findMany({ take: 100, where: { organisationId },
+      orderBy: [{ status: "asc" }, { role: "asc" }, { createdAt: "asc" }],
+      select: { id: true, role: true, status: true, createdAt: true, acceptedAt: true, revokedAt: true,
+        user: { select: { id: true, email: true, firstName: true, lastName: true } } } }),
+    prisma.organisationStaffInvite.findMany({ where: { organisationId, acceptedAt: null, revokedAt: null },
+      take: 100, orderBy: { createdAt: "desc" },
+      select: { id: true, email: true, role: true, expiresAt: true, createdAt: true } })
+  ]);
+  return { staff, invites };
+}
+// Accounts the acting owner may hand ownership to: active, verified, enabled and, under enforcement, MFA-enrolled.
+export async function listHandoverTargets(organisationId: string, actorUserId: string) {
+  return prisma.organisationStaff.findMany({
+    where: { organisationId, status: "active", userId: { not: actorUserId }, user: {
+      disabledAt: null, emailVerifiedAt: { not: null }, ...(mfaEnforcementMode() === "enforce" ? { mfa: { is: { enabledAt: { not: null } } } } : {})
+    } }, take: 100, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, user: { select: { email: true } } }
+  });
+}

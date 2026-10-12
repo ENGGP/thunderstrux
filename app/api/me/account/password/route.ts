@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
+import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { AccountSecurityError, changePassword } from "@/lib/auth/account-lifecycle";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { validateJson } from "@/lib/validators";
 import { newPasswordSchema } from "@/lib/validators/auth";
-import { forbidden, unauthorized, validationError, internalError } from "@/lib/api/errors";
+import { forbidden, mapRouteError, routeErrorRule, validationError } from "@/lib/api/errors";
+import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 export async function POST(request: Request) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
   try {
@@ -17,8 +18,8 @@ export async function POST(request: Request) {
     await changePassword(actor, body.data.currentPassword, body.data.newPassword);
     return NextResponse.json({ changed: true, signInRequired: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError || (error instanceof AccountSecurityError && error.kind === "stale_session")) return unauthorized();
-    if (error instanceof AccountSecurityError) return forbidden(error.message);
-    return internalError();
+    return mapRouteError(error, { operation: "account.password_change", request, rules: [
+      authenticationRule, staleSessionRule, routeErrorRule(AccountSecurityError, failure => forbidden(failure.message))
+    ] });
   }
 }

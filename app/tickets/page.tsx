@@ -4,36 +4,13 @@ import {
   AuthenticationRequiredError,
   requireAuthenticatedUser
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { formatDateTime, formatMoney } from "@/lib/format";
+import { getMemberTicketOrders } from "@/lib/orders/member-tickets";
 import {
   PaginationError,
-  decodeTimestampCursor,
-  descendingCursorWhere,
-  orderByForDirection,
-  pageInfoForPage,
   parsePaginationOptionsOrDefault,
-  type PageInfo,
-  type ParsedPaginationOptions
+  type PageInfo
 } from "@/lib/pagination/cursor";
-
-function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD"
-  }).format(amountInCents / 100);
-}
-
-function formatDateTime(value: Date | null) {
-  if (!value) {
-    return "Not available";
-  }
-
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
 
 function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
   if (status === "paid") {
@@ -61,73 +38,6 @@ function emptyPageInfo(limit: number): PageInfo {
     nextCursor: null,
     previousCursor: null
   };
-}
-
-async function getMemberTicketOrders(
-  userId: string,
-  {
-    limit,
-    cursor,
-    direction
-  }: ParsedPaginationOptions
-) {
-  const decodedCursor = cursor
-    ? decodeTimestampCursor("createdAt", cursor)
-    : null;
-  const cursorWhere = decodedCursor
-    ? descendingCursorWhere("createdAt", decodedCursor, direction)
-    : {};
-  const orders = await prisma.order.findMany({
-    where: {
-      userId,
-      status: "paid",
-      ...cursorWhere
-    },
-    orderBy: orderByForDirection("createdAt", direction, "desc"),
-    take: limit + 1,
-    select: {
-      id: true,
-      status: true,
-      quantity: true,
-      totalAmount: true,
-      createdAt: true,
-      paidAt: true,
-      failedAt: true,
-      failureReason: true,
-      event: {
-        select: {
-          id: true,
-          title: true,
-          startTime: true,
-          organisation: {
-            select: {
-              name: true
-            }
-          }
-        }
-      },
-      ticketType: {
-        select: {
-          name: true
-        }
-      },
-      tickets: {
-        select: {
-          id: true,
-          createdAt: true
-        },
-        orderBy: { createdAt: "asc" }
-      }
-    }
-  });
-
-  return pageInfoForPage({
-    items: orders,
-    limit,
-    direction,
-    cursor,
-    timestampField: "createdAt"
-  });
 }
 
 export default async function MyTicketsPage({
@@ -253,7 +163,7 @@ export default async function MyTicketsPage({
                       {statusLabel(order.status)}
                     </p>
                     <p className="mt-1 text-sm text-neutral-600">
-                      {formatCurrency(order.totalAmount)}
+                      {formatMoney(order.totalAmount)}
                     </p>
                   </div>
                 </div>

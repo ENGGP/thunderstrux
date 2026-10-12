@@ -7,28 +7,15 @@ import {
   OrganisationAccessError,
   StaffMfaRequiredError,
   getAccessibleOrganisationsForCurrentAccount,
-  getCurrentStaffOrganisations,
   requireAuthenticatedUser,
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
-import { readAccountContext } from "@/lib/auth/context";
+import { readMemberDashboard } from "@/lib/auth/account-settings";
+import { bootstrapOrganisationId, readAccountContext } from "@/lib/auth/context";
 import { ContextSelector } from "@/components/layout/context-selector";
-import { prisma } from "@/lib/db";
+import { formatDate, formatMoney } from "@/lib/format";
+import { getOrganisationOverview } from "@/lib/organisations/overview";
 import { hasOrganisationPermission } from "@/lib/permissions";
-
-function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD"
-  }).format(amountInCents / 100);
-}
-
-function formatDate(value: Date) {
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
 
 function monthStart() {
   const date = new Date();
@@ -66,70 +53,12 @@ async function OrganisationDashboard() {
   );
   const canViewOrders = hasOrganisationPermission(organisation.staffRole, "orders:read");
 
-  const [upcomingEvents, recentOrders, monthlyPaidOrders] = await Promise.all([
-    prisma.event.findMany({
-      where: {
-        organisationId: organisation.id,
-        ...(organisation.staffRole === "check_in_staff" ? { status: "published" as const } : {}),
-        startTime: {
-          gte: new Date()
-        }
-      },
-      orderBy: { startTime: "asc" },
-      take: 5,
-      select: {
-        id: true,
-        title: true,
-        startTime: true,
-        status: true
-      }
-    }),
-    canViewOrders
-      ? prisma.order.findMany({
-          where: {
-            event: {
-              is: {
-                organisationId: organisation.id
-              }
-            }
-          },
-          orderBy: { createdAt: "desc" },
-          take: 5,
-          select: {
-            id: true,
-            status: true,
-            quantity: true,
-            totalAmount: true,
-            createdAt: true,
-            paidAt: true,
-            event: {
-              select: {
-                title: true
-              }
-            }
-          }
-        })
-      : Promise.resolve([]),
-    canViewOrders
-      ? prisma.order.findMany({
-          where: {
-            event: {
-              is: {
-                organisationId: organisation.id
-              }
-            },
-            status: "paid",
-            paidAt: {
-              gte: startOfMonth
-            }
-          },
-          select: {
-            totalAmount: true,
-            paidAt: true
-          }
-        })
-      : Promise.resolve([])
-  ]);
+  const { upcomingEvents, recentOrders, monthlyPaidOrders } =
+    await getOrganisationOverview(organisation.id, {
+      publishedEventsOnly: organisation.staffRole === "check_in_staff",
+      includeOrders: canViewOrders,
+      paidSince: startOfMonth
+    });
 
   const monthlyRevenue = monthlyPaidOrders.reduce(
     (total, order) => total + order.totalAmount,
@@ -165,7 +94,7 @@ async function OrganisationDashboard() {
             <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
               <p className="text-sm text-neutral-500">Past month revenue</p>
               <p className="mt-2 text-2xl font-semibold text-neutral-950">
-                {formatCurrency(monthlyRevenue)}
+                {formatMoney(monthlyRevenue)}
               </p>
             </div>
           ) : null}
@@ -214,7 +143,7 @@ async function OrganisationDashboard() {
                   />
                   <div className="text-center text-xs text-neutral-500">
                     <p>{bucket.label}</p>
-                    <p>{formatCurrency(bucket.total)}</p>
+                    <p>{formatMoney(bucket.total)}</p>
                   </div>
                 </div>
               ))}
@@ -281,7 +210,7 @@ async function OrganisationDashboard() {
                         {order.event.title}
                       </p>
                       <p className="text-neutral-700">
-                        {formatCurrency(order.totalAmount)}
+                        {formatMoney(order.totalAmount)}
                       </p>
                     </div>
                     <p className="mt-1 text-neutral-600">
@@ -301,22 +230,9 @@ async function OrganisationDashboard() {
 }
 
 async function MemberDashboard({ userId }: { userId: string }) {
-  const [user, organisations, orderCount] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        firstName: true,
-        lastName: true,
-        displayName: true,
-        phone: true,
-        studentNumber: true,
-        onboardingCompletedAt: true
-      }
-    }),
-    getAccessibleOrganisationsForCurrentAccount(),
-    prisma.order.count({
-      where: { userId }
-    })
+  const [{ profile: user, orderCount }, organisations] = await Promise.all([
+    readMemberDashboard(userId),
+    getAccessibleOrganisationsForCurrentAccount()
   ]);
 
   return (
@@ -418,8 +334,7 @@ export default async function DashboardPage() {
   }
 
   if (user.accountRole === "organisation") {
-    const owned = await prisma.organisation.findUnique({ where: { accountUserId: user.id }, select: { id: true } });
-    if (!owned && context.organisations.length === 0) redirect("/dashboard/create");
+    if (context.organisations.length === 0 && !(await bootstrapOrganisationId(user.id))) redirect("/dashboard/create");
     return <main className="mx-auto max-w-5xl p-6"><h1>Choose a staff organisation</h1><ContextSelector />
       {context.organisations.length === 0 && <p>No active organisation access. Contact an owner.</p>}</main>;
   }

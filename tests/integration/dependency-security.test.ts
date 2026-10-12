@@ -7,6 +7,7 @@ import { encode } from "next-auth/jwt";
 import { describe, expect, test, vi } from "vitest";
 import { createMember } from "@/tests/helpers/test-data";
 import { proxy } from "@/proxy";
+import { resolveAuthSecret } from "@/lib/auth/secret";
 import { prisma } from "@/lib/db";
 
 describe("dependency security compatibility", () => {
@@ -36,7 +37,7 @@ describe("dependency security compatibility", () => {
   test("a valid encrypted session cookie still passes the proxy", async () => {
     const user = await createMember();
     const token = await encode({
-      secret: process.env.AUTH_SECRET || "dev-secret",
+      secret: resolveAuthSecret(),
       salt: "authjs.session-token",
       token: { userId: user.id, accountRole: "member", authVersion: user.authVersion }
     });

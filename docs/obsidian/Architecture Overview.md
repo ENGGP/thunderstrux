@@ -53,7 +53,11 @@ Security-sensitive routes are transport adapters. They retain request parsing, t
 - `lib/stripe/connect.ts`: Connect lifecycle operations and Stripe/provider composition.
 - `lib/auth/account-*`, `lib/auth/context.ts` and `lib/staff`: account lifecycle/version fencing, login-bound personal/staff selection, private invitations and atomic owner handover.
 - `lib/assets`: sanitisation, quota reservation, verified S3 bytes, reference-gated reads and recoverable deletion/maintenance.
-- `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery and caller-only join transactions.
+- `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery, caller-only join transactions and the dashboard overview reads.
+- `lib/orders/member-tickets.ts`: the caller's own paid orders and issued tickets for `/tickets`.
+- `lib/format.ts`: the single money and date formatter; dates take the society's IANA zone and default to `Australia/Brisbane`.
+
+Server pages and route adapters do not import Prisma. Pages call the same read services as the API routes, never their own HTTP endpoints, and `tests/integration/domain-service-boundaries.test.ts` fails if any file under `app/` reaches the database directly. Routes map failures through `mapRouteError` (`lib/api/errors.ts`) with shared guard rules in `lib/api/route-rules.ts`; event, order, ticket, Connect and payment routes keep their established catch blocks (API-001).
 
 Application services accept already-authorized tenant identifiers. Routes must perform live server-side permission checks before calling them. The services still scope every persistence operation by the authoritative organisation or event owner; they do not trust client claims.
 
@@ -203,6 +207,7 @@ app/
 - JWT login establishes userId, authVersion and a random MFA login ID. Session/route checks compare the version to a live active identity; refresh never upgrades a revoked session.
 - Session callback exposes live identity, accountRole, authVersion and the login-bound MFA ID. See [[Authentication and Dashboard Access]] for verified identity, recovery, email changes and permanent closure.
 - Custom sign-in page is `/login`.
+- `lib/auth/secret.ts` resolves `AUTH_SECRET` once for both `auth.ts` and `proxy.ts`.
 
 ## Request Protection Model
 

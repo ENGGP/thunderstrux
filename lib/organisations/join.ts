@@ -10,6 +10,18 @@ import {
 } from "@/lib/auth/access";
 import { AssetError } from "@/lib/assets/image";
 
+// Which of the given societies the caller has joined; affiliation only, never authority.
+export async function joinedOrganisationIds(
+  userId: string,
+  organisationIds: string[],
+) {
+  const rows = await prisma.organisationMember.findMany({
+    where: { userId, organisationId: { in: organisationIds } },
+    select: { organisationId: true },
+  });
+  return new Set(rows.map((row) => row.organisationId));
+}
+
 export async function setSocietyJoin(
   actor: AccountActor,
   slug: string,

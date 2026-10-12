@@ -56,6 +56,21 @@ export async function listOrganisationEvents(organisationId: string) {
   });
 }
 
+export async function listOrganisationEventLinks(
+  organisationId: string,
+  publishedOnly: boolean
+) {
+  return prisma.event.findMany({
+    where: {
+      organisationId,
+      ...(publishedOnly ? { status: "published" as const } : {})
+    },
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
+    take: 100,
+    select: { id: true, title: true, startTime: true, location: true }
+  });
+}
+
 export async function getOrganisationEvent(
   organisationId: string,
   eventId: string

@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
 import { lockAccount } from "@/lib/auth/account-lock";
 import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import { AuthenticationRequiredError, OrganisationAccessError, StaffMfaRequiredError, legacyOrganisationAccessMode } from "@/lib/auth/access";
@@ -24,4 +25,8 @@ export async function lockOrganisationActor(tx: Prisma.TransactionClient, actor:
     if ((!enrollment?.enabledAt && mode === "enforce") || (enrollment?.enabledAt && !grant)) throw new StaffMfaRequiredError("Staff authenticator verification required");
   }
   return organisation;
+}
+
+export async function organisationIdBySlug(slug: string) {
+  return (await prisma.organisation.findUnique({ where: { slug }, select: { id: true } }))?.id ?? null;
 }

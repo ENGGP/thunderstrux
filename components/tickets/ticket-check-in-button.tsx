@@ -4,19 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { fetchWithCsrf } from "@/lib/client/api";
+import { formatDateTime } from "@/lib/format";
 
 type TicketCheckInButtonProps = {
   ticketId: string;
   initialCheckedInAt: string | null;
 };
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(new Date(value));
-}
 
 export function TicketCheckInButton({
   ticketId,

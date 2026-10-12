@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 
 const routeFiles = [
@@ -38,8 +38,13 @@ function expectInOrder(content: string, markers: string[]) {
 }
 
 describe("domain service boundaries", () => {
-  test("affected route adapters do not access Prisma directly", async () => {
-    for (const path of routeFiles) {
+  test("no page or route under app accesses Prisma directly", async () => {
+    const files = (await readdir("app", { recursive: true }))
+      .filter((path) => /\.tsx?$/.test(path))
+      .map((path) => `app/${path.replaceAll("\\", "/")}`);
+
+    expect(files.length).toBeGreaterThan(100);
+    for (const path of files) {
       const content = await source(path);
       expect(content, path).not.toMatch(/from ["']@\/lib\/db["']/);
       expect(content, path).not.toContain("prisma.");

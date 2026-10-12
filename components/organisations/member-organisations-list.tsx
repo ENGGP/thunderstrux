@@ -89,7 +89,7 @@ export function MemberOrganisationsList({
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
                   className="inline-flex h-9 items-center justify-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
-                  href={`/organisations/${organisation.slug}`}
+                  href={`/societies/${organisation.slug}`}
                 >
                   View details
                 </Link>

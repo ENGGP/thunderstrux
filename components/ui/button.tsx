@@ -1,23 +1,44 @@
 import type { ButtonHTMLAttributes } from "react";
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "society";
+type ButtonStyle = {
+  // "society" is the pre-token name for the brand action; it is now the default look.
+  variant?: "primary" | "secondary" | "tertiary" | "danger" | "society";
+  size?: "sm" | "md" | "lg";
+  className?: string;
 };
 
-export function Button({
-  className = "",
-  variant = "primary",
-  ...props
-}: ButtonProps) {
-  const variantClasses =
-    variant === "society" ? "society-action" : variant === "primary"
-      ? "bg-neutral-900 text-white hover:bg-neutral-700"
-      : "border border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50";
+const variants = {
+  primary: "bg-brand text-white hover:bg-brand-hover active:bg-brand-ink",
+  secondary:
+    "border border-line-strong bg-surface text-brand-ink hover:bg-brand-tint",
+  tertiary: "text-brand underline-offset-4 hover:underline",
+  danger: "border border-danger bg-surface text-danger hover:bg-danger-bg"
+};
 
+const sizes = {
+  sm: "h-9 px-3 text-sm",
+  md: "h-11 px-4 text-sm",
+  lg: "h-12 px-5 text-base"
+};
+
+// Shared by <Button> and by links that must look like buttons.
+export function buttonClasses({
+  variant = "primary",
+  size = "md",
+  className = ""
+}: ButtonStyle = {}) {
+  const look = variants[variant === "society" ? "primary" : variant];
+
+  return `inline-flex items-center justify-center gap-2 rounded-control font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60 ${sizes[size]} ${look} ${className}`;
+}
+
+export function Button({
+  className,
+  variant,
+  size,
+  ...props
+}: ButtonStyle & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
-      className={`inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${variantClasses} ${className}`}
-      {...props}
-    />
+    <button className={buttonClasses({ variant, size, className })} {...props} />
   );
 }

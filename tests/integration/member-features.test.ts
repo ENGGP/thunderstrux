@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { encodeTimestampCursor } from "@/lib/pagination/cursor";
 import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
@@ -15,6 +15,13 @@ import { GET as searchOrganisations } from "@/app/api/orgs/search/route";
 import { POST as joinOrganisationRoute } from "@/app/api/orgs/[orgSlug]/join/route";
 import { POST as leaveOrganisationRoute } from "@/app/api/orgs/[orgSlug]/leave/route";
 import MyTicketsPage from "@/app/tickets/page";
+
+// The tickets page renders inside PersonalShell, which reads the pathname.
+// redirect and notFound stay real so the guard assertions below still hold.
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  usePathname: () => "/tickets"
+}));
 
 async function renderTicketsPage(
   searchParams: {

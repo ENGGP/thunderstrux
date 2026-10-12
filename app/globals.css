@@ -1,22 +1,89 @@
 @config "../tailwind.config.js";
 @import "tailwindcss";
 
+/* Semantic utilities (bg-paper, text-ink, bg-brand, border-line, rounded-card,
+   max-w-page, font-display) resolve to the --ts-* tokens below. Components use
+   these names, never raw palette classes. */
+@theme inline {
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: var(--ts-ink);
+  --color-ink-soft: var(--ts-ink-soft);
+  --color-ink-muted: var(--ts-ink-muted);
+  --color-brand: var(--ts-brand);
+  --color-brand-hover: var(--ts-brand-hover);
+  --color-brand-ink: var(--ts-brand-ink);
+  --color-brand-tint: var(--ts-brand-tint);
+  --color-brand-200: var(--ts-brand-200);
+  --color-paper: var(--ts-paper);
+  --color-warm-paper: var(--ts-warm-paper);
+  --color-surface: var(--ts-surface);
+  --color-surface-subtle: var(--ts-surface-subtle);
+  --color-line: var(--ts-border);
+  --color-line-strong: var(--ts-input-border);
+  --color-focus: var(--ts-focus);
+  --color-success: var(--ts-success);
+  --color-success-bg: var(--ts-success-bg);
+  --color-warning: var(--ts-warning);
+  --color-warning-bg: var(--ts-warning-bg);
+  --color-danger: var(--ts-danger);
+  --color-danger-bg: var(--ts-danger-bg);
+  --color-info: var(--ts-info);
+  --color-info-bg: var(--ts-info-bg);
+  --color-lime: var(--ts-lime);
+
+  --radius-tag: 6px;
+  --radius-control: 9px;
+  --radius-card: 14px;
+  --radius-feature: 20px;
+
+  --shadow-card: 0 4px 18px rgba(36, 20, 59, 0.055);
+  --shadow-float: 0 14px 44px rgba(36, 20, 59, 0.12);
+
+  --container-auth: 440px;
+  --container-read: 760px;
+  --container-checkout: 1060px;
+  --container-personal: 1160px;
+  --container-page: 1248px;
+  --container-admin: 1420px;
+}
+
 @layer base {
   :root {
     color-scheme: light;
-    --background: #f7f8fa;
-    --foreground: #171717;
     --ts-ink: #24143b;
+    --ts-ink-soft: #594f67;
+    --ts-ink-muted: #6b6276;
     --ts-brand: #5b2acb;
     --ts-brand-hover: #4c22af;
+    --ts-brand-ink: #2a1550;
+    --ts-brand-tint: #f0eafe;
+    --ts-brand-200: #dccffa;
     --ts-paper: #fbfafd;
+    --ts-warm-paper: #fcfaf5;
     --ts-surface: #ffffff;
+    --ts-surface-subtle: #f5f2fa;
     --ts-border: #ddd6e7;
+    --ts-input-border: #9e8aac;
     --ts-focus: #1e72d8;
+    --ts-success: #146b50;
+    --ts-success-bg: #e9f6ed;
+    --ts-warning: #834500;
+    --ts-warning-bg: #fff3df;
+    --ts-danger: #9a3f53;
+    --ts-danger-bg: #fff0f3;
+    --ts-info: #254c88;
+    --ts-info-bg: #eaf2ff;
+    --ts-lime: #def17b;
   }
 
-  * {
+  /* Tailwind v4 borders default to currentColor; ours default to the hairline token. */
+  *,
+  ::before,
+  ::after {
     box-sizing: border-box;
+    border-color: var(--ts-border);
   }
 
   html,
@@ -26,13 +93,35 @@
   }
 
   body {
-    background: var(--background);
-    color: var(--foreground);
-    font-family: Arial, Helvetica, sans-serif;
+    background: var(--ts-paper);
+    color: var(--ts-ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.55;
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
 
   a {
     text-decoration: none;
+  }
+
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -44,7 +133,8 @@
   .society-link, .society-surface a { color: var(--ts-brand); text-decoration: underline; text-underline-offset: 3px; }
 }
 
-.society-surface :is(a, button, input, textarea):focus-visible, .society-action:focus-visible {
+/* Unlayered so no utility (including outline-none) can remove the keyboard focus ring. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--ts-focus);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }

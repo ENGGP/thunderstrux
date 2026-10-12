@@ -1,70 +1,121 @@
 "use client";
+
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
+import { buttonClasses } from "@/components/ui/button";
+
+const exploreLinks = [
+  { href: "/", label: "Explore events" },
+  { href: "/societies", label: "Explore societies" }
+];
+
+// Session-only header. Society context belongs to the shells below it, which
+// receive live authority from the server; nothing here grants or implies access.
 export default function Navbar() {
   const { data: session } = useSession();
-  const accountLinks = (
-    <>
-      <Link href="/dashboard">Dashboard</Link>
-      {session?.user?.accountRole === "member" && (
-        <Link href="/tickets">My tickets</Link>
-      )}
-      <Link href="/account/settings">Settings</Link>
-    </>
-  );
-  const logout = (
+  const user = session?.user?.id ? session.user : null;
+  const accountLinks = user
+    ? [
+        ...(user.accountRole === "member"
+          ? [{ href: "/tickets", label: "My tickets" }]
+          : []),
+        { href: "/dashboard", label: "Dashboard" },
+        { href: "/account/settings", label: "Account" }
+      ]
+    : [];
+  const signOutButton = (
     <button
-      className="rounded-lg border border-neutral-300 px-2 py-2 text-sm font-medium transition hover:bg-neutral-100 sm:px-4"
+      className={buttonClasses({ variant: "secondary", size: "sm" })}
       onClick={() => signOut({ callbackUrl: "/" })}
       type="button"
     >
       Sign out
     </button>
   );
+  const linkClass = "text-ink-soft transition-colors hover:text-brand";
+
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-3 shadow-sm sm:px-6">
-      <Link
-        href={
-          session?.user?.accountRole === "organisation" ? "/dashboard" : "/"
-        }
-        className="text-sm font-semibold text-neutral-950"
-      >
-        Thunderstrux
-      </Link>
-      <nav
-        aria-label="Primary navigation"
-        className="hidden items-center gap-6 text-sm font-medium text-neutral-700 md:flex"
-      >
-        <Link href="/organisations">Societies</Link>
-        {session?.user?.id ? (
-          <>
-            {accountLinks}
-            {logout}
-          </>
-        ) : (
-          <Link href="/login">Sign in</Link>
-        )}
-      </nav>
-      <div className="flex items-center gap-2 text-sm font-medium text-neutral-700 md:hidden">
-        <Link href="/organisations">Societies</Link>
-        {session?.user?.id ? (
-          <>
-            <details className="relative">
-              <summary className="cursor-pointer rounded-md px-2 py-2">
-                Menu
-              </summary>
-              <nav
-                aria-label="Account navigation"
-                className="absolute right-0 top-full grid w-48 gap-4 rounded-md border bg-white p-4 shadow-md"
-              >
-                {accountLinks}
-              </nav>
-            </details>
-            {logout}
-          </>
-        ) : (
-          <Link href="/login">Sign in</Link>
-        )}
+    <header className="fixed inset-x-0 top-0 z-50 h-[60px] border-b border-line bg-surface md:h-[72px]">
+      <div className="mx-auto flex h-full max-w-page items-center gap-6 px-4 text-sm font-medium md:px-8">
+        <Link
+          className="font-display text-lg font-semibold text-brand-ink"
+          href="/"
+        >
+          Thunderstrux
+        </Link>
+
+        <nav
+          aria-label="Primary navigation"
+          className="hidden flex-1 items-center gap-6 md:flex"
+        >
+          {exploreLinks.map((link) => (
+            <Link className={linkClass} href={link.href} key={link.href}>
+              {link.label}
+            </Link>
+          ))}
+          <span className="ml-auto flex items-center gap-5">
+            {accountLinks.map((link) => (
+              <Link className={linkClass} href={link.href} key={link.href}>
+                {link.label}
+              </Link>
+            ))}
+            {user ? (
+              signOutButton
+            ) : (
+              <>
+                <Link className={linkClass} href="/login">
+                  Sign in
+                </Link>
+                <Link
+                  className={buttonClasses({ variant: "secondary", size: "sm" })}
+                  href="/signup"
+                >
+                  Create a society
+                </Link>
+              </>
+            )}
+          </span>
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2 md:hidden">
+          <details className="relative">
+            <summary className="flex h-9 cursor-pointer list-none items-center rounded-control px-3 text-ink-soft [&::-webkit-details-marker]:hidden">
+              Menu
+            </summary>
+            <nav
+              aria-label="Menu"
+              className="absolute right-0 top-full mt-2 grid w-56 gap-1 rounded-card border border-line bg-surface p-2 shadow-float"
+            >
+              {[...exploreLinks, ...accountLinks].map((link) => (
+                <Link
+                  className="rounded-control px-3 py-2.5 text-ink hover:bg-surface-subtle"
+                  href={link.href}
+                  key={link.href}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              {user ? null : (
+                <Link
+                  className="rounded-control px-3 py-2.5 text-ink hover:bg-surface-subtle"
+                  href="/signup"
+                >
+                  Create a society
+                </Link>
+              )}
+            </nav>
+          </details>
+          {user ? (
+            signOutButton
+          ) : (
+            <Link
+              className={buttonClasses({ variant: "secondary", size: "sm" })}
+              href="/login"
+            >
+              Sign in
+            </Link>
+          )}
+        </div>
       </div>
     </header>
   );

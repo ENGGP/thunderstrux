@@ -7,7 +7,7 @@ import {
   requireCurrentOrganisationAccount,
   requireOrganisationPermission
 } from "@/lib/auth/access";
-import { readAccountContext } from "@/lib/auth/context";
+import { contextChoices, readAccountContext } from "@/lib/auth/context";
 import { organisationIdBySlug } from "@/lib/organisations/authority";
 import type { OrganisationPermission } from "@/lib/permissions";
 
@@ -18,7 +18,11 @@ export async function requireManagementPage(
   try {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationPermission(organisation.id, permission);
-    return organisation;
+    // Read after both guards pass: the shell's switcher lists live authority only.
+    return {
+      ...organisation,
+      contexts: contextChoices(await readAccountContext())
+    };
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       redirect(`/login?callbackUrl=${encodeURIComponent(callbackPath)}`);

@@ -10,7 +10,7 @@ export default async function EventsPage() {
   const canEdit = ["owner", "admin", "event_manager"].includes(organisation.staffRole);
   const events = canEdit ? [] : await listOrganisationEventLinks(organisation.id, organisation.staffRole === "check_in_staff");
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
+    <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl px-6 py-10">
         {canEdit ? <EventsList basePath="/dashboard" orgSlug={organisation.slug} /> :
           <><h2 className="text-xl font-semibold">Events</h2><ul>{events.map(event => <li key={event.id} className="my-4">

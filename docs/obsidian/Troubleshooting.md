@@ -24,7 +24,7 @@ Contracts: [[Authentication and Dashboard Access]], [[API Reference]], [[Email D
 
 ## UI Change Not Visible
 
-For Package 3 society pages, check `/organisations`, `/organisations/[orgSlug]` and `/dashboard/settings/profile`. Member staff start personal; select the permitted society before management. The shared header uses fixed h-16 height and mobile account Menu; the organisation menu is separate. Joined lists/search badges refresh after mutations and obsolete search responses are ignored. A stale Joined badge should not be worked around by editing staff or purchase rows.
+For Package 3 society pages, check `/societies`, `/societies/[orgSlug]` and `/dashboard/settings/profile`. Member staff start personal; select the permitted society before management. The shared header uses fixed h-16 height and mobile account Menu; the organisation menu is separate. Joined lists/search badges refresh after mutations and obsolete search responses are ignored. A stale Joined badge should not be worked around by editing staff or purchase rows.
 
 Profile 409 means another save advanced profileVersion: preserve unsaved edits and use the explicit confirmed reload. Private account email is not the public support email. Incomplete public profiles remain visible; profile completion does not enable Stripe charges.
 
@@ -319,11 +319,7 @@ Real root cause:
 
 - Global anchor color override was winning over `text-white`
 
-Current safe pattern for primary links/buttons:
-
-```text
-bg-neutral-900 text-white hover:bg-neutral-700
-```
+Current safe pattern for primary links/buttons: `Button`, or `buttonClasses()` on a link, from `components/ui/button.tsx`. Both set the text colour explicitly.
 
 If a dark link button shows dark text again, inspect `app/globals.css` before changing the button component.
 
@@ -336,10 +332,10 @@ Observed issue:
 
 Current layout structure:
 
-- Global `Navbar` is fixed at `h-16`
-- Root layout offsets content with `pt-16`
-- Dashboard sidebar uses `top-16`
-- Dashboard main content uses `md:ml-64`
+- Global `Navbar` is fixed at 60px, 72px from `md`
+- Root layout offsets content by the same amounts
+- Dashboard sidebar uses `top-[72px]` and appears from `lg`
+- Dashboard main content uses `lg:ml-[244px]`
 
 If overlap returns, inspect:
 

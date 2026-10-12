@@ -165,7 +165,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
                 <h2 className="font-medium text-neutral-950">
                   <Link
                     className="underline"
-                    href={`/organisations/${organisation.slug}`}
+                    href={`/societies/${organisation.slug}`}
                   >
                     {organisation.name}
                   </Link>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PersonalShell } from "@/components/layout/personal-shell";
 import { OrganisationSearch } from "@/components/organisations/organisation-search";
 import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
 import {
@@ -16,8 +17,7 @@ export default async function MemberOrganisationsPage() {
   }
   const organisations = await getAccessibleOrganisationsForCurrentAccount();
   return (
-    <main className="min-h-screen bg-neutral-100">
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
+    <PersonalShell>
         <header className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <Link
             className="text-sm font-medium text-neutral-600 hover:text-neutral-950"
@@ -31,7 +31,7 @@ export default async function MemberOrganisationsPage() {
           <p className="mt-2 text-sm text-neutral-500">
             Search for organisations and join them as a member.
           </p>
-          <Link className="mt-3 inline-block underline" href="/organisations">
+          <Link className="mt-3 inline-block underline" href="/societies">
             Browse public societies
           </Link>
         </header>
@@ -48,7 +48,6 @@ export default async function MemberOrganisationsPage() {
             joinedIds={organisations.map((organisation) => organisation.id)}
           />
         </section>
-      </div>
-    </main>
+    </PersonalShell>
   );
 }

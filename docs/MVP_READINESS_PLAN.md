@@ -331,6 +331,8 @@ T09 local qualification (2026-10-12): domain/API/integration executable `15a1e4b
 
 Second-pass self-review covered bounded literal queries, stable same-name cursors, public DTO/cache separation, caller-only affiliation, live version/verification/account-role fencing under User -> Organisation locks, preserved transport/rate guards, no staff/payment authority, callback/no-auto-join and fresh joined/search state. Existing response envelopes and commerce/tenant/closure/handover assertions remain intact. No T09 schema/dependency/operations change: T08 recovery and T07 image qualification remain applicable. Independent production review and hosted activation stay separate.
 
+The specification-alignment refactor (2026-10-12) moved the directory and profile pages to `/societies` and `/societies/[orgSlug]`; `/organisations` paths redirect permanently. The acceptance text above keeps the URLs that were delivered at the time.
+
 ### Event and ticket completion
 
 #### T10 — Purchase snapshots and ticket validity

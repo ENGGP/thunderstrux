@@ -137,7 +137,7 @@ export function SocietyProfile({
         <h2 className="text-2xl font-semibold">Society profile</h2>
         <p className="mt-2 text-sm">
           Save each step and return whenever you need. Your public URL stays
-          /organisations/{profile.slug}.
+          /societies/{profile.slug}.
         </p>
       </div>
       <nav aria-label="Profile setup steps" className="flex flex-wrap gap-2">
@@ -287,7 +287,7 @@ export function SocietyProfile({
                 Payment readiness is separate. Configure staff security and
                 payments through their settings.
               </p>
-              <Link href={`/organisations/${profile.slug}`}>
+              <Link href={`/societies/${profile.slug}`}>
                 View public profile
               </Link>
               <Link href="/mfa?callbackUrl=/dashboard/settings/profile">

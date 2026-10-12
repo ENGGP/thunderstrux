@@ -420,7 +420,7 @@ async function main() {
         "member dashboard did not look like a member dashboard"
       );
       assert(
-        dashboardText.includes(`/organisations/${smokeMemberOrganisation.slug}`),
+        dashboardText.includes(`/societies/${smokeMemberOrganisation.slug}`),
         "member dashboard did not include organisation details link"
       );
 
@@ -433,7 +433,7 @@ async function main() {
 
     await runStep("11. Verify organisation details page is public-safe", async () => {
       const response = await memberClient.fetch(
-        `/organisations/${smokeMemberOrganisation.slug}`,
+        `/societies/${smokeMemberOrganisation.slug}`,
         { redirect: "follow" }
       );
       const text = await response.text();

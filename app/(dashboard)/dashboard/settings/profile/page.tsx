@@ -13,7 +13,7 @@ export default async function SocietyProfilePage() {
   if (!profile) notFound();
   return (
     <DashboardShell
-      basePath="/dashboard"
+      contexts={organisation.contexts}
       orgName={organisation.name}
       staffRole={organisation.staffRole}
     >

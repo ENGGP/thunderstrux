@@ -5,9 +5,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
-export function VerificationForm({ callbackUrl }: { callbackUrl: string }) {
+export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackUrl: string; defaultEmail?: string }) {
   const [token, setToken] = useAccountLinkToken();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(defaultEmail);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -32,7 +32,7 @@ export function VerificationForm({ callbackUrl }: { callbackUrl: string }) {
     finally { setBusy(false); }
   }
   return <div className="grid gap-4">
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
     {message && <p role="status">{message}</p>}
     {verifiedPath ? <Link className="underline" href={`/login?callbackUrl=${encodeURIComponent(verifiedPath)}`}>Sign in to continue</Link> : <>
       {token && <Button disabled={busy} onClick={confirm} type="button">{busy ? "Verifying..." : "Verify email"}</Button>}

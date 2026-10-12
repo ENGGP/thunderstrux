@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { formatDateTime } from "@/lib/format";
 export function ChangeEmailForm({ mfaRequired, pending }: { mfaRequired: boolean; pending: { email: string; expiresAt: string } | null }) {
   const router = useRouter(); const [password, setPassword] = useState(""); const [newEmail, setNewEmail] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [message, setMessage] = useState("");
@@ -21,12 +22,12 @@ export function ChangeEmailForm({ mfaRequired, pending }: { mfaRequired: boolean
     finally { setBusy(false); }
   }
   return <form className="grid gap-3" onSubmit={submit}>
-    {error && <p role="alert" className="text-red-700">{error}</p>}{message && <p role="status">{message}</p>}
-    {pending && <p>Pending address: {pending.email}. Link expires <time dateTime={pending.expiresAt}>{pending.expiresAt}</time>.</p>}
-    {mfaRequired && <p>Verify your enrolled authenticator first. <Link className="underline" href="/mfa?callbackUrl=/account/settings">Verify authenticator</Link></p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}{message && <p role="status">{message}</p>}
+    {pending && <p className="text-sm text-ink-soft">Pending address: {pending.email}. Link expires <time dateTime={pending.expiresAt}>{formatDateTime(pending.expiresAt)}</time>. Your current address stays active until then; request the change again to send a new link.</p>}
+    {mfaRequired && <p>Verify your enrolled authenticator first. <Link className="text-brand underline" href="/mfa?callbackUrl=/account/settings">Verify authenticator</Link></p>}
     <TextInput label="Current password for email change" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} />
     <TextInput label="New email" type="email" maxLength={320} autoComplete="email" value={newEmail} onChange={event => setNewEmail(event.target.value)} />
     <Button type="submit" name="action" value="request" disabled={busy || mfaRequired}>Request email change</Button>
-    {pending && <Button type="submit" name="action" value="cancel" disabled={busy || mfaRequired}>Cancel email change</Button>}
+    {pending && <Button type="submit" name="action" value="cancel" variant="secondary" disabled={busy || mfaRequired}>Cancel email change</Button>}
   </form>;
 }

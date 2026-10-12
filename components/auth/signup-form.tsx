@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type SignupResponse = { accepted: boolean };
@@ -58,14 +59,14 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       {error ? (
-        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <Notice role="alert" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
       {successMessage ? (
-        <div role="status" className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <Notice role="status" tone="success">
           {successMessage}
-        </div>
+        </Notice>
       ) : null}
 
       <TextInput
@@ -83,30 +84,35 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
       />
 
       <fieldset className="grid gap-2">
-        <legend className="text-sm font-medium text-neutral-900">
-          Account type
-        </legend>
+        <legend className="text-sm font-semibold text-ink">Account type</legend>
         <div className="grid gap-2 sm:grid-cols-2">
-          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-800">
-            <input
-              checked={accountRole === "member"}
-              name="accountRole"
-              onChange={() => setAccountRole("member")}
-              type="radio"
-              value="member"
-            />
-            Member
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-800">
-            <input
-              checked={accountRole === "organisation"}
-              name="accountRole"
-              onChange={() => setAccountRole("organisation")}
-              type="radio"
-              value="organisation"
-            />
-            Organisation
-          </label>
+          {(
+            [
+              ["member", "Member", "For you. Buy tickets and join societies."],
+              ["organisation", "Organisation", "For a society. Create its page and run its events."]
+            ] as const
+          ).map(([value, label, help]) => (
+            <label
+              className="flex cursor-pointer items-start gap-2 rounded-control border border-line-strong px-3 py-2.5 text-sm text-ink has-[:checked]:border-brand has-[:checked]:bg-brand-tint"
+              key={value}
+            >
+              <input
+                aria-describedby={`account-type-${value}`}
+                checked={accountRole === value}
+                className="mt-1"
+                name="accountRole"
+                onChange={() => setAccountRole(value)}
+                type="radio"
+                value={value}
+              />
+              <span>
+                <span className="font-semibold">{label}</span>
+                <span className="block text-ink-soft" id={`account-type-${value}`}>
+                  {help}
+                </span>
+              </span>
+            </label>
+          ))}
         </div>
       </fieldset>
 
@@ -132,7 +138,7 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
           {isSubmitting ? "Creating account..." : "Create account"}
         </Button>
         <Link
-          className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+          className="text-sm font-medium text-brand underline"
           href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}
         >
           Sign in

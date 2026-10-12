@@ -28,14 +28,14 @@ export function PasswordRecoveryForm({ mode, callbackUrl }: { mode: "request" | 
     finally { setBusy(false); }
   }
   return <div className="grid gap-4">
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
     {message && <p role="status">{message}</p>}
     {completedPath ? <Link className="underline" href={`/login?callbackUrl=${encodeURIComponent(completedPath)}`}>Sign in with new password</Link> : <form className="grid gap-3" onSubmit={submit}>
       {mode === "request" ? <TextInput label="Email" type="email" required maxLength={320} value={email} onChange={event => setEmail(event.target.value)} /> : <>
         {!token && <p>Open your reset email link, or <Link className="underline" href="/forgot-password">request a new link</Link>.</p>}
         <TextInput label="New password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} />
         <TextInput label="Confirm new password" type="password" autoComplete="new-password" minLength={8} required value={confirmation} onChange={event => setConfirmation(event.target.value)} />
-        <p className="text-sm text-neutral-600">Use at least 8 characters and no more than 72 UTF-8 bytes. Your enrolled authenticator remains enabled.</p>
+        <p className="text-sm text-ink-muted">Use at least 8 characters and no more than 72 UTF-8 bytes. Your enrolled authenticator remains enabled.</p>
       </>}
       <Button type="submit" disabled={busy || (mode === "reset" && !token)}>{busy ? "Submitting..." : mode === "request" ? "Send password reset email" : "Reset password"}</Button>
     </form>}

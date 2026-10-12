@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 export type JoinState =
   | "anonymous"
@@ -10,6 +11,7 @@ export type JoinState =
   | "joined"
   | "available"
   | "organisation";
+// Joining is a free affiliation. It never grants paid benefits or staff access.
 export function SocietyJoin({
   slug,
   state,
@@ -34,15 +36,18 @@ export function SocietyJoin({
     }
   }
   return (
-    <div className="space-y-3">
+    <div className="grid justify-items-start gap-2">
       {state === "anonymous" && (
-        <Link className="society-link" href={`/login?callbackUrl=${callback}`}>
+        <Link
+          className={buttonClasses({ variant: "secondary" })}
+          href={`/login?callbackUrl=${callback}`}
+        >
           Sign in to join society
         </Link>
       )}
       {state === "verify" && (
         <Link
-          className="society-link"
+          className={buttonClasses({ variant: "secondary" })}
           href={`/verify-email?callbackUrl=${callback}`}
         >
           Verify email to join society
@@ -60,16 +65,35 @@ export function SocietyJoin({
       )}
       {state === "joined" && (
         <>
-          <p role="status">Joined</p>
-          <Link href="/dashboard/organisations">Manage joined societies</Link>
+          <p
+            className="rounded-tag bg-success-bg px-2 py-0.5 text-xs font-semibold text-success"
+            role="status"
+          >
+            Joined
+          </p>
+          <Link
+            className="text-sm text-brand underline"
+            href="/dashboard/organisations"
+          >
+            Manage joined societies
+          </Link>
         </>
       )}
-      {state !== "organisation" && (
-        <p className="text-sm">
+      {state === "organisation" ? (
+        <p className="text-sm text-ink-soft">
+          Organisation accounts run a society and cannot join one. Sign in with
+          a personal account to join.
+        </p>
+      ) : (
+        <p className="text-sm text-ink-muted">
           Free affiliation does not grant paid benefits or staff access.
         </p>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <Notice role="alert" tone="danger">
+          {error}
+        </Notice>
+      )}
     </div>
   );
 }

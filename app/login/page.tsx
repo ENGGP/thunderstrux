@@ -1,37 +1,57 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { CredentialsLoginForm } from "@/components/auth/credentials-login-form";
+import { AuthShell } from "@/components/layout/auth-shell";
 import { Card } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
+
+export const metadata: Metadata = { title: "Sign in" };
+
+// Why the visitor was sent here, so a forced sign-out is never silent.
+const reasons = {
+  passwordChanged: "Your password was changed. Sign in again with the new password.",
+  emailChanged: "Your email address was changed. Sign in again with the new address.",
+  accountClosed:
+    "Closed accounts cannot sign in. A new signup does not recover purchases or records from a closed account."
+};
 
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ callbackUrl?: string; accountClosed?: string }>;
+  searchParams: Promise<{
+    callbackUrl?: string;
+    accountClosed?: string;
+    passwordChanged?: string;
+    emailChanged?: string;
+  }>;
 }) {
   const session = await getLiveSession();
-  const { callbackUrl, accountClosed } = await searchParams;
-  const safeCallbackUrl = safeReturnPath(callbackUrl);
+  const params = await searchParams;
+  const safeCallbackUrl = safeReturnPath(params.callbackUrl);
 
   if (session?.user) {
     redirect(safeCallbackUrl);
   }
 
-  return (
-    <main className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-md gap-4">
-        <header>
-          <h1 className="text-3xl font-semibold text-neutral-950">Sign in</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Use your email and password to access organisation dashboards.
-          </p>
-        </header>
+  const reason = (Object.keys(reasons) as Array<keyof typeof reasons>).find(
+    (key) => params[key] === "true"
+  );
 
-        <Card>
-          {accountClosed === "true" && <p role="status" className="mb-4 text-sm">Closed accounts cannot sign in. A new signup does not recover purchases or records from a closed account.</p>}
-          <CredentialsLoginForm callbackUrl={safeCallbackUrl} />
-        </Card>
-      </div>
-    </main>
+  return (
+    <AuthShell
+      description="Use your email and password to reach your tickets, societies and dashboards."
+      title="Sign in"
+    >
+      <Card>
+        {reason ? (
+          <Notice className="mb-4" role="status">
+            {reasons[reason]}
+          </Notice>
+        ) : null}
+        <CredentialsLoginForm callbackUrl={safeCallbackUrl} />
+      </Card>
+    </AuthShell>
   );
 }

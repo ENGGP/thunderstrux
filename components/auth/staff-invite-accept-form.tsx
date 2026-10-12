@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useAccountLinkToken } from "./account-link-token";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 export function StaffInviteAcceptForm() {
@@ -21,18 +23,19 @@ export function StaffInviteAcceptForm() {
     } catch (failure) { setError(getClientErrorMessage(failure, "Invitation is unavailable.")); }
     finally { setBusy(false); }
   }
-  return <div className="grid gap-4">
-    <p>Sign in with the invited email and verify it before accepting. You can sign in or verify in another tab, then return here.</p>
+  return <Card className="grid gap-4">
+    {/* The invitation link is held in this page's memory, so sign-in and verification open in a new tab. */}
+    <p className="text-ink-soft">Sign in with the invited email address and verify it before accepting. Both links open in a new tab so this page keeps your invitation.</p>
     <div className="flex flex-wrap gap-4">
-      <a className="underline" href="/login?callbackUrl=/staff/invites/accept" target="_blank" rel="noopener noreferrer">Sign in in another tab</a>
-      <a className="underline" href="/account/settings" target="_blank" rel="noopener noreferrer">Verify your email</a>
+      <a className="text-brand underline" href="/login?callbackUrl=/staff/invites/accept" target="_blank" rel="noopener noreferrer">Sign in (new tab)</a>
+      <a className="text-brand underline" href="/verify-email" target="_blank" rel="noopener noreferrer">Verify your email (new tab)</a>
     </div>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
-    {status ? <><p role="status">{status}</p><Link className="underline" href="/dashboard">Open dashboard</Link></> : <>
+    {error && <p role="alert" className="text-danger">{error}</p>}
+    {status ? <><p role="status">{status}</p><Link className="text-brand underline" href="/dashboard">Open dashboard</Link></> : <>
       {!token && <p>Open the link from your invitation email. After a full reload, reopen that link.</p>}
-      <button className="rounded bg-neutral-900 px-4 py-2 text-white disabled:opacity-50" disabled={!token || busy} type="button" onClick={accept}>
+      <div><Button disabled={!token || busy} type="button" onClick={accept}>
         {busy ? "Accepting..." : "Accept staff invitation"}
-      </button>
+      </Button></div>
     </>}
-  </div>;
+  </Card>;
 }

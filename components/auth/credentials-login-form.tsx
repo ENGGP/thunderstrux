@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 
 export function CredentialsLoginForm({
   callbackUrl
@@ -47,14 +48,14 @@ export function CredentialsLoginForm({
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <Notice role="alert" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
       {successMessage ? (
-        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <Notice role="status" tone="success">
           {successMessage}
-        </div>
+        </Notice>
       ) : null}
 
       <TextInput
@@ -71,12 +72,12 @@ export function CredentialsLoginForm({
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <Link className="text-sm underline" href={`/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Forgot password?</Link>
+        <Link className="text-sm text-brand underline" href={`/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Forgot password?</Link>
         <Button disabled={isSubmitting} type="submit">
           {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>
         <Link
-          className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+          className="text-sm font-medium text-brand underline"
           href={`/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`}
         >
           Don&apos;t have an account? Sign up

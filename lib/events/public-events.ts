@@ -15,6 +15,8 @@ export type PublicEventListItem = {
   location: string;
   organisation: {
     name: string;
+    slug: string;
+    timeZone: string;
   };
 };
 
@@ -41,6 +43,7 @@ export type PublicEventDetail = {
   organisation: {
     name: string;
     slug: string;
+    timeZone: string;
   };
   ticketTypes: PublicEventTicketType[];
 };
@@ -72,7 +75,9 @@ export async function getPublishedEvents({
       location: true,
       organisation: {
         select: {
-          name: true
+          name: true,
+          slug: true,
+          timeZone: true
         }
       }
     }
@@ -110,7 +115,8 @@ export async function getPublishedEventDetail(
       organisation: {
         select: {
           name: true,
-          slug: true
+          slug: true,
+          timeZone: true
         }
       },
       ticketTypes: {

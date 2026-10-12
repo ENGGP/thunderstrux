@@ -1,13 +1,18 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PersonalShell } from "@/components/layout/personal-shell";
 import { OrganisationSearch } from "@/components/organisations/organisation-search";
 import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
+import { Card } from "@/components/ui/card";
 import {
   OrganisationAccessError,
   requireAccountRole,
   getAccessibleOrganisationsForCurrentAccount,
 } from "@/lib/auth/access";
+
+export const metadata: Metadata = { title: "Societies" };
+
 export default async function MemberOrganisationsPage() {
   try {
     await requireAccountRole("member");
@@ -18,36 +23,28 @@ export default async function MemberOrganisationsPage() {
   const organisations = await getAccessibleOrganisationsForCurrentAccount();
   return (
     <PersonalShell>
-        <header className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <Link
-            className="text-sm font-medium text-neutral-600 hover:text-neutral-950"
-            href="/dashboard"
-          >
-            Back to dashboard
-          </Link>
-          <h1 className="mt-3 text-3xl font-semibold text-neutral-950">
-            Organisations
-          </h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Search for organisations and join them as a member.
-          </p>
-          <Link className="mt-3 inline-block underline" href="/societies">
+      <header className="grid gap-2">
+        <h1 className="text-3xl font-semibold text-ink">Societies</h1>
+        <p className="text-ink-soft">
+          Find societies and join them for free.{" "}
+          <Link className="text-brand underline" href="/societies">
             Browse public societies
           </Link>
-        </header>
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold">Your joined societies</h2>
-          <p className="mt-2 text-sm">
-            These are free affiliations. Paid benefits and staff access are
-            separate.
-          </p>
-          <MemberOrganisationsList organisations={organisations} />
-        </section>
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <OrganisationSearch
-            joinedIds={organisations.map((organisation) => organisation.id)}
-          />
-        </section>
+        </p>
+      </header>
+      <Card>
+        <h2 className="text-xl font-semibold text-ink">Your joined societies</h2>
+        <p className="mt-2 text-sm text-ink-soft">
+          These are free affiliations. Paid benefits and staff access are
+          separate.
+        </p>
+        <MemberOrganisationsList organisations={organisations} />
+      </Card>
+      <Card>
+        <OrganisationSearch
+          joinedIds={organisations.map((organisation) => organisation.id)}
+        />
+      </Card>
     </PersonalShell>
   );
 }

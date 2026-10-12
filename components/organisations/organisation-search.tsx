@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type SearchOrganisation = {
@@ -54,7 +55,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
     } catch (searchError) {
       if (requestId !== revision.current) return;
       setError(
-        getClientErrorMessage(searchError, "Unable to search organisations."),
+        getClientErrorMessage(searchError, "Unable to search societies."),
       );
     } finally {
       if (requestId === revision.current) setIsLoading(false);
@@ -120,7 +121,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
       >
         <div className="flex-1">
           <TextInput
-            label="Search organisations"
+            label="Search societies"
             maxLength={120}
             onChange={(event) => setQuery(event.target.value)}
             value={query}
@@ -132,37 +133,31 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
       </form>
 
       {error ? (
-        <div
-          role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-        >
+        <Notice role="alert" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
       {message ? (
-        <div
-          role="status"
-          className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
-        >
+        <Notice role="status" tone="success">
           {message}
-        </div>
+        </Notice>
       ) : null}
 
       {isLoading ? (
-        <p role="status">Loading organisations…</p>
+        <p className="text-sm text-ink-soft" role="status">Loading societies…</p>
       ) : organisations.length === 0 ? (
-        <div className="rounded-lg border border-neutral-200 bg-white p-5 text-sm text-neutral-600">
-          No organisations found.
+        <div className="rounded-card border border-line bg-surface p-5 text-sm text-ink-muted">
+          No societies found.
         </div>
       ) : (
         <div className="grid gap-3">
           {organisations.map((organisation) => (
             <article
-              className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-5"
+              className="flex flex-wrap items-center justify-between gap-4 rounded-card border border-line bg-surface p-5"
               key={organisation.id}
             >
               <div>
-                <h2 className="font-medium text-neutral-950">
+                <h2 className="font-medium text-ink">
                   <Link
                     className="underline"
                     href={`/societies/${organisation.slug}`}
@@ -170,7 +165,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
                     {organisation.name}
                   </Link>
                 </h2>
-                <p className="mt-1 text-sm text-neutral-500">
+                <p className="mt-1 text-sm text-ink-muted">
                   {organisation.slug}
                 </p>
               </div>
@@ -184,7 +179,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
                   ? "Joined"
                   : joiningSlug === organisation.slug
                     ? "Joining..."
-                    : "Join"}
+                    : "Join society"}
               </Button>
             </article>
           ))}
@@ -197,7 +192,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
           disabled={isLoading || joiningSlug !== null}
           onClick={() => search(searchedQuery, nextCursor)}
         >
-          More organisations
+          More societies
         </Button>
       )}
     </div>

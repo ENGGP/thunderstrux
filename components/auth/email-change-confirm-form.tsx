@@ -30,7 +30,7 @@ export function EmailChangeConfirmForm() {
     finally { setBusy(false); }
   }
   return <form className="grid gap-3" onSubmit={submit}>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
     {!token && <p>Open the confirmation link from your new inbox, or <Link className="underline" href="/account/settings">request another email change</Link>.</p>}
     {session?.user?.id ? <p>Signed in as {session.user.email}. Enter your current password to confirm the new address.</p> : <><p>Sign in to your existing account first. Keep this page open while you sign in.</p><TextInput label="Current account email" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></>}
     <TextInput label="Current account password" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} />

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { SocietyCard } from "@/components/organisations/society-card";
+import { Button, buttonClasses } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { TextInput } from "@/components/ui/input";
 import {
   discoveryInput,
@@ -32,19 +34,21 @@ export default async function SocietiesPage({
     cursor: page.pageInfo.nextCursor ?? "",
   });
   return (
-    <main className="society-surface min-h-screen px-4 py-8 sm:px-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <header>
-          <p className="text-sm">Campus communities</p>
-          <h1 className="mt-2 text-3xl font-semibold">Discover societies</h1>
-          <p className="mt-3">
+    <main className="bg-paper">
+      <div className="mx-auto grid max-w-page gap-8 px-4 py-10 md:px-8 md:py-14">
+        <header className="grid gap-2">
+          <p className="text-sm font-semibold text-brand">Campus communities</p>
+          <h1 className="font-display text-4xl font-semibold text-ink md:text-5xl">
+            Discover societies
+          </h1>
+          <p className="max-w-xl text-lg text-ink-soft">
             Find your people, explore their profiles and see what is coming up.
           </p>
         </header>
         <form
           action="/societies"
+          className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 sm:flex-row sm:items-end"
           method="GET"
-          className="society-panel flex flex-col gap-3 p-5 sm:flex-row sm:items-end"
         >
           <div className="min-w-0 flex-1">
             <TextInput
@@ -54,17 +58,21 @@ export default async function SocietiesPage({
               maxLength={120}
             />
           </div>
-          <Button type="submit" variant="society">
-            Search
-          </Button>
+          <Button type="submit">Search</Button>
         </form>
-        {warning && <p role="alert">{warning} Showing the first page.</p>}
+        {warning && (
+          <Notice role="alert" tone="warning">
+            {warning} Showing the first page.
+          </Notice>
+        )}
         {!page.organisations.length ? (
-          <section className="society-panel p-6">
-            <h2 className="font-semibold">No societies found</h2>
-            <p className="mt-2">Try a different name or clear the search.</p>
+          <section className="rounded-card border border-line bg-surface p-6">
+            <h2 className="text-lg font-semibold text-ink">No societies found</h2>
+            <p className="mt-2 text-ink-soft">
+              Try a different name or clear the search.
+            </p>
             <Link
-              className="society-link mt-3 inline-block"
+              className="mt-3 inline-block text-brand underline"
               href="/societies"
             >
               Show all societies
@@ -73,44 +81,26 @@ export default async function SocietiesPage({
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {page.organisations.map((org) => (
-              <article className="society-panel space-y-3 p-6" key={org.id}>
-                {org.logoAssetId && (
-                  <img
-                    src={`/api/public/assets/${org.logoAssetId}`}
-                    alt=""
-                    className="h-16 w-16 object-contain"
-                  />
-                )}
-                <h2 className="text-xl font-semibold">
-                  <Link href={`/societies/${org.slug}`}>{org.name}</Link>
-                </h2>
-                <p>
-                  {org.description ||
-                    "This society is getting its profile ready."}
-                </p>
-                {org.nextEvent && (
-                  <p className="text-sm">Coming up: {org.nextEvent.title}</p>
-                )}
-                <Link
-                  className="society-link inline-block"
-                  href={`/societies/${org.slug}`}
-                >
-                  View society
-                </Link>
-              </article>
+              <SocietyCard key={org.id} {...org} />
             ))}
           </div>
         )}
-        <nav aria-label="Society result pages" className="flex gap-6">
+        <nav aria-label="Society result pages" className="flex flex-wrap gap-3">
           {page.pageInfo.hasPreviousPage && (
             <Link
+              className={buttonClasses({ variant: "secondary" })}
               href={`/societies?${new URLSearchParams({ q: input.q, limit: String(input.limit) })}`}
             >
               First page
             </Link>
           )}
           {page.pageInfo.nextCursor && (
-            <Link href={`/societies?${next}`}>More societies</Link>
+            <Link
+              className={buttonClasses({ variant: "secondary" })}
+              href={`/societies?${next}`}
+            >
+              More societies
+            </Link>
           )}
         </nav>
       </div>

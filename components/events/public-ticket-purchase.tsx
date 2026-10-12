@@ -35,9 +35,9 @@ export function PublicTicketPurchase({
 
   if (ticketTypes.length === 0) {
     return (
-      <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-neutral-950">Tickets</h2>
-        <p className="mt-2 text-sm text-neutral-600">
+      <section className="rounded-card border border-line bg-surface p-5">
+        <h2 className="text-lg font-semibold text-ink">Tickets</h2>
+        <p className="mt-2 text-sm text-ink-muted">
           Tickets are not available for this event yet.
         </p>
       </section>
@@ -99,14 +99,14 @@ export function PublicTicketPurchase({
   }
 
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+    <section className="rounded-card border border-line bg-surface p-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-neutral-950">Tickets</h2>
-        <p className="text-sm text-neutral-600">Select a ticket type and quantity.</p>
+        <h2 className="text-lg font-semibold text-ink">Tickets</h2>
+        <p className="text-sm text-ink-muted">Select a ticket type and quantity.</p>
       </div>
 
       {error ? (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mt-4 rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">
           {error}
         </div>
       ) : null}
@@ -120,12 +120,12 @@ export function PublicTicketPurchase({
 
           return (
             <div
-              className="grid gap-4 rounded-md border border-neutral-200 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+              className="grid gap-4 rounded-control border border-line p-4 sm:grid-cols-[1fr_auto] sm:items-center"
               key={ticketType.id}
             >
               <div>
-                <h3 className="font-medium text-neutral-950">{ticketType.name}</h3>
-                <p className="mt-1 text-sm text-neutral-600">
+                <h3 className="font-medium text-ink">{ticketType.name}</h3>
+                <p className="mt-1 text-sm text-ink-muted">
                   {formatMoney(ticketType.price)} -{" "}
                   {ticketType.availableQuantity} remaining
                 </p>
@@ -136,7 +136,7 @@ export function PublicTicketPurchase({
                   Quantity
                 </label>
                 <input
-                  className="h-10 w-24 rounded-md border border-neutral-300 px-3 text-sm text-neutral-950 outline-none focus:border-neutral-500 disabled:bg-neutral-100"
+                  className="h-10 w-24 rounded-control border border-line-strong px-3 text-sm text-ink disabled:bg-surface-subtle"
                   disabled={isSoldOut || isLoading}
                   id={`quantity-${ticketType.id}`}
                   max={Math.max(ticketType.availableQuantity, 1)}
@@ -151,7 +151,7 @@ export function PublicTicketPurchase({
                   value={quantity}
                 />
                 <button
-                  className="h-10 rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-10 rounded-control bg-brand px-4 text-sm font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={
                     isSoldOut ||
                     isLoading ||

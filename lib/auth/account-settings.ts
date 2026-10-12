@@ -31,11 +31,7 @@ export async function updateAccountProfile(actor: AccountActor, input: unknown) 
       select: { id: true, email: true, accountRole: true, firstName: true, lastName: true, displayName: true, phone: true, studentNumber: true, onboardingCompletedAt: true } });
   });
 }
-export async function readMemberDashboard(userId: string) {
-  const [profile, orderCount] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: {
-      firstName: true, lastName: true, displayName: true, phone: true, studentNumber: true, onboardingCompletedAt: true } }),
-    prisma.order.count({ where: { userId } })
-  ]);
-  return { profile, orderCount };
+export async function readMemberProfile(userId: string) {
+  return prisma.user.findUnique({ where: { id: userId }, select: {
+    firstName: true, lastName: true, displayName: true, phone: true, studentNumber: true, onboardingCompletedAt: true } });
 }

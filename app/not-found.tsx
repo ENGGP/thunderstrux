@@ -15,10 +15,10 @@ export default function NotFound() {
       </p>
       <div className="flex flex-wrap gap-3">
         <Link className={buttonClasses()} href="/">
-          Explore events
+          Browse events
         </Link>
         <Link className={buttonClasses({ variant: "secondary" })} href="/societies">
-          Explore societies
+          Browse societies
         </Link>
       </div>
     </main>

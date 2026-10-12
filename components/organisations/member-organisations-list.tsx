@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { Button, buttonClasses } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { formatDate } from "@/lib/format";
 
 type MemberOrganisation = {
   id: string;
   name: string;
   slug: string;
-  role: string;
+  joinedAt: Date | null;
 };
 
+// Free affiliations only. Leaving one never touches paid purchases or staff access.
 export function MemberOrganisationsList({
   organisations,
 }: {
@@ -20,7 +25,8 @@ export function MemberOrganisationsList({
   const router = useRouter();
   const [visibleOrganisations, setVisibleOrganisations] =
     useState(organisations);
-  const [leavingSlug, setLeavingSlug] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<MemberOrganisation | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -28,13 +34,7 @@ export function MemberOrganisationsList({
   }, [organisations]);
 
   async function leaveOrganisation(organisation: MemberOrganisation) {
-    const confirmed = window.confirm(`Leave ${organisation.name}?`);
-
-    if (!confirmed) {
-      return;
-    }
-
-    setLeavingSlug(organisation.slug);
+    setLeaving(true);
     setMessage(null);
     setError(null);
 
@@ -48,66 +48,84 @@ export function MemberOrganisationsList({
       setMessage(`Left ${organisation.name}.`);
       router.refresh();
     } catch (leaveError) {
-      setError(
-        getClientErrorMessage(leaveError, "Unable to leave organisation."),
-      );
+      setError(getClientErrorMessage(leaveError, "Unable to leave society."));
     } finally {
-      setLeavingSlug(null);
+      setLeaving(false);
+      setConfirming(null);
     }
   }
 
   return (
-    <div className="mt-5 space-y-4">
+    <div className="mt-5 grid gap-4">
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <Notice role="alert" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
       {message ? (
-        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <Notice role="status" tone="success">
           {message}
-        </div>
+        </Notice>
       ) : null}
 
       {visibleOrganisations.length === 0 ? (
-        <p className="text-sm text-neutral-600">
-          You have not joined any organisations yet.
+        <p className="text-sm text-ink-soft">
+          You have not joined any societies yet.
         </p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {visibleOrganisations.map((organisation) => (
             <article
-              className="rounded-lg border border-neutral-200 p-4"
+              className="rounded-card border border-line p-4"
               key={organisation.id}
             >
-              <h3 className="font-medium text-neutral-950">
+              <h3 className="font-semibold text-ink [overflow-wrap:anywhere]">
                 {organisation.name}
               </h3>
-              <p className="mt-1 text-sm text-neutral-500">
-                Joined as {organisation.role}
-              </p>
+              {organisation.joinedAt ? (
+                <p className="mt-1 text-sm text-ink-muted">
+                  Joined {formatDate(organisation.joinedAt)}
+                </p>
+              ) : null}
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
-                  className="inline-flex h-9 items-center justify-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                  className={buttonClasses({ variant: "secondary", size: "sm" })}
                   href={`/societies/${organisation.slug}`}
                 >
-                  View details
+                  View society
                 </Link>
-                <button
-                  className="inline-flex h-9 items-center justify-center rounded-md border border-red-300 bg-white px-3 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={leavingSlug === organisation.slug}
-                  onClick={() => leaveOrganisation(organisation)}
-                  type="button"
+                <Link
+                  className={buttonClasses({ variant: "secondary", size: "sm" })}
+                  href={`/societies/${organisation.slug}#events`}
                 >
-                  {leavingSlug === organisation.slug
-                    ? "Leaving..."
-                    : "Leave organisation"}
-                </button>
+                  View events
+                </Link>
+                <Button
+                  onClick={() => setConfirming(organisation)}
+                  size="sm"
+                  type="button"
+                  variant="danger"
+                >
+                  Leave society
+                </Button>
               </div>
             </article>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        busy={leaving}
+        confirmLabel="Leave society"
+        destructive
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => confirming && leaveOrganisation(confirming)}
+        open={confirming !== null}
+        title={`Leave ${confirming?.name ?? "society"}?`}
+      >
+        You will stop being listed as joined. Tickets you have bought and any
+        staff access you hold are not affected, and you can join again later.
+      </ConfirmDialog>
     </div>
   );
 }

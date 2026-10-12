@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 owner: engineering
 related: ["[[Development Workflow]]", "[[Dependency Automation]]"]
 sources: [scripts/doctor-dev.mjs, scripts/integration-test-guards.mjs]
@@ -21,6 +21,12 @@ The old 41-finding audit is historical; [[Dependency Automation]] records the pa
 - Closure blockers require actual ownership/payment/purchase resolution; a manual refund flag is not provider proof.
 
 Contracts: [[Authentication and Dashboard Access]], [[API Reference]], [[Email Delivery Implementation]]. Deployment/rollback: [[Production Operations]].
+
+## HTTPS Tunnel Redirect Loop
+
+If a signed-in dashboard, account or event URL alternates between itself and `/login?callbackUrl=...`, check the shared proxy rather than clearing all cookies. The login page can see the HTTPS secure session while a proxy using Auth.js's default non-secure cookie name sees no session. `proxy.ts` now derives `secureCookie` from `AUTH_URL`, `NEXTAUTH_URL` or the request URL, matching the issuer. Keep auth/public URLs set to `https://thunderstrux.mistayu.com` and the tunnel service at `http://127.0.0.1:3080`.
+
+After changing the proxy, restart only the app with `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart app`; the development server may retain the old guard. Refresh the affected URL after restart. Existing valid HTTPS sessions work; revoked, expired or invalid sessions still require fresh login. Do not disable secure cookies, live identity checks or CSRF to work around a redirect loop.
 
 ## UI Change Not Visible
 

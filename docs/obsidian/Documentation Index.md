@@ -8,11 +8,11 @@ sources: [AGENTS.md, scripts/check-docs.mjs]
 
 # Documentation Index
 
-The project knowledge map: use [[Project Handover]] for current state, the living notes for behavior/procedures, and historical notes for dated evidence. Living references were reviewed against merged main `4a8024b` on 2026-10-12: Packages 1–3 are locally qualified, local development is activated, and Package 4 is next. Hosted activation remains unverified. This documentation review adds no functionality/provider evidence; historical notes retain their original dates and observations. Target specifications describe future contracts, not delivered features.
+The project knowledge map: use [[Project Handover]] for current state, the living notes for behavior/procedures, and historical notes for dated evidence. Living references were reviewed against merged main `4a8024b` on 2026-10-12: Packages 1–3 are locally qualified, local development is activated, and Package 4 follows the specification-alignment refactor recorded in the handover. Hosted activation remains unverified. This documentation review adds no functionality/provider evidence; historical notes retain their original dates and observations. Target specifications describe future contracts, not delivered features.
 
 ## Start Here
 
-1. [[Project Handover]] ? current delivery from PR #31 onward, active risks and next safe actions.
+1. [[Project Handover]]: current session state, active contracts, risks and next safe actions.
 2. [[Engineering Delivery Workflow]] ? focused branching, local validation by risk, review, cleanup and PR delivery.
 3. [[Non-Blocking Issue Register|Issue and Defect Register]] ? canonical defects, accepted risks and external gates.
 4. [[../THUNDERSTRUX_PRD|Product Requirements]] and [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] ? product intent and delivery sequence.
@@ -40,11 +40,12 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 
 These notes retain their original findings and dates. They do not define today's runtime or delivery policy:
 
+- [[Project Handover 2026-10-12]]: the handover for PR #31 to PR #53 delivery with its qualification evidence; superseded by [[Project Handover]] when a new session began.
 - [[Dependency Advisory Triage 2026-09-18]] ? original advisory inventory; current patches/override removal conditions are in [[Dependency Automation]].
 - [[Production Readiness Verification 2026-09-22]] ? earlier remediation acceptance; current release procedures and remaining gates are in [[Production Operations]] and the handover.
 - [[Docker Architecture Assessment 2026-09-29]] ? topology/design assessment and subsequent foundation evidence; current runtime uses Node 22 and local validation.
 
-Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30, with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. Keep the handover focused on PR #31 onward.
+Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30, with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. [[Project Handover 2026-10-12]] covers PR #31 to PR #53; keep the current handover focused on the session it describes.
 
 ## Sources And Maintenance
 

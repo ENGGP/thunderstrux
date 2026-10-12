@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 
 // Reads for the organisation dashboard. Order queries scope through the
 // canonical Event owner and are skipped when the caller lacks orders:read.
@@ -11,7 +12,15 @@ export async function getOrganisationOverview(
   }: { publishedEventsOnly: boolean; includeOrders: boolean; paidSince: Date }
 ) {
   const ownedOrder = { event: { is: { organisationId } } };
-  const [upcomingEvents, recentOrders, monthlyPaidOrders] = await Promise.all([
+  const [setup, upcomingEvents, recentOrders, monthlyPaidOrders] = await Promise.all([
+    prisma.organisation.findUnique({
+      where: { id: organisationId },
+      select: {
+        onboardingCompletedAt: true,
+        stripeAccountId: true,
+        stripeChargesEnabled: true
+      }
+    }),
     prisma.event.findMany({
       where: {
         organisationId,
@@ -46,5 +55,11 @@ export async function getOrganisationOverview(
       : Promise.resolve([])
   ]);
 
-  return { upcomingEvents, recentOrders, monthlyPaidOrders };
+  return {
+    profileComplete: !!setup?.onboardingCompletedAt,
+    chargesReady: !!setup && isOrganisationStripeReady(setup),
+    upcomingEvents,
+    recentOrders,
+    monthlyPaidOrders
+  };
 }

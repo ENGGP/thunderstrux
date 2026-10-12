@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime } from "@/lib/format";
 import {
   fetchOrganisationBySlug,
@@ -42,12 +45,6 @@ function formatTicketSummary(event: EventListItem) {
   return `${ticketCount} ticket ${ticketCount === 1 ? "type" : "types"}`;
 }
 
-function statusBadgeClassName(status: EventListItem["status"]) {
-  return status === "published"
-    ? "rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-200"
-    : "rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200";
-}
-
 function totalTicketQuantity(event: EventListItem) {
   return (event.ticketTypes ?? []).reduce(
     (total, ticketType) => total + ticketType.quantity,
@@ -81,6 +78,7 @@ export function EventsList({
     text: string;
   } | null>(null);
   const [deleteEventId, setDeleteEventId] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<EventListItem | null>(null);
   const [statusEventId, setStatusEventId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -122,14 +120,6 @@ export function EventsList({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Delete "${event.title}"? This cannot be undone.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
     setActionMessage(null);
     setDeleteEventId(event.id);
 
@@ -152,6 +142,7 @@ export function EventsList({
       });
     } finally {
       setDeleteEventId(null);
+      setConfirmingDelete(null);
     }
   }
 
@@ -217,13 +208,10 @@ export function EventsList({
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-neutral-950">Events</h2>
-          <p className="text-sm text-neutral-500">{state.organisation.name}</p>
+          <h2 className="text-2xl font-semibold text-ink">Events</h2>
+          <p className="text-sm text-ink-muted">{state.organisation.name}</p>
         </div>
-        <Link
-          href={`${dashboardBasePath}/events/new`}
-          className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
-        >
+        <Link className={buttonClasses()} href={`${dashboardBasePath}/events/new`}>
           New event
         </Link>
       </div>
@@ -236,8 +224,8 @@ export function EventsList({
             <div
               className={
                 actionMessage.tone === "error"
-                  ? "mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-                  : "mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
+                  ? "mb-4 rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger"
+                  : "mb-4 rounded-control border border-success bg-success-bg px-3 py-2 text-sm text-success"
               }
             >
               {actionMessage.text}
@@ -246,7 +234,7 @@ export function EventsList({
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-neutral-500">
+                <tr className="border-b border-line text-ink-muted">
                   <th className="py-3 font-medium">Title</th>
                   <th className="py-3 font-medium">Start time</th>
                   <th className="py-3 font-medium">End time</th>
@@ -262,49 +250,47 @@ export function EventsList({
                   return (
                     <tr
                       key={event.id}
-                      className="border-b border-neutral-100 last:border-0"
+                      className="border-b border-line last:border-0"
                     >
-                      <td className="py-3 font-medium text-neutral-950">
+                      <td className="py-3 font-medium text-ink">
                         {event.title}
                       </td>
-                      <td className="py-3 text-neutral-700">
+                      <td className="py-3 text-ink-soft">
                         {formatDateTime(event.startTime, { fallback: "Invalid date" })}
                       </td>
-                      <td className="py-3 text-neutral-700">
+                      <td className="py-3 text-ink-soft">
                         {formatDateTime(event.endTime, { fallback: "Invalid date" })}
                       </td>
                       <td className="py-3">
-                        <span className={statusBadgeClassName(event.status)}>
-                          {event.status === "published" ? "Published" : "Draft"}
-                        </span>
+                        <StatusBadge status={event.status} />
                         {event.status === "draft" ? (
-                          <p className="mt-2 max-w-44 text-xs text-neutral-500">
+                          <p className="mt-2 max-w-44 text-xs text-ink-muted">
                             Event must be published to be visible publicly.
                           </p>
                         ) : null}
                       </td>
                       <td className="py-3">
-                        <span className="text-neutral-700">
+                        <span className="text-ink-soft">
                           {formatTicketSummary(event)}
                         </span>
                       </td>
                       <td className="py-3">
                         <div className="flex flex-wrap gap-2">
                           <Link
-                            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+                            className="rounded-control border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
                             href={`${dashboardBasePath}/events/${event.id}`}
                           >
                             View Event
                           </Link>
                           <Link
-                            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+                            className="rounded-control border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
                             href={`${dashboardBasePath}/events/${event.id}/edit`}
                           >
                             Edit
                           </Link>
                           {event.status === "draft" ? (
                             <button
-                              className="rounded-md border border-green-300 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-control border border-success px-3 py-1.5 text-sm font-medium text-success hover:bg-success-bg disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={
                                 statusEventId === event.id ||
                                 Boolean(disabledReason)
@@ -317,7 +303,7 @@ export function EventsList({
                             </button>
                           ) : (
                             <button
-                              className="rounded-md border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-control border border-warning px-3 py-1.5 text-sm font-medium text-warning hover:bg-warning-bg disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={statusEventId === event.id}
                               onClick={() => togglePublishStatus(event)}
                               type="button"
@@ -328,16 +314,16 @@ export function EventsList({
                             </button>
                           )}
                           <button
-                            className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-control border border-danger px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger-bg disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={deleteEventId === event.id}
-                            onClick={() => deleteEvent(event)}
+                            onClick={() => setConfirmingDelete(event)}
                             type="button"
                           >
                             {deleteEventId === event.id ? "Deleting..." : "Delete"}
                           </button>
                         </div>
                         {event.status === "draft" && disabledReason ? (
-                          <p className="mt-2 text-xs text-neutral-500">
+                          <p className="mt-2 text-xs text-ink-muted">
                             {disabledReason}
                           </p>
                         ) : null}
@@ -350,6 +336,18 @@ export function EventsList({
           </div>
         </Card>
       )}
+      <ConfirmDialog
+        busy={deleteEventId !== null}
+        confirmLabel="Delete event"
+        destructive
+        onCancel={() => setConfirmingDelete(null)}
+        onConfirm={() => confirmingDelete && deleteEvent(confirmingDelete)}
+        open={confirmingDelete !== null}
+        title={`Delete "${confirmingDelete?.title ?? "this event"}"?`}
+      >
+        This cannot be undone. Events with orders or issued tickets cannot be
+        deleted and will report an error instead.
+      </ConfirmDialog>
     </div>
   );
 }

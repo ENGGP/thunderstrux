@@ -20,36 +20,17 @@ import {
 import { PersonalShell } from "@/components/layout/personal-shell";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
-import { hasOrganisationPermission } from "@/lib/permissions";
+import { hasOrganisationPermission, type OrganisationPermission } from "@/lib/permissions";
 
 function monthStart() {
   const date = new Date();
   date.setDate(1);
   date.setHours(0, 0, 0, 0);
   return date;
-}
-
-function revenueBuckets(orders: Array<{ paidAt: Date | null; totalAmount: number }>) {
-  const buckets = Array.from({ length: 4 }, (_, index) => ({
-    label: `W${index + 1}`,
-    total: 0
-  }));
-
-  for (const order of orders) {
-    const paidAt = order.paidAt;
-
-    if (!paidAt) {
-      continue;
-    }
-
-    const bucketIndex = Math.min(3, Math.floor((paidAt.getDate() - 1) / 7));
-    buckets[bucketIndex].total += order.totalAmount;
-  }
-
-  return buckets;
 }
 
 async function OrganisationDashboard(contexts: ContextChoices) {
@@ -61,7 +42,9 @@ async function OrganisationDashboard(contexts: ContextChoices) {
   );
   const canViewOrders = hasOrganisationPermission(organisation.staffRole, "orders:read");
 
-  const { upcomingEvents, recentOrders, monthlyPaidOrders } =
+  const can = (permission: OrganisationPermission) =>
+    hasOrganisationPermission(organisation.staffRole, permission);
+  const { profileComplete, chargesReady, upcomingEvents, recentOrders, monthlyPaidOrders } =
     await getOrganisationOverview(organisation.id, {
       publishedEventsOnly: organisation.staffRole === "check_in_staff",
       includeOrders: canViewOrders,
@@ -72,164 +55,135 @@ async function OrganisationDashboard(contexts: ContextChoices) {
     (total, order) => total + order.totalAmount,
     0
   );
-  const buckets = revenueBuckets(monthlyPaidOrders);
-  const maxBucket = Math.max(...buckets.map((bucket) => bucket.total), 1);
+  // Only tasks the caller is allowed to act on.
+  const tasks = [
+    !profileComplete && can("organisation:settings")
+      ? { text: "Finish your public society profile", href: "/dashboard/settings/profile", link: "Open settings" }
+      : null,
+    !chargesReady && can("stripe:manage")
+      ? { text: "Finish payment setup before selling paid tickets", href: "/dashboard/settings", link: "Open Payments" }
+      : null,
+    upcomingEvents.length === 0 && canManageEvents
+      ? { text: "No upcoming events are scheduled", href: "/dashboard/events/new", link: "Create an event" }
+      : null
+  ].filter((task) => task !== null);
 
   return (
     <DashboardShell contexts={contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div>
-              <p className="text-sm text-neutral-500">Organisation dashboard</p>
-              <h2 className="mt-2 text-3xl font-semibold text-neutral-950">
-                {organisation.name}
-              </h2>
-            </div>
-            {canManageEvents ? (
-              <Link
-                className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
-                href="/dashboard/events/new"
-              >
-                New event
-              </Link>
-            ) : null}
+      <div className="mx-auto grid max-w-admin gap-6 px-4 py-8 sm:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-ink-muted">Organisation dashboard</p>
+            <h2 className="mt-1 text-2xl font-semibold text-ink">Overview</h2>
           </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-3">
-          {canViewOrders ? (
-            <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-              <p className="text-sm text-neutral-500">Past month revenue</p>
-              <p className="mt-2 text-2xl font-semibold text-neutral-950">
-                {formatMoney(monthlyRevenue)}
-              </p>
-            </div>
+          {canManageEvents ? (
+            <Link className={buttonClasses()} href="/dashboard/events/new">
+              New event
+            </Link>
           ) : null}
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Upcoming events</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {upcomingEvents.length}
-            </p>
-          </div>
-          {canViewOrders ? (
-            <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-              <p className="text-sm text-neutral-500">Recent orders</p>
-              <p className="mt-2 text-2xl font-semibold text-neutral-950">
-                {recentOrders.length}
-              </p>
-            </div>
-          ) : null}
-        </section>
+        </div>
 
-        {canViewOrders ? (
-          <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-medium text-neutral-950">
-                  Revenue summary
-                </h3>
-                <p className="mt-1 text-sm text-neutral-500">
-                  Paid orders since {formatDate(startOfMonth)}
-                </p>
-              </div>
-              <Link
-                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
-                href="/dashboard/orders"
-              >
-                View orders
-              </Link>
-            </div>
-            <div className="mt-6 grid h-40 grid-cols-4 items-end gap-3">
-              {buckets.map((bucket) => (
-                <div className="grid gap-2" key={bucket.label}>
-                  <div
-                    className="rounded-t-md bg-neutral-900"
-                    style={{
-                      height: `${Math.max(8, (bucket.total / maxBucket) * 128)}px`
-                    }}
-                  />
-                  <div className="text-center text-xs text-neutral-500">
-                    <p>{bucket.label}</p>
-                    <p>{formatMoney(bucket.total)}</p>
-                  </div>
-                </div>
+        {tasks.length > 0 ? (
+          <Card>
+            <h3 className="text-lg font-semibold text-ink">Needs attention</h3>
+            <ul className="mt-3 grid gap-2">
+              {tasks.map((task) => (
+                <li
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-control border-l-[3px] border-warning bg-warning-bg px-4 py-3 text-sm text-warning"
+                  key={task.href}
+                >
+                  <span>{task.text}</span>
+                  <Link className="font-semibold underline" href={task.href}>
+                    {task.link}
+                  </Link>
+                </li>
               ))}
-            </div>
-          </section>
+            </ul>
+          </Card>
         ) : null}
 
+        <section className="grid gap-4 sm:grid-cols-2">
+          <Card>
+            <p className="text-sm text-ink-muted">Upcoming events</p>
+            <p className="mt-1 text-2xl font-semibold text-ink">
+              {upcomingEvents.length}
+              {upcomingEvents.length === 5 ? "+" : ""}
+            </p>
+            <p className="mt-1 text-sm text-ink-muted">Next five shown below</p>
+          </Card>
+          {canViewOrders ? (
+            <Card>
+              <p className="text-sm text-ink-muted">Revenue this month</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">
+                {formatMoney(monthlyRevenue)}
+              </p>
+              <p className="mt-1 text-sm text-ink-muted">
+                Paid ticket orders since {formatDate(startOfMonth)}
+              </p>
+            </Card>
+          ) : null}
+        </section>
+
         <section className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <Card>
             <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-lg font-medium text-neutral-950">
-                Upcoming events
-              </h3>
-              <Link
-                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
-                href="/dashboard/events"
-              >
+              <h3 className="text-lg font-semibold text-ink">Upcoming events</h3>
+              <Link className="text-sm font-semibold text-brand underline" href="/dashboard/events">
                 View all
               </Link>
             </div>
             {upcomingEvents.length === 0 ? (
-              <p className="text-sm text-neutral-600">No upcoming events.</p>
+              <p className="text-sm text-ink-soft">No upcoming events.</p>
             ) : (
               <ul className="grid gap-3">
                 {upcomingEvents.map((event) => (
                   <li
-                    className="rounded-lg border border-neutral-200 p-3 text-sm"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-line p-3 text-sm"
                     key={event.id}
                   >
-                    <p className="font-medium text-neutral-950">{event.title}</p>
-                    <p className="mt-1 text-neutral-600">
-                      {formatDate(event.startTime)} · {event.status}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink [overflow-wrap:anywhere]">{event.title}</p>
+                      <p className="mt-1 text-ink-muted">{formatDate(event.startTime)}</p>
+                    </div>
+                    <StatusBadge status={event.status} />
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </Card>
 
           {canViewOrders ? (
-            <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-lg font-medium text-neutral-950">
-                Recent orders
-              </h3>
-              <Link
-                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
-                href="/dashboard/orders"
-              >
-                View all
-              </Link>
-            </div>
-            {recentOrders.length === 0 ? (
-              <p className="text-sm text-neutral-600">No orders yet.</p>
-            ) : (
-              <ul className="grid gap-3">
-                {recentOrders.map((order) => (
-                  <li
-                    className="rounded-lg border border-neutral-200 p-3 text-sm"
-                    key={order.id}
-                  >
-                    <div className="flex justify-between gap-4">
-                      <p className="font-medium text-neutral-950">
-                        {order.event.title}
-                      </p>
-                      <p className="text-neutral-700">
-                        {formatMoney(order.totalAmount)}
-                      </p>
-                    </div>
-                    <p className="mt-1 text-neutral-600">
-                      {order.quantity} ticket{order.quantity === 1 ? "" : "s"} ·{" "}
-                      {order.status}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-            </div>
+            <Card>
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <h3 className="text-lg font-semibold text-ink">Recent orders</h3>
+                <Link className="text-sm font-semibold text-brand underline" href="/dashboard/orders">
+                  View all
+                </Link>
+              </div>
+              {recentOrders.length === 0 ? (
+                <p className="text-sm text-ink-soft">No orders yet.</p>
+              ) : (
+                <ul className="grid gap-3">
+                  {recentOrders.map((order) => (
+                    <li
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-line p-3 text-sm"
+                      key={order.id}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ink [overflow-wrap:anywhere]">
+                          {order.event.title}
+                        </p>
+                        <p className="mt-1 text-ink-muted">
+                          {order.quantity} ticket{order.quantity === 1 ? "" : "s"} ·{" "}
+                          <span className="tabular-nums">{formatMoney(order.totalAmount)}</span>
+                        </p>
+                      </div>
+                      <StatusBadge status={order.status} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           ) : null}
         </section>
       </div>

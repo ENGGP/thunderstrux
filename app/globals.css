@@ -125,14 +125,6 @@
   }
 }
 
-@layer components {
-  .society-surface { background: var(--ts-paper); color: var(--ts-ink); overflow-wrap: anywhere; }
-  .society-panel { background: var(--ts-surface); border: 1px solid var(--ts-border); border-radius: 14px; }
-  .society-action { background: var(--ts-brand); color: white; }
-  .society-action:hover { background: var(--ts-brand-hover); }
-  .society-link, .society-surface a { color: var(--ts-brand); text-decoration: underline; text-underline-offset: 3px; }
-}
-
 /* Unlayered so no utility (including outline-none) can remove the keyboard focus ring. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--ts-focus);

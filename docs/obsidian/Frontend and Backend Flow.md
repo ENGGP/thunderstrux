@@ -251,7 +251,7 @@ Page resolves the authorised user's canonical organisation
 
 Current UI:
 
-- Capability-filtered sidebar: Dashboard, Events, Orders, Notifications, Society profile, Stripe settings and Staff, with Staff MFA; longest matching route is active
+- Capability-filtered sidebar: Overview, Events, Orders, Payments, Staff, Settings and Notifications, with Staff MFA; longest matching route is active
 - Header shows the organisation name
 - Primary management links use slugless `/dashboard/*` paths.
 - Legacy `/dashboard/[orgSlug]/*` pages redirect for backwards compatibility.
@@ -375,7 +375,6 @@ Edit page receives eventId
 Current UI note:
 
 - Edit page now shows only one `Edit event` title.
-- New event page still has a top page heading `Create Event` and the form title `New event`.
 
 Ticket edit details:
 

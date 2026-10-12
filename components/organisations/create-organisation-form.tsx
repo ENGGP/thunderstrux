@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type CreateOrganisationResponse = {
@@ -37,14 +38,14 @@ export function CreateOrganisationForm() {
         body: JSON.stringify({ name })
       });
 
-      setSuccessMessage("Organisation created. Redirecting...");
+      setSuccessMessage("Society created. Redirecting...");
       router.push("/dashboard/settings/profile");
       router.refresh();
     } catch (createError) {
       setError(
         getClientErrorMessage(
           createError,
-          "Unable to create organisation. Please try again."
+          "Unable to create society. Please try again."
         )
       );
 
@@ -55,18 +56,19 @@ export function CreateOrganisationForm() {
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <Notice role="alert" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
       {successMessage ? (
-        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <Notice role="status" tone="success">
           {successMessage}
-        </div>
+        </Notice>
       ) : null}
 
       <TextInput
-        label="Organisation name"
+        hint="Your public address is made from the name and does not change later."
+        label="Society name"
         maxLength={120}
         onChange={(event) => setName(event.target.value)}
         required
@@ -74,7 +76,7 @@ export function CreateOrganisationForm() {
       />
 
       <Button disabled={isSubmitting || name.trim().length === 0} type="submit">
-        {isSubmitting ? "Creating..." : "Create organisation"}
+        {isSubmitting ? "Creating..." : "Create society"}
       </Button>
     </form>
   );

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { TicketCheckInButton } from "@/components/tickets/ticket-check-in-button";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime } from "@/lib/format";
 import {
   OrganisationEventTicketsAccessError,
@@ -18,12 +19,6 @@ type OrganiserEventTicketsPageProps = {
   }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
-
-function statusBadgeClassName(status: "unused" | "checked-in") {
-  return status === "checked-in"
-    ? "rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-green-200"
-    : "rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-700 ring-1 ring-neutral-200";
-}
 
 function buyerLabel(email: string | null, name: string | null) {
   if (email && name) {
@@ -112,23 +107,23 @@ export default async function OrganiserEventTicketsPage({
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-6xl space-y-6 px-6 py-10">
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-card border border-line bg-surface p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-neutral-500">Tickets</p>
-              <h2 className="mt-2 text-3xl font-semibold text-neutral-950">
+              <p className="text-sm font-medium text-ink-muted">Tickets</p>
+              <h2 className="mt-2 text-3xl font-semibold text-ink">
                 {payload.event.title}
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
               {hasOrganisationPermission(organisation.staffRole, "analytics:read") && <Link
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+                className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
                 href={`/dashboard/events/${payload.event.id}`}
               >
                 Back to event
               </Link>}
               {hasOrganisationPermission(organisation.staffRole, "orders:read") && <Link
-                className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+                className="rounded-control bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
                 href={`/dashboard/orders?eventId=${payload.event.id}`}
               >
                 View orders
@@ -138,36 +133,36 @@ export default async function OrganiserEventTicketsPage({
         </section>
 
         <section className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Total tickets</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+          <div className="rounded-card border border-line bg-surface p-5">
+            <p className="text-sm text-ink-muted">Total tickets</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">
               {payload.counts.total}
             </p>
           </div>
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Unused</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+          <div className="rounded-card border border-line bg-surface p-5">
+            <p className="text-sm text-ink-muted">Unused</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">
               {payload.counts.unused}
             </p>
           </div>
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Checked in</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+          <div className="rounded-card border border-line bg-surface p-5">
+            <p className="text-sm text-ink-muted">Checked in</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">
               {payload.counts.checkedIn}
             </p>
           </div>
         </section>
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-card border border-line bg-surface p-6">
           {payload.counts.total === 0 ? (
-            <p className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-5 text-sm text-neutral-600">
+            <p className="rounded-card border border-line bg-surface-subtle px-4 py-5 text-sm text-ink-muted">
               No issued tickets yet.
             </p>
           ) : payload.tickets.length === 0 ? (
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-5 text-sm text-neutral-600">
+            <div className="rounded-card border border-line bg-surface-subtle px-4 py-5 text-sm text-ink-muted">
               <p>No tickets found on this page.</p>
               <Link
-                className="mt-3 inline-flex text-sm font-medium text-neutral-900 hover:text-neutral-700"
+                className="mt-3 inline-flex text-sm font-medium text-ink hover:text-ink-soft"
                 href={`/dashboard/events/${payload.event.id}/tickets`}
               >
                 Back to first page
@@ -178,7 +173,7 @@ export default async function OrganiserEventTicketsPage({
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
-                    <tr className="border-b border-neutral-200 text-neutral-500">
+                    <tr className="border-b border-line text-ink-muted">
                       <th className="py-3 pr-4 font-medium">Ticket ID</th>
                       <th className="py-3 pr-4 font-medium">Buyer</th>
                       <th className="py-3 pr-4 font-medium">Ticket type</th>
@@ -190,24 +185,22 @@ export default async function OrganiserEventTicketsPage({
                   <tbody>
                     {payload.tickets.map((ticket) => (
                       <tr
-                        className="border-b border-neutral-100 align-top last:border-0"
+                        className="border-b border-line align-top last:border-0"
                         key={ticket.id}
                       >
-                        <td className="max-w-56 break-all py-3 pr-4 font-mono text-xs text-neutral-700">
+                        <td className="max-w-56 break-all py-3 pr-4 font-mono text-xs text-ink-soft">
                           {ticket.id}
                         </td>
-                        <td className="py-3 pr-4 text-neutral-700">
+                        <td className="py-3 pr-4 text-ink-soft">
                           {buyerLabel(ticket.buyerEmail, ticket.buyerName)}
                         </td>
-                        <td className="py-3 pr-4 text-neutral-700">
+                        <td className="py-3 pr-4 text-ink-soft">
                           {ticket.ticketTypeName}
                         </td>
                         <td className="py-3 pr-4">
-                          <span className={statusBadgeClassName(ticket.status)}>
-                            {ticket.status === "checked-in" ? "Checked in" : "Unused"}
-                          </span>
+                          <StatusBadge status={ticket.status} />
                         </td>
-                        <td className="py-3 pr-4 text-neutral-700">
+                        <td className="py-3 pr-4 text-ink-soft">
                           {formatDateTime(ticket.createdAt)}
                         </td>
                         <td className="py-3">
@@ -225,15 +218,15 @@ export default async function OrganiserEventTicketsPage({
                   </tbody>
                 </table>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-4 text-sm">
-                <p className="text-neutral-500">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm">
+                <p className="text-ink-muted">
                   Showing {payload.tickets.length} of {payload.counts.total} tickets
                 </p>
                 <div className="flex gap-2">
                   {payload.pageInfo.hasPreviousPage &&
                   payload.pageInfo.previousCursor ? (
                     <Link
-                      className="rounded-lg border border-neutral-300 px-4 py-2 font-medium text-neutral-900 hover:bg-neutral-50"
+                      className="rounded-control border border-line-strong px-4 py-2 font-medium text-ink hover:bg-surface-subtle"
                       href={paginationHref({
                         eventId: payload.event.id,
                         limit: payload.pageInfo.limit,
@@ -246,7 +239,7 @@ export default async function OrganiserEventTicketsPage({
                   ) : null}
                   {payload.pageInfo.hasNextPage && payload.pageInfo.nextCursor ? (
                     <Link
-                      className="rounded-lg border border-neutral-300 px-4 py-2 font-medium text-neutral-900 hover:bg-neutral-50"
+                      className="rounded-control border border-line-strong px-4 py-2 font-medium text-ink hover:bg-surface-subtle"
                       href={paginationHref({
                         eventId: payload.event.id,
                         limit: payload.pageInfo.limit,

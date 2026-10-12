@@ -15,11 +15,15 @@ import { redirectLegacyOrganisationPage } from "@/lib/auth/page-access";
 import { resolveAuthSecret } from "@/lib/auth/secret";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
+import { getOrganisationOverview } from "@/lib/organisations/overview";
+import { listPastStaffInvites } from "@/lib/staff/management";
 import { selectMockContext, setMockSession } from "@/tests/helpers/auth";
 import { parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import {
   createEvent,
   createMember,
+  createOrder,
   createOrganisationAccount,
   createOrganisationStaff
 } from "@/tests/helpers/test-data";
@@ -225,5 +229,73 @@ describe("error contract for routes on the shared mapper", () => {
       method: "GET"
     });
     expect(JSON.stringify(log.mock.calls)).not.toContain("password");
+  });
+});
+
+describe("dashboard read services", () => {
+  test("upcoming tickets are the caller's own paid orders for future events", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const other = await createMember();
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const base = { organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id };
+    const paid = await createOrder({ ...base, userId: member.id, status: "paid", paidAt: new Date() });
+    await createOrder({ ...base, userId: member.id, status: "pending" });
+    await createOrder({ ...base, userId: other.id, status: "paid", paidAt: new Date() });
+
+    expect((await getUpcomingTicketOrders(member.id)).map((order) => order.id)).toEqual([paid.id]);
+
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { startTime: new Date(Date.now() - 2 * 86400000), endTime: new Date(Date.now() - 86400000) }
+    });
+    expect(await getUpcomingTicketOrders(member.id)).toEqual([]);
+  });
+
+  test("past invitations are classified and pending ones are left out", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const invite = (email: string, data: object) =>
+      prisma.organisationStaffInvite.create({
+        data: {
+          organisationId: organisation.id,
+          email,
+          role: "event_manager",
+          tokenHash: `hash-${email}`,
+          invitedById: user.id,
+          expiresAt: new Date(Date.now() + 86400000),
+          ...data
+        }
+      });
+    await invite("pending@example.com", {});
+    await invite("accepted@example.com", { acceptedAt: new Date() });
+    await invite("revoked@example.com", { revokedAt: new Date() });
+    await invite("expired@example.com", { expiresAt: new Date(Date.now() - 1000) });
+
+    const past = await listPastStaffInvites(organisation.id);
+
+    expect(Object.fromEntries(past.map((row) => [row.email, row.state]))).toEqual({
+      "accepted@example.com": "accepted",
+      "revoked@example.com": "revoked",
+      "expired@example.com": "expired"
+    });
+  });
+
+  test("the overview reports setup facts and skips finance reads without orders:read", async () => {
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const orders = vi.spyOn(prisma.order, "findMany");
+
+    const overview = await getOrganisationOverview(organisation.id, {
+      publishedEventsOnly: false,
+      includeOrders: false,
+      paidSince: new Date(0)
+    });
+
+    expect(overview).toMatchObject({
+      profileComplete: false,
+      chargesReady: true,
+      recentOrders: [],
+      monthlyPaidOrders: []
+    });
+    expect(orders).not.toHaveBeenCalled();
   });
 });

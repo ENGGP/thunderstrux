@@ -3,8 +3,12 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { formatDate } from "@/lib/format";
 
 type StaffRole =
   | "owner"
@@ -31,6 +35,17 @@ type InviteRow = {
   expiresAt: string | Date;
 };
 
+type PastInvite = {
+  id: string;
+  email: string;
+  role: StaffRole;
+  createdAt: string | Date;
+  state: "accepted" | "revoked" | "expired";
+};
+
+// A staff change waiting for the actor to confirm it.
+type PendingChange = { row: StaffRow; role?: StaffRole };
+
 const roleLabels: Record<StaffRole, string> = {
   owner: "Owner",
   admin: "Admin",
@@ -54,12 +69,14 @@ export function StaffManagement({
   orgSlug,
   initialStaff,
   initialInvites,
+  pastInvites,
   canManageOwners
 }: {
   canManageOwners: boolean;
   orgSlug: string;
   initialStaff: StaffRow[];
   initialInvites: InviteRow[];
+  pastInvites: PastInvite[];
 }) {
   const router = useRouter();
   const [staff, setStaff] = useState(initialStaff);
@@ -69,6 +86,7 @@ export function StaffManagement({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pending, setPending] = useState<PendingChange | null>(null);
 
   async function refreshStaff() {
     const payload = await fetchJson<{
@@ -106,6 +124,7 @@ export function StaffManagement({
 
   async function updateStaff(staffId: string, data: { role?: StaffRole; status?: string }) {
     setError(null);
+    setIsSubmitting(true);
 
     try {
       await fetchJson(`/api/orgs/${orgSlug}/staff/${staffId}`, {
@@ -118,6 +137,9 @@ export function StaffManagement({
       setError(
         getClientErrorMessage(updateError, "Could not update staff access.")
       );
+    } finally {
+      setIsSubmitting(false);
+      setPending(null);
     }
   }
 
@@ -134,22 +156,26 @@ export function StaffManagement({
   return (
     <div className="grid gap-6">
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <Notice role="alert" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
 
       {notice ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <Notice role="status" tone="success">
           {notice}
-        </div>
+        </Notice>
       ) : null}
 
       <form
-        className="grid gap-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
+        className="grid gap-4 rounded-card border border-line bg-surface p-6"
         onSubmit={inviteStaff}
       >
-        <h3 className="text-lg font-semibold text-neutral-950">Invite staff</h3>
+        <h3 className="text-lg font-semibold text-ink">Invite staff</h3>
+        <p className="text-sm text-ink-soft">
+          The invitation is emailed privately. The recipient signs in with a
+          verified account using this address and accepts it themselves.
+        </p>
         <div className="grid gap-4 md:grid-cols-[1fr_220px]">
           <TextInput
             label="Email"
@@ -158,10 +184,10 @@ export function StaffManagement({
             type="email"
             value={email}
           />
-          <label className="grid gap-1 text-sm font-medium text-neutral-900">
+          <label className="grid content-start gap-1.5 text-sm font-semibold text-ink">
             Role
             <select
-              className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900"
+              className="h-11 rounded-control border border-line-strong bg-surface px-3 text-base font-normal text-ink"
               onChange={(event) => setRole(event.target.value as StaffRole)}
               value={role}
               aria-label="Invitation role"
@@ -174,34 +200,36 @@ export function StaffManagement({
             </select>
           </label>
         </div>
-        <Button disabled={isSubmitting || email.trim().length === 0} type="submit">
-          {isSubmitting ? "Creating..." : "Create invite"}
-        </Button>
+        <div>
+          <Button disabled={isSubmitting || email.trim().length === 0} type="submit">
+            {isSubmitting ? "Creating..." : "Create invite"}
+          </Button>
+        </div>
       </form>
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-neutral-950">Staff access (up to 100)</h3>
+      <section className="rounded-card border border-line bg-surface p-6">
+        <h3 className="text-lg font-semibold text-ink">Staff access (up to 100)</h3>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full border-collapse text-left text-sm">
             <thead>
-              <tr className="border-b border-neutral-200 text-neutral-500">
-                <th className="py-3 pr-4 font-medium">User</th>
-                <th className="py-3 pr-4 font-medium">Role</th>
-                <th className="py-3 pr-4 font-medium">Status</th>
-                <th className="py-3 font-medium">Actions</th>
+              <tr className="border-b border-line text-ink-muted">
+                <th className="py-3 pr-4 font-semibold">User</th>
+                <th className="py-3 pr-4 font-semibold">Role</th>
+                <th className="py-3 pr-4 font-semibold">Status</th>
+                <th className="py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
               {staff.map((row) => (
-                <tr className="border-b border-neutral-100 last:border-0" key={row.id}>
-                  <td className="py-3 pr-4 text-neutral-800">{staffName(row)}</td>
+                <tr className="border-b border-line last:border-0" key={row.id}>
+                  <td className="py-3 pr-4 text-ink-soft">{staffName(row)}</td>
                   <td className="py-3 pr-4">
                     <select
-                      className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900"
+                      className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink"
                       aria-label={`Role for ${row.user.email}`}
-                      disabled={row.status !== "active" || (!canManageOwners && row.role === "owner")}
+                      disabled={isSubmitting || row.status !== "active" || (!canManageOwners && row.role === "owner")}
                       onChange={(event) =>
-                        updateStaff(row.id, { role: event.target.value as StaffRole })
+                        setPending({ row, role: event.target.value as StaffRole })
                       }
                       value={row.role}
                     >
@@ -212,16 +240,23 @@ export function StaffManagement({
                       ))}
                     </select>
                   </td>
-                  <td className="py-3 pr-4 text-neutral-700">{row.status}</td>
+                  <td className="py-3 pr-4">
+                    <StatusBadge
+                      label={row.status === "invited" ? "Invited" : undefined}
+                      status={row.status === "invited" ? "pending" : row.status}
+                    />
+                  </td>
                   <td className="py-3">
                     {row.status === "active" && (canManageOwners || row.role !== "owner") ? (
-                      <button
-                        className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
-                        onClick={() => updateStaff(row.id, { status: "revoked" })}
+                      <Button
+                        disabled={isSubmitting}
+                        onClick={() => setPending({ row })}
+                        size="sm"
                         type="button"
+                        variant="danger"
                       >
                         Revoke
-                      </button>
+                      </Button>
                     ) : null}
                   </td>
                 </tr>
@@ -232,28 +267,80 @@ export function StaffManagement({
       </section>
 
       {invites.length > 0 ? (
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-neutral-950">Pending invites (latest 100)</h3>
+        <section className="rounded-card border border-line bg-surface p-6">
+          <h3 className="text-lg font-semibold text-ink">Pending invites (latest 100)</h3>
           <ul className="mt-4 grid gap-3">
             {invites.map((invite) => (
               <li
-                className="rounded-lg border border-neutral-200 px-4 py-3 text-sm"
+                className="rounded-control border border-line px-4 py-3 text-sm"
                 key={invite.id}
               >
-                <span className="font-medium text-neutral-950">{invite.email}</span>{" "}
-                <span className="text-neutral-600">
+                <span className="font-semibold text-ink">{invite.email}</span>{" "}
+                <span className="text-ink-muted">
                   {roleLabels[invite.role]} expires{" "}
-                  {new Date(invite.expiresAt).toLocaleDateString()}
+                  {formatDate(invite.expiresAt)}
                 </span>
-                {(canManageOwners || invite.role !== "owner") && <div className="mt-2 flex gap-3">
-                  <button type="button" className="underline" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")}>Resend invitation</button>
-                  <button type="button" className="underline" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "revoke")}>Revoke invitation</button>
+                {(canManageOwners || invite.role !== "owner") && <div className="mt-2 flex gap-4">
+                  <button type="button" className="text-brand underline disabled:opacity-60" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")}>Resend invitation</button>
+                  <button type="button" className="text-danger underline disabled:opacity-60" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "revoke")}>Revoke invitation</button>
                 </div>}
               </li>
             ))}
           </ul>
         </section>
       ) : null}
+
+      {pastInvites.length > 0 ? (
+        <section className="rounded-card border border-line bg-surface p-6">
+          <h3 className="text-lg font-semibold text-ink">Past invitations (latest 25)</h3>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-line text-ink-muted">
+                  <th className="py-3 pr-4 font-semibold">Email</th>
+                  <th className="py-3 pr-4 font-semibold">Role</th>
+                  <th className="py-3 pr-4 font-semibold">Sent</th>
+                  <th className="py-3 font-semibold">Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pastInvites.map((invite) => (
+                  <tr className="border-b border-line last:border-0" key={invite.id}>
+                    <td className="py-3 pr-4 text-ink-soft [overflow-wrap:anywhere]">{invite.email}</td>
+                    <td className="py-3 pr-4 text-ink-soft">{roleLabels[invite.role]}</td>
+                    <td className="py-3 pr-4 text-ink-soft">{formatDate(invite.createdAt)}</td>
+                    <td className="py-3"><StatusBadge status={invite.state} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      <ConfirmDialog
+        busy={isSubmitting}
+        confirmLabel={pending?.role ? "Change role" : "Revoke access"}
+        destructive={!pending?.role}
+        onCancel={() => setPending(null)}
+        onConfirm={() =>
+          pending &&
+          updateStaff(
+            pending.row.id,
+            pending.role ? { role: pending.role } : { status: "revoked" }
+          )
+        }
+        open={pending !== null}
+        title={
+          pending?.role
+            ? `Change ${pending.row.user.email} to ${roleLabels[pending.role]}?`
+            : `Revoke staff access for ${pending?.row.user.email ?? "this person"}?`
+        }
+      >
+        {pending?.role
+          ? "Their permissions change immediately, on every device they are signed in on."
+          : "They lose access to this society's dashboard immediately, on every device. Their personal account, tickets and joined societies are not affected. You can invite them again later."}
+      </ConfirmDialog>
     </div>
   );
 }

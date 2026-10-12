@@ -90,18 +90,18 @@ function stateContent(status: ConnectStatus | null) {
 
 function statusBadgeClasses(tone: string) {
   if (tone === "green") {
-    return "border-green-200 bg-green-50 text-green-800";
+    return "border-success bg-success-bg text-success";
   }
 
   if (tone === "red") {
-    return "border-red-200 bg-red-50 text-red-800";
+    return "border-danger bg-danger-bg text-danger";
   }
 
   if (tone === "amber") {
-    return "border-amber-200 bg-amber-50 text-amber-800";
+    return "border-warning bg-warning-bg text-warning";
   }
 
-  return "border-neutral-200 bg-neutral-50 text-neutral-800";
+  return "border-line bg-surface-subtle text-ink-soft";
 }
 
 function formatRequirement(requirement: string) {
@@ -326,17 +326,17 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     <Card>
       <div className="grid gap-6">
         <div>
-          <h2 className="text-xl font-semibold text-neutral-950">
+          <h2 className="text-xl font-semibold text-ink">
             Stripe Connect
           </h2>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-ink-muted">
             Thunderstrux guides the setup. Stripe handles compliance, identity
             checks and payout requirements.
           </p>
         </div>
 
         <div
-          className={`rounded-lg border px-4 py-4 text-sm ${statusBadgeClasses(
+          className={`rounded-card border px-4 py-4 text-sm ${statusBadgeClasses(
             content.tone
           )}`}
         >
@@ -348,13 +348,13 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         </div>
 
         {message ? (
-          <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+          <div className="rounded-control border border-line bg-surface-subtle px-3 py-2 text-sm text-ink-soft">
             {message}
           </div>
         ) : null}
 
         {requirements.length > 0 ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="rounded-card border border-warning bg-warning-bg p-4 text-sm text-warning">
             <p className="font-medium">Required by Stripe</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               {requirements.map((requirement) => (
@@ -365,10 +365,10 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         ) : null}
 
         {status ? (
-          <dl className="grid gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+          <dl className="grid gap-3 rounded-card border border-line bg-surface p-4 text-sm text-ink-soft">
             <div className="flex justify-between gap-4">
               <dt>Lifecycle state</dt>
-              <dd className="font-medium text-neutral-950">{status.state}</dd>
+              <dd className="font-medium text-ink">{status.state}</dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt>Stripe account</dt>
@@ -392,7 +392,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         <div className="flex flex-wrap gap-3">
           {isPlatformNotReady && status?.actionUrl ? (
             <a
-              className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+              className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
               href={status.actionUrl}
               rel="noreferrer"
               target="_blank"
@@ -465,7 +465,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
 
           {status?.dashboard_url ? (
             <a
-              className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+              className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
               href={status.dashboard_url}
               rel="noreferrer"
               target="_blank"

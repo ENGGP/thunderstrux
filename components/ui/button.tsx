@@ -1,8 +1,7 @@
 import type { ButtonHTMLAttributes } from "react";
 
 type ButtonStyle = {
-  // "society" is the pre-token name for the brand action; it is now the default look.
-  variant?: "primary" | "secondary" | "tertiary" | "danger" | "dangerSolid" | "society";
+  variant?: "primary" | "secondary" | "tertiary" | "danger" | "dangerSolid";
   size?: "sm" | "md" | "lg";
   className?: string;
 };
@@ -29,9 +28,7 @@ export function buttonClasses({
   size = "md",
   className = ""
 }: ButtonStyle = {}) {
-  const look = variants[variant === "society" ? "primary" : variant];
-
-  return `inline-flex items-center justify-center gap-2 rounded-control font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60 ${sizes[size]} ${look} ${className}`;
+  return `inline-flex items-center justify-center gap-2 rounded-control font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60 ${sizes[size]} ${variants[variant]} ${className}`;
 }
 
 export function Button({

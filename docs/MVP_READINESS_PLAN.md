@@ -2,7 +2,7 @@
 
 **Document authority:** Follow the [PRD authority contract](THUNDERSTRUX_PRD.md), reconciled 11 October 2026. This document governs its assigned subject within accepted product scope and readiness-plan invariants; it is not evidence of deployed features.
 
-Status: implementation queue, not full feature acceptance or release approval. Initial assessment: 2026-10-04 against b2ef999 (after PR #25). Current progress reviewed 2026-10-12 against main `4a8024b`: T01 and Packages 1–3 (T02–T09) are implemented and locally qualified; local development is activated and Package 4 starts at T10. Hosted activation remains unverified. Dated task ledgers retain their tested revisions; the capability table below reflects current delivery rather than the initial snapshot.
+Status: implementation queue, not full feature acceptance or release approval. Initial assessment: 2026-10-04 against b2ef999 (after PR #25). Current progress reviewed 2026-10-12 against main `4a8024b`: T01 and Packages 1–3 (T02–T09) are implemented and locally qualified; local development is activated and Package 4 starts at T10. The specification-alignment refactor (PRs #54 to #58, 2026-10-12) changed presentation, public society URLs and server layering for the delivered tasks; it completes no unchecked task. Hosted activation remains unverified. Dated task ledgers retain their tested revisions; the capability table below reflects current delivery rather than the initial snapshot.
 
 ## 1. Objective and execution protocol
 

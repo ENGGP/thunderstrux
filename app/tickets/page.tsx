@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PersonalShell } from "@/components/layout/personal-shell";
+import { buttonClasses } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   AuthenticationRequiredError,
   requireAuthenticatedUser
@@ -13,22 +17,6 @@ import {
   type PageInfo
 } from "@/lib/pagination/cursor";
 
-function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
-  if (status === "paid") {
-    return "Paid";
-  }
-
-  if (status === "failed") {
-    return "Failed";
-  }
-
-  if (status === "expired") {
-    return "Expired";
-  }
-
-  return "Pending";
-}
-
 type MemberTicketOrderPage = Awaited<ReturnType<typeof getMemberTicketOrders>>;
 
 function emptyPageInfo(limit: number): PageInfo {
@@ -40,6 +28,8 @@ function emptyPageInfo(limit: number): PageInfo {
     previousCursor: null
   };
 }
+
+export const metadata: Metadata = { title: "My tickets" };
 
 export default async function MyTicketsPage({
   searchParams
@@ -117,25 +107,22 @@ export default async function MyTicketsPage({
   return (
     <PersonalShell>
         <header className="space-y-2">
-          <h1 className="text-3xl font-semibold text-neutral-950">My tickets</h1>
-          <p className="text-sm text-neutral-600">
+          <h1 className="text-3xl font-semibold text-ink">My tickets</h1>
+          <p className="text-sm text-ink-muted">
             View your ticket purchases and payment status.
           </p>
         </header>
 
         {pagination.invalid ? (
-          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <Notice tone="warning">
             Invalid pagination parameters were ignored. Showing the first page.
-          </section>
+          </Notice>
         ) : null}
 
         {orders.length === 0 ? (
-          <section className="rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600 shadow-sm">
+          <section className="rounded-card border border-line bg-surface p-6 text-sm text-ink-muted">
             <p>You have not purchased any tickets yet.</p>
-            <Link
-              className="mt-4 inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
-              href="/"
-            >
+            <Link className={buttonClasses({ className: "mt-4" })} href="/">
               Browse events
             </Link>
           </section>
@@ -143,73 +130,75 @@ export default async function MyTicketsPage({
           <section className="space-y-4">
             {orders.map((order) => (
               <article
-                className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
+                className="rounded-card border border-line bg-surface p-6"
                 key={order.id}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-2">
-                    <p className="text-sm font-medium text-neutral-500">
+                    <p className="text-sm font-medium text-ink-muted">
                       {order.event.organisation.name}
                     </p>
-                    <h2 className="text-xl font-semibold text-neutral-950">
+                    <h2 className="text-xl font-semibold text-ink">
                       {order.event.title}
                     </h2>
-                    <p className="text-sm text-neutral-600">
+                    <p className="text-sm text-ink-muted">
                       {order.ticketType.name} x {order.quantity}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-neutral-950">
-                      {statusLabel(order.status)}
-                    </p>
-                    <p className="mt-1 text-sm text-neutral-600">
+                    <StatusBadge status={order.status} />
+                    <p className="mt-1 text-sm text-ink-muted">
                       {formatMoney(order.totalAmount)}
                     </p>
                   </div>
                 </div>
 
-                <dl className="mt-5 grid gap-3 text-sm text-neutral-700 sm:grid-cols-3">
+                <dl className="mt-5 grid gap-3 text-sm text-ink-soft sm:grid-cols-3">
                   <div>
-                    <dt className="font-medium text-neutral-950">Purchased</dt>
+                    <dt className="font-medium text-ink">Purchased</dt>
                     <dd className="mt-1">{formatDateTime(order.paidAt ?? order.createdAt)}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-neutral-950">Event date</dt>
-                    <dd className="mt-1">{formatDateTime(order.event.startTime)}</dd>
+                    <dt className="font-medium text-ink">Event date</dt>
+                    <dd className="mt-1">
+                      {formatDateTime(order.event.startTime, {
+                        timeZone: order.event.organisation.timeZone
+                      })}
+                    </dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-neutral-950">Order ID</dt>
+                    <dt className="font-medium text-ink">Order ID</dt>
                     <dd className="mt-1 break-all">{order.id}</dd>
                   </div>
                 </dl>
 
                 {order.status === "pending" ? (
-                  <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  <p className="mt-4 rounded-control border border-warning bg-warning-bg px-3 py-2 text-sm text-warning">
                     Payment is still pending. Tickets will appear after Stripe confirms payment.
                   </p>
                 ) : null}
 
                 {order.status === "failed" ? (
-                  <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <p className="mt-4 rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">
                     Payment could not be fulfilled locally. Contact support with this order ID.
                   </p>
                 ) : null}
 
                 {order.status === "expired" ? (
-                  <p className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+                  <p className="mt-4 rounded-control border border-line bg-surface-subtle px-3 py-2 text-sm text-ink-soft">
                     Checkout expired before payment completed. No tickets were issued.
                   </p>
                 ) : null}
 
                 {order.tickets.length > 0 ? (
                   <div className="mt-5">
-                    <h3 className="text-sm font-medium text-neutral-950">
+                    <h3 className="text-sm font-medium text-ink">
                       Ticket identifiers
                     </h3>
-                    <ul className="mt-2 grid gap-2 text-sm text-neutral-700">
+                    <ul className="mt-2 grid gap-2 text-sm text-ink-soft">
                       {order.tickets.map((ticket) => (
                         <li
-                          className="break-all rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2"
+                          className="break-all rounded-control border border-line bg-surface-subtle px-3 py-2"
                           key={ticket.id}
                         >
                           {ticket.id}
@@ -230,7 +219,7 @@ export default async function MyTicketsPage({
           >
             {pageInfo.previousCursor ? (
               <Link
-                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
                 href={paginationHref(pageInfo.previousCursor, "prev")}
               >
                 Previous
@@ -240,7 +229,7 @@ export default async function MyTicketsPage({
             )}
             {pageInfo.nextCursor ? (
               <Link
-                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
                 href={paginationHref(pageInfo.nextCursor, "next")}
               >
                 Next

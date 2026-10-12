@@ -89,6 +89,8 @@ Behavior:
 
 ## Login and Signup Flow
 
+`/login` explains a forced sign-out: `passwordChanged=true`, `emailChanged=true` and `accountClosed=true` each show their reason above the form. Signup describes the two account types beside the choice and, after submission, stays on `/signup` with the same generic message for new and existing addresses. `/verify-email` prefills the signed-in account's address. The staff invitation page opens sign-in and `/verify-email` in a new tab because the invitation link is held in the page's memory.
+
 Login:
 
 ```text

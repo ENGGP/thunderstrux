@@ -187,7 +187,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   const second = await createOrganisationAccount();
   await createOrganisationStaff({ organisationId: second.organisation.id, userId: data.manager.id, role: 'finance_manager' });
   await login(page, data.manager.email);
-  await expect(page.getByRole('heading', { name: 'Your organisations' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your societies' })).toBeVisible();
   const chooser = page.getByLabel('Dashboard context');
   await chooser.selectOption(data.organisation.id);
   await expect(page.getByText('Organisation dashboard', { exact: true })).toBeVisible();
@@ -209,7 +209,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await expect(mobile.getByRole('link', { name: 'Orders', exact: true })).toBeVisible();
   await prisma.organisationStaff.updateMany({ where: { userId: data.manager.id, organisationId: second.organisation.id }, data: { status: 'revoked' } });
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Your organisations' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your societies' })).toBeVisible();
   await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
   await page.goto('/tickets');
   await expect(page.getByRole('heading', { name: 'My tickets', exact: true })).toBeVisible();

@@ -165,6 +165,7 @@ export async function getAccessibleOrganisationsForCurrentAccount() {
             name: organisation.name,
             slug: organisation.slug,
             createdAt: organisation.createdAt,
+            joinedAt: null as Date | null,
             role: "org_owner" as OrganisationRole
           }
         ]
@@ -184,6 +185,7 @@ export async function getAccessibleOrganisationsForCurrentAccount() {
     },
     select: {
       role: true,
+      createdAt: true,
       organisation: {
         select: {
           id: true,
@@ -197,6 +199,7 @@ export async function getAccessibleOrganisationsForCurrentAccount() {
 
   return memberships.map((membership) => ({
     ...membership.organisation,
+    joinedAt: membership.createdAt as Date | null,
     role: membership.role as OrganisationRole
   }));
 }

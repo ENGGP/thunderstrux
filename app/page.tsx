@@ -1,6 +1,14 @@
 import Link from "next/link";
+import { EventCard } from "@/components/events/event-card";
+import { SiteFooter } from "@/components/layout/site-footer";
+import { SocietyCard } from "@/components/organisations/society-card";
+import { buttonClasses } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { getPublishedEvents } from "@/lib/events/public-events";
-import { formatDateTime } from "@/lib/format";
+import {
+  discoverOrganisations,
+  discoveryInput
+} from "@/lib/organisations/discovery";
 import {
   PaginationError,
   parsePaginationOptionsOrDefault
@@ -46,6 +54,9 @@ export default async function Home({
     result = await getPublishedEvents(pagination);
   }
 
+  const societies = await discoverOrganisations(
+    discoveryInput(new URLSearchParams({ limit: "4" }))
+  );
   const paginationBaseParams = new URLSearchParams();
 
   if (result.pageInfo.limit !== 25) {
@@ -60,87 +71,153 @@ export default async function Home({
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <header>
-          <h1 className="text-3xl font-semibold text-neutral-950 sm:text-4xl">
-            Discover Events
-          </h1>
-        </header>
-
-        {pagination.invalid ? (
-          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            Invalid pagination parameters were ignored. Showing the first page.
-          </section>
-        ) : null}
-
-        {result.events.length === 0 ? (
-          <section className="rounded-lg border border-neutral-200 bg-white p-6 text-sm text-neutral-600 shadow-sm">
-            No events available
-          </section>
-        ) : (
-          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {result.events.map((event) => (
-              <article
-                className="flex min-h-56 flex-col rounded-lg border border-neutral-200 bg-white p-5 shadow-sm"
-                key={event.id}
-              >
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-neutral-500">
-                    {event.organisation.name}
-                  </p>
-                  <h2 className="mt-2 text-xl font-semibold text-neutral-950">
-                    {event.title}
-                  </h2>
-                  <dl className="mt-4 grid gap-3 text-sm text-neutral-700">
-                    <div>
-                      <dt className="font-medium text-neutral-950">Date</dt>
-                      <dd className="mt-1">{formatDateTime(event.startTime, { fallback: "Date unavailable" })}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-medium text-neutral-950">Location</dt>
-                      <dd className="mt-1">{event.location}</dd>
-                    </div>
-                  </dl>
-                </div>
-
-                <Link
-                  className="mt-5 inline-flex h-10 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700"
-                  href={`/events/${event.id}`}
-                >
-                  View Event
-                </Link>
-              </article>
-            ))}
-          </section>
-        )}
-
-        {result.pageInfo.hasPreviousPage || result.pageInfo.hasNextPage ? (
-          <nav
-            aria-label="Public event pagination"
-            className="flex flex-wrap items-center justify-between gap-3"
-          >
-            {result.pageInfo.previousCursor ? (
+    <>
+      <main className="bg-paper">
+        <section className="bg-brand-ink text-white">
+          <div className="mx-auto grid max-w-page gap-6 px-4 py-14 md:px-8 md:py-20">
+            <h1 className="max-w-3xl font-display text-4xl font-semibold leading-tight md:text-6xl">
+              Discover events at your campus
+            </h1>
+            <p className="max-w-xl text-lg text-white/80">
+              See what student societies are running, get your tickets and
+              follow the people behind them.
+            </p>
+            <div className="flex flex-wrap gap-3">
               <Link
-                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
-                href={paginationHref(result.pageInfo.previousCursor, "prev")}
+                className={buttonClasses({
+                  size: "lg",
+                  variant: "tertiary",
+                  className: "bg-white text-brand-ink no-underline hover:bg-brand-tint hover:no-underline"
+                })}
+                href="/societies"
               >
-                Previous
+                Find a society
               </Link>
-            ) : (
-              <span />
-            )}
-            {result.pageInfo.nextCursor ? (
               <Link
-                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
-                href={paginationHref(result.pageInfo.nextCursor, "next")}
+                className={buttonClasses({
+                  size: "lg",
+                  variant: "tertiary",
+                  className: "text-white"
+                })}
+                href="/signup"
               >
-                Next
+                Create a society
               </Link>
+            </div>
+          </div>
+        </section>
+
+        <div className="mx-auto grid max-w-page gap-14 px-4 py-12 md:px-8 md:py-16">
+          <section aria-labelledby="upcoming-events" className="grid gap-6">
+            <h2
+              className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink"
+              id="upcoming-events"
+            >
+              Upcoming events
+            </h2>
+
+            {pagination.invalid ? (
+              <Notice tone="warning">
+                Invalid pagination parameters were ignored. Showing the first
+                page.
+              </Notice>
             ) : null}
-          </nav>
-        ) : null}
-      </div>
-    </main>
+
+            {result.events.length === 0 ? (
+              <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">
+                <p className="font-semibold text-ink">No events available</p>
+                <p className="mt-1 text-sm">
+                  Nothing is published right now.{" "}
+                  <Link className="text-brand underline" href="/societies">
+                    Browse societies
+                  </Link>{" "}
+                  to see who is active.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {result.events.map((event) => (
+                  <EventCard
+                    id={event.id}
+                    key={event.id}
+                    location={event.location}
+                    society={event.organisation}
+                    startTime={event.startTime}
+                    timeZone={event.organisation.timeZone}
+                    title={event.title}
+                  />
+                ))}
+              </div>
+            )}
+
+            {result.pageInfo.hasPreviousPage || result.pageInfo.hasNextPage ? (
+              <nav
+                aria-label="Public event pagination"
+                className="flex flex-wrap items-center justify-between gap-3"
+              >
+                {result.pageInfo.previousCursor ? (
+                  <Link
+                    className={buttonClasses({ variant: "secondary" })}
+                    href={paginationHref(result.pageInfo.previousCursor, "prev")}
+                  >
+                    Previous
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                {result.pageInfo.nextCursor ? (
+                  <Link
+                    className={buttonClasses({ variant: "secondary" })}
+                    href={paginationHref(result.pageInfo.nextCursor, "next")}
+                  >
+                    Next
+                  </Link>
+                ) : null}
+              </nav>
+            ) : null}
+          </section>
+
+          {societies.organisations.length > 0 ? (
+            <section aria-labelledby="discover-societies" className="grid gap-6">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <h2
+                  className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink"
+                  id="discover-societies"
+                >
+                  Discover societies
+                </h2>
+                <Link
+                  className="text-sm font-semibold text-brand underline"
+                  href="/societies"
+                >
+                  All societies
+                </Link>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {societies.organisations.map((society) => (
+                  <SocietyCard key={society.id} {...society} />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="grid gap-4 rounded-feature bg-warm-paper p-8 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <h2 className="text-2xl font-semibold text-ink">
+                Running a society?
+              </h2>
+              <p className="mt-2 max-w-xl text-ink-soft">
+                Publish events, sell tickets and hand the account to next
+                year&apos;s committee without losing your history.
+              </p>
+            </div>
+            <Link className={buttonClasses({ size: "lg" })} href="/signup">
+              Create a society
+            </Link>
+          </section>
+        </div>
+      </main>
+      <SiteFooter />
+    </>
   );
 }

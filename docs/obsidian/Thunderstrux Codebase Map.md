@@ -59,7 +59,7 @@ Read these in order:
 ```text
 app/
   layout.tsx                         Root layout, session provider, global navbar
-  page.tsx                           Public homepage: Discover Events
+  page.tsx                           Public homepage: upcoming events and societies
   (public)/events/[eventId]/         Public event detail route
   (public)/societies/            Anonymous bounded society directory
   (public)/societies/[orgSlug]/  Public-safe organisation details route

@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 
 type ButtonStyle = {
   // "society" is the pre-token name for the brand action; it is now the default look.
-  variant?: "primary" | "secondary" | "tertiary" | "danger" | "society";
+  variant?: "primary" | "secondary" | "tertiary" | "danger" | "dangerSolid" | "society";
   size?: "sm" | "md" | "lg";
   className?: string;
 };
@@ -12,7 +12,9 @@ const variants = {
   secondary:
     "border border-line-strong bg-surface text-brand-ink hover:bg-brand-tint",
   tertiary: "text-brand underline-offset-4 hover:underline",
-  danger: "border border-danger bg-surface text-danger hover:bg-danger-bg"
+  danger: "border border-danger bg-surface text-danger hover:bg-danger-bg",
+  // Solid danger appears only on the confirming button of a dialog.
+  dangerSolid: "bg-danger text-white hover:opacity-90"
 };
 
 const sizes = {

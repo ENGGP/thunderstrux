@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import { StaffInviteAcceptForm } from "@/components/auth/staff-invite-accept-form";
+import { AuthShell } from "@/components/layout/auth-shell";
+export const metadata: Metadata = { title: "Accept staff invitation", referrer: "no-referrer", robots: { index: false, follow: false } };
 export default function StaffInviteAcceptPage() {
-  return <main className="mx-auto max-w-xl space-y-6 px-6 py-12"><h1 className="text-3xl font-semibold">Accept staff invitation</h1>
-    <StaffInviteAcceptForm /></main>;
+  return <AuthShell title="Accept staff invitation" wide><StaffInviteAcceptForm /></AuthShell>;
 }

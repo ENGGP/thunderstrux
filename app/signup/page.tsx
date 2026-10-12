@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { SignupForm } from "@/components/auth/signup-form";
+import { AuthShell } from "@/components/layout/auth-shell";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
 import { Card } from "@/components/ui/card";
+
+export const metadata: Metadata = { title: "Create account" };
 
 export default async function SignupPage({
   searchParams
@@ -18,21 +22,13 @@ export default async function SignupPage({
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-md gap-4">
-        <header>
-          <h1 className="text-3xl font-semibold text-neutral-950">
-            Create account
-          </h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Create an account with your email and password.
-          </p>
-        </header>
-
-        <Card>
-          <SignupForm callbackUrl={safeCallbackUrl} />
-        </Card>
-      </div>
-    </main>
+    <AuthShell
+      description="Create an account with your email and password."
+      title="Create account"
+    >
+      <Card>
+        <SignupForm callbackUrl={safeCallbackUrl} />
+      </Card>
+    </AuthShell>
   );
 }

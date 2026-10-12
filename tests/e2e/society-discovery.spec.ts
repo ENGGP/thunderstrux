@@ -44,7 +44,7 @@ test("anonymous society discovery and verified join/leave show fresh personal st
   ).toBeVisible();
   await page.getByRole("link", { name: "Manage joined societies" }).click();
   await page
-    .getByLabel("Search organisations")
+    .getByLabel("Search societies")
     .fill("Discovery campus society");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   const searchCard = page
@@ -73,13 +73,16 @@ test("anonymous society discovery and verified join/leave show fresh personal st
         exact: true,
       }),
     });
-  page.once("dialog", (dialog) => dialog.accept());
   await card
-    .getByRole("button", { name: "Leave organisation", exact: true })
+    .getByRole("button", { name: "Leave society", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Leave society", exact: true })
     .click();
   await expect(card).toHaveCount(0);
   await expect(
-    searchCard.getByRole("button", { name: "Join", exact: true }),
+    searchCard.getByRole("button", { name: "Join society", exact: true }),
   ).toBeEnabled();
   await page.goto(`/organisations/${data.organisation.slug}`);
   await expect(
@@ -143,14 +146,14 @@ test("personal search paginates and ignores an older response", async ({
   await expect(
     page.getByRole("heading", { name: "First search result" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "More organisations" }).click();
+  await page.getByRole("button", { name: "More societies" }).click();
   await expect(
     page.getByRole("heading", { name: "Second search result" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "First search result" }),
   ).toBeVisible();
-  const query = page.getByLabel("Search organisations");
+  const query = page.getByLabel("Search societies");
   await query.fill("slow");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await started;

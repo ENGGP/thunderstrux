@@ -29,6 +29,11 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - `button.tsx`: `Button` and `buttonClasses()` for links that look like buttons. Variants `primary`, `secondary`, `tertiary`, `danger`; sizes `sm` (36px), `md` (44px), `lg` (48px).
 - `input.tsx`: `TextInput`, `TextArea`, `Select`. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
 - `card.tsx`: bordered surface with an optional `className`.
+- `notice.tsx`: inline message with a 3px semantic left border in `info`, `success`, `warning` or `danger`. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
+- `status-badge.tsx`: the one mapping from a server status to its words and colour. Add a status there, not in a page.
+- `confirm-dialog.tsx`: native `<dialog>` confirmation that names the action and its consequences. Its body is mounted only while open, and Escape cancels. Use it instead of `window.confirm`.
+
+Shared content components: `components/events/event-card.tsx` (date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows an image, price or count that the data model does not hold.
 
 ## Global Header And Footer
 
@@ -38,12 +43,17 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - It reads only the session. It never shows a society, a role or an email address.
 - Desktop: `Thunderstrux` (to `/`), `Explore events` (`/`), `Explore societies` (`/societies`); signed in, `My tickets` for member accounts, `Dashboard`, `Account` (`/account/settings`) and a `Sign out` button; signed out, `Sign in` and `Create a society` (`/signup`).
 - Below `md`: a native `Menu` disclosure holds the links. `Sign out` (or `Sign in`) stays visible outside it.
+- The header owns the link names `Explore events` and `Explore societies`. Other links to the same places use different words (`Events`, `Find a society`, `Browse societies`) so every link name is unique on a page.
 
-`components/layout/site-footer.tsx` is rendered by `app/(public)/layout.tsx` for the society and event pages. It lists only destinations that exist; support, terms and privacy links wait for real pages. The public layout does nothing else: no authentication, context or data loading.
+`components/layout/site-footer.tsx` is rendered by `app/(public)/layout.tsx` for the society and event pages, and by the home page itself. It lists only destinations that exist; support, terms and privacy links wait for real pages. The public layout does nothing else: no authentication, context or data loading.
 
 ## Shells Are Composed By Pages
 
 Each page renders its own shell after its guards have passed. Shells are not placed in route-group layouts: a layout would not re-render when authority changes, and page output is rendered directly by integration tests. No root or dashboard `loading.tsx` exists, because it would stream a 200 where a page currently answers with a redirect or a concealed 404.
+
+### Auth shell
+
+`components/layout/auth-shell.tsx` is the narrow column for sign-in, signup, verification, recovery, email-change confirmation, staff invitation acceptance, staff MFA and the payment return pages. It adds a title, an optional description and nothing else: no navigation and no lists.
 
 ### Personal shell
 
@@ -84,7 +94,7 @@ Each page renders its own shell after its guards have passed. Shells are not pla
 
 Member accounts in personal mode, including named staff on a fresh login:
 
-- See profile completion and joined organisations inside the personal shell.
+- See profile completion, their nearest upcoming paid tickets and joined societies inside the personal shell. The overview has no metric tiles.
 - Can navigate to `/dashboard/organisations` to search and join organisations.
 - Can browse public events and view `/tickets`.
 - Must not see organisation management navigation.
@@ -100,7 +110,7 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard`
 
-- Member: profile, joined organisations, search/join entry point, public events, tickets.
+- Member: profile completion, upcoming tickets, joined societies with a Find societies entry point.
 - Organisation: organisation overview, upcoming events, recent orders, past-month revenue summary.
 
 `/dashboard/events`, `/dashboard/events/new`, `/dashboard/events/[eventId]/edit`
@@ -121,6 +131,8 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 - Renders caller-only joined societies and bounded paged search. Explicit verified Join changes free affiliation only; Leave synchronises both views after refresh and never revokes staff or paid purchases.
 
 `/societies` and `/societies/[orgSlug]` render anonymous discovery and public profile content. `/organisations` and `/organisations/[orgSlug]` redirect to them permanently. Profile join controls are personalized and dynamic; sign-in/verification never automatically joins. `/dashboard/settings/profile` is the live-settings/MFA-protected resumable editor. [[Society Profiles and Assets]] owns their full contracts.
+
+`/success` and `/cancel` are the payment return pages. `/success` says `Checking payment status` and links to My tickets; it never states that a payment succeeded, because only the signed webhook establishes that.
 
 `app/not-found.tsx` and `app/error.tsx` are the shared missing-page and failure pages. The missing page is also what a foreign tenant resource renders and must not hint at whether the resource exists.
 
@@ -149,8 +161,8 @@ Do not call an account "ready" just because `stripeAccountId` exists.
 
 ## Known UI Inconsistencies
 
-- Page bodies written before the token source still carry neutral Tailwind classes (`bg-neutral-*`, `rounded-xl`, `shadow-sm`) and inline button strings. They render inside the new shells and are replaced screen by screen.
-- The `.society-*` classes in `app/globals.css` and the `society` button variant predate the tokens and are removed once their callers are migrated.
+- Organisation dashboard page bodies (overview, events, orders, check-in, Stripe settings, staff, society settings, notifications) still carry neutral Tailwind classes (`bg-neutral-*`, `rounded-xl`, `shadow-sm`) and inline button strings. Public, auth, account and personal pages are on the tokens.
+- The `.society-*` classes in `app/globals.css` and the `society` button variant predate the tokens. Only the society settings form still uses them.
 - The new event route shows a page heading plus the form title.
 
 ## Notification Recovery

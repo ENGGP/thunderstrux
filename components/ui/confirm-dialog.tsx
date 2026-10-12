@@ -1,0 +1,71 @@
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
+import { Button } from "./button";
+
+// Native <dialog>: showModal() traps focus, Escape cancels and focus returns
+// to the control that opened it. The body is mounted only while open.
+export function ConfirmDialog({
+  open,
+  title,
+  confirmLabel,
+  destructive = false,
+  busy = false,
+  onConfirm,
+  onCancel,
+  children
+}: {
+  open: boolean;
+  title: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+
+    if (open && dialog && !dialog.open) {
+      dialog.showModal();
+    }
+    if (!open && dialog?.open) {
+      dialog.close();
+    }
+  }, [open]);
+
+  return (
+    <dialog
+      className="m-auto w-[min(92vw,520px)] rounded-card border border-line bg-surface p-6 text-ink shadow-float backdrop:bg-brand-ink/40"
+      onCancel={(event) => {
+        // Escape cancels; it never confirms, and not while a request is in flight.
+        event.preventDefault();
+        if (!busy) onCancel();
+      }}
+      ref={ref}
+    >
+      {open ? (
+        <div className="grid gap-4">
+          <h2 className="text-xl font-semibold">{title}</h2>
+          <div className="text-sm text-ink-soft">{children}</div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <Button disabled={busy} onClick={onCancel} type="button" variant="secondary">
+              Cancel
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={onConfirm}
+              type="button"
+              variant={destructive ? "dangerSolid" : "primary"}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </dialog>
+  );
+}

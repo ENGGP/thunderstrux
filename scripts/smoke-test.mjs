@@ -414,8 +414,8 @@ async function main() {
       const dashboardText = await dashboard.text();
       assertStatus(dashboard, 200, "member dashboard");
       assert(
-        dashboardText.includes("Your organisations") ||
-          dashboardText.includes("Find organisations") ||
+        dashboardText.includes("Your societies") ||
+          dashboardText.includes("Find societies") ||
           dashboardText.includes("Member"),
         "member dashboard did not look like a member dashboard"
       );

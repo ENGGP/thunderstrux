@@ -10,7 +10,7 @@ import {
   requireAuthenticatedUser,
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
-import { readMemberDashboard } from "@/lib/auth/account-settings";
+import { readMemberProfile } from "@/lib/auth/account-settings";
 import {
   bootstrapOrganisationId,
   contextChoices,
@@ -18,7 +18,10 @@ import {
   type ContextChoices
 } from "@/lib/auth/context";
 import { PersonalShell } from "@/components/layout/personal-shell";
-import { formatDate, formatMoney } from "@/lib/format";
+import { buttonClasses } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
@@ -235,87 +238,99 @@ async function OrganisationDashboard(contexts: ContextChoices) {
 }
 
 async function MemberDashboard(userId: string, contexts: ContextChoices) {
-  const [{ profile: user, orderCount }, organisations] = await Promise.all([
-    readMemberDashboard(userId),
+  const [user, upcoming, organisations] = await Promise.all([
+    readMemberProfile(userId),
+    getUpcomingTicketOrders(userId),
     getAccessibleOrganisationsForCurrentAccount()
   ]);
 
   return (
     <PersonalShell contexts={contexts}>
-        <header className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <h1 className="text-3xl font-semibold text-neutral-950">Dashboard</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Manage your profile, organisations, events, and tickets.
+      <h1 className="text-3xl font-semibold text-ink">Overview</h1>
+
+      {!user?.onboardingCompletedAt ? (
+        <Card>
+          <h2 className="text-xl font-semibold text-ink">Complete your profile</h2>
+          <div className="mt-4">
+            <MemberProfileForm
+              initialProfile={{
+                displayName: user?.displayName ?? "",
+                firstName: user?.firstName ?? "",
+                lastName: user?.lastName ?? "",
+                phone: user?.phone ?? "",
+                studentNumber: user?.studentNumber ?? ""
+              }}
+            />
+          </div>
+        </Card>
+      ) : null}
+
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold text-ink">Upcoming tickets</h2>
+          <Link className="text-sm font-semibold text-brand underline" href="/tickets">
+            All tickets
+          </Link>
+        </div>
+        {upcoming.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-soft">
+            You have no upcoming tickets.{" "}
+            <Link className="text-brand underline" href="/">
+              Browse events
+            </Link>
           </p>
-        </header>
+        ) : (
+          <ul className="mt-4 grid gap-3">
+            {upcoming.map((order) => (
+              <li
+                className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line p-4"
+                key={order.id}
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink [overflow-wrap:anywhere]">
+                    {order.event.title}
+                  </p>
+                  <p className="text-sm text-ink-soft">
+                    {formatDateTime(order.event.startTime, {
+                      timeZone: order.event.organisation.timeZone
+                    })}{" "}
+                    · {order.event.location}
+                  </p>
+                  <p className="text-sm text-ink-muted">
+                    {order.quantity} × {order.ticketType.name} ·{" "}
+                    {order.event.organisation.name}
+                  </p>
+                </div>
+                <Link
+                  className={buttonClasses({ variant: "secondary", size: "sm" })}
+                  href="/tickets"
+                >
+                  View ticket
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
-        {!user?.onboardingCompletedAt ? (
-          <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-medium text-neutral-950">
-              Complete your profile
-            </h2>
-            <div className="mt-4">
-              <MemberProfileForm
-                initialProfile={{
-                  displayName: user?.displayName ?? "",
-                  firstName: user?.firstName ?? "",
-                  lastName: user?.lastName ?? "",
-                  phone: user?.phone ?? "",
-                  studentNumber: user?.studentNumber ?? ""
-                }}
-              />
-            </div>
-          </section>
-        ) : null}
-
-        <section className="grid gap-4 md:grid-cols-3">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-ink">Your societies</h2>
+            <p className="mt-1 text-sm text-ink-soft">
+              Societies you have joined for free.
+            </p>
+          </div>
           <Link
-            className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300"
+            className={buttonClasses({ size: "sm" })}
             href="/dashboard/organisations"
           >
-            <p className="text-sm text-neutral-500">Joined organisations</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {organisations.length}
-            </p>
+            Find societies
           </Link>
-          <Link
-            className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300"
-            href="/"
-          >
-            <p className="text-sm text-neutral-500">Published events</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">Browse</p>
-          </Link>
-          <Link
-            className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300"
-            href="/tickets"
-          >
-            <p className="text-sm text-neutral-500">Orders</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
-              {orderCount}
-            </p>
-          </Link>
-        </section>
+        </div>
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-medium text-neutral-950">
-                Your organisations
-              </h2>
-              <p className="mt-1 text-sm text-neutral-500">
-                Search and join organisations to follow their activity.
-              </p>
-            </div>
-            <Link
-              className="inline-flex items-center justify-center rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700"
-              href="/dashboard/organisations"
-            >
-              Search organisations
-            </Link>
-          </div>
-
-          <MemberOrganisationsList organisations={organisations} />
-        </section>
+        <MemberOrganisationsList organisations={organisations} />
+      </Card>
     </PersonalShell>
   );
 }

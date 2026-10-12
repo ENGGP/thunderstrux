@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { StaffMfaForm } from "@/components/auth/staff-mfa-form";
+import { AuthShell } from "@/components/layout/auth-shell";
+import { Card } from "@/components/ui/card";
 import { getStaffMfaStatus, MfaInputError } from "@/lib/security/staff-mfa";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
 
@@ -19,15 +21,15 @@ export default async function MfaPage({ searchParams }: {
   const { callbackUrl } = await searchParams;
   const destination = safeReturnPath(callbackUrl);
   return (
-    <main className="min-h-screen bg-neutral-50 px-4 py-10">
-      <div className="mx-auto max-w-lg rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold text-neutral-950">Staff verification</h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          Protect organisation management with an authenticator app. Recovery codes are shown once during setup.
-        </p>
+    <AuthShell
+      description="Protect organisation management with an authenticator app. Recovery codes are shown once during setup."
+      title="Staff verification"
+      wide
+    >
+      <Card>
         <StaffMfaForm enabled={status.enabled} destination={destination}
           requiresNewLogin={!session.user.staffMfaSessionId} />
-      </div>
-    </main>
+      </Card>
+    </AuthShell>
   );
 }

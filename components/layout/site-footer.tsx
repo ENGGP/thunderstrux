@@ -14,10 +14,10 @@ export function SiteFooter() {
         </p>
         <nav aria-label="Footer" className="flex flex-wrap gap-5">
           <Link className="hover:text-brand" href="/">
-            Explore events
+            Events
           </Link>
           <Link className="hover:text-brand" href="/societies">
-            Explore societies
+            Societies
           </Link>
         </nav>
       </div>

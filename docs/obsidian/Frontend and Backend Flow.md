@@ -147,7 +147,7 @@ User visits /dashboard
 
 Current UI:
 
-- Member dashboard shows profile completion, joined organisations, event discovery, and tickets.
+- Member dashboard shows profile completion, upcoming tickets and joined societies.
 - Organisation dashboard shows its name and permitted upcoming events/navigation; recent orders and current-month revenue are queried/rendered only with orders:read. Revoked selection never chooses another tenant.
 
 ## Member Organisation Search And Join
@@ -191,10 +191,10 @@ Flow:
 
 ```text
 Member opens /dashboard
-  -> joined organisation cards render View details and Leave organisation actions
+  -> joined society cards show the join date with View society, View events and Leave society actions
   -> View details links to /societies/[orgSlug]
   -> public organisation details page loads public-safe organisation data and upcoming published events
-  -> Leave organisation confirms in the browser
+  -> Leave society opens a confirmation dialog that states what is and is not affected
   -> POST /api/orgs/[orgSlug]/leave
   -> API requires accountRole = member
   -> API deletes only the signed-in user's OrganisationMember row for that organisation

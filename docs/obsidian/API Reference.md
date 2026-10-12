@@ -269,6 +269,7 @@ Rules:
   - `cursor`: optional opaque cursor from `pageInfo.nextCursor` or `pageInfo.previousCursor`.
   - `direction`: optional `next` or `prev`, defaults to `next`.
 - Invalid pagination params return structured `400`.
+- Each event carries its host society's public `name`, `slug` and IANA `timeZone`, so clients can link to `/societies/[slug]` and show dates in the society's zone. The detail response carries the same three fields.
 - Read-only. If no published events exist, returns an empty `events` array instead of creating demo data.
 
 Example response:
@@ -282,7 +283,9 @@ Example response:
       "startTime": "2026-04-23T10:00:00.000Z",
       "location": "Campus hall",
       "organisation": {
-        "name": "Society name"
+        "name": "Society name",
+        "slug": "engineering-society",
+        "timeZone": "Australia/Brisbane"
       }
     }
   ],

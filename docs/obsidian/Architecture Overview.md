@@ -124,7 +124,7 @@ app/
 - Loads the auth session on the server.
 - Wraps the tree in `AuthSessionProvider`.
 - Renders the fixed global `Navbar`.
-- Offsets page content with `pt-16` so content does not sit under the fixed header.
+- Loads DM Sans and Space Grotesk through next/font and offsets page content by the header height (60px, 72px from `md`).
 
 `app/(dashboard)/dashboard/page.tsx`
 
@@ -135,9 +135,10 @@ app/
 
 `components/layout/dashboard-shell.tsx`
 
-- Renders the fixed left sidebar below the global header for organisation dashboards.
+- Renders the fixed deep-plum sidebar below the global header from `lg`, and an `Organisation menu` disclosure below it.
 - Renders the organisation heading row.
-- Owns shared organisation dashboard nav.
+- Owns shared organisation dashboard nav, grouped and capability-filtered.
+- Receives the context switcher's choices from the server; see [[UI Architecture Rules]].
 - Uses slugless `/dashboard/*` paths for current organisation management routes.
 
 `app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
@@ -185,9 +186,9 @@ app/
 
 - Member-only personal joined list and paged search/join/leave page, also available to named member staff without changing context. Server refresh updates both joined cards and badges.
 
-`/organisations` is anonymous bounded discovery by literal name/slug, with public-safe cards and stable name/ID cursors. `/dashboard/settings/profile` requires live settings permission/MFA and saves explicit editable public fields with optimistic conflicts; profile completion is separate from Stripe readiness.
+`/societies` is anonymous bounded discovery by literal name/slug, with public-safe cards and stable name/ID cursors. `/dashboard/settings/profile` requires live settings permission/MFA and saves explicit editable public fields with optimistic conflicts; profile completion is separate from Stripe readiness.
 
-`/organisations/[orgSlug]`
+`/societies/[orgSlug]`
 
 - Public-safe organisation details page.
 - Shows name, description, public contact/policies/timezone, ready logo/cover and at most 50 upcoming published events. Incomplete profiles remain visible.

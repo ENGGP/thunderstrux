@@ -3,9 +3,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { TicketCheckInButton } from "@/components/tickets/ticket-check-in-button";
-import {
-  requireCurrentOrganisationAccount
-} from "@/lib/auth/access";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -83,7 +80,6 @@ export default async function OrganiserEventTicketsPage({
   const { eventId } = await params;
   const rawSearchParams = await searchParams;
   let pagination: ReturnType<typeof parseTicketPaginationOptions>;
-  let organisation: Awaited<ReturnType<typeof requireCurrentOrganisationAccount>>;
 
   try {
     pagination = parseTicketPaginationOptions(toUrlSearchParams(rawSearchParams));
@@ -95,7 +91,7 @@ export default async function OrganiserEventTicketsPage({
     throw error;
   }
 
-  organisation = await requireManagementPage("tickets:check_in", `/dashboard/events/${eventId}/tickets`);
+  const organisation = await requireManagementPage("tickets:check_in", `/dashboard/events/${eventId}/tickets`);
 
   let payload: Awaited<ReturnType<typeof getOrganisationEventTickets>>;
 
@@ -114,7 +110,7 @@ export default async function OrganiserEventTicketsPage({
   }
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
+    <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-6xl space-y-6 px-6 py-10">
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">

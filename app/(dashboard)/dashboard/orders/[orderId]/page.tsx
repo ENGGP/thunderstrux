@@ -70,7 +70,7 @@ export default async function OrganisationOrderDetailPage({
     : null;
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
+    <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

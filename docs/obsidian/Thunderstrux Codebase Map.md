@@ -38,7 +38,7 @@ Safe society image uploads, private previews and recoverable deletion are implem
 
 T08 adds `lib/organisations/bootstrap.ts`, `profile.ts` and `public-organisations.ts`, scoped profile APIs and `/dashboard/settings/profile`. Organisation settings authority controls editable public profile fields; optimistic versions and ready tenant-owned image references protect concurrent edits. Existing society detail URLs remain stable.
 
-T09 adds `lib/organisations/discovery.ts` for public-safe literal/cursor reads and `join.ts` for live account-locked free affiliations. `/organisations` and the shared navbar expose anonymous discovery; dynamic profile controls require explicit verified joins. `/dashboard/organisations` synchronises the personal joined list and paged search badges after refresh. Default authenticated search responses retain their compatibility envelope.
+T09 adds `lib/organisations/discovery.ts` for public-safe literal/cursor reads and `join.ts` for live account-locked free affiliations. `/societies` and the shared navbar expose anonymous discovery; dynamic profile controls require explicit verified joins. `/dashboard/organisations` synchronises the personal joined list and paged search badges after refresh. Default authenticated search responses retain their compatibility envelope.
 
 Named staff users, invites, audit logs, per-user permissions, staged TOTP MFA, and provider-verified compensation refunds are implemented. Legacy organisation logins remain a controlled migration fallback. `OrganisationMember` remains join state, not management authority. Manual refund marking is still local bookkeeping; the separate compensation workflow verifies actual Stripe refunds.
 
@@ -61,8 +61,8 @@ app/
   layout.tsx                         Root layout, session provider, global navbar
   page.tsx                           Public homepage: Discover Events
   (public)/events/[eventId]/         Public event detail route
-  (public)/organisations/            Anonymous bounded society directory
-  (public)/organisations/[orgSlug]/  Public-safe organisation details route
+  (public)/societies/            Anonymous bounded society directory
+  (public)/societies/[orgSlug]/  Public-safe organisation details route
   (dashboard)/dashboard/             Role-aware dashboard route group
     page.tsx                         Member dashboard or organisation dashboard
     create/page.tsx                  Organisation onboarding
@@ -79,13 +79,12 @@ app/
   api/                               Route handlers
 
 components/
+  account/                           Member profile, password, email-change and closure forms
   auth/                              Login/signup and verification/recovery/email-link forms
   events/                            Event list, event form, public checkout UI
-  layout/                            Navbar, session provider, DashboardShell
-  members/                           Member profile and organisation search UI
-  orgs/                              Organisation creation form
-  organisations/                     Personalized public profile Join control
-  settings/                          Stripe Connect and private account/security settings UI
+  layout/                            Navbar, footer, session provider, DashboardShell, PersonalShell, context switcher
+  organisations/                     Society creation, search, joined list and public profile Join control
+  settings/                          Society profile, staff, Stripe Connect and notification recovery UI
   tickets/                           Ticket check-in/check-out controls
   ui/                                Small reusable primitives
 
@@ -158,19 +157,20 @@ docs/obsidian/
 
 ## Current UI State
 
-- Global header has fixed h-16 height, a Societies link for everyone and a mobile account Menu; components/layout/navbar.tsx owns it.
-- Organisation dashboard shell uses a fixed left sidebar below the global header and a content header that shows the organisation name.
+- Global header is 60px high (72px from `md`) with Explore events and Explore societies for everyone and a mobile Menu; components/layout/navbar.tsx owns it. app/globals.css is the only token source. [[UI Architecture Rules]] owns the details.
+- Organisation dashboard shell uses a fixed deep-plum sidebar below the global header from `lg` and a content header that shows the organisation name. Personal pages use components/layout/personal-shell.tsx.
 - Organisation dashboard primary route is `/dashboard`.
-- Sidebar capability-filters Dashboard, Events, Orders, Notifications, Society profile, Stripe settings and Staff, with a Staff MFA link and longest-route active state. Protected pages independently enforce authority.
+- Sidebar capability-filters Overview, Events, Orders, Payments, Staff, Settings and Notifications, with a Staff MFA link and longest-route active state. Protected pages independently enforce authority.
 - Event analytics links to the event ticket list.
 - Order rows link to organiser order detail.
 - Member dashboard does not use the organisation management sidebar.
-- Primary dashboard buttons use `bg-neutral-900 text-white hover:bg-neutral-700`.
+- Buttons come from components/ui/button.tsx; the primary action is the brand purple.
 - Stripe settings renders a state-based Connect panel with connect, platform settings, retry, continue onboarding, fix account, open dashboard, refresh status, and local disconnect controls.
 
 ## Current Known Quirks
 
 - `DashboardShell` controls the shared organisation sidebar; do not duplicate navigation in new dashboard pages.
+- `/organisations` and `/organisations/[orgSlug]` are permanent redirects to `/societies` (next.config.ts).
 - `/dashboard/events/new` still renders a page heading `Create Event` above the form title `New event`.
 - `app/page.tsx` uses `export const dynamic = "force-dynamic"` to avoid stale homepage output during development.
 - Stripe account disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the account in Stripe. Reconnecting the same old account requires manually restoring the old `acct_...` id in the DB.

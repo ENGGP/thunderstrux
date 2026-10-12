@@ -161,8 +161,8 @@ Member/test accounts:
 Public:
 
 - `/`
-- `/organisations`
-- `/organisations/[orgSlug]`
+- `/societies`
+- `/societies/[orgSlug]`
 - `/events/[eventId]`
 - `/login`
 - `/signup`

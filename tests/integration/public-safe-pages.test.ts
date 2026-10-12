@@ -14,7 +14,7 @@ import {
 import { parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { GET as getPublicEvents } from "@/app/api/public/events/route";
 import { GET as getPublicEvent } from "@/app/api/public/events/[eventId]/route";
-import OrganisationDetailsPage from "@/app/(public)/organisations/[orgSlug]/page";
+import OrganisationDetailsPage from "@/app/(public)/societies/[orgSlug]/page";
 import HomePage from "@/app/page";
 
 vi.mock("next-auth/react", () => ({

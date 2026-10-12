@@ -12,7 +12,7 @@ test("anonymous society discovery and verified join/leave show fresh personal st
     },
   });
   await page.goto("/");
-  await page.getByRole("link", { name: "Societies", exact: true }).click();
+  await page.getByRole("link", { name: "Explore societies", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Discover societies" }),
   ).toBeVisible();
@@ -27,7 +27,7 @@ test("anonymous society discovery and verified join/leave show fresh personal st
   await page.getByLabel("Password", { exact: true }).fill("password123");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(
-    `http://localhost:3100/organisations/${data.organisation.slug}`,
+    `http://localhost:3100/societies/${data.organisation.slug}`,
   );
   expect(
     await prisma.organisationMember.count({
@@ -184,7 +184,7 @@ test("unverified discovery offers verification and empty searches remain usable"
   await login(
     page,
     data.member.email,
-    `/organisations/${data.organisation.slug}`,
+    `/societies/${data.organisation.slug}`,
   );
   await expect(
     page.getByRole("link", { name: "Verify email to join society" }),

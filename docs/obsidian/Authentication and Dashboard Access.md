@@ -125,9 +125,9 @@ Current behavior:
 
 - Navbar is fixed globally at the top
 - Thunderstrux logo links to `/dashboard` for organisation accounts
-- Thunderstrux logo links to `/` for member and logged-out users
-- Everyone sees Societies. Logged-out users also see Sign in.
-- Desktop signed-in users see Dashboard, private Settings (/account/settings), and Sign out; members also see My tickets. Mobile keeps Societies/Sign out visible and places account links in a native Menu disclosure, within fixed h-16 height.
+- Thunderstrux logo links to `/`
+- Everyone sees Explore events and Explore societies. Logged-out users also see Sign in and Create a society.
+- Desktop signed-in users see Dashboard, Account (/account/settings), and Sign out; members also see My tickets. Mobile keeps Sign out visible and places Explore events, Explore societies and account links in a native Menu disclosure.
 - Member accounts see `My tickets`
 - Organisation accounts do not see `My tickets`
 - Sign out redirects to `/` on the current site, including isolated staging ports.
@@ -186,7 +186,7 @@ The desktop sidebar and mobile menu filter links by current capabilities and mar
 
 ## Current Role Capabilities
 
-Anonymous `/organisations` and `/organisations/[orgSlug]` reads expose whitelisted public fields. The profile uses dynamic caller-only join state. Verified member join/leave transactions lock the User then Organisation and recheck account role/authVersion/disabled state; leave may remove an unverified caller's own affiliation. Origin/CSRF and rate guards remain in routes. Paid orders/tickets, other users and staff rows are unaffected. Public profile writes and assets require live settings/kind capability and staff MFA; see [[Society Profiles and Assets]].
+Anonymous `/societies` and `/societies/[orgSlug]` reads expose whitelisted public fields. The profile uses dynamic caller-only join state. Verified member join/leave transactions lock the User then Organisation and recheck account role/authVersion/disabled state; leave may remove an unverified caller's own affiliation. Origin/CSRF and rate guards remain in routes. Paid orders/tickets, other users and staff rows are unaffected. Public profile writes and assets require live settings/kind capability and staff MFA; see [[Society Profiles and Assets]].
 
 Named staff receive event, finance, settings, administration and Stripe Connect capabilities from the live rolePermissions mapping. There is no stored arbitrary per-user permission array. Server handlers re-check live authority, capability and MFA for every protected operation.
 

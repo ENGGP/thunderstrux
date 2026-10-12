@@ -9,7 +9,7 @@ test("society profile saves branding, keeps conflicting edits and remains public
 }) => {
   await login(page, data.owner.email);
   await page
-    .getByRole("link", { name: "Society profile", exact: true })
+    .getByRole("link", { name: "Settings", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "Society profile" }),

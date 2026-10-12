@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { MemberProfileForm } from "@/components/members/member-profile-form";
-import { MemberOrganisationsList } from "@/components/members/member-organisations-list";
+import { MemberProfileForm } from "@/components/account/member-profile-form";
+import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
 import {
   OrganisationAccessError,
   StaffMfaRequiredError,
@@ -11,8 +11,13 @@ import {
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
 import { readMemberDashboard } from "@/lib/auth/account-settings";
-import { bootstrapOrganisationId, readAccountContext } from "@/lib/auth/context";
-import { ContextSelector } from "@/components/layout/context-selector";
+import {
+  bootstrapOrganisationId,
+  contextChoices,
+  readAccountContext,
+  type ContextChoices
+} from "@/lib/auth/context";
+import { PersonalShell } from "@/components/layout/personal-shell";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
 import { hasOrganisationPermission } from "@/lib/permissions";
@@ -44,7 +49,7 @@ function revenueBuckets(orders: Array<{ paidAt: Date | null; totalAmount: number
   return buckets;
 }
 
-async function OrganisationDashboard() {
+async function OrganisationDashboard(contexts: ContextChoices) {
   const organisation = await requireCurrentOrganisationAccount();
   const startOfMonth = monthStart();
   const canManageEvents = hasOrganisationPermission(
@@ -68,7 +73,7 @@ async function OrganisationDashboard() {
   const maxBucket = Math.max(...buckets.map((bucket) => bucket.total), 1);
 
   return (
-    <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>
+    <DashboardShell contexts={contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-6">
@@ -229,15 +234,14 @@ async function OrganisationDashboard() {
   );
 }
 
-async function MemberDashboard({ userId }: { userId: string }) {
+async function MemberDashboard(userId: string, contexts: ContextChoices) {
   const [{ profile: user, orderCount }, organisations] = await Promise.all([
     readMemberDashboard(userId),
     getAccessibleOrganisationsForCurrentAccount()
   ]);
 
   return (
-    <main className="min-h-screen bg-neutral-100">
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
+    <PersonalShell contexts={contexts}>
         <header className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <h1 className="text-3xl font-semibold text-neutral-950">Dashboard</h1>
           <p className="mt-2 text-sm text-neutral-500">
@@ -312,8 +316,7 @@ async function MemberDashboard({ userId }: { userId: string }) {
 
           <MemberOrganisationsList organisations={organisations} />
         </section>
-      </div>
-    </main>
+    </PersonalShell>
   );
 }
 
@@ -322,7 +325,7 @@ export default async function DashboardPage() {
   const context = await readAccountContext();
   if (context.selected) {
     try {
-      return await OrganisationDashboard();
+      return await OrganisationDashboard(contextChoices(context));
     } catch (error) {
       if (error instanceof StaffMfaRequiredError) redirect("/mfa?callbackUrl=/dashboard");
       if (error instanceof OrganisationAccessError) {
@@ -335,8 +338,12 @@ export default async function DashboardPage() {
 
   if (user.accountRole === "organisation") {
     if (context.organisations.length === 0 && !(await bootstrapOrganisationId(user.id))) redirect("/dashboard/create");
-    return <main className="mx-auto max-w-5xl p-6"><h1>Choose a staff organisation</h1><ContextSelector />
-      {context.organisations.length === 0 && <p>No active organisation access. Contact an owner.</p>}</main>;
+    return (
+      <PersonalShell accountRole="organisation" contexts={contextChoices(context)}>
+        <h1 className="text-2xl font-semibold">Choose a staff organisation</h1>
+        {context.organisations.length === 0 && <p>No active organisation access. Contact an owner.</p>}
+      </PersonalShell>
+    );
   }
-  return <><ContextSelector /><MemberDashboard userId={user.id} /></>;
+  return MemberDashboard(user.id, contextChoices(context));
 }

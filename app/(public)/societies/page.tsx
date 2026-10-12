@@ -42,7 +42,7 @@ export default async function SocietiesPage({
           </p>
         </header>
         <form
-          action="/organisations"
+          action="/societies"
           method="GET"
           className="society-panel flex flex-col gap-3 p-5 sm:flex-row sm:items-end"
         >
@@ -65,7 +65,7 @@ export default async function SocietiesPage({
             <p className="mt-2">Try a different name or clear the search.</p>
             <Link
               className="society-link mt-3 inline-block"
-              href="/organisations"
+              href="/societies"
             >
               Show all societies
             </Link>
@@ -82,7 +82,7 @@ export default async function SocietiesPage({
                   />
                 )}
                 <h2 className="text-xl font-semibold">
-                  <Link href={`/organisations/${org.slug}`}>{org.name}</Link>
+                  <Link href={`/societies/${org.slug}`}>{org.name}</Link>
                 </h2>
                 <p>
                   {org.description ||
@@ -93,7 +93,7 @@ export default async function SocietiesPage({
                 )}
                 <Link
                   className="society-link inline-block"
-                  href={`/organisations/${org.slug}`}
+                  href={`/societies/${org.slug}`}
                 >
                   View society
                 </Link>
@@ -104,13 +104,13 @@ export default async function SocietiesPage({
         <nav aria-label="Society result pages" className="flex gap-6">
           {page.pageInfo.hasPreviousPage && (
             <Link
-              href={`/organisations?${new URLSearchParams({ q: input.q, limit: String(input.limit) })}`}
+              href={`/societies?${new URLSearchParams({ q: input.q, limit: String(input.limit) })}`}
             >
               First page
             </Link>
           )}
           {page.pageInfo.nextCursor && (
-            <Link href={`/organisations?${next}`}>More societies</Link>
+            <Link href={`/societies?${next}`}>More societies</Link>
           )}
         </nav>
       </div>

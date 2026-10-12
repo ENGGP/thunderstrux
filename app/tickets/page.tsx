@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PersonalShell } from "@/components/layout/personal-shell";
 import {
   AuthenticationRequiredError,
   requireAuthenticatedUser
@@ -114,8 +115,7 @@ export default async function MyTicketsPage({
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 px-6 py-10">
-      <div className="mx-auto max-w-5xl space-y-6">
+    <PersonalShell>
         <header className="space-y-2">
           <h1 className="text-3xl font-semibold text-neutral-950">My tickets</h1>
           <p className="text-sm text-neutral-600">
@@ -248,7 +248,6 @@ export default async function MyTicketsPage({
             ) : null}
           </nav>
         ) : null}
-      </div>
-    </main>
+    </PersonalShell>
   );
 }

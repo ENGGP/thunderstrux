@@ -215,7 +215,7 @@ Management decisions use the canonical tenant and live `OrganisationStaff` capab
 
 ### `GET /api/public/organisations/search`
 
-Anonymous public-safe discovery: `q` is a literal name/slug substring, trimmed and bounded to 120 characters; `limit` defaults to 25 and accepts 1..50. Forward `cursor` uses name ASC, id ASC and must match the query. Invalid bounds/cursors return 400. Returns `{organisations, pageInfo}` with public name/slug/description excerpt/logo and the next upcoming published event, never personalized joined state, staff, account email or Stripe fields. Public cache lifetime is 60 seconds. `/organisations` consumes the shared read service directly.
+Anonymous public-safe discovery: `q` is a literal name/slug substring, trimmed and bounded to 120 characters; `limit` defaults to 25 and accepts 1..50. Forward `cursor` uses name ASC, id ASC and must match the query. Invalid bounds/cursors return 400. Returns `{organisations, pageInfo}` with public name/slug/description excerpt/logo and the next upcoming published event, never personalized joined state, staff, account email or Stripe fields. Public cache lifetime is 60 seconds. `/societies` consumes the shared read service directly.
 
 ### `GET /api/orgs/search?q=...`
 

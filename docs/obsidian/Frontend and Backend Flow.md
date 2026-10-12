@@ -38,7 +38,7 @@ Important current behavior:
 
 ## Society Discovery and Profiles
 
-Society discovery is a separate implemented journey: `/organisations` calls lib/organisations/discovery.ts directly for literal name/slug search (q <=120, default 25/max 50, stable name/ID forward cursor). `/api/public/organisations/search` returns the same public DTO without joined/account/staff/Stripe state. Cards link to `/organisations/[orgSlug]`; incomplete profiles remain visible.
+Society discovery is a separate implemented journey: `/societies` calls lib/organisations/discovery.ts directly for literal name/slug search (q <=120, default 25/max 50, stable name/ID forward cursor). `/api/public/organisations/search` returns the same public DTO without joined/account/staff/Stripe state. Cards link to `/societies/[orgSlug]`; incomplete profiles remain visible.
 
 The profile page calls lib/organisations/public-organisations.ts for public name/description/contact/policies/timezone, logo/cover and up to 50 upcoming published events. A separate dynamic caller-only lookup supplies SocietyJoin: anonymous sign-in callback, unverified verification prompt, explicit verified Join, or Joined. Authentication never auto-joins. Ready public images use `/api/public/assets/[assetId]`; raw uploads and unattached images stay private. [[Society Profiles and Assets]] owns privacy, references and storage.
 
@@ -155,7 +155,7 @@ Current UI:
 Files:
 
 - `app/(dashboard)/dashboard/organisations/page.tsx`
-- `components/members/organisation-search.tsx`
+- `components/organisations/organisation-search.tsx`
 - `app/api/orgs/search/route.ts`
 - `app/api/orgs/[orgSlug]/join/route.ts`
 
@@ -183,8 +183,8 @@ Important rule:
 
 Files:
 
-- `components/members/member-organisations-list.tsx`
-- `app/(public)/organisations/[orgSlug]/page.tsx`
+- `components/organisations/member-organisations-list.tsx`
+- `app/(public)/societies/[orgSlug]/page.tsx`
 - `app/api/orgs/[orgSlug]/leave/route.ts`
 
 Flow:
@@ -192,7 +192,7 @@ Flow:
 ```text
 Member opens /dashboard
   -> joined organisation cards render View details and Leave organisation actions
-  -> View details links to /organisations/[orgSlug]
+  -> View details links to /societies/[orgSlug]
   -> public organisation details page loads public-safe organisation data and upcoming published events
   -> Leave organisation confirms in the browser
   -> POST /api/orgs/[orgSlug]/leave
@@ -203,7 +203,7 @@ Member opens /dashboard
 
 Important rules:
 
-- `/organisations/[orgSlug]` exposes only public-safe organisation data and upcoming published events.
+- `/societies/[orgSlug]` exposes only public-safe organisation data and upcoming published events.
 - Leave is idempotent when the member is already not joined.
 - Leave retains origin/CSRF/rate/live-version checks, permits removal by an unverified member, and preserves staff, paid purchases/tickets and other users. MembershipGrant does not exist yet; T22/T24 owns its survival regression.
 - Organisation accounts cannot leave their owned organisation through the member leave endpoint.
@@ -213,7 +213,7 @@ Important rules:
 Files:
 
 - `app/(dashboard)/dashboard/create/page.tsx`
-- `components/orgs/create-organisation-form.tsx`
+- `components/organisations/create-organisation-form.tsx`
 - `app/api/orgs/route.ts`
 
 Flow:

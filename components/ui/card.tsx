@@ -1,8 +1,16 @@
 import type { ReactNode } from "react";
 
-export function Card({ children }: { children: ReactNode }) {
+export function Card({
+  children,
+  className = ""
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+    <section
+      className={`rounded-card border border-line bg-surface p-5 sm:p-6 ${className}`}
+    >
       {children}
     </section>
   );

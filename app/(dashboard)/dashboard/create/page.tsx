@@ -5,7 +5,7 @@ import {
   getCurrentOrganisationAccount,
   requireAccountRole
 } from "@/lib/auth/access";
-import { CreateOrganisationForm } from "@/components/orgs/create-organisation-form";
+import { CreateOrganisationForm } from "@/components/organisations/create-organisation-form";
 import { Card } from "@/components/ui/card";
 
 export default async function CreateOrganisationPage() {

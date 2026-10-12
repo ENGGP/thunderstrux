@@ -20,7 +20,7 @@ export function SocietyJoin({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const callback = encodeURIComponent(`/organisations/${slug}`);
+  const callback = encodeURIComponent(`/societies/${slug}`);
   async function join() {
     setBusy(true);
     setError("");

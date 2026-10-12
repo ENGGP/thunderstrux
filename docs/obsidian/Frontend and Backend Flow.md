@@ -56,9 +56,9 @@ Flow:
 ```text
 User visits /events/[eventId]
   -> proxy redirects organisation accounts to /dashboard/events/[eventId]
-  -> page fetches GET /api/public/events/[eventId]
-  -> API returns only published events
-  -> API computes ticketTypes.availableQuantity from active unexpired reservations
+  -> page calls getPublishedEventDetail (lib/events/public-events.ts), the same read service as GET /api/public/events/[eventId]
+  -> the service returns only published events
+  -> the service computes ticketTypes.availableQuantity from active unexpired reservations
   -> page renders event details and ticketTypes
   -> PublicTicketPurchase handles client-side checkout start
 ```

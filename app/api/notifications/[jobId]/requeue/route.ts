@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
-import { AuthenticationRequiredError, OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
-import { conflict, forbidden, internalError, notFound, unauthorized, validationError } from "@/lib/api/errors";
-import { NotificationRequeueError, requeueBusinessNotification } from "@/lib/email/notification-outbox";
+import { requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
+import { conflict, mapRouteError, notFound, routeErrorRule, validationError } from "@/lib/api/errors";
+import { authenticationRule, organisationAccessRule } from "@/lib/api/route-rules";
+import { NotificationRequeueError, businessNotificationExists, requeueBusinessNotification } from "@/lib/email/notification-outbox";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 
@@ -14,8 +14,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationPermission(organisation.id, "orders:email_resend");
     const { jobId } = await context.params;
-    const job = await prisma.notificationOutbox.findFirst({ where: { id: jobId, organisationId: organisation.id, privacy: "business" }, select: { id: true } });
-    if (!job) return notFound("Notification not found");
+    if (!await businessNotificationExists(jobId, organisation.id)) return notFound("Notification not found");
     const limit = await enforceRateLimit({ policy: "order_resend", request, keyParts: [organisation.id, jobId] });
     if (limit) return limit;
     const body = z.object({ reason: z.string().trim().min(8).max(500) }).strict().safeParse(await request.json().catch(() => null));
@@ -24,9 +23,9 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     await requeueBusinessNotification({ jobId, organisationId: organisation.id, actorUserId: actor.id, reason: body.data.reason });
     return NextResponse.json({ queued: true });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) return unauthorized();
-    if (error instanceof OrganisationAccessError) return forbidden(error.message);
-    if (error instanceof NotificationRequeueError) return conflict(error.message);
-    return internalError();
+    return mapRouteError(error, { operation: "notifications.requeue", request, rules: [
+      authenticationRule, organisationAccessRule,
+      routeErrorRule(NotificationRequeueError, failure => conflict(failure.message))
+    ] });
   }
 }

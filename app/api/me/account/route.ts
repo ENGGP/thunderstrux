@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
+import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { readAccountSettings } from "@/lib/auth/account-settings";
-import { AccountSecurityError } from "@/lib/auth/account-lifecycle";
-import { unauthorized, internalError } from "@/lib/api/errors";
-export async function GET() {
+import { mapRouteError } from "@/lib/api/errors";
+import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
+export async function GET(request?: Request) {
   try { return NextResponse.json(await readAccountSettings(await requireAuthenticatedUser()), { headers: { "Cache-Control": "private, no-store" } }); }
-  catch (error) {
-    if (error instanceof AuthenticationRequiredError || (error instanceof AccountSecurityError && error.kind === "stale_session")) return unauthorized();
-    return internalError();
-  }
+  catch (error) { return mapRouteError(error, { operation: "account.read", request, rules: [authenticationRule, staleSessionRule] }); }
 }

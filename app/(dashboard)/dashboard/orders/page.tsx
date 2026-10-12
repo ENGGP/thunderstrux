@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   OrganisationOrderEventAccessError,
   getGroupedOrganisationOrdersWithContext,
@@ -13,25 +14,6 @@ import {
   PaginationError,
   parsePaginationOptionsOrDefault
 } from "@/lib/pagination/cursor";
-
-function formatCurrency(amountInCents: number) {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD"
-  }).format(amountInCents / 100);
-}
-
-function formatDateTime(value: Date | null) {
-  if (!value) {
-    return "Not available";
-  }
-
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
 
 function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
   if (status === "paid") {
@@ -448,7 +430,7 @@ export default async function OrganisationOrdersPage({
                             {order.quantity}
                           </td>
                           <td className="py-3 pr-4 text-neutral-700">
-                            {formatCurrency(order.totalAmount)}
+                            {formatMoney(order.totalAmount)}
                           </td>
                           <td className="py-3 pr-4 text-neutral-700">
                             {statusLabel(order.status)}

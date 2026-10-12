@@ -1,7 +1,4 @@
-import { readAccountContext } from "@/lib/auth/context";
-import { notFound, redirect } from "next/navigation";
-import { requireAnyOrganisationPermission, StaffMfaRequiredError } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { redirectLegacyOrganisationPage } from "@/lib/auth/page-access";
 
 export default async function LegacyDashboardPage({
   params
@@ -9,31 +6,11 @@ export default async function LegacyDashboardPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const organisation = await prisma.organisation.findFirst({
-    where: {
-      slug: orgSlug
-    },
-    select: { id: true }
-  });
 
-  if (!organisation) {
-    notFound();
-  }
-
-  try {
-    await requireAnyOrganisationPermission(organisation.id, [
-      "events:manage",
-      "orders:read",
-      "tickets:check_in",
-      "stripe:manage",
-      "staff:manage"
-    ]);
-  } catch (error) {
-    if (error instanceof StaffMfaRequiredError) redirect(`/mfa?callbackUrl=${encodeURIComponent(`/dashboard/${orgSlug}`)}`);
-    notFound();
-  }
-
-  if ((await readAccountContext()).selected?.id !== organisation.id) redirect("/dashboard");
-
-  redirect("/dashboard");
+  return redirectLegacyOrganisationPage(
+    orgSlug,
+    ["events:manage", "orders:read", "tickets:check_in", "stripe:manage", "staff:manage"],
+    `/dashboard/${orgSlug}`,
+    "/dashboard"
+  );
 }

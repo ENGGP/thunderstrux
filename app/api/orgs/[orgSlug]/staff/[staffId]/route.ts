@@ -2,18 +2,18 @@ import { NextResponse } from "next/server";
 import {
   conflict,
   forbidden,
-  internalError,
+  mapRouteError,
   notFound,
+  routeErrorRule,
   unauthorized,
   validationError
 } from "@/lib/api/errors";
+import { authenticationRule, organisationAccessRule } from "@/lib/api/route-rules";
 import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
   requireAuthenticatedUser,
   requireOrganisationPermission
 } from "@/lib/auth/access";
-import { prisma } from "@/lib/db";
+import { organisationIdBySlug } from "@/lib/organisations/authority";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { StaffUpdateError, updateOrganisationStaff } from "@/lib/staff/management";
 import { validateJson } from "@/lib/validators";
@@ -43,40 +43,31 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   try {
     const user = await requireAuthenticatedUser();
-    const organisation = await prisma.organisation.findUnique({
-      where: { slug: orgSlug },
-      select: { id: true }
-    });
+    const organisationId = await organisationIdBySlug(orgSlug);
 
-    if (!organisation) {
+    if (!organisationId) {
       return notFound("Organisation was not found");
     }
 
-    await requireOrganisationPermission(organisation.id, "staff:manage");
+    await requireOrganisationPermission(organisationId, "staff:manage");
 
-    const staff = await updateOrganisationStaff(user, organisation.id, staffId, validation.data);
+    const staff = await updateOrganisationStaff(user, organisationId, staffId, validation.data);
 
     return NextResponse.json({ staff });
   } catch (error) {
-    if (error instanceof StaffUpdateError) {
-      if (error.kind === "not_found") return notFound(error.message);
-      if (error.kind === "stale_session") return unauthorized();
-      if (error.kind === "conflict") return conflict(error.message);
-      return forbidden(error.message);
-    }
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    console.error("Failed to update organisation staff", {
-      orgSlug,
-      staffId,
-      error
+    return mapRouteError(error, {
+      operation: "staff.update",
+      request,
+      rules: [
+        routeErrorRule(StaffUpdateError, (failure) =>
+          failure.kind === "not_found" ? notFound(failure.message)
+            : failure.kind === "stale_session" ? unauthorized()
+              : failure.kind === "conflict" ? conflict(failure.message)
+                : forbidden(failure.message)
+        ),
+        authenticationRule,
+        organisationAccessRule
+      ]
     });
-    return internalError();
   }
 }

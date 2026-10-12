@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { listFailedBusinessNotifications, NotificationCursorError } from "@/lib/email/notification-outbox";
-import { AuthenticationRequiredError, OrganisationAccessError, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
-import { badRequest, forbidden, internalError, unauthorized } from "@/lib/api/errors";
+import { requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
+import { badRequest, mapRouteError, routeErrorRule } from "@/lib/api/errors";
+import { authenticationRule, organisationAccessRule } from "@/lib/api/route-rules";
 
 export async function GET(request?: Request) {
   try {
@@ -11,9 +12,9 @@ export async function GET(request?: Request) {
     const result = await listFailedBusinessNotifications(organisation.id, cursor);
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) return unauthorized();
-    if (error instanceof OrganisationAccessError) return forbidden(error.message);
-    if (error instanceof NotificationCursorError) return badRequest(error.message);
-    return internalError();
+    return mapRouteError(error, { operation: "notifications.list", request, rules: [
+      authenticationRule, organisationAccessRule,
+      routeErrorRule(NotificationCursorError, failure => badRequest(failure.message))
+    ] });
   }
 }

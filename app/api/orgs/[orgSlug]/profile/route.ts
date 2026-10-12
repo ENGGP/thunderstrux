@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { organisationActor, organisationError } from "@/lib/organisations/http";
 import {
   profileSchema,
-  profileSelect,
+  readProfile,
   updateProfile,
 } from "@/lib/organisations/profile";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -17,12 +16,7 @@ export async function GET(_request: Request, context: Context) {
       "organisation:settings",
     );
     return NextResponse.json(
-      {
-        profile: await prisma.organisation.findUnique({
-          where: { id: organisationId },
-          select: profileSelect,
-        }),
-      },
+      { profile: await readProfile(organisationId) },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

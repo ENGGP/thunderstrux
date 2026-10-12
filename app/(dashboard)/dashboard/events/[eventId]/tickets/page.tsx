@@ -7,6 +7,7 @@ import {
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { formatDateTime } from "@/lib/format";
 import {
   OrganisationEventTicketsAccessError,
   TicketPaginationError,
@@ -20,14 +21,6 @@ type OrganiserEventTicketsPageProps = {
   }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
-
-function formatDateTime(value: Date) {
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
 
 function statusBadgeClassName(status: "unused" | "checked-in") {
   return status === "checked-in"

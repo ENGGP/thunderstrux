@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { badRequest, internalError, unauthorized, serviceUnavailable } from "@/lib/api/errors";
-import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
+import { badRequest, mapRouteError, routeErrorRule, serviceUnavailable, unauthorized } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -22,10 +23,10 @@ export async function POST(request: Request) {
     const result = await confirmStaffMfaEnrollment(user.id, body.code, digest);
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) return unauthorized();
-    if (error instanceof MfaInputError) return badRequest(error.message);
-    if (error instanceof MfaConfigurationError) return serviceUnavailable("Staff verification is unavailable");
-    console.error("Failed to confirm MFA setup", error);
-    return internalError();
+    return mapRouteError(error, { operation: "mfa.confirm", request, rules: [
+      authenticationRule,
+      routeErrorRule(MfaInputError, failure => badRequest(failure.message)),
+      routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable"))
+    ] });
   }
 }

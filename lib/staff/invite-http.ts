@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { AuthenticationRequiredError, OrganisationAccessError, requireVerifiedUser, requireOrganisationPermission } from "@/lib/auth/access";
 import { badRequest, conflict, forbidden, internalError, notFound, unauthorized, validationError } from "@/lib/api/errors";
+import { organisationIdBySlug } from "@/lib/organisations/authority";
 import { StaffInviteError, manageOrganisationStaffInvite } from "./invites";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
@@ -30,14 +31,14 @@ export async function manageStaffInviteRequest(request: Request, context: { para
   try {
     const actor = await requireVerifiedUser();
     const { orgSlug, inviteId } = await context.params;
-    const organisation = await prisma.organisation.findUnique({ where: { slug: orgSlug }, select: { id: true } });
-    if (!organisation) return notFound("Organisation was not found");
-    await requireOrganisationPermission(organisation.id, "staff:manage");
-    const invite = await prisma.organisationStaffInvite.findFirst({ where: { id: inviteId, organisationId: organisation.id }, select: { email: true } });
+    const organisationId = await organisationIdBySlug(orgSlug);
+    if (!organisationId) return notFound("Organisation was not found");
+    await requireOrganisationPermission(organisationId, "staff:manage");
+    const invite = await prisma.organisationStaffInvite.findFirst({ where: { id: inviteId, organisationId }, select: { email: true } });
     if (!invite) return badRequest("Invitation is unavailable");
-    const limited = action === "resend" ? await invitationIssuanceLimits(request, actor.id, organisation.id, invite.email) :
-      await enforceRateLimit({ policy: "staff_invite_actor", request, keyParts: [actor.id, organisation.id], required: true });
+    const limited = action === "resend" ? await invitationIssuanceLimits(request, actor.id, organisationId, invite.email) :
+      await enforceRateLimit({ policy: "staff_invite_actor", request, keyParts: [actor.id, organisationId], required: true });
     if (limited) return limited;
-    return NextResponse.json(await manageOrganisationStaffInvite(actor, organisation.id, inviteId, action), { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json(await manageOrganisationStaffInvite(actor, organisationId, inviteId, action), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return staffInviteFailure(error); }
 }

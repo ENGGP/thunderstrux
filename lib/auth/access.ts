@@ -414,94 +414,6 @@ export async function requireOrganisationAccessBySlug(orgSlug: string) {
   };
 }
 
-export async function requireOrganisationAccessById(organisationId: string) {
-  const user = await requireAuthenticatedUser();
-
-  const staff = await prisma.organisationStaff.findFirst({
-    where: {
-      userId: user.id,
-      status: "active",
-      organisationId
-    },
-    select: {
-      role: true,
-      organisation: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true
-        }
-      }
-    }
-  });
-
-  if (staff) {
-    return {
-      ...staff.organisation,
-      role: staff.role as unknown as OrganisationRole
-    };
-  }
-
-  if (user.accountRole === "organisation") {
-    if (legacyOrganisationAccessMode() === "deny") {
-      throw new OrganisationAccessError("Organisation not found or access denied");
-    }
-    const organisation = await prisma.organisation.findFirst({
-      where: {
-        id: organisationId,
-        accountUserId: user.id
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        createdAt: true
-      }
-    });
-
-    if (!organisation) {
-      throw new OrganisationAccessError("Organisation not found or access denied");
-    }
-
-    return {
-      ...organisation,
-      role: "org_owner" as OrganisationRole
-    };
-  }
-
-  // Member accounts can view joined organisations. OrganisationMember rows do
-  // not grant management authority in the current account model.
-  const membership = await prisma.organisationMember.findUnique({
-    where: {
-      userId_organisationId: {
-        userId: user.id,
-        organisationId
-      }
-    },
-    select: {
-      role: true,
-      organisation: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true
-        }
-      }
-    }
-  });
-
-  if (!membership) {
-    throw new OrganisationAccessError("Organisation not found or access denied");
-  }
-
-  return {
-    ...membership.organisation,
-    role: membership.role as OrganisationRole
-  };
-}
-
 export async function requireOrganisationPermission(
   organisationId: string,
   permission: OrganisationPermission
@@ -603,14 +515,6 @@ export async function requireAnyOrganisationPermission(
   }
 
   throw lastAccessError ?? new OrganisationAccessError("Organisation access denied");
-}
-
-export async function requireOrganisationStaffAccess(organisationId: string) {
-  return requireOrganisationPermission(organisationId, "events:manage");
-}
-
-export async function requireOrganisationAdminAccess(organisationId: string) {
-  return requireOrganisationPermission(organisationId, "staff:manage");
 }
 
 export async function requireOrganisationEventManagementAccess(organisationId: string) {

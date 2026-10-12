@@ -1,54 +1,15 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { StaffManagement } from "@/components/settings/staff-management";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { prisma } from "@/lib/db";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
-import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
+import { listHandoverTargets, listOrganisationStaff } from "@/lib/staff/management";
 import { StaffHandover } from "@/components/settings/staff-handover";
 
 export default async function StaffSettingsPage() {
   const organisation = await requireManagementPage("staff:manage", "/dashboard/settings/staff");
   const actor = await requireAuthenticatedUser();
-  const handoverTargets = organisation.staffRole === "owner" ? await prisma.organisationStaff.findMany({
-    where: { organisationId: organisation.id, status: "active", userId: { not: actor.id }, user: {
-      disabledAt: null, emailVerifiedAt: { not: null }, ...(mfaEnforcementMode() === "enforce" ? { mfa: { is: { enabledAt: { not: null } } } } : {})
-    } }, take: 100, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, user: { select: { email: true } } }
-  }) : [];
-
-  const [staff, invites] = await Promise.all([
-    prisma.organisationStaff.findMany({
-      take: 100,
-      where: { organisationId: organisation.id },
-      orderBy: [{ status: "asc" }, { role: "asc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        role: true,
-        status: true,
-        user: {
-          select: {
-            email: true,
-            firstName: true,
-            lastName: true
-          }
-        }
-      }
-    }),
-    prisma.organisationStaffInvite.findMany({
-      where: {
-        organisationId: organisation.id,
-        acceptedAt: null,
-        revokedAt: null
-      },
-      take: 100,
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        expiresAt: true
-      }
-    })
-  ]);
+  const handoverTargets = organisation.staffRole === "owner" ? await listHandoverTargets(organisation.id, actor.id) : [];
+  const { staff, invites } = await listOrganisationStaff(organisation.id);
 
   return (
     <DashboardShell basePath="/dashboard" orgName={organisation.name} staffRole={organisation.staffRole}>

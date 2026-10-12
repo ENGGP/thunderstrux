@@ -4,38 +4,9 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db";
 import { getSessionIdentity } from "@/lib/auth/session-identity";
+import { authSecret } from "@/lib/auth/secret";
 
-const unsafeAuthSecrets = new Set([
-  "",
-  "dev-secret",
-  "replace-with-a-non-empty-secret"
-]);
-
-function resolveAuthSecret() {
-  const secret = process.env.AUTH_SECRET?.trim() ?? "";
-  const isProduction = process.env.NODE_ENV === "production";
-  const isBuild = process.env.npm_lifecycle_event === "build";
-
-  if (isProduction && !isBuild && unsafeAuthSecrets.has(secret)) {
-    throw new Error(
-      "AUTH_SECRET must be set to a strong non-placeholder value in production."
-    );
-  }
-
-  if (unsafeAuthSecrets.has(secret)) {
-    if (!isBuild) {
-      console.warn(
-        "AUTH_SECRET is using a development fallback. Set AUTH_SECRET in .env for persistent local sessions."
-      );
-    }
-
-    return "dev-only-auth-secret";
-  }
-
-  return secret;
-}
-
-export const authSecret = resolveAuthSecret();
+export { authSecret };
 
 const authRuntime = NextAuth({
   secret: authSecret,

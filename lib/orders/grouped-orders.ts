@@ -241,22 +241,6 @@ export async function getGroupedOrganisationOrdersWithContext(
   };
 }
 
-export async function getGroupedOrganisationOrders(
-  organisationId: string,
-  statusFilter: OrderStatusFilter = "all",
-  eventId?: string,
-  filters: OrganisationOrderQueryFilters = {}
-) {
-  const result = await getGroupedOrganisationOrdersWithContext(
-    organisationId,
-    statusFilter,
-    eventId,
-    filters
-  );
-
-  return result.groups;
-}
-
 function emptyPageInfo(limit: number): PageInfo {
   return {
     limit,

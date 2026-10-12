@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { organisationActor, organisationError } from "@/lib/organisations/http";
-import { assetPermission, deleteAsset, previewAsset, type AssetKind } from "@/lib/assets/service";
+import { assetKindForSlug, assetPermission, deleteAsset, previewAsset } from "@/lib/assets/service";
 import { AssetError } from "@/lib/assets/image";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
@@ -9,10 +8,10 @@ import { enforceRateLimit } from "@/lib/security/rate-limit";
 type Context = { params: Promise<{ orgSlug: string; assetId: string }> };
 async function access(context: Context) {
   const { orgSlug, assetId } = await context.params;
-  const snapshot = await prisma.asset.findFirst({ where: { id: assetId, organisation: { slug: orgSlug } }, select: { kind: true } });
+  const kind = await assetKindForSlug(orgSlug, assetId);
   // Authenticate before disclosing whether an image exists.
-  const access = await organisationActor(orgSlug, assetPermission((snapshot?.kind ?? "logo") as AssetKind));
-  if (!snapshot) throw new AssetError(404, "Image was not found");
+  const access = await organisationActor(orgSlug, assetPermission(kind ?? "logo"));
+  if (!kind) throw new AssetError(404, "Image was not found");
   return { ...access, assetId };
 }
 export async function GET(_request: Request, context: Context) {

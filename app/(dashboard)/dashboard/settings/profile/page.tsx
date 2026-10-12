@@ -1,8 +1,7 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SocietyProfile } from "@/components/settings/society-profile";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { prisma } from "@/lib/db";
-import { profileSelect } from "@/lib/organisations/profile";
+import { readProfile } from "@/lib/organisations/profile";
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 export default async function SocietyProfilePage() {
@@ -10,10 +9,7 @@ export default async function SocietyProfilePage() {
     "organisation:settings",
     "/dashboard/settings/profile",
   );
-  const profile = await prisma.organisation.findUnique({
-    where: { id: organisation.id },
-    select: profileSelect,
-  });
+  const profile = await readProfile(organisation.id);
   if (!profile) notFound();
   return (
     <DashboardShell

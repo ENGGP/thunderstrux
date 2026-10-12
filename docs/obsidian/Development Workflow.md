@@ -521,7 +521,7 @@ Expected behavior:
 - Logged-in requests continue normally.
 - Organisation accounts requesting `/events/[eventId]` redirect to `/dashboard/events/[eventId]`.
 - Member accounts requesting `/dashboard/events/[eventId]` redirect to `/`.
-- Production proxy startup rejects missing or placeholder `AUTH_SECRET` values instead of silently using `dev-secret`.
+- Production startup rejects missing or placeholder `AUTH_SECRET` values. `auth.ts` and `proxy.ts` resolve the secret through `lib/auth/secret.ts`, so a placeholder in development gives both the same fallback.
 
 ## Docker Access From Codex
 

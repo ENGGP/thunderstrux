@@ -2,26 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { getSessionIdentity } from "@/lib/auth/session-identity";
-
-const unsafeAuthSecrets = new Set([
-  "",
-  "dev-secret",
-  "replace-with-a-non-empty-secret"
-]);
-
-function resolveProxyAuthSecret() {
-  const secret = process.env.AUTH_SECRET?.trim() ?? "";
-
-  if (process.env.NODE_ENV === "production" && unsafeAuthSecrets.has(secret)) {
-    throw new Error(
-      "AUTH_SECRET must be set to a strong non-placeholder value in production."
-    );
-  }
-
-  return secret || "dev-secret";
-}
-
-const authSecret = resolveProxyAuthSecret();
+import { authSecret } from "@/lib/auth/secret";
 
 export async function proxy(request: NextRequest) {
   const token = await getToken({

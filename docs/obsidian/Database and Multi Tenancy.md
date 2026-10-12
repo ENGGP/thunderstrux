@@ -467,7 +467,6 @@ Common patterns:
 - `requireCurrentOrganisationAccount()`
 - `getCurrentOrganisationAccount()`
 - `requireOrganisationAccessBySlug(orgSlug)`
-- `requireOrganisationAccessById(organisationId)`
 - `requireOrganisationEventManagementAccess(organisationId)`
 - `requireOrganisationFinanceAccess(organisationId)`
 - `requireOrganisationStripeConnectAccess(organisationId)`
@@ -485,10 +484,7 @@ lib/db/organisation-scope.ts
 Important helpers:
 
 - `requireOrganisationId`
-- `requireOrganisationHeader`
-- `requireMatchingOrganisationScope`
 - `scopedByOrganisation`
-- `assertEventBelongsToOrganisation`
 
 Current note:
 

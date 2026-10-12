@@ -61,7 +61,7 @@ The requirement-level matrix in section 8 supplies finer classification. This ta
 | Public society identity and private settings | COMPLETE | T07–T08 safe assets, public DTO/branding/contact/policies/timezone and settings/MFA-protected optimistic editing are qualified. Paid tabs and wider visual rollout remain later tasks. |
 | Organisation discovery/join/leave | COMPLETE | T09 anonymous bounded literal/cursor discovery, dynamic caller-only verified joins, idempotent leave and fresh client state are qualified. Free affiliation grants neither paid benefits nor staff authority. |
 | Event lifecycle | PARTIAL | Draft/edit/publish/unpublish/delete service exists; create accepts published status, publish checks only ticket inventory; no capacity/visibility/sales-window policy. |
-| Public discovery/detail | PARTIAL | Anonymous public APIs and cursor listing exist; proxy blocks anonymous HTML detail; API self-fetch, filters and sale-state presentation need completion. |
+| Public discovery/detail | PARTIAL | Anonymous public APIs and cursor listing exist; proxy blocks anonymous HTML detail; filters and sale-state presentation need completion. The detail page reads through the shared service (UI-002 resolved). |
 | Ticket types/history | PARTIAL | Multiple types, cents, remaining quantities, unitPrice/total snapshots exist; purchased names/seller/fee snapshots and locked sold edits missing. |
 | Reservations and paid fulfilment | COMPLETE | 30-minute holds, serializable retries, locked inventory, signed webhook, atomic tickets/outbox and replay tests. Extend capacity, locked quotes and uncertain Session creation; don't replace reconciler. |
 | Free acquisition | MISSING | Validators allow zero price; checkout rejects total <= 0 and requires Stripe. |

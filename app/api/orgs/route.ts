@@ -3,12 +3,12 @@ import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import {
   badRequest,
   forbidden,
-  internalError,
-  unauthorized,
+  mapRouteError,
+  routeErrorRule,
   validationError,
 } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
 import {
-  AuthenticationRequiredError,
   OrganisationAccessError,
   getOrganisationAccessForUser,
   mapOrganisationAccessToOrganisations,
@@ -27,27 +27,26 @@ import { normaliseSlug } from "@/lib/validators/slug";
 import { bootstrapOrganisation } from "@/lib/organisations/bootstrap";
 import { contextCookieName } from "@/lib/auth/context-cookie";
 
-function failure(error: unknown) {
-  if (error instanceof AuthenticationRequiredError) return unauthorized();
-  if (
-    error instanceof OrganisationAccessError &&
-    error.message === "Unable to generate a unique organisation slug"
-  )
-    return badRequest(error.message, [
-      { path: ["slug"], message: "Try a more specific organisation slug" },
-    ]);
-  if (
-    error instanceof OrganisationAccessError ||
-    error instanceof AccountVerificationError
-  )
-    return forbidden(error.message);
-  console.error(
-    "Organisation bootstrap failed",
-    error instanceof Error ? error.name : "UnknownError",
-  );
-  return internalError();
+function failure(error: unknown, request?: Request) {
+  return mapRouteError(error, {
+    operation: "organisations.bootstrap",
+    request,
+    rules: [
+      authenticationRule,
+      routeErrorRule(OrganisationAccessError, (denied) =>
+        denied.message === "Unable to generate a unique organisation slug"
+          ? badRequest(denied.message, [
+              { path: ["slug"], message: "Try a more specific organisation slug" },
+            ])
+          : forbidden(denied.message),
+      ),
+      routeErrorRule(AccountVerificationError, (denied) =>
+        forbidden(denied.message),
+      ),
+    ],
+  });
 }
-export async function GET() {
+export async function GET(request?: Request) {
   try {
     const user = await requireAuthenticatedUser();
     return NextResponse.json({
@@ -56,7 +55,7 @@ export async function GET() {
       ),
     });
   } catch (error) {
-    return failure(error);
+    return failure(error, request);
   }
 }
 export async function POST(request: Request) {
@@ -83,6 +82,6 @@ export async function POST(request: Request) {
     response.cookies.delete(contextCookieName);
     return response;
   } catch (error) {
-    return failure(error);
+    return failure(error, request);
   }
 }

@@ -7,7 +7,7 @@ import type { OrganisationPermission } from "@/lib/permissions";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
 import { AssetError, sanitiseImage } from "./image";
 import { assetStorage, type AssetStorage } from "./storage";
-import { assetReferenced } from "./references";
+import { assetPublicReferenced, assetReferenced } from "./references";
 
 export const assetKinds = ["logo", "cover", "event", "product"] as const;
 export type AssetKind = typeof assetKinds[number];
@@ -76,4 +76,13 @@ export async function previewAsset(organisationId: string, id: string, storage: 
   const bytes = await storage.get(asset.storageKey);
   if (!bytes || bytes.length !== asset.byteSize || createHash("sha256").update(bytes).digest("hex") !== asset.sha256) throw new AssetError(404, "Image is unavailable");
   return { asset, bytes };
+}
+export async function assetKindForSlug(orgSlug: string, id: string) {
+  return (await prisma.asset.findFirst({ where: { id, organisation: { slug: orgSlug } }, select: { kind: true } }))?.kind as AssetKind | undefined;
+}
+// Bytes for a ready image that a public profile currently references; null conceals everything else.
+export async function publicAsset(id: string) {
+  const asset = await prisma.asset.findUnique({ where: { id }, select: { organisationId: true, status: true } });
+  if (!asset || asset.status !== "ready" || !await prisma.$transaction(tx => assetPublicReferenced(tx, id))) return null;
+  return previewAsset(asset.organisationId, id);
 }

@@ -40,6 +40,8 @@ or:
 pnpm docker:prod
 ```
 
+Use the `pnpm docker:prod` deployment helper when migrations are pending: plain base Compose startup does not run them. The development override below deploys migrations as part of startup. Back up non-disposable data first; never substitute a reset/seed for migration.
+
 Development runtime with bind mounts, polling, and Turbopack:
 
 ```bash
@@ -700,7 +702,7 @@ After editing `.env` or `.env.db`, recreate containers rather than only refreshi
 
 ```bash
 docker compose down
-docker compose up --build -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
 
 For webhook-secret-only changes, recreating the app container is enough:

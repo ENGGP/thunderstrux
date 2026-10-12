@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[API Reference]]", "[[Email Delivery Implementation]]"]
 sources: [auth.ts, proxy.ts, lib/auth/access.ts, lib/auth/account-lifecycle.ts, lib/auth/account-closure.ts]
@@ -53,7 +53,7 @@ Rules:
 - Signup validation is handled by Zod in `lib/validators/auth.ts`.
 - Account role is either `member` or `organisation`.
 - Member accounts represent people.
-- Organisation accounts represent exactly one organisation.
+- Organisation accounts may bootstrap one primary society; a retained pointer or active staff authority blocks another. Handover retires the pointer permanently; revoked historical rows alone do not block later bootstrap. Named staff authority is separate from account type and join state.
 - Named staff users, invites, roles, MFA, and initial audit logging are implemented. The legacy organisation login remains supported during migration and should be retired after all management users have individual accounts.
 
 ## Session Shape
@@ -126,8 +126,8 @@ Current behavior:
 - Navbar is fixed globally at the top
 - Thunderstrux logo links to `/dashboard` for organisation accounts
 - Thunderstrux logo links to `/` for member and logged-out users
-- Logged-out users see `Sign in`
-- Logged-in users see Dashboard, private Settings (/account/settings), and Sign out; members also see My tickets.
+- Everyone sees Societies. Logged-out users also see Sign in.
+- Desktop signed-in users see Dashboard, private Settings (/account/settings), and Sign out; members also see My tickets. Mobile keeps Societies/Sign out visible and places account links in a native Menu disclosure, within fixed h-16 height.
 - Member accounts see `My tickets`
 - Organisation accounts do not see `My tickets`
 - Sign out redirects to `/` on the current site, including isolated staging ports.
@@ -170,6 +170,9 @@ Organisation management is now available at:
 /dashboard/events/[eventId]/edit
 /dashboard/orders
 /dashboard/settings
+/dashboard/settings/profile
+/dashboard/settings/staff
+/dashboard/notifications
 ```
 
 Legacy `/dashboard/[orgSlug]/*` routes authorize their target and forward only when it matches the selected tenant; otherwise they return to the dashboard chooser. A GET never changes context.
@@ -186,7 +189,9 @@ The desktop sidebar and mobile menu filter links by current capabilities and mar
 
 ## Current Role Capabilities
 
-Named staff receive event, finance, settings, administration, and Stripe Connect capabilities from their live role and explicit permissions. Server handlers re-check these capabilities for every protected operation.
+Anonymous `/organisations` and `/organisations/[orgSlug]` reads expose whitelisted public fields. The profile uses dynamic caller-only join state. Verified member join/leave transactions lock the User then Organisation and recheck account role/authVersion/disabled state; leave may remove an unverified caller's own affiliation. Origin/CSRF and rate guards remain in routes. Paid orders/tickets, other users and staff rows are unaffected. Public profile writes and assets require live settings/kind capability and staff MFA; see [[Society Profiles and Assets]].
+
+Named staff receive event, finance, settings, administration and Stripe Connect capabilities from the live rolePermissions mapping. There is no stored arbitrary per-user permission array. Server handlers re-check live authority, capability and MFA for every protected operation.
 
 Member accounts can complete a profile, join/leave organisations, browse events and view tickets; purchases/joins require verified identity. Members with active named staff authority can also use permitted management pages/APIs. A join membership alone never grants that access.
 

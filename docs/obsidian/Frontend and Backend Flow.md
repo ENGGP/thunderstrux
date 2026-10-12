@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
 sources: [app, components, lib/auth/page-access.ts]
@@ -36,6 +36,12 @@ Important current behavior:
 - Public event reads are read-only. If there are zero published events in the whole database, the API returns an empty event list.
 - Demo public events come from `prisma/seed.mjs`, not from public runtime reads.
 
+## Society Discovery and Profiles
+
+Society discovery is a separate implemented journey: `/organisations` calls lib/organisations/discovery.ts directly for literal name/slug search (q <=120, default 25/max 50, stable name/ID forward cursor). `/api/public/organisations/search` returns the same public DTO without joined/account/staff/Stripe state. Cards link to `/organisations/[orgSlug]`; incomplete profiles remain visible.
+
+The profile page calls lib/organisations/public-organisations.ts for public name/description/contact/policies/timezone, logo/cover and up to 50 upcoming published events. A separate dynamic caller-only lookup supplies SocietyJoin: anonymous sign-in callback, unverified verification prompt, explicit verified Join, or Joined. Authentication never auto-joins. Ready public images use `/api/public/assets/[assetId]`; raw uploads and unattached images stay private. [[Society Profiles and Assets]] owns privacy, references and storage.
+
 ## Public Event Detail
 
 Files:
@@ -60,6 +66,7 @@ User visits /events/[eventId]
 Important current behavior:
 
 - Public detail keeps raw `ticketType.quantity` for compatibility.
+- Although this API is anonymous, the HTML `/events/[eventId]` route still requires authentication through proxy.ts. T15 owns anonymous HTML detail; society pages are already anonymous.
 - Public purchase UI uses `ticketType.availableQuantity` for remaining count, sold-out state, quantity input max, client validation, and buy-button disabled state.
 - Public detail reads are read-only. They do not expire reservations, run stale cleanup, create demo data, or write rows.
 - Checkout remains authoritative and revalidates availability before creating a reservation.
@@ -132,7 +139,8 @@ Flow:
 ```text
 User visits /dashboard
   -> server reads authenticated user from session
-  -> active named staff renders a permitted organisation dashboard; other member accounts render the member dashboard
+  -> signed context preference is checked against live identity, staff authority and MFA
+  -> member accounts start personal, including staff; explicit selection enters a permitted society
   -> management user resolves canonical organisation from live staff authority or configured legacy fallback
   -> authorised management dashboard renders directly
 ```
@@ -140,7 +148,7 @@ User visits /dashboard
 Current UI:
 
 - Member dashboard shows profile completion, joined organisations, event discovery, and tickets.
-- Organisation dashboard shows organisation name, upcoming events, recent orders, past-month revenue, and management navigation.
+- Organisation dashboard shows its name and permitted upcoming events/navigation; recent orders and current-month revenue are queried/rendered only with orders:read. Revoked selection never chooses another tenant.
 
 ## Member Organisation Search And Join
 
@@ -156,16 +164,20 @@ Flow:
 ```text
 Member opens /dashboard/organisations
   -> page requires accountRole = member
-  -> OrganisationSearch calls GET /api/orgs/search?q=...
+  -> joined list is loaded for the caller independently of selected staff context
+  -> OrganisationSearch calls GET /api/orgs/search?q=...&limit=25 with optional forward cursor
   -> API returns public-safe organisation rows and joined state
   -> member clicks Join
   -> POST /api/orgs/[orgSlug]/join
-  -> API creates or updates OrganisationMember with role = member
+  -> service locks User then Organisation and rechecks live version/account/verification
+  -> idempotently upserts only the caller's OrganisationMember with role = member
+  -> refresh synchronises joined list and search badges; obsolete search responses are ignored
 ```
 
 Important rule:
 
 - Joining an organisation never grants management access.
+- Queries are bounded literal substrings; default API requests preserve the original response envelope, while limit/cursor opts into pageInfo. Personalized responses are private/no-store. Join state is free affiliation, separate from paid benefits.
 
 ## Member Organisation Details And Leave
 
@@ -186,13 +198,14 @@ Member opens /dashboard
   -> POST /api/orgs/[orgSlug]/leave
   -> API requires accountRole = member
   -> API deletes only the signed-in user's OrganisationMember row for that organisation
-  -> dashboard refreshes
+  -> dashboard refreshes joined cards and search badges
 ```
 
 Important rules:
 
 - `/organisations/[orgSlug]` exposes only public-safe organisation data and upcoming published events.
 - Leave is idempotent when the member is already not joined.
+- Leave retains origin/CSRF/rate/live-version checks, permits removal by an unverified member, and preserves staff, paid purchases/tickets and other users. MembershipGrant does not exist yet; T22/T24 owns its survival regression.
 - Organisation accounts cannot leave their owned organisation through the member leave endpoint.
 
 ## Create Organisation
@@ -209,13 +222,16 @@ Flow:
 User submits organisation name
   -> POST /api/orgs
   -> API requires accountRole = organisation
-  -> API verifies the organisation account does not already own an organisation
+  -> verified live account is locked; retained bootstrap association OR active staff authority blocks another primary
   -> API normalises or generates slug
   -> API creates Organisation
   -> API sets Organisation.accountUserId
   -> API creates active owner OrganisationStaff authority and transitional legacy records
-  -> frontend redirects to /dashboard
+  -> creation and compatibility join, active owner and audit commit atomically
+  -> stale context cookie is cleared; frontend opens /dashboard/settings/profile
 ```
+
+The protected four-step profile editor saves identity, optional safe branding and public operations, then shows completion and implemented settings links. PATCH uses expectedProfileVersion, live settings/MFA/rate/origin/CSRF authority and ready same-tenant asset references under User -> Organisation -> sorted Asset locks. Conflict 409 preserves local edits; explicit reload confirms discard. Completion requires name/description/public contact, independently of Stripe. Upload previews are private until saved references make them public.
 
 ## Organisation Dashboard Overview
 
@@ -235,12 +251,14 @@ Page resolves the authorised user's canonical organisation
 
 Current UI:
 
-- Sidebar navigation: Dashboard, Events, Orders, Notifications, Settings, Staff and Staff MFA
+- Capability-filtered sidebar: Dashboard, Events, Orders, Notifications, Society profile, Stripe settings and Staff, with Staff MFA; longest matching route is active
 - Header shows the organisation name
 - Primary management links use slugless `/dashboard/*` paths.
 - Legacy `/dashboard/[orgSlug]/*` pages redirect for backwards compatibility.
 
 ## Events Dashboard
+
+The page requires events:read. Owner/admin/event-manager roles use the editable EventsList flow below; finance gets a bounded read-only list, and check-in staff get only published event/attendance links. They do not obtain events:manage by appearing in navigation.
 
 Files:
 
@@ -381,11 +399,11 @@ Flow:
 
 ```text
 Authorised management user opens /dashboard/events/[eventId]
-  -> proxy verifies live identity; the management-page helper checks live events:manage authority
+  -> proxy verifies live identity; the management-page helper checks live analytics:read authority and MFA
   -> page resolves canonical organisation through live staff authority or configured legacy fallback
   -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
-  -> revenue series helper fetches paid order paidAt/totalAmount values for UTC daily grouping
-  -> page renders event details, revenue, sold count, remaining count, UTC revenue chart, ticket rows, order link, and ticket visibility link
+  -> revenue query/series and financial DTO fields are omitted without orders:read
+  -> page renders permitted event/attendance counts and links, adding financial views only for authorised roles
 ```
 
 Analytics rules:

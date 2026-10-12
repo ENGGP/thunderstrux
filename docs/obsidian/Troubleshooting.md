@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Development Workflow]]", "[[Dependency Automation]]"]
 sources: [scripts/doctor-dev.mjs, scripts/integration-test-guards.mjs]
@@ -23,6 +23,12 @@ The old 41-finding audit is historical; [[Dependency Automation]] records the pa
 Contracts: [[Authentication and Dashboard Access]], [[API Reference]], [[Email Delivery Implementation]]. Deployment/rollback: [[Production Operations]].
 
 ## UI Change Not Visible
+
+For Package 3 society pages, check `/organisations`, `/organisations/[orgSlug]` and `/dashboard/settings/profile`. Member staff start personal; select the permitted society before management. The shared header uses fixed h-16 height and mobile account Menu; the organisation menu is separate. Joined lists/search badges refresh after mutations and obsolete search responses are ignored. A stale Joined badge should not be worked around by editing staff or purchase rows.
+
+Profile 409 means another save advanced profileVersion: preserve unsaved edits and use the explicit confirmed reload. Private account email is not the public support email. Incomplete public profiles remain visible; profile completion does not enable Stripe charges.
+
+If images fail, start the local object-store service using the dev Compose files, verify current migrations/dependencies, then use bounded `pnpm assets:maintain --objects` or `--integrity` inside the app. Private previews require kind permission/MFA; public GET requires a ready image actually referenced by public content. Unattached/deleted images correctly return 404. Retain asset_data and database metadata together; do not reset volumes or make arbitrary bucket objects public. [[Society Profiles and Assets]] owns safe recovery.
 
 Most likely causes:
 
@@ -345,9 +351,9 @@ If overlap returns, inspect:
 
 Current intended structure:
 
-- `DashboardShell` owns `Dashboard`, `Events`, `Settings`
-- `/dashboard` renders the organisation overview for organisation accounts
-- `/dashboard` renders the member dashboard for member accounts
+- DashboardShell owns capability-filtered navigation, including Society profile and Stripe settings, with route-aware active state
+- `/dashboard` renders the permitted organisation overview only for a selected live staff/legacy context
+- `/dashboard` renders personal member mode on fresh member logins, including named staff; the context selector explicitly changes mode
 - Legacy `/dashboard/[orgSlug]/*` routes redirect
 
 If stale or duplicate buttons appear:

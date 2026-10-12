@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Troubleshooting]]"]
 sources: [package.json, pnpm-lock.yaml, .github/workflows/security-audit.yml]
@@ -13,6 +13,8 @@ sources: [package.json, pnpm-lock.yaml, .github/workflows/security-audit.yml]
 T07 adds explicit Sharp 0.35.5 and AWS S3 SDK 3.1149.0 pins. The checksum-pinned SeaweedFS 4.48 upstream binary failed its fixable high/critical scan (x/net CVE-2026-78669 and Go stdlib CVE-2026-78667/78669/97031). `docker/Dockerfile.assets` rebuilds that exact source with digest-pinned Go 1.27.2 and x/net 0.60.0; the delivery image scan passes. The existing Node base also inherited vulnerable perl-base 5.36.0-7+deb12u3; explicit security-repository refresh in `docker/Dockerfile` installs the patched package. Pinned Trivy 0.68.2 scans of both final images report no fixable high/critical findings. Both Dockerfiles pass pinned Hadolint. This is dated local evidence, not ongoing advisory clearance or hosted activation.
 
 ## Current dependency remediation
+
+Package 3 adds the asset dependency/image boundary above. The latest full baseline is `15a1e4b` / `p216-e62123415fe7e1788a49219e` (354 tests/42 files, build/typecheck and clean audit). Final UI `5931086` also passes its production browser build and 30 checks. Local app dependencies and persistent image storage were activated on 2026-10-12 after backup; hosted activation remains unverified. [[Project Handover]] and the readiness ledger own exact rollout and qualification evidence. The 2026-10-09 dependency-only baseline below is historical, not the latest overall campaign.
 
 The D1-D5 dependency fixes were published through [PR #3](https://github.com/ENGGP/thunderstrux/pull/3), merge `b81c631`. The [post-remediation Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35290377481) passed. GitHub reported zero open dependency alerts on 2026-09-18. The failed runs and counts below are historical evidence.
 

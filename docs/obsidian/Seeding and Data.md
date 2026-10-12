@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Database and Multi Tenancy]]", "[[Authentication and Dashboard Access]]"]
 sources: [prisma/seed.mjs]
@@ -36,6 +36,8 @@ The script is intentionally idempotent and can be rerun after migrations or rese
 The seed also upserts named OrganisationStaff authority; the membership role list below describes join/legacy compatibility rows, not access grants. It does not set emailVerifiedAt or clear closedAt/disabledAt. Fresh seeded identities therefore remain unverified until the normal verification flow completes, and a seed rerun must not be treated as reopening a closed account. Purchases, joins, tenant bootstrap and invite acceptance require verification; management also observes live staff/MFA/legacy policy. See [[Authentication and Dashboard Access]].
 
 Seed credentials are synthetic development data. Seeding updates passwords and other core values, so run it only against an explicitly selected development/disposable database; do not use it as a production migration or closure-recovery tool.
+
+It also writes accountUserId pointers and upserts active staff roles, so reseeding can undo a synthetic handover/revocation scenario. Never use seed as a business-data restore or to reactivate retired ownership. Normal Package 3 activation applied additive migrations without seed/reset. Seeded societies retain incomplete public defaults unless explicitly edited; seed does not provision logo/cover objects. Their names/profiles are still discoverable at `/organisations`.
 
 ## Seed Guarantees
 
@@ -202,6 +204,8 @@ This means:
 
 ## What `down -v` Removes
 
+Do not use this command as routine recovery. With the development override, it also removes Redis, dependency and asset_data volumes; losing object bytes cannot be repaired by database-only restore or seed. Preserve metadata, object bytes and encryption keys together. [[Society Profiles and Assets]] and [[Production Operations]] own actual recovery.
+
 This command wipes the Postgres volume:
 
 ```bash
@@ -210,7 +214,9 @@ docker compose down -v
 
 After that, users, organisations, memberships, events, ticket types, orders, and tickets are gone.
 
-## Safe Restore Flow
+## Synthetic Development Setup
+
+The following is synthetic development setup only, not backup restoration. Existing user/business data needs the verified database/object recovery procedures; these commands do not reconstruct that history.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --force-recreate -d

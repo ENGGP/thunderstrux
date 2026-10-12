@@ -4,6 +4,7 @@
 ## Database Architecture, Relational Schema and Transaction Integrity Specification
 
 **Version:** 1.0 | **Prepared:** 9 October 2026 | **Status:** Proposed target architecture and implementation contract, **not** an introspected `schema.prisma` or evidence of deployed functionality
+**Implementation alignment reviewed:** 12 October 2026, main `4a8024b`. Current schema has 22 models and 34 migrations through society_profiles; Packages 1–3 are locally qualified. Asset/profile composite tenant references, auth-version fencing and private invitations/handover are implemented. MembershipGrant, merchandise/guest commerce and expanded ticket facts below remain target models/contracts. [Database and Multi Tenancy](obsidian/Database%20and%20Multi%20Tenancy.md), [Project Handover](obsidian/Project%20Handover.md) and [Readiness Plan](MVP_READINESS_PLAN.md) own current schema/progress/evidence. Do not apply proposed SQL wholesale.
 **Audience:** Senior/backend engineers, database administrators, security reviewers, QA, Claude Code and Codex
 **Core stack:** Existing Next.js / TypeScript / Prisma / PostgreSQL / Stripe Connect / Redis / durable workers. Preserve the installed versions and established conventions; this specification does not authorise a framework rewrite.
 **Baseline:** Australian society pilot; integer AUD cents; UTC persisted instants; organisation-selected IANA display timezone, initially `Australia/Brisbane`.

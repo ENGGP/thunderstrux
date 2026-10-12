@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]"]
 sources: [package.json, prisma/schema.prisma, docker-compose.yml]
@@ -22,6 +22,7 @@ sources: [package.json, prisma/schema.prisma, docker-compose.yml]
 - Tailwind CSS v4
 - Docker Compose
 - Node 22.23.3 and pnpm 10.34.6
+- Sharp 0.35.5 for safe static WebP processing; AWS S3 SDK 3.1149.0 for bounded object storage. Local development uses patched SeaweedFS 4.48; hosted storage is separately configured.
 
 Security updates, scoped Prisma override, removal conditions, and verification: [[Dependency Automation]].
 
@@ -50,6 +51,9 @@ Security-sensitive routes are transport adapters. They retain request parsing, t
 - `lib/orders/grouped-orders.ts` and `lib/orders/order-detail.ts`: organisation-scoped order reads, refund marking, and paid-order email resend.
 - `lib/tickets/check-in.ts`: ticket attendance reads and mutations.
 - `lib/stripe/connect.ts`: Connect lifecycle operations and Stripe/provider composition.
+- `lib/auth/account-*`, `lib/auth/context.ts` and `lib/staff`: account lifecycle/version fencing, login-bound personal/staff selection, private invitations and atomic owner handover.
+- `lib/assets`: sanitisation, quota reservation, verified S3 bytes, reference-gated reads and recoverable deletion/maintenance.
+- `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery and caller-only join transactions.
 
 Application services accept already-authorized tenant identifiers. Routes must perform live server-side permission checks before calling them. The services still scope every persistence operation by the authoritative organisation or event owner; they do not trust client claims.
 
@@ -59,6 +63,7 @@ Docker runtime:
 - `docker/entrypoint.sh` only drops into the configured container command and does not own migrations
 - `docker-compose.dev.yml` adds source bind mounts, polling, the host database port, and runs `pnpm prisma:migrate:deploy` before `pnpm dev`
 - Redis 7 is available for central rate limiting when `RATE_LIMIT_ENABLED=true`
+- Development object-store persists sanitised bytes in asset_data. PostgreSQL stores metadata/references; restore needs both. Hosted asset secrets use docker-compose.assets.hosted.yml. [[Society Profiles and Assets]] owns this boundary.
 
 ## Product Account Model
 
@@ -86,6 +91,8 @@ app/
   success/page.tsx
   cancel/page.tsx
   (public)/
+    organisations/page.tsx           Anonymous society directory
+    organisations/[orgSlug]/page.tsx Public profile and personalized join control
     events/[eventId]/page.tsx
   (dashboard)/
     dashboard/
@@ -99,6 +106,9 @@ app/
       events/[eventId]/edit/page.tsx   Organisation event editing
       orders/page.tsx                  Organisation order review
       settings/page.tsx                Organisation settings/Stripe Connect
+      settings/profile/page.tsx        Resumable public profile setup
+      settings/staff/page.tsx          Private invitations and owner handover
+      notifications/page.tsx           Scoped failed-business-job recovery
       [orgSlug]/                       Legacy compatibility redirects
   api/
 ```
@@ -114,8 +124,8 @@ app/
 
 `app/(dashboard)/dashboard/page.tsx`
 
-- Resolves live named staff first; otherwise branches by account role.
-- Renders the member dashboard for member accounts without active staff organisations.
+- Resolves the signed personal/staff context against live identity, authority and MFA.
+- Member accounts start personal, including named staff; the context selector explicitly chooses an authorised society.
 - Resolves the current staff organisation, with the configured legacy-owner fallback during migration, and renders its management dashboard.
 - Redirects organisation accounts without an organisation to `/dashboard/create`.
 
@@ -136,18 +146,18 @@ app/
 
 `/dashboard`
 
-- Members without active staff authority see profile completion, joined organisations, organisation search, public events and ticket links; active staff see their permitted management dashboard.
-- Organisation accounts see their organisation dashboard directly with upcoming events, recent orders, past-month revenue, and management navigation.
+- Personal member mode shows profile completion, joined organisations, public events and ticket/search links. Selected staff mode shows only permitted management content; revocation never falls back to another tenant.
+- Authorised organisation context shows upcoming events and role-filtered recent orders/monthly revenue. Finance queries are omitted when orders:read is absent.
 
 `/dashboard/events`
 
-- Renders the organisation event list through `components/events/events-list.tsx`.
+- Requires events:read. Editable roles use EventsList; finance receives a bounded read-only event list, and check-in staff receive published-only attendance links. The generic management event API still requires events:manage.
 
 `/dashboard/events/[eventId]`
 
 - Renders organisation-only event details and analytics.
-- Shows event metadata, revenue, sold tickets, remaining tickets, and ticket-type analytics.
-- Uses the management-page helper to verify live events:manage authority and conceal foreign events; the proxy does not deny all member-role users.
+- Shows event metadata, sold/remaining counts and ticket-type analytics; finance-capable callers additionally receive revenue.
+- Uses the management-page helper to verify live analytics:read authority and conceal foreign events; orders:read separately controls financial fields/queries. The proxy does not deny all member-role users.
 
 `/dashboard/events/new`
 
@@ -169,13 +179,16 @@ app/
 
 `/dashboard/organisations`
 
-- Member-only organisation search and join page.
+- Member-only personal joined list and paged search/join/leave page, also available to named member staff without changing context. Server refresh updates both joined cards and badges.
+
+`/organisations` is anonymous bounded discovery by literal name/slug, with public-safe cards and stable name/ID cursors. `/dashboard/settings/profile` requires live settings permission/MFA and saves explicit editable public fields with optimistic conflicts; profile completion is separate from Stripe readiness.
 
 `/organisations/[orgSlug]`
 
 - Public-safe organisation details page.
-- Shows organisation name, slug, and upcoming published events.
+- Shows name, description, public contact/policies/timezone, ready logo/cover and at most 50 upcoming published events. Incomplete profiles remain visible.
 - Does not expose members, Stripe fields, or management actions.
+- Dynamic join controls use only the caller's affiliation: anonymous sign-in callback, verification prompt, explicit verified Join or Joined. Free affiliation grants neither staff authority nor paid benefits.
 
 `/dashboard/[orgSlug]/*`
 
@@ -202,7 +215,7 @@ The rate limiter hashes bucket parts before constructing Redis keys. It does not
 
 Failure policy:
 
-- Login, signup, verification, recovery, account-security mutations, staff MFA and organisation creation fail closed when required rate limiting is unavailable.
+- Login, signup, verification, recovery, account-security mutations, staff MFA, organisation creation, profile writes and asset upload/delete fail closed when required rate limiting is unavailable.
 - Checkout creation, ticket email resend, organisation join/leave, ticket check-in/check-out, and Stripe Connect browser mutations fail open with a structured warning when rate limiting is unavailable.
 
 Stripe webhook routes are deliberately excluded from both protections because they verify Stripe signatures against the raw request body.

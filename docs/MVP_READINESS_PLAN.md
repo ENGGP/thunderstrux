@@ -2,7 +2,7 @@
 
 **Document authority:** Follow the [PRD authority contract](THUNDERSTRUX_PRD.md), reconciled 11 October 2026. This document governs its assigned subject within accepted product scope and readiness-plan invariants; it is not evidence of deployed features.
 
-Status: implementation queue, not feature acceptance or release approval. Assessed 2026-10-04 against b2ef999bd4ef266d0150917cf8c0ba76eb11e161 (main after PR #25).
+Status: implementation queue, not full feature acceptance or release approval. Initial assessment: 2026-10-04 against b2ef999 (after PR #25). Current progress reviewed 2026-10-12 against main `4a8024b`: T01 and Packages 1–3 (T02–T09) are implemented and locally qualified; local development is activated and Package 4 starts at T10. Hosted activation remains unverified. Dated task ledgers retain their tested revisions; the capability table below reflects current delivery rather than the initial snapshot.
 
 ## 1. Objective and execution protocol
 
@@ -12,7 +12,7 @@ The PRD owns product requirements. Current code/schema/configuration own impleme
 
 ### Inspection evidence
 
-Read the complete PRD, previous MVP plan, relevant Second Brain references and current implementations: Prisma schema/26 migrations, auth.ts, proxy.ts, staff/access/permission helpers, account and organisation routes, event lifecycle/public services, reservations, checkout/reconciliation/refunds, ticket email/outbox, attendance, order history, member/organisation dashboards, browser/integration fixtures, Docker/Compose, package scripts and CI.
+Read the complete PRD, relevant living references and current implementations: Prisma schema and full migration chain (currently 22 models/34 migrations), auth.ts, proxy.ts, staff/context/permission helpers, account/profile/asset/discovery routes and services, event lifecycle/public services, reservations, checkout/reconciliation/refunds, ticket email/outbox, attendance, order history, member/organisation dashboards, browser/integration fixtures, Docker/Compose, package scripts and CI.
 
 Relevant references:
 
@@ -37,8 +37,8 @@ Verified documentation discrepancies: proxy.ts currently redirects anonymous eve
 
 Every task inherits sections 3–4 contracts. Schema, auth, tenancy, payments, workers, dependencies and operations are High risk; ordinary UI/query logic is Standard; documentation-only changes use the Documentation only row (docs/diff checks and claim review, no functionality tests). Follow the risk matrix in Engineering Delivery Workflow rather than inventing a parallel process.
 
-- Always run focused regression/direct verification, git diff --check, and pnpm docs:check when documentation changes.
-- Standard: denial cases, typecheck, production build, affected integration/browser coverage.
+- Always run git diff --check and pnpm docs:check when documentation changes; executable changes also require proportionate focused regression/direct verification. Documentation-only work does not run functionality tests.
+- Standard: denial cases and typecheck; production build for rendering/import changes and affected integration/browser coverage for crossed boundaries.
 - High: applicable full integration/E2E, concurrency/idempotency/failure, migration/integrity/backup/restore, audit, provider campaign or operations rehearsal.
 - Development is Docker-first. Integration resets only run-owned disposable PostgreSQL databases with simple names ending in `_test`; retain stricter exact runner target checks. Test containers/networks/ports/volumes must be run-owned. Never wipe development volumes or blanket-delete tmp/backups.
 - Existing entrypoints: pnpm typecheck, pnpm build, pnpm test:integration, pnpm test:e2e, pnpm test:e2e:guards, pnpm security:audit, pnpm ops:test, pnpm db:integrity:audit and pnpm db:organisation-drift:repair. Run builds in disposable images/environments, never inside an active next start container.
@@ -48,18 +48,18 @@ Every task inherits sections 3–4 contracts. Schema, auth, tenancy, payments, w
 
 **COMPLETE** means a capability exists with concrete test evidence; affected regressions still run. **PARTIAL** means the listed remainder needs implementation. **MISSING** means no end-to-end capability was found. **NEEDS VERIFICATION** means fresh checks are needed, not that a defect is assumed. **REQUIRES HOSTED/STAGING ENVIRONMENT** describes actual environment-dependent evidence. A real provider test runnable locally is not automatically a hosted dependency.
 
-The requirement-level matrix in section 8 supplies the finer classification. This initial analysis identifies current evidence and exact gaps before the implementation queue.
+The requirement-level matrix in section 8 supplies finer classification. This table reflects Packages 1–3 delivery; historical task evidence below is not rewritten to today's counts. Unchecked downstream tasks still define their remaining acceptance work.
 
 | Capability | Current status | Evidence and exact remainder |
 | --- | --- | --- |
 | Credentials signup/login/logout and account types | COMPLETE | auth.ts, signup validator/route and real Auth.js/browser tests; preserve bcrypt and member/organisation roles. |
-| Verification, recovery, account security settings | MISSING | No verification/reset/auth-version fields or flows. Add single-use tokens, transactional emails and session revocation. |
-| Member onboarding | PARTIAL | PATCH /api/me/profile and member form exist; finish editable settings, live completion state and verification gating. |
-| Organisation onboarding | PARTIAL | POST /api/orgs creates one tenant and active owner staff; profile/branding/readiness wizard missing. |
-| Named staff, MFA, revocation | PARTIAL | Staff/invite/MFA models, live guards and denial tests exist; invitation token UI, acceptance race protection and complete audit/handover UX remain. Actual staff enrollment is hosted activation. |
+| Verification, recovery, account security settings | COMPLETE | T02–T04 verification/recovery, private settings, email change/closure, encrypted notices and live authVersion fencing are locally qualified; provider/inbox/hosted gates remain. |
+| Member onboarding | COMPLETE | Editable private profile, derived completion/refresh and live verification gating exist; T03–T04 and T09 cover identity/privacy and explicit joins. Integrated commerce dashboard remains T34. |
+| Organisation onboarding | PARTIAL | T08 resumable identity/branding/public-policy setup, atomic owner bootstrap and second-primary fencing are complete; Connect safety/readiness refinement remains T17. |
+| Named staff, MFA, revocation | COMPLETE | T05–T06 explicit context, capabilities, private invite UI/version/race protection and atomic owner handover are locally qualified. Real staff enrollment and independent production review remain activation gates. |
 | Tenant/origin/CSRF/rate controls | COMPLETE | Event.organisationId authority, session CSRF, trusted-origin, Redis and denial tests exist. Extend them to all new surfaces; AUD-001/API-001 remain open. |
-| Public society identity and private settings | PARTIAL | Profile shows name/slug/events; Organisation lacks description, branding, support/refund context. |
-| Organisation discovery/join/leave | PARTIAL | Authenticated member search and idempotent joins exist; public discovery and clear paid-membership distinction missing. |
+| Public society identity and private settings | COMPLETE | T07–T08 safe assets, public DTO/branding/contact/policies/timezone and settings/MFA-protected optimistic editing are qualified. Paid tabs and wider visual rollout remain later tasks. |
+| Organisation discovery/join/leave | COMPLETE | T09 anonymous bounded literal/cursor discovery, dynamic caller-only verified joins, idempotent leave and fresh client state are qualified. Free affiliation grants neither paid benefits nor staff authority. |
 | Event lifecycle | PARTIAL | Draft/edit/publish/unpublish/delete service exists; create accepts published status, publish checks only ticket inventory; no capacity/visibility/sales-window policy. |
 | Public discovery/detail | PARTIAL | Anonymous public APIs and cursor listing exist; proxy blocks anonymous HTML detail; API self-fetch, filters and sale-state presentation need completion. |
 | Ticket types/history | PARTIAL | Multiple types, cents, remaining quantities, unitPrice/total snapshots exist; purchased names/seller/fee snapshots and locked sold edits missing. |
@@ -73,7 +73,7 @@ The requirement-level matrix in section 8 supplies the finer classification. Thi
 | Tickets/check-in/check-out | PARTIAL | Cursor list, conditional attendance and actor audit exist; void/refund-review validity, guest access, search and uncertain retry UX remain. QR optional. |
 | Paid memberships | MISSING | OrganisationMember is join state only; no products, paid terms, renewal/expiry or entitlements. |
 | Merchandise | MISSING | No catalogue, variants, stock holds, purchase or collection workflow. |
-| Email/notifications | PARTIAL | Fenced ticket outbox/Resend/resend/requeue exist; auth/invite/membership/merch/refund/change notifications missing. |
+| Email/notifications | PARTIAL | Fenced ticket outbox and T02–T06 encrypted account/security/invitation notifications exist; membership/merch/refund/event-change notices and real provider acceptance remain. |
 | Dashboards/calendar | PARTIAL / MISSING | Basic member and society summaries exist; full navigation/purchases/settings/commerce/AI missing; calendar absent. |
 | Analytics | PARTIAL | Paid ticket group aggregates and UTC series exist; some series/monthly dashboard load orders in memory. Refund/free/attendance/member/merch metrics absent. |
 | OpenClaw | MISSING | No action registry, assistant, model adapter, confirmation or execution receipt. |
@@ -665,7 +665,7 @@ Current status is baseline, not future qualification. COMPLETE capabilities map 
 | 6.1 account type/dashboard experience | COMPLETE | T05, T34 | Personal/staff/org nav | COMPLETE |
 | 6.1 individual member/society account identity | COMPLETE | T04–T06, T08 | Profile/bootstrap schema tests | COMPLETE |
 | 6.1 one primary organisation | COMPLETE | T08 | Concurrent second-bootstrap and post-retirement active-staff denial | COMPLETE |
-| 6.1 member profile onboarding | PARTIAL | T03–T04, T09 | Completion/edit/privacy | COMPLETE |
+| 6.1 member profile onboarding | COMPLETE | T03–T04, T09 | Completion/edit/privacy | COMPLETE |
 | 6.1 organisation information onboarding | PARTIAL | T08, T17 | Wizard/readiness | COMPLETE |
 | 6.1 role-aware nav/access | PARTIAL | T05, T34 | Mobile/revoked/role tests | COMPLETE |
 | 6.2 name/description/branding/public profile | COMPLETE | T07–T08 | Safe assets/profile DTO/E2E | COMPLETE |

@@ -1,8 +1,8 @@
 # Thunderstrux
 
-Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. It supports member and organisation accounts, organisation event management, public event discovery, ticket checkout, and Stripe Connect.
+Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. It supports private account lifecycle, named staff and explicit dashboard context, safe society images, editable public profiles, anonymous society/event discovery, free society affiliation, ticket checkout and Stripe Connect.
 
-Last reviewed: 2026-10-09
+Last reviewed: 2026-10-12 against main `4a8024b` (Package 3 merged). Packages 1–3 are implemented and locally qualified; Package 4 ticket foundations is next. Paid memberships, merchandise, guest checkout and OpenClaw remain future work. Local development is activated; hosted release gates remain open. The [readiness ledger](docs/MVP_READINESS_PLAN.md) owns exact completion and validation evidence.
 
 Future coding agents and contributors should start with the [Documentation Index](docs/obsidian/Documentation%20Index.md), [Project Handover](docs/obsidian/Project%20Handover.md), and [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md).
 
@@ -38,7 +38,7 @@ The host name `db` only resolves inside the Docker Compose network. Do not run h
 Start the stack:
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 Open:
@@ -86,7 +86,7 @@ pnpm docker:build
 pnpm docker:rebuild
 ```
 
-## DO NOT RUN pnpm build INSIDE CONTAINER
+## Builds and App Recreation
 
 Do not run this against a running app container:
 
@@ -111,6 +111,8 @@ pnpm docker:rebuild
 
 The development restart/rebuild helpers rebuild the app, replace only the labelled `node_modules` dependency-cache volume, regenerate Prisma Client, apply migrations, and then start the dev server. They preserve the PostgreSQL and Redis data volumes. Production uses the separate one-shot migration service through `pnpm ops:deploy`; ordinary production app startup does not run migrations.
 
+Society image storage uses the development object-store service and persistent `asset_data` volume. Normal development startup above includes it; when refreshing an older stack, start it before the app helper with `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build object-store`. Back up the database before pending migrations; preserve database, Redis and object bytes. Hosted S3 configuration and metadata/object recovery are covered in [Society Profiles and Assets](docs/obsidian/Society%20Profiles%20and%20Assets.md).
+
 ## Account Model
 
 `User.accountRole` is either:
@@ -119,6 +121,8 @@ The development restart/rebuild helpers rebuild the app, replace only the labell
 - `organisation`
 
 Member accounts can complete a profile, join organisations, browse public events, buy tickets, and view `/tickets`.
+
+Member staff start in personal mode and explicitly select a live authorised society; selection never grants authority. Free affiliation is separate from paid entitlements and staff access. A verified organisation account bootstraps one primary society and opens resumable profile setup. Owner handover permanently retires the bootstrap pointer; retained active staff authority still blocks a second primary bootstrap.
 
 Organisation management normally uses an active `OrganisationStaff` record, its live role and permissions, and the canonical organisation resolved by the server. Named staff accounts, invitations, live revocation, TOTP MFA, recovery codes, and actor-attributed audit records are implemented.
 
@@ -157,9 +161,23 @@ Member/test accounts:
 Public:
 
 - `/`
+- `/organisations`
+- `/organisations/[orgSlug]`
 - `/events/[eventId]`
 - `/login`
 - `/signup`
+- `/verify-email`
+- `/forgot-password`
+- `/reset-password`
+- `/change-email`
+- `/staff/invites/accept`
+
+The public event API is anonymous, but `/events/[eventId]` HTML still requires authentication through the proxy; anonymous event detail is planned in T15. Society discovery/profile HTML is anonymous.
+
+Private account:
+
+- `/account/settings`
+- `/mfa`
 
 Member:
 
@@ -176,6 +194,9 @@ Organisation:
 - `/dashboard/events/[eventId]/edit`
 - `/dashboard/orders`
 - `/dashboard/settings`
+- `/dashboard/settings/profile`
+- `/dashboard/settings/staff`
+- `/dashboard/notifications`
 
 Legacy compatibility redirects:
 

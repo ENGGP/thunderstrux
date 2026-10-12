@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Stripe Payments and Connect]]"]
 sources: [scripts/run-e2e.mjs, scripts/staging-payments.mjs, docker-compose.e2e.yml]
@@ -60,7 +60,7 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 
 ## Completion gates
 
-- Historical P2.16 baseline: 190 integration tests. Latest dependency baseline: 311 tests in 36 files with build/typecheck/audit; see [[Dependency Automation]] for its exact revision and limitations.
+- Historical P2.16 baseline: 190 integration tests. Current Package 3 baseline: 354 tests in 42 files on `15a1e4b`, run `p216-e62123415fe7e1788a49219e`, with build/typecheck and clean audit. Final UI revision `5931086`, run `p216-86e01a93979f3ffc3d963f33`, passed 30 complete checks (3 MFA, 20 browser/mobile/account/profile/discovery, 7 signed webhook/notification); both cleanups completed. Earlier counts below retain their dated evidence.
 - Select local regression and E2E coverage using [[Engineering Delivery Workflow]]. One complete successful applicable run with cleanup is sufficient; repeat only for changed inputs, failures or a documented reliability concern. Cancelled, skipped or partial required scenarios do not qualify.
 - GitHub E2E and operations workflows are manual-only and are not merge requirements. Documentation-only evidence updates run docs/diff checks and claim review, without functionality tests or a new provider campaign.
 - Preserve tested-revision evidence and explain its applicability to the reviewed diff. Historical repeated local/CI campaigns below remain evidence of past delivery, not current repetition requirements.

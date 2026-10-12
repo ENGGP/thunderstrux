@@ -46,10 +46,11 @@ Protected routes:
 - staff MFA setup and verification
 - verification/recovery issuance and redemption
 - authenticated password/email/closure mutations
+- private staff invitation/handover actions, profile writes and asset upload/delete
 
 Rules:
 
-- Login, signup, verification/recovery, account-security mutations, organisation creation, and staff MFA fail closed if the limiter backend is unavailable.
+- Login, signup, verification/recovery, account-security mutations, organisation creation, staff MFA, private staff actions, profile writes and asset upload/delete fail closed if the required limiter backend is unavailable. Profile/delete allow 30 per actor/tenant per ten minutes; upload has actor and tenant 20/hour buckets.
 - Checkout, resend, join/leave, check-in/check-out, and Stripe Connect mutations fail open with a structured warning if the limiter backend is unavailable.
 - Limit responses use `429` with a safe retry message and `Retry-After` when available.
 - Bucket keys are hashed before Redis storage; warning logs avoid request bodies, cookies, tokens, passwords, raw emails, raw user IDs, raw order IDs, Redis URLs, and unhashed bucket keys.
@@ -332,8 +333,7 @@ Rules:
 - Auth required.
 - Uses `session.user.id`.
 - Does not trust frontend organisation headers.
-- Member accounts receive joined organisations.
-- Organisation accounts receive their one owned organisation, if created.
+- Member accounts receive their OrganisationMember joins. Organisation accounts receive the retained accountUserId-associated society only when legacy mode permits it; deny mode returns an empty list. This compatibility endpoint does not list named staff authority or select a tenant. `/api/me/context` owns live staff selection; personal joined pages use getAccessibleOrganisationsForCurrentAccount.
 
 ### `POST /api/orgs`
 
@@ -357,6 +357,7 @@ Rules:
 - The created organisation stores `accountUserId`.
 - A transitional `org_owner` membership is also created for compatibility.
 - An active owner `OrganisationStaff` row is created as the normal management authority.
+- Verified identity, trusted-origin/CSRF and fail-closed creation limits are required. User then sorted Organisation locks reject a retained bootstrap association OR active staff authority after pointer retirement; only slug conflicts retry. Organisation, compatibility join, owner and audit commit atomically. Success clears stale context for profile setup; historical revoked rows alone do not block bootstrap.
 
 ### `GET /api/orgs/[orgSlug]`
 
@@ -377,7 +378,7 @@ Rules:
 
 - Auth required.
 - `orgId` is required.
-- Signed-in user must be the organisation account that owns the organisation.
+- Caller must have live events:manage authority for the resolved tenant, including named member staff or explicitly permitted legacy access; accountRole alone is not authority.
 - Returns organisation-scoped events.
 - Includes `ticketTypes`.
 
@@ -389,7 +390,7 @@ Rules:
 
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
-- Signed-in organisation account must own the submitted `organisationId`.
+- Caller needs live events:manage authority for the submitted canonical tenant; organisationId is an input revalidated server-side.
 - `startTime` must be before `endTime`.
 - Ticket prices are integer cents.
 - Ticket quantities must be greater than zero.
@@ -401,7 +402,7 @@ Fetches a dashboard event.
 Rules:
 
 - Auth required.
-- Signed-in organisation account must own the event organisation.
+- Caller needs live events:manage authority for orgId and the event's canonical organisation; missing/foreign event reads are concealed.
 
 ### `PATCH /api/events/[eventId]`
 
@@ -560,7 +561,7 @@ Rules:
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
 - Live tickets:check_in permission required for the current organisation.
-- Ticket must belong to an event owned by the organisation account.
+- Ticket.event.organisationId must match the caller's authorised tenant; denormalized ticket ownership is not authority.
 - Ticket.checkedInAt and an actor-attributed AuditLog entry update atomically; payment and ticket ownership are unchanged.
 - Already checked-in tickets are rejected and the original timestamp is preserved.
 - Does not modify order status, Stripe state, ticket ownership, or ticket type data.
@@ -593,7 +594,7 @@ Rules:
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
 - Live tickets:check_in permission required for the current organisation.
-- Ticket must belong to an event owned by the organisation account.
+- Ticket.event.organisationId must match the caller's authorised tenant; denormalized ticket ownership is not authority.
 - Ticket.checkedInAt and an actor-attributed AuditLog entry update atomically; payment and ticket ownership are unchanged.
 - Only checked-in tickets can be checked out.
 - Does not modify order status, Stripe state, ticket ownership, or ticket type data.
@@ -864,7 +865,7 @@ Rules:
 
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
-- Signed-in organisation account must own the submitted `organisationId`.
+- Caller needs live stripe:manage capability and staff MFA for the resolved organisation, regardless of account role.
 - Organisation is resolved server-side from `organisationId`.
 - Existing `stripeAccountId` is reused and a fresh onboarding link is generated.
 - Returns structured Stripe errors instead of a generic 500.
@@ -901,7 +902,7 @@ Retrieves and persists connected account status.
 Rules:
 
 - Auth required.
-- Organisation account ownership required.
+- Live stripe:manage authority and staff MFA required for the target, including authorised named member staff; client organisationId is not authority.
 - Calls `stripe.accounts.retrieve`.
 - Updates organisation Stripe flags.
 - Maps Stripe account fields into a Thunderstrux lifecycle state.

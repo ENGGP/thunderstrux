@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Project Handover]]", "[[Database and Multi Tenancy]]"]
 sources: [scripts/operations.mjs, docker-compose.hosted.yml, scripts/run-operations-tests.mjs]
@@ -15,6 +15,10 @@ P2.17 repository-side operations are implemented and locally rehearsed. The repo
 The hardened repository contract is `docker-compose.hosted.yml`. It consumes a prebuilt immutable `APP_IMAGE`, external PostgreSQL and Redis URLs, and file-backed secrets; it contains no database, Redis, source bind mount, or image build. The application, migration, and workers run non-root with a read-only root filesystem, dropped capabilities, no-new-privileges, bounded PIDs, explicit CPU/memory limits, and reviewed writable `tmpfs` paths. Validate a deployment environment with `pnpm docker:hosted:check -- --env-file <path>` before rollout.
 
 This is not evidence of a live production deployment. Hosting, external health monitoring and alert delivery, off-machine encrypted backups, recovery objectives, and the platform scheduler remain deployment-time work.
+
+Packages 1–3 are locally qualified and development was separately activated on 2026-10-12; [[Project Handover]] owns that dated state. Hosted activation still requires independent security/migration review and provider acceptance. T07/T08 add asset metadata and profile references: apply the full 34-migration chain, retain the additive fields on code rollback and preserve image bytes.
+
+Hosted assets additionally require `docker-compose.assets.hosted.yml`, a configured S3-compatible bucket/endpoint/region/path style and server-only access/secret file mounts. The PostgreSQL `ops:backup` command below does not back up object bytes. Pair it with a coordinated object backup and integrity check, pause uploads/maintenance during recovery, restore metadata and objects together, and keep unfamiliar bucket objects. [[Society Profiles and Assets]] owns quotas, reference checks and bounded dry-run/integrity/object inspection. Scheduling maintenance and off-machine byte recovery remain hosted gates.
 
 ## Health
 
@@ -79,7 +83,7 @@ For dependency/container changes, local validation follows [[Engineering Deliver
 
 Digest pinning also retains the base image's installed OS packages. The application Dockerfile explicitly installs `libpcre2-8-0` from Debian's security repository alongside its runtime prerequisites, so rebuilding upgrades the inherited library. The 2026-10-04 scan found CVE-2026-103111 in `10.42-1+deb12u1`; Debian's fixed Bookworm package is `10.42-1+deb12u2`. Verify the installed version and scan the final `runner` image after security package changes; do not bypass the vulnerability gate. See the [Debian security tracker](https://security-tracker.debian.org/tracker/CVE-2026-103111).
 
-Direct environment variables remain supported for development and legacy deployment. Production secret stores should mount files and set the matching `_FILE` variables for `DATABASE_URL`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `RATE_LIMIT_REDIS_URL`, Stripe credentials, and `RESEND_API_KEY` and `NOTIFICATION_ENCRYPTION_KEY`. Supplying both forms, an unreadable or relative file, or an empty file fails startup without printing the secret.
+Direct environment variables remain supported for development and legacy deployment. Production secret stores should mount files and set matching `_FILE` variables for DATABASE_URL, AUTH_SECRET, MFA_ENCRYPTION_KEY, RATE_LIMIT_REDIS_URL, Stripe credentials, RESEND_API_KEY, NOTIFICATION_ENCRYPTION_KEY, ASSET_STORAGE_ACCESS_KEY and ASSET_STORAGE_SECRET_KEY. Supplying both forms, an unreadable or relative file, or an empty file fails startup without printing the secret.
 
 ## Account Closure Release Compatibility
 

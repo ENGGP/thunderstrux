@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]"]
 sources: [lib/stripe/connect.ts, lib/payments/checkout-creation.ts]
@@ -100,6 +100,7 @@ availableNow = TicketType.quantity - activeReservedQuantity
 Checkout creates a reservation only after these preconditions pass:
 
 - authenticated member account
+- live verified, non-disabled identity with matching authVersion; account closure/checkout share the User fence
 - published event
 - ticket type belongs to the event
 - positive amount
@@ -118,6 +119,8 @@ Checkout currently requires:
 - organisation Stripe account id present
 - organisation charges enabled
 - Stripe secret key configured
+
+Public society contact/policies/profile completion are separate from existing charge-readiness and refund behavior. Free society affiliation does not issue paid entitlements, tickets or staff access. T10–T18 own the remaining ticket/Connect/public/guest/refund foundations; ordinary zero-total acquisition and paid membership/merchandise are not implemented. [[Project Handover]] and the readiness plan own current progress.
 
 ## Why `Stripe not connected` Happens
 

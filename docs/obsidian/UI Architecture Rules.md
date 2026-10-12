@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [components/layout/dashboard-shell.tsx, components/layout/navbar.tsx]
@@ -22,7 +22,8 @@ Current nav items:
 - `Events`
 - `Orders`
 - `Notifications`
-- `Settings`
+- `Society profile` (organisation:settings)
+- `Stripe settings` (stripe:manage)
 - `Staff`
 - `Staff MFA`
 
@@ -32,7 +33,7 @@ Do not duplicate these links in page files.
 
 `/dashboard` is role-aware.
 
-Member accounts without active staff authority:
+Member accounts in personal mode, including named staff on a fresh login:
 
 - See profile completion.
 - See joined organisations.
@@ -40,9 +41,9 @@ Member accounts without active staff authority:
 - Can browse public events and view `/tickets`.
 - Must not see organisation management navigation.
 
-Active named staff and permitted legacy organisation accounts:
+Explicitly selected live staff context and permitted legacy organisation context:
 
-- See the organisation dashboard directly at `/dashboard`.
+- See the permitted organisation dashboard at `/dashboard`; the context selector offers personal mode and authorised societies. The signed preference is login-bound and carries no authority.
 - Use `DashboardShell`.
 - Use slugless management routes:
   - `/dashboard/events`
@@ -62,9 +63,9 @@ components/layout/navbar.tsx
 Current header behavior:
 
 - Fixed at the top
-- Minimum height `min-h-16`, with controls wrapping on narrow screens
+- Fixed height `h-16`, matching the content/sidebar offset
 - Left side: `Thunderstrux`
-- Right side when signed in: Dashboard, private Settings and Sign out; members also see My tickets.
+- Societies is visible to anonymous and signed-in visitors. Desktop signed-in links include Dashboard, private Settings, Sign out and member My tickets. Mobile keeps Societies and Sign out visible and places account links in a native Menu disclosure.
 
 ## Layout Responsibilities
 
@@ -77,7 +78,7 @@ Current header behavior:
 
 `app/(dashboard)/dashboard/page.tsx`
 
-- Selects the management dashboard for active staff or an organisation account; otherwise selects the member dashboard.
+- Resolves the signed context against live staff/MFA authority; member accounts default personal rather than automatically entering a staff tenant. Organisation accounts retain only an authorised bootstrap fallback when no context preference exists.
 - Renders member dashboard without `DashboardShell`.
 - Renders organisation dashboard inside `DashboardShell`.
 
@@ -109,7 +110,7 @@ Current header behavior:
 
 `/dashboard/orders`
 
-- Renders organisation-scoped order review for organisation accounts.
+- Renders canonical tenant-scoped order review for callers with live finance capability, regardless of account role.
 - Normal filters hide internal pending orders.
 - `Show system orders` may expose pending orders for debugging, but pending must not be presented as a normal product status.
 
@@ -120,14 +121,16 @@ Current header behavior:
 
 `/dashboard/organisations`
 
-- Renders member organisation search/join content.
+- Renders caller-only joined societies and bounded paged search. Explicit verified Join changes free affiliation only; Leave synchronises both views after refresh and never revokes staff or paid purchases.
+
+`/organisations` and `/organisations/[orgSlug]` render anonymous discovery and public profile content. Profile join controls are personalized and dynamic; sign-in/verification never automatically joins. `/dashboard/settings/profile` is the live-settings/MFA-protected resumable editor. [[Society Profiles and Assets]] owns their full contracts.
 
 ## Current Button Rules
 
 Organisation dashboard:
 
 - Shows `New event`.
-- Sidebar shows Dashboard, Events, Orders, Notifications, Settings, Staff and Staff MFA.
+- Sidebar filters Dashboard, Events, Orders, Notifications, Society profile, Stripe settings and Staff by capability; Staff MFA remains available. The longest matching route sets aria-current and active styling.
 - Page content may link to event/order drilldowns.
 
 Member dashboard:
@@ -167,6 +170,8 @@ Do not call an account "ready" just because `stripeAccountId` exists.
 
 Current shared visual direction:
 
+Scoped society surfaces and the explicit society button variant use the purple `--ts-*` tokens in app/globals.css. Existing general dashboards retain the neutral styling below; the target visual specification is not a claim that the entire app has been restyled.
+
 - Neutral grey page background
 - White cards
 - `rounded-xl`
@@ -176,7 +181,6 @@ Current shared visual direction:
 
 ## Known UI Inconsistencies
 
-- `DashboardShell` does not yet compute the active nav item from the current route; `Dashboard` is always styled active.
 - New event route still shows a top page heading plus the form title.
 
 ## Notification Recovery

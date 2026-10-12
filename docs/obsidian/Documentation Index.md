@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Project Handover]]", "[[Thunderstrux Codebase Map]]"]
 sources: [AGENTS.md, scripts/check-docs.mjs]
@@ -8,7 +8,7 @@ sources: [AGENTS.md, scripts/check-docs.mjs]
 
 # Documentation Index
 
-The project knowledge map: use [[Project Handover]] for current state, the living notes for behavior/procedures, and historical notes for dated evidence. Repository implementation is not hosted activation. This vault was reviewed against merged main b9a113d on 2026-10-09; review dates describe editorial/code-reference review, not new functionality tests or runtime verification.
+The project knowledge map: use [[Project Handover]] for current state, the living notes for behavior/procedures, and historical notes for dated evidence. Living references were reviewed against merged main `4a8024b` on 2026-10-12: Packages 1–3 are locally qualified, local development is activated, and Package 4 is next. Hosted activation remains unverified. This documentation review adds no functionality/provider evidence; historical notes retain their original dates and observations. Target specifications describe future contracts, not delivered features.
 
 ## Start Here
 

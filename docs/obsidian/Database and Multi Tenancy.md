@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]"]
 sources: [prisma/schema.prisma, prisma/migrations, lib/db/organisation-scope.ts]
@@ -123,6 +123,8 @@ Important fields:
 
 `slug` is the stable tenant-facing identifier used in dashboard routes.
 
+Public profile fields are description, separately supplied supportEmail, refundPolicy, pickupPolicy and timeZone (default Australia/Brisbane). onboardingCompletedAt is derived from name/description/public contact; profileVersion fences stale saves. Nullable logoAssetId and coverAssetId have composite tenant foreign keys to Asset. Assets retain uploader/tenant/key/hash/processed dimensions and state independently of S3 bytes. See [[Society Profiles and Assets]]. Current schema has 22 models and 34 migrations; event, payment and staff authority remain separate from public completion and joins.
+
 Example:
 
 ```text
@@ -189,7 +191,7 @@ These rows represent member-account joins. They are not staff invite records and
 
 ## Organisation Staff, MFA, And Audit
 
-`OrganisationStaff` is the normal management authority. It records the organisation, named user, role, status, and explicit permissions. Every protected request resolves current database state so revocation and role changes take effect immediately. `OrganisationStaffInvite` holds expiring, hashed invitation tokens and the intended role.
+`OrganisationStaff` is the normal management authority. It records organisation, named user, role and status; capabilities are derived from rolePermissions in lib/permissions/index.ts, not a stored arbitrary permission array. Every protected request resolves live database state so revocation and role changes take effect immediately. `OrganisationStaffInvite` holds expiring hashed tokens, intended role and issuance version.
 
 `UserMfa`, `MfaRecoveryCode`, and `MfaGrant` implement encrypted TOTP enrollment, one-time recovery codes, and login-bound verification grants. Grants expire after 12 hours. `AuditLog` records actor-attributed sensitive management actions. See [[Authentication and Dashboard Access]].
 

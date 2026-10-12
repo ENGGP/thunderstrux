@@ -4,6 +4,8 @@
 
 ## 1. Product Summary
 
+Implementation alignment reviewed 12 October 2026 against main `4a8024b`: Packages 1–3 are implemented and locally qualified (account lifecycle, staff/context/handover, assets/profiles/discovery/free affiliation). Package 4 ticket foundations is next. Paid memberships, merchandise, guest checkout, full visual rollout and OpenClaw remain target requirements. Local development is activated; hosted/provider release gates remain open. [Project Handover](obsidian/Project%20Handover.md) and the [Readiness Plan](MVP_READINESS_PLAN.md) own current delivery and exact evidence; requirements below are not blanket completion claims.
+
 Thunderstrux is a student society and community organisation platform designed to centralise event hosting, ticketing, organisation management, member engagement, payments, and operational workflows into one product.
 
 The platform is intended for university societies, clubs, student associations, and similar community organisations that need a simpler, more integrated way to manage their activities. It combines the core value of event platforms such as Humanitix and Eventbrite with society-specific tools such as membership management, organisation dashboards, merchandise, analytics, and AI-assisted administration.

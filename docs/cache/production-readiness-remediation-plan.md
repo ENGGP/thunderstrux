@@ -1,8 +1,16 @@
+---
+status: historical
+last-reviewed: 2026-10-12
+owner: engineering
+---
+
 # Thunderstrux Production Readiness Remediation Plan
+
+> Archived earlier roadmap, superseded by [[../MVP_READINESS_PLAN]], [[../MVP_READINESS_WORK_PACKAGES]] and [[../obsidian/Project Handover]]. Its original goals, non-goals and checklist below are dated planning evidence, not current implementation status or delivery policy. Packages 1–3 are now locally qualified; current release gates live in [[../obsidian/Non-Blocking Issue Register]] and [[../obsidian/Production Operations]]. Preserve historical findings rather than applying this plan as a fresh queue.
 
 This plan addresses the production-grade review findings across security, payments, data integrity, scalability, testing, DevEx, and operations. It is intentionally implementation-focused, but it is documentation only. No code, schema, config, tests, or dependencies are changed by this file.
 
-Implementation status and release evidence are tracked in [[../obsidian/Production Readiness Verification 2026-09-22]]. That ledger records repository verification separately from hosted production activation and is the source of truth for remaining release gates.
+Historical remediation evidence is tracked in [[../obsidian/Production Readiness Verification 2026-09-22]]. Current implementation and release gates are owned by the living references linked above.
 
 ## Goals
 

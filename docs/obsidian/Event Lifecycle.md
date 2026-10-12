@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-12
 owner: engineering
 related: ["[[API Reference]]", "[[Ticket Check-in Implementation]]"]
 sources: [lib/events/event-lifecycle.ts, app/api/events]
@@ -166,11 +166,11 @@ Current route:
 
 Rules:
 
-- Live management authority and the required event capability are required.
+- Live analytics:read authority and staff MFA are required for the organiser analytics route.
 - The event must belong to the caller's server-resolved canonical organisation.
-- Users without live event-management authority are denied/redirected by the management-page helper; foreign events are concealed.
+- Users without analytics:read are denied/redirected by the management-page helper; foreign events are concealed. Check-in staff use published event/attendance views rather than analytics.
 - Draft and published events can be viewed by management users with live access to the owning organisation.
-- The route shows event details, remaining tickets, sold tickets, and revenue.
+- The route shows event details and remaining/sold counts. Financial DTO fields and revenue-series queries/rendering require orders:read; event managers receive nonfinancial analytics.
 - Sold and revenue values are derived from paid orders.
 - The UI does not show total capacity because original capacity is not stored.
 
@@ -180,7 +180,7 @@ Public route behavior:
 /events/[eventId]
 ```
 
-- Members and logged-out users use the public buyer-facing event page.
+- Authenticated members use the buyer-facing event page; anonymous HTML requests currently redirect to login. The event API/listing is anonymous; T15 owns full anonymous detail.
 - Organisation accounts are redirected to `/dashboard/events/[eventId]`.
 
 ## Public Demo Events
@@ -188,3 +188,5 @@ Public route behavior:
 Demo public events are created by `prisma/seed.mjs`.
 
 The public event runtime does not auto-create demo events. The seed is the preferred way to restore a full development database because it also creates users, organisation accounts, member accounts, memberships, orders, and tickets.
+
+Seed is synthetic development setup, not restoration of real history. T08 public society profiles display up to 50 upcoming published events in the society timezone; this does not change existing checkout, event validity or organiser date behavior. [[Society Profiles and Assets]] and [[Seeding and Data]] distinguish these boundaries.

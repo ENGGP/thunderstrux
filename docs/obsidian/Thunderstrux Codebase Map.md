@@ -61,6 +61,7 @@ app/
   layout.tsx                         Root layout, session provider, global navbar
   page.tsx                           Public homepage: Discover Events
   (public)/events/[eventId]/         Public event detail route
+  (public)/organisations/            Anonymous bounded society directory
   (public)/organisations/[orgSlug]/  Public-safe organisation details route
   (dashboard)/dashboard/             Role-aware dashboard route group
     page.tsx                         Member dashboard or organisation dashboard
@@ -71,6 +72,9 @@ app/
     orders/page.tsx                  Slugless organisation order review
     orders/[orderId]/page.tsx        Organiser order detail
     settings/page.tsx                Slugless organisation settings
+    settings/profile/page.tsx        Resumable public society profile
+    settings/staff/page.tsx          Private invitations and owner handover
+    notifications/page.tsx           Tenant-scoped business-job recovery
     [orgSlug]/                       Legacy redirects
   api/                               Route handlers
 
@@ -80,12 +84,15 @@ components/
   layout/                            Navbar, session provider, DashboardShell
   members/                           Member profile and organisation search UI
   orgs/                              Organisation creation form
+  organisations/                     Personalized public profile Join control
   settings/                          Stripe Connect and private account/security settings UI
   tickets/                           Ticket check-in/check-out controls
   ui/                                Small reusable primitives
 
 lib/
   auth/                              Auth/session and account/organisation access helpers
+  assets/                            Safe image processing, S3, references and maintenance
+  organisations/                     Bootstrap, profiles, public discovery and joins
   api/                               API error helpers
   client/                            Frontend fetch and helper utilities
   db/                                Prisma client and organisation scoping helpers
@@ -95,7 +102,7 @@ lib/
   events/                            Public reads, analytics, and event lifecycle use cases
   orders/                            Scoped order operations and stale pending cleanup
   payments/                          Checkout, reconciliation, and lifecycle history use cases
-  permissions/                       Legacy role permission helpers
+  permissions/                       Live staff capability mapping and legacy compatibility helpers
   stripe/                            Stripe SDK, Connect application service, and fees
   tickets/                           Reservations and ticket attendance service
   validators/                        Zod schemas
@@ -149,10 +156,10 @@ docs/obsidian/
 
 ## Current UI State
 
-- Global header is fixed at the top via `components/layout/navbar.tsx`.
+- Global header has fixed h-16 height, a Societies link for everyone and a mobile account Menu; components/layout/navbar.tsx owns it.
 - Organisation dashboard shell uses a fixed left sidebar below the global header and a content header that shows the organisation name.
 - Organisation dashboard primary route is `/dashboard`.
-- Sidebar contains Dashboard, Events, Orders, Notifications, Settings, Staff and Staff MFA. Protected pages enforce live capabilities.
+- Sidebar capability-filters Dashboard, Events, Orders, Notifications, Society profile, Stripe settings and Staff, with a Staff MFA link and longest-route active state. Protected pages independently enforce authority.
 - Event analytics links to the event ticket list.
 - Order rows link to organiser order detail.
 - Member dashboard does not use the organisation management sidebar.

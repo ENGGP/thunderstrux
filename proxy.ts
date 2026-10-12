@@ -7,7 +7,9 @@ import { authSecret } from "@/lib/auth/secret";
 export async function proxy(request: NextRequest) {
   const token = await getToken({
     req: request,
-    secret: authSecret
+    secret: authSecret,
+    // Match Auth.js's public URL even when TLS ends at the tunnel.
+    secureCookie: new URL(process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? request.url).protocol === "https:"
   });
   const pathname = request.nextUrl.pathname;
   const identity = token ? await getSessionIdentity(token.userId, token.authVersion) : null;

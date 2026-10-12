@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 owner: engineering
 related: ["[[API Reference]]", "[[Email Delivery Implementation]]"]
 sources: [auth.ts, proxy.ts, lib/auth/access.ts, lib/auth/account-lifecycle.ts, lib/auth/account-closure.ts]
@@ -37,6 +37,8 @@ Main files:
 - development may use a dev-only fallback with a warning
 - Docker image builds use a build-time placeholder only so real secrets are not required during image creation
 - `auth.ts` and `proxy.ts` share one resolver, `lib/auth/secret.ts`, so the proxy always reads sessions with the secret that signed them, including the development fallback
+
+The proxy selects Auth.js's secure session cookie from `AUTH_URL`, then `NEXTAUTH_URL`, then the request URL. An HTTPS public URL uses `__Secure-authjs.session-token` even when Cloudflare forwards to an HTTP loopback service; HTTP local development uses `authjs.session-token`. Auth.js handles chunked cookies. The proxy still validates the live account/authVersion before allowing `/dashboard/*`, `/account/*` or `/events/*`. A missing, invalid, stale or disabled session redirects to login with the original path/query as its callback.
 
 ## User Model
 

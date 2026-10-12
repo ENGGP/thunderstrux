@@ -55,7 +55,7 @@ export function TicketCheckInButton({
   if (checkedInAt) {
     return (
       <div className="space-y-2">
-        <p className="text-xs text-neutral-500">{formatDateTime(checkedInAt)}</p>
+        <p className="text-xs text-ink-muted">{formatDateTime(checkedInAt)}</p>
         <Button
           disabled={isBusy}
           onClick={() => updateTicketCheckIn("check-out")}
@@ -63,7 +63,7 @@ export function TicketCheckInButton({
         >
           {isBusy ? "Checking out..." : "Check out"}
         </Button>
-        {message ? <p className="text-xs text-neutral-600">{message}</p> : null}
+        {message ? <p className="text-xs text-ink-muted">{message}</p> : null}
       </div>
     );
   }
@@ -77,7 +77,7 @@ export function TicketCheckInButton({
       >
         {isBusy ? "Checking in..." : "Check in"}
       </Button>
-      {message ? <p className="text-xs text-neutral-600">{message}</p> : null}
+      {message ? <p className="text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
 }

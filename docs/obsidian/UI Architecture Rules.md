@@ -8,7 +8,7 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 
 # UI Architecture Rules
 
-[Visual Design](../THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) owns the target presentation. This note records what the code does today and the rules new UI must follow. The token source, fonts, primitives, header, footer and both shells are in place; individual screens are moved onto them by the specification-alignment refactor (see [[Project Handover]] for which screens are done).
+[Visual Design](../THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) owns the target presentation. This note records what the code does today and the rules new UI must follow. Every existing screen uses the token source, fonts, primitives and shells described here. Screens for features that are not built yet do not exist.
 
 ## Tokens And Fonts
 
@@ -111,18 +111,18 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 `/dashboard`
 
 - Member: profile completion, upcoming tickets, joined societies with a Find societies entry point.
-- Organisation: organisation overview, upcoming events, recent orders, past-month revenue summary.
+- Organisation: setup tasks the caller may act on first (finish profile, finish payment setup, create an event), then upcoming events and, with `orders:read`, month-to-date revenue and recent orders. The revenue figure is labelled with its period; there is no chart.
 
 `/dashboard/events`, `/dashboard/events/new`, `/dashboard/events/[eventId]/edit`
 
-- Render the event list, creation and editing content. The edit route renders one edit title, `Edit event`, from the form.
+- Render the event list, creation and editing content. Each form route renders one title from the form: `New event` or `Edit event`. Deleting an event asks through `ConfirmDialog`.
 
 `/dashboard/orders`
 
 - Renders canonical tenant-scoped order review for callers with live finance capability, regardless of account role.
 - Normal filters hide internal pending orders. `Show system orders` may expose pending orders for debugging, but pending must not be presented as a normal product status.
 
-`/dashboard/settings`
+`/dashboard/settings` (Payments)
 
 - Renders Stripe Connect settings. State-specific Connect controls are allowed here because they are settings content, not dashboard navigation.
 
@@ -130,7 +130,11 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 - Renders caller-only joined societies and bounded paged search. Explicit verified Join changes free affiliation only; Leave synchronises both views after refresh and never revokes staff or paid purchases.
 
-`/societies` and `/societies/[orgSlug]` render anonymous discovery and public profile content. `/organisations` and `/organisations/[orgSlug]` redirect to them permanently. Profile join controls are personalized and dynamic; sign-in/verification never automatically joins. `/dashboard/settings/profile` is the live-settings/MFA-protected resumable editor. [[Society Profiles and Assets]] owns their full contracts.
+`/societies` and `/societies/[orgSlug]` render anonymous discovery and public profile content. `/organisations` and `/organisations/[orgSlug]` redirect to them permanently. Profile join controls are personalized and dynamic; sign-in/verification never automatically joins. `/dashboard/settings/profile` (Settings) is the live-settings/MFA-protected resumable editor: four steps, a timezone list computed on the server, and a Finish step whose checklist shows only facts the caller may see (profile complete, payments ready, team size). On a version conflict it keeps the edits and offers `Save my version` or a confirmed reload.
+
+`/dashboard/settings/staff` (Staff) confirms a role change or revocation through `ConfirmDialog`, lists pending invitations, and shows the latest accepted, revoked and expired invitations in a separate history table. Revoking an invitation is immediate.
+
+`/dashboard/create` uses the auth shell and asks only for the society name. [[Society Profiles and Assets]] owns their full contracts.
 
 `/success` and `/cancel` are the payment return pages. `/success` says `Checking payment status` and links to My tickets; it never states that a payment succeeded, because only the signed webhook establishes that.
 
@@ -161,9 +165,9 @@ Do not call an account "ready" just because `stripeAccountId` exists.
 
 ## Known UI Inconsistencies
 
-- Organisation dashboard page bodies (overview, events, orders, check-in, Stripe settings, staff, society settings, notifications) still carry neutral Tailwind classes (`bg-neutral-*`, `rounded-xl`, `shadow-sm`) and inline button strings. Public, auth, account and personal pages are on the tokens.
-- The `.society-*` classes in `app/globals.css` and the `society` button variant predate the tokens. Only the society settings form still uses them.
-- The new event route shows a page heading plus the form title.
+- Organisation page titles are `h2` because the shell's `h1` is the society name.
+- The event builder, order, check-in and payment screens keep their pre-specification structure under the new presentation; their target layouts belong to T11-T19.
+- `components/auth/staff-mfa-form.tsx` and `components/settings/staff-handover.tsx` style their own controls with token classes instead of the `Button` and `Select` primitives.
 
 ## Notification Recovery
 

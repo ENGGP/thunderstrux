@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   EventAnalyticsAccessError,
@@ -15,12 +16,6 @@ type OrganiserEventPageProps = {
     eventId: string;
   }>;
 };
-
-function statusBadgeClassName(status: "draft" | "published") {
-  return status === "published"
-    ? "rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-green-200"
-    : "rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200";
-}
 
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en-AU", {
@@ -63,34 +58,32 @@ export default async function OrganiserEventPage({
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-card border border-line bg-surface p-6">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="max-w-3xl space-y-3">
-              <span className={statusBadgeClassName(analytics.event.status)}>
-                {analytics.event.status === "published" ? "Published" : "Draft"}
-              </span>
-              <h2 className="text-3xl font-semibold text-neutral-950">
+              <StatusBadge status={analytics.event.status} />
+              <h2 className="text-3xl font-semibold text-ink">
                 {analytics.event.title}
               </h2>
-              <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-neutral-700">
+              <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-ink-soft">
                 {analytics.event.description}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {canEdit && <Link
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+                className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
                 href={`/dashboard/events/${analytics.event.id}/edit`}
               >
                 Edit event
               </Link>}
               {attendance && <Link
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+                className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
                 href={`/dashboard/events/${analytics.event.id}/tickets`}
               >
                 View tickets
               </Link>}
               {financial && <Link
-                className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+                className="rounded-control bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
                 href={`/dashboard/orders?eventId=${analytics.event.id}`}
               >
                 View orders
@@ -98,64 +91,64 @@ export default async function OrganiserEventPage({
             </div>
           </div>
 
-          <dl className="mt-6 grid gap-4 text-sm text-neutral-700 sm:grid-cols-3">
+          <dl className="mt-6 grid gap-4 text-sm text-ink-soft sm:grid-cols-3">
             <div>
-              <dt className="font-medium text-neutral-950">Starts</dt>
+              <dt className="font-medium text-ink">Starts</dt>
               <dd className="mt-1">{formatDateTime(analytics.event.startTime, { dateStyle: "full" })}</dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-950">Ends</dt>
+              <dt className="font-medium text-ink">Ends</dt>
               <dd className="mt-1">{formatDateTime(analytics.event.endTime, { dateStyle: "full" })}</dd>
             </div>
             <div>
-              <dt className="font-medium text-neutral-950">Location</dt>
+              <dt className="font-medium text-ink">Location</dt>
               <dd className="mt-1">{analytics.event.location}</dd>
             </div>
           </dl>
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          {financial && <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Revenue</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+          {financial && <div className="rounded-card border border-line bg-surface p-5">
+            <p className="text-sm text-ink-muted">Revenue</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">
               {formatMoney(analytics.totals.revenue ?? 0)}
             </p>
           </div>}
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Sold</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+          <div className="rounded-card border border-line bg-surface p-5">
+            <p className="text-sm text-ink-muted">Sold</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">
               {analytics.totals.sold}
             </p>
           </div>
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Remaining</p>
-            <p className="mt-2 text-2xl font-semibold text-neutral-950">
+          <div className="rounded-card border border-line bg-surface p-5">
+            <p className="text-sm text-ink-muted">Remaining</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">
               {analytics.totals.remaining}
             </p>
           </div>
         </section>
 
-        {financial && <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        {financial && <section className="rounded-card border border-line bg-surface p-6">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-neutral-950">
+            <h3 className="text-lg font-semibold text-ink">
               Revenue (UTC)
             </h3>
-            <p className="mt-1 text-sm text-neutral-500">
+            <p className="mt-1 text-sm text-ink-muted">
               Paid order revenue grouped by UTC day.
             </p>
           </div>
 
           {revenueSeries.length === 0 ? (
-            <p className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-5 text-sm text-neutral-600">
+            <p className="rounded-card border border-line bg-surface-subtle px-4 py-5 text-sm text-ink-muted">
               No revenue yet.
             </p>
           ) : (
             <div className="grid min-h-56 grid-cols-[auto_1fr] gap-4">
-              <div className="flex flex-col justify-between py-1 text-xs text-neutral-500">
+              <div className="flex flex-col justify-between py-1 text-xs text-ink-muted">
                 <span>{formatMoney(maxDailyRevenue)}</span>
                 <span>{formatMoney(0)}</span>
               </div>
-              <div className="grid h-56 items-end gap-3 border-b border-l border-neutral-200 px-3 pb-6 sm:grid-flow-col sm:auto-cols-fr">
+              <div className="grid h-56 items-end gap-3 border-b border-l border-line px-3 pb-6 sm:grid-flow-col sm:auto-cols-fr">
                 {revenueSeries.map((bucket) => {
                   const height = Math.max(
                     8,
@@ -168,13 +161,13 @@ export default async function OrganiserEventPage({
                       key={bucket.date}
                     >
                       <div
-                        className="rounded-t-md bg-neutral-900"
+                        className="rounded-t-md bg-brand"
                         style={{ height: `${height}px` }}
                         title={`${formatShortDate(bucket.date)}: ${formatMoney(
                           bucket.revenue
                         )}`}
                       />
-                      <p className="text-center text-xs text-neutral-500">
+                      <p className="text-center text-xs text-ink-muted">
                         {formatShortDate(bucket.date)}
                       </p>
                     </div>
@@ -185,23 +178,23 @@ export default async function OrganiserEventPage({
           )}
         </section>}
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-card border border-line bg-surface p-6">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-neutral-950">
+            <h3 className="text-lg font-semibold text-ink">
               Ticket performance
             </h3>
             {analytics.totals.sold === 0 ? (
-              <p className="mt-1 text-sm text-neutral-500">No tickets sold yet.</p>
+              <p className="mt-1 text-sm text-ink-muted">No tickets sold yet.</p>
             ) : null}
           </div>
 
           {analytics.ticketTypes.length === 0 ? (
-            <p className="text-sm text-neutral-600">No ticket types available.</p>
+            <p className="text-sm text-ink-muted">No ticket types available.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 text-neutral-500">
+                  <tr className="border-b border-line text-ink-muted">
                     <th className="py-3 pr-4 font-medium">Ticket</th>
                     <th className="py-3 pr-4 font-medium">Remaining</th>
                     <th className="py-3 pr-4 font-medium">Sold</th>
@@ -218,30 +211,30 @@ export default async function OrganiserEventPage({
 
                     return (
                       <tr
-                        className="border-b border-neutral-100 last:border-0"
+                        className="border-b border-line last:border-0"
                         key={ticketType.id}
                       >
-                        <td className="py-3 pr-4 font-medium text-neutral-950">
+                        <td className="py-3 pr-4 font-medium text-ink">
                           {ticketType.name}
                         </td>
-                        <td className="py-3 pr-4 text-neutral-700">
+                        <td className="py-3 pr-4 text-ink-soft">
                           {ticketType.remaining}
                         </td>
-                        <td className="py-3 pr-4 text-neutral-700">
+                        <td className="py-3 pr-4 text-ink-soft">
                           {ticketType.sold}
                         </td>
-                        {financial && <><td className="py-3 pr-4 text-neutral-700">
+                        {financial && <><td className="py-3 pr-4 text-ink-soft">
                           {formatMoney(ticketType.revenue ?? 0)}
                         </td>
-                        <td className="py-3 text-neutral-700">
+                        <td className="py-3 text-ink-soft">
                           <div className="flex min-w-36 items-center gap-3">
-                            <div className="h-2 flex-1 rounded-full bg-neutral-100">
+                            <div className="h-2 flex-1 rounded-full bg-surface-subtle">
                               <div
-                                className="h-2 rounded-full bg-neutral-900"
+                                className="h-2 rounded-full bg-brand"
                                 style={{ width: `${revenueShare}%` }}
                               />
                             </div>
-                            <span className="w-12 text-right text-xs text-neutral-600">
+                            <span className="w-12 text-right text-xs text-ink-muted">
                               {revenueShare.toFixed(0)}%
                             </span>
                           </div>

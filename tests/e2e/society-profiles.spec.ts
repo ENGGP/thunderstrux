@@ -75,8 +75,11 @@ test("society profile saves branding, keeps conflicting edits and remains public
   await expect(page.getByLabel("Society name")).toHaveValue(
     "Unsaved local edit",
   );
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Reload latest profile" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Discard my edits", exact: true })
+    .click();
   await expect(page.getByLabel("Society name")).toHaveValue(
     "Committee updated name",
   );
@@ -127,9 +130,9 @@ test("new organisation bootstrap selects its resumable profile without a stale p
     ).status(),
   ).toBe(200);
   await page.reload();
-  await page.getByLabel("Organisation name").fill("New campus society");
+  await page.getByLabel("Society name").fill("New campus society");
   await page
-    .getByRole("button", { name: "Create organisation", exact: true })
+    .getByRole("button", { name: "Create society", exact: true })
     .click();
   await expect(page).toHaveURL(
     "http://localhost:3100/dashboard/settings/profile",

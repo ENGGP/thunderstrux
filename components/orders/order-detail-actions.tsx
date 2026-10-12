@@ -102,7 +102,7 @@ export function OrderDetailActions({
         <>
           <input
             aria-label="Stripe refund ID"
-            className="h-10 rounded-md border border-neutral-300 px-3 text-sm"
+            className="h-10 rounded-control border border-line-strong px-3 text-sm"
             onChange={(event) => setRefundId(event.target.value)}
             placeholder="re_..."
             value={refundId}
@@ -141,7 +141,7 @@ export function OrderDetailActions({
       >
         Copy session ID
       </Button>
-      {message ? <p className="text-sm text-neutral-600">{message}</p> : null}
+      {message ? <p className="text-sm text-ink-muted">{message}</p> : null}
     </div>
   );
 }

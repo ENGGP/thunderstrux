@@ -66,3 +66,13 @@ export async function listHandoverTargets(organisationId: string, actorUserId: s
     } }, take: 100, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, user: { select: { email: true } } }
   });
 }
+// Invitations that are no longer pending, newest first, for the staff page's history.
+export async function listPastStaffInvites(organisationId: string, now = new Date()) {
+  const invites = await prisma.organisationStaffInvite.findMany({
+    where: { organisationId, OR: [{ acceptedAt: { not: null } }, { revokedAt: { not: null } }, { expiresAt: { lte: now } }] },
+    take: 25, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true, email: true, role: true, createdAt: true, acceptedAt: true, revokedAt: true }
+  });
+  return invites.map(({ acceptedAt, revokedAt, ...invite }) => ({ ...invite,
+    state: acceptedAt ? "accepted" as const : revokedAt ? "revoked" as const : "expired" as const }));
+}

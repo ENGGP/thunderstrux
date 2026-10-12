@@ -20,7 +20,7 @@ const statuses = {
   revoked: ["Revoked", "neutral"],
   accepted: ["Accepted", "success"],
   "checked-in": ["Checked in", "success"],
-  unused: ["Not checked in", "neutral"]
+  unused: ["Unused", "neutral"]
 } as const satisfies Record<string, readonly [string, keyof typeof tones]>;
 
 export type Status = keyof typeof statuses;

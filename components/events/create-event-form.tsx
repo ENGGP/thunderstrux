@@ -369,20 +369,20 @@ export function CreateEventForm({
     <Card>
       <form className="grid max-w-2xl gap-5" onSubmit={onSubmit}>
         <div>
-          <h2 className="text-2xl font-semibold text-neutral-950">
+          <h2 className="text-2xl font-semibold text-ink">
             {mode === "edit" ? "Edit event" : "New event"}
           </h2>
-          <p className="mt-1 text-sm text-neutral-500">{organisation.name}</p>
+          <p className="mt-1 text-sm text-ink-muted">{organisation.name}</p>
         </div>
 
         {errors.some((error) => !error.path?.length) ? (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">
             {errors.find((error) => !error.path?.length)?.message}
           </div>
         ) : null}
 
         {successMessage ? (
-          <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          <div className="rounded-control border border-success bg-success-bg px-3 py-2 text-sm text-success">
             {successMessage}
           </div>
         ) : null}
@@ -425,10 +425,10 @@ export function CreateEventForm({
           error={fieldError(errors, "location")}
           onChange={(event) => setForm({ ...form, location: event.target.value })}
         />
-        <label className="grid gap-1.5 text-sm font-medium text-neutral-900">
+        <label className="grid gap-1.5 text-sm font-medium text-ink">
           Paid but unfulfilled orders
           <select
-            className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm"
+            className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
             value={compensationRefundMode}
             onChange={(event) =>
               setCompensationRefundMode(
@@ -439,22 +439,22 @@ export function CreateEventForm({
             <option value="manual_review">Require manual refund review</option>
             <option value="automatic_full">Automatically issue a full refund</option>
           </select>
-          <span className="font-normal text-neutral-500">
+          <span className="font-normal text-ink-muted">
             This policy is copied to each new order. Changing it does not affect existing orders.
           </span>
         </label>
         <section className="grid gap-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="text-base font-semibold text-neutral-950">
+              <h3 className="text-base font-semibold text-ink">
                 Ticket types
               </h3>
-              <p className="mt-1 text-sm text-neutral-500">
+              <p className="mt-1 text-sm text-ink-muted">
                 Add, edit, or remove ticket types for this event.
               </p>
             </div>
             <button
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
+              className="rounded-control border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
               onClick={() =>
                 setTicketTypes((current) => [...current, { ...emptyTicketType }])
               }
@@ -469,7 +469,7 @@ export function CreateEventForm({
 
             return (
               <div
-                className="grid gap-3 rounded-md border border-neutral-200 p-4"
+                className="grid gap-3 rounded-control border border-line p-4"
                 key={ticketType.id ?? index}
               >
                 <div className="grid gap-4 sm:grid-cols-[1fr_10rem_10rem_auto] sm:items-start">
@@ -518,7 +518,7 @@ export function CreateEventForm({
                     }
                   />
                   <button
-                    className="h-10 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-900 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-6"
+                    className="h-10 rounded-control border border-line-strong px-3 text-sm font-medium text-ink hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-60 sm:mt-6"
                     disabled={isLocked}
                     onClick={() =>
                       setTicketTypes((current) =>
@@ -531,7 +531,7 @@ export function CreateEventForm({
                   </button>
                 </div>
                 {isLocked ? (
-                  <p className="text-sm text-neutral-500">
+                  <p className="text-sm text-ink-muted">
                     This ticket type has existing orders or issued tickets, so
                     it cannot be removed. You can still update its name, price,
                     and quantity for future purchases.

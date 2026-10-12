@@ -165,13 +165,12 @@ docs/obsidian/
 - Order rows link to organiser order detail.
 - Member dashboard does not use the organisation management sidebar.
 - Buttons come from components/ui/button.tsx; the primary action is the brand purple.
-- Stripe settings renders a state-based Connect panel with connect, platform settings, retry, continue onboarding, fix account, open dashboard, refresh status, and local disconnect controls.
+- The Payments page (`/dashboard/settings`) renders a state-based Connect panel with connect, platform settings, retry, continue onboarding, fix account, open dashboard, refresh status, and local disconnect controls.
 
 ## Current Known Quirks
 
 - `DashboardShell` controls the shared organisation sidebar; do not duplicate navigation in new dashboard pages.
 - `/organisations` and `/organisations/[orgSlug]` are permanent redirects to `/societies` (next.config.ts).
-- `/dashboard/events/new` still renders a page heading `Create Event` above the form title `New event`.
 - `app/page.tsx` uses `export const dynamic = "force-dynamic"` to avoid stale homepage output during development.
 - Stripe account disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the account in Stripe. Reconnecting the same old account requires manually restoring the old `acct_...` id in the DB.
 - Event edit routes rely on explicit pass-through `events/layout.tsx` files because Next dev route registration was unreliable for nested event routes without them in the local Docker/Windows/OneDrive setup.

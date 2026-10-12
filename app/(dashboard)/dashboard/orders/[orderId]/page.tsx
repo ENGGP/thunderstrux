@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   OrganisationOrderAccessError,
@@ -12,10 +13,6 @@ import {
   getOrganisationOrderLifecycle,
   parseOrderLifecycleCursor
 } from "@/lib/payments/order-lifecycle-history";
-
-function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
 
 function buyerName(user: {
   displayName: string | null;
@@ -75,73 +72,71 @@ export default async function OrganisationOrderDetailPage({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <Link
-              className="text-sm font-medium text-neutral-600 hover:text-neutral-950"
+              className="text-sm font-medium text-ink-muted hover:text-brand"
               href="/dashboard/orders"
             >
               Back to orders
             </Link>
-            <h2 className="mt-2 text-3xl font-semibold text-neutral-950">
+            <h2 className="mt-2 text-3xl font-semibold text-ink">
               Order detail
             </h2>
           </div>
-          <span className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-sm font-medium text-neutral-700">
-            {statusLabel(order.status)}
-          </span>
+          <StatusBadge status={order.status} />
         </div>
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="rounded-card border border-line bg-surface p-6">
           <div className="grid gap-5 md:grid-cols-2">
             <div>
-              <p className="text-sm text-neutral-500">Order ID</p>
-              <p className="mt-1 break-all text-sm font-medium text-neutral-950">
+              <p className="text-sm text-ink-muted">Order ID</p>
+              <p className="mt-1 break-all text-sm font-medium text-ink">
                 {order.id}
               </p>
             </div>
             <div>
-              <p className="text-sm text-neutral-500">Created</p>
-              <p className="mt-1 text-sm text-neutral-950">
+              <p className="text-sm text-ink-muted">Created</p>
+              <p className="mt-1 text-sm text-ink">
                 {formatDateTime(order.createdAt)}
               </p>
             </div>
             <div>
-              <p className="text-sm text-neutral-500">Paid</p>
-              <p className="mt-1 text-sm text-neutral-950">
+              <p className="text-sm text-ink-muted">Paid</p>
+              <p className="mt-1 text-sm text-ink">
                 {formatDateTime(order.paidAt)}
               </p>
             </div>
             <div>
-              <p className="text-sm text-neutral-500">Buyer</p>
-              <p className="mt-1 text-sm text-neutral-950">
+              <p className="text-sm text-ink-muted">Buyer</p>
+              <p className="mt-1 text-sm text-ink">
                 {buyer?.email ?? "Unknown buyer"}
               </p>
               {buyer?.name ? (
-                <p className="mt-1 text-sm text-neutral-600">{buyer.name}</p>
+                <p className="mt-1 text-sm text-ink-muted">{buyer.name}</p>
               ) : null}
-              {order.buyerIdentityCapturedAt && <p className="mt-2 text-sm text-neutral-600">Buyer contact details captured from the account profile on {order.buyerIdentityCapturedAt.toISOString().slice(0, 10)}. Original purchase-time profile details were not recorded.</p>}
+              {order.buyerIdentityCapturedAt && <p className="mt-2 text-sm text-ink-muted">Buyer contact details captured from the account profile on {order.buyerIdentityCapturedAt.toISOString().slice(0, 10)}. Original purchase-time profile details were not recorded.</p>}
             </div>
             <div>
-              <p className="text-sm text-neutral-500">Event</p>
+              <p className="text-sm text-ink-muted">Event</p>
               <Link
-                className="mt-1 inline-block text-sm font-medium text-neutral-950 hover:text-neutral-700"
+                className="mt-1 inline-block text-sm font-medium text-ink hover:text-ink-soft"
                 href={`/dashboard/events/${order.event.id}`}
               >
                 {order.event.title}
               </Link>
             </div>
             <div>
-              <p className="text-sm text-neutral-500">Total amount</p>
-              <p className="mt-1 text-sm font-medium text-neutral-950">
+              <p className="text-sm text-ink-muted">Total amount</p>
+              <p className="mt-1 text-sm font-medium text-ink">
                 {formatMoney(order.totalAmount)}
               </p>
             </div>
           </div>
           {order.isManuallyRefunded ? (
-            <p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <p className="mt-5 rounded-control border border-warning bg-warning-bg px-3 py-2 text-sm text-warning">
               This order is marked as manually refunded.
             </p>
           ) : null}
           {order.requiresCompensationReview ? (
-            <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <div className="mt-5 rounded-control border border-warning bg-warning-bg px-3 py-2 text-sm text-warning">
               <p>Payment was received, but ticket fulfilment failed. Review this order in Stripe before contacting the buyer or taking manual action.</p>
               {order.compensationRefundJob ? (
                 <p className="mt-1">Refund workflow: {order.compensationRefundJob.state.replaceAll("_", " ")}</p>
@@ -150,12 +145,12 @@ export default async function OrganisationOrderDetailPage({
           ) : null}
         </section>
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-neutral-950">Tickets</h3>
+        <section className="rounded-card border border-line bg-surface p-6">
+          <h3 className="text-lg font-semibold text-ink">Tickets</h3>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-neutral-500">
+                <tr className="border-b border-line text-ink-muted">
                   <th className="py-3 pr-4 font-medium">Ticket type</th>
                   <th className="py-3 pr-4 font-medium">Quantity</th>
                   <th className="py-3 pr-4 font-medium">Unit price</th>
@@ -164,14 +159,14 @@ export default async function OrganisationOrderDetailPage({
               </thead>
               <tbody>
                 <tr>
-                  <td className="py-3 pr-4 text-neutral-700">
+                  <td className="py-3 pr-4 text-ink-soft">
                     {order.ticketType.name}
                   </td>
-                  <td className="py-3 pr-4 text-neutral-700">{order.quantity}</td>
-                  <td className="py-3 pr-4 text-neutral-700">
+                  <td className="py-3 pr-4 text-ink-soft">{order.quantity}</td>
+                  <td className="py-3 pr-4 text-ink-soft">
                     {formatMoney(order.unitPrice)}
                   </td>
-                  <td className="py-3 text-neutral-700">
+                  <td className="py-3 text-ink-soft">
                     {formatMoney(order.totalAmount)}
                   </td>
                 </tr>
@@ -180,46 +175,46 @@ export default async function OrganisationOrderDetailPage({
           </div>
         </section>
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-neutral-950">Order history</h3>
+        <section className="rounded-card border border-line bg-surface p-6">
+          <h3 className="text-lg font-semibold text-ink">Order history</h3>
           {lifecycle.historyIncomplete ? (
-            <p className="mt-2 text-sm text-amber-700">
+            <p className="mt-2 text-sm text-warning">
               This order predates lifecycle history. Earlier activity may not be shown.
             </p>
           ) : null}
           {lifecycle.events.length === 0 ? (
-            <p className="mt-4 text-sm text-neutral-600">
+            <p className="mt-4 text-sm text-ink-muted">
               No lifecycle history has been recorded for this order yet.
             </p>
           ) : (
-            <ol className="mt-4 divide-y divide-neutral-200">
+            <ol className="mt-4 divide-y divide-line">
               {lifecycle.events.map((event) => (
                 <li className="break-words py-4" key={event.id}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-medium text-neutral-950">
+                      <p className="text-sm font-medium text-ink">
                         {event.label}
                       </p>
-                      <p className="mt-1 text-sm text-neutral-600">
+                      <p className="mt-1 text-sm text-ink-muted">
                         {event.actorName ?? event.source.replaceAll("_", " ")}
                       </p>
                     </div>
-                    <time className="text-sm text-neutral-500">
+                    <time className="text-sm text-ink-muted">
                       {formatDateTime(event.createdAt)}
                     </time>
                   </div>
                   {event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? (
-                    <p className="mt-2 text-sm text-neutral-700">
+                    <p className="mt-2 text-sm text-ink-soft">
                       Order: {event.fromOrderStatus ?? "unknown"} to {event.toOrderStatus}
                     </p>
                   ) : null}
                   {event.fromReservationStatus !== event.toReservationStatus && event.toReservationStatus ? (
-                    <p className="mt-1 text-sm text-neutral-700">
+                    <p className="mt-1 text-sm text-ink-soft">
                       Reservation: {event.fromReservationStatus ?? "none"} to {event.toReservationStatus}
                     </p>
                   ) : null}
                   {event.reason ? (
-                    <p className="mt-1 text-sm text-neutral-600">
+                    <p className="mt-1 text-sm text-ink-muted">
                       Reason: {event.reason.replaceAll("_", " ")}
                     </p>
                   ) : null}
@@ -230,7 +225,7 @@ export default async function OrganisationOrderDetailPage({
           <div className="mt-4 flex items-center justify-between gap-4">
             {lifecycle.pageInfo.newerCursor ? (
               <Link
-                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                className="text-sm font-medium text-ink-soft hover:text-brand"
                 href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.newerCursor}&historyDirection=newer`}
               >
                 Newer activity
@@ -238,7 +233,7 @@ export default async function OrganisationOrderDetailPage({
             ) : <span />}
             {lifecycle.pageInfo.olderCursor ? (
               <Link
-                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                className="text-sm font-medium text-ink-soft hover:text-brand"
                 href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.olderCursor}&historyDirection=older`}
               >
                 Older activity
@@ -247,10 +242,10 @@ export default async function OrganisationOrderDetailPage({
           </div>
         </section>
 
-        <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="space-y-4 rounded-card border border-line bg-surface p-6">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-950">Management</h3>
-            <p className="mt-1 text-sm text-neutral-600">
+            <h3 className="text-lg font-semibold text-ink">Management</h3>
+            <p className="mt-1 text-sm text-ink-muted">
               These actions do not change Stripe payment state.
             </p>
           </div>
@@ -261,14 +256,14 @@ export default async function OrganisationOrderDetailPage({
             requiresCompensationReview={order.requiresCompensationReview}
             stripeSessionId={order.stripeSessionId}
           />
-          <div className="rounded-lg border border-neutral-200 p-4">
-            <p className="text-sm text-neutral-500">Stripe session ID</p>
-            <p className="mt-1 break-all text-sm text-neutral-950">
+          <div className="rounded-card border border-line p-4">
+            <p className="text-sm text-ink-muted">Stripe session ID</p>
+            <p className="mt-1 break-all text-sm text-ink">
               {order.stripeSessionId ?? "Not available"}
             </p>
             {order.stripeDashboardUrl ? (
               <a
-                className="mt-3 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                className="mt-3 inline-block text-sm font-medium text-ink-soft hover:text-brand"
                 href={order.stripeDashboardUrl}
                 rel="noreferrer"
                 target="_blank"

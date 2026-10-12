@@ -87,7 +87,7 @@ export default async function Home({
                 className={buttonClasses({
                   size: "lg",
                   variant: "tertiary",
-                  className: "bg-white text-brand-ink no-underline hover:bg-brand-tint hover:no-underline"
+                  className: "bg-surface text-brand-ink no-underline hover:bg-brand-tint hover:no-underline"
                 })}
                 href="/societies"
               >

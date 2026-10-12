@@ -152,7 +152,7 @@ app/
 `/dashboard`
 
 - Personal member mode shows profile completion, the caller's nearest upcoming paid tickets and joined societies inside the personal shell. Selected staff mode shows only permitted management content; revocation never falls back to another tenant.
-- Authorised organisation context shows upcoming events and role-filtered recent orders/monthly revenue. Finance queries are omitted when orders:read is absent.
+- Authorised organisation context shows setup tasks the caller may act on (profile, payments, first event), upcoming events and role-filtered recent orders and month-to-date revenue. Finance queries are omitted when orders:read is absent.
 
 `/dashboard/events`
 

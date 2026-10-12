@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   OrganisationOrderEventAccessError,
@@ -14,22 +15,6 @@ import {
   PaginationError,
   parsePaginationOptionsOrDefault
 } from "@/lib/pagination/cursor";
-
-function statusLabel(status: "pending" | "paid" | "failed" | "expired") {
-  if (status === "paid") {
-    return "Paid";
-  }
-
-  if (status === "failed") {
-    return "Failed";
-  }
-
-  if (status === "expired") {
-    return "Expired";
-  }
-
-  return "Pending";
-}
 
 function filterLabel(status: OrderStatusFilter) {
   return status.charAt(0).toUpperCase() + status.slice(1);
@@ -188,21 +173,21 @@ export default async function OrganisationOrdersPage({
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <header className="space-y-2">
-          <h2 className="text-3xl font-semibold text-neutral-950">Orders</h2>
-          <p className="text-sm text-neutral-600">
+          <h2 className="text-3xl font-semibold text-ink">Orders</h2>
+          <p className="text-sm text-ink-muted">
             Review ticket purchases and payment reconciliation for {organisation.name}.
           </p>
         </header>
 
         {eventFilter ? (
-          <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-neutral-500">Filtered by event</p>
+          <section className="rounded-card border border-line bg-surface p-5">
+            <p className="text-sm text-ink-muted">Filtered by event</p>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-xl font-semibold text-neutral-950">
+              <h3 className="text-xl font-semibold text-ink">
                 {eventFilter.title}
               </h3>
               <Link
-                className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                className="text-sm font-medium text-ink-soft hover:text-brand"
                 href="/dashboard/orders"
               >
                 Back to all orders
@@ -245,10 +230,10 @@ export default async function OrganisationOrdersPage({
 
             return (
               <Link
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                className={`rounded-control border px-3 py-2 text-sm font-medium transition ${
                   isActive
-                    ? "border-neutral-900 bg-neutral-900 text-white"
-                    : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                    ? "border-brand bg-brand text-white"
+                    : "border-line bg-surface text-ink-soft hover:border-line-strong"
                 }`}
                 href={href}
                 key={status}
@@ -285,10 +270,10 @@ export default async function OrganisationOrdersPage({
 
             return (
               <Link
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                className={`rounded-control border px-3 py-2 text-sm font-medium transition ${
                   includeSystemOrders
-                    ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                    : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                    ? "border-warning bg-warning-bg text-warning"
+                    : "border-line bg-surface text-ink-soft hover:border-line-strong"
                 }`}
                 href={href}
               >
@@ -302,7 +287,7 @@ export default async function OrganisationOrdersPage({
 
         <form
           action="/dashboard/orders"
-          className="grid gap-4 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm md:grid-cols-4"
+          className="grid gap-4 rounded-card border border-line bg-surface p-5 md:grid-cols-4"
         >
           {activeFilter !== "all" ? (
             <input name="status" type="hidden" value={activeFilter} />
@@ -313,39 +298,39 @@ export default async function OrganisationOrdersPage({
           {pageInfo.limit !== 25 ? (
             <input name="limit" type="hidden" value={pageInfo.limit} />
           ) : null}
-          <label className="grid gap-2 text-sm font-medium text-neutral-800">
+          <label className="grid gap-2 text-sm font-medium text-ink-soft">
             <span>Buyer email</span>
             <input
-              className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-neutral-900"
+              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
               defaultValue={search ?? ""}
               name="search"
               placeholder="name@example.com"
               type="search"
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-neutral-800">
+          <label className="grid gap-2 text-sm font-medium text-ink-soft">
             <span>Event ID</span>
             <input
-              className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-neutral-900"
+              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
               defaultValue={eventId ?? ""}
               name="eventId"
               placeholder="event id"
               type="text"
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-neutral-800">
+          <label className="grid gap-2 text-sm font-medium text-ink-soft">
             <span>From</span>
             <input
-              className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-neutral-900"
+              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
               defaultValue={startDateParam ?? ""}
               name="startDate"
               type="date"
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-neutral-800">
+          <label className="grid gap-2 text-sm font-medium text-ink-soft">
             <span>To</span>
             <input
-              className="h-10 rounded-md border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-neutral-900"
+              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
               defaultValue={endDateParam ?? ""}
               name="endDate"
               type="date"
@@ -353,13 +338,13 @@ export default async function OrganisationOrdersPage({
           </label>
           <div className="flex flex-wrap gap-3 md:col-span-4">
             <button
-              className="inline-flex h-10 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white transition hover:bg-neutral-700"
+              className="inline-flex h-10 items-center justify-center rounded-control bg-brand px-4 text-sm font-medium text-white transition hover:bg-brand-hover"
               type="submit"
             >
               Apply filters
             </button>
             <Link
-              className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+              className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
               href="/dashboard/orders"
             >
               Clear
@@ -368,15 +353,15 @@ export default async function OrganisationOrdersPage({
         </form>
 
         {pagination.invalid ? (
-          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <section className="rounded-card border border-warning bg-warning-bg p-4 text-sm text-warning">
             Invalid pagination parameters were ignored. Showing the first page.
           </section>
         ) : null}
 
         <section className="space-y-5">
           {groupedOrders.length === 0 ? (
-            <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-              <p className="text-sm text-neutral-600">
+            <div className="rounded-card border border-line bg-surface p-6">
+              <p className="text-sm text-ink-muted">
                 {eventId && !eventFilter
                   ? "No orders found for this event."
                   : `No ${
@@ -387,14 +372,14 @@ export default async function OrganisationOrdersPage({
           ) : (
             groupedOrders.map((group) => (
               <article
-                className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm"
+                className="rounded-card border border-line bg-surface p-6"
                 key={group.eventId}
               >
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-lg font-semibold text-neutral-950">
+                  <h3 className="text-lg font-semibold text-ink">
                     {group.eventTitle}
                   </h3>
-                  <p className="text-sm text-neutral-500">
+                  <p className="text-sm text-ink-muted">
                     {group.orders.length} order
                     {group.orders.length === 1 ? "" : "s"}
                     {" "}on this page
@@ -404,7 +389,7 @@ export default async function OrganisationOrdersPage({
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left text-sm">
                     <thead>
-                      <tr className="border-b border-neutral-200 text-neutral-500">
+                      <tr className="border-b border-line text-ink-muted">
                         <th className="py-3 pr-4 font-medium">Buyer</th>
                         <th className="py-3 pr-4 font-medium">Ticket</th>
                         <th className="py-3 pr-4 font-medium">Quantity</th>
@@ -417,47 +402,47 @@ export default async function OrganisationOrdersPage({
                     <tbody>
                       {group.orders.map((order) => (
                         <tr
-                          className="border-b border-neutral-100 last:border-0"
+                          className="border-b border-line last:border-0"
                           key={order.id}
                         >
-                          <td className="py-3 pr-4 text-neutral-700">
+                          <td className="py-3 pr-4 text-ink-soft">
                             {order.buyerEmail ?? "Unknown buyer"}
                           </td>
-                          <td className="py-3 pr-4 text-neutral-700">
+                          <td className="py-3 pr-4 text-ink-soft">
                             {order.ticketType}
                           </td>
-                          <td className="py-3 pr-4 text-neutral-700">
+                          <td className="py-3 pr-4 text-ink-soft">
                             {order.quantity}
                           </td>
-                          <td className="py-3 pr-4 text-neutral-700">
+                          <td className="py-3 pr-4 text-ink-soft">
                             {formatMoney(order.totalAmount)}
                           </td>
-                          <td className="py-3 pr-4 text-neutral-700">
-                            {statusLabel(order.status)}
+                          <td className="py-3 pr-4 text-ink-soft">
+                            <StatusBadge status={order.status} />
                             {order.isManuallyRefunded ? (
-                              <p className="mt-1 text-xs text-amber-700">
+                              <p className="mt-1 text-xs text-warning">
                                 Manual refund
                               </p>
                             ) : null}
                             {order.requiresCompensationReview ? (
-                              <p className="mt-1 max-w-56 text-xs font-medium text-amber-700">
+                              <p className="mt-1 max-w-56 text-xs font-medium text-warning">
                                 Payment received; fulfilment review required
                               </p>
                             ) : null}
                             {order.failureReason ? (
-                              <p className="mt-1 max-w-56 text-xs text-red-700">
+                              <p className="mt-1 max-w-56 text-xs text-danger">
                                 {order.failureReason}
                               </p>
                             ) : null}
                           </td>
-                          <td className="py-3 pr-4 text-neutral-700">
+                          <td className="py-3 pr-4 text-ink-soft">
                             {formatDateTime(
                               order.paidAt ?? order.failedAt ?? order.createdAt
                             )}
                           </td>
                           <td className="py-3">
                             <Link
-                              className="text-sm font-medium text-neutral-700 hover:text-neutral-950"
+                              className="text-sm font-medium text-ink-soft hover:text-brand"
                               href={`/dashboard/orders/${order.id}`}
                             >
                               View
@@ -480,7 +465,7 @@ export default async function OrganisationOrdersPage({
           >
             {pageInfo.previousCursor ? (
               <Link
-                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
                 href={paginationHref(pageInfo.previousCursor, "prev")}
               >
                 Previous
@@ -490,7 +475,7 @@ export default async function OrganisationOrdersPage({
             )}
             {pageInfo.nextCursor ? (
               <Link
-                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
                 href={paginationHref(pageInfo.nextCursor, "next")}
               >
                 Next

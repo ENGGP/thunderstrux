@@ -4,6 +4,7 @@ import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import { lockOrganisationActor } from "./authority";
 import { AssetError } from "@/lib/assets/image";
 import { assetReferenced } from "@/lib/assets/references";
+import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 
 export const profileSchema = z
   .object({
@@ -137,4 +138,14 @@ export async function updateProfile(
     });
     return profile;
   });
+}
+
+// Charge readiness as last recorded from Stripe. The Payments page shows the
+// live account; this only feeds the setup checklist.
+export async function readChargeReadiness(organisationId: string) {
+  const organisation = await prisma.organisation.findUnique({
+    where: { id: organisationId },
+    select: { stripeAccountId: true, stripeChargesEnabled: true },
+  });
+  return !!organisation && isOrganisationStripeReady(organisation);
 }

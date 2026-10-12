@@ -23,20 +23,20 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
       setPassword(""); router.push("/dashboard"); router.refresh();
     } catch (failure) { setPassword(""); setError(getClientErrorMessage(failure, "Could not hand over ownership.")); setBusy(false); }
   }
-  return <form onSubmit={submit} className="grid gap-4 rounded-xl border border-amber-300 bg-white p-6 shadow-sm">
+  return <form onSubmit={submit} className="grid gap-4 rounded-card border border-warning bg-surface p-6">
     <h3 className="text-lg font-semibold">Committee handover</h3>
     <p>Give ownership of {orgName} to another active staff member with a verified email. Under enforced MFA, both owners need an enrolled authenticator.</p>
     <p>Organisation records, event history and Stripe connection stay with {orgName}. Credentials and authenticators stay with each person. The legacy shared-login ownership link will be retired.</p>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
     <label className="grid gap-1">Incoming owner
-      <select aria-label="Incoming owner" className="rounded border border-neutral-300 p-2" value={incomingStaffId} onChange={event => setIncoming(event.target.value)} required disabled={busy}>
+      <select aria-label="Incoming owner" className="rounded border border-line-strong p-2" value={incomingStaffId} onChange={event => setIncoming(event.target.value)} required disabled={busy}>
         <option value="">Choose staff member</option>
         {targets.map(item => <option key={item.id} value={item.id}>{item.email}</option>)}
       </select>
     </label>
     {!targets.length && <p>Invite and verify another staff member first. They must meet the current MFA requirements.</p>}
     <label className="grid gap-1">Your access after handover
-      <select aria-label="Your access after handover" className="rounded border border-neutral-300 p-2" value={outgoingAccess} onChange={event => setOutgoing(event.target.value)} disabled={busy}>
+      <select aria-label="Your access after handover" className="rounded border border-line-strong p-2" value={outgoingAccess} onChange={event => setOutgoing(event.target.value)} disabled={busy}>
         <option value="admin">Keep admin access</option><option value="revoked">Revoke my staff access</option>
       </select>
     </label>

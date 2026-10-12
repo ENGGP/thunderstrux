@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-12]]"]
@@ -26,6 +26,8 @@ Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CL
 **Local development is activated with all 34 migrations (2026-10-12); hosted activation remains unverified.** The pre-activation archive tmp/dev-before-package3-20261012.dump (SHA-256 7977c8df5b377e4a9e03ad41fefda02d5045a1aed0b21bf21d9f6a765e192f10) and the earlier tmp/dev-before-context-refresh-20261009.dump are retained. The notification key lives in ignored .env with a separate Windows-user-only backup. [[Troubleshooting]] and [[Production Operations]] own backup and rollback procedure.
 
 ## Active Contracts
+
+Tunnel origin configured and checked on 2026-10-13: APP_PORT=3080 maps loopback host port 3080 to unchanged container port 3000. Ignored .env uses https://thunderstrux.mistayu.com for auth/public/trusted origins and cf-connecting-ip for Cloudflare client addresses. Local readiness/login/societies return 200; callbacks use the public origin, trusted anonymous mutations reach 401 and foreign origins return 403. The live public hostname also returns 200 for readiness/login/societies and correct public provider callbacks (tmp/tunnel-live-public-smoke.log). Template Compose mapping and docs/diff checks pass; database, Redis, object and dependency volumes are preserved. Cloudflare service target is http://127.0.0.1:3080. No schema or business/auth code changes; public preview reachability does not resolve the wider production release gates.
 
 - Canonical tenant authority is Event.organisationId for event-owned records. Live OrganisationStaff authority grants management access; OrganisationMember is join state only. Stripe remains payment truth and production fulfilment is webhook-driven.
 - Verification, reset and email-change links use purpose-bound digests, explicit POST redemption and private encrypted notifications. Signup and recovery responses conceal account existence; old sessions cannot upgrade their authVersion through cookie refresh. [[Authentication and Dashboard Access]] and [[API Reference]] own the contracts.

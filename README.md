@@ -44,8 +44,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 Open:
 
 ```text
-http://localhost:3000
+http://localhost:3080
 ```
+
+Cloudflare Tunnel service URL: `http://127.0.0.1:3080`. For `https://thunderstrux.mistayu.com`, set AUTH_URL, NEXTAUTH_URL, NEXT_PUBLIC_APP_URL and TRUSTED_APP_ORIGINS to that public origin in ignored .env, then recreate the app. The container still listens on port 3000; APP_PORT only controls the host port.
 
 Database from host:
 

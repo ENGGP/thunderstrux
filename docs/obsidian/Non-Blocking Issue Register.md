@@ -31,6 +31,8 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 
 ## External Production Gates
 
+Cloudflare preview verification (2026-10-13) passes local loopback port 3080, public callbacks/origin checks and live HTTPS readiness/login/societies for thunderstrux.mistayu.com. This does not resolve OPS-004 or production/provider gates: public preview reachability is not a full hosted deployment qualification. [[Project Handover]] records evidence.
+
 | ID | Severity | Area | Status | Last verified | Required outcome | Owner/next action |
 | --- | --- | --- | --- | --- | --- | --- |
 | OPS-001 | Critical | Workers | external-gate | 2026-10-04 | Schedule compensation, email-outbox, general-notification and stale-cleanup workers and monitor backlog/failures. T02 notification delivery is locally/CI qualified in PR #31; hosted scheduling and provider/inbox evidence remain unverified. | Hosting owner configures one-minute schedules, the notification key/sender/provider and alert thresholds. |

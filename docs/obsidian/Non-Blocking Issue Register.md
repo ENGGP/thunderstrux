@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 owner: engineering
 related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]"]
 ---
@@ -48,6 +48,7 @@ Cloudflare preview verification (2026-10-13) passes local loopback port 3080, pu
 
 | ID | Resolved | Defect and root cause | Fix and evidence |
 | --- | --- | --- | --- |
+| TUNNEL-002 | 2026-10-13 | Signed-in HTTPS dashboard, account and event pages looped to login because the proxy read only the non-secure cookie while Auth.js issued a secure cookie. | `proxy.ts` selects the cookie using the Auth.js public URL, retaining live identity/version checks. Actual credential login reproduced all three loops before the fix; after app restart, 48 member/organisation route checks settle without loops and anonymous routes reach login. Executable `2863542` passes 379 integration tests (including six cookie regressions), build/typecheck/audit and 30 browser/MFA/webhook checks; both disposable campaigns are cleaned up. Evidence: `tmp/tunnel-auth-live.log`, `tmp/tunnel-auth-anonymous.log` and the run IDs in [[Project Handover]]; follow-up to merged [PR #59](https://github.com/ENGGP/thunderstrux/pull/59). |
 | TUNNEL-001 | 2026-10-13 | Next dev rejected tunnel-origin JavaScript/CSS with 403 even though public HTML returned 200. | next.config.ts allows only thunderstrux.mistayu.com as a development origin. Reproducer changed from 403 to 200 for public JS/CSS; foreign API origin remains 403. Isolated Docker typecheck and live readiness/login/societies/callback checks pass. Evidence: tmp/tunnel-public-assets-smoke.log and tmp/tunnel-typecheck.log. |
 | UI-002 | 2026-10-12 | Public event detail fetched the app's own API route over HTTP. | The page calls `getPublishedEventDetail` directly. `server-read-services.test.ts` renders the page with network calls blocked. [PR #55](https://github.com/ENGGP/thunderstrux/pull/55). |
 | DEF-023 | 2026-10-12 | `proxy.ts` and `auth.ts` resolved `AUTH_SECRET` separately with different development fallbacks, so with an empty or placeholder secret the proxy could not read sessions that `auth.ts` had signed and every protected page redirected to login. Legacy `/dashboard/[orgSlug]/events/new` and `/edit` links still required the bootstrap `accountUserId`, which owner handover retires, so they returned 404 for live staff. | One resolver in `lib/auth/secret.ts`; the six legacy pages share `redirectLegacyOrganisationPage` and check live permissions. Regressions in `server-read-services.test.ts`. Production behaviour with a real secret is unchanged. [PR #55](https://github.com/ENGGP/thunderstrux/pull/55); baseline `p216-29daafbc7a5f149f4053b52a` and browser campaign `p216-98b497b67f0ea0156e4da45a` pass. |

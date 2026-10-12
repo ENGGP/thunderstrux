@@ -20,4 +20,4 @@ This repository is a Docker-first Next.js application handling tenant data, tick
 - Update living documentation, the issue register, and `Project Handover` when behavior, operations, risks, or evidence changes.
 - Deliver changes through a PR to protected `main` with recorded risk-appropriate local validation. GitHub test checks are not required. Documentation-only changes use docs/diff checks and claim review; do not run functionality tests. Repeat tests only when changed inputs, failures, or identified risks justify it.
 
-`Project Handover` is the only handover document. Preserve dated implementation and release evidence in the relevant living reference, evidence ledger, PR, and Git history.
+`Project Handover` is the only current handover document; a superseded handover is kept as a dated historical note. Preserve dated implementation and release evidence in the relevant living reference, evidence ledger, PR, and Git history.

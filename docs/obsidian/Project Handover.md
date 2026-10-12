@@ -67,13 +67,13 @@ Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CL
 
 | PR | Branch | Scope | Status |
 | --- | --- | --- | --- |
-| 1 | codex/session-handover | This handover; previous handover archived | Open |
-| 2 | codex/server-read-services | Server pages and T01–T09 route adapters call lib services; shared formatters; narrowed API-001 sweep; one auth-secret resolver; dead code removal | Planned |
+| 1 | codex/session-handover | This handover; previous handover archived | Open: [PR #54](https://github.com/ENGGP/thunderstrux/pull/54). Docs and diff checks pass |
+| 2 | codex/server-read-services | Server pages and T01–T09 route adapters call lib services; shared formatters; narrowed API-001 sweep; one auth-secret resolver; dead code removal | Open: [PR #55](https://github.com/ENGGP/thunderstrux/pull/55), executable `c00f66e`. Baseline `p216-29daafbc7a5f149f4053b52a` passes build/typecheck, 370 integration tests and clean audit; browser campaign `p216-98b497b67f0ea0156e4da45a` passes 30 MFA/browser/webhook checks. Cleanup complete for both |
 | 3 | codex/design-system-shells | Tokens, fonts, UI primitives, header/footer and shells, `/societies` routes with redirects | Planned |
 | 4 | codex/public-personal-screens | Home, society directory and profile, auth, account settings, personal dashboard; presentation for event detail, wallet and payment return | Planned |
 | 5 | codex/organisation-screens | Organisation overview, onboarding, society settings, staff; presentation for events, orders, check-in, Stripe settings; final documentation pass | Planned |
 
-**Findings registered rather than changed.** The six copies of the active-staff-or-legacy-owner predicate, slug and asset lookups that run before authentication, and error mapping in event, order, ticket, Connect and payment routes are recorded in [[Non-Blocking Issue Register]] when PR 2 lands. They are security- or payment-sensitive and belong to focused changes.
+**Findings registered rather than changed.** PR 2 records the six copies of the active-staff-or-legacy-owner predicate (AUTHZ-001), four cursor implementations (PAG-001) and the remaining manual error mapping in event, order, ticket, Connect and payment routes (API-001) in [[Non-Blocking Issue Register]]. They are security- or payment-sensitive and belong to focused changes. PR 2 also fixes DEF-023: one `AUTH_SECRET` resolver for auth.ts and proxy.ts, and legacy `/dashboard/[orgSlug]` links that check live permissions.
 
 ## Next Safe Actions
 

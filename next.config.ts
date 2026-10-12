@@ -5,6 +5,7 @@ import type { NextConfig } from "next";
 const root = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["thunderstrux.mistayu.com"],
   distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next",
   turbopack: {
     root

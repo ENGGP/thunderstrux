@@ -293,9 +293,9 @@ docker compose up -d --force-recreate app
 Verification:
 
 ```powershell
-$html = (Invoke-WebRequest -Uri http://localhost:3000/ -UseBasicParsing).Content
+$html = (Invoke-WebRequest -Uri http://localhost:3080/ -UseBasicParsing).Content
 $href = ([regex]::Matches($html, 'href="([^"]+\.css[^"]*)"') | Select-Object -First 1).Groups[1].Value
-Invoke-WebRequest -Uri "http://localhost:3000$href" -UseBasicParsing
+Invoke-WebRequest -Uri "http://localhost:3080$href" -UseBasicParsing
 ```
 
 Expected result:
@@ -465,8 +465,8 @@ pnpm docker:restart
 Confirm readiness and the unauthenticated MFA redirect:
 
 ```bash
-curl --fail http://localhost:3000/api/health/ready
-curl --head http://localhost:3000/mfa
+curl --fail http://localhost:3080/api/health/ready
+curl --head http://localhost:3080/mfa
 ```
 
 Do not create the table manually or mark the migration applied without reviewing the database. See `DEF-001` in [[Non-Blocking Issue Register]].
@@ -519,7 +519,7 @@ docker compose build app
 The homepage should return `200 OK` at:
 
 ```text
-http://localhost:3000/
+http://localhost:3080/
 ```
 
 ## Docker Compose Fails Before Starting App
@@ -715,7 +715,7 @@ Fix:
 1. Start the Checkout webhook listener:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/payments/webhook
+stripe listen --forward-to localhost:3080/api/payments/webhook
 ```
 
 2. Copy the printed `whsec_...` value into `.env` as `STRIPE_WEBHOOK_SECRET`.

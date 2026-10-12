@@ -57,7 +57,7 @@ pnpm docker:dev
 App:
 
 ```text
-http://localhost:3000
+http://localhost:3080
 ```
 
 PostgreSQL host port:
@@ -319,7 +319,7 @@ Current test database behavior:
 Operational healthcheck:
 
 ```bash
-curl -fsS http://localhost:3000/api/health
+curl -fsS http://localhost:3080/api/health
 ```
 
 Expected response:
@@ -579,9 +579,11 @@ Application `.env` values:
 ```text
 DATABASE_URL=
 AUTH_SECRET=
-AUTH_URL=http://localhost:3000
-NEXTAUTH_URL=http://localhost:3000
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+APP_PORT=3080
+PORT=3000
+AUTH_URL=http://localhost:3080
+NEXTAUTH_URL=http://localhost:3080
+NEXT_PUBLIC_APP_URL=http://localhost:3080
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_CONNECT_WEBHOOK_SECRET=

@@ -69,7 +69,7 @@ Prior local refresh (2026-10-10) resolved a stale Turbopack module error, instal
 
 ## Next Safe Actions
 
-Documentation alignment on 2026-10-12 (DEF-022) reviews current code at main `4a8024b`, corrects affected living references and distinguishes target specifications from delivered Packages 1–3. Historical evidence is retained; docs/link/diff and claim review add no new functionality, provider or hosted qualification. The implementation and next task below are unchanged.
+Documentation alignment on 2026-10-12 (DEF-022, [PR #53](https://github.com/ENGGP/thunderstrux/pull/53)) reviews current code at main `4a8024b`, corrects affected living references and distinguishes target specifications from delivered Packages 1–3. Historical evidence is retained; docs/link/diff and claim review add no new functionality, provider or hosted qualification. The implementation and next task below are unchanged.
 
 The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. Free/paid membership entitlement parity, free-purchase cancellation and mixed-event publication remain later implementation targets. T08 introduces the scoped visual token source and resolves the BOOT-001 guard discovered during reconciliation, restoring single-primary traceability. Earlier delivery evidence and hosted gates remain dated; documentation reconciliation itself did not establish functionality/deployment evidence.
 

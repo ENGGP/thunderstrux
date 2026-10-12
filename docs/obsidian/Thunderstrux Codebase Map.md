@@ -79,13 +79,12 @@ app/
   api/                               Route handlers
 
 components/
+  account/                           Member profile, password, email-change and closure forms
   auth/                              Login/signup and verification/recovery/email-link forms
   events/                            Event list, event form, public checkout UI
   layout/                            Navbar, session provider, DashboardShell
-  members/                           Member profile and organisation search UI
-  orgs/                              Organisation creation form
-  organisations/                     Personalized public profile Join control
-  settings/                          Stripe Connect and private account/security settings UI
+  organisations/                     Society creation, search, joined list and public profile Join control
+  settings/                          Society profile, staff, Stripe Connect and notification recovery UI
   tickets/                           Ticket check-in/check-out controls
   ui/                                Small reusable primitives
 

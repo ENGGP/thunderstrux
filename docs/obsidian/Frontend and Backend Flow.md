@@ -155,7 +155,7 @@ Current UI:
 Files:
 
 - `app/(dashboard)/dashboard/organisations/page.tsx`
-- `components/members/organisation-search.tsx`
+- `components/organisations/organisation-search.tsx`
 - `app/api/orgs/search/route.ts`
 - `app/api/orgs/[orgSlug]/join/route.ts`
 
@@ -183,7 +183,7 @@ Important rule:
 
 Files:
 
-- `components/members/member-organisations-list.tsx`
+- `components/organisations/member-organisations-list.tsx`
 - `app/(public)/organisations/[orgSlug]/page.tsx`
 - `app/api/orgs/[orgSlug]/leave/route.ts`
 
@@ -213,7 +213,7 @@ Important rules:
 Files:
 
 - `app/(dashboard)/dashboard/create/page.tsx`
-- `components/orgs/create-organisation-form.tsx`
+- `components/organisations/create-organisation-form.tsx`
 - `app/api/orgs/route.ts`
 
 Flow:

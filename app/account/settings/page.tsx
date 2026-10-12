@@ -3,11 +3,11 @@ import Link from "next/link";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
 import { AccountSecurityError } from "@/lib/auth/account-lifecycle";
 import { readAccountSettings } from "@/lib/auth/account-settings";
-import { MemberProfileForm } from "@/components/members/member-profile-form";
-import { ChangePasswordForm } from "@/components/settings/change-password-form";
-import { CloseAccountForm } from "@/components/settings/close-account-form";
+import { MemberProfileForm } from "@/components/account/member-profile-form";
+import { ChangePasswordForm } from "@/components/account/change-password-form";
+import { CloseAccountForm } from "@/components/account/close-account-form";
 import { readAccountClosureEligibility } from "@/lib/auth/account-closure";
-import { ChangeEmailForm } from "@/components/settings/change-email-form";
+import { ChangeEmailForm } from "@/components/account/change-email-form";
 import { Card } from "@/components/ui/card";
 export default async function AccountSettingsPage() {
   let account;

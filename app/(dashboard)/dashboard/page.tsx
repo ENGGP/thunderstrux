@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { MemberProfileForm } from "@/components/members/member-profile-form";
-import { MemberOrganisationsList } from "@/components/members/member-organisations-list";
+import { MemberProfileForm } from "@/components/account/member-profile-form";
+import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
 import {
   OrganisationAccessError,
   StaffMfaRequiredError,

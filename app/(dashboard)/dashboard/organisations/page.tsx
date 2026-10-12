@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { OrganisationSearch } from "@/components/members/organisation-search";
-import { MemberOrganisationsList } from "@/components/members/member-organisations-list";
+import { OrganisationSearch } from "@/components/organisations/organisation-search";
+import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
 import {
   OrganisationAccessError,
   requireAccountRole,

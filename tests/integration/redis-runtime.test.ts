@@ -13,13 +13,15 @@ import {
 
 test("real Redis atomically throttles requests, fails closed during an outage and recovers", async () => {
   // The Docker test project owns this Redis; never flush shared Redis data.
-  const redisUrl = "redis://redis:6379";
+  const redisUrl = process.env.INTEGRATION_REDIS_URL;
+  if (!redisUrl) throw new Error("INTEGRATION_REDIS_URL must identify the run-owned test Redis");
+  const target = new URL(redisUrl);
   const prefix = `redis-runtime-${randomUUID()}`;
   const sockets = new Set<Socket>();
   let available = true;
   const proxy = createServer((socket) => {
     if (!available) { socket.destroy(); return; }
-    const upstream = createConnection({ host: "redis", port: 6379 });
+    const upstream = createConnection({ host: target.hostname, port: Number(target.port || 6379) });
     sockets.add(socket);
     socket.on("error", () => upstream.destroy());
     upstream.on("error", () => socket.destroy());
@@ -29,7 +31,7 @@ test("real Redis atomically throttles requests, fails closed during an outage an
   });
   const inspector = createClient({ url: redisUrl });
   inspector.on("error", () => {});
-  const clients: ReturnType<typeof createClient>[] = [];
+  const clients: Array<{ isOpen: boolean }> = [];
   try {
     await new Promise<void>((resolve, reject) => {
       proxy.once("error", reject);

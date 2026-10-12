@@ -89,6 +89,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
+      redis:
+        image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
       postgres:
         image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
         env:
@@ -104,6 +113,7 @@ jobs:
           --health-retries 10
     env:
       INTEGRATION_DATABASE_URL: postgresql://thunderstrux:ci-test-only@localhost:5432/thunderstrux_test?schema=public
+      INTEGRATION_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:

@@ -85,6 +85,8 @@ Redis client qualification (2026-10-13): [PR #52](https://github.com/ENGGP/thund
 
 **Findings registered rather than changed.** PR 2 records the six copies of the active-staff-or-legacy-owner predicate (AUTHZ-001), four cursor implementations (PAG-001) and the remaining manual error mapping in event, order, ticket, Connect and payment routes (API-001) in [[Non-Blocking Issue Register]]. They are security- or payment-sensitive and belong to focused changes. PR 2 also fixes DEF-023: one `AUTH_SECRET` resolver for auth.ts and proxy.ts, and legacy `/dashboard/[orgSlug]` links that check live permissions.
 
+**Claude Design sync (2026-10-13).** The eight `components/ui/` primitives are published to the claude.ai/design project "Thunderstrux UI" (project ID 6075c42a-6f43-4f56-8d3c-6554004a550a). Sync inputs live in `.design-sync/` (config, previews, conventions, `build-css.mjs`); `.design-sync/NOTES.md` holds the repo quirks and re-sync risks. It does not touch application code, and only the visual design spec from `docs/` is uploaded. Re-sync after changing `components/ui/*` or the `--ts-*` tokens in `app/globals.css`, and re-check `.design-sync/conventions.md` names.
+
 ## Next Safe Actions
 
 1. Merge the remaining refactor PRs in order: #55, #56, #57, #58. They are stacked, so each PR's diff shrinks to its own commits once the one before it merges. Each carries one isolated baseline and one browser campaign on its final head with run-owned cleanup. If a PR is squash-merged, rebase the next branch onto main before merging it.

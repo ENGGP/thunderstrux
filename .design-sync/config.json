@@ -1,0 +1,29 @@
+{
+  "projectId": "6075c42a-6f43-4f56-8d3c-6554004a550a",
+  "shape": "package",
+  "pkg": "thunderstrux",
+  "globalName": "Thunderstrux",
+  "buildCmd": "node .design-sync/build-css.mjs",
+  "srcDir": "components/ui",
+  "cssEntry": ".design-sync/.cache/thunderstrux.css",
+  "guidelinesGlob": [
+    "docs/THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md"
+  ],
+  "docsMap": {
+    "Button": ".design-sync/docs/Actions.md",
+    "ConfirmDialog": ".design-sync/docs/Feedback.md",
+    "Notice": ".design-sync/docs/Feedback.md",
+    "StatusBadge": ".design-sync/docs/Feedback.md",
+    "TextInput": ".design-sync/docs/Forms.md",
+    "TextArea": ".design-sync/docs/Forms.md",
+    "Select": ".design-sync/docs/Forms.md",
+    "Card": ".design-sync/docs/Layout.md"
+  },
+  "overrides": {
+    "ConfirmDialog": {
+      "cardMode": "single",
+      "viewport": "640x420"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Troubleshooting]]"]
 sources: [package.json, pnpm-lock.yaml, .github/workflows/security-audit.yml]
@@ -14,7 +14,17 @@ T07 adds explicit Sharp 0.35.5 and AWS S3 SDK 3.1149.0 pins. The checksum-pinned
 
 ## Current dependency remediation
 
-Package 3 adds the asset dependency/image boundary above. The latest full baseline is `15a1e4b` / `p216-e62123415fe7e1788a49219e` (354 tests/42 files, build/typecheck and clean audit). Final UI `5931086` also passes its production browser build and 30 checks. Local app dependencies and persistent image storage were activated on 2026-10-12 after backup; hosted activation remains unverified. [[Project Handover]] and the readiness ledger own exact rollout and qualification evidence. The 2026-10-09 dependency-only baseline below is historical, not the latest overall campaign.
+Package 3 adds the asset dependency/image boundary above. Its dated baseline is `15a1e4b` / `p216-e62123415fe7e1788a49219e` (354 tests/42 files, build/typecheck and clean audit); final UI `5931086` also passes its production browser build and 30 checks. Local app dependencies and persistent image storage were activated on 2026-10-12 after backup; hosted activation remains unverified. [[Project Handover]] owns the latest overall validation and rollout state. The dependency campaigns below are dated evidence, not the latest overall campaign.
+
+### Redis client update qualification
+
+[PR #52](https://github.com/ENGGP/thunderstrux/pull/52) merged `@redis/client` 6.2.1 to 6.3.0 on 2026-10-13 as `eff2184`, while follow-up qualification was in progress. The update retains the Node >=20 requirement (the app uses Node 22.23.3) and removes `cluster-key-slot` because upstream vendors that implementation. Thunderstrux uses a standalone client for readiness `PING` and the atomic rate-limit Lua `EVAL`; upstream connection/reconnection changes make outage/recovery evidence part of this update's acceptance. Added regression/fixture coverage is delivered separately from the already-merged pin update.
+
+`tests/integration/redis-runtime.test.ts` uses the installed client and a run-owned Redis, with an isolated TCP path for connection interruption. It checks shared cold-start connection, concurrent counters, 429/Retry-After/TTL, bounded failure, sensitive-policy 503, existing optional-policy behavior and recovery retaining the counter. It deletes only its own random-prefix keys. `INTEGRATION_REDIS_URL` identifies the disposable service: Docker E2E Compose uses `redis://redis:6379`; the manual Dependency Validation integration job supplies its own Redis at `redis://localhost:6379`. Other integration entrypoints must provision an isolated Redis and set that variable; do not point tests at development or production Redis.
+
+Merging package/lockfile pins does not activate the installed development dependency cache. After maintainer merge, use the existing dependency refresh procedure in [[Troubleshooting]]; preserve PostgreSQL, Redis and asset volumes. Hosted release images must be rebuilt and reviewed separately. Rollback restores the 6.2.1 manifest/lockfile and rebuilds/refreshes dependencies; this update needs no data migration or database rollback. The live tunnel is not refreshed as part of PR qualification.
+
+Local Redis 6.3.0 qualification on 2026-10-13: source/test/fixture inputs `8231530` pass frozen Docker installation, production build/typecheck, all 380 integration tests in baseline `p216-a888af193938da9ec374a603`, and dependency audit with no known vulnerabilities. The real Redis regression passes; both test images report installed client 6.3.0. Thirty runner safety checks also pass. The earlier test typing failure was corrected; an interrupted run was cleaned up and is not qualification evidence. [[Project Handover]] records completed browser and resource-cleanup evidence for the separate coverage follow-up.
 
 The D1-D5 dependency fixes were published through [PR #3](https://github.com/ENGGP/thunderstrux/pull/3), merge `b81c631`. The [post-remediation Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35290377481) passed. GitHub reported zero open dependency alerts on 2026-09-18. The failed runs and counts below are historical evidence.
 

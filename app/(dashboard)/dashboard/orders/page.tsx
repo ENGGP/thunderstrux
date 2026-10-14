@@ -173,7 +173,7 @@ export default async function OrganisationOrdersPage({
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <header className="space-y-2">
-          <h2 className="text-3xl font-semibold text-ink">Orders</h2>
+          <h1 className="text-3xl font-semibold text-ink">Orders</h1>
           <p className="text-sm text-ink-muted">
             Review ticket purchases and payment reconciliation for {organisation.name}.
           </p>
@@ -183,9 +183,9 @@ export default async function OrganisationOrdersPage({
           <section className="rounded-card border border-line bg-surface p-5">
             <p className="text-sm text-ink-muted">Filtered by event</p>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-xl font-semibold text-ink">
+              <h2 className="text-xl font-semibold text-ink">
                 {eventFilter.title}
-              </h3>
+              </h2>
               <Link
                 className="text-sm font-medium text-ink-soft hover:text-brand"
                 href="/dashboard/orders"
@@ -376,9 +376,9 @@ export default async function OrganisationOrdersPage({
                 key={group.eventId}
               >
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-lg font-semibold text-ink">
+                  <h2 className="text-lg font-semibold text-ink">
                     {group.eventTitle}
-                  </h3>
+                  </h2>
                   <p className="text-sm text-ink-muted">
                     {group.orders.length} order
                     {group.orders.length === 1 ? "" : "s"}

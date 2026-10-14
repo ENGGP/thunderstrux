@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import { MemberProfileForm } from "@/components/account/member-profile-form";
 import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
 import {
@@ -71,21 +72,20 @@ async function OrganisationDashboard(contexts: ContextChoices) {
   return (
     <DashboardShell contexts={contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto grid max-w-admin gap-6 px-4 py-8 sm:px-8">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm text-ink-muted">Organisation dashboard</p>
-            <h2 className="mt-1 text-2xl font-semibold text-ink">Overview</h2>
-          </div>
-          {canManageEvents ? (
-            <Link className={buttonClasses()} href="/dashboard/events/new">
-              New event
-            </Link>
-          ) : null}
-        </div>
+        <PageHeader
+          actions={
+            canManageEvents ? (
+              <Link className={buttonClasses()} href="/dashboard/events/new">
+                New event
+              </Link>
+            ) : null
+          }
+          title="Overview"
+        />
 
         {tasks.length > 0 ? (
           <Card>
-            <h3 className="text-lg font-semibold text-ink">Needs attention</h3>
+            <h2 className="text-lg font-semibold text-ink">Needs attention</h2>
             <ul className="mt-3 grid gap-2">
               {tasks.map((task) => (
                 <li
@@ -127,7 +127,7 @@ async function OrganisationDashboard(contexts: ContextChoices) {
         <section className="grid gap-6 lg:grid-cols-2">
           <Card>
             <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-lg font-semibold text-ink">Upcoming events</h3>
+              <h2 className="text-lg font-semibold text-ink">Upcoming events</h2>
               <Link className="text-sm font-semibold text-brand underline" href="/dashboard/events">
                 View all
               </Link>
@@ -155,7 +155,7 @@ async function OrganisationDashboard(contexts: ContextChoices) {
           {canViewOrders ? (
             <Card>
               <div className="mb-4 flex items-center justify-between gap-4">
-                <h3 className="text-lg font-semibold text-ink">Recent orders</h3>
+                <h2 className="text-lg font-semibold text-ink">Recent orders</h2>
                 <Link className="text-sm font-semibold text-brand underline" href="/dashboard/orders">
                   View all
                 </Link>

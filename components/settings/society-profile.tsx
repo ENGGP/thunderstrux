@@ -205,7 +205,7 @@ export function SocietyProfile({
   return (
     <section className="grid gap-6 rounded-card border border-line bg-surface p-5 sm:p-6">
       <div>
-        <h2 className="text-2xl font-semibold text-ink">Society profile</h2>
+        <h1 className="text-2xl font-semibold text-ink">Society profile</h1>
         <p className="mt-2 text-sm text-ink-soft">
           Save each step and return whenever you need. Your public URL stays
           /societies/{profile.slug}.

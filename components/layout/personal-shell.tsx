@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import type { ContextChoices } from "@/lib/auth/context";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { ContextSelector } from "./context-selector";
 
 // The signed-in person's own area. It never shows society management tools;
@@ -18,15 +19,15 @@ export function PersonalShell({
   children: ReactNode;
 }) {
   const pathname = usePathname() ?? "";
-  const items = [
-    { label: "Overview", href: "/dashboard" },
+  const items: Array<{ label: string; href: string; icon: IconName }> = [
+    { label: "Overview", href: "/dashboard", icon: "home" },
     ...(accountRole === "member"
       ? [
-          { label: "My tickets", href: "/tickets" },
-          { label: "Societies", href: "/dashboard/organisations" }
+          { label: "My tickets", href: "/tickets", icon: "ticket" as const },
+          { label: "Societies", href: "/dashboard/organisations", icon: "users" as const }
         ]
       : []),
-    { label: "Account", href: "/account/settings" }
+    { label: "Account", href: "/account/settings", icon: "user" }
   ];
 
   return (
@@ -43,7 +44,7 @@ export function PersonalShell({
             {items.map((item) => (
               <Link
                 aria-current={pathname === item.href ? "page" : undefined}
-                className={`flex min-h-10 shrink-0 items-center rounded-control px-3 text-sm font-medium ${
+                className={`flex min-h-11 shrink-0 items-center gap-2.5 rounded-control px-3 text-sm font-medium ${
                   pathname === item.href
                     ? "bg-brand-tint text-brand-ink"
                     : "text-ink-soft hover:bg-surface-subtle hover:text-ink"
@@ -51,6 +52,7 @@ export function PersonalShell({
                 href={item.href}
                 key={item.href}
               >
+                <Icon name={item.icon} />
                 {item.label}
               </Link>
             ))}

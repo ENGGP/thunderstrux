@@ -171,7 +171,7 @@ export function StaffManagement({
         className="grid gap-4 rounded-card border border-line bg-surface p-6"
         onSubmit={inviteStaff}
       >
-        <h3 className="text-lg font-semibold text-ink">Invite staff</h3>
+        <h2 className="text-lg font-semibold text-ink">Invite staff</h2>
         <p className="text-sm text-ink-soft">
           The invitation is emailed privately. The recipient signs in with a
           verified account using this address and accepts it themselves.
@@ -208,7 +208,7 @@ export function StaffManagement({
       </form>
 
       <section className="rounded-card border border-line bg-surface p-6">
-        <h3 className="text-lg font-semibold text-ink">Staff access (up to 100)</h3>
+        <h2 className="text-lg font-semibold text-ink">Staff access (up to 100)</h2>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full border-collapse text-left text-sm">
             <thead>
@@ -268,7 +268,7 @@ export function StaffManagement({
 
       {invites.length > 0 ? (
         <section className="rounded-card border border-line bg-surface p-6">
-          <h3 className="text-lg font-semibold text-ink">Pending invites (latest 100)</h3>
+          <h2 className="text-lg font-semibold text-ink">Pending invites (latest 100)</h2>
           <ul className="mt-4 grid gap-3">
             {invites.map((invite) => (
               <li
@@ -292,7 +292,7 @@ export function StaffManagement({
 
       {pastInvites.length > 0 ? (
         <section className="rounded-card border border-line bg-surface p-6">
-          <h3 className="text-lg font-semibold text-ink">Past invitations (latest 25)</h3>
+          <h2 className="text-lg font-semibold text-ink">Past invitations (latest 25)</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>

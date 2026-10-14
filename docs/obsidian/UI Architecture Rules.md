@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-14
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -14,13 +14,13 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 
 `app/globals.css` is the only token source.
 
-- `:root` defines the `--ts-*` custom properties: ink, brand, paper and surface colours, borders, focus, and the success/warning/danger/info colours with their washes.
+- `:root` defines the `--ts-*` custom properties: ink, brand, paper and surface colours, borders, focus, and five status roles. Success (jade), warning (ochre), danger (crimson), info (brand lilac) and neutral each have a text colour, a `-bg` wash, a `-border` hairline and an `-icon` mark; every text colour is at least 6:1 and every icon colour at least 3:1 on its own wash.
 - `@theme inline` exposes them as semantic Tailwind utilities: `bg-paper`, `bg-surface`, `text-ink`, `text-ink-soft`, `bg-brand`, `border-line`, `border-line-strong`, `text-danger`, `bg-warning-bg`, `rounded-control` (9px), `rounded-card` (14px), `shadow-float`, and the widths `max-w-auth`, `max-w-read`, `max-w-checkout`, `max-w-personal`, `max-w-page`, `max-w-admin`.
 - New UI uses these names. Do not add raw palette classes such as `bg-neutral-900` or `text-purple-600`, and do not add hex colours in components.
 - Bare `border` utilities draw the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
 - The keyboard focus ring is a 2px `--ts-focus` outline defined outside any layer, so `outline-none` cannot remove it.
 - `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through next/font. They are downloaded at build time and served by the app.
-- There is no dark mode and no icon library. `prefers-reduced-motion` shortens every transition.
+- There is no dark mode and no icon library: `components/ui/icon.tsx` holds the few outline icons the UI uses, always decorative beside text. `prefers-reduced-motion` shortens every transition.
 
 ## Primitives
 
@@ -29,8 +29,8 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - `button.tsx`: `Button` and `buttonClasses()` for links that look like buttons. Variants `primary`, `secondary`, `tertiary`, `danger`; sizes `sm` (36px), `md` (44px), `lg` (48px).
 - `input.tsx`: `TextInput`, `TextArea`, `Select`. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
 - `card.tsx`: bordered surface with an optional `className`.
-- `notice.tsx`: inline message with a 3px semantic left border in `info`, `success`, `warning` or `danger`. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
-- `status-badge.tsx`: the one mapping from a server status to its words and colour. Add a status there, not in a page.
+- `notice.tsx`: inline message in `info`, `success`, `warning` or `danger`: a soft wash, a hairline border, an icon and a toned title, with body text in ink. `onDismiss` (client callers only) adds a close button. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
+- `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked and unused are neutral; joined uses the brand accent. Add a status there, not in a page.
 - `confirm-dialog.tsx`: native `<dialog>` confirmation that names the action and its consequences. Its body is mounted only while open, and Escape cancels. Use it instead of `window.confirm`.
 
 Shared content components: `components/events/event-card.tsx` (date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows an image, price or count that the data model does not hold.
@@ -46,6 +46,10 @@ Shared content components: `components/events/event-card.tsx` (date rail, host l
 - The header owns the link names `Explore events` and `Explore societies`. Other links to the same places use different words (`Events`, `Find a society`, `Browse societies`) so every link name is unique on a page.
 
 `components/layout/site-footer.tsx` is rendered by `app/(public)/layout.tsx` for the society and event pages, and by the home page itself. It lists only destinations that exist; support, terms and privacy links wait for real pages. The public layout does nothing else: no authentication, context or data loading.
+
+### Email verification reminder
+
+`app/layout.tsx` renders `components/layout/verify-email-banner.tsx` under the header for a signed-in user whose email is not verified. Its close button sets the `thunderstrux-verify-dismissed` cookie to the user id for seven days, and the layout skips the banner while that cookie matches. Dismissing never changes verification: `requireVerifiedUser` and `lockVerifiedAccount` still refuse purchases, joins, society creation and invitation acceptance, and those screens prompt where the action happens. The banner is a labelled region, not a live region, and links to `/verify-email`.
 
 ## Shells Are Composed By Pages
 
@@ -69,19 +73,21 @@ Each page renders its own shell after its guards have passed. Shells are not pla
 
 | Group | Item | Route | Capability |
 | --- | --- | --- | --- |
-| Run | Overview | `/dashboard` | none |
-| Run | Events | `/dashboard/events` | `events:read` |
-| Run | Orders | `/dashboard/orders` | `orders:read` |
-| Understand | Payments | `/dashboard/settings` | `stripe:manage` |
-| Settings & tools | Staff | `/dashboard/settings/staff` | `staff:manage` |
-| Settings & tools | Settings | `/dashboard/settings/profile` | `organisation:settings` |
-| Settings & tools | Notifications | `/dashboard/notifications` | `orders:email_resend` |
-| Settings & tools | Staff MFA | `/mfa?callbackUrl=/dashboard` | none |
+| (none) | Overview | `/dashboard` | none |
+| (none) | Events | `/dashboard/events` | `events:read` |
+| (none) | Orders | `/dashboard/orders` | `orders:read` |
+| Settings | Society profile | `/dashboard/settings/profile` | `organisation:settings` |
+| Settings | Staff | `/dashboard/settings/staff` | `staff:manage` |
+| Settings | Payments | `/dashboard/settings` | `stripe:manage` |
+| Settings | Email delivery | `/dashboard/notifications` | `orders:email_resend` |
+
+The staff authenticator (`/mfa`) is not organisation navigation: it is reached from Account settings, Password and security, and automatically when a page requires verification.
 
 - Filtering is presentation. Every page and API independently enforces the same capability.
 - The longest matching route sets `aria-current="page"`.
-- From `lg` the navigation is a fixed 244px deep-plum sidebar. Below `lg` it is the `Organisation menu` disclosure in the page header.
-- The header row shows `Current organisation` and the society name as the page `h1`; page titles are `h2`.
+- From `lg` the navigation is a 244px deep-plum column whose contents stick below the fixed header, so the verify-email banner pushes it down instead of sitting under it. Below `lg` the same column holds `Current organisation`, the society name and the `Organisation menu` disclosure.
+- Each page renders its own title as the only `h1` through `components/layout/page-header.tsx` (or an `h1` of its own); section headings are `h2`. The society name is plain text in the sidebar.
+- The workspace switcher is labelled `Workspace`.
 - A navigation item is added only when its destination exists. Calendar, Members, Memberships, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them.
 
 ### Context switcher
@@ -165,10 +171,9 @@ Do not call an account "ready" just because `stripeAccountId` exists.
 
 ## Known UI Inconsistencies
 
-- Organisation page titles are `h2` because the shell's `h1` is the society name.
 - The event builder, order, check-in and payment screens keep their pre-specification structure under the new presentation; their target layouts belong to T11-T19.
 - `components/auth/staff-mfa-form.tsx` and `components/settings/staff-handover.tsx` style their own controls with token classes instead of the `Button` and `Select` primitives.
 
 ## Notification Recovery
 
-The shared DashboardShell owns the Notifications navigation link. `/dashboard/notifications` requires live email-resend authority and renders a bounded failed-business-job list, review-reason forms, accessible status/error feedback and pagination. Account-security jobs are private and absent.
+The shared DashboardShell owns the Email delivery navigation link. `/dashboard/notifications` requires live email-resend authority and renders a bounded failed-business-job list, review-reason forms, accessible status/error feedback and pagination. Account-security jobs are private and absent.

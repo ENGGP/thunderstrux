@@ -62,9 +62,9 @@ export default async function OrganiserEventPage({
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="max-w-3xl space-y-3">
               <StatusBadge status={analytics.event.status} />
-              <h2 className="text-3xl font-semibold text-ink">
+              <h1 className="text-3xl font-semibold text-ink">
                 {analytics.event.title}
-              </h2>
+              </h1>
               <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-ink-soft">
                 {analytics.event.description}
               </p>
@@ -130,9 +130,9 @@ export default async function OrganiserEventPage({
 
         {financial && <section className="rounded-card border border-line bg-surface p-6">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-ink">
+            <h2 className="text-lg font-semibold text-ink">
               Revenue (UTC)
-            </h3>
+            </h2>
             <p className="mt-1 text-sm text-ink-muted">
               Paid order revenue grouped by UTC day.
             </p>
@@ -180,9 +180,9 @@ export default async function OrganiserEventPage({
 
         <section className="rounded-card border border-line bg-surface p-6">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-ink">
+            <h2 className="text-lg font-semibold text-ink">
               Ticket performance
-            </h3>
+            </h2>
             {analytics.totals.sold === 0 ? (
               <p className="mt-1 text-sm text-ink-muted">No tickets sold yet.</p>
             ) : null}

@@ -16,7 +16,13 @@ const roleLabels = {
 // The choices come from the server with the page, so the selector never shows
 // a society the caller cannot manage. Selecting one only records a preference:
 // every page and API re-checks live authority.
-export function ContextSelector({ contexts }: { contexts: ContextChoices }) {
+export function ContextSelector({
+  contexts,
+  tone = "light"
+}: {
+  contexts: ContextChoices;
+  tone?: "light" | "dark";
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,13 +58,13 @@ export function ContextSelector({ contexts }: { contexts: ContextChoices }) {
   }
 
   return (
-    <div className="grid gap-1.5 text-sm">
-      <label className="grid gap-1.5 font-medium">
-        Dashboard context
+    <div className={`grid gap-1.5 text-sm ${tone === "dark" ? "text-white" : "text-ink"}`}>
+      <label className={`grid gap-1.5 text-xs font-semibold ${tone === "dark" ? "text-white/75" : "text-ink-soft"}`}>
+        Workspace
         {/* Keyed so the control follows the server value after a refresh. */}
         <select
-          aria-label="Dashboard context"
-          className="h-10 w-full rounded-control border border-line-strong bg-surface px-2 font-normal text-ink"
+          aria-label="Workspace"
+          className="h-11 w-full rounded-control border border-line-strong bg-surface px-2 text-sm font-medium text-ink"
           defaultValue={current}
           disabled={busy}
           key={current}
@@ -77,8 +83,8 @@ export function ContextSelector({ contexts }: { contexts: ContextChoices }) {
       {error ? (
         <p role="alert">
           {error}{" "}
-          <a className="underline" href="/mfa?callbackUrl=/dashboard">
-            Staff MFA
+          <a className="font-semibold underline" href="/mfa?callbackUrl=/dashboard">
+            Verify staff authenticator
           </a>
         </p>
       ) : null}

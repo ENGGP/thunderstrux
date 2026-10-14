@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-14
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-12]]"]
@@ -86,6 +86,14 @@ Redis client qualification (2026-10-13): [PR #52](https://github.com/ENGGP/thund
 **Findings registered rather than changed.** PR 2 records the six copies of the active-staff-or-legacy-owner predicate (AUTHZ-001), four cursor implementations (PAG-001) and the remaining manual error mapping in event, order, ticket, Connect and payment routes (API-001) in [[Non-Blocking Issue Register]]. They are security- or payment-sensitive and belong to focused changes. PR 2 also fixes DEF-023: one `AUTH_SECRET` resolver for auth.ts and proxy.ts, and legacy `/dashboard/[orgSlug]` links that check live permissions.
 
 **Claude Design sync (2026-10-13).** The eight `components/ui/` primitives are published to the claude.ai/design project "Thunderstrux UI" (project ID 6075c42a-6f43-4f56-8d3c-6554004a550a). Sync inputs live in `.design-sync/` (config, previews, conventions, `build-css.mjs`); `.design-sync/NOTES.md` holds the repo quirks and re-sync risks. It does not touch application code, and only the visual design spec from `docs/` is uploaded. Re-sync after changing `components/ui/*` or the `--ts-*` tokens in `app/globals.css`, and re-check `.design-sync/conventions.md` names.
+
+## UX Redesign (from 2026-10-14)
+
+The maintainer approved a Claude Design redesign (canvas "Thunderstrux redesign": rounds 1 and 2 plus a status colour system) and its plan: four PRs with no URL, permission, guard or API changes, skeletons only after guards (never a root or dashboard `loading.tsx`), and sold/remaining as the only new events data.
+
+- **PR1** (`codex/redesign-foundations`, PR #63): society sidebar regrouped (Overview, Events, Orders; Settings: Society profile, Staff, Payments, Email delivery), `Workspace` switcher label, one `h1` per dashboard page, status colour tokens with redesigned `Notice` and `StatusBadge`, and a dismissible verify-email banner that never changes verification. [[UI Architecture Rules]] records the current rules.
+- **Next:** PR2 events list with sold/remaining, event workspace tabs, overview and Suspense skeletons; PR3 the remaining T01–T09 screens; PR4 visual and UX spec updates plus a design-system re-sync. Part of T34's navigation work lands early through this redesign.
+- Defects found during the audit and kept out of the redesign are EVT-001, EVT-002, EVT-003, PUB-001 and ORD-001 in [[Non-Blocking Issue Register]].
 
 ## Next Safe Actions
 

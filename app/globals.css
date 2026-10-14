@@ -23,14 +23,27 @@
   --color-line: var(--ts-border);
   --color-line-strong: var(--ts-input-border);
   --color-focus: var(--ts-focus);
+  /* Status roles: text (words), -bg (wash), -border (hairline), -icon (marks). */
   --color-success: var(--ts-success);
   --color-success-bg: var(--ts-success-bg);
+  --color-success-border: var(--ts-success-border);
+  --color-success-icon: var(--ts-success-icon);
   --color-warning: var(--ts-warning);
   --color-warning-bg: var(--ts-warning-bg);
+  --color-warning-border: var(--ts-warning-border);
+  --color-warning-icon: var(--ts-warning-icon);
   --color-danger: var(--ts-danger);
   --color-danger-bg: var(--ts-danger-bg);
+  --color-danger-border: var(--ts-danger-border);
+  --color-danger-icon: var(--ts-danger-icon);
   --color-info: var(--ts-info);
   --color-info-bg: var(--ts-info-bg);
+  --color-info-border: var(--ts-info-border);
+  --color-info-icon: var(--ts-info-icon);
+  --color-neutral: var(--ts-neutral);
+  --color-neutral-bg: var(--ts-neutral-bg);
+  --color-neutral-border: var(--ts-neutral-border);
+  --color-neutral-icon: var(--ts-neutral-icon);
   --color-lime: var(--ts-lime);
 
   --radius-tag: 6px;
@@ -67,14 +80,28 @@
     --ts-border: #ddd6e7;
     --ts-input-border: #9e8aac;
     --ts-focus: #1e72d8;
-    --ts-success: #146b50;
-    --ts-success-bg: #e9f6ed;
-    --ts-warning: #834500;
-    --ts-warning-bg: #fff3df;
-    --ts-danger: #9a3f53;
-    --ts-danger-bg: #fff0f3;
-    --ts-info: #254c88;
-    --ts-info-bg: #eaf2ff;
+    /* Jade, ochre, crimson and a brand lilac for information. Every text colour is
+       at least 6:1 and every icon colour at least 3:1 on its own wash. */
+    --ts-success: #0b6b55;
+    --ts-success-bg: #eef8f4;
+    --ts-success-border: #bfe3d6;
+    --ts-success-icon: #12866a;
+    --ts-warning: #8a4a06;
+    --ts-warning-bg: #fdf5e7;
+    --ts-warning-border: #f1d9ae;
+    --ts-warning-icon: #b5650c;
+    --ts-danger: #a61e3f;
+    --ts-danger-bg: #fdf1f3;
+    --ts-danger-border: #f4c6d0;
+    --ts-danger-icon: #c42d4f;
+    --ts-info: #4a4360;
+    --ts-info-bg: #f7f5fb;
+    --ts-info-border: #e3ddee;
+    --ts-info-icon: #5b2acb;
+    --ts-neutral: #595265;
+    --ts-neutral-bg: #f3f1f6;
+    --ts-neutral-border: #e2dde9;
+    --ts-neutral-icon: #8e869b;
     --ts-lime: #def17b;
   }
 

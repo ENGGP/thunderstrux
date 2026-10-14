@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-14
 owner: engineering
 related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
 sources: [app, components, lib/auth/page-access.ts]
@@ -251,8 +251,8 @@ Page resolves the authorised user's canonical organisation
 
 Current UI:
 
-- Capability-filtered sidebar: Overview, Events, Orders, Payments, Staff, Settings and Notifications, with Staff MFA; longest matching route is active
-- Header shows the organisation name
+- Capability-filtered sidebar: Overview, Events, Orders, then Settings (Society profile, Staff, Payments, Email delivery); longest matching route is active. The staff authenticator is reached from Account settings and by the `/mfa` redirect, not the sidebar.
+- The sidebar shows the organisation name; each page renders its own `h1` title
 - Primary management links use slugless `/dashboard/*` paths.
 - Legacy `/dashboard/[orgSlug]/*` pages redirect for backwards compatibility.
 

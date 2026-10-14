@@ -37,7 +37,7 @@ export default async function AccountSettingsPage() {
           <dd className="text-ink-soft [overflow-wrap:anywhere]">
             <p>{account.user.email}</p>
             <p>{account.user.emailVerifiedAt ? "Email verified" : "Email verification pending"}</p>
-            {!account.user.emailVerifiedAt && <Link className="text-brand underline" href="/verify-email">Send verification email</Link>}
+            {!account.user.emailVerifiedAt && <Link className="text-brand underline" href="/verify-email">Verify email</Link>}
           </dd>
           {/* Derived facts: neither can be edited here. */}
           <dt className="font-semibold text-ink">Account type</dt>

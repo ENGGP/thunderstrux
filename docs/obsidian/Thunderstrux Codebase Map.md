@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-14
 owner: engineering
 related: ["[[Architecture Overview]]", "[[Project Handover]]"]
 sources: [app, lib, package.json]
@@ -158,9 +158,10 @@ docs/obsidian/
 ## Current UI State
 
 - Global header is 60px high (72px from `md`) with Explore events and Explore societies for everyone and a mobile Menu; components/layout/navbar.tsx owns it. app/globals.css is the only token source. [[UI Architecture Rules]] owns the details.
-- Organisation dashboard shell uses a fixed deep-plum sidebar below the global header from `lg` and a content header that shows the organisation name. Personal pages use components/layout/personal-shell.tsx.
+- Organisation dashboard shell uses a deep-plum sidebar column from `lg` whose contents stick below the global header; it shows the organisation name and the `Workspace` switcher. Pages render their own `h1` through components/layout/page-header.tsx. Personal pages use components/layout/personal-shell.tsx.
 - Organisation dashboard primary route is `/dashboard`.
-- Sidebar capability-filters Overview, Events, Orders, Payments, Staff, Settings and Notifications, with a Staff MFA link and longest-route active state. Protected pages independently enforce authority.
+- Sidebar capability-filters Overview, Events, Orders, then Settings (Society profile, Staff, Payments, Email delivery) with longest-route active state. Protected pages independently enforce authority.
+- Status colours are tokens in app/globals.css (text, `-bg`, `-border`, `-icon` per role); `components/ui/notice.tsx`, `components/ui/status-badge.tsx` and `components/ui/icon.tsx` use them. The verify-email reminder is `components/layout/verify-email-banner.tsx`.
 - Event analytics links to the event ticket list.
 - Order rows link to organiser order detail.
 - Member dashboard does not use the organisation management sidebar.

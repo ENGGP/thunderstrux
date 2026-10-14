@@ -64,6 +64,11 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   expect(identity.emailVerifiedAt).toBeNull();
   await login(page, email, `/events/${data.event.id}`);
   await expect(page.getByText('Verify your email to use purchases and society features.')).toBeVisible();
+  // Dismissing hides the reminder across navigation and reloads, and verification is still enforced below.
+  await page.getByRole('button', { name: 'Dismiss email verification reminder' }).click();
+  await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
   const csrf = await (await page.request.get('/api/security/csrf')).json();
   const blocked = await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': csrf.token }, data: { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1 } });
   expect(blocked.status()).toBe(403);
@@ -188,9 +193,9 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await createOrganisationStaff({ organisationId: second.organisation.id, userId: data.manager.id, role: 'finance_manager' });
   await login(page, data.manager.email);
   await expect(page.getByRole('heading', { name: 'Your societies' })).toBeVisible();
-  const chooser = page.getByLabel('Dashboard context');
+  const chooser = page.getByLabel('Workspace');
   await chooser.selectOption(data.organisation.id);
-  await expect(page.getByText('Organisation dashboard', { exact: true })).toBeVisible();
+  await expect(page.getByText('Current organisation', { exact: true })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Organisation navigation' }).first();
   await expect(nav.getByRole('link', { name: 'Events', exact: true })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Orders', exact: true })).toHaveCount(0);
@@ -198,25 +203,29 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await expect(nav.getByRole('link', { name: 'Events', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('Revenue', { exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByLabel('Dashboard context').first()).toHaveValue(data.organisation.id);
+  await expect(page.getByLabel('Workspace').first()).toHaveValue(data.organisation.id);
+  // From lg the sidebar is a column beside the page, never a block above it.
+  const sidebar = await page.locator('aside').first().boundingBox();
+  const content = await page.locator('main').first().boundingBox();
+  expect(sidebar && content && sidebar.x + sidebar.width <= content.x + 1 && sidebar.y <= content.y + 1).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByText('Organisation menu', { exact: true }).click();
   const mobile = page.locator('details');
-  await mobile.getByLabel('Dashboard context').selectOption(second.organisation.id);
+  await mobile.getByLabel('Workspace').selectOption(second.organisation.id);
   await expect(page.getByText('Current organisation', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: second.organisation.name, exact: true }).first()).toBeVisible();
+  await expect(page.getByText(second.organisation.name, { exact: true })).toBeVisible();
   await page.getByText('Organisation menu', { exact: true }).click();
   await expect(mobile.getByRole('link', { name: 'Orders', exact: true })).toBeVisible();
   await prisma.organisationStaff.updateMany({ where: { userId: data.manager.id, organisationId: second.organisation.id }, data: { status: 'revoked' } });
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Your societies' })).toBeVisible();
-  await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
+  await expect(page.getByLabel('Workspace')).toHaveValue('personal');
   await page.goto('/tickets');
   await expect(page.getByRole('heading', { name: 'My tickets', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
   await login(page, data.manager.email);
-  await expect(page.getByLabel('Dashboard context')).toHaveValue('personal');
+  await expect(page.getByLabel('Workspace')).toHaveValue('personal');
 });
 
 
@@ -254,9 +263,9 @@ test('private staff invitation email supports explicit acceptance, resend and re
     await expect(recipient.getByRole('status')).toContainText('Staff access accepted');
     expect(await prisma.organisationStaff.findUniqueOrThrow({ where: { organisationId_userId: { organisationId: data.organisation.id, userId: data.member.id } } })).toMatchObject({ role: 'finance_manager', status: 'active' });
     await recipient.getByRole('link', { name: 'Open dashboard' }).click();
-    await expect(recipient.getByLabel('Dashboard context')).toHaveValue('personal');
-    await recipient.getByLabel('Dashboard context').selectOption(data.organisation.id);
-    await expect(recipient.getByText('Organisation dashboard', { exact: true })).toBeVisible();
+    await expect(recipient.getByLabel('Workspace')).toHaveValue('personal');
+    await recipient.getByLabel('Workspace').selectOption(data.organisation.id);
+    await expect(recipient.getByText('Current organisation', { exact: true })).toBeVisible();
   } finally { await context.close(); }
   await page.getByLabel('Email', { exact: true }).fill(data.manager.email);
   await page.getByRole('button', { name: 'Create invite', exact: true }).click();

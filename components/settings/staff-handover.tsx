@@ -24,7 +24,7 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
     } catch (failure) { setPassword(""); setError(getClientErrorMessage(failure, "Could not hand over ownership.")); setBusy(false); }
   }
   return <form onSubmit={submit} className="grid gap-4 rounded-card border border-warning bg-surface p-6">
-    <h3 className="text-lg font-semibold">Committee handover</h3>
+    <h2 className="text-lg font-semibold">Committee handover</h2>
     <p>Give ownership of {orgName} to another active staff member with a verified email. Under enforced MFA, both owners need an enrolled authenticator.</p>
     <p>Organisation records, event history and Stripe connection stay with {orgName}. Credentials and authenticators stay with each person. The legacy shared-login ownership link will be retired.</p>
     {error && <p role="alert" className="text-danger">{error}</p>}
@@ -43,7 +43,7 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
     {target && <p role="status">{target.email} will become an owner of {orgName}. Your staff access will {outgoingAccess === "admin" ? "change to admin" : "be revoked"}.</p>}
     <TextInput label="Current password for handover" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setPassword(event.target.value)} disabled={busy} />
     <TextInput label={`Type ${handoverAcknowledgement} to confirm`} required value={acknowledgement} onChange={event => setAcknowledgement(event.target.value)} disabled={busy} />
-    <p>If you have an authenticator, verify this login on the Staff MFA page before submitting.</p>
+    <p>If you have an authenticator, verify this sign-in under Account settings, Password and security, before submitting.</p>
     <Button type="submit" disabled={busy || !target || !currentPassword || acknowledgement !== handoverAcknowledgement}>{busy ? "Handing over..." : "Hand over ownership"}</Button>
   </form>;
 }

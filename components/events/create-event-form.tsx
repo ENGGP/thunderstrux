@@ -369,9 +369,9 @@ export function CreateEventForm({
     <Card>
       <form className="grid max-w-2xl gap-5" onSubmit={onSubmit}>
         <div>
-          <h2 className="text-2xl font-semibold text-ink">
+          <h1 className="text-2xl font-semibold text-ink">
             {mode === "edit" ? "Edit event" : "New event"}
-          </h2>
+          </h1>
           <p className="mt-1 text-sm text-ink-muted">{organisation.name}</p>
         </div>
 
@@ -446,9 +446,9 @@ export function CreateEventForm({
         <section className="grid gap-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="text-base font-semibold text-ink">
+              <h2 className="text-base font-semibold text-ink">
                 Ticket types
-              </h3>
+              </h2>
               <p className="mt-1 text-sm text-ink-muted">
                 Add, edit, or remove ticket types for this event.
               </p>

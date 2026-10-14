@@ -345,6 +345,8 @@ Current layout structure:
 
 If the sidebar renders as a full-width block above the page on a wide screen, the browser is using a stylesheet compiled before the layout classes existed. On the Windows bind-mounted development stack, polling can miss newly added files, so Tailwind does not recompile. Run `pnpm docker:restart` (or `docker compose restart app`) and reload; the production build is unaffected and the browser suite asserts the sidebar sits beside the content at 1280px.
 
+The same staleness can show as a hydration warning ("some attributes of the server rendered HTML didn't match the client properties") whose diff shows old class names on the client side: the page was rendered by the restarted server but the browser still ran JavaScript from before the change. Hard-reload the page (Ctrl+Shift+R); if it persists, restart the app as above. It is not a code defect when the client side of the diff matches source that no longer exists.
+
 If overlap returns, inspect:
 
 - `app/layout.tsx`

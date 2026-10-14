@@ -1,4 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderPage } from "@/tests/helpers/render";
 import { describe, expect, test, vi } from "vitest";
 import { setMockSession } from "@/tests/helpers/auth";
 import {
@@ -35,7 +35,7 @@ async function renderOrdersPage(
     searchParams: Promise.resolve(searchParams)
   });
 
-  return renderToStaticMarkup(element);
+  return renderPage(element);
 }
 
 describe("dashboard orders page", () => {
@@ -159,8 +159,10 @@ describe("dashboard orders page", () => {
     });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    const element = await DashboardPage();
-    renderToStaticMarkup(element);
+    const html = await renderPage(await DashboardPage());
+    // Listed under recent orders, but order detail does not serve pending orders.
+    expect(html).toContain("Recent orders");
+    expect(html).not.toContain(`/dashboard/orders/${pending.id}`);
 
     const persisted = await prisma.order.findUniqueOrThrow({
       where: { id: pending.id },

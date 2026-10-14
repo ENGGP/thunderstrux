@@ -18,12 +18,15 @@ export function Notice({
   role,
   className = "",
   onDismiss,
+  action,
   children
 }: {
   tone?: "info" | "success" | "warning" | "danger";
   title?: string;
   role?: "alert" | "status";
   className?: string;
+  // A link or button that resolves the message, shown at the end of the row.
+  action?: ReactNode;
   // Only from client components; dismissing hides the message, it never resolves it.
   onDismiss?: () => void;
   children: ReactNode;
@@ -40,6 +43,7 @@ export function Notice({
         {title ? <p className={`text-[15px] font-semibold ${style.heading}`}>{title}</p> : null}
         {children}
       </div>
+      {action ? <div className="shrink-0 self-center">{action}</div> : null}
       {onDismiss ? (
         <button
           aria-label="Dismiss"

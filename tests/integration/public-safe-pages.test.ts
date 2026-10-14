@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderPage } from "@/tests/helpers/render";
 import { describe, expect, test, vi } from "vitest";
 import { PublicTicketPurchase } from "@/components/events/public-ticket-purchase";
 import { prisma } from "@/lib/db";
@@ -365,8 +365,8 @@ describe("public-safe pages and APIs", () => {
     });
   });
 
-  test("public ticket purchase renders sold out when reservations consume raw inventory", () => {
-    const html = renderToStaticMarkup(
+  test("public ticket purchase renders sold out when reservations consume raw inventory", async () => {
+    const html = await renderPage(
       createElement(PublicTicketPurchase, {
         eventId: "event_public_sold_out",
         ticketTypes: [
@@ -512,7 +512,7 @@ describe("public-safe pages and APIs", () => {
       status: "published"
     });
 
-    const invalidLimitHtml = renderToStaticMarkup(
+    const invalidLimitHtml = await renderPage(
       await HomePage({ searchParams: Promise.resolve({ limit: "0" }) })
     );
     expect(invalidLimitHtml).toContain(
@@ -520,7 +520,7 @@ describe("public-safe pages and APIs", () => {
     );
     expect(invalidLimitHtml).toContain(event.title);
 
-    const invalidCursorHtml = renderToStaticMarkup(
+    const invalidCursorHtml = await renderPage(
       await HomePage({ searchParams: Promise.resolve({ cursor: "bad-cursor" }) })
     );
     expect(invalidCursorHtml).toContain(
@@ -528,7 +528,7 @@ describe("public-safe pages and APIs", () => {
     );
     expect(invalidCursorHtml).toContain(event.title);
 
-    const invalidDirectionHtml = renderToStaticMarkup(
+    const invalidDirectionHtml = await renderPage(
       await HomePage({ searchParams: Promise.resolve({ direction: "invalid" }) })
     );
     expect(invalidDirectionHtml).toContain(
@@ -552,7 +552,7 @@ describe("public-safe pages and APIs", () => {
     const element = await OrganisationDetailsPage({
       params: Promise.resolve({ orgSlug: organisation.slug })
     });
-    const html = renderToStaticMarkup(element);
+    const html = await renderPage(element);
 
     expect(html).toContain("Public Safe Org");
     expect(html).toContain("Upcoming Public Event");

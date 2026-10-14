@@ -1,15 +1,18 @@
-import { hasOrganisationPermission } from "@/lib/permissions";
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   EventAnalyticsAccessError,
   getOrganisationEventAnalytics,
   getOrganisationEventRevenueSeries
 } from "@/lib/events/event-analytics";
+import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
+import { formatMoney } from "@/lib/format";
+import { hasOrganisationPermission } from "@/lib/permissions";
 
 type OrganiserEventPageProps = {
   params: Promise<{
@@ -30,224 +33,154 @@ export default async function OrganiserEventPage({
 }: OrganiserEventPageProps) {
   const { eventId } = await params;
   const organisation = await requireManagementPage("analytics:read", `/dashboard/events/${eventId}`);
-
   const financial = hasOrganisationPermission(organisation.staffRole, "orders:read");
-  const canEdit = hasOrganisationPermission(organisation.staffRole, "events:manage");
-  const attendance = hasOrganisationPermission(organisation.staffRole, "tickets:check_in");
   let analytics: Awaited<ReturnType<typeof getOrganisationEventAnalytics>>;
-  let revenueSeries: Awaited<ReturnType<typeof getOrganisationEventRevenueSeries>>;
+  let event: Awaited<ReturnType<typeof getDashboardEvent>>;
 
+  // Both reads decide the 404, so they finish before anything streams.
   try {
-    [analytics, revenueSeries] = await Promise.all([
+    [analytics, event] = await Promise.all([
       getOrganisationEventAnalytics(organisation.id, eventId),
-      financial ? getOrganisationEventRevenueSeries(organisation.id, eventId) : Promise.resolve([])
+      getDashboardEvent(organisation.id, eventId)
     ]);
   } catch (error) {
-    if (error instanceof EventAnalyticsAccessError) {
+    if (error instanceof EventAnalyticsAccessError || error instanceof EventLifecycleNotFoundError) {
       notFound();
     }
 
     throw error;
   }
 
-  const maxDailyRevenue = Math.max(
-    ...revenueSeries.map((bucket) => bucket.revenue),
-    1
-  );
+  const tiles = [
+    { label: "Tickets sold", value: analytics.totals.sold, note: "From paid orders" },
+    {
+      label: "Tickets left",
+      value: analytics.totals.remaining,
+      note: `Across ${analytics.ticketTypes.length} ticket ${analytics.ticketTypes.length === 1 ? "type" : "types"}`
+    },
+    ...(financial
+      ? [{ label: "Revenue", value: formatMoney(analytics.totals.revenue ?? 0), note: "Gross, before fees and refunds" }]
+      : [])
+  ];
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
-        <section className="rounded-card border border-line bg-surface p-6">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="max-w-3xl space-y-3">
-              <StatusBadge status={analytics.event.status} />
-              <h1 className="text-3xl font-semibold text-ink">
-                {analytics.event.title}
-              </h1>
-              <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-ink-soft">
-                {analytics.event.description}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {canEdit && <Link
-                className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
-                href={`/dashboard/events/${analytics.event.id}/edit`}
-              >
-                Edit event
-              </Link>}
-              {attendance && <Link
-                className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
-                href={`/dashboard/events/${analytics.event.id}/tickets`}
-              >
-                View tickets
-              </Link>}
-              {financial && <Link
-                className="rounded-control bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
-                href={`/dashboard/orders?eventId=${analytics.event.id}`}
-              >
-                View orders
-              </Link>}
-            </div>
-          </div>
+      <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">
+        <EventWorkspaceHeader active="summary" event={event} staffRole={organisation.staffRole} />
 
-          <dl className="mt-6 grid gap-4 text-sm text-ink-soft sm:grid-cols-3">
-            <div>
-              <dt className="font-medium text-ink">Starts</dt>
-              <dd className="mt-1">{formatDateTime(analytics.event.startTime, { dateStyle: "full" })}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-ink">Ends</dt>
-              <dd className="mt-1">{formatDateTime(analytics.event.endTime, { dateStyle: "full" })}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-ink">Location</dt>
-              <dd className="mt-1">{analytics.event.location}</dd>
-            </div>
-          </dl>
-        </section>
+        <div className="grid gap-6 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
+          {tiles.map((tile) => (
+            <Card key={tile.label}>
+              <p className="text-sm font-semibold text-ink-soft">{tile.label}</p>
+              <p className="mt-1.5 text-[28px] font-semibold leading-tight tabular-nums text-ink">{tile.value}</p>
+              <p className="mt-1 text-sm text-ink-muted">{tile.note}</p>
+            </Card>
+          ))}
+        </div>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          {financial && <div className="rounded-card border border-line bg-surface p-5">
-            <p className="text-sm text-ink-muted">Revenue</p>
-            <p className="mt-2 text-2xl font-semibold text-ink">
-              {formatMoney(analytics.totals.revenue ?? 0)}
-            </p>
-          </div>}
-          <div className="rounded-card border border-line bg-surface p-5">
-            <p className="text-sm text-ink-muted">Sold</p>
-            <p className="mt-2 text-2xl font-semibold text-ink">
-              {analytics.totals.sold}
-            </p>
-          </div>
-          <div className="rounded-card border border-line bg-surface p-5">
-            <p className="text-sm text-ink-muted">Remaining</p>
-            <p className="mt-2 text-2xl font-semibold text-ink">
-              {analytics.totals.remaining}
-            </p>
-          </div>
-        </section>
-
-        {financial && <section className="rounded-card border border-line bg-surface p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-ink">
-              Revenue (UTC)
-            </h2>
-            <p className="mt-1 text-sm text-ink-muted">
-              Paid order revenue grouped by UTC day.
-            </p>
-          </div>
-
-          {revenueSeries.length === 0 ? (
-            <p className="rounded-card border border-line bg-surface-subtle px-4 py-5 text-sm text-ink-muted">
-              No revenue yet.
-            </p>
-          ) : (
-            <div className="grid min-h-56 grid-cols-[auto_1fr] gap-4">
-              <div className="flex flex-col justify-between py-1 text-xs text-ink-muted">
-                <span>{formatMoney(maxDailyRevenue)}</span>
-                <span>{formatMoney(0)}</span>
-              </div>
-              <div className="grid h-56 items-end gap-3 border-b border-l border-line px-3 pb-6 sm:grid-flow-col sm:auto-cols-fr">
-                {revenueSeries.map((bucket) => {
-                  const height = Math.max(
-                    8,
-                    (bucket.revenue / maxDailyRevenue) * 176
-                  );
-
-                  return (
-                    <div
-                      className="grid h-full min-w-12 content-end gap-2"
-                      key={bucket.date}
-                    >
-                      <div
-                        className="rounded-t-md bg-brand"
-                        style={{ height: `${height}px` }}
-                        title={`${formatShortDate(bucket.date)}: ${formatMoney(
-                          bucket.revenue
-                        )}`}
-                      />
-                      <p className="text-center text-xs text-ink-muted">
-                        {formatShortDate(bucket.date)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>}
-
-        <section className="rounded-card border border-line bg-surface p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-ink">
-              Ticket performance
-            </h2>
-            {analytics.totals.sold === 0 ? (
-              <p className="mt-1 text-sm text-ink-muted">No tickets sold yet.</p>
-            ) : null}
-          </div>
-
-          {analytics.ticketTypes.length === 0 ? (
-            <p className="text-sm text-ink-muted">No ticket types available.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-line text-ink-muted">
-                    <th className="py-3 pr-4 font-medium">Ticket</th>
-                    <th className="py-3 pr-4 font-medium">Remaining</th>
-                    <th className="py-3 pr-4 font-medium">Sold</th>
-                    {financial && <th className="py-3 pr-4 font-medium">Revenue</th>}
-                    {financial && <th className="py-3 font-medium">Revenue share</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.ticketTypes.map((ticketType) => {
-                    const revenueShare =
-                      (analytics.totals.revenue ?? 0) > 0
-                        ? ((ticketType.revenue ?? 0) / (analytics.totals.revenue ?? 1)) * 100
-                        : 0;
-
-                    return (
-                      <tr
-                        className="border-b border-line last:border-0"
-                        key={ticketType.id}
-                      >
-                        <td className="py-3 pr-4 font-medium text-ink">
+        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
+          <Card>
+            <h2 className="text-lg font-semibold text-ink">Ticket performance</h2>
+            {analytics.ticketTypes.length === 0 ? (
+              <p className="mt-2 text-sm text-ink-soft">No ticket types yet.</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[420px] border-collapse text-[15px]">
+                  <thead>
+                    <tr className="text-left text-[13px] text-ink-soft">
+                      <th className="py-2.5 font-semibold" scope="col">Ticket</th>
+                      <th className="px-2 py-2.5 text-right font-semibold" scope="col">Sold</th>
+                      <th className="px-2 py-2.5 text-right font-semibold" scope="col">Left</th>
+                      {financial ? (
+                        <>
+                          <th className="px-2 py-2.5 text-right font-semibold" scope="col">Revenue</th>
+                          <th className="py-2.5 pl-2 text-right font-semibold" scope="col">Share</th>
+                        </>
+                      ) : null}
+                    </tr>
+                  </thead>
+                  <tbody className="tabular-nums">
+                    {analytics.ticketTypes.map((ticketType) => (
+                      <tr className="border-t border-line" key={ticketType.id}>
+                        <th className="py-3.5 text-left font-semibold text-ink [overflow-wrap:anywhere]" scope="row">
                           {ticketType.name}
-                        </td>
-                        <td className="py-3 pr-4 text-ink-soft">
-                          {ticketType.remaining}
-                        </td>
-                        <td className="py-3 pr-4 text-ink-soft">
-                          {ticketType.sold}
-                        </td>
-                        {financial && <><td className="py-3 pr-4 text-ink-soft">
-                          {formatMoney(ticketType.revenue ?? 0)}
-                        </td>
-                        <td className="py-3 text-ink-soft">
-                          <div className="flex min-w-36 items-center gap-3">
-                            <div className="h-2 flex-1 rounded-full bg-surface-subtle">
-                              <div
-                                className="h-2 rounded-full bg-brand"
-                                style={{ width: `${revenueShare}%` }}
-                              />
-                            </div>
-                            <span className="w-12 text-right text-xs text-ink-muted">
-                              {revenueShare.toFixed(0)}%
-                            </span>
-                          </div>
-                        </td></>}
+                        </th>
+                        <td className="px-2 py-3.5 text-right">{ticketType.sold}</td>
+                        <td className="px-2 py-3.5 text-right">{ticketType.remaining}</td>
+                        {financial ? (
+                          <>
+                            <td className="px-2 py-3.5 text-right">{formatMoney(ticketType.revenue ?? 0)}</td>
+                            <td className="py-3.5 pl-2 text-right">
+                              {(analytics.totals.revenue ?? 0) > 0
+                                ? Math.round(((ticketType.revenue ?? 0) / (analytics.totals.revenue ?? 1)) * 100)
+                                : 0}
+                              %
+                            </td>
+                          </>
+                        ) : null}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {financial ? (
+            <Card>
+              <h2 className="text-lg font-semibold text-ink">Revenue by day</h2>
+              <p className="text-sm text-ink-muted">Paid orders, with days counted in UTC</p>
+              <Suspense
+                fallback={
+                  <div className="mt-4">
+                    <p className="sr-only">Loading revenue by day</p>
+                    <Skeleton className="h-48" />
+                  </div>
+                }
+              >
+                <RevenueByDay eventId={analytics.event.id} organisationId={organisation.id} />
+              </Suspense>
+            </Card>
+          ) : null}
+        </div>
+
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">About this event</h2>
+          <p className="mt-2 max-w-3xl whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
+            {analytics.event.description}
+          </p>
+        </Card>
       </div>
     </DashboardShell>
+  );
+}
+
+async function RevenueByDay({ organisationId, eventId }: { organisationId: string; eventId: string }) {
+  const series = await getOrganisationEventRevenueSeries(organisationId, eventId);
+  const max = Math.max(...series.map((bucket) => bucket.revenue), 1);
+
+  if (series.length === 0) {
+    return <p className="mt-4 text-sm text-ink-soft">No revenue yet.</p>;
+  }
+
+  return (
+    <div
+      aria-label={`Revenue by day: ${series
+        .map((bucket) => `${formatShortDate(bucket.date)} ${formatMoney(bucket.revenue)}`)
+        .join(", ")}`}
+      className="mt-4 flex h-52 items-end gap-3 overflow-x-auto pb-1"
+      role="img"
+    >
+      {series.map((bucket) => (
+        <div className="flex min-w-12 max-w-24 flex-1 flex-col items-center gap-1.5" key={bucket.date}>
+          <span className="text-[13px] tabular-nums text-ink-soft">{formatMoney(bucket.revenue)}</span>
+          <div
+            className="w-full rounded-t-md bg-brand"
+            style={{ height: `${Math.max(4, (bucket.revenue / max) * 140)}px` }}
+          />
+          <span className="text-[13px] text-ink-soft">{formatShortDate(bucket.date)}</span>
+        </div>
+      ))}
+    </div>
   );
 }

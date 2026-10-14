@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-14
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]"]
 sources: [package.json, prisma/schema.prisma, docker-compose.yml]
@@ -152,15 +152,15 @@ app/
 `/dashboard`
 
 - Personal member mode shows profile completion, the caller's nearest upcoming paid tickets and joined societies inside the personal shell. Selected staff mode shows only permitted management content; revocation never falls back to another tenant.
-- Authorised organisation context shows setup tasks the caller may act on (profile, payments, first event), upcoming events and role-filtered recent orders and month-to-date revenue. Finance queries are omitted when orders:read is absent.
+- Authorised organisation context shows setup tasks the caller may act on (payments, profile, scheduling an event), upcoming events (sold and left only with analytics:read) and role-filtered recent orders and month-to-date revenue. Finance queries are omitted when orders:read is absent. The data streams in after the guards behind a skeleton.
 
 `/dashboard/events`
 
-- Requires events:read. Editable roles use EventsList; finance receives a bounded read-only event list, and check-in staff receive published-only attendance links. The generic management event API still requires events:manage.
+- Requires events:read. One server read (`listDashboardEvents` in lib/events/event-lifecycle.ts) serves every role: views with counts, title search, at most 100 rows per view, and tickets sold from one paid-order `groupBy` only with analytics:read. Check-in staff get published events only. Actions appear only with events:manage and call the existing event APIs, which still require events:manage.
 
 `/dashboard/events/[eventId]`
 
-- Renders organisation-only event details and analytics.
+- Renders organisation-only event details and analytics under the shared event workspace header and tabs.
 - Shows event metadata, sold/remaining counts and ticket-type analytics; finance-capable callers additionally receive revenue.
 - Uses the management-page helper to verify live analytics:read authority and conceal foreign events; orders:read separately controls financial fields/queries. The proxy does not deny all member-role users.
 

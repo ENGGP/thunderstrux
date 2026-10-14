@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[API Reference]]", "[[Ticket Check-in Implementation]]"]
 sources: [lib/events/event-lifecycle.ts, app/api/events]
@@ -74,8 +74,10 @@ Rules:
 Dashboard controls live in:
 
 ```text
-components/events/events-list.tsx
+components/events/event-actions.tsx
 ```
+
+They appear on each row of `/dashboard/events` and in the event workspace header. Unpublish and Delete ask for confirmation, and a disabled action shows why (no ticket types, orders exist). The reasons come from `getDashboardEvent` and `listDashboardEvents`; the routes below still enforce the rules.
 
 Status changes call:
 

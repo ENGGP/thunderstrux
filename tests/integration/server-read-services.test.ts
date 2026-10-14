@@ -1,4 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderPage } from "@/tests/helpers/render";
 import { describe, expect, test, vi } from "vitest";
 import PublicEventPage from "@/app/(public)/events/[eventId]/page";
 import LegacyNewEventPage from "@/app/(dashboard)/dashboard/[orgSlug]/events/new/page";
@@ -162,7 +162,7 @@ describe("public event page", () => {
     const draft = await createEvent({ organisationId: organisation.id });
 
     // The integration setup makes every fetch throw, so a self-fetch would fail here.
-    const html = renderToStaticMarkup(
+    const html = await renderPage(
       await PublicEventPage({ params: Promise.resolve({ eventId: event.id }) })
     );
 
@@ -285,7 +285,6 @@ describe("dashboard read services", () => {
     const orders = vi.spyOn(prisma.order, "findMany");
 
     const overview = await getOrganisationOverview(organisation.id, {
-      publishedEventsOnly: false,
       includeOrders: false,
       paidSince: new Date(0)
     });

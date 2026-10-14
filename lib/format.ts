@@ -35,6 +35,15 @@ export function formatDateTime(
   }).format(date);
 }
 
+// "23 Oct 2026, 6:00 pm – 9:00 pm"; the end date repeats only when it differs.
+export function formatDateRange(start: Date, end: Date, timeZone = defaultTimeZone) {
+  return new Intl.DateTimeFormat("en-AU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone
+  }).formatRange(start, end);
+}
+
 export function formatDate(value: Date | string, timeZone = defaultTimeZone) {
   return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",

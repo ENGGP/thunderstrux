@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-14
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]"]
 ---
@@ -31,7 +31,7 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 | EVT-002 | Low | Ticket pricing | open | 2026-10-14 | Ticket price is entered as integer cents under a field labelled "Price", so an organiser can enter 15 meaning $15.00 and sell at $0.15. | `components/events/create-event-form.tsx`; the API contract (cents) is correct. | Engineering: dollar input converted on submit. Kept out of the redesign by maintainer decision. |
 | EVT-003 | Low | Event lifecycle | open | 2026-10-14 | `POST /api/events` accepts `status: "published"`, so a direct API call can create a published event without the publish checks (ticket types and quantity). The UI never sends it. | `lib/validators/events.ts` create schema; `app/api/events/route.ts`. | Engineering: always create drafts (T11). |
 | PUB-001 | Low | Public discovery | open | 2026-10-14 | The home page "Upcoming events" lists every published event, including past ones. | `lib/events/public-events.ts` has no start-time filter. | Engineering: filter to upcoming in T15. |
-| ORD-001 | Low | Order review | open | 2026-10-14 | With "Show system orders", pending rows link to an order detail page that returns 404, because detail serves only paid, failed and expired orders. | `lib/orders/order-detail.ts`; `app/(dashboard)/dashboard/orders/page.tsx`. | Engineering: drop the link for pending rows or serve them read-only when orders next change. |
+| ORD-001 | Low | Order review | open | 2026-10-14 | With "Show system orders", pending rows link to an order detail page that returns 404, because detail serves only paid, failed and expired orders. The Overview's recent orders list pending orders without a link since 2026-10-15. | `lib/orders/order-detail.ts`; `app/(dashboard)/dashboard/orders/page.tsx`. | Engineering: drop the link for pending rows or serve them read-only when orders next change. |
 | UI-001 | Low | Public availability | accepted-risk | 2026-09-29 | Displayed availability can change between page load and checkout. | Checkout transaction remains authoritative. | Product/engineering: consider refresh/realtime behavior only when demand justifies it. |
 
 ## External Production Gates

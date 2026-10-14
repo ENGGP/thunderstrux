@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-14
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -29,11 +29,17 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - `button.tsx`: `Button` and `buttonClasses()` for links that look like buttons. Variants `primary`, `secondary`, `tertiary`, `danger`; sizes `sm` (36px), `md` (44px), `lg` (48px).
 - `input.tsx`: `TextInput`, `TextArea`, `Select`. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
 - `card.tsx`: bordered surface with an optional `className`.
-- `notice.tsx`: inline message in `info`, `success`, `warning` or `danger`: a soft wash, a hairline border, an icon and a toned title, with body text in ink. `onDismiss` (client callers only) adds a close button. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
+- `notice.tsx`: inline message in `info`, `success`, `warning` or `danger`: a soft wash, a hairline border, an icon and a toned title, with body text in ink. `action` puts the link or button that resolves the message at the end of the row; `onDismiss` (client callers only) adds a close button. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
 - `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked and unused are neutral; joined uses the brand accent. Add a status there, not in a page.
+- `skeleton.tsx`: `Skeleton` blocks and `ListSkeleton`, a list stand-in with one screen-reader label. They are used only as a `<Suspense>` fallback after a page's guards (see below).
 - `confirm-dialog.tsx`: native `<dialog>` confirmation that names the action and its consequences. Its body is mounted only while open, and Escape cancels. Use it instead of `window.confirm`.
 
 Shared content components: `components/events/event-card.tsx` (date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows an image, price or count that the data model does not hold.
+
+Event workspace components live in `components/events/` because they import `next/link`:
+
+- `event-tabs.tsx`: `EventWorkspaceHeader` gives every page of one event the same breadcrumb, title, status, date and place, actions and tabs: Summary (`analytics:read`), Attendees (`tickets:check_in`), Orders (`orders:read`; the orders list filtered to the event, named `Orders for this event`) and Edit (`events:manage`). Tabs are hidden when only one would show. `tabClasses` and `tabBarClasses` style link tabs; the bar scrolls sideways on narrow screens instead of wrapping.
+- `event-actions.tsx`: Publish, Edit and a `More` menu (a native popover, so a scrolling table cannot clip it) with View public page, Unpublish and Delete event. A disabled action shows the reason computed by the server read; Unpublish and Delete confirm through `ConfirmDialog`; the API still enforces every rule. After a change the page refreshes from the server.
 
 ## Global Header And Footer
 
@@ -54,6 +60,8 @@ Shared content components: `components/events/event-card.tsx` (date rail, host l
 ## Shells Are Composed By Pages
 
 Each page renders its own shell after its guards have passed. Shells are not placed in route-group layouts: a layout would not re-render when authority changes, and page output is rendered directly by integration tests. No root or dashboard `loading.tsx` exists, because it would stream a 200 where a page currently answers with a redirect or a concealed 404.
+
+Where data loads after the guards, the page wraps that part in `<Suspense>` with a skeleton fallback: the events list, the society Overview, the orders results and the revenue-by-day chart. A read that decides a redirect or a 404 stays above the boundary, so the status is settled before anything streams; pages whose only read is that decision render in one piece. Integration tests render pages with `renderPage` from `tests/helpers/render.ts`, which waits for every boundary and rethrows errors inside them; `renderToStaticMarkup` would print only the fallbacks.
 
 ### Auth shell
 
@@ -117,11 +125,18 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 `/dashboard`
 
 - Member: profile completion, upcoming tickets, joined societies with a Find societies entry point.
-- Organisation: setup tasks the caller may act on first (finish profile, finish payment setup, create an event), then upcoming events and, with `orders:read`, month-to-date revenue and recent orders. The revenue figure is labelled with its period; there is no chart.
+- Organisation: a `Finish setting up` card lists only tasks the caller may act on: payment setup in the warning tone (it blocks paid sales), and the society profile and scheduling an event in the information tone. Then the upcoming count with the next event, month-to-date revenue with `orders:read` (labelled with its period; no chart), linked upcoming events (sold and left with `analytics:read`) and recent orders. A pending order is listed without a link, because order detail serves settled orders only.
 
-`/dashboard/events`, `/dashboard/events/new`, `/dashboard/events/[eventId]/edit`
+`/dashboard/events`
 
-- Render the event list, creation and editing content. Each form route renders one title from the form: `New event` or `Edit event`. Deleting an event asks through `ConfirmDialog`.
+- Server-rendered for every role from one read (`listDashboardEvents`): views Upcoming (not yet ended; the default), Drafts, Past and All with counts, plus a title search, all in the URL (`?view=`, `?q=`). A table from `md`, one card per event below it.
+- `N sold · N left` appears only with `analytics:read` (sold counts paid orders); actions only with `events:manage`. Check-in staff see published events only, get no Drafts view, and their links open Attendees.
+- Each view shows up to 100 events and says so when there are more.
+
+`/dashboard/events/[eventId]` (Summary), `/dashboard/events/[eventId]/tickets` (Attendees), `/dashboard/events/[eventId]/edit` (Edit) and `/dashboard/orders?eventId=` (Orders)
+
+- Share `EventWorkspaceHeader`. Summary shows tickets sold, tickets left and, with `orders:read`, revenue, the ticket performance table and revenue by day.
+- Edit is titled `Edit event` with the event as a breadcrumb; a published event shows a notice that changes go live on save and buyers are not emailed. `/dashboard/events/new` takes its `New event` title from the form.
 
 `/dashboard/orders`
 
@@ -171,6 +186,8 @@ Do not call an account "ready" just because `stripeAccountId` exists.
 
 ## Known UI Inconsistencies
 
+- In an event's Orders tab the sidebar highlights Orders, because that tab is the orders list filtered to the event.
+- The orders list, the attendee table and the event form keep their earlier styling until the next redesign PR.
 - The event builder, order, check-in and payment screens keep their pre-specification structure under the new presentation; their target layouts belong to T11-T19.
 - `components/auth/staff-mfa-form.tsx` and `components/settings/staff-handover.tsx` style their own controls with token classes instead of the `Button` and `Select` primitives.
 

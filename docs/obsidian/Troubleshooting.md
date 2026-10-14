@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-14
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Development Workflow]]", "[[Dependency Automation]]"]
 sources: [scripts/doctor-dev.mjs, scripts/integration-test-guards.mjs]
@@ -169,16 +169,17 @@ For the organiser analytics route:
 - `user2@example.com` should redirect to `/`.
 - An organisation account visiting `/events/[eventId]` should redirect to `/dashboard/events/[eventId]`.
 
-If clicking `Edit` navigates to `/dashboard/events/edit` without an event id, the source link or a stale client bundle is wrong. The correct current source link resolves through `EventsList` using:
+If clicking `Edit` navigates to `/dashboard/events/edit` without an event id, the source link or a stale client bundle is wrong. The correct current source link is:
 
 ```tsx
-href={`${dashboardBasePath}/events/${event.id}/edit`}
+href={`/dashboard/events/${event.id}/edit`}
 ```
 
 It lives in:
 
 ```text
-components/events/events-list.tsx
+components/events/event-actions.tsx
+components/events/event-tabs.tsx
 ```
 
 Check browser hard refresh and confirm `EDIT EVENT ID:` logs a real id.

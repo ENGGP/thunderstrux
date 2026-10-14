@@ -16,6 +16,8 @@ export default function Navbar() {
   const { data: session } = useSession();
   const pathname = usePathname() ?? "";
   // Explore events is the home page today; everything else matches its section.
+  // Dashboard pages have a full-height sidebar at the left edge, so the header spans the window to line up with it.
+  const fullWidth = pathname.startsWith("/dashboard");
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
   const user = session?.user?.id ? session.user : null;
@@ -41,7 +43,7 @@ export default function Navbar() {
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-[60px] border-b border-line bg-surface md:h-[72px]">
-      <div className="mx-auto flex h-full max-w-page items-center gap-6 px-4 text-sm font-medium md:px-8">
+      <div className={`mx-auto flex h-full items-center gap-6 px-4 text-sm font-medium md:px-8 ${fullWidth ? "lg:pl-4" : "max-w-page"}`}>
         <Link
           className="font-display text-lg font-semibold text-brand-ink"
           href="/"

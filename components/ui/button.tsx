@@ -22,13 +22,14 @@ const sizes = {
   lg: "h-12 px-5 text-base"
 };
 
-// Shared by <Button> and by links that must look like buttons.
+// Shared by <Button> and by links that must look like buttons. A disabled
+// button turns neutral so it never reads as a faded primary action.
 export function buttonClasses({
   variant = "primary",
   size = "md",
   className = ""
 }: ButtonStyle = {}) {
-  return `inline-flex items-center justify-center gap-2 rounded-control font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60 ${sizes[size]} ${variants[variant]} ${className}`;
+  return `inline-flex items-center justify-center gap-2 rounded-control font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:border disabled:border-neutral-border disabled:bg-neutral-bg disabled:text-ink-muted disabled:no-underline ${sizes[size]} ${variants[variant]} ${className}`;
 }
 
 export function Button({

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-14
 owner: engineering
 related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]"]
 sources: [package.json, prisma/schema.prisma, docker-compose.yml]
@@ -135,9 +135,9 @@ app/
 
 `components/layout/dashboard-shell.tsx`
 
-- Renders the fixed deep-plum sidebar below the global header from `lg`, and an `Organisation menu` disclosure below it.
-- Renders the organisation heading row.
-- Owns shared organisation dashboard nav, grouped and capability-filtered.
+- Renders the deep-plum sidebar column from `lg` (its contents stick below the global header) and, below `lg`, the same column with an `Organisation menu` disclosure.
+- Shows `Current organisation` and the society name in that column; each page renders its own `h1` title.
+- Owns shared organisation dashboard nav, capability-filtered: Overview, Events, Orders, then a Settings group (Society profile, Staff, Payments, Email delivery).
 - Receives the context switcher's choices from the server; see [[UI Architecture Rules]].
 - Uses slugless `/dashboard/*` paths for current organisation management routes.
 

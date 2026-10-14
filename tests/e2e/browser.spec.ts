@@ -204,6 +204,10 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await expect(page.getByText('Revenue', { exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByLabel('Workspace').first()).toHaveValue(data.organisation.id);
+  // From lg the sidebar is a column beside the page, never a block above it.
+  const sidebar = await page.locator('aside').first().boundingBox();
+  const content = await page.locator('main').first().boundingBox();
+  expect(sidebar && content && sidebar.x + sidebar.width <= content.x + 1 && sidebar.y <= content.y + 1).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByText('Organisation menu', { exact: true }).click();
   const mobile = page.locator('details');

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-14
 owner: engineering
 related: ["[[Development Workflow]]", "[[Dependency Automation]]"]
 sources: [scripts/doctor-dev.mjs, scripts/integration-test-guards.mjs]
@@ -340,8 +340,10 @@ Current layout structure:
 
 - Global `Navbar` is fixed at 60px, 72px from `md`
 - Root layout offsets content by the same amounts
-- Dashboard sidebar uses `top-[72px]` and appears from `lg`
-- Dashboard main content uses `lg:ml-[244px]`
+- From `lg` the dashboard is a two-column grid (`lg:grid-cols-[244px_minmax(0,1fr)]`); the sidebar column's contents are `lg:sticky lg:top-[72px]`
+- The verify-email banner sits above the grid, so it pushes the sidebar down instead of covering it
+
+If the sidebar renders as a full-width block above the page on a wide screen, the browser is using a stylesheet compiled before the layout classes existed. On the Windows bind-mounted development stack, polling can miss newly added files, so Tailwind does not recompile. Run `pnpm docker:restart` (or `docker compose restart app`) and reload; the production build is unaffected and the browser suite asserts the sidebar sits beside the content at 1280px.
 
 If overlap returns, inspect:
 

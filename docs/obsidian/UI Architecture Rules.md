@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-14
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -176,4 +176,4 @@ Do not call an account "ready" just because `stripeAccountId` exists.
 
 ## Notification Recovery
 
-The shared DashboardShell owns the Notifications navigation link. `/dashboard/notifications` requires live email-resend authority and renders a bounded failed-business-job list, review-reason forms, accessible status/error feedback and pagination. Account-security jobs are private and absent.
+The shared DashboardShell owns the Email delivery navigation link. `/dashboard/notifications` requires live email-resend authority and renders a bounded failed-business-job list, review-reason forms, accessible status/error feedback and pagination. Account-security jobs are private and absent.

@@ -208,7 +208,7 @@ export function EventsList({
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-ink">Events</h2>
+          <h1 className="text-2xl font-semibold text-ink">Events</h1>
           <p className="text-sm text-ink-muted">{state.organisation.name}</p>
         </div>
         <Link className={buttonClasses()} href={`${dashboardBasePath}/events/new`}>

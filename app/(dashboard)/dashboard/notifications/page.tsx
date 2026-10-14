@@ -10,7 +10,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   let page;
   try { page = await listFailedBusinessNotifications(organisation.id, (await searchParams).cursor); }
   catch (error) { if (error instanceof NotificationCursorError) redirect("/dashboard/notifications"); throw error; }
-  return <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}><div className="mx-auto grid max-w-3xl gap-4 p-6"><h2 className="text-2xl font-semibold text-ink">Failed notifications</h2><FailedNotifications jobs={page.jobs} />
+  return <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}><div className="mx-auto grid max-w-3xl gap-4 p-6"><h1 className="text-2xl font-semibold text-ink">Email delivery</h1><FailedNotifications jobs={page.jobs} />
     {page.nextCursor && <Link className="text-brand underline" href={`/dashboard/notifications?cursor=${encodeURIComponent(page.nextCursor)}`}>Older failed notifications</Link>}
     {(await searchParams).cursor && <Link className="text-brand underline" href="/dashboard/notifications">Newest failed notifications</Link>}
   </div></DashboardShell>;

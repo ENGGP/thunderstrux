@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { buttonClasses } from "@/components/ui/button";
 
@@ -13,6 +14,10 @@ const exploreLinks = [
 // receive live authority from the server; nothing here grants or implies access.
 export default function Navbar() {
   const { data: session } = useSession();
+  const pathname = usePathname() ?? "";
+  // Explore events is the home page today; everything else matches its section.
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
   const user = session?.user?.id ? session.user : null;
   const accountLinks = user
     ? [
@@ -49,13 +54,23 @@ export default function Navbar() {
           className="hidden flex-1 items-center gap-6 md:flex"
         >
           {exploreLinks.map((link) => (
-            <Link className={linkClass} href={link.href} key={link.href}>
+            <Link
+              aria-current={isActive(link.href) ? "page" : undefined}
+              className={`${linkClass} ${isActive(link.href) ? "font-semibold text-brand" : ""}`}
+              href={link.href}
+              key={link.href}
+            >
               {link.label}
             </Link>
           ))}
           <span className="ml-auto flex items-center gap-5">
             {accountLinks.map((link) => (
-              <Link className={linkClass} href={link.href} key={link.href}>
+              <Link
+                aria-current={isActive(link.href) ? "page" : undefined}
+                className={`${linkClass} ${isActive(link.href) ? "font-semibold text-brand" : ""}`}
+                href={link.href}
+                key={link.href}
+              >
                 {link.label}
               </Link>
             ))}
@@ -78,7 +93,8 @@ export default function Navbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2 md:hidden">
-          <details className="relative">
+          {/* Keyed by route so the menu closes after navigating. */}
+          <details className="relative" key={pathname}>
             <summary className="flex h-9 cursor-pointer list-none items-center rounded-control px-3 text-ink-soft [&::-webkit-details-marker]:hidden">
               Menu
             </summary>

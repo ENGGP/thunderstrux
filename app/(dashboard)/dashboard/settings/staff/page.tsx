@@ -18,7 +18,7 @@ export default async function StaffSettingsPage() {
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <div>
-          <h2 className="text-2xl font-semibold text-ink">Staff</h2>
+          <h1 className="text-2xl font-semibold text-ink">Staff</h1>
           <p className="mt-1 text-sm text-ink-muted">
             Named people who can manage this society. Staff access is separate
             from joining the society: joining never grants it.

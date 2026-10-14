@@ -77,9 +77,9 @@ export default async function OrganisationOrderDetailPage({
             >
               Back to orders
             </Link>
-            <h2 className="mt-2 text-3xl font-semibold text-ink">
+            <h1 className="mt-2 text-3xl font-semibold text-ink">
               Order detail
-            </h2>
+            </h1>
           </div>
           <StatusBadge status={order.status} />
         </div>
@@ -146,7 +146,7 @@ export default async function OrganisationOrderDetailPage({
         </section>
 
         <section className="rounded-card border border-line bg-surface p-6">
-          <h3 className="text-lg font-semibold text-ink">Tickets</h3>
+          <h2 className="text-lg font-semibold text-ink">Tickets</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
@@ -176,7 +176,7 @@ export default async function OrganisationOrderDetailPage({
         </section>
 
         <section className="rounded-card border border-line bg-surface p-6">
-          <h3 className="text-lg font-semibold text-ink">Order history</h3>
+          <h2 className="text-lg font-semibold text-ink">Order history</h2>
           {lifecycle.historyIncomplete ? (
             <p className="mt-2 text-sm text-warning">
               This order predates lifecycle history. Earlier activity may not be shown.
@@ -244,7 +244,7 @@ export default async function OrganisationOrderDetailPage({
 
         <section className="space-y-4 rounded-card border border-line bg-surface p-6">
           <div>
-            <h3 className="text-lg font-semibold text-ink">Management</h3>
+            <h2 className="text-lg font-semibold text-ink">Management</h2>
             <p className="mt-1 text-sm text-ink-muted">
               These actions do not change Stripe payment state.
             </p>

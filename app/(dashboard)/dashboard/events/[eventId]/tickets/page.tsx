@@ -111,9 +111,9 @@ export default async function OrganiserEventTicketsPage({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-ink-muted">Tickets</p>
-              <h2 className="mt-2 text-3xl font-semibold text-ink">
+              <h1 className="mt-2 text-3xl font-semibold text-ink">
                 {payload.event.title}
-              </h2>
+              </h1>
             </div>
             <div className="flex flex-wrap gap-2">
               {hasOrganisationPermission(organisation.staffRole, "analytics:read") && <Link

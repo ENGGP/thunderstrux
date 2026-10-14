@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { AuthSessionProvider } from "@/components/layout/auth-session-provider";
 import Navbar from "@/components/layout/navbar";
+import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
 import { accountLinkCaptureScript } from "@/lib/auth/account-link-capture";
 import { getLiveSession } from "@/lib/auth/live-session";
+import { verifyBannerCookie } from "@/lib/auth/verify-banner";
 import "./globals.css";
 
 // Downloaded at build time and served by the app; no font requests leave the site.
@@ -30,6 +32,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getLiveSession();
+  const user = session?.user;
+  const showVerifyBanner =
+    user && !user.emailVerifiedAt && (await cookies()).get(verifyBannerCookie)?.value !== user.id;
 
   return (
     <html
@@ -46,17 +51,7 @@ export default async function RootLayout({
         <AuthSessionProvider session={session}>
           <Navbar />
           <div className="pt-[60px] md:pt-[72px]">
-            {session?.user && !session.user.emailVerifiedAt && (
-              <p
-                className="bg-warning-bg px-4 py-3 text-center text-sm text-warning"
-                role="status"
-              >
-                Verify your email to use purchases and society features.{" "}
-                <Link className="font-semibold underline" href="/verify-email">
-                  Send verification email
-                </Link>
-              </p>
-            )}
+            {showVerifyBanner ? <VerifyEmailBanner userId={user.id} /> : null}
             {children}
           </div>
         </AuthSessionProvider>

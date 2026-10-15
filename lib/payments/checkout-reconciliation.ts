@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { isTransactionConflict } from "@/lib/transaction-conflict";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
+import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import {
@@ -410,11 +411,8 @@ export async function reconcileCompletedCheckoutSession(
       return;
     }
 
-    await tx.$queryRaw`
-      SELECT "id" FROM "TicketType"
-      WHERE "id" = ${discoveredOrder.ticketTypeId}
-      FOR UPDATE
-    `;
+    // Event, then ticket type, then order: the shared lock order (lib/events/inventory).
+    await lockEventInventory(tx, discoveredOrder.eventId, [discoveredOrder.ticketTypeId]);
     if (!(await lockOrder(tx, discoveredOrder.id))) {
       result = { status: "ignored", reason: "order_not_found" };
       return;
@@ -901,6 +899,20 @@ export async function reconcileCompletedCheckoutSession(
         mismatchReason: "Ticket reservation quantity does not match order",
         reservationQuantity: activeReservation.quantity,
         orderQuantity: localOrder.quantity
+      }, {
+        releaseActiveReservation: true
+      });
+      return;
+    }
+
+    // This order's hold already counts toward occupancy, so turning it into
+    // tickets cannot exceed capacity unless capacity fell below commitments.
+    const inventory = await readEventInventory(tx, localOrder.eventId, now);
+    if (inventory.capacity !== null && inventory.occupancy > inventory.capacity) {
+      await markCompensationRequired("capacity_exceeded_after_payment", {
+        mismatchReason: "Event capacity is below issued tickets and active holds",
+        capacity: inventory.capacity,
+        occupancy: inventory.occupancy
       }, {
         releaseActiveReservation: true
       });

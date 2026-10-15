@@ -7,8 +7,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
-import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney } from "@/lib/format";
+import { maxTicketsPerOrder } from "@/lib/validators/payments";
 
 type TicketType = {
   id: string;
@@ -47,6 +48,7 @@ export function PublicTicketPurchase({
   const allSoldOut = ticketTypes.every(isSoldOut);
   // Shown before checkout instead of letting the request fail late.
   const needsVerification = status === "authenticated" && !session?.user?.emailVerifiedAt;
+  const maxQuantity = Math.min(selected?.availableQuantity ?? 0, maxTicketsPerOrder);
 
   if (ticketTypes.length === 0) {
     return (
@@ -71,7 +73,7 @@ export function PublicTicketPurchase({
       return;
     }
 
-    if (!selected || quantity < 1 || quantity > selected.availableQuantity) {
+    if (!selected || quantity < 1 || quantity > maxQuantity) {
       setError("Choose a valid ticket quantity.");
       return;
     }
@@ -90,7 +92,8 @@ export function PublicTicketPurchase({
           body: JSON.stringify({
             eventId,
             ticketTypeId: selected.id,
-            quantity
+            quantity,
+            expectedUnitPrice: selected.price
           })
         }
       );
@@ -98,6 +101,8 @@ export function PublicTicketPurchase({
       window.location.href = data.url;
     } catch (checkoutError) {
       setBusy(false);
+      // The price changed since this page loaded: reload it so the buyer sees the new price first.
+      if (checkoutError instanceof ClientApiError && checkoutError.status === 409) router.refresh();
       setError(
         getClientErrorMessage(
           checkoutError,
@@ -111,7 +116,7 @@ export function PublicTicketPurchase({
     }
   }
 
-  const validQuantity = Boolean(selected) && quantity >= 1 && quantity <= (selected?.availableQuantity ?? 0);
+  const validQuantity = Boolean(selected) && quantity >= 1 && quantity <= maxQuantity;
 
   return (
     <section aria-labelledby="tickets-heading" className="grid gap-4 rounded-card border border-line bg-surface p-5">
@@ -167,12 +172,13 @@ export function PublicTicketPurchase({
         </Notice>
       ) : (
         <>
-          <div className="w-32">
+          <div className="w-40">
             <TextInput
               disabled={allSoldOut || busy}
+              hint={`Up to ${maxTicketsPerOrder} per order`}
               inputMode="numeric"
               label="Quantity"
-              max={Math.max(selected?.availableQuantity ?? 1, 1)}
+              max={Math.max(maxQuantity, 1)}
               min={1}
               onChange={(event) => setQuantity(Number(event.target.value))}
               type="number"

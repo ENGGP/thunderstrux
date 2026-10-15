@@ -1,6 +1,7 @@
 import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
 import {
+  apiError,
   badRequest,
   forbidden,
   internalError,
@@ -61,7 +62,8 @@ export async function POST(request: Request) {
         userId: user.id,
         eventId: validation.data.eventId,
         ticketTypeId: validation.data.ticketTypeId,
-        quantity: validation.data.quantity
+        quantity: validation.data.quantity,
+        expectedUnitPrice: validation.data.expectedUnitPrice
       })
     );
   } catch (error) {
@@ -77,6 +79,10 @@ export async function POST(request: Request) {
         error.kind === "ticket_type_not_found"
       ) {
         return notFound(error.message);
+      }
+
+      if (error.kind === "quote_changed") {
+        return apiError("CONFLICT", error.message, 409, error.details);
       }
 
       return badRequest(error.message, error.details);

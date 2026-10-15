@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
@@ -222,16 +221,12 @@ type QueryClient = Pick<typeof prisma, "$queryRaw">;
 async function selectExpiredReservationCandidates({
   db,
   limit,
-  now,
-  lock
+  now
 }: {
   db: QueryClient;
   limit: number;
   now: Date;
-  lock: boolean;
 }) {
-  const lockClause = lock ? Prisma.sql`FOR UPDATE SKIP LOCKED` : Prisma.empty;
-
   return db.$queryRaw<ReservationCandidate[]>`
     SELECT "id", "orderId"
     FROM "TicketReservation"
@@ -239,23 +234,18 @@ async function selectExpiredReservationCandidates({
       AND "expiresAt" <= ${now}
     ORDER BY "expiresAt" ASC, "id" ASC
     LIMIT ${limit}
-    ${lockClause}
   `;
 }
 
 async function selectLegacyPendingOrderCandidates({
   db,
   limit,
-  legacyPendingCutoff,
-  lock
+  legacyPendingCutoff
 }: {
   db: QueryClient;
   limit: number;
   legacyPendingCutoff: Date;
-  lock: boolean;
 }) {
-  const lockClause = lock ? Prisma.sql`FOR UPDATE SKIP LOCKED` : Prisma.empty;
-
   return db.$queryRaw<LegacyOrderCandidate[]>`
     SELECT "id"
     FROM "Order"
@@ -268,21 +258,16 @@ async function selectLegacyPendingOrderCandidates({
       )
     ORDER BY "createdAt" ASC, "id" ASC
     LIMIT ${limit}
-    ${lockClause}
   `;
 }
 
 async function selectAlreadyExpiredReservationBackedOrderCandidates({
   db,
-  limit,
-  lock
+  limit
 }: {
   db: QueryClient;
   limit: number;
-  lock: boolean;
 }) {
-  const lockClause = lock ? Prisma.sql`FOR UPDATE SKIP LOCKED` : Prisma.empty;
-
   return db.$queryRaw<LegacyOrderCandidate[]>`
     SELECT "Order"."id"
     FROM "Order"
@@ -292,7 +277,6 @@ async function selectAlreadyExpiredReservationBackedOrderCandidates({
       AND "TicketReservation"."status" = 'expired'
     ORDER BY "Order"."createdAt" ASC, "Order"."id" ASC
     LIMIT ${limit}
-    ${lockClause}
   `;
 }
 
@@ -342,16 +326,14 @@ async function processStaleOrderCleanupBatchInternal({
   const reservationCandidates = await selectExpiredReservationCandidates({
     db: prisma,
     limit,
-    now,
-    lock: false
+    now
   });
   const afterReservationLimit = Math.max(0, limit - reservationCandidates.length);
   const alreadyExpiredReservationBackedOrderCandidates =
     afterReservationLimit > 0
       ? await selectAlreadyExpiredReservationBackedOrderCandidates({
           db: prisma,
-          limit: afterReservationLimit,
-          lock: false
+          limit: afterReservationLimit
         })
       : [];
   const remainingLimit = Math.max(
@@ -363,8 +345,7 @@ async function processStaleOrderCleanupBatchInternal({
       ? await selectLegacyPendingOrderCandidates({
           db: prisma,
           limit: remainingLimit,
-          legacyPendingCutoff,
-          lock: false
+          legacyPendingCutoff
         })
       : [];
 

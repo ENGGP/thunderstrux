@@ -24,7 +24,7 @@ Since T11 publication is one of several independent settings on an event:
 - `capacity`: an optional event-wide ceiling, separate from each ticket type's remaining quantity. It cannot be set below valid issued tickets plus active holds. Existing events have none.
 - `version`: increases on every edit, publication or sales change; a stale editor or action gets `409` instead of overwriting.
 
-`lib/events/event-readiness.ts` is the only place that decides whether an event can be published and which ticket types can be bought. Today the publish API and the dashboard's disabled-Publish reason use it, and checkout uses its `salesOpen` check; T12 moves checkout's remaining sold-out and payments checks onto it and T15a makes the public event page read each type's state from it.
+`lib/events/event-readiness.ts` is the only place that decides whether an event can be published and which ticket types can be bought. The publish API, the dashboard's disabled-Publish reason and checkout use it; checkout passes each type's sellable stock from `lib/events/inventory.ts` (T12). T15a makes the public event page read each type's state from it.
 
 Until T13 adds free acquisition, checkout cannot issue a zero-total order, so `FREE_TICKETS_ENABLED` is off: a free type is not checkout-eligible (`free_unavailable`) and does not make an event publishable. A free-only event is blocked with "Free tickets are not available yet. Add a paid ticket type to publish this event."; a mixed event publishes once payments are ready, selling its paid types.
 
@@ -154,6 +154,17 @@ Important rules:
 - Existing tickets remain linked to the same `ticketTypeId`.
 - Sold-out ticket types with `quantity = 0` can be edited back to a positive quantity to reopen future availability.
 - The edit form only disables removal for sold/issued ticket rows. Event fields and ticket name/price/quantity stay editable.
+
+### Inventory locks (T12)
+
+`lib/events/inventory.ts` is the only place that locks an Event and its ticket types or computes sellable stock. Lock order: the buyer's User row on paths that fence it, then the Event, then its ticket types by ascending id, then orders and holds; no path locks an Order and then an Event or ticket type. Checkout, webhook fulfilment, edits and delete take these locks; publish and sales changes are compare-and-set on the event version, which takes the Event row first.
+
+- Sellable stock is `min(remaining - that type's active holds, capacity - occupancy)`, where occupancy is valid issued tickets plus every active hold; without a capacity only the first limit applies.
+- An edit cannot set capacity below occupancy, or a type's remaining quantity below its active holds.
+- Remaining quantity is decremented by sales, so the edit form sends the quantity it loaded as `expectedQuantity`. If sales moved the stock and the organiser left the field alone, the current stock is kept; if both changed, the save is a 409 and the organiser reloads.
+- Checkout compares the buyer's `expectedUnitPrice` with the locked price and refuses a changed price with 409 before creating a hold. Orders are capped at 10 tickets.
+- Fulfilment re-checks the capacity ceiling once; an order that would exceed it goes to compensation review instead of issuing tickets.
+- Holds count while `status = active` and `expiresAt` is after the transaction's single application-clock reading. The suite drives expiry with fake timers, so the database clock is not used; app and database share the host clock in every supported deployment.
 
 ## Public Event APIs
 

@@ -55,6 +55,7 @@ describe("checkout and reservation logic", () => {
       jsonRequest("http://localhost/api/payments/checkout/event", {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
+        expectedUnitPrice: event.ticketTypes[0].price,
         quantity: 1
       })
     );
@@ -80,6 +81,7 @@ describe("checkout and reservation logic", () => {
       jsonRequest("http://localhost/api/payments/checkout/event", {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
+        expectedUnitPrice: event.ticketTypes[0].price,
         quantity: 1
       })
     );
@@ -114,6 +116,7 @@ describe("checkout and reservation logic", () => {
       jsonRequest("http://localhost/api/payments/checkout/event", {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
+        expectedUnitPrice: event.ticketTypes[0].price,
         quantity: 2
       })
     );
@@ -263,6 +266,7 @@ describe("checkout and reservation logic", () => {
       jsonRequest("http://localhost/api/payments/checkout/event", {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
+        expectedUnitPrice: event.ticketTypes[0].price,
         quantity: 1
       })
     );

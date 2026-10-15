@@ -59,7 +59,7 @@ Ambiguous order identity never causes a transition. Repeated fulfilment of an al
 
 ## Transition Safety
 
-Sensitive mutations reload state while holding database row locks and use conditional updates. Payment fulfilment locks inventory before the order and its reservation/outbox writes. Candidate discovery for stale cleanup happens outside the mutation transaction; every candidate is revalidated after its order lock is acquired.
+Sensitive mutations reload state while holding database row locks and use conditional updates. Checkout locks the buyer, then the event and ticket type through `lib/events/inventory.ts`, and decides price, sale state and stock only under those locks (T12). Payment fulfilment locks the event and ticket type before the order and its reservation/outbox writes, and re-checks the event capacity once. Candidate discovery for stale cleanup happens outside the mutation transaction; every candidate is revalidated after its order lock is acquired.
 
 Serializable checkout/reservation transactions retry bounded write conflicts, including raw-query PostgreSQL serialization/deadlock errors. Other database errors are not retried or suppressed.
 

@@ -177,7 +177,7 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(closed.status).toBe(200);
     expect((await parseJsonResponse(closed)).event).toMatchObject({ status: "published", saleState: "closed", version: 2 });
     expect((await getDashboardEvent(organisation.id, event.id)).salesOpen).toBe(false);
-    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1 }))
+    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price }))
       .rejects.toMatchObject({ kind: "sales_closed" });
     expect(await prisma.order.count({ where: { eventId: event.id } })).toBe(0);
 
@@ -187,7 +187,7 @@ describe("event policy, readiness and explicit transitions", () => {
     const pastWindow = await setSales(event.id, { saleState: "open", version: 4 });
     expect(pastWindow.status).toBe(400);
     await prisma.event.update({ where: { id: event.id }, data: { saleState: "open" } });
-    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1 }))
+    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price }))
       .rejects.toBeInstanceOf(CheckoutCreationError);
     expect(await prisma.auditLog.count({ where: { targetId: event.id, action: { in: ["event.sales_closed", "event.sales_reopened"] } } })).toBe(2);
   });
@@ -208,7 +208,7 @@ describe("event policy, readiness and explicit transitions", () => {
         data: { issueSequence, orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id }
       });
     }
-    const ticketTypes = [{ id: event.ticketTypes[0].id, name: "General", price: 1200, quantity: 8 }];
+    const ticketTypes = [{ id: event.ticketTypes[0].id, name: "General", price: 1200, quantity: 8, expectedQuantity: event.ticketTypes[0].quantity }];
 
     const tooSmall = await edit(event.id, editPayload(event, { capacity: 1, version: 1, ticketTypes }));
     expect(tooSmall.status).toBe(400);
@@ -231,7 +231,7 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(ids).not.toContain(membersOnly.id);
     expect(await getPublishedEventDetail(unlisted.id)).toMatchObject({ id: unlisted.id });
     expect(await getPublishedEventDetail(membersOnly.id)).toBeNull();
-    await expect(createEventCheckout({ userId: member.id, eventId: membersOnly.id, ticketTypeId: membersOnly.ticketTypes[0].id, quantity: 1 }))
+    await expect(createEventCheckout({ userId: member.id, eventId: membersOnly.id, ticketTypeId: membersOnly.ticketTypes[0].id, quantity: 1, expectedUnitPrice: membersOnly.ticketTypes[0].price }))
       .rejects.toMatchObject({ kind: "event_not_found" });
   });
 });

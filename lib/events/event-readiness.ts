@@ -15,7 +15,9 @@ export type ReadinessEvent = {
   saleState: EventSaleState;
   status: EventStatus;
   visibility: EventVisibility;
-  ticketTypes: Array<{ id: string; price: number; quantity: number }>;
+  // `sellable` (from lib/events/inventory) also counts holds and capacity; without
+  // it, stock is the remaining quantity.
+  ticketTypes: Array<{ id: string; price: number; quantity: number; sellable?: number }>;
 };
 
 export type ReadinessBlocker = { code: string; field: string; message: string };
@@ -29,14 +31,14 @@ export function salesOpen(event: Pick<ReadinessEvent, "saleState" | "salesCloseA
 // ticket types can be bought. Publication and per-type checkout eligibility are
 // separate answers: once FREE_TICKETS_ENABLED, a mixed event may publish and sell
 // its free tickets while its paid tickets wait for Stripe. `chargesReady` comes from the society's
-// Connect state; stock here is remaining quantity (holds and capacity arrive in T12).
+// Connect state.
 export function eventReadiness(
   event: ReadinessEvent,
   { chargesReady, now = new Date() }: { chargesReady: boolean; now?: Date }
 ) {
   const ticketTypes = event.ticketTypes.map((ticketType) => {
     const reason: TicketTypeUnavailableReason | null =
-      ticketType.quantity <= 0
+      (ticketType.sellable ?? ticketType.quantity) <= 0
         ? "sold_out"
         : ticketType.price <= 0 && !FREE_TICKETS_ENABLED
           ? "free_unavailable"

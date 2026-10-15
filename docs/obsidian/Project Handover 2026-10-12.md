@@ -14,7 +14,7 @@ This was the current handover until 2026-10-12. It covers delivery from **PR #31
 
 ## Current State
 
-**Packages 1, 2 and 3 are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Packages 1, 2 and 3 are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Delivery PR | Delivered result |
 | --- | --- |

@@ -2,6 +2,8 @@ import type { EventSaleState, EventStatus, EventVisibility } from "@prisma/clien
 
 // Members-only events need the membership entitlements delivered by T24.
 export const MEMBERS_ONLY_EVENTS_ENABLED = false;
+// Checkout cannot issue zero-total orders until T13 adds free acquisition.
+export const FREE_TICKETS_ENABLED = false;
 
 export type ReadinessEvent = {
   title: string;
@@ -17,7 +19,7 @@ export type ReadinessEvent = {
 };
 
 export type ReadinessBlocker = { code: string; field: string; message: string };
-export type TicketTypeUnavailableReason = "sold_out" | "payments_unavailable";
+export type TicketTypeUnavailableReason = "sold_out" | "payments_unavailable" | "free_unavailable";
 
 export function salesOpen(event: Pick<ReadinessEvent, "saleState" | "salesCloseAt">, now = new Date()) {
   return event.saleState === "open" && now < event.salesCloseAt;
@@ -25,8 +27,8 @@ export function salesOpen(event: Pick<ReadinessEvent, "saleState" | "salesCloseA
 
 // The one place that decides whether an event may be published and which of its
 // ticket types can be bought. Publication and per-type checkout eligibility are
-// separate answers: a mixed event may publish and sell its free tickets while
-// its paid tickets wait for Stripe. `chargesReady` comes from the society's
+// separate answers: once FREE_TICKETS_ENABLED, a mixed event may publish and sell
+// its free tickets while its paid tickets wait for Stripe. `chargesReady` comes from the society's
 // Connect state; stock here is remaining quantity (holds and capacity arrive in T12).
 export function eventReadiness(
   event: ReadinessEvent,
@@ -36,9 +38,11 @@ export function eventReadiness(
     const reason: TicketTypeUnavailableReason | null =
       ticketType.quantity <= 0
         ? "sold_out"
-        : ticketType.price > 0 && !chargesReady
-          ? "payments_unavailable"
-          : null;
+        : ticketType.price <= 0 && !FREE_TICKETS_ENABLED
+          ? "free_unavailable"
+          : ticketType.price > 0 && !chargesReady
+            ? "payments_unavailable"
+            : null;
     return { id: ticketType.id, checkoutEligible: reason === null, reason };
   });
   const blockers: ReadinessBlocker[] = [];
@@ -64,7 +68,11 @@ export function eventReadiness(
   } else if (event.ticketTypes.every((ticketType) => ticketType.quantity <= 0)) {
     block("no_stock", "ticketTypes", "Add ticket quantity before publishing.");
   } else if (!ticketTypes.some((ticketType) => ticketType.checkoutEligible)) {
-    block("payments_unavailable", "ticketTypes", "Set up payments before publishing paid tickets, or add a free ticket type.");
+    if (ticketTypes.some((ticketType) => ticketType.reason === "payments_unavailable")) {
+      block("payments_unavailable", "ticketTypes", "Set up payments before publishing paid tickets.");
+    } else {
+      block("free_unavailable", "ticketTypes", "Free tickets are not available yet. Add a paid ticket type to publish this event.");
+    }
   }
 
   return {

@@ -14,7 +14,7 @@ This was the only current handover. It covers the session that began on **2026-1
 
 ## Current State
 
-**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] and [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Package | Tasks | Delivered capability | Evidence |
 | --- | --- | --- | --- |

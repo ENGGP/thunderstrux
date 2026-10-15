@@ -15,7 +15,7 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 1. [[Project Handover]]: current session state, active contracts, risks and next safe actions.
 2. [[Engineering Delivery Workflow]] ? focused branching, local validation by risk, review, cleanup and PR delivery.
 3. [[Non-Blocking Issue Register|Issue and Defect Register]] ? canonical defects, accepted risks and external gates.
-4. [[../THUNDERSTRUX_PRD|Product Requirements]] and [[../MVP_READINESS_WORK_PACKAGES|Work Packages]] ? product intent and delivery sequence.
+4. [[../THUNDERSTRUX_PRD|Product Requirements]] and [[../MVP_READINESS_PLAN|Readiness Plan]] (work packages, task order and substeps) ? product intent and delivery sequence.
 5. Read only the relevant living reference and its code sources. [[../MVP_READINESS_PLAN|Readiness Plan]] owns detailed acceptance and delivery evidence.
 6. [[../THUNDERSTRUX_PRD|Product Requirements]] defines authority by subject for the [[../THUNDERSTRUX_DATABASE_ARCHITECTURE_AND_SCHEMA_SPEC|Database Specification]], [[../THUNDERSTRUX_UX_USER_FLOW_SPEC|UX Specification]] and [[../THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]]. These are target contracts; the readiness ledger and handover record delivery, and code/provider observations establish implementation facts.
 
@@ -46,7 +46,7 @@ These notes retain their original findings and dates. They do not define today's
 - [[Production Readiness Verification 2026-09-22]] ? earlier remediation acceptance; current release procedures and remaining gates are in [[Production Operations]] and the handover.
 - [[Docker Architecture Assessment 2026-09-29]] ? topology/design assessment and subsequent foundation evidence; current runtime uses Node 22 and local validation.
 
-Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30, with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. [[Project Handover 2026-10-12]] covers PR #31 to PR #53 and [[Project Handover 2026-10-15]] covers PRs #54 to #67; keep the current handover focused on the session it describes.
+Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30 (the separate work packages note was folded into the readiness plan on 2026-10-16), with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. [[Project Handover 2026-10-12]] covers PR #31 to PR #53 and [[Project Handover 2026-10-15]] covers PRs #54 to #67; keep the current handover focused on the session it describes.
 
 ## Sources And Maintenance
 

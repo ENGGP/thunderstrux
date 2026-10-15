@@ -373,6 +373,8 @@ model CheckoutAttempt {
   providerOperationKey String               @unique
   stripeSessionId      String?              @unique
   stripeSessionUrl     String?
+  // The exact Stripe Session request, replayed with the same key by recovery (T14b).
+  providerRequest      Json?
   state                CheckoutAttemptState @default(created)
   reconcileDueAt       DateTime?
   lastOutcome          String?
@@ -664,6 +666,7 @@ enum OrderLifecycleSource {
   staff_action
   email_worker
   refund_worker
+  checkout_recovery
   legacy
 }
 

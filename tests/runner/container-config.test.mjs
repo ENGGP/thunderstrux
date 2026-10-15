@@ -47,7 +47,8 @@ test("hosted contract requires external services, file secrets, and runtime hard
       "notification-worker": hardenedService({ profiles: ["workers"] }),
       "email-worker": hardenedService({ profiles: ["workers"] }),
       "stale-order-worker": hardenedService({ profiles: ["workers"] }),
-      "compensation-worker": hardenedService({ profiles: ["workers"] })
+      "compensation-worker": hardenedService({ profiles: ["workers"] }),
+      "checkout-recovery-worker": hardenedService({ profiles: ["workers"] })
     }
   };
   assert.equal(validateHostedConfig(config), config);

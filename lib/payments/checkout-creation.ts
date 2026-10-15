@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import type Stripe from "stripe";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
@@ -133,7 +134,9 @@ function emitCheckoutSessionCreationFailure(
   });
 }
 
-async function failPendingOrder(orderId: string, message: string) {
+type CheckoutLifecycleSource = "checkout" | "checkout_recovery";
+
+export async function failPendingOrder(orderId: string, message: string, source: CheckoutLifecycleSource = "checkout") {
   await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, orderId))) return;
     const order = await tx.order.findUniqueOrThrow({
@@ -164,7 +167,7 @@ async function failPendingOrder(orderId: string, message: string) {
     await appendOrderLifecycleEvent(tx, {
       orderId,
       type: "order_failed",
-      source: "checkout",
+      source,
       reason: "stripe_error",
       fromOrderStatus: "pending",
       toOrderStatus: "failed",
@@ -180,7 +183,12 @@ async function failPendingOrder(orderId: string, message: string) {
   });
 }
 
-async function attachStripeSession(orderId: string, stripeSessionId: string, stripeSessionUrl: string) {
+export async function attachStripeSession(
+  orderId: string,
+  stripeSessionId: string,
+  stripeSessionUrl: string,
+  source: CheckoutLifecycleSource = "checkout"
+) {
   await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, orderId))) {
       throw new CheckoutCreationInternalError();
@@ -203,7 +211,8 @@ async function attachStripeSession(orderId: string, stripeSessionId: string, str
     if (order.status !== "pending" || order.stripeSessionId) {
       await tx.checkoutAttempt.updateMany({
         where: { orderId },
-        data: { state: "failed", reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
+        // Keep the Session on record: a payment on it reaches compensation through the webhook.
+        data: { state: "failed", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
       });
       throw new CheckoutCreationInternalError();
     }
@@ -218,7 +227,7 @@ async function attachStripeSession(orderId: string, stripeSessionId: string, str
     await appendOrderLifecycleEvent(tx, {
       orderId,
       type: "stripe_session_attached",
-      source: "checkout",
+      source,
       stripeSessionId,
       fromOrderStatus: "pending",
       toOrderStatus: "pending"
@@ -461,42 +470,23 @@ export async function createEventCheckout({
 
     pendingOrderId = pendingOrder.id;
     const stripeExpiresAt = Math.ceil(Date.now() / 1000) + reservationMinutes * 60;
-
-    await prisma.ticketReservation.update({
-      where: { orderId: pendingOrder.id },
-      data: { expiresAt: new Date(stripeExpiresAt * 1000) }
-    });
-
-    let session;
-    try {
-      session = await pendingOrder.stripe.checkout.sessions.create({
-        mode: "payment",
-        payment_method_types: ["card"],
-        line_items: [
-          {
-            price_data: {
-              currency: "aud",
-              product_data: { name: pendingOrder.eventTitle },
-              unit_amount: pendingOrder.unitPrice
-            },
-            quantity
-          }
-        ],
-        payment_intent_data: {
-          application_fee_amount: pendingOrder.platformFeeAmount,
-          on_behalf_of: pendingOrder.stripeAccountId,
-          transfer_data: { destination: pendingOrder.stripeAccountId },
-          metadata: {
-            orderId: pendingOrder.id,
-            eventId,
-            organisationId: pendingOrder.organisationId,
-            ticketTypeId,
-            quantity: String(quantity)
-          }
-        },
-        success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${pendingOrder.appUrl}/cancel`,
-        expires_at: stripeExpiresAt,
+    const sessionRequest: Stripe.Checkout.SessionCreateParams = {
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "aud",
+            product_data: { name: pendingOrder.eventTitle },
+            unit_amount: pendingOrder.unitPrice
+          },
+          quantity
+        }
+      ],
+      payment_intent_data: {
+        application_fee_amount: pendingOrder.platformFeeAmount,
+        on_behalf_of: pendingOrder.stripeAccountId,
+        transfer_data: { destination: pendingOrder.stripeAccountId },
         metadata: {
           orderId: pendingOrder.id,
           eventId,
@@ -504,7 +494,35 @@ export async function createEventCheckout({
           ticketTypeId,
           quantity: String(quantity)
         }
-      }, { idempotencyKey: pendingOrder.providerOperationKey });
+      },
+      success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${pendingOrder.appUrl}/cancel`,
+      expires_at: stripeExpiresAt,
+      metadata: {
+        orderId: pendingOrder.id,
+        eventId,
+        organisationId: pendingOrder.organisationId,
+        ticketTypeId,
+        quantity: String(quantity)
+      }
+    };
+
+    // Recovery (T14b) replays exactly this request with the same key, so Stripe
+    // returns the original Session instead of treating it as a new one.
+    await prisma.$transaction([
+      prisma.ticketReservation.update({
+        where: { orderId: pendingOrder.id },
+        data: { expiresAt: new Date(stripeExpiresAt * 1000) }
+      }),
+      prisma.checkoutAttempt.update({
+        where: { id: pendingOrder.attemptId },
+        data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue }
+      })
+    ]);
+
+    let session;
+    try {
+      session = await pendingOrder.stripe.checkout.sessions.create(sessionRequest, { idempotencyKey: pendingOrder.providerOperationKey });
     } catch (error) {
       if (isDefiniteProviderFailure(error)) throw error;
       // Stripe may have created the Session (timeout, connection or unknown

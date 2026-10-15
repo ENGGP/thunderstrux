@@ -161,6 +161,24 @@ services:
       - stripe_secret_key
     command: ["node", "scripts/process-compensation-refunds.mjs"]
 
+  checkout-recovery-worker:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: "no"
+    user: "1000:1000"
+    profiles: ["workers"]
+    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+    cpus: ${OPS_CPUS:?OPS_CPUS is required}
+    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+    secrets:
+      - *database-secret
+      - stripe_secret_key
+    command: ["node", "scripts/process-checkout-attempts.mjs"]
+
 secrets:
   database_url:
     external: true

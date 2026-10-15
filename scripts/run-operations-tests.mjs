@@ -191,10 +191,10 @@ try {
   await assertContainerHardening(appContainer.trim(), "Production app");
   await compose(["exec", "-T", "app", "sh", "-c", "touch /tmp/thunderstrux-hardening-check && rm /tmp/thunderstrux-hardening-check"]);
 
-  await compose(["--profile", "workers", "create", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker"], {
+  await compose(["--profile", "workers", "create", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }
   });
-  for (const service of ["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker"]) {
+  for (const service of ["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker"]) {
     const container = await compose(["--profile", "workers", "ps", "-a", "-q", service], { capture: true });
     await assertContainerHardening(container.trim(), service);
   }
@@ -257,6 +257,7 @@ try {
   await compose(["run", "--rm", "notification-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
   await compose(["run", "--rm", "stale-order-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
   await compose(["run", "--rm", "compensation-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+  await compose(["run", "--rm", "checkout-recovery-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
 
   await compose(["run", "--rm", "migration", "node", "prisma/seed.mjs"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }

@@ -25,6 +25,7 @@
     "notifications:process": "node scripts/process-notifications.mjs",
     "email:outbox:process": "node scripts/process-email-outbox.mjs",
     "compensation-refunds:process": "node scripts/process-compensation-refunds.mjs",
+    "checkout-attempts:process": "node scripts/process-checkout-attempts.mjs",
     "stale-orders:process": "node scripts/process-stale-orders.mjs",
     "db:integrity:audit": "node scripts/audit-db-integrity.mjs",
     "db:organisation-drift:repair": "node scripts/repair-organisation-drift.mjs",

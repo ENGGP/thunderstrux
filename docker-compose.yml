@@ -123,6 +123,19 @@ services:
         condition: service_healthy
     command: ["node", "scripts/process-compensation-refunds.mjs"]
 
+  checkout-recovery-worker:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    restart: "no"
+    profiles: ["workers"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "scripts/process-checkout-attempts.mjs"]
+
   db:
     image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
     restart: unless-stopped

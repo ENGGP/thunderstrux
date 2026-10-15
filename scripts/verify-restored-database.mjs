@@ -40,7 +40,7 @@ try {
   const snapshotOrder = await prisma.order.findFirst({ where: { purchasedTicketTypeName: "p217 purchased ticket name" } });
   if (snapshotOrder?.sellerName !== "p217 seller at purchase" || snapshotOrder.paymentKind !== "stripe" || snapshotOrder.feePolicyVersion !== "platform_fee_10_percent_v1" || snapshotOrder.snapshotVersion !== 1) throw new Error("Restored purchase snapshot is missing");
   const attempt = await prisma.checkoutAttempt.findUnique({ where: { providerOperationKey: "p217-restore-provider-key" }, include: { order: true } });
-  if (attempt?.state !== "provider_uncertain" || attempt.clientIdempotencyKey !== "p217-restore-attempt" || attempt.order?.purchasedTicketTypeName !== "p217 purchased ticket name") throw new Error("Restored checkout attempt is missing");
+  if (attempt?.state !== "provider_uncertain" || attempt.clientIdempotencyKey !== "p217-restore-attempt" || attempt.order?.purchasedTicketTypeName !== "p217 purchased ticket name" || attempt.providerRequest?.metadata?.restoreCheck !== "p217") throw new Error("Restored checkout attempt is missing");
   if (!(await prisma.event.findFirst({ where: { capacity: 217, visibility: "unlisted", saleState: "closed", version: { gte: 2 }, salesCloseAt: { not: undefined } } }))) throw new Error("Restored event policy is missing");
   if (!(await prisma.ticket.findFirst({ where: { issueSequence: { gte: 1 }, validity: "active" } }))) throw new Error("Restored tickets lost their issue sequence or validity");
   if (!closedBuyer?.buyerIdentityCapturedAt || !closedBuyer.user?.closedAt || !closedBuyer.user?.disabledAt || closedBuyer.user.authVersion !== 1 || closedBuyer.buyerFirstNameSnapshot !== "Retained") throw new Error("Restored closure/retained buyer identity is missing");

@@ -38,6 +38,7 @@ async function createPaidTicket({
   });
   const ticket = await prisma.ticket.create({
     data: {
+      issueSequence: 1,
       orderId: order.id,
       eventId,
       ticketTypeId,
@@ -106,7 +107,8 @@ describe("ticket visibility and check-in API", () => {
           id: ticket.id,
           status: "unused",
           checkedInAt: null,
-          ticketTypeName: ticketType.name,
+          // Fixture orders carry no purchase snapshot, like orders created before T10.
+          ticketTypeName: `${ticketType.name} (historical label unavailable)`,
           orderId: order.id,
           buyerEmail: member.email,
           buyerName: "Test Member"
@@ -312,7 +314,7 @@ describe("ticket visibility and check-in API", () => {
     expect(body.tickets).toEqual([
       expect.objectContaining({
         id: ticket.id,
-        ticketTypeName: ticketType.name
+        ticketTypeName: `${ticketType.name} (historical label unavailable)`
       })
     ]);
   });

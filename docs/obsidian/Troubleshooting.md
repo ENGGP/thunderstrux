@@ -222,6 +222,7 @@ Expected behavior:
 - Ticket type name, price, and quantity can be edited after sales for future purchases.
 - Ticket type removal is blocked once that ticket type has orders or issued tickets.
 - Existing orders keep historical `unitPrice` and `totalAmount`; changing `TicketType.price` does not recalculate old orders.
+- An order or ticket showing "(historical label unavailable)" after its ticket name was created before T10 recorded purchase-time names. The name shown is today's; the original is unknown and is not reconstructed.
 - Existing tickets keep their `ticketTypeId`.
 - Unsold ticket types on the same event remain editable/removable.
 

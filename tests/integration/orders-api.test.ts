@@ -94,7 +94,9 @@ describe("orders API", () => {
       expect.objectContaining({
         id: pending.id,
         status: "pending",
-        ticketType: ticketType.name,
+        projection: "processing",
+        // Fixture orders carry no purchase snapshot, like orders created before T10.
+        ticketType: `${ticketType.name} (historical label unavailable)`,
         quantity: 1,
         totalAmount: ticketType.price,
         buyerEmail: member.email
@@ -573,6 +575,7 @@ describe("orders API", () => {
       });
       await prisma.ticket.create({
         data: {
+          issueSequence: 1,
           orderId: order.id,
           eventId: event.id,
           ticketTypeId: ticketType.id,
@@ -826,6 +829,7 @@ describe("orders API", () => {
       });
       await prisma.ticket.create({
         data: {
+          issueSequence: 1,
           orderId: order.id,
           eventId: event.id,
           ticketTypeId: ticketType.id,

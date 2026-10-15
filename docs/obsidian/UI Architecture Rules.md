@@ -30,7 +30,7 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - `input.tsx`: `TextInput`, `TextArea`, `Select`. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
 - `card.tsx`: bordered surface with an optional `className`.
 - `notice.tsx`: inline message in `info`, `success`, `warning` or `danger`: a soft wash, a hairline border, an icon and a toned title, with body text in ink. `action` puts the link or button that resolves the message at the end of the row; `onDismiss` (client callers only) adds a close button. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
-- `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked and unused are neutral; joined uses the brand accent. Add a status there, not in a page.
+- `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked and unused are neutral; joined uses the brand accent. Orders show the projection from `lib/purchases/projection.ts`: Processing and Payment review (charged but not fulfilled) are warnings, Paid and Free are successes. Add a status there, not in a page.
 - `skeleton.tsx`: `Skeleton` blocks and `ListSkeleton`, a list stand-in with one screen-reader label. They are used only as a `<Suspense>` fallback after a page's guards (see below).
 - `confirm-dialog.tsx`: native `<dialog>` confirmation that names the action and its consequences. Its body is mounted only while open, and Escape cancels. Use it instead of `window.confirm`.
 
@@ -159,7 +159,7 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard/orders/[orderId]`
 
-- Breadcrumb `Orders`, title `Order` plus the last six characters of the id, and the status. A Summary card (buyer, event, tickets, total, ordered, paid, full order id) and a `Manage this order` card: resend tickets, record a refund made outside Thunderstrux (confirmed through `ConfirmDialog` because it cannot be undone) or, for a compensation case, verify the Stripe refund id, and the Stripe session with copy and a Stripe link.
+- Breadcrumb `Orders`, title `Order` plus the last six characters of the id, and the status. The ticket line uses the purchased ticket name; an order from before T10 shows today's name with "(historical label unavailable)". The note that contact details were captured from the account profile appears only for closure captures, not for contacts recorded at purchase. A Summary card (buyer, event, tickets, total, ordered, paid, full order id) and a `Manage this order` card: resend tickets, record a refund made outside Thunderstrux (confirmed through `ConfirmDialog` because it cannot be undone) or, for a compensation case, verify the Stripe refund id, and the Stripe session with copy and a Stripe link.
 - `Order history` sits in exactly one `<section>` (a `Card`); browser tests locate it that way.
 
 `/dashboard/events/[eventId]/tickets` (Attendees)

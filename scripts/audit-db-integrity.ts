@@ -290,6 +290,44 @@ const checks: AuditCheck[] = [
       `)
     })
   },
+  {
+    name: "paid_order_records_fulfilment",
+    classification: "lifecycle-risk",
+    recommendation:
+      "Audit-only: a paid order without fulfilledAt had no tickets when T10 backfilled it; review it rather than inventing a time.",
+    run: () =>
+      modelCheck(
+        prisma.order.count({ where: { status: "paid", fulfilledAt: null } }),
+        prisma.order.findMany({
+          where: { status: "paid", fulfilledAt: null },
+          select: { id: true },
+          take: SAMPLE_LIMIT,
+          orderBy: { id: "asc" }
+        })
+      )
+  },
+  {
+    name: "order_tickets_within_quantity",
+    classification: "relationship/audit-only",
+    recommendation:
+      "Audit-only: more issued units than the order quantity means duplicate issuance; review before any repair.",
+    run: async () => ({
+      count: await rawCount(prisma.$queryRaw<RawCount>`
+        SELECT COUNT(*)::bigint AS count FROM (
+          SELECT "Order"."id" FROM "Order"
+          INNER JOIN "Ticket" ON "Ticket"."orderId" = "Order"."id"
+          GROUP BY "Order"."id" HAVING COUNT("Ticket"."id") > MAX("Order"."quantity")
+        ) AS over_issued
+      `),
+      sampleIds: await rawSampleIds(prisma.$queryRaw<RawIds>`
+        SELECT "Order"."id" FROM "Order"
+        INNER JOIN "Ticket" ON "Ticket"."orderId" = "Order"."id"
+        GROUP BY "Order"."id" HAVING COUNT("Ticket"."id") > MAX("Order"."quantity")
+        ORDER BY "Order"."id" ASC
+        LIMIT ${SAMPLE_LIMIT}
+      `)
+    })
+  },
   ...(["Order", "Ticket", "TicketReservation"] as const).map((table) => ({
     name: `${table.toLowerCase()}_organisation_matches_event`,
     classification: "relationship/audit-only" as const,

@@ -16,6 +16,12 @@ P3.19 adds an append-only business-event journal around the existing `Order`, `T
 
 Closure retains original Order/User identifiers, tickets, attendance and lifecycle records. Buyer contacts use immutable captures with explicit provenance; anonymised login email is not a delivery address. A new signup never inherits old purchases. Later provider payment/refund truth remains authoritative, independently of account closure. See [[Database and Multi Tenancy]] and [[Email Delivery Implementation]].
 
+## Purchase Snapshots (T10)
+
+Checkout records what was bought when it creates the order: `paymentKind` (`stripe` or `free`; required with no default), the purchased ticket type name, seller name and connected Stripe account, currency, the platform fee in cents and its policy version (`platform_fee_10_percent_v1`), `snapshotVersion`, and the buyer contact with provenance `purchase`. These are the values the Stripe Session charges, and later edits to the ticket type, society or profile never change them. Fulfilment sets `fulfilledAt` with `paidAt` and numbers each ticket with a unique `(orderId, issueSequence)`, so a second issuance for the same order fails instead of adding tickets. Tickets carry `validity` (`active`, `void`, `refund_review`); only active tickets appear in the wallet, ticket email and door list.
+
+`lib/purchases/projection.ts` turns status, kind and compensation review into the one displayed status: Processing, Paid, Free, Payment review, Failed or Expired. Free orders keep the compatible `status = paid` and `paidAt`, so money queries must filter on `paymentKind`, not status. Legacy rows keep unknown names, sellers and fees as null; readers show today's ticket name followed by "(historical label unavailable)" and never write it back. Migration `20261015010000_ticket_purchase_snapshots` backfills only known facts: every existing order is Stripe (checkout always rejected zero totals), `fulfilledAt` is the first ticket's creation time for paid orders, and existing tickets are numbered by `(createdAt, id)`.
+
 ## Storage
 
 `OrderLifecycleEvent` belongs to one order and has a unique `(orderId, sequence)` pair. Events store a typed event and source, optional staff actor, Stripe event/session references, email job reference, reason, before/after order and reservation statuses, and a small allowlisted `facts` object.

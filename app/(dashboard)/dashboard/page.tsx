@@ -29,6 +29,7 @@ import { listDashboardEvents } from "@/lib/events/event-lifecycle";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
+import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import {
   hasOrganisationPermission,
   type OrganisationPermission,
@@ -264,7 +265,7 @@ async function OrganisationOverview({
                       <span className="text-sm font-semibold tabular-nums text-ink">
                         {formatMoney(order.totalAmount)}
                       </span>
-                      <StatusBadge status={order.status} />
+                      <StatusBadge status={ticketOrderProjection(order)} />
                     </div>
                   </li>
                 ))}
@@ -339,7 +340,7 @@ async function MemberDashboard(userId: string, contexts: ContextChoices) {
                       · {order.event.organisation.name}
                     </span>
                     <span className="text-sm text-ink-soft">
-                      {order.quantity} × {order.ticketType.name}
+                      {order.quantity} × {purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name)}
                     </span>
                   </div>
                 </li>

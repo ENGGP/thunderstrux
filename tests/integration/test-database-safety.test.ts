@@ -34,7 +34,7 @@ test("reset clears every current model including dependent and unlinked recovery
   const ticketTypeId = event.ticketTypes[0].id;
   const references = { organisationId: organisation.id, eventId: event.id, ticketTypeId, userId: member.id };
   const paid = await createOrder({ ...references, status: "paid", paidAt: new Date() });
-  await prisma.ticket.create({ data: { orderId: paid.id, eventId: event.id, ticketTypeId, organisationId: organisation.id } });
+  await prisma.ticket.create({ data: { issueSequence: 1, orderId: paid.id, eventId: event.id, ticketTypeId, organisationId: organisation.id } });
   await createReservation({ ...references, orderId: paid.id, status: "confirmed", confirmedAt: new Date(), expiresAt: new Date(Date.now() + 60000) });
   await prisma.emailOutbox.create({ data: { orderId: paid.id, mode: "automatic" } });
   await prisma.orderLifecycleEvent.create({ data: { orderId: paid.id, sequence: 1, type: "legacy_baseline", source: "legacy" } });

@@ -15,7 +15,7 @@ describe("denormalized organisation drift repair", () => {
     const reservation = await createReservation({ orderId: order.id,
       organisationId: owner.organisation.id, eventId: event.id, ticketTypeId,
       userId: member.id, quantity: 1, expiresAt: new Date(Date.now() + 3600000) });
-    const ticket = await prisma.ticket.create({ data: { orderId: order.id,
+    const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id,
       eventId: event.id, ticketTypeId, organisationId: owner.organisation.id } });
     await prisma.order.update({ where: { id: order.id },
       data: { organisationId: other.organisation.id } });
@@ -45,7 +45,7 @@ describe("denormalized organisation drift repair", () => {
     const second = await createEvent({ organisationId: organisation.id });
     const order = await createOrder({ organisationId: organisation.id,
       eventId: first.id, ticketTypeId: first.ticketTypes[0].id });
-    const ticket = await prisma.ticket.create({ data: { orderId: order.id,
+    const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id,
       eventId: first.id, ticketTypeId: first.ticketTypes[0].id,
       organisationId: organisation.id } });
     await prisma.ticket.update({ where: { id: ticket.id }, data: { eventId: second.id } });

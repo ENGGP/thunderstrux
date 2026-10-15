@@ -626,6 +626,7 @@ async function main() {
       );
       const order = await prisma.order.create({
         data: {
+          paymentKind: "stripe",
           organisationId: event.organisationId,
           eventId: event.id,
           ticketTypeId: ticketType.id,
@@ -770,6 +771,7 @@ async function main() {
 
       const pendingOrder = await prisma.order.create({
         data: {
+          paymentKind: "stripe",
           organisationId: engineeringOrganisation.id,
           eventId: createdEventId,
           ticketTypeId: ticketType.id,
@@ -836,6 +838,7 @@ async function main() {
 
       const paidOrder = await prisma.order.create({
         data: {
+          paymentKind: "stripe",
           organisationId: engineeringOrganisation.id,
           eventId: createdEventId,
           ticketTypeId: ticketType.id,
@@ -864,6 +867,7 @@ async function main() {
 
       const failedOrder = await prisma.order.create({
         data: {
+          paymentKind: "stripe",
           organisationId: engineeringOrganisation.id,
           eventId: createdEventId,
           ticketTypeId: ticketType.id,
@@ -894,6 +898,7 @@ async function main() {
 
       const expiringOrder = await prisma.order.create({
         data: {
+          paymentKind: "stripe",
           organisationId: engineeringOrganisation.id,
           eventId: createdEventId,
           ticketTypeId: ticketType.id,
@@ -920,6 +925,7 @@ async function main() {
 
       const legacyOldPendingOrder = await prisma.order.create({
         data: {
+          paymentKind: "stripe",
           organisationId: engineeringOrganisation.id,
           eventId: createdEventId,
           ticketTypeId: ticketType.id,
@@ -936,6 +942,7 @@ async function main() {
 
       const legacyFreshPendingOrder = await prisma.order.create({
         data: {
+          paymentKind: "stripe",
           organisationId: engineeringOrganisation.id,
           eventId: createdEventId,
           ticketTypeId: ticketType.id,

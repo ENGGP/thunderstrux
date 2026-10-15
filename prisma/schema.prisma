@@ -321,6 +321,16 @@ model Order {
   buyerDisplayNameSnapshot String?
   buyerIdentityCapturedAt DateTime?
   buyerIdentityProvenance String?
+  // Purchase facts recorded when the order is created; null on legacy rows means unknown.
+  paymentKind             PaymentKind
+  fulfilledAt             DateTime?
+  purchasedTicketTypeName String?
+  sellerName              String?
+  sellerStripeAccountId   String?
+  currency                String       @default("aud")
+  feeAmount               Int?
+  feePolicyVersion        String?
+  snapshotVersion         Int?
   organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
@@ -386,11 +396,16 @@ model Ticket {
   organisationId String
   createdAt      DateTime     @default(now())
   checkedInAt    DateTime?
+  issueSequence  Int
+  validity       TicketValidity @default(active)
+  validityReason String?
+  validityChangedAt DateTime?
   order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
   ticketType     TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
   organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
 
+  @@unique([orderId, issueSequence])
   @@index([orderId])
   @@index([eventId])
   @@index([eventId, createdAt, id])
@@ -520,6 +535,17 @@ enum CompensationRefundState {
   refunded
   refund_failed
   recovered
+}
+
+enum PaymentKind {
+  stripe
+  free
+}
+
+enum TicketValidity {
+  active
+  void
+  refund_review
 }
 
 enum OrderStatus {

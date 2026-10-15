@@ -49,7 +49,8 @@ describe("database numeric integrity constraints", () => {
           userId: member.id,
           quantity: 1,
           unitPrice: 0,
-          totalAmount: 0
+          totalAmount: 0,
+          paymentKind: "stripe"
         }
       })
     ).resolves.toMatchObject({ quantity: 1, unitPrice: 0, totalAmount: 0 });

@@ -1,4 +1,5 @@
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { enqueueTicketEmail } from "@/lib/email/ticket-email-outbox";
@@ -56,6 +57,8 @@ export async function getOrganisationOrderDetail(
       eventId: true,
       ticketTypeId: true,
       status: true,
+      paymentKind: true,
+      purchasedTicketTypeName: true,
       quantity: true,
       unitPrice: true,
       totalAmount: true,
@@ -118,6 +121,8 @@ export async function getOrganisationOrderDetail(
   return {
     ...order,
     user: retainedBuyerIdentity(order),
+    projection: ticketOrderProjection(order),
+    purchasedTicketType: purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name),
     stripeDashboardUrl: getStripeSessionDashboardUrl(order.stripeSessionId)
   };
 }

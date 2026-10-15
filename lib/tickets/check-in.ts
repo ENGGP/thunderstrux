@@ -1,5 +1,6 @@
 import { requireOrganisationPermission } from "@/lib/auth/access";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
 
 export class OrganisationEventTicketsAccessError extends Error {
@@ -198,8 +199,10 @@ export async function getOrganisationEventTickets(
           ]
         }
     : {};
+  // Void and under-review units no longer admit anyone, so the door list and its counts leave them out.
   const ticketWhere = {
       eventId,
+      validity: "active" as const,
       event: {
         organisationId,
         ...publishedOnly
@@ -227,6 +230,7 @@ export async function getOrganisationEventTickets(
         order: {
           select: {
             id: true,
+            purchasedTicketTypeName: true,
             ...buyerIdentitySelect,
             user: {
               select: {
@@ -243,6 +247,7 @@ export async function getOrganisationEventTickets(
     prisma.ticket.count({
       where: {
         eventId,
+        validity: "active",
         event: {
           organisationId,
         ...publishedOnly
@@ -252,6 +257,7 @@ export async function getOrganisationEventTickets(
     prisma.ticket.count({
       where: {
         eventId,
+        validity: "active",
         checkedInAt: {
           not: null
         },
@@ -279,7 +285,7 @@ export async function getOrganisationEventTickets(
       status: ticketStatus(ticket.checkedInAt),
       createdAt: ticket.createdAt,
       checkedInAt: ticket.checkedInAt,
-      ticketTypeName: ticket.ticketType.name,
+      ticketTypeName: purchasedTicketTypeLabel(ticket.order.purchasedTicketTypeName, ticket.ticketType.name),
       orderId: ticket.order.id,
       buyerEmail: retainedBuyerIdentity(ticket.order)?.email ?? null,
       buyerName: retainedBuyerIdentity(ticket.order) ? buyerName(retainedBuyerIdentity(ticket.order)!) : null
@@ -311,6 +317,8 @@ export async function checkInOrganisationTicket(
   const existingTicket = await tx.ticket.findFirst({
     where: {
       id: ticketId,
+      // Exact denial reasons arrive with the check-in console (T19b); until then a void unit is not found.
+      validity: "active",
       event: {
         organisationId,
         ...publishedOnly
@@ -384,6 +392,8 @@ export async function checkOutOrganisationTicket(
   const existingTicket = await tx.ticket.findFirst({
     where: {
       id: ticketId,
+      // Exact denial reasons arrive with the check-in console (T19b); until then a void unit is not found.
+      validity: "active",
       event: {
         organisationId,
         ...publishedOnly

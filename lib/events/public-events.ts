@@ -62,8 +62,10 @@ export async function getPublishedEvents({
     ? ascendingCursorWhere("startTime", decodedCursor, direction)
     : {};
   const events = await prisma.event.findMany({
+    // Unlisted events open by direct link only; members-only events never appear publicly.
     where: {
       status: "published",
+      visibility: "public",
       ...cursorWhere
     },
     orderBy: orderByForDirection("startTime", direction, "asc"),
@@ -103,7 +105,8 @@ export async function getPublishedEventDetail(
   const event = await prisma.event.findFirst({
     where: {
       id: eventId,
-      status: "published"
+      status: "published",
+      visibility: { not: "members_only" }
     },
     select: {
       id: true,

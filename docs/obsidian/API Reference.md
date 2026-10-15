@@ -397,6 +397,9 @@ Rules:
 - `startTime` must be before `endTime`.
 - Ticket prices are integer cents.
 - Ticket quantities must be greater than zero.
+- Always creates a `draft` (T11); a submitted `status` is ignored. Publishing goes through `PATCH /api/events/[eventId]/publish`.
+- Optional `capacity` (positive integer or null), `visibility` (`public` or `unlisted`; `members_only` is refused until memberships exist) and `salesCloseAt` (defaults to `startTime`, must not be after `endTime`).
+- The created event carries `version: 1`.
 
 ### `GET /api/events/[eventId]`
 
@@ -416,6 +419,8 @@ Rules:
 - Auth required.
 - Active staff authority or explicitly enabled legacy authority required.
 - Does not own publish/unpublish status transitions.
+- Request must include the `version` the editor loaded. A different current version returns `409 CONFLICT` and nothing is saved; a successful edit increments it.
+- Accepts the same optional `capacity`, `visibility` and `salesCloseAt` as create. A close time still equal to the old start follows a changed start; an explicit one is kept. Capacity below valid issued tickets plus active holds returns 400.
 - Request must include `organisationId`, but the API revalidates organisation ownership and scopes the event server-side.
 - Existing ticket types are matched by `id`.
 - New ticket types omit `id`.
@@ -434,6 +439,7 @@ Expected request shape:
   "startTime": "2026-05-06T15:00:00.000Z",
   "endTime": "2026-05-06T17:00:00.000Z",
   "location": "Campus Hall",
+  "version": 3,
   "ticketTypes": [
     {
       "id": "existing_ticket_type_id",
@@ -469,14 +475,26 @@ Deletes an event when permitted by the route handler rules.
 
 ### `PATCH /api/events/[eventId]/publish`
 
-Toggles draft/published status.
+Moves an event to an explicit status. Body: `{ "targetStatus": "published" | "draft", "version": 3 }`.
 
 Rules:
 
 - Auth required.
 - Event-management role required.
-- Publishing requires at least one ticket type and positive total quantity.
+- Asking for the status the event already has returns it unchanged (a retried request cannot flip it back). Otherwise a stale `version` returns `409 CONFLICT`.
+- Publishing applies the shared readiness rules in `lib/events/event-readiness.ts`: title, description and location; end after start; a sales close time in the future and not after the end; at least one ticket type with remaining quantity; and at least one type that can be bought now (a free type, or a paid type when the society can take payments). A paid-only event therefore needs payments set up; a mixed event can publish without them. Each blocker comes back as a 400 detail with its field.
 - Unpublishing is blocked after orders exist.
+- Each change is audited (`event.published`, `event.unpublished`) and increments `version`.
+
+### `PATCH /api/events/[eventId]/sales`
+
+Closes or reopens ticket sales without changing publication. Body: `{ "saleState": "closed" | "open", "version": 3 }`.
+
+Rules:
+
+- Same authority, idempotent same-state behaviour and `409` on a stale version as publish.
+- Reopening is refused (400) once `salesCloseAt` has passed.
+- Audited as `event.sales_closed` and `event.sales_reopened`. Checkout refuses closed sales with `400` and the message `Ticket sales are closed`.
 
 ### `POST /api/events/[eventId]/ticket-types`
 

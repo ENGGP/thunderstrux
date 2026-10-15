@@ -86,6 +86,7 @@ try {
     await transaction.order.create({ data: { userId: closed.id, organisationId: ticketType.event.organisationId, eventId: ticketType.eventId, ticketTypeId: ticketType.id, status: "expired", quantity: 1, unitPrice: 0, totalAmount: 0, paymentKind: "stripe",
       buyerEmailSnapshot: "p217-retained@example.com", buyerFirstNameSnapshot: "Retained", buyerLastNameSnapshot: "Buyer", buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "current_account_at_capture" } });
     await transaction.accountSecurityEvent.create({ data: { userId: closed.id, type: "account_closed", authVersion: 1 } });
+    await transaction.event.update({ where: { id: ticketType.eventId }, data: { capacity: 217, visibility: "unlisted", saleState: "closed", version: { increment: 1 } } });
     await transaction.auditLog.create({
       data: {
         organisationId: organisation.id,

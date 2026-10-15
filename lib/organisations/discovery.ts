@@ -85,7 +85,7 @@ export async function discoverOrganisations(
       description: true,
       logoAssetId: true,
       events: {
-        where: { status: "published", startTime: { gte: new Date() } },
+        where: { status: "published", visibility: "public", startTime: { gte: new Date() } },
         orderBy: [{ startTime: "asc" }, { id: "asc" }],
         take: 1,
         select: { id: true, title: true, startTime: true },

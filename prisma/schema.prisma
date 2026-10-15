@@ -264,6 +264,13 @@ model Event {
   endTime        DateTime
   location       String
   status         EventStatus @default(draft)
+  // Optional event-wide ceiling, separate from each ticket type's remaining quantity.
+  capacity       Int?
+  visibility     EventVisibility @default(public)
+  salesCloseAt   DateTime
+  saleState      EventSaleState @default(open)
+  // Compare-and-swap version for edits, publication and sales changes.
+  version        Int         @default(1)
   compensationRefundMode CompensationRefundMode @default(manual_review)
   createdAt      DateTime    @default(now())
   organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
@@ -520,6 +527,17 @@ enum AccountRole {
 enum EventStatus {
   draft
   published
+}
+
+enum EventVisibility {
+  public
+  unlisted
+  members_only
+}
+
+enum EventSaleState {
+  open
+  closed
 }
 
 enum CompensationRefundMode {

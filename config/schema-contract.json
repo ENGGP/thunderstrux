@@ -1,3 +1,3 @@
 {
-  "requiredMigration": "20261015010000_ticket_purchase_snapshots"
+  "requiredMigration": "20261016010000_event_policy"
 }

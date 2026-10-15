@@ -4,13 +4,23 @@ import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { scopedByOrganisation } from "@/lib/db/organisation-scope";
 import {
+  eventReadiness,
+  MEMBERS_ONLY_EVENTS_ENABLED,
+  salesOpen
+} from "@/lib/events/event-readiness";
+import { isOrganisationStripeReady } from "@/lib/stripe/connect";
+import {
   createEventSchema,
   createScopedTicketTypeSchema,
+  eventPublicationSchema,
+  eventSaleStateSchema,
   updateEventSchema
 } from "@/lib/validators/events";
 
 type CreateEventInput = z.infer<typeof createEventSchema>;
 type UpdateEventInput = z.infer<typeof updateEventSchema>;
+type EventPublicationInput = z.infer<typeof eventPublicationSchema>;
+type EventSaleStateInput = z.infer<typeof eventSaleStateSchema>;
 type CreateTicketTypeInput = z.infer<typeof createScopedTicketTypeSchema>;
 
 export class EventLifecycleNotFoundError extends Error {
@@ -27,6 +37,21 @@ export class EventLifecycleValidationError extends Error {
   }
 }
 
+export class EventLifecycleConflictError extends Error {
+  constructor(message = "This event changed since you opened it. Reload it to see the latest version.") {
+    super(message);
+    this.name = "EventLifecycleConflictError";
+  }
+}
+
+function rejectMembersOnly(visibility: string | undefined) {
+  if (visibility === "members_only" && !MEMBERS_ONLY_EVENTS_ENABLED) {
+    throw new EventLifecycleValidationError("Members-only events are not available yet", [
+      { path: ["visibility"], message: "Members-only events become available with memberships" }
+    ]);
+  }
+}
+
 export const eventSelect = {
   id: true,
   organisationId: true,
@@ -36,6 +61,11 @@ export const eventSelect = {
   endTime: true,
   location: true,
   status: true,
+  capacity: true,
+  visibility: true,
+  salesCloseAt: true,
+  saleState: true,
+  version: true,
   compensationRefundMode: true,
   createdAt: true,
   ticketTypes: {
@@ -63,20 +93,29 @@ export type EventView = (typeof eventViews)[number];
 const dashboardEventSelect = {
   id: true,
   title: true,
+  description: true,
   location: true,
   startTime: true,
   endTime: true,
   status: true,
-  ticketTypes: { select: { quantity: true } },
+  visibility: true,
+  salesCloseAt: true,
+  saleState: true,
+  version: true,
+  ticketTypes: { select: { id: true, price: true, quantity: true } },
+  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
   _count: { select: { orders: true, tickets: true } }
 } satisfies Prisma.EventSelect;
 
-// The blocker texts mirror the publish, unpublish and delete rules below so the
-// UI can say why an action is unavailable; the mutations still enforce them.
+// The publish reason comes from the shared readiness rules and the other texts
+// mirror the unpublish and delete rules below, so the UI can say why an action
+// is unavailable; the mutations still enforce them.
 function toDashboardEvent(
-  event: Prisma.EventGetPayload<{ select: typeof dashboardEventSelect }>
+  event: Prisma.EventGetPayload<{ select: typeof dashboardEventSelect }>,
+  now = new Date()
 ) {
   const remaining = event.ticketTypes.reduce((total, ticketType) => total + ticketType.quantity, 0);
+  const readiness = eventReadiness(event, { chargesReady: isOrganisationStripeReady(event.organisation), now });
 
   return {
     id: event.id,
@@ -85,16 +124,14 @@ function toDashboardEvent(
     startTime: event.startTime,
     endTime: event.endTime,
     status: event.status,
+    visibility: event.visibility,
+    saleState: event.saleState,
+    salesCloseAt: event.salesCloseAt,
+    salesOpen: readiness.salesOpen,
+    version: event.version,
     ticketTypeCount: event.ticketTypes.length,
     remaining,
-    publishBlocker:
-      event.status !== "draft"
-        ? null
-        : event.ticketTypes.length === 0
-          ? "Add a ticket type before publishing."
-          : remaining <= 0
-            ? "Add ticket quantity before publishing."
-            : null,
+    publishBlocker: event.status === "draft" ? readiness.blockers[0]?.message ?? null : null,
     unpublishBlocker:
       event.status === "published" && event._count.orders > 0
         ? "This event has orders, so it stays published."
@@ -271,6 +308,8 @@ export async function createOrganisationEvent(
     ]);
   }
 
+  rejectMembersOnly(input.visibility);
+
   return prisma.$transaction(async (transaction) => {
     const event = await transaction.event.create({
       data: {
@@ -280,7 +319,11 @@ export async function createOrganisationEvent(
       startTime: input.startTime,
       endTime: input.endTime,
       location: input.location,
-      status: input.status,
+      // Always a draft: publishing goes through the readiness-checked transition.
+      status: "draft",
+      capacity: input.capacity ?? null,
+      visibility: input.visibility ?? "public",
+      salesCloseAt: input.salesCloseAt ?? input.startTime,
       compensationRefundMode: input.compensationRefundMode,
       ticketTypes: {
         create: input.ticketTypes.map((ticketType) => ({
@@ -315,6 +358,10 @@ export async function updateOrganisationEvent(
     where: scopedByOrganisation(organisationId, { id: eventId }),
     select: {
       id: true,
+      version: true,
+      startTime: true,
+      salesCloseAt: true,
+      capacity: true,
       ticketTypes: {
         select: {
           id: true,
@@ -326,6 +373,44 @@ export async function updateOrganisationEvent(
 
   if (!existingEvent) {
     throw new EventLifecycleNotFoundError();
+  }
+
+  if (existingEvent.version !== input.version) {
+    throw new EventLifecycleConflictError();
+  }
+
+  rejectMembersOnly(input.visibility);
+  // A close time still at its default follows the start time; an explicit one stays.
+  const salesCloseAt =
+    input.salesCloseAt ??
+    (existingEvent.salesCloseAt.getTime() === existingEvent.startTime.getTime()
+      ? input.startTime
+      : existingEvent.salesCloseAt);
+
+  if (salesCloseAt > input.endTime) {
+    throw new EventLifecycleValidationError("Ticket sales must close before the event ends", [
+      { path: ["salesCloseAt"], message: "Ticket sales must close before the event ends" }
+    ]);
+  }
+
+  const capacity = input.capacity === undefined ? existingEvent.capacity : input.capacity;
+
+  if (capacity !== null) {
+    // shortcut: unlocked read, so a checkout committing now can slip past; T12 moves this under the event lock.
+    const [issued, held] = await Promise.all([
+      prisma.ticket.count({ where: { eventId: existingEvent.id, validity: "active" } }),
+      prisma.ticketReservation.aggregate({
+        where: { eventId: existingEvent.id, status: "active", expiresAt: { gt: new Date() } },
+        _sum: { quantity: true }
+      })
+    ]);
+    const committed = issued + (held._sum.quantity ?? 0);
+
+    if (capacity < committed) {
+      throw new EventLifecycleValidationError("Capacity is below tickets already issued or held", [
+        { path: ["capacity"], message: `Capacity cannot be below the ${committed} tickets already issued or held` }
+      ]);
+    }
   }
 
   const submittedIds = input.ticketTypes
@@ -374,19 +459,27 @@ export async function updateOrganisationEvent(
     .map((ticketType) => ticketType.id);
 
   return prisma.$transaction(async (transaction) => {
-    await transaction.event.update({
-      where: { id: existingEvent.id },
+    const updated = await transaction.event.updateMany({
+      where: { id: existingEvent.id, version: input.version },
       data: {
         title: input.title,
         description: input.description,
         startTime: input.startTime,
         endTime: input.endTime,
         location: input.location,
+        capacity,
+        salesCloseAt,
+        ...(input.visibility ? { visibility: input.visibility } : {}),
+        version: { increment: 1 },
         ...(input.compensationRefundMode
           ? { compensationRefundMode: input.compensationRefundMode }
           : {})
       }
     });
+
+    if (updated.count === 0) {
+      throw new EventLifecycleConflictError();
+    }
 
     if (removedTicketTypeIds.length > 0) {
       await transaction.ticketType.deleteMany({
@@ -433,103 +526,143 @@ export async function updateOrganisationEvent(
   });
 }
 
-export async function toggleOrganisationEventPublished(
-  organisationId: string,
-  eventId: string,
-  actorUserId?: string
-) {
+const transitionSelect = {
+  id: true,
+  status: true,
+  version: true,
+  title: true,
+  description: true,
+  location: true,
+  startTime: true,
+  endTime: true,
+  salesCloseAt: true,
+  saleState: true,
+  visibility: true,
+  ticketTypes: { select: { id: true, price: true, quantity: true } },
+  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
+  _count: { select: { orders: true } }
+} satisfies Prisma.EventSelect;
+
+async function findTransitionEvent(organisationId: string, eventId: string) {
   const event = await prisma.event.findFirst({
     where: scopedByOrganisation(organisationId, { id: eventId }),
-    select: {
-      id: true,
-      status: true,
-      ticketTypes: { select: { quantity: true } },
-      _count: { select: { orders: true } }
-    }
+    select: transitionSelect
   });
 
   if (!event) {
     throw new EventLifecycleNotFoundError();
   }
 
-  if (event.status === "draft") {
-    if (event.ticketTypes.length === 0) {
+  return event;
+}
+
+// Moves an event to an explicit target status. Asking for the status it already
+// has is a no-op, so a retried request cannot flip it back; a stale version is a
+// conflict. Publishing applies the shared readiness rules.
+export async function setOrganisationEventPublication(
+  organisationId: string,
+  eventId: string,
+  { targetStatus, version }: EventPublicationInput,
+  actorUserId?: string
+) {
+  const event = await findTransitionEvent(organisationId, eventId);
+
+  if (event.status !== targetStatus) {
+    if (event.version !== version) {
+      throw new EventLifecycleConflictError();
+    }
+
+    if (targetStatus === "published") {
+      const readiness = eventReadiness(event, { chargesReady: isOrganisationStripeReady(event.organisation) });
+
+      if (!readiness.publishable) {
+        throw new EventLifecycleValidationError(
+          "Event is not ready to publish",
+          readiness.blockers.map((blocker) => ({ path: [blocker.field], message: blocker.message }))
+        );
+      }
+    } else if (event._count.orders > 0) {
       throw new EventLifecycleValidationError(
-        "Event needs at least one ticket type before publishing",
+        "Event cannot be unpublished after orders exist",
         [
           {
-            path: ["ticketTypes"],
-            message: "Add at least one ticket type before publishing this event"
+            path: ["eventId"],
+            message: "Keep this event published for purchasers and order history"
           }
         ]
       );
     }
 
-    if (
-      event.ticketTypes.reduce(
-        (total, ticketType) => total + ticketType.quantity,
-        0
-      ) <= 0
-    ) {
-      throw new EventLifecycleValidationError(
-        "Event needs available tickets before publishing",
-        [
-          {
-            path: ["ticketTypes"],
-            message: "Total ticket quantity must be greater than zero"
-          }
-        ]
-      );
-    }
-
-    return prisma.$transaction(async (transaction) => {
-      const updated = await transaction.event.update({
-        where: { id: event.id },
-        data: { status: "published" },
-        select: eventSelect
+    await prisma.$transaction(async (transaction) => {
+      const updated = await transaction.event.updateMany({
+        where: { id: event.id, version, status: event.status },
+        data: { status: targetStatus, version: { increment: 1 } }
       });
+
+      if (updated.count === 0) {
+        throw new EventLifecycleConflictError();
+      }
+
       await transaction.auditLog.create({
         data: {
           organisationId,
           actorUserId: actorUserId ?? null,
-          action: "event.published",
+          action: targetStatus === "published" ? "event.published" : "event.unpublished",
           targetType: "Event",
-          targetId: event.id
+          targetId: event.id,
+          metadata: { version: version + 1 }
         }
       });
-      return updated;
     });
   }
 
-  if (event._count.orders > 0) {
-    throw new EventLifecycleValidationError(
-      "Event cannot be unpublished after orders exist",
-      [
-        {
-          path: ["eventId"],
-          message: "Keep this event published for purchasers and order history"
-        }
-      ]
-    );
-  }
+  return prisma.event.findUniqueOrThrow({ where: { id: event.id }, select: eventSelect });
+}
 
-  return prisma.$transaction(async (transaction) => {
-    const updated = await transaction.event.update({
-      where: { id: event.id },
-      data: { status: "draft" },
-      select: eventSelect
-    });
-    await transaction.auditLog.create({
-      data: {
-        organisationId,
-        actorUserId: actorUserId ?? null,
-        action: "event.unpublished",
-        targetType: "Event",
-        targetId: event.id
+// Closes or reopens ticket sales without changing publication.
+export async function setOrganisationEventSaleState(
+  organisationId: string,
+  eventId: string,
+  { saleState, version }: EventSaleStateInput,
+  actorUserId?: string
+) {
+  const event = await findTransitionEvent(organisationId, eventId);
+
+  if (event.saleState !== saleState) {
+    if (event.version !== version) {
+      throw new EventLifecycleConflictError();
+    }
+
+    if (saleState === "open" && !salesOpen({ saleState, salesCloseAt: event.salesCloseAt })) {
+      throw new EventLifecycleValidationError("The sales close time has passed", [
+        { path: ["salesCloseAt"], message: "Move the sales close time later before reopening sales" }
+      ]);
+    }
+
+    await prisma.$transaction(async (transaction) => {
+      const updated = await transaction.event.updateMany({
+        where: { id: event.id, version, saleState: event.saleState },
+        data: { saleState, version: { increment: 1 } }
+      });
+
+      if (updated.count === 0) {
+        throw new EventLifecycleConflictError();
       }
+
+      await transaction.auditLog.create({
+        data: {
+          organisationId,
+          actorUserId: actorUserId ?? null,
+          action: saleState === "closed" ? "event.sales_closed" : "event.sales_reopened",
+          targetType: "Event",
+          targetId: event.id,
+          metadata: { version: version + 1 }
+        }
+      });
     });
-    return updated;
-  });
+  }
+
+  return prisma.event.findUniqueOrThrow({ where: { id: event.id }, select: eventSelect });
 }
 
 export async function deleteOrganisationEvent(
@@ -592,6 +725,7 @@ export async function createOrganisationEventTicketType(
   }
 
   return prisma.$transaction(async (transaction) => {
+    await transaction.event.update({ where: { id: event.id }, data: { version: { increment: 1 } } });
     const ticketType = await transaction.ticketType.create({
       data: {
         eventId: event.id,

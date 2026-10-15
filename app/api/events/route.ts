@@ -1,27 +1,15 @@
 import { NextResponse } from "next/server";
+import { mapRouteError, validationError } from "@/lib/api/errors";
 import {
-  badRequest,
-  forbidden,
-  internalError,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
   requireAuthenticatedUser,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
-import {
-  OrganisationMismatchError,
-  OrganisationScopeError,
-  requireOrganisationId
-} from "@/lib/db/organisation-scope";
+import { requireOrganisationId } from "@/lib/db/organisation-scope";
 import {
   createOrganisationEvent,
-  EventLifecycleValidationError,
   listOrganisationEvents
 } from "@/lib/events/event-lifecycle";
+import { eventRouteRules } from "@/lib/events/http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { createEventSchema } from "@/lib/validators/events";
@@ -48,31 +36,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ event }, { status: 201 });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationMismatchError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationScopeError) {
-      return badRequest(error.message, [
-        { path: ["organisationId"], message: error.message },
-        { path: ["x-org-id"], message: error.message }
-      ]);
-    }
-
-    if (error instanceof EventLifecycleValidationError) {
-      return badRequest(error.message, error.details);
-    }
-
-    console.error(error);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "events.create",
+      request,
+      rules: eventRouteRules(["organisationId", "x-org-id"])
+    });
   }
 }
 
@@ -86,22 +54,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ events });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationScopeError) {
-      return badRequest(error.message, [
-        { path: ["orgId"], message: error.message },
-        { path: ["x-org-id"], message: error.message }
-      ]);
-    }
-
-    console.error(error);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "events.list",
+      request,
+      rules: eventRouteRules(["orgId", "x-org-id"])
+    });
   }
 }

@@ -34,7 +34,9 @@ function eventPayload(organisationId: string, overrides: Record<string, unknown>
     location: "Integration Hall",
     startTime,
     endTime,
-    status: "draft",
+    // Ignored on create (events always start as drafts); edits compare it.
+    status: "published",
+    version: 1,
     ticketTypes: [
       {
         name: "General",
@@ -65,6 +67,10 @@ describe("event lifecycle", () => {
         id: expect.any(String),
         organisationId: organisation.id,
         title: "Integration Event",
+        status: "draft",
+        visibility: "public",
+        salesCloseAt: createBody.event.startTime,
+        version: 1,
         ticketTypes: [expect.objectContaining({ id: expect.any(String) })]
       }
     });
@@ -73,6 +79,7 @@ describe("event lifecycle", () => {
     const updatePayload = {
       ...eventPayload(organisation.id, {
         title: "Integration Event Updated",
+        version: event.version,
         ticketTypes: [
           {
             id: event.ticketTypes[0].id,
@@ -222,13 +229,13 @@ describe("event lifecycle", () => {
       accountRole: "organisation"
     });
     const missingResponse = await publishEventRoute(
-      jsonRequest("http://localhost/api/events/missing-event/publish", undefined, {
+      jsonRequest("http://localhost/api/events/missing-event/publish", { targetStatus: "published", version: 1 }, {
         method: "PATCH"
       }),
       routeContext({ eventId: "missing-event" })
     );
     const crossTenantResponse = await publishEventRoute(
-      jsonRequest(`http://localhost/api/events/${otherEvent.id}/publish`, undefined, {
+      jsonRequest(`http://localhost/api/events/${otherEvent.id}/publish`, { targetStatus: "published", version: 1 }, {
         method: "PATCH"
       }),
       routeContext({ eventId: otherEvent.id })
@@ -305,7 +312,7 @@ describe("event lifecycle", () => {
   });
 
   test("publish requires ticket types and positive remaining quantity", async () => {
-    const { user, organisation } = await createOrganisationAccount();
+    const { user, organisation } = await createOrganisationAccount({ stripeReady: true });
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
 
     const noTicketEvent = await createEvent({
@@ -313,7 +320,7 @@ describe("event lifecycle", () => {
       ticketTypes: []
     });
     const noTicketResponse = await publishEventRoute(
-      jsonRequest(`http://localhost/api/events/${noTicketEvent.id}/publish`, undefined, {
+      jsonRequest(`http://localhost/api/events/${noTicketEvent.id}/publish`, { targetStatus: "published", version: 1 }, {
         method: "PATCH"
       }),
       routeContext({ eventId: noTicketEvent.id })
@@ -327,7 +334,7 @@ describe("event lifecycle", () => {
     const zeroQuantityResponse = await publishEventRoute(
       jsonRequest(
         `http://localhost/api/events/${zeroQuantityEvent.id}/publish`,
-        undefined,
+        { targetStatus: "published", version: 1 },
         { method: "PATCH" }
       ),
       routeContext({ eventId: zeroQuantityEvent.id })
@@ -336,7 +343,7 @@ describe("event lifecycle", () => {
 
     const validEvent = await createEvent({ organisationId: organisation.id });
     const published = await publishEventRoute(
-      jsonRequest(`http://localhost/api/events/${validEvent.id}/publish`, undefined, {
+      jsonRequest(`http://localhost/api/events/${validEvent.id}/publish`, { targetStatus: "published", version: 1 }, {
         method: "PATCH"
       }),
       routeContext({ eventId: validEvent.id })
@@ -363,7 +370,7 @@ describe("event lifecycle", () => {
     });
 
     const response = await publishEventRoute(
-      jsonRequest(`http://localhost/api/events/${event.id}/publish`, undefined, {
+      jsonRequest(`http://localhost/api/events/${event.id}/publish`, { targetStatus: "draft", version: event.version }, {
         method: "PATCH"
       }),
       routeContext({ eventId: event.id })
@@ -419,6 +426,7 @@ describe("event lifecycle", () => {
       startTime: event.startTime.toISOString(),
       endTime: event.endTime.toISOString(),
       location: event.location,
+      version: event.version,
       ticketTypes: [
         {
           id: soldTicketType.id,

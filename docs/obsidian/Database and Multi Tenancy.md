@@ -256,6 +256,8 @@ Important fields:
 - `ticketEmailSentAt`
 - `ticketEmailLastError`
 - `ticketEmailResentAt`
+- `paymentKind` (required, no default), `fulfilledAt`
+- purchase snapshots: `purchasedTicketTypeName`, `sellerName`, `sellerStripeAccountId`, `currency`, `feeAmount`, `feePolicyVersion`, `snapshotVersion`
 
 Order tenancy:
 
@@ -518,6 +520,10 @@ Closure permanently retains the User ID/closedAt and disables credentials. Datab
 ## Society assets and profiles
 
 T07/T08 bring the current chain to 34 migrations and 22 models, ending in 20261011020000_society_profiles. Asset metadata retains tenant/uploader ownership, processed-byte hash and recoverable state; object bytes live separately. Profile logo/cover references use `(assetId, Organisation.id)` composite foreign keys to `(Asset.id, organisationId)`. Profile version and derived completion protect concurrent editable public fields, while event/payment authority is unchanged. Existing societies remain visible with empty public defaults. [[Society Profiles and Assets]] owns reference locks, delayed cleanup, bootstrap eligibility and metadata/object restore compatibility.
+
+## Purchase snapshots and ticket validity
+
+T10 brings the chain to 35 migrations (still 22 models), ending in `20261015010000_ticket_purchase_snapshots`. It adds the `PaymentKind` and `TicketValidity` enums, the Order snapshot fields above, and Ticket `issueSequence` (unique per order, positive), `validity`, `validityReason` and `validityChangedAt`. New checks: a fulfilled order is paid, a free order totals zero, and a recorded fee lies between zero and the total. `Order_buyer_capture_check` now accepts provenance `purchase` as well as `current_account_at_capture`, and the existing trigger keeps either capture immutable. The backfill records only facts the rows prove (every existing order is a Stripe order; `fulfilledAt` from the first ticket; ticket numbers by creation order); unknown names and fees stay null. `pnpm db:integrity:audit` reports paid orders without `fulfilledAt` and orders with more tickets than their quantity. Rollback: the columns are additive, but older code cannot create orders once `paymentKind` is required, so pause checkout before running an older release against this schema. [[Payment Lifecycle]] owns the behaviour.
 
 ## Ownership retirement
 

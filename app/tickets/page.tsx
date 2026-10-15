@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth/access";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { getMemberTicketOrders } from "@/lib/orders/member-tickets";
+import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import {
   PaginationError,
   parsePaginationOptionsOrDefault
@@ -148,7 +149,7 @@ async function TicketOrders({
                     {order.event.organisation.name}
                   </p>
                   <p className="text-sm text-ink">
-                    {order.quantity} × {order.ticketType.name} ·{" "}
+                    {order.quantity} × {purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name)} ·{" "}
                     <span className="tabular-nums">{formatMoney(order.totalAmount)}</span>
                   </p>
                   {order.tickets.length > 0 ? (

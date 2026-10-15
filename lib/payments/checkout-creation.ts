@@ -11,7 +11,8 @@ import {
 } from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
-import { calculatePlatformFee } from "@/lib/stripe/fees";
+import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
+import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
 import {
   expireOldActiveReservations,
   getActiveReservedQuantity,
@@ -164,6 +165,7 @@ export async function createEventCheckout({
         organisation: {
           select: {
             id: true,
+            name: true,
             stripeAccountId: true,
             stripeChargesEnabled: true
           }
@@ -267,7 +269,7 @@ export async function createEventCheckout({
 
     const pendingOrder = await runSerializableReservationTransaction(
       async (tx) => {
-        await lockVerifiedAccount(tx, userId);
+        const buyer = await lockVerifiedAccount(tx, userId);
         await tx.$queryRaw`SELECT id FROM "TicketType" WHERE id = ${ticketType.id} FOR UPDATE`;
         await expireOldActiveReservations(tx, {
           now: reservationNow,
@@ -331,7 +333,21 @@ export async function createEventCheckout({
             status: "pending",
             totalAmount,
             compensationRefundModeSnapshot: event.compensationRefundMode,
-            userId
+            userId,
+            // The same values the Stripe Session below charges, so the receipt never drifts from the charge.
+            paymentKind: "stripe",
+            purchasedTicketTypeName: ticketType.name,
+            sellerName: organisation.name,
+            sellerStripeAccountId: organisation.stripeAccountId,
+            feeAmount: platformFeeAmount,
+            feePolicyVersion: PLATFORM_FEE_POLICY_VERSION,
+            snapshotVersion: PURCHASE_SNAPSHOT_VERSION,
+            buyerEmailSnapshot: buyer.email,
+            buyerFirstNameSnapshot: buyer.firstName,
+            buyerLastNameSnapshot: buyer.lastName,
+            buyerDisplayNameSnapshot: buyer.displayName,
+            buyerIdentityCapturedAt: reservationNow,
+            buyerIdentityProvenance: "purchase"
           },
           select: { id: true }
         });

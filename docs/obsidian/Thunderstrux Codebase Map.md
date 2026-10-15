@@ -102,6 +102,7 @@ lib/
   events/                            Public reads, analytics, and event lifecycle use cases
   orders/                            Scoped order operations, member ticket reads and stale pending cleanup
   payments/                          Checkout, reconciliation, and lifecycle history use cases
+  purchases/                         Purchase status projection and purchase-snapshot labels (T10)
   permissions/                       Live staff capability mapping and legacy compatibility helpers
   stripe/                            Stripe SDK, Connect application service, and fees
   tickets/                           Reservations and ticket attendance service

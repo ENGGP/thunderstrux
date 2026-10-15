@@ -201,6 +201,7 @@ async function ensureOrder({
 }) {
   const totalAmount = quantity * unitPrice;
   const paidAt = status === "paid" ? createdAt : null;
+  const fulfilledAt = status === "paid" && issueTickets ? createdAt : null;
   const failedAt = status === "failed" ? createdAt : null;
 
   const order = await prisma.order.upsert({
@@ -215,6 +216,7 @@ async function ensureOrder({
       unitPrice,
       totalAmount,
       paidAt,
+      fulfilledAt,
       failedAt,
       failureReason
     },
@@ -230,8 +232,10 @@ async function ensureOrder({
       stripeSessionId,
       createdAt,
       paidAt,
+      fulfilledAt,
       failedAt,
-      failureReason
+      failureReason,
+      paymentKind: "stripe"
     },
     select: { id: true }
   });
@@ -246,7 +250,7 @@ async function ensureOrder({
   const existingTickets = await prisma.ticket.findMany({
     where: { orderId: order.id },
     select: { id: true },
-    orderBy: { createdAt: "asc" }
+    orderBy: { issueSequence: "asc" }
   });
 
   if (existingTickets.length > quantity) {
@@ -262,6 +266,7 @@ async function ensureOrder({
   for (let index = existingTickets.length; index < quantity; index += 1) {
     await prisma.ticket.create({
       data: {
+        issueSequence: index + 1,
         orderId: order.id,
         eventId,
         ticketTypeId,

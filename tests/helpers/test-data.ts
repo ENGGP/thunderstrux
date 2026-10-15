@@ -6,6 +6,7 @@ import type {
   OrderStatus,
   OrganisationStaffRole,
   OrganisationStaffStatus,
+  PaymentKind,
   ReservationStatus
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -189,7 +190,9 @@ export async function createOrder({
   requiresCompensationReview,
   fulfilmentFailedAt,
   fulfilmentFailureReason,
-  compensationRefundModeSnapshot = "manual_review"
+  compensationRefundModeSnapshot = "manual_review",
+  paymentKind = "stripe",
+  fulfilledAt
 }: {
   organisationId: string;
   eventId: string;
@@ -207,6 +210,8 @@ export async function createOrder({
   fulfilmentFailedAt?: Date | null;
   fulfilmentFailureReason?: string | null;
   compensationRefundModeSnapshot?: CompensationRefundMode;
+  paymentKind?: PaymentKind;
+  fulfilledAt?: Date | null;
 }) {
   return prisma.order.create({
     data: {
@@ -226,7 +231,10 @@ export async function createOrder({
       requiresCompensationReview,
       fulfilmentFailedAt,
       fulfilmentFailureReason,
-      compensationRefundModeSnapshot
+      compensationRefundModeSnapshot,
+      paymentKind,
+      // A paid fixture stands for a fulfilled order unless the test says otherwise.
+      fulfilledAt: fulfilledAt === undefined ? (status === "paid" ? paidAt ?? null : null) : fulfilledAt
     }
   });
 }

@@ -29,6 +29,7 @@ export async function getMemberTicketOrders(
     select: {
       id: true,
       status: true,
+      purchasedTicketTypeName: true,
       quantity: true,
       totalAmount: true,
       createdAt: true,
@@ -53,12 +54,14 @@ export async function getMemberTicketOrders(
           name: true
         }
       },
+      // Only units that still admit; void and under-review units are history, not tickets to show at the door.
       tickets: {
+        where: { validity: "active" },
         select: {
           id: true,
           createdAt: true
         },
-        orderBy: { createdAt: "asc" }
+        orderBy: { issueSequence: "asc" }
       }
     }
   });
@@ -85,6 +88,7 @@ export async function getUpcomingTicketOrders(userId: string, take = 3) {
     select: {
       id: true,
       quantity: true,
+      purchasedTicketTypeName: true,
       ticketType: { select: { name: true } },
       event: {
         select: {

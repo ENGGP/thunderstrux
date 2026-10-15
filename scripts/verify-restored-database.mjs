@@ -37,6 +37,9 @@ try {
   const emailChange = await prisma.authToken.findFirst({ where: { purpose: "email_change", newEmail: "p217-change@example.com" } });
   if (!emailChange) throw new Error("Restored email-change binding is missing");
   const closedBuyer = await prisma.order.findFirst({ where: { buyerEmailSnapshot: "p217-retained@example.com", buyerIdentityProvenance: "current_account_at_capture" }, include: { user: true } });
+  const snapshotOrder = await prisma.order.findFirst({ where: { purchasedTicketTypeName: "p217 purchased ticket name" } });
+  if (snapshotOrder?.sellerName !== "p217 seller at purchase" || snapshotOrder.paymentKind !== "stripe" || snapshotOrder.feePolicyVersion !== "platform_fee_10_percent_v1" || snapshotOrder.snapshotVersion !== 1) throw new Error("Restored purchase snapshot is missing");
+  if (!(await prisma.ticket.findFirst({ where: { issueSequence: { gte: 1 }, validity: "active" } }))) throw new Error("Restored tickets lost their issue sequence or validity");
   if (!closedBuyer?.buyerIdentityCapturedAt || !closedBuyer.user?.closedAt || !closedBuyer.user?.disabledAt || closedBuyer.user.authVersion !== 1 || closedBuyer.buyerFirstNameSnapshot !== "Retained") throw new Error("Restored closure/retained buyer identity is missing");
 
 

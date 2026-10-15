@@ -1,4 +1,5 @@
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
 
 type TicketDeliveryOrder = Awaited<ReturnType<typeof loadTicketDeliveryOrder>>;
@@ -81,6 +82,8 @@ export async function loadTicketDeliveryOrder(orderId: string) {
       totalAmount: true,
       paidAt: true,
       ticketEmailSentAt: true,
+      purchasedTicketTypeName: true,
+      sellerName: true,
       ...buyerIdentitySelect,
       user: {
         select: {
@@ -108,10 +111,11 @@ export async function loadTicketDeliveryOrder(orderId: string) {
         }
       },
       tickets: {
+        where: { validity: "active" },
         select: {
           id: true
         },
-        orderBy: { createdAt: "asc" }
+        orderBy: { issueSequence: "asc" }
       }
     }
   });
@@ -145,6 +149,9 @@ export function renderTicketEmail(order: TicketDeliveryOrder) {
     .map((id) => `<li><code>${escapeHtml(id)}</code></li>`)
     .join("");
   const subject = `Your tickets for ${order.event.title}`;
+  // Purchase-time facts; the event date and place stay live.
+  const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
+  const seller = order.sellerName ?? order.event.organisation.name;
 
   const text = [
     greeting,
@@ -152,10 +159,10 @@ export function renderTicketEmail(order: TicketDeliveryOrder) {
     `Your payment is confirmed and your tickets for ${order.event.title} are ready.`,
     "",
     `Event: ${order.event.title}`,
-    `Organiser: ${order.event.organisation.name}`,
+    `Organiser: ${seller}`,
     `Date: ${formatDateTime(order.event.startTime)}`,
     `Location: ${order.event.location}`,
-    `Ticket: ${order.ticketType.name}`,
+    `Ticket: ${ticketName}`,
     `Quantity: ${order.quantity}`,
     `Unit price: ${formatCurrency(order.unitPrice)}`,
     `Total: ${formatCurrency(order.totalAmount)}`,
@@ -175,10 +182,10 @@ export function renderTicketEmail(order: TicketDeliveryOrder) {
       )}</strong> are ready.</p>
       <dl>
         <dt>Event</dt><dd>${escapeHtml(order.event.title)}</dd>
-        <dt>Organiser</dt><dd>${escapeHtml(order.event.organisation.name)}</dd>
+        <dt>Organiser</dt><dd>${escapeHtml(seller)}</dd>
         <dt>Date</dt><dd>${escapeHtml(formatDateTime(order.event.startTime))}</dd>
         <dt>Location</dt><dd>${escapeHtml(order.event.location)}</dd>
-        <dt>Ticket</dt><dd>${escapeHtml(order.ticketType.name)}</dd>
+        <dt>Ticket</dt><dd>${escapeHtml(ticketName)}</dd>
         <dt>Quantity</dt><dd>${order.quantity}</dd>
         <dt>Unit price</dt><dd>${escapeHtml(formatCurrency(order.unitPrice))}</dd>
         <dt>Total</dt><dd>${escapeHtml(formatCurrency(order.totalAmount))}</dd>

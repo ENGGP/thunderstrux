@@ -151,6 +151,7 @@ test("join/leave serialise caller relationships without changing staff, purchase
   });
   const ticket = await prisma.ticket.create({
     data: {
+      issueSequence: 1,
       orderId: order.id,
       organisationId: own.organisation.id,
       eventId: event.id,

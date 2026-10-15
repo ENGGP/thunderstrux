@@ -633,6 +633,7 @@ describe("rate-limited routes", () => {
     });
     const uncheckedTicket = await prisma.ticket.create({
       data: {
+        issueSequence: 1,
         orderId: order.id,
         eventId: event.id,
         ticketTypeId: ticketType.id,
@@ -642,6 +643,7 @@ describe("rate-limited routes", () => {
     const checkedInAt = new Date("2026-05-01T12:00:00.000Z");
     const checkedTicket = await prisma.ticket.create({
       data: {
+        issueSequence: 2,
         orderId: order.id,
         eventId: event.id,
         ticketTypeId: ticketType.id,

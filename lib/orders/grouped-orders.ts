@@ -2,6 +2,11 @@ import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-i
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
+  purchasedTicketTypeLabel,
+  ticketOrderProjection,
+  type TicketOrderProjection
+} from "@/lib/purchases/projection";
+import {
   decodeTimestampCursor,
   descendingCursorWhere,
   orderByForDirection,
@@ -57,6 +62,7 @@ export type OrganisationOrderQueryFilters = {
 export type GroupedOrganisationOrder = {
   id: string;
   status: OrderStatus;
+  projection: TicketOrderProjection;
   ticketType: string;
   quantity: number;
   totalAmount: number;
@@ -166,6 +172,8 @@ export async function getGroupedOrganisationOrdersWithContext(
       id: true,
       eventId: true,
       status: true,
+      paymentKind: true,
+      purchasedTicketTypeName: true,
       quantity: true,
       totalAmount: true,
       createdAt: true,
@@ -217,7 +225,8 @@ export async function getGroupedOrganisationOrdersWithContext(
     group.orders.push({
       id: order.id,
       status: order.status,
-      ticketType: order.ticketType.name,
+      projection: ticketOrderProjection(order),
+      ticketType: purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name),
       quantity: order.quantity,
       totalAmount: order.totalAmount,
       createdAt: order.createdAt,

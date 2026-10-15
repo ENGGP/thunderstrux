@@ -74,8 +74,8 @@ export default async function OrganisationOrderDetailPage({
       <PageHeader
         badge={
           <StatusBadge
-            label={order.isManuallyRefunded && order.status === "paid" ? "Paid · refunded manually" : undefined}
-            status={order.status}
+            label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · refunded manually" : undefined}
+            status={order.projection}
           />
         }
         breadcrumbs={[{ label: "Orders", href: "/dashboard/orders" }]}
@@ -99,7 +99,7 @@ export default async function OrganisationOrderDetailPage({
             <dd className="text-ink [overflow-wrap:anywhere]">
               {buyer?.name ? <span className="block">{buyer.name}</span> : null}
               {buyer?.email ?? "Unknown buyer"}
-              {order.buyerIdentityCapturedAt ? (
+              {order.buyerIdentityProvenance === "current_account_at_capture" && order.buyerIdentityCapturedAt ? (
                 <span className="mt-1 block text-sm text-ink-soft">
                   Contact details captured from the account profile on{" "}
                   {order.buyerIdentityCapturedAt.toISOString().slice(0, 10)}. Original purchase-time profile details
@@ -115,7 +115,7 @@ export default async function OrganisationOrderDetailPage({
             </dd>
             <dt className="text-ink-soft">Tickets</dt>
             <dd className="text-ink">
-              {order.quantity} × {order.ticketType.name} at {formatMoney(order.unitPrice)}
+              {order.quantity} × {order.purchasedTicketType} at {formatMoney(order.unitPrice)}
             </dd>
             <dt className="text-ink-soft">Total</dt>
             <dd className="font-semibold tabular-nums text-ink">{formatMoney(order.totalAmount)}</dd>

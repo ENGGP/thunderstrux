@@ -797,6 +797,8 @@ describe("webhook reconciliation", () => {
       reason: "inventory_unavailable_after_payment"
     });
     expect(updated.status).toBe("failed");
+    // The fulfilment claim ran before stock ran out; a charged but unfulfilled order is not fulfilled.
+    expect(updated.fulfilledAt).toBeNull();
     expect(updated.requiresCompensationReview).toBe(true);
     expect(updated.paidAt).toEqual(new Date("2026-05-01T12:00:00.000Z"));
     expect(updated.fulfilmentFailedAt).toEqual(
@@ -947,6 +949,7 @@ describe("webhook reconciliation", () => {
     });
     await prisma.ticket.create({
       data: {
+        issueSequence: 1,
         orderId: order.id,
         eventId: event.id,
         ticketTypeId: ticketType.id,

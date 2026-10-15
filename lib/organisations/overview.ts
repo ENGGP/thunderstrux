@@ -25,6 +25,8 @@ export async function getOrganisationOverview(
           select: {
             id: true,
             status: true,
+            paymentKind: true,
+            requiresCompensationReview: true,
             quantity: true,
             totalAmount: true,
             createdAt: true,

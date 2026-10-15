@@ -23,7 +23,7 @@ Meaning:
 - `null`: unused.
 - non-null timestamp: checked in.
 
-There is no ticket status enum, QR token or provider refund-validity rule. Check-in/out append an actor-attributed AuditLog transactionally; no order/Stripe state or ticket ownership is changed.
+`Ticket.validity` (T10) is separate from attendance: only `active` tickets appear in the attendee list and its counts, and check-in or undo on a `void` or `refund_review` ticket is refused as not found until the check-in console gives exact reasons (T19b). The list shows the ticket type name purchased with the order. There is no QR token. Check-in/out append an actor-attributed AuditLog transactionally; no order/Stripe state or ticket ownership is changed.
 
 ## APIs
 

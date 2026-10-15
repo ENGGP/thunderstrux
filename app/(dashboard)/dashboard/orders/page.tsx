@@ -362,8 +362,8 @@ async function OrderResults({
                   )}
                 </div>
                 <StatusBadge
-                  label={order.isManuallyRefunded && order.status === "paid" ? "Paid · refunded manually" : undefined}
-                  status={order.status}
+                  label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · refunded manually" : undefined}
+                  status={order.projection}
                 />
               </div>
               <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
@@ -414,8 +414,8 @@ async function OrderResults({
                   <td className="px-3 py-3.5 text-right tabular-nums">{formatMoney(order.totalAmount)}</td>
                   <td className="px-3 py-3.5">
                     <StatusBadge
-                      label={order.isManuallyRefunded && order.status === "paid" ? "Paid · refunded manually" : undefined}
-                      status={order.status}
+                      label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · refunded manually" : undefined}
+                      status={order.projection}
                     />
                     {order.isManuallyRefunded && order.status !== "paid" ? (
                       <p className="mt-1 text-sm text-ink-soft">Refunded manually</p>

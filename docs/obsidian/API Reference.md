@@ -661,6 +661,7 @@ Response:
         {
           "id": "order_id",
           "status": "paid",
+          "projection": "paid",
           "ticketType": "General Admission",
           "quantity": 2,
           "totalAmount": 2400,
@@ -695,7 +696,7 @@ Rules:
 - The order must belong to an event owned by the authorised organisation.
 - Ownership is checked through `Order.event.organisationId`.
 - Pending orders are not exposed through normal organiser UI.
-- Unit price and total amount come from the order snapshot, not the current ticket type price.
+- Unit price, total amount and ticket type name come from the order snapshot, not the current ticket type. Orders created before T10 did not record the name; their `purchasedTicketType` is today's name followed by `(historical label unavailable)`.
 
 Includes:
 
@@ -703,7 +704,8 @@ Includes:
 - compensation-review fields when paid local fulfilment failed
 - buyer email and name when available
 - event id/title
-- ticket line with ticket type name, quantity, unit price, and total amount
+- ticket line with the purchased ticket type name (`purchasedTicketType`), quantity, unit price, and total amount
+- `paymentKind` (`stripe` or `free`) and `projection`, the displayed status (`processing`, `paid`, `free`, `review`, `failed`, `expired`)
 - issued ticket ids
 - Stripe session id
 - manual refund and ticket email tracking fields

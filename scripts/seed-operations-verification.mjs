@@ -28,7 +28,13 @@ try {
         status: "pending",
         quantity: 1,
         unitPrice: ticketType.price,
-        totalAmount: ticketType.price
+        totalAmount: ticketType.price,
+        paymentKind: "stripe",
+        purchasedTicketTypeName: "p217 purchased ticket name",
+        sellerName: "p217 seller at purchase",
+        feeAmount: 0,
+        feePolicyVersion: "platform_fee_10_percent_v1",
+        snapshotVersion: 1
       }
     });
     await transaction.orderLifecycleEvent.create({
@@ -77,7 +83,7 @@ try {
     const incomingStaff = await transaction.organisationStaff.create({ data: { organisationId: handoverOrg.id, userId: incomingOwner.id, role: "owner", status: "active", acceptedAt: new Date() } });
     await transaction.auditLog.create({ data: { organisationId: handoverOrg.id, actorUserId: outgoingOwner.id, action: "staff.ownership.handed_over", targetType: "OrganisationStaff", targetId: incomingStaff.id, metadata: { retiredAccountUserId: outgoingOwner.id, incomingUserId: incomingOwner.id, outgoingStatus: "revoked", legacyOwnershipRetired: true } } });
     const closed = await transaction.user.create({ data: { email: "p217-closed@closed.invalid", password: "!closed:synthetic", closedAt: new Date(), disabledAt: new Date(), authVersion: 1 } });
-    await transaction.order.create({ data: { userId: closed.id, organisationId: ticketType.event.organisationId, eventId: ticketType.eventId, ticketTypeId: ticketType.id, status: "expired", quantity: 1, unitPrice: 0, totalAmount: 0,
+    await transaction.order.create({ data: { userId: closed.id, organisationId: ticketType.event.organisationId, eventId: ticketType.eventId, ticketTypeId: ticketType.id, status: "expired", quantity: 1, unitPrice: 0, totalAmount: 0, paymentKind: "stripe",
       buyerEmailSnapshot: "p217-retained@example.com", buyerFirstNameSnapshot: "Retained", buyerLastNameSnapshot: "Buyer", buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "current_account_at_capture" } });
     await transaction.accountSecurityEvent.create({ data: { userId: closed.id, type: "account_closed", authVersion: 1 } });
     await transaction.auditLog.create({

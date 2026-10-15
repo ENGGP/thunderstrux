@@ -461,6 +461,8 @@ export async function reconcileCompletedCheckoutSession(
           status: "failed",
           stripeSessionId: localOrder.stripeSessionId ?? session.id,
           paidAt: localOrder.paidAt ?? now,
+          // The fulfilment claim may already have run in this transaction; charged is not fulfilled.
+          fulfilledAt: null,
           failedAt: localOrder.failedAt ?? now,
           failureReason: reason,
           requiresCompensationReview: true,
@@ -928,6 +930,7 @@ export async function reconcileCompletedCheckoutSession(
         status: "paid",
         stripeSessionId: session.id,
         paidAt: now,
+        fulfilledAt: now,
         failedAt: null,
         failureReason: null,
         requiresCompensationReview: false
@@ -1016,8 +1019,10 @@ export async function reconcileCompletedCheckoutSession(
       });
     }
 
+    // Unique (orderId, issueSequence) turns any second issuance for this order into an error, not extra tickets.
     await tx.ticket.createMany({
-      data: Array.from({ length: localOrder.quantity }, () => ({
+      data: Array.from({ length: localOrder.quantity }, (_, index) => ({
+        issueSequence: index + 1,
         orderId: localOrder.id,
         eventId: localOrder.eventId,
         ticketTypeId: localOrder.ticketTypeId,

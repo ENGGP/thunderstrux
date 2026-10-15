@@ -69,7 +69,7 @@ test("closure anonymises profile, revokes credentials/staff/joins and tokens, re
   await prisma.user.update({ where: { id: user.id }, data: { displayName: "Retained buyer", phone: "123", studentNumber: "456" } });
   await joinOrganisation(user.id, organisation.id); await createOrganisationStaff({ organisationId: organisation.id, userId: user.id });
   const invite = await createOrganisationStaffInvite({ organisationId: organisation.id, actor: { id: owner.id, authVersion: owner.authVersion }, email: user.email, role: "admin" });
-  const ticket = await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id, checkedInAt: new Date() } });
+  const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id, checkedInAt: new Date() } });
   await prisma.mfaGrant.create({ data: { userId: user.id, sessionDigest: "discard", verifiedAt: new Date(), expiresAt: new Date(Date.now() + 60000) } });
   await requestPasswordReset(user.email); const queued = await prisma.notificationOutbox.findFirstOrThrow({ where: { userId: user.id, authTokenId: { not: null } } });
   await close(user); const closed = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
@@ -125,7 +125,7 @@ test("enqueue failure rolls back anonymisation, snapshots, joins, staff, MFA and
 });
 test("retained buyers appear in scoped details/search/pagination/check-in and ticket delivery, with honest provenance", async () => {
   const user = await createMember(); const { user: staffOwner, order, event, organisation } = await purchase(user.id, "paid");
-  await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
+  await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
   const another = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: user.id, status: "paid", unitPrice: 1200, paidAt: new Date() });
   const foreign = await createOrganisationAccount(); await close(user);
   const detail = await getOrganisationOrderDetail(organisation.id, order.id); expect(detail.user?.email).toBe(user.email); expect(detail.user?.firstName).toBe("Test"); expect(detail.buyerIdentityProvenance).toBe("current_account_at_capture");
@@ -239,7 +239,7 @@ test("concurrent owner demotions retain one active owner and the scoped atomic a
 test("existing zero-value future tickets are retained while free joins are removed", async () => {
   // Synthetic legacy/future free-order fixture; free checkout remains T13.
   const user = await createMember(); const { order, event, organisation } = await purchase(user.id, "paid", 0);
-  const ticket = await prisma.ticket.create({ data: { orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
+  const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id } });
   await joinOrganisation(user.id, organisation.id); await close(user);
   expect(await prisma.ticket.findUnique({ where: { id: ticket.id } })).not.toBeNull();
   expect(await prisma.organisationMember.count({ where: { userId: user.id } })).toBe(0);

@@ -32,6 +32,7 @@ async function createPaidTicketOrder(email = "outbox-buyer@example.com") {
 
   await prisma.ticket.create({
     data: {
+      issueSequence: 1,
       orderId: order.id,
       eventId: event.id,
       ticketTypeId: ticketType.id,
@@ -148,7 +149,7 @@ describe("ticket email outbox", () => {
     await prisma.emailOutbox.update({ where: { id: job.id },
       data: { deliveredToProviderAt: null } });
     await prisma.order.update({ where: { id: order.id },
-      data: { status: "failed", failedAt: new Date() } });
+      data: { status: "failed", failedAt: new Date(), fulfilledAt: null } });
     await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId,
       reason: "Provider issue resolved" })).rejects.toThrow("not eligible");
     await expect(prisma.auditLog.count({ where: { targetId: job.id } })).resolves.toBe(0);

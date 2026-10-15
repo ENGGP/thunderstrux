@@ -49,7 +49,7 @@ async function buyTwoEarlyBirdTickets() {
   const sessionId = `cs_${ticketType.id}`;
   stripeMocks.createSession.mockResolvedValueOnce({ id: sessionId, url: "https://checkout.stripe.test/session" });
 
-  await createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: ticketType.id, quantity: 2 });
+  await createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: ticketType.id, quantity: 2, expectedUnitPrice: ticketType.price });
   const order = await prisma.order.findFirstOrThrow({ where: { eventId: event.id } });
   const session = checkoutSession({
     id: sessionId,

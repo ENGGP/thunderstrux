@@ -1,10 +1,13 @@
+import type { Prisma } from "@prisma/client";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
-import { salesOpen } from "@/lib/events/event-readiness";
+import { eventReadiness, salesOpen } from "@/lib/events/event-readiness";
+import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/events/inventory";
+import { formatMoney } from "@/lib/format";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 import {
   appendOrderLifecycleEvent,
@@ -16,7 +19,6 @@ import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/
 import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
 import {
   expireOldActiveReservations,
-  getActiveReservedQuantity,
   getReservationExpiry,
   reservationMinutes,
   releaseReservationForOrder,
@@ -31,7 +33,8 @@ export type CheckoutCreationErrorKind =
   | "sold_out"
   | "insufficient_availability"
   | "stripe_not_ready"
-  | "invalid_amount";
+  | "invalid_amount"
+  | "quote_changed";
 
 export class CheckoutCreationError extends Error {
   constructor(
@@ -56,7 +59,33 @@ type CreateEventCheckoutInput = {
   eventId: string;
   ticketTypeId: string;
   quantity: number;
+  expectedUnitPrice: number;
 };
+
+function lockedEventSelect(ticketTypeId: string) {
+  return {
+    id: true,
+    title: true,
+    description: true,
+    location: true,
+    startTime: true,
+    endTime: true,
+    status: true,
+    visibility: true,
+    saleState: true,
+    salesCloseAt: true,
+    compensationRefundMode: true,
+    organisationId: true,
+    organisation: {
+      select: { id: true, name: true, stripeAccountId: true, stripeChargesEnabled: true }
+    },
+    ticketTypes: {
+      where: { id: ticketTypeId },
+      select: { id: true, name: true, price: true, quantity: true },
+      take: 1
+    }
+  } satisfies Prisma.EventSelect;
+}
 
 function emitCheckoutSessionCreationFailure(
   reason: string,
@@ -149,171 +178,70 @@ export async function createEventCheckout({
   userId,
   eventId,
   ticketTypeId,
-  quantity
+  quantity,
+  expectedUnitPrice
 }: CreateEventCheckoutInput) {
   let pendingOrderId: string | null = null;
 
   try {
     await failStalePreCheckoutOrders({ userId });
 
-    const event = await prisma.event.findFirst({
-      where: { id: eventId },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        visibility: true,
-        saleState: true,
-        salesCloseAt: true,
-        compensationRefundMode: true,
-        organisationId: true,
-        organisation: {
-          select: {
-            id: true,
-            name: true,
-            stripeAccountId: true,
-            stripeChargesEnabled: true
-          }
-        },
-        ticketTypes: {
-          where: { id: ticketTypeId },
-          select: { id: true, name: true, price: true, quantity: true },
-          take: 1
-        }
-      }
-    });
-
-    // Members-only events are concealed until membership entitlements exist (T24).
-    if (!event || event.visibility === "members_only") {
-      throw new CheckoutCreationError("event_not_found", "Event was not found");
-    }
-
-    if (event.status !== "published") {
-      throw new CheckoutCreationError("event_draft", "Event is draft", [
-        {
-          path: ["eventId"],
-          message: "Event must be published before tickets can be purchased"
-        }
-      ]);
-    }
-
-    if (!salesOpen(event)) {
-      throw new CheckoutCreationError("sales_closed", "Ticket sales are closed", [
-        { path: ["eventId"], message: "Ticket sales for this event have closed" }
-      ]);
-    }
-
-    const organisation = event.organisation;
-    const ticketType = event.ticketTypes[0];
-
-    if (!ticketType) {
-      throw new CheckoutCreationError(
-        "ticket_type_not_found",
-        "Ticket type was not found for this event"
-      );
-    }
-
-    if (ticketType.quantity <= 0) {
-      throw new CheckoutCreationError("sold_out", "Tickets are sold out", [
-        {
-          path: ["ticketTypeId"],
-          message: "Ticket type has no remaining inventory"
-        }
-      ]);
-    }
-
-    if (!organisation.stripeAccountId) {
-      throw new CheckoutCreationError(
-        "stripe_not_ready",
-        "Stripe not connected",
-        [
-          {
-            path: ["eventId"],
-            message:
-              "Event organiser must complete Stripe onboarding before accepting payments"
-          }
-        ]
-      );
-    }
-
-    if (!isOrganisationStripeReady(organisation)) {
-      throw new CheckoutCreationError(
-        "stripe_not_ready",
-        "Stripe not connected",
-        [
-          {
-            path: ["eventId"],
-            message: "Connected Stripe account does not have charges enabled"
-          }
-        ]
-      );
-    }
-
-    const totalAmount = ticketType.price * quantity;
-
-    if (totalAmount <= 0) {
-      throw new CheckoutCreationError(
-        "invalid_amount",
-        "Invalid checkout amount",
-        [
-          {
-            path: ["ticketTypeId"],
-            message: "Ticket price must be greater than zero"
-          }
-        ]
-      );
-    }
-
-    const platformFeeAmount = calculatePlatformFee(totalAmount);
-    const stripe = getStripe();
-    const appUrl = getAppUrl();
     const reservationNow = new Date();
     const reservationExpiresAt = getReservationExpiry(reservationNow);
 
-    logInfo("checkout.session.create_started", {
-      eventId: event.id,
-      organisationId: event.organisationId,
-      ticketTypeId: ticketType.id,
-      quantity,
-      totalAmount,
-      platformFeeAmount
-    });
-
+    // Every check reads state under the User, Event and TicketType locks, so an
+    // edit, close or reprice cannot land between the quote and the hold.
     const pendingOrder = await runSerializableReservationTransaction(
       async (tx) => {
         const buyer = await lockVerifiedAccount(tx, userId);
-        await tx.$queryRaw`SELECT id FROM "TicketType" WHERE id = ${ticketType.id} FOR UPDATE`;
+        const event = (await lockEventInventory(tx, eventId, [ticketTypeId]))
+          ? await tx.event.findUnique({ where: { id: eventId }, select: lockedEventSelect(ticketTypeId) })
+          : null;
+
+        // Members-only events are concealed until membership entitlements exist (T24).
+        if (!event || event.visibility === "members_only") {
+          throw new CheckoutCreationError("event_not_found", "Event was not found");
+        }
+
+        if (event.status !== "published") {
+          throw new CheckoutCreationError("event_draft", "Event is draft", [
+            {
+              path: ["eventId"],
+              message: "Event must be published before tickets can be purchased"
+            }
+          ]);
+        }
+
+        if (!salesOpen(event, reservationNow)) {
+          throw new CheckoutCreationError("sales_closed", "Ticket sales are closed", [
+            { path: ["eventId"], message: "Ticket sales for this event have closed" }
+          ]);
+        }
+
+        const organisation = event.organisation;
+        const ticketType = event.ticketTypes[0];
+
+        if (!ticketType) {
+          throw new CheckoutCreationError(
+            "ticket_type_not_found",
+            "Ticket type was not found for this event"
+          );
+        }
+
         await expireOldActiveReservations(tx, {
           now: reservationNow,
           ticketTypeId: ticketType.id
         });
-
-        const lockedTicketType = await tx.ticketType.findFirst({
-          where: { id: ticketType.id, eventId: event.id },
-          select: { id: true, quantity: true }
-        });
-
-        if (!lockedTicketType) {
-          throw new CheckoutCreationError(
-            "ticket_type_not_found",
-            "Ticket type was not found",
-            [
-              {
-                path: ["ticketTypeId"],
-                message: "Ticket type was not found for this event"
-              }
-            ]
-          );
-        }
-
-        const activeReservedQuantity = await getActiveReservedQuantity(
-          tx,
-          lockedTicketType.id,
-          reservationNow
+        const sellable = sellableQuantity(
+          ticketType,
+          await readEventInventory(tx, event.id, reservationNow)
         );
-        const availableNow = lockedTicketType.quantity - activeReservedQuantity;
+        const [eligibility] = eventReadiness(
+          { ...event, ticketTypes: [{ ...ticketType, sellable }] },
+          { chargesReady: isOrganisationStripeReady(organisation), now: reservationNow }
+        ).ticketTypes;
 
-        if (availableNow <= 0) {
+        if (eligibility.reason === "sold_out") {
           throw new CheckoutCreationError("sold_out", "Tickets are sold out", [
             {
               path: ["ticketTypeId"],
@@ -322,7 +250,36 @@ export async function createEventCheckout({
           ]);
         }
 
-        if (availableNow < quantity) {
+        if (eligibility.reason === "payments_unavailable") {
+          throw new CheckoutCreationError("stripe_not_ready", "Stripe not connected", [
+            {
+              path: ["eventId"],
+              message: organisation.stripeAccountId
+                ? "Connected Stripe account does not have charges enabled"
+                : "Event organiser must complete Stripe onboarding before accepting payments"
+            }
+          ]);
+        }
+
+        if (eligibility.reason === "free_unavailable") {
+          throw new CheckoutCreationError("invalid_amount", "Invalid checkout amount", [
+            {
+              path: ["ticketTypeId"],
+              message: "Ticket price must be greater than zero"
+            }
+          ]);
+        }
+
+        if (ticketType.price !== expectedUnitPrice) {
+          throw new CheckoutCreationError("quote_changed", "The ticket price has changed", [
+            {
+              path: ["expectedUnitPrice"],
+              message: `The price is now ${formatMoney(ticketType.price)} per ticket. Review it before buying.`
+            }
+          ]);
+        }
+
+        if (sellable < quantity) {
           throw new CheckoutCreationError(
             "insufficient_availability",
             "Not enough tickets available",
@@ -334,6 +291,12 @@ export async function createEventCheckout({
             ]
           );
         }
+
+        // Configuration is read only once the request is valid, and before any write.
+        const stripe = getStripe();
+        const appUrl = getAppUrl();
+        const totalAmount = ticketType.price * quantity;
+        const platformFeeAmount = calculatePlatformFee(totalAmount);
 
         const order = await tx.order.create({
           data: {
@@ -384,9 +347,30 @@ export async function createEventCheckout({
           toReservationStatus: "active"
         });
 
-        return order;
+        return {
+          id: order.id,
+          stripe,
+          appUrl,
+          totalAmount,
+          platformFeeAmount,
+          unitPrice: ticketType.price,
+          eventTitle: event.title,
+          organisationId: event.organisationId,
+          // Payment eligibility above guarantees a connected account.
+          stripeAccountId: organisation.stripeAccountId as string
+        };
       }
     );
+
+    logInfo("checkout.session.create_started", {
+      orderId: pendingOrder.id,
+      eventId,
+      organisationId: pendingOrder.organisationId,
+      ticketTypeId,
+      quantity,
+      totalAmount: pendingOrder.totalAmount,
+      platformFeeAmount: pendingOrder.platformFeeAmount
+    });
 
     pendingOrderId = pendingOrder.id;
     const stripeExpiresAt = Math.ceil(Date.now() / 1000) + reservationMinutes * 60;
@@ -396,39 +380,39 @@ export async function createEventCheckout({
       data: { expiresAt: new Date(stripeExpiresAt * 1000) }
     });
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await pendingOrder.stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
             currency: "aud",
-            product_data: { name: event.title },
-            unit_amount: ticketType.price
+            product_data: { name: pendingOrder.eventTitle },
+            unit_amount: pendingOrder.unitPrice
           },
           quantity
         }
       ],
       payment_intent_data: {
-        application_fee_amount: platformFeeAmount,
-        on_behalf_of: organisation.stripeAccountId,
-        transfer_data: { destination: organisation.stripeAccountId },
+        application_fee_amount: pendingOrder.platformFeeAmount,
+        on_behalf_of: pendingOrder.stripeAccountId,
+        transfer_data: { destination: pendingOrder.stripeAccountId },
         metadata: {
           orderId: pendingOrder.id,
-          eventId: event.id,
-          organisationId: event.organisationId,
-          ticketTypeId: ticketType.id,
+          eventId,
+          organisationId: pendingOrder.organisationId,
+          ticketTypeId,
           quantity: String(quantity)
         }
       },
-      success_url: `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/cancel`,
+      success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${pendingOrder.appUrl}/cancel`,
       expires_at: stripeExpiresAt,
       metadata: {
         orderId: pendingOrder.id,
-        eventId: event.id,
-        organisationId: event.organisationId,
-        ticketTypeId: ticketType.id,
+        eventId,
+        organisationId: pendingOrder.organisationId,
+        ticketTypeId,
         quantity: String(quantity)
       }
     });
@@ -437,9 +421,9 @@ export async function createEventCheckout({
       emitCheckoutSessionCreationFailure("missing_redirect_url", {
         orderId: pendingOrder.id,
         stripeSessionId: session.id,
-        eventId: event.id,
-        organisationId: event.organisationId,
-        ticketTypeId: ticketType.id
+        eventId,
+        organisationId: pendingOrder.organisationId,
+        ticketTypeId
       });
       await failPendingOrder(
         pendingOrder.id,
@@ -454,9 +438,9 @@ export async function createEventCheckout({
     logInfo("checkout.session.created", {
       orderId: pendingOrder.id,
       stripeSessionId: session.id,
-      eventId: event.id,
-      organisationId: event.organisationId,
-      ticketTypeId: ticketType.id
+      eventId,
+      organisationId: pendingOrder.organisationId,
+      ticketTypeId
     });
 
     return { url: session.url };

@@ -32,6 +32,8 @@ type TicketTypeFormState = {
   name: string;
   price: string;
   quantity: string;
+  // Remaining stock when the form loaded; the server keeps sales made since.
+  loadedQuantity?: number;
   ordersCount?: number;
   ticketsCount?: number;
 };
@@ -169,7 +171,7 @@ function normaliseTicketTypes(ticketTypes: TicketTypeFormState[]) {
         ticketType.quantity.trim()
     )
     .map((ticketType) => ({
-      ...(ticketType.id ? { id: ticketType.id } : {}),
+      ...(ticketType.id ? { id: ticketType.id, expectedQuantity: ticketType.loadedQuantity } : {}),
       name: ticketType.name,
       price: Number(ticketType.price),
       quantity: Number(ticketType.quantity)
@@ -241,6 +243,7 @@ export function CreateEventForm({
                     name: ticketType.name,
                     price: String(ticketType.price),
                     quantity: String(ticketType.quantity),
+                    loadedQuantity: ticketType.quantity,
                     ordersCount: ticketType.ordersCount,
                     ticketsCount: ticketType.ticketsCount
                   }))

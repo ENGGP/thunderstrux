@@ -321,7 +321,8 @@ async function main() {
             id: ticket.id,
             name: "Smoke General Updated",
             price: ticket.price + 100,
-            quantity: ticket.quantity + 2
+            quantity: ticket.quantity + 2,
+            expectedQuantity: ticket.quantity
           }
         ]
       };
@@ -538,7 +539,8 @@ async function main() {
         body: JSON.stringify({
           eventId: editedEvent.id,
           ticketTypeId: ticketType.id,
-          quantity: 1
+          quantity: 1,
+          expectedUnitPrice: ticketType.price
         })
       });
 
@@ -578,7 +580,8 @@ async function main() {
         body: JSON.stringify({
           eventId: detail.body.event.id,
           ticketTypeId: ticketType.id,
-          quantity: 1
+          quantity: 1,
+          expectedUnitPrice: ticketType.price
         })
       });
 

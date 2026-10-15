@@ -41,9 +41,17 @@ export const createEventSchema = eventFieldsSchema.extend({
   ticketTypes: z.array(createTicketTypeSchema).optional().default([])
 });
 
-export const updateTicketTypeSchema = updateTicketTypeFieldsSchema.extend({
-  id: z.string().trim().min(1).optional()
-});
+// An existing type also sends the remaining quantity the editor loaded, so a
+// save cannot overwrite stock that sales changed meanwhile.
+export const updateTicketTypeSchema = updateTicketTypeFieldsSchema
+  .extend({
+    id: z.string().trim().min(1).optional(),
+    expectedQuantity: z.number().int().min(0).optional()
+  })
+  .refine((ticketType) => !ticketType.id || ticketType.expectedQuantity !== undefined, {
+    message: "Send the quantity you loaded for an existing ticket type",
+    path: ["expectedQuantity"]
+  });
 
 const versionSchema = z.number().int().positive();
 

@@ -190,7 +190,7 @@ test("racing joins are removed and racing organisation bootstrap either blocks c
 test("racing checkout either creates a pending blocker or is denied after closure", async () => {
   const user = await createMember(); const society = await createOrganisationAccount({ stripeReady: true }); const event = await createEvent({ organisationId: society.organisation.id, status: "published" });
   stripe.create.mockResolvedValue({ id: "cs_closure_race", url: "https://checkout.stripe.test/race" });
-  await Promise.allSettled([close(user), createEventCheckout({ userId: user.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1 })]);
+  await Promise.allSettled([close(user), createEventCheckout({ userId: user.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price })]);
   const closed = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
   if (closed.closedAt) expect(await prisma.order.count({ where: { userId: user.id } })).toBe(0);
   else expect((await readAccountClosureEligibility(actorFor(user))).blockers.join(" ")).toContain("pending");

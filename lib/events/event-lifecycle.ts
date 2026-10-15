@@ -8,6 +8,7 @@ import {
   MEMBERS_ONLY_EVENTS_ENABLED,
   salesOpen
 } from "@/lib/events/event-readiness";
+import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
   createEventSchema,
@@ -362,12 +363,7 @@ export async function updateOrganisationEvent(
       startTime: true,
       salesCloseAt: true,
       capacity: true,
-      ticketTypes: {
-        select: {
-          id: true,
-          _count: { select: { orders: true, tickets: true } }
-        }
-      }
+      ticketTypes: { select: { id: true } }
     }
   });
 
@@ -394,24 +390,6 @@ export async function updateOrganisationEvent(
   }
 
   const capacity = input.capacity === undefined ? existingEvent.capacity : input.capacity;
-
-  if (capacity !== null) {
-    // shortcut: unlocked read, so a checkout committing now can slip past; T12 moves this under the event lock.
-    const [issued, held] = await Promise.all([
-      prisma.ticket.count({ where: { eventId: existingEvent.id, validity: "active" } }),
-      prisma.ticketReservation.aggregate({
-        where: { eventId: existingEvent.id, status: "active", expiresAt: { gt: new Date() } },
-        _sum: { quantity: true }
-      })
-    ]);
-    const committed = issued + (held._sum.quantity ?? 0);
-
-    if (capacity < committed) {
-      throw new EventLifecycleValidationError("Capacity is below tickets already issued or held", [
-        { path: ["capacity"], message: `Capacity cannot be below the ${committed} tickets already issued or held` }
-      ]);
-    }
-  }
 
   const submittedIds = input.ticketTypes
     .map((ticketType) => ticketType.id)
@@ -449,16 +427,62 @@ export async function updateOrganisationEvent(
     );
   }
 
-  const removedTicketTypeIds = existingEvent.ticketTypes
-    .filter(
-      (ticketType) =>
-        ticketType._count.orders === 0 &&
-        ticketType._count.tickets === 0 &&
-        !uniqueSubmittedIds.has(ticketType.id)
-    )
-    .map((ticketType) => ticketType.id);
-
   return prisma.$transaction(async (transaction) => {
+    // Checkout and fulfilment take the same Event lock, so holds, issued tickets
+    // and remaining stock cannot change while this edit decides.
+    await lockEventInventory(transaction, existingEvent.id);
+    const locked = await transaction.event.findUniqueOrThrow({
+      where: { id: existingEvent.id },
+      select: {
+        version: true,
+        ticketTypes: {
+          select: { id: true, quantity: true, _count: { select: { orders: true, tickets: true } } }
+        }
+      }
+    });
+
+    if (locked.version !== input.version) {
+      throw new EventLifecycleConflictError();
+    }
+
+    const inventory = await readEventInventory(transaction, existingEvent.id, new Date());
+
+    if (capacity !== null && capacity < inventory.occupancy) {
+      throw new EventLifecycleValidationError("Capacity is below tickets already issued or held", [
+        { path: ["capacity"], message: `Capacity cannot be below the ${inventory.occupancy} tickets already issued or held` }
+      ]);
+    }
+
+    const lockedTicketTypes = new Map(locked.ticketTypes.map((ticketType) => [ticketType.id, ticketType]));
+    const quantities = input.ticketTypes.map((ticketType) => {
+      const current = ticketType.id ? lockedTicketTypes.get(ticketType.id)?.quantity : undefined;
+      if (current === undefined || current === ticketType.expectedQuantity) return ticketType.quantity;
+      // Sales moved the stock since the editor loaded it: an untouched quantity
+      // keeps what is left; a changed one would overwrite sales, so reload.
+      if (ticketType.quantity === ticketType.expectedQuantity) return current;
+      throw new EventLifecycleConflictError("Ticket stock changed while you were editing. Reload to see the latest numbers.");
+    });
+    const heldDetails = input.ticketTypes.flatMap((ticketType, index) => {
+      const held = ticketType.id ? inventory.holdsByType.get(ticketType.id) ?? 0 : 0;
+      return quantities[index] < held
+        ? [{ path: ["ticketTypes", String(index), "quantity"], message: `Keep at least ${held} remaining: they are held in checkouts now` }]
+        : [];
+    });
+
+    if (heldDetails.length > 0) {
+      throw new EventLifecycleValidationError("Remaining tickets cannot drop below active checkout holds", heldDetails);
+    }
+
+    // Types with orders or tickets are kept for history even when omitted.
+    const removedTicketTypeIds = locked.ticketTypes
+      .filter(
+        (ticketType) =>
+          ticketType._count.orders === 0 &&
+          ticketType._count.tickets === 0 &&
+          !uniqueSubmittedIds.has(ticketType.id)
+      )
+      .map((ticketType) => ticketType.id);
+
     const updated = await transaction.event.updateMany({
       where: { id: existingEvent.id, version: input.version },
       data: {
@@ -488,14 +512,14 @@ export async function updateOrganisationEvent(
     }
 
     await Promise.all(
-      input.ticketTypes.map((ticketType) =>
+      input.ticketTypes.map((ticketType, index) =>
         ticketType.id
           ? transaction.ticketType.update({
               where: { id: ticketType.id },
               data: {
                 name: ticketType.name,
                 price: ticketType.price,
-                quantity: ticketType.quantity
+                quantity: quantities[index]
               }
             })
           : transaction.ticketType.create({
@@ -503,7 +527,7 @@ export async function updateOrganisationEvent(
                 eventId: existingEvent.id,
                 name: ticketType.name,
                 price: ticketType.price,
-                quantity: ticketType.quantity
+                quantity: quantities[index]
               }
             })
       )
@@ -696,6 +720,18 @@ export async function deleteOrganisationEvent(
   }
 
   await prisma.$transaction(async (transaction) => {
+    await lockEventInventory(transaction, event.id, []);
+    const locked = await transaction.event.findUniqueOrThrow({
+      where: { id: event.id },
+      select: { _count: { select: { orders: true, tickets: true } } }
+    });
+
+    if (locked._count.orders > 0 || locked._count.tickets > 0) {
+      throw new EventLifecycleValidationError("Event cannot be deleted after orders or tickets exist", [
+        { path: ["eventId"], message: "Keep this event for order and ticket history instead of deleting it" }
+      ]);
+    }
+
     await transaction.event.delete({ where: { id: event.id } });
     await transaction.auditLog.create({
       data: {

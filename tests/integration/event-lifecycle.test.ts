@@ -85,7 +85,8 @@ describe("event lifecycle", () => {
             id: event.ticketTypes[0].id,
             name: "General Updated",
             price: 1800,
-            quantity: 12
+            quantity: 12,
+            expectedQuantity: event.ticketTypes[0].quantity
           }
         ]
       })
@@ -432,7 +433,8 @@ describe("event lifecycle", () => {
           id: soldTicketType.id,
           name: "Sold Renamed",
           price: 2000,
-          quantity: 8
+          quantity: 8,
+          expectedQuantity: soldTicketType.quantity
         }
       ]
     };

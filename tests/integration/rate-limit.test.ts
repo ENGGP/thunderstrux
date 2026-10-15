@@ -487,6 +487,7 @@ describe("rate-limited routes", () => {
         jsonRequest("http://localhost/api/payments/checkout/event", {
           eventId: event.id,
           ticketTypeId: ticketType.id,
+          expectedUnitPrice: ticketType.price,
           quantity: 1
         })
       );
@@ -497,6 +498,7 @@ describe("rate-limited routes", () => {
       jsonRequest("http://localhost/api/payments/checkout/event", {
         eventId: event.id,
         ticketTypeId: ticketType.id,
+        expectedUnitPrice: ticketType.price,
         quantity: 1
       })
     );

@@ -56,22 +56,20 @@ export default async function EditEventPage({
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">
-        <EventWorkspaceHeader active="edit" event={event} staffRole={organisation.staffRole} />
-        {event.status === "published" ? (
-          <Notice>
-            This event is published. Changes show on the public page as soon as
-            you save. Buyers are not emailed about them.
-          </Notice>
-        ) : null}
-        <CreateEventForm
-          basePath="/dashboard"
-          eventId={eventId}
-          initialEvent={initialEvent}
-          mode="edit"
-          orgSlug={organisation.slug}
-        />
-      </div>
+      <EventWorkspaceHeader active="edit" event={event} staffRole={organisation.staffRole} />
+      {event.status === "published" ? (
+        <Notice>
+          This event is published. Changes show on the public page as soon as
+          you save. Buyers are not emailed about them.
+        </Notice>
+      ) : null}
+      <CreateEventForm
+        basePath="/dashboard"
+        eventId={eventId}
+        initialEvent={initialEvent}
+        mode="edit"
+        orgSlug={organisation.slug}
+      />
     </DashboardShell>
   );
 }

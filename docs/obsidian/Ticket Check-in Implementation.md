@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Event Lifecycle]]", "[[Database and Multi Tenancy]]"]
 sources: [lib/tickets/check-in.ts, app/api/tickets]
@@ -91,7 +91,7 @@ components/tickets/ticket-check-in-button.tsx
 Behavior:
 
 - Unused tickets show `Check in`.
-- Checked-in tickets show timestamp and `Check out`.
+- Checked-in tickets show the time and `Undo check-in`. Each button names its attendee for screen readers.
 - Successful actions update local state and call `router.refresh()` so server-rendered counts refresh.
 - The organiser event tickets page renders one page of tickets at a time with Previous and Next cursor links.
 

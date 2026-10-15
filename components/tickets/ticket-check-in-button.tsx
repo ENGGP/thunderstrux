@@ -8,12 +8,17 @@ import { formatDateTime } from "@/lib/format";
 
 type TicketCheckInButtonProps = {
   ticketId: string;
+  // Names the attendee for screen readers, since every row has the same button.
+  buyer: string;
   initialCheckedInAt: string | null;
+  size?: "md" | "lg";
 };
 
 export function TicketCheckInButton({
   ticketId,
-  initialCheckedInAt
+  buyer,
+  initialCheckedInAt,
+  size = "md"
 }: TicketCheckInButtonProps) {
   const router = useRouter();
   const [checkedInAt, setCheckedInAt] = useState(initialCheckedInAt);
@@ -45,39 +50,49 @@ export function TicketCheckInButton({
       setMessage(
         action === "check-in"
           ? "Could not check in ticket."
-          : "Could not check out ticket."
+          : "Could not undo the check-in."
       );
     } finally {
       setIsBusy(false);
     }
   }
 
+  const feedback = message ? <p className="text-sm text-danger" role="alert">{message}</p> : null;
+
   if (checkedInAt) {
     return (
-      <div className="space-y-2">
-        <p className="text-xs text-ink-muted">{formatDateTime(checkedInAt)}</p>
-        <Button
-          disabled={isBusy}
-          onClick={() => updateTicketCheckIn("check-out")}
-          type="button"
-        >
-          {isBusy ? "Checking out..." : "Check out"}
-        </Button>
-        {message ? <p className="text-xs text-ink-muted">{message}</p> : null}
+      <div className="grid gap-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-sm text-ink-soft">Checked in {formatDateTime(checkedInAt)}</span>
+          <Button
+            disabled={isBusy}
+            onClick={() => updateTicketCheckIn("check-out")}
+            size="sm"
+            type="button"
+            variant="tertiary"
+          >
+            {isBusy ? "Undoing..." : "Undo check-in"}
+            <span className="sr-only"> for {buyer}</span>
+          </Button>
+        </div>
+        {feedback}
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="grid gap-1">
       <Button
+        className={size === "lg" ? "w-full" : ""}
         disabled={isBusy}
         onClick={() => updateTicketCheckIn("check-in")}
+        size={size}
         type="button"
       >
         {isBusy ? "Checking in..." : "Check in"}
+        <span className="sr-only"> {buyer}</span>
       </Button>
-      {message ? <p className="text-xs text-ink-muted">{message}</p> : null}
+      {feedback}
     </div>
   );
 }

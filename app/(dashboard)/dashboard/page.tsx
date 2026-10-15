@@ -48,21 +48,19 @@ async function OrganisationDashboard(contexts: ContextChoices) {
 
   return (
     <DashboardShell contexts={contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">
-        <PageHeader
-          actions={
-            hasOrganisationPermission(organisation.staffRole, "events:manage") ? (
-              <Link className={buttonClasses()} href="/dashboard/events/new">
-                New event
-              </Link>
-            ) : null
-          }
-          title="Overview"
-        />
-        <Suspense fallback={<OverviewSkeleton />}>
-          <OrganisationOverview organisation={organisation} />
-        </Suspense>
-      </div>
+      <PageHeader
+        actions={
+          hasOrganisationPermission(organisation.staffRole, "events:manage") ? (
+            <Link className={buttonClasses()} href="/dashboard/events/new">
+              New event
+            </Link>
+          ) : null
+        }
+        title="Overview"
+      />
+      <Suspense fallback={<OverviewSkeleton />}>
+        <OrganisationOverview organisation={organisation} />
+      </Suspense>
     </DashboardShell>
   );
 }

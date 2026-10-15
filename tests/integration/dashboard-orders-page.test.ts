@@ -126,7 +126,9 @@ describe("dashboard orders page", () => {
       includeSystem: "true",
       status: "pending"
     });
-    expect(html).toContain(pending.id);
+    // Shown with its buyer, but not linked: order detail serves settled orders only.
+    expect(html).toContain(member.email);
+    expect(html).not.toContain(`/dashboard/orders/${pending.id}`);
 
     const persisted = await prisma.order.findUniqueOrThrow({
       where: { id: pending.id },

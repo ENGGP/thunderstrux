@@ -176,6 +176,16 @@ export async function listDashboardEvents(
   };
 }
 
+// Titles for an event filter, newest first.
+export function listEventOptions(organisationId: string) {
+  return prisma.event.findMany({
+    where: { organisationId },
+    orderBy: [{ startTime: "desc" }, { id: "asc" }],
+    take: 100,
+    select: { id: true, title: true }
+  });
+}
+
 export async function getDashboardEvent(organisationId: string, eventId: string) {
   const event = await prisma.event.findFirst({
     where: scopedByOrganisation(organisationId, { id: eventId }),

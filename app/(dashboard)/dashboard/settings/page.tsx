@@ -1,4 +1,5 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import { StripeConnectSettings } from "@/components/settings/stripe-connect-settings";
 import { requireManagementPage } from "@/lib/auth/page-access";
 
@@ -7,11 +8,9 @@ export default async function SettingsPage() {
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="grid gap-4">
-          <h1 className="text-2xl font-semibold text-ink">Payments</h1>
-          <StripeConnectSettings orgSlug={organisation.slug} />
-        </div>
+      <PageHeader description="Paid ticket sales go to your society's Stripe account." title="Payments" />
+      <div className="grid max-w-4xl gap-6">
+        <StripeConnectSettings orgSlug={organisation.slug} />
       </div>
     </DashboardShell>
   );

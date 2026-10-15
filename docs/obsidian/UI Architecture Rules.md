@@ -93,6 +93,7 @@ The staff authenticator (`/mfa`) is not organisation navigation: it is reached f
 
 - Filtering is presentation. Every page and API independently enforces the same capability.
 - The longest matching route sets `aria-current="page"`.
+- `DashboardShell` also owns the page container (one content width, `max-w-admin`, with the page gap), so pages render their sections directly and narrow a form with a `max-w-*` wrapper of their own.
 - From `lg` the navigation is a 244px deep-plum column whose contents stick below the fixed header, so the verify-email banner pushes it down instead of sitting under it. Below `lg` the same column holds `Current organisation`, the society name and the `Organisation menu` disclosure.
 - Each page renders its own title as the only `h1` through `components/layout/page-header.tsx` (or an `h1` of its own); section headings are `h2`. The society name is plain text in the sidebar.
 - The workspace switcher is labelled `Workspace`.
@@ -136,16 +137,31 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 `/dashboard/events/[eventId]` (Summary), `/dashboard/events/[eventId]/tickets` (Attendees), `/dashboard/events/[eventId]/edit` (Edit) and `/dashboard/orders?eventId=` (Orders)
 
 - Share `EventWorkspaceHeader`. Summary shows tickets sold, tickets left and, with `orders:read`, revenue, the ticket performance table and revenue by day.
-- Edit is titled `Edit event` with the event as a breadcrumb; a published event shows a notice that changes go live on save and buyers are not emailed. `/dashboard/events/new` takes its `New event` title from the form.
+- Edit is titled `Edit event` with the event as a breadcrumb; a published event shows a notice that changes go live on save and buyers are not emailed. `/dashboard/events/new` has its own `New event` header.
+- The event form has three cards (Details, Ticket types, If tickets cannot be issued), a skeleton while it loads, `Save changes` or `Create event`, and Cancel. Prices are labelled `Price in cents` with an example, because the field stores cents (EVT-002).
 
 `/dashboard/orders`
 
 - Renders canonical tenant-scoped order review for callers with live finance capability, regardless of account role.
-- Normal filters hide internal pending orders. `Show system orders` may expose pending orders for debugging, but pending must not be presented as a normal product status.
+- Status views (All, Paid, Expired, Failed) are link tabs; buyer email, an Event list of the society's events and a date range filter through the URL. One table lists the page newest first: buyer, event and ticket, quantity, total, status and time. Results stream behind a skeleton.
+- Normal filters hide internal pending orders. `Show system orders` may expose pending orders for debugging, but pending must not be presented as a normal product status, and a pending row is not linked because order detail serves settled orders only.
+
+`/dashboard/orders/[orderId]`
+
+- Breadcrumb `Orders`, title `Order` plus the last six characters of the id, and the status. A Summary card (buyer, event, tickets, total, ordered, paid, full order id) and a `Manage this order` card: resend tickets, record a refund made outside Thunderstrux (confirmed through `ConfirmDialog` because it cannot be undone) or, for a compensation case, verify the Stripe refund id, and the Stripe session with copy and a Stripe link.
+- `Order history` sits in exactly one `<section>` (a `Card`); browser tests locate it that way.
+
+`/dashboard/events/[eventId]/tickets` (Attendees)
+
+- Checked in, not yet and total tiles; cards on phones and a table from `md`. Each button names its attendee for screen readers; a checked-in ticket shows the time and `Undo check-in`.
+
+`/dashboard/notifications` (Email delivery)
+
+- Lists failed society emails with their last error. `Send again` needs a review reason (8 to 500 characters) recorded with the retry, and reports the result.
 
 `/dashboard/settings` (Payments)
 
-- Renders Stripe Connect settings. State-specific Connect controls are allowed here because they are settings content, not dashboard navigation.
+- Renders Stripe Connect settings. State-specific Connect controls are allowed here because they are settings content, not dashboard navigation. A skeleton shows while the status loads; disconnecting sits in its own zone and asks for confirmation.
 
 `/dashboard/organisations`
 
@@ -153,7 +169,7 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/societies` and `/societies/[orgSlug]` render anonymous discovery and public profile content. `/organisations` and `/organisations/[orgSlug]` redirect to them permanently. Profile join controls are personalized and dynamic; sign-in/verification never automatically joins. `/dashboard/settings/profile` (Settings) is the live-settings/MFA-protected resumable editor: four steps, a timezone list computed on the server, and a Finish step whose checklist shows only facts the caller may see (profile complete, payments ready, team size). On a version conflict it keeps the edits and offers `Save my version` or a confirmed reload.
 
-`/dashboard/settings/staff` (Staff) confirms a role change or revocation through `ConfirmDialog`, lists pending invitations, and shows the latest accepted, revoked and expired invitations in a separate history table. Revoking an invitation is immediate.
+`/dashboard/settings/staff` (Staff) invites with an email and `Invitation role` whose hint says what the role can do, confirms a role change or revocation through `ConfirmDialog` and reports the result, lists pending invitations, and shows the latest accepted, revoked and expired invitations in a separate history table. Revoking an invitation is immediate. Owners also see `Committee handover`, built from the same primitives.
 
 `/dashboard/create` uses the auth shell and asks only for the society name. [[Society Profiles and Assets]] owns their full contracts.
 
@@ -172,24 +188,22 @@ The Stripe Connect settings card should render from backend lifecycle state:
 - `READY`: show readiness and cached flags.
 - `ERROR`: show clear error and recovery actions.
 
-Always show the readiness rows when status exists:
+The state shows as a status badge (Not connected, Setup incomplete, Action needed, Ready, Needs attention) with a notice that explains it and lists what Stripe still requires. Always show the readiness rows when status exists:
 
-- Lifecycle state
-- Stripe account
-- Charges enabled
-- Payouts enabled
+- Stripe account (the account id)
+- Card payments
+- Payouts
 - Details submitted
 
 Do not call an account "ready" just because `stripeAccountId` exists.
 
-`Disconnect Stripe account` is local-only. It may appear for connected states and `PLATFORM_NOT_READY`. It clears local organisation Stripe fields and does not delete the Stripe account in Stripe.
+`Disconnect Stripe account` is local-only and asks for confirmation first. It may appear for connected states and `PLATFORM_NOT_READY`. It clears local organisation Stripe fields and does not delete the Stripe account in Stripe.
 
 ## Known UI Inconsistencies
 
 - In an event's Orders tab the sidebar highlights Orders, because that tab is the orders list filtered to the event.
-- The orders list, the attendee table and the event form keep their earlier styling until the next redesign PR.
 - The event builder, order, check-in and payment screens keep their pre-specification structure under the new presentation; their target layouts belong to T11-T19.
-- `components/auth/staff-mfa-form.tsx` and `components/settings/staff-handover.tsx` style their own controls with token classes instead of the `Button` and `Select` primitives.
+- `components/auth/staff-mfa-form.tsx` styles its own controls with token classes instead of the `Button` and `Select` primitives.
 
 ## Notification Recovery
 

@@ -112,7 +112,10 @@ export function DashboardShell({
           </details>
         </div>
       </aside>
-      <main className="min-w-0">{children}</main>
+      <main className="min-w-0">
+        {/* One content width for every society page. */}
+        <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">{children}</div>
+      </main>
     </div>
   );
 }

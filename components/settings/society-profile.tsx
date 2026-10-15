@@ -237,12 +237,11 @@ export function SocietyProfile({
           </Notice>
         )}
         {conflict && (
-          <div className="grid gap-3 rounded-card border border-warning bg-warning-bg p-4 text-sm text-warning">
+          <Notice title="Someone else saved this profile" tone="warning">
             <p>
-              Someone else saved this profile while you were editing. Your
-              edits are still in the form. Choose which version to keep.
+              Your edits are still in the form. Choose which version to keep.
             </p>
-            <div className="flex flex-wrap gap-3">
+            <div className="mt-3 flex flex-wrap gap-3">
               <Button
                 type="button"
                 variant="secondary"
@@ -260,7 +259,7 @@ export function SocietyProfile({
                 Reload latest profile
               </Button>
             </div>
-          </div>
+          </Notice>
         )}
         <fieldset disabled={busy} className="grid gap-5">
           <legend className="mb-4 text-lg font-semibold text-ink">
@@ -377,16 +376,20 @@ export function SocietyProfile({
             <>
               <ul className="grid gap-3">
                 {facts.map((fact) => (
-                  <li
-                    className={`rounded-control border-l-[3px] px-4 py-3 text-sm ${fact.done ? "border-success bg-success-bg text-success" : "border-warning bg-warning-bg text-warning"}`}
-                    key={fact.text}
-                  >
-                    <p>{fact.text}</p>
-                    {"href" in fact && fact.href ? (
-                      <Link className="font-semibold underline" href={fact.href}>
-                        {fact.link}
-                      </Link>
-                    ) : null}
+                  <li key={fact.text}>
+                    {/* Amber only where sales are blocked; other gaps are information. */}
+                    <Notice
+                      action={
+                        "href" in fact && fact.href ? (
+                          <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={fact.href}>
+                            {fact.link}
+                          </Link>
+                        ) : null
+                      }
+                      tone={fact.done ? "success" : "href" in fact && fact.href === "/dashboard/settings" ? "warning" : "info"}
+                    >
+                      {fact.text}
+                    </Notice>
                   </li>
                 ))}
               </ul>

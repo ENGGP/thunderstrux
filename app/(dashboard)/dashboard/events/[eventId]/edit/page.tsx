@@ -19,6 +19,7 @@ type EventFormData = {
   endTime: string;
   location: string;
   status: "draft" | "published";
+  version: number;
   compensationRefundMode: "manual_review" | "automatic_full";
   ticketTypes: Array<{
     id: string;

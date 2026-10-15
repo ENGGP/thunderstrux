@@ -145,7 +145,8 @@ async function ensureEvent({
         startTime,
         endTime,
         location,
-        status
+        status,
+        salesCloseAt: startTime
       }
     });
   } else {
@@ -157,7 +158,8 @@ async function ensureEvent({
         startTime,
         endTime,
         location,
-        status
+        status,
+        salesCloseAt: startTime
       },
       select: { id: true }
     });

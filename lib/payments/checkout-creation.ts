@@ -4,6 +4,7 @@ import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/accoun
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
+import { salesOpen } from "@/lib/events/event-readiness";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 import {
   appendOrderLifecycleEvent,
@@ -26,6 +27,7 @@ export type CheckoutCreationErrorKind =
   | "event_not_found"
   | "ticket_type_not_found"
   | "event_draft"
+  | "sales_closed"
   | "sold_out"
   | "insufficient_availability"
   | "stripe_not_ready"
@@ -160,6 +162,9 @@ export async function createEventCheckout({
         id: true,
         title: true,
         status: true,
+        visibility: true,
+        saleState: true,
+        salesCloseAt: true,
         compensationRefundMode: true,
         organisationId: true,
         organisation: {
@@ -178,7 +183,8 @@ export async function createEventCheckout({
       }
     });
 
-    if (!event) {
+    // Members-only events are concealed until membership entitlements exist (T24).
+    if (!event || event.visibility === "members_only") {
       throw new CheckoutCreationError("event_not_found", "Event was not found");
     }
 
@@ -188,6 +194,12 @@ export async function createEventCheckout({
           path: ["eventId"],
           message: "Event must be published before tickets can be purchased"
         }
+      ]);
+    }
+
+    if (!salesOpen(event)) {
+      throw new CheckoutCreationError("sales_closed", "Ticket sales are closed", [
+        { path: ["eventId"], message: "Ticket sales for this event have closed" }
       ]);
     }
 

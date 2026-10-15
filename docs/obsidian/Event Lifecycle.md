@@ -17,6 +17,15 @@ Events use:
 
 Draft events are visible only in the organisation dashboard. Published events can appear on public discovery and public event detail pages.
 
+Since T11 publication is one of several independent settings on an event:
+
+- `visibility`: `public` events are listed; `unlisted` events open by direct link only; `members_only` is reserved for memberships (T24) and cannot be set yet.
+- Sales: `saleState` (`open` or `closed`) plus `salesCloseAt`, which defaults to the start time. Tickets can be bought only while the event is published, sales are open and the close time is in the future. Closing sales does not unpublish.
+- `capacity`: an optional event-wide ceiling, separate from each ticket type's remaining quantity. It cannot be set below valid issued tickets plus active holds. Existing events have none.
+- `version`: increases on every edit, publication or sales change; a stale editor or action gets `409` instead of overwriting.
+
+`lib/events/event-readiness.ts` is the only place that decides whether an event can be published and which ticket types can be bought. The publish API, the dashboard's disabled-Publish reason and checkout all use it.
+
 ## Creation Flow
 
 Current route:
@@ -85,13 +94,14 @@ Status changes call:
 PATCH /api/events/[eventId]/publish
 ```
 
-Publishing requires:
+Status changes send an explicit target and the version the page loaded: `{ targetStatus, version }`. Repeating a request for the current status is a no-op. Publishing requires:
 
 - Live events:manage authority (active staff or explicitly allowed legacy owner) for the event organisation.
-- At least one ticket type.
-- Total ticket quantity greater than zero.
+- Title, description and location, and an end after the start.
+- A sales close time in the future and not after the end.
+- At least one ticket type with remaining quantity, and at least one type that can be bought now: a free type, or a paid type once the society can take payments.
 
-Unpublishing is blocked once orders exist.
+Events are always created as drafts, so a direct API call cannot skip these checks (EVT-003). Unpublishing is blocked once orders exist. `PATCH /api/events/[eventId]/sales` closes and reopens sales separately.
 
 ## Edit Boundary
 
@@ -152,7 +162,7 @@ Public APIs:
 
 Rules:
 
-- Return only `published` events.
+- Return only `published` events. Lists show only `public` events; detail also opens `unlisted` ones; `members_only` events are never returned.
 - Do not require auth.
 - Do not support dashboard previews.
 - Public event reads are read-only and do not create demo data or run stale pending order cleanup.

@@ -286,6 +286,7 @@ async function main() {
         startTime: createdEvent.startTime,
         endTime: createdEvent.endTime,
         location: createdEvent.location,
+        version: createdEvent.version,
         ticketTypes: createdEvent.ticketTypes
       };
 
@@ -314,6 +315,7 @@ async function main() {
         startTime: editedEvent.startTime,
         endTime: editedEvent.endTime,
         location: editedEvent.location,
+        version: editedEvent.version,
         ticketTypes: [
           {
             id: ticket.id,
@@ -956,9 +958,17 @@ async function main() {
       });
       createdSmokeOrderIds.push(legacyFreshPendingOrder.id);
 
+      const { version } = await prisma.event.findUniqueOrThrow({
+        where: { id: createdEventId },
+        select: { version: true }
+      });
       const publish = await organisationClient.json(
         `/api/events/${createdEventId}/publish`,
-        { method: "PATCH" }
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ targetStatus: "published", version })
+        }
       );
       assertStatus(publish.response, 200, "publish smoke event for public cleanup");
 

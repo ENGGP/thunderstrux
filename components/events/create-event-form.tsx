@@ -56,6 +56,7 @@ type EventFormData = FormState & {
   id: string;
   organisationId: string;
   status: "draft" | "published";
+  version: number;
   compensationRefundMode: "manual_review" | "automatic_full";
   ticketTypes: Array<{
     id: string;
@@ -299,6 +300,8 @@ export function CreateEventForm({
         endTime: form.endTime,
         location: form.location,
         compensationRefundMode,
+        // The version this form loaded; the server refuses the save if the event changed since.
+        ...(mode === "edit" && initialEvent ? { version: initialEvent.version } : {}),
         ticketTypes: normaliseTicketTypes(ticketTypes)
       };
       const url = mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events";

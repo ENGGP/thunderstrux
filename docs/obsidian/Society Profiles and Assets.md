@@ -50,7 +50,7 @@ Uploads move pending -> ready only after storage verification and a transaction 
 
 ## Local Storage and Recovery
 
-Local activation on 2026-10-12 preserved development database/Redis and prior backups, refreshed the app dependency cache and applied all 34 migrations after verifying a private database archive. The patched object store now uses persistent thunderstrux_asset_data; bounded object inspection passes. Anonymous directory/profile/read APIs and protected/missing-image denials pass. [[Project Handover]] records archive/hash and evidence paths. Hosted activation remains separate.
+Local activation on 2026-10-12 preserved development database/Redis and prior backups, refreshed the app dependency cache and applied all 34 migrations after verifying a private database archive. The patched object store now uses persistent thunderstrux_asset_data; bounded object inspection passes. Anonymous directory/profile/read APIs and protected/missing-image denials pass. [[Project Handover 2026-10-12]] records archive/hash and evidence paths. Hosted activation remains separate.
 
 Development Compose builds SeaweedFS 4.48 from checksum-pinned upstream source with digest-pinned Go 1.27.2/Alpine images and the patched x/net 0.60.0 dependency. The upstream binary failed the initial fixable high/critical scan, so it is not the delivery image. The local image uses S3 authentication, a non-root/read-only runtime and a persistent `asset_data` volume. Its synthetic credentials are local-only and the storage ports are not published. Restarting the app must preserve the volume. Existing development resources are not recreated by validation.
 

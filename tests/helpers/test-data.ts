@@ -2,7 +2,9 @@ import { hash } from "bcryptjs";
 import type {
   AccountRole,
   CompensationRefundMode,
+  EventSaleState,
   EventStatus,
+  EventVisibility,
   OrderStatus,
   OrganisationStaffRole,
   OrganisationStaffStatus,
@@ -135,6 +137,10 @@ export async function createEvent({
   title = unique("Test Event"),
   status = "draft",
   compensationRefundMode = "manual_review",
+  visibility = "public",
+  saleState = "open",
+  salesCloseAt,
+  capacity = null,
   ticketTypes = [
     {
       name: "General",
@@ -147,6 +153,10 @@ export async function createEvent({
   title?: string;
   status?: EventStatus;
   compensationRefundMode?: CompensationRefundMode;
+  visibility?: EventVisibility;
+  saleState?: EventSaleState;
+  salesCloseAt?: Date;
+  capacity?: number | null;
   ticketTypes?: Array<{ name: string; price: number; quantity: number }>;
 }) {
   const startTime = futureDate(14, 9);
@@ -162,6 +172,10 @@ export async function createEvent({
       endTime,
       status,
       compensationRefundMode,
+      visibility,
+      saleState,
+      salesCloseAt: salesCloseAt ?? startTime,
+      capacity,
       ticketTypes: {
         create: ticketTypes
       }

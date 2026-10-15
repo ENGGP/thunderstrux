@@ -11,6 +11,7 @@ type ActionEvent = {
   id: string;
   title: string;
   status: "draft" | "published";
+  version: number;
   publishBlocker: string | null;
   unpublishBlocker: string | null;
   deleteBlocker: string | null;
@@ -66,7 +67,17 @@ export function EventActions({
     try {
       await fetchJson(
         action === "delete" ? `/api/events/${event.id}` : `/api/events/${event.id}/publish`,
-        { method: action === "delete" ? "DELETE" : "PATCH" }
+        action === "delete"
+          ? { method: "DELETE" }
+          : {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              // An explicit target and the version this page loaded, so a retry or stale page cannot flip it.
+              body: JSON.stringify({
+                targetStatus: action === "publish" ? "published" : "draft",
+                version: event.version
+              })
+            }
       );
       setMessage({
         ok: true,

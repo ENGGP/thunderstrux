@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server";
+import { mapRouteError, validationError } from "@/lib/api/errors";
 import {
-  badRequest,
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
   requireAuthenticatedUser,
   requireCurrentOrganisationAccount,
   requireOrganisationEventManagementAccess
 } from "@/lib/auth/access";
-import {
-  EventLifecycleNotFoundError,
-  EventLifecycleValidationError,
-  toggleOrganisationEventPublished
-} from "@/lib/events/event-lifecycle";
+import { setOrganisationEventPublication } from "@/lib/events/event-lifecycle";
+import { eventRouteRules } from "@/lib/events/http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { validateJson } from "@/lib/validators";
+import { eventPublicationSchema } from "@/lib/validators/events";
 
 type RouteContext = {
   params: Promise<{
@@ -26,6 +17,8 @@ type RouteContext = {
   }>;
 };
 
+// Body: { targetStatus: "published" | "draft", version }. Repeating a request
+// for the status the event already has returns it unchanged.
 export async function PATCH(request: Request, context: RouteContext) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
 
@@ -39,32 +32,25 @@ export async function PATCH(request: Request, context: RouteContext) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationEventManagementAccess(organisation.id);
     const actor = await requireAuthenticatedUser();
+    const validation = await validateJson(request, eventPublicationSchema);
 
-    const event = await toggleOrganisationEventPublished(
+    if (!validation.success) {
+      return validationError(validation.details);
+    }
+
+    const event = await setOrganisationEventPublication(
       organisation.id,
       eventId,
+      validation.data,
       actor.id
     );
 
     return NextResponse.json({ event });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof EventLifecycleNotFoundError) {
-      return notFound(error.message);
-    }
-
-    if (error instanceof EventLifecycleValidationError) {
-      return badRequest(error.message, error.details);
-    }
-
-    console.error("Failed to toggle event publish status", { eventId, error });
-    return internalError();
+    return mapRouteError(error, {
+      operation: "events.publication",
+      request,
+      rules: eventRouteRules(["x-org-id"])
+    });
   }
 }

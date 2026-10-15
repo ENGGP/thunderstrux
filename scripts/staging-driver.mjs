@@ -87,7 +87,7 @@ try {
     await writeFile(statePath(scenario), JSON.stringify({organisationId: id, createdAt: Math.floor(Date.now()/1000)}), {mode: 0o600});
     const user = await db.user.create({data: {email: `${id}@example.com`, password: await hash('p216-staging-only-password', 12), firstName: 'Staging', lastName: 'Buyer', accountRole: 'member', emailVerifiedAt: new Date(), onboardingCompletedAt: new Date()}});
     await db.organisation.create({data: {id, name: id, slug: id, stripeAccountId: process.env.STRIPE_TEST_CONNECTED_ACCOUNT, stripeChargesEnabled: true, stripeDetailsSubmitted: true}});
-    const event = await db.event.create({data: {organisationId: id, title: id, description: 'Isolated Stripe acceptance', location: 'Test only', status: 'published', startTime: new Date(Date.now()+86400000), endTime: new Date(Date.now()+90000000), ticketTypes: {create: {name: 'Test ticket', price: 1200, quantity: 5}}}, include: {ticketTypes: true}});
+    const event = await db.event.create({data: {organisationId: id, title: id, description: 'Isolated Stripe acceptance', location: 'Test only', status: 'published', startTime: new Date(Date.now()+86400000), salesCloseAt: new Date(Date.now()+86400000), endTime: new Date(Date.now()+90000000), ticketTypes: {create: {name: 'Test ticket', price: 1200, quantity: 5}}}, include: {ticketTypes: true}});
     const page = await openBuyer(user.email);
     await page.goto(`${baseURL}/events/${event.id}`);
     const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/payments/checkout/event') && response.request().method() === 'POST');

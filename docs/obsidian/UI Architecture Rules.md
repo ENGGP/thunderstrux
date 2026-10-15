@@ -39,7 +39,7 @@ Shared content components: `components/events/date-rail.tsx` (day and month in t
 Event workspace components live in `components/events/` because they import `next/link`:
 
 - `event-tabs.tsx`: `EventWorkspaceHeader` gives every page of one event the same breadcrumb, title, status, date and place, actions and tabs: Summary (`analytics:read`), Attendees (`tickets:check_in`), Orders (`orders:read`; the orders list filtered to the event, named `Orders for this event`) and Edit (`events:manage`). Tabs are hidden when only one would show. `tabClasses` and `tabBarClasses` style link tabs; the bar scrolls sideways on narrow screens instead of wrapping.
-- `event-actions.tsx`: Publish, Edit and a `More` menu (a native popover, so a scrolling table cannot clip it) with View public page, Unpublish and Delete event. A disabled action shows the reason computed by the server read; Unpublish and Delete confirm through `ConfirmDialog`; the API still enforces every rule. After a change the page refreshes from the server.
+- `event-actions.tsx`: Publish, Edit and a `More` menu (a native popover, so a scrolling table cannot clip it) with View public page, Unpublish and Delete event. A disabled action shows the reason computed by the server read (for Publish, the first blocker from the shared readiness rules); Publish and Unpublish send the target status and the version the page loaded; Unpublish and Delete confirm through `ConfirmDialog`; the API still enforces every rule. After a change the page refreshes from the server.
 
 ## Global Header And Footer
 

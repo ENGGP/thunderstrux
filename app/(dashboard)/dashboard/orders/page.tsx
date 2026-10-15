@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { EventWorkspaceHeader } from "@/components/events/event-tabs";
+import { EventWorkspaceHeader, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { Button, buttonClasses } from "@/components/ui/button";
+import { Select, TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
+import {
+  EventLifecycleNotFoundError,
+  getDashboardEvent,
+  listEventOptions
+} from "@/lib/events/event-lifecycle";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import {
   OrganisationOrderEventAccessError,
@@ -24,6 +31,13 @@ import {
 function filterLabel(status: OrderStatusFilter) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
+
+type Filters = {
+  includeSystemOrders: boolean;
+  search?: string;
+  startDate?: Date;
+  endDate?: Date;
+};
 
 export default async function OrganisationOrdersPage({
   searchParams
@@ -79,7 +93,7 @@ export default async function OrganisationOrdersPage({
   const visibleStatusFilters = includeSystemOrders
     ? systemOrderStatusFilters
     : orderStatusFilters;
-  const filters = {
+  const filters: Filters = {
     includeSystemOrders,
     search,
     startDate: startDate && !Number.isNaN(startDate.getTime()) ? startDate : undefined,
@@ -96,186 +110,111 @@ export default async function OrganisationOrdersPage({
     }
   }
 
+  const eventOptions = await listEventOptions(organisation.id);
+
+  if (event) {
+    const { id, title } = event;
+    if (!eventOptions.some((option) => option.id === id)) eventOptions.unshift({ id, title });
+  }
+
+  // Every filter link keeps the other filters.
+  function ordersHref(changes: Record<string, string | undefined>) {
+    const params = new URLSearchParams();
+    const values: Record<string, string | undefined> = {
+      status: activeFilter !== "all" ? activeFilter : undefined,
+      eventId,
+      includeSystem: includeSystemOrders ? "true" : undefined,
+      search,
+      startDate: startDateParam,
+      endDate: endDateParam,
+      ...changes
+    };
+
+    for (const [key, value] of Object.entries(values)) {
+      if (value) params.set(key, value);
+    }
+
+    const query = params.toString();
+    return query ? `/dashboard/orders?${query}` : "/dashboard/orders";
+  }
+
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">
-        {event ? (
-          <EventWorkspaceHeader active="orders" event={event} staffRole={organisation.staffRole} />
-        ) : (
-          <PageHeader
-            description={`Review ticket purchases and payment reconciliation for ${organisation.name}.`}
-            title="Orders"
-          />
-        )}
+      {event ? (
+        <EventWorkspaceHeader active="orders" event={event} staffRole={organisation.staffRole} />
+      ) : (
+        <PageHeader
+          description={`Review ticket purchases and payment reconciliation for ${organisation.name}.`}
+          title="Orders"
+        />
+      )}
 
-        <nav className="flex flex-wrap gap-2" aria-label="Order status filters">
-          {visibleStatusFilters.map((status) => {
-            const isActive = status === activeFilter;
-            const params = new URLSearchParams();
+      <nav aria-label="Order status" className={`max-w-full ${tabBarClasses}`}>
+        {visibleStatusFilters.map((status) => (
+          <Link
+            aria-current={status === activeFilter ? "page" : undefined}
+            className={tabClasses(status === activeFilter)}
+            href={ordersHref({ status: status === "all" ? undefined : status })}
+            key={status}
+          >
+            {filterLabel(status)}
+          </Link>
+        ))}
+      </nav>
 
-            if (status !== "all") {
-              params.set("status", status);
-            }
+      <form
+        action="/dashboard/orders"
+        className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+      >
+        {activeFilter !== "all" ? (
+          <input name="status" type="hidden" value={activeFilter} />
+        ) : null}
+        {includeSystemOrders ? (
+          <input name="includeSystem" type="hidden" value="true" />
+        ) : null}
+        {pagination.limit !== 25 ? (
+          <input name="limit" type="hidden" value={pagination.limit} />
+        ) : null}
+        <TextInput
+          defaultValue={search ?? ""}
+          label="Buyer email"
+          name="search"
+          placeholder="Contains…"
+          type="search"
+        />
+        <Select defaultValue={eventId ?? ""} label="Event" name="eventId">
+          <option value="">All events</option>
+          {eventOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.title}
+            </option>
+          ))}
+        </Select>
+        <TextInput defaultValue={startDateParam ?? ""} label="From" name="startDate" type="date" />
+        <TextInput defaultValue={endDateParam ?? ""} label="To" name="endDate" type="date" />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" variant="secondary">
+            Apply
+          </Button>
+          <Link className={buttonClasses({ variant: "tertiary" })} href="/dashboard/orders">
+            Clear
+          </Link>
+        </div>
+      </form>
 
-            if (eventId) {
-              params.set("eventId", eventId);
-            }
-
-            if (includeSystemOrders) {
-              params.set("includeSystem", "true");
-            }
-
-            if (search) {
-              params.set("search", search);
-            }
-
-            if (startDateParam) {
-              params.set("startDate", startDateParam);
-            }
-
-            if (endDateParam) {
-              params.set("endDate", endDateParam);
-            }
-
-            const query = params.toString();
-            const href = query ? `/dashboard/orders?${query}` : "/dashboard/orders";
-
-            return (
-              <Link
-                className={`rounded-control border px-3 py-2 text-sm font-medium transition ${
-                  isActive
-                    ? "border-brand bg-brand text-white"
-                    : "border-line bg-surface text-ink-soft hover:border-line-strong"
-                }`}
-                href={href}
-                key={status}
-              >
-                {filterLabel(status)}
-              </Link>
-            );
-          })}
-          {(() => {
-            const params = new URLSearchParams();
-
-            if (eventId) {
-              params.set("eventId", eventId);
-            }
-
-            if (search) {
-              params.set("search", search);
-            }
-
-            if (startDateParam) {
-              params.set("startDate", startDateParam);
-            }
-
-            if (endDateParam) {
-              params.set("endDate", endDateParam);
-            }
-
-            if (!includeSystemOrders) {
-              params.set("includeSystem", "true");
-            }
-
-            const query = params.toString();
-            const href = query ? `/dashboard/orders?${query}` : "/dashboard/orders";
-
-            return (
-              <Link
-                className={`rounded-control border px-3 py-2 text-sm font-medium transition ${
-                  includeSystemOrders
-                    ? "border-warning bg-warning-bg text-warning"
-                    : "border-line bg-surface text-ink-soft hover:border-line-strong"
-                }`}
-                href={href}
-              >
-                {includeSystemOrders
-                  ? "Hide system orders"
-                  : "Show system orders"}
-              </Link>
-            );
-          })()}
-        </nav>
-
-        <form
-          action="/dashboard/orders"
-          className="grid gap-4 rounded-card border border-line bg-surface p-5 md:grid-cols-4"
-        >
-          {activeFilter !== "all" ? (
-            <input name="status" type="hidden" value={activeFilter} />
-          ) : null}
-          {includeSystemOrders ? (
-            <input name="includeSystem" type="hidden" value="true" />
-          ) : null}
-          {pagination.limit !== 25 ? (
-            <input name="limit" type="hidden" value={pagination.limit} />
-          ) : null}
-          <label className="grid gap-2 text-sm font-medium text-ink-soft">
-            <span>Buyer email</span>
-            <input
-              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
-              defaultValue={search ?? ""}
-              name="search"
-              placeholder="name@example.com"
-              type="search"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-ink-soft">
-            <span>Event ID</span>
-            <input
-              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
-              defaultValue={eventId ?? ""}
-              name="eventId"
-              placeholder="event id"
-              type="text"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-ink-soft">
-            <span>From</span>
-            <input
-              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
-              defaultValue={startDateParam ?? ""}
-              name="startDate"
-              type="date"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-ink-soft">
-            <span>To</span>
-            <input
-              className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
-              defaultValue={endDateParam ?? ""}
-              name="endDate"
-              type="date"
-            />
-          </label>
-          <div className="flex flex-wrap gap-3 md:col-span-4">
-            <button
-              className="inline-flex h-10 items-center justify-center rounded-control bg-brand px-4 text-sm font-medium text-white transition hover:bg-brand-hover"
-              type="submit"
-            >
-              Apply filters
-            </button>
-            <Link
-              className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
-              href="/dashboard/orders"
-            >
-              Clear
-            </Link>
-          </div>
-        </form>
-
-        <Suspense fallback={<ListSkeleton label="Loading orders" />}>
-          <OrderResults
-            activeFilter={activeFilter}
-            endDateParam={endDateParam}
-            eventId={eventId}
-            filters={filters}
-            organisationId={organisation.id}
-            pagination={pagination}
-            startDateParam={startDateParam}
-          />
-        </Suspense>
-      </div>
+      <Suspense fallback={<ListSkeleton label="Loading orders" rows={6} />}>
+        <OrderResults
+          activeFilter={activeFilter}
+          endDateParam={endDateParam}
+          eventId={eventId}
+          filters={filters}
+          organisationId={organisation.id}
+          pagination={pagination}
+          startDateParam={startDateParam}
+          includeSystemOrders={includeSystemOrders}
+          systemToggleHref={ordersHref({ status: undefined, includeSystem: includeSystemOrders ? undefined : "true" })}
+        />
+      </Suspense>
     </DashboardShell>
   );
 }
@@ -287,20 +226,19 @@ async function OrderResults({
   filters,
   pagination: initialPagination,
   startDateParam,
-  endDateParam
+  endDateParam,
+  includeSystemOrders,
+  systemToggleHref
 }: {
   organisationId: string;
   activeFilter: OrderStatusFilter;
   eventId?: string;
-  filters: {
-    includeSystemOrders: boolean;
-    search?: string;
-    startDate?: Date;
-    endDate?: Date;
-  };
+  filters: Filters;
   pagination: ReturnType<typeof parsePaginationOptionsOrDefault>;
   startDateParam?: string;
   endDateParam?: string;
+  includeSystemOrders: boolean;
+  systemToggleHref: string;
 }) {
   let pagination = initialPagination;
   let orderResult: Awaited<ReturnType<typeof getGroupedOrganisationOrdersWithContext>>;
@@ -350,7 +288,10 @@ async function OrderResults({
       throw error;
     }
   }
-  const groupedOrders = orderResult.groups;
+  // The read groups a page by event; the table lists the page newest first.
+  const orders = orderResult.groups
+    .flatMap((group) => group.orders.map((order) => ({ ...order, eventTitle: group.eventTitle })))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
   const pageInfo = orderResult.pageInfo;
   const paginationBaseParams = new URLSearchParams();
 
@@ -389,139 +330,135 @@ async function OrderResults({
     return `/dashboard/orders?${params.toString()}`;
   }
 
+  const pageLink = buttonClasses({ variant: "secondary", size: "sm" });
+
   return (
     <>
       {pagination.invalid ? (
-        <section className="rounded-card border border-warning bg-warning-bg p-4 text-sm text-warning">
+        <Notice tone="warning">
           Invalid pagination parameters were ignored. Showing the first page.
-        </section>
+        </Notice>
       ) : null}
 
-      <section className="space-y-5">
-        {groupedOrders.length === 0 ? (
-          <div className="rounded-card border border-line bg-surface p-6">
-            <p className="text-sm text-ink-muted">
-              {eventId && !orderResult.event
-                ? "No orders found for this event."
-                : `No ${
-                    activeFilter === "all" ? "" : `${activeFilter} `
-                  }orders yet.`}
-            </p>
-          </div>
-        ) : (
-          groupedOrders.map((group) => (
-            <article
-              className="rounded-card border border-line bg-surface p-6"
-              key={group.eventId}
-            >
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-ink">
-                  {group.eventTitle}
-                </h2>
-                <p className="text-sm text-ink-muted">
-                  {group.orders.length} order
-                  {group.orders.length === 1 ? "" : "s"}
-                  {" "}on this page
-                </p>
+      {orders.length === 0 ? (
+        <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">
+          {eventId && !orderResult.event
+            ? "No orders found for this event."
+            : `No ${activeFilter === "all" ? "" : `${activeFilter} `}orders yet.`}
+        </div>
+      ) : (
+        <>
+        <ul className="grid gap-3 md:hidden">
+          {orders.map((order) => (
+            <li className="grid gap-1.5 rounded-card border border-line bg-surface p-4" key={order.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  {order.status === "pending" ? (
+                    <p className="text-ink [overflow-wrap:anywhere]">{order.buyerEmail ?? "Unknown buyer"}</p>
+                  ) : (
+                    <Link className="font-semibold text-brand underline underline-offset-4 [overflow-wrap:anywhere]" href={`/dashboard/orders/${order.id}`}>
+                      {order.buyerEmail ?? "Unknown buyer"}
+                    </Link>
+                  )}
+                </div>
+                <StatusBadge
+                  label={order.isManuallyRefunded && order.status === "paid" ? "Paid · refunded manually" : undefined}
+                  status={order.status}
+                />
               </div>
+              <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
+                {order.eventTitle} · {order.ticketType}
+              </p>
+              <p className="text-sm tabular-nums text-ink">
+                {order.quantity} {order.quantity === 1 ? "ticket" : "tickets"} · {formatMoney(order.totalAmount)} · {formatDateTime(order.createdAt)}
+              </p>
+              {order.isManuallyRefunded && order.status !== "paid" ? (
+                <p className="text-sm text-ink-soft">Refunded manually</p>
+              ) : null}
+              {order.requiresCompensationReview ? (
+                <p className="text-sm font-medium text-warning">Payment received; fulfilment review required</p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
+          <table className="w-full min-w-[820px] border-collapse text-left text-[15px]">
+            <thead>
+              <tr className="text-[13px] text-ink-soft">
+                <th className="px-5 py-3.5 font-semibold" scope="col">Buyer</th>
+                <th className="px-3 py-3.5 font-semibold" scope="col">Event and ticket</th>
+                <th className="px-3 py-3.5 text-right font-semibold" scope="col">Qty</th>
+                <th className="px-3 py-3.5 text-right font-semibold" scope="col">Total</th>
+                <th className="px-3 py-3.5 font-semibold" scope="col">Status</th>
+                <th className="px-5 py-3.5 font-semibold" scope="col">Ordered</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => (
+                <tr className="border-t border-line align-top" key={order.id}>
+                  <td className="px-5 py-3.5">
+                    {/* Order detail serves settled orders only, so a pending one is not a link. */}
+                    {order.status === "pending" ? (
+                      <span className="text-ink">{order.buyerEmail ?? "Unknown buyer"}</span>
+                    ) : (
+                      <Link className="font-semibold text-brand underline underline-offset-4" href={`/dashboard/orders/${order.id}`}>
+                        {order.buyerEmail ?? "Unknown buyer"}
+                      </Link>
+                    )}
+                  </td>
+                  <td className="px-3 py-3.5">
+                    <p className="text-ink [overflow-wrap:anywhere]">{order.eventTitle}</p>
+                    <p className="text-sm text-ink-soft">{order.ticketType}</p>
+                  </td>
+                  <td className="px-3 py-3.5 text-right tabular-nums">{order.quantity}</td>
+                  <td className="px-3 py-3.5 text-right tabular-nums">{formatMoney(order.totalAmount)}</td>
+                  <td className="px-3 py-3.5">
+                    <StatusBadge
+                      label={order.isManuallyRefunded && order.status === "paid" ? "Paid · refunded manually" : undefined}
+                      status={order.status}
+                    />
+                    {order.isManuallyRefunded && order.status !== "paid" ? (
+                      <p className="mt-1 text-sm text-ink-soft">Refunded manually</p>
+                    ) : null}
+                    {order.requiresCompensationReview ? (
+                      <p className="mt-1 max-w-56 text-sm font-medium text-warning">
+                        Payment received; fulfilment review required
+                      </p>
+                    ) : null}
+                    {order.failureReason ? (
+                      <p className="mt-1 max-w-56 text-sm text-ink-soft">{order.failureReason}</p>
+                    ) : null}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-3.5 text-ink-soft">
+                    {formatDateTime(order.createdAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        </>
+      )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-line text-ink-muted">
-                      <th className="py-3 pr-4 font-medium">Buyer</th>
-                      <th className="py-3 pr-4 font-medium">Ticket</th>
-                      <th className="py-3 pr-4 font-medium">Quantity</th>
-                      <th className="py-3 pr-4 font-medium">Total</th>
-                      <th className="py-3 pr-4 font-medium">Status</th>
-                      <th className="py-3 pr-4 font-medium">Time</th>
-                      <th className="py-3 font-medium">Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.orders.map((order) => (
-                      <tr
-                        className="border-b border-line last:border-0"
-                        key={order.id}
-                      >
-                        <td className="py-3 pr-4 text-ink-soft">
-                          {order.buyerEmail ?? "Unknown buyer"}
-                        </td>
-                        <td className="py-3 pr-4 text-ink-soft">
-                          {order.ticketType}
-                        </td>
-                        <td className="py-3 pr-4 text-ink-soft">
-                          {order.quantity}
-                        </td>
-                        <td className="py-3 pr-4 text-ink-soft">
-                          {formatMoney(order.totalAmount)}
-                        </td>
-                        <td className="py-3 pr-4 text-ink-soft">
-                          <StatusBadge status={order.status} />
-                          {order.isManuallyRefunded ? (
-                            <p className="mt-1 text-xs text-warning">
-                              Manual refund
-                            </p>
-                          ) : null}
-                          {order.requiresCompensationReview ? (
-                            <p className="mt-1 max-w-56 text-xs font-medium text-warning">
-                              Payment received; fulfilment review required
-                            </p>
-                          ) : null}
-                          {order.failureReason ? (
-                            <p className="mt-1 max-w-56 text-xs text-danger">
-                              {order.failureReason}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="py-3 pr-4 text-ink-soft">
-                          {formatDateTime(
-                            order.paidAt ?? order.failedAt ?? order.createdAt
-                          )}
-                        </td>
-                        <td className="py-3">
-                          <Link
-                            className="text-sm font-medium text-ink-soft hover:text-brand"
-                            href={`/dashboard/orders/${order.id}`}
-                          >
-                            View
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
-          ))
-        )}
-      </section>
-
-      {pageInfo.hasPreviousPage || pageInfo.hasNextPage ? (
-        <nav
-          aria-label="Order pagination"
-          className="flex flex-wrap items-center justify-between gap-3"
-        >
-          {pageInfo.previousCursor ? (
-            <Link
-              className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
-              href={paginationHref(pageInfo.previousCursor, "prev")}
-            >
-              Previous
-            </Link>
-          ) : (
-            <span />
-          )}
-          {pageInfo.nextCursor ? (
-            <Link
-              className="inline-flex h-10 items-center justify-center rounded-control border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition hover:bg-surface-subtle"
-              href={paginationHref(pageInfo.nextCursor, "next")}
-            >
-              Next
-            </Link>
-          ) : null}
-        </nav>
-      ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={systemToggleHref}>
+          {includeSystemOrders ? "Hide system orders" : "Show system orders (pending checkouts)"}
+        </Link>
+        {pageInfo.hasPreviousPage || pageInfo.hasNextPage ? (
+          <nav aria-label="Order pagination" className="flex gap-2">
+            {pageInfo.previousCursor ? (
+              <Link className={pageLink} href={paginationHref(pageInfo.previousCursor, "prev")}>
+                Previous
+              </Link>
+            ) : null}
+            {pageInfo.nextCursor ? (
+              <Link className={pageLink} href={paginationHref(pageInfo.nextCursor, "next")}>
+                Next
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
+      </div>
     </>
   );
 }

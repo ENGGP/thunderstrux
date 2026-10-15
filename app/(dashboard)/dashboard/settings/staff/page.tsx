@@ -1,4 +1,5 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import { StaffManagement } from "@/components/settings/staff-management";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
@@ -16,24 +17,19 @@ export default async function StaffSettingsPage() {
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-10">
-        <div>
-          <h1 className="text-2xl font-semibold text-ink">Staff</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Named people who can manage this society. Staff access is separate
-            from joining the society: joining never grants it.
-          </p>
-        </div>
-        <StaffManagement
-          canManageOwners={organisation.staffRole === "owner"}
-          initialInvites={invites}
-          initialStaff={staff}
-          pastInvites={pastInvites}
-          orgSlug={organisation.slug}
-        />
-        {organisation.staffRole === "owner" && <StaffHandover orgSlug={organisation.slug} orgName={organisation.name}
-          targets={handoverTargets.map(item => ({ id: item.id, email: item.user.email }))} />}
-      </div>
+      <PageHeader
+        description={`Who can manage ${organisation.name}, and what each person can do. Joining a society never grants staff access.`}
+        title="Staff"
+      />
+      <StaffManagement
+        canManageOwners={organisation.staffRole === "owner"}
+        initialInvites={invites}
+        initialStaff={staff}
+        pastInvites={pastInvites}
+        orgSlug={organisation.slug}
+      />
+      {organisation.staffRole === "owner" && <StaffHandover orgSlug={organisation.slug} orgName={organisation.name}
+        targets={handoverTargets.map(item => ({ id: item.id, email: item.user.email }))} />}
     </DashboardShell>
   );
 }

@@ -443,7 +443,7 @@ Authorised management user opens /dashboard/events/[eventId]/tickets
   -> Check in button calls POST /api/tickets/[ticketId]/check-in
   -> API verifies ticket ownership through the event/organisation relationship
   -> API atomically sets checkedInAt only when it is currently null
-  -> Check out button calls POST /api/tickets/[ticketId]/check-out
+  -> Undo check-in button calls POST /api/tickets/[ticketId]/check-out
   -> API atomically clears checkedInAt only when it is currently not null
   -> UI disables the button and shows the checked-in timestamp
 ```

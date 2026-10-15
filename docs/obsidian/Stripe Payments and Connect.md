@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]"]
 sources: [lib/stripe/connect.ts, lib/payments/checkout-creation.ts]
@@ -242,7 +242,7 @@ Control buttons:
 - `Fix account`: shown for `RESTRICTED`.
 - `Retry status check`: shown for `ERROR`.
 - `Open in Stripe dashboard`: shown when an account id is available.
-- `Disconnect Stripe account`: shown when connected and also for `PLATFORM_NOT_READY` to clear the local blocked state.
+- `Disconnect Stripe account`: shown when connected and also for `PLATFORM_NOT_READY` to clear the local blocked state. It asks for confirmation first.
 
 Stripe connected-account dashboard link format:
 

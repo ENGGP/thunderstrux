@@ -296,3 +296,19 @@ test('organisers filter and search events and confirm before unpublishing', asyn
   await expect(page.getByText('Unpublished. It is hidden from the public page.')).toBeVisible();
   expect((await prisma.event.findUniqueOrThrow({ where: { id: data.event.id } })).status).toBe('draft');
 });
+
+test('organisers check attendees in and confirm before recording a refund', async ({ page, data }) => {
+  const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, status: 'paid', paidAt: new Date() });
+  const ticket = await prisma.ticket.create({ data: { orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id } });
+  await login(page, data.owner.email, `/dashboard/events/${data.event.id}/tickets`);
+  await page.getByRole('button', { name: /^Check in / }).click();
+  await expect(page.getByRole('button', { name: /^Undo check-in/ })).toBeVisible();
+  expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).checkedInAt).not.toBeNull();
+  await page.goto(`/dashboard/orders/${order.id}`);
+  await page.getByRole('button', { name: 'Mark as refunded', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('cannot be undone');
+  await dialog.getByRole('button', { name: 'Mark as refunded', exact: true }).click();
+  await expect(page.getByText('This order is marked as refunded.')).toBeVisible();
+  expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(true);
+});

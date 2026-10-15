@@ -57,27 +57,25 @@ export default async function EventsPage({
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">
-        <PageHeader
-          actions={
-            hasOrganisationPermission(organisation.staffRole, "events:manage") ? (
-              <Link className={buttonClasses()} href="/dashboard/events/new">
-                New event
-              </Link>
-            ) : null
-          }
-          title="Events"
+      <PageHeader
+        actions={
+          hasOrganisationPermission(organisation.staffRole, "events:manage") ? (
+            <Link className={buttonClasses()} href="/dashboard/events/new">
+              New event
+            </Link>
+          ) : null
+        }
+        title="Events"
+      />
+      <Suspense fallback={<ListSkeleton label="Loading events" />}>
+        <EventsResults
+          organisationId={organisation.id}
+          query={query}
+          staffRole={organisation.staffRole}
+          view={view}
+          views={views}
         />
-        <Suspense fallback={<ListSkeleton label="Loading events" />}>
-          <EventsResults
-            organisationId={organisation.id}
-            query={query}
-            staffRole={organisation.staffRole}
-            view={view}
-            views={views}
-          />
-        </Suspense>
-      </div>
+      </Suspense>
     </DashboardShell>
   );
 }

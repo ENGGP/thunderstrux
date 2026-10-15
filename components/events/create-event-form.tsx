@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { TextArea, TextInput } from "@/components/ui/input";
+import { Select, TextArea, TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ClientApiError, fetchWithCsrf, getClientErrorMessage } from "@/lib/client/api";
 import {
   fetchOrganisationBySlug,
@@ -358,111 +361,99 @@ export function CreateEventForm({
   }
 
   if (loadError) {
-    return <Card>{loadError}</Card>;
+    return (
+      <Notice role="alert" tone="danger">
+        {loadError}
+      </Notice>
+    );
   }
 
   if (!organisation) {
-    return <Card>Loading organisation...</Card>;
+    return (
+      <Card>
+        <p className="sr-only">Loading event form</p>
+        <div className="grid max-w-2xl gap-5">
+          <Skeleton className="h-11" />
+          <Skeleton className="h-28" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Skeleton className="h-11" />
+            <Skeleton className="h-11" />
+          </div>
+          <Skeleton className="h-11" />
+        </div>
+      </Card>
+    );
   }
 
+  const formError = errors.find((error) => !error.path?.length)?.message;
+
   return (
-    <Card>
-      <form className="grid max-w-2xl gap-5" onSubmit={onSubmit}>
-        {/* When editing, the event's workspace header carries the page title. */}
-        {mode === "create" ? (
-          <div>
-            <h1 className="text-2xl font-semibold text-ink">New event</h1>
-            <p className="mt-1 text-sm text-ink-muted">{organisation.name}</p>
-          </div>
-        ) : null}
+    <form className="grid gap-6" onSubmit={onSubmit}>
+      {formError ? (
+        <Notice role="alert" tone="danger">
+          {formError}
+        </Notice>
+      ) : null}
 
-        {errors.some((error) => !error.path?.length) ? (
-          <div className="rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">
-            {errors.find((error) => !error.path?.length)?.message}
-          </div>
-        ) : null}
+      {successMessage ? (
+        <Notice role="status" tone="success">
+          {successMessage}
+        </Notice>
+      ) : null}
 
-        {successMessage ? (
-          <div className="rounded-control border border-success bg-success-bg px-3 py-2 text-sm text-success">
-            {successMessage}
-          </div>
-        ) : null}
-
-        <TextInput
-          label="Title"
-          value={form.title}
-          error={fieldError(errors, "title")}
-          onChange={(event) => setForm({ ...form, title: event.target.value })}
-        />
-        <TextArea
-          label="Description"
-          value={form.description}
-          error={fieldError(errors, "description")}
-          onChange={(event) =>
-            setForm({ ...form, description: event.target.value })
-          }
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
+      <Card>
+        <div className="grid max-w-2xl gap-5">
+          <h2 className="text-lg font-semibold text-ink">Details</h2>
           <TextInput
-            label="Start time"
-            type="datetime-local"
-            value={form.startTime}
-            error={fieldError(errors, "startTime")}
+            label="Title"
+            value={form.title}
+            error={fieldError(errors, "title")}
+            onChange={(event) => setForm({ ...form, title: event.target.value })}
+          />
+          <TextArea
+            label="Description"
+            value={form.description}
+            error={fieldError(errors, "description")}
             onChange={(event) =>
-              setForm({ ...form, startTime: event.target.value })
+              setForm({ ...form, description: event.target.value })
             }
           />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextInput
+              label="Start time"
+              type="datetime-local"
+              value={form.startTime}
+              error={fieldError(errors, "startTime")}
+              onChange={(event) =>
+                setForm({ ...form, startTime: event.target.value })
+              }
+            />
+            <TextInput
+              label="End time"
+              type="datetime-local"
+              value={form.endTime}
+              error={fieldError(errors, "endTime")}
+              onChange={(event) => setForm({ ...form, endTime: event.target.value })}
+            />
+          </div>
           <TextInput
-            label="End time"
-            type="datetime-local"
-            value={form.endTime}
-            error={fieldError(errors, "endTime")}
-            onChange={(event) => setForm({ ...form, endTime: event.target.value })}
+            label="Location"
+            value={form.location}
+            error={fieldError(errors, "location")}
+            onChange={(event) => setForm({ ...form, location: event.target.value })}
           />
         </div>
-        <TextInput
-          label="Location"
-          value={form.location}
-          error={fieldError(errors, "location")}
-          onChange={(event) => setForm({ ...form, location: event.target.value })}
-        />
-        <label className="grid gap-1.5 text-sm font-medium text-ink">
-          Paid but unfulfilled orders
-          <select
-            className="h-10 rounded-control border border-line-strong bg-surface px-3 text-sm"
-            value={compensationRefundMode}
-            onChange={(event) =>
-              setCompensationRefundMode(
-                event.target.value as "manual_review" | "automatic_full"
-              )
-            }
-          >
-            <option value="manual_review">Require manual refund review</option>
-            <option value="automatic_full">Automatically issue a full refund</option>
-          </select>
-          <span className="font-normal text-ink-muted">
-            This policy is copied to each new order. Changing it does not affect existing orders.
-          </span>
-        </label>
-        <section className="grid gap-3">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-base font-semibold text-ink">
-                Ticket types
-              </h2>
-              <p className="mt-1 text-sm text-ink-muted">
-                Add, edit, or remove ticket types for this event.
-              </p>
-            </div>
-            <button
-              className="rounded-control border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
-              onClick={() =>
-                setTicketTypes((current) => [...current, { ...emptyTicketType }])
-              }
-              type="button"
-            >
-              Add ticket type
-            </button>
+      </Card>
+
+      <Card>
+        <div className="grid gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Ticket types</h2>
+            <p className="mt-1 text-sm text-ink-soft">
+              {mode === "edit"
+                ? "Quantity is how many are still available."
+                : "An event needs at least one ticket type before it can be published."}
+            </p>
           </div>
 
           {ticketTypes.map((ticketType, index) => {
@@ -470,10 +461,10 @@ export function CreateEventForm({
 
             return (
               <div
-                className="grid gap-3 rounded-control border border-line p-4"
+                className="grid gap-3 border-t border-line pt-4"
                 key={ticketType.id ?? index}
               >
-                <div className="grid gap-4 sm:grid-cols-[1fr_10rem_10rem_auto] sm:items-start">
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem_10rem_auto] sm:items-start">
                   <TextInput
                     label="Name"
                     value={ticketType.name}
@@ -489,7 +480,9 @@ export function CreateEventForm({
                     }
                   />
                   <TextInput
-                    label="Price"
+                    hint="1500 is $15.00"
+                    inputMode="numeric"
+                    label="Price in cents"
                     type="number"
                     value={ticketType.price}
                     error={ticketTypeFieldError(errors, index, "price")}
@@ -504,7 +497,8 @@ export function CreateEventForm({
                     }
                   />
                   <TextInput
-                    label="Quantity"
+                    inputMode="numeric"
+                    label={mode === "edit" ? "Quantity left" : "Quantity"}
                     type="number"
                     value={ticketType.quantity}
                     error={ticketTypeFieldError(errors, index, "quantity")}
@@ -518,8 +512,8 @@ export function CreateEventForm({
                       )
                     }
                   />
-                  <button
-                    className="h-10 rounded-control border border-line-strong px-3 text-sm font-medium text-ink hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-60 sm:mt-6"
+                  <Button
+                    className="sm:mt-[26px]"
                     disabled={isLocked}
                     onClick={() =>
                       setTicketTypes((current) =>
@@ -527,33 +521,71 @@ export function CreateEventForm({
                       )
                     }
                     type="button"
+                    variant="secondary"
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
                 {isLocked ? (
-                  <p className="text-sm text-ink-muted">
-                    This ticket type has existing orders or issued tickets, so
-                    it cannot be removed. You can still update its name, price,
-                    and quantity for future purchases.
+                  <p className="text-sm text-ink-soft">
+                    Has sales or issued tickets, so it cannot be removed. You can
+                    still change its name, price and quantity for future purchases.
                   </p>
                 ) : null}
               </div>
             );
           })}
-        </section>
-        <div>
-          <Button disabled={isSubmitting || Boolean(successMessage)} type="submit">
-            {isSubmitting
-              ? mode === "edit"
-                ? "Saving..."
-                : "Creating..."
-              : mode === "edit"
-                ? "Save event"
-                : "Create event"}
-          </Button>
+
+          <div>
+            <Button
+              onClick={() =>
+                setTicketTypes((current) => [...current, { ...emptyTicketType }])
+              }
+              type="button"
+              variant="secondary"
+            >
+              Add ticket type
+            </Button>
+          </div>
         </div>
-      </form>
-    </Card>
+      </Card>
+
+      <Card>
+        <div className="grid max-w-2xl gap-3">
+          <h2 className="text-lg font-semibold text-ink">If tickets cannot be issued</h2>
+          <Select
+            hint="For example, if the event sold out while the buyer was paying. Each new order keeps the policy it was made under."
+            label="When a payment arrives but tickets cannot be issued"
+            onChange={(event) =>
+              setCompensationRefundMode(
+                event.target.value as "manual_review" | "automatic_full"
+              )
+            }
+            value={compensationRefundMode}
+          >
+            <option value="manual_review">Review it manually</option>
+            <option value="automatic_full">Refund the buyer automatically in full</option>
+          </Select>
+        </div>
+      </Card>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button disabled={isSubmitting || Boolean(successMessage)} size="lg" type="submit">
+          {isSubmitting
+            ? mode === "edit"
+              ? "Saving..."
+              : "Creating..."
+            : mode === "edit"
+              ? "Save changes"
+              : "Create event"}
+        </Button>
+        <Link
+          className={buttonClasses({ variant: "tertiary" })}
+          href={mode === "edit" && eventId ? `${dashboardBasePath}/events/${eventId}` : `${dashboardBasePath}/events`}
+        >
+          Cancel
+        </Link>
+      </div>
+    </form>
   );
 }

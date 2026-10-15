@@ -3,8 +3,9 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { TextInput } from "@/components/ui/input";
+import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -56,13 +57,17 @@ const roleLabels: Record<StaffRole, string> = {
 
 const roles = Object.keys(roleLabels) as StaffRole[];
 
-function staffName(staff: StaffRow) {
-  const name = [staff.user.firstName, staff.user.lastName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+// What each role can do, shown under the invitation role.
+const roleHints: Record<StaffRole, string> = {
+  owner: "Owner: everything, including other owners and handover",
+  admin: "Admin: everything except managing owners",
+  event_manager: "Event manager: events, sales figures and check-in",
+  finance_manager: "Finance manager: orders, refunds and sales figures",
+  check_in_staff: "Check-in staff: checking in attendees only"
+};
 
-  return name ? `${name} (${staff.user.email})` : staff.user.email;
+function personName(staff: StaffRow) {
+  return [staff.user.firstName, staff.user.lastName].filter(Boolean).join(" ").trim();
 }
 
 export function StaffManagement({
@@ -124,6 +129,7 @@ export function StaffManagement({
 
   async function updateStaff(staffId: string, data: { role?: StaffRole; status?: string }) {
     setError(null);
+    setNotice(null);
     setIsSubmitting(true);
 
     try {
@@ -132,6 +138,7 @@ export function StaffManagement({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
       });
+      setNotice(data.role ? `Role changed to ${roleLabels[data.role]}.` : "Staff access revoked.");
       await refreshStaff();
     } catch (updateError) {
       setError(
@@ -167,65 +174,63 @@ export function StaffManagement({
         </Notice>
       ) : null}
 
-      <form
-        className="grid gap-4 rounded-card border border-line bg-surface p-6"
-        onSubmit={inviteStaff}
-      >
-        <h2 className="text-lg font-semibold text-ink">Invite staff</h2>
-        <p className="text-sm text-ink-soft">
-          The invitation is emailed privately. The recipient signs in with a
-          verified account using this address and accepts it themselves.
-        </p>
-        <div className="grid gap-4 md:grid-cols-[1fr_220px]">
-          <TextInput
-            label="Email"
-            onChange={(event) => setEmail(event.target.value)}
-            required
-            type="email"
-            value={email}
-          />
-          <label className="grid content-start gap-1.5 text-sm font-semibold text-ink">
-            Role
-            <select
-              className="h-11 rounded-control border border-line-strong bg-surface px-3 text-base font-normal text-ink"
+      <Card>
+        <form className="grid gap-4" onSubmit={inviteStaff}>
+          <h2 className="text-lg font-semibold text-ink">Invite staff</h2>
+          <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_260px_auto]">
+            <TextInput
+              label="Email"
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              type="email"
+              value={email}
+            />
+            <Select
+              hint={roleHints[role]}
+              label="Invitation role"
               onChange={(event) => setRole(event.target.value as StaffRole)}
               value={role}
-              aria-label="Invitation role"
             >
               {roles.filter(item => canManageOwners || item !== "owner").map((item) => (
                 <option key={item} value={item}>
                   {roleLabels[item]}
                 </option>
               ))}
-            </select>
-          </label>
-        </div>
-        <div>
-          <Button disabled={isSubmitting || email.trim().length === 0} type="submit">
-            {isSubmitting ? "Creating..." : "Create invite"}
-          </Button>
-        </div>
-      </form>
+            </Select>
+            <Button className="md:mt-[26px]" disabled={isSubmitting || email.trim().length === 0} type="submit">
+              {isSubmitting ? "Creating..." : "Create invite"}
+            </Button>
+          </div>
+          <p className="text-sm text-ink-soft">
+            The invitation is emailed privately and its link lasts 7 days. The
+            recipient signs in with a verified account using this address and
+            accepts it themselves.
+          </p>
+        </form>
+      </Card>
 
-      <section className="rounded-card border border-line bg-surface p-6">
-        <h2 className="text-lg font-semibold text-ink">Staff access (up to 100)</h2>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full border-collapse text-left text-sm">
+      <Card>
+        <h2 className="text-lg font-semibold text-ink">Current staff</h2>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[560px] border-collapse text-left text-[15px]">
             <thead>
-              <tr className="border-b border-line text-ink-muted">
-                <th className="py-3 pr-4 font-semibold">User</th>
-                <th className="py-3 pr-4 font-semibold">Role</th>
-                <th className="py-3 pr-4 font-semibold">Status</th>
-                <th className="py-3 font-semibold">Actions</th>
+              <tr className="text-[13px] text-ink-soft">
+                <th className="py-2.5 pr-4 font-semibold" scope="col">Person</th>
+                <th className="py-2.5 pr-4 font-semibold" scope="col">Role</th>
+                <th className="py-2.5 pr-4 font-semibold" scope="col">Status</th>
+                <th className="py-2.5 font-semibold" scope="col">Access</th>
               </tr>
             </thead>
             <tbody>
               {staff.map((row) => (
-                <tr className="border-b border-line last:border-0" key={row.id}>
-                  <td className="py-3 pr-4 text-ink-soft">{staffName(row)}</td>
+                <tr className="border-t border-line align-top" key={row.id}>
+                  <td className="py-3 pr-4">
+                    {personName(row) ? <p className="font-semibold text-ink">{personName(row)}</p> : null}
+                    <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{row.user.email}</p>
+                  </td>
                   <td className="py-3 pr-4">
                     <select
-                      className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink"
+                      className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink disabled:cursor-not-allowed disabled:bg-surface-subtle"
                       aria-label={`Role for ${row.user.email}`}
                       disabled={isSubmitting || row.status !== "active" || (!canManageOwners && row.role === "owner")}
                       onChange={(event) =>
@@ -249,13 +254,14 @@ export function StaffManagement({
                   <td className="py-3">
                     {row.status === "active" && (canManageOwners || row.role !== "owner") ? (
                       <Button
+                        aria-label={`Revoke access for ${row.user.email}`}
                         disabled={isSubmitting}
                         onClick={() => setPending({ row })}
                         size="sm"
                         type="button"
                         variant="danger"
                       >
-                        Revoke
+                        Revoke access
                       </Button>
                     ) : null}
                   </td>
@@ -264,58 +270,65 @@ export function StaffManagement({
             </tbody>
           </table>
         </div>
-      </section>
+      </Card>
 
       {invites.length > 0 ? (
-        <section className="rounded-card border border-line bg-surface p-6">
-          <h2 className="text-lg font-semibold text-ink">Pending invites (latest 100)</h2>
-          <ul className="mt-4 grid gap-3">
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">Pending invitations</h2>
+          <ul className="mt-2 grid">
             {invites.map((invite) => (
               <li
-                className="rounded-control border border-line px-4 py-3 text-sm"
+                className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-3 first:border-0"
                 key={invite.id}
               >
-                <span className="font-semibold text-ink">{invite.email}</span>{" "}
-                <span className="text-ink-muted">
-                  {roleLabels[invite.role]} expires{" "}
-                  {formatDate(invite.expiresAt)}
-                </span>
-                {(canManageOwners || invite.role !== "owner") && <div className="mt-2 flex gap-4">
-                  <button type="button" className="text-brand underline disabled:opacity-60" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")}>Resend invitation</button>
-                  <button type="button" className="text-danger underline disabled:opacity-60" disabled={isSubmitting} onClick={() => manageInvite(invite.id, "revoke")}>Revoke invitation</button>
-                </div>}
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink [overflow-wrap:anywhere]">{invite.email}</p>
+                  <p className="text-sm text-ink-soft">
+                    {roleLabels[invite.role]} · expires {formatDate(invite.expiresAt)}
+                  </p>
+                </div>
+                {(canManageOwners || invite.role !== "owner") && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button disabled={isSubmitting} onClick={() => manageInvite(invite.id, "resend")} size="sm" type="button" variant="secondary">
+                      Resend invitation
+                    </Button>
+                    <Button disabled={isSubmitting} onClick={() => manageInvite(invite.id, "revoke")} size="sm" type="button" variant="danger">
+                      Revoke invitation
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       ) : null}
 
       {pastInvites.length > 0 ? (
-        <section className="rounded-card border border-line bg-surface p-6">
-          <h2 className="text-lg font-semibold text-ink">Past invitations (latest 25)</h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">Past invitations</h2>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] border-collapse text-left text-[15px]">
               <thead>
-                <tr className="border-b border-line text-ink-muted">
-                  <th className="py-3 pr-4 font-semibold">Email</th>
-                  <th className="py-3 pr-4 font-semibold">Role</th>
-                  <th className="py-3 pr-4 font-semibold">Sent</th>
-                  <th className="py-3 font-semibold">Outcome</th>
+                <tr className="text-[13px] text-ink-soft">
+                  <th className="py-2.5 pr-4 font-semibold" scope="col">Email</th>
+                  <th className="py-2.5 pr-4 font-semibold" scope="col">Role</th>
+                  <th className="py-2.5 pr-4 font-semibold" scope="col">Outcome</th>
+                  <th className="py-2.5 font-semibold" scope="col">Sent</th>
                 </tr>
               </thead>
               <tbody>
                 {pastInvites.map((invite) => (
-                  <tr className="border-b border-line last:border-0" key={invite.id}>
-                    <td className="py-3 pr-4 text-ink-soft [overflow-wrap:anywhere]">{invite.email}</td>
+                  <tr className="border-t border-line" key={invite.id}>
+                    <td className="py-3 pr-4 text-ink [overflow-wrap:anywhere]">{invite.email}</td>
                     <td className="py-3 pr-4 text-ink-soft">{roleLabels[invite.role]}</td>
-                    <td className="py-3 pr-4 text-ink-soft">{formatDate(invite.createdAt)}</td>
-                    <td className="py-3"><StatusBadge status={invite.state} /></td>
+                    <td className="py-3 pr-4"><StatusBadge status={invite.state} /></td>
+                    <td className="py-3 text-ink-soft">{formatDate(invite.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </section>
+        </Card>
       ) : null}
 
       <ConfirmDialog

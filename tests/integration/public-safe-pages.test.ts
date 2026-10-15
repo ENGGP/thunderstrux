@@ -381,7 +381,7 @@ describe("public-safe pages and APIs", () => {
       })
     );
 
-    expect(html).toContain("0 remaining");
+    // Availability comes from reservations, not raw stock: sold out, never "5 remaining".
     expect(html).toContain("Sold out");
     expect(html).not.toContain("5 remaining");
   });

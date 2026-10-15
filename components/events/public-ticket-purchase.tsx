@@ -1,8 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney } from "@/lib/format";
 
@@ -18,6 +22,12 @@ type CheckoutResponse = {
   url: string;
 };
 
+function isSoldOut(ticketType: TicketType) {
+  return ticketType.quantity <= 0 || ticketType.availableQuantity <= 0;
+}
+
+// One ticket type, one quantity, one buy button. The checkout API re-checks
+// sign-in, verification, availability and Stripe readiness.
 export function PublicTicketPurchase({
   eventId,
   ticketTypes
@@ -26,25 +36,30 @@ export function PublicTicketPurchase({
   ticketTypes: TicketType[];
 }) {
   const router = useRouter();
-  const { status } = useSession();
-  const [quantities, setQuantities] = useState<Record<string, number>>(
-    Object.fromEntries(ticketTypes.map((ticketType) => [ticketType.id, 1]))
+  const { data: session, status } = useSession();
+  const [selectedId, setSelectedId] = useState(
+    ticketTypes.find((ticketType) => !isSoldOut(ticketType))?.id ?? ticketTypes[0]?.id ?? ""
   );
-  const [activeTicketTypeId, setActiveTicketTypeId] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const selected = ticketTypes.find((ticketType) => ticketType.id === selectedId);
+  const allSoldOut = ticketTypes.every(isSoldOut);
+  // Shown before checkout instead of letting the request fail late.
+  const needsVerification = status === "authenticated" && !session?.user?.emailVerifiedAt;
 
   if (ticketTypes.length === 0) {
     return (
       <section className="rounded-card border border-line bg-surface p-5">
-        <h2 className="text-lg font-semibold text-ink">Tickets</h2>
-        <p className="mt-2 text-sm text-ink-muted">
+        <h2 className="text-xl font-semibold text-ink">Tickets</h2>
+        <p className="mt-2 text-sm text-ink-soft">
           Tickets are not available for this event yet.
         </p>
       </section>
     );
   }
 
-  async function startCheckout(ticketType: TicketType) {
+  async function startCheckout() {
     if (status === "unauthenticated") {
       setError("Please sign in to continue checkout.");
       router.push(`/login?callbackUrl=${encodeURIComponent(`/events/${eventId}`)}`);
@@ -56,15 +71,13 @@ export function PublicTicketPurchase({
       return;
     }
 
-    const quantity = quantities[ticketType.id] ?? 1;
-
-    if (quantity < 1 || quantity > ticketType.availableQuantity) {
+    if (!selected || quantity < 1 || quantity > selected.availableQuantity) {
       setError("Choose a valid ticket quantity.");
       return;
     }
 
     setError(null);
-    setActiveTicketTypeId(ticketType.id);
+    setBusy(true);
 
     try {
       const data = await fetchJson<CheckoutResponse>(
@@ -76,7 +89,7 @@ export function PublicTicketPurchase({
           },
           body: JSON.stringify({
             eventId,
-            ticketTypeId: ticketType.id,
+            ticketTypeId: selected.id,
             quantity
           })
         }
@@ -84,7 +97,7 @@ export function PublicTicketPurchase({
 
       window.location.href = data.url;
     } catch (checkoutError) {
-      setActiveTicketTypeId(null);
+      setBusy(false);
       setError(
         getClientErrorMessage(
           checkoutError,
@@ -98,78 +111,102 @@ export function PublicTicketPurchase({
     }
   }
 
+  const validQuantity = Boolean(selected) && quantity >= 1 && quantity <= (selected?.availableQuantity ?? 0);
+
   return (
-    <section className="rounded-card border border-line bg-surface p-5">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-ink">Tickets</h2>
-        <p className="text-sm text-ink-muted">Select a ticket type and quantity.</p>
-      </div>
+    <section aria-labelledby="tickets-heading" className="grid gap-4 rounded-card border border-line bg-surface p-5">
+      <h2 className="text-xl font-semibold text-ink" id="tickets-heading">Tickets</h2>
 
-      {error ? (
-        <div className="mt-4 rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="mt-5 grid gap-3">
+      <fieldset className="grid gap-2">
+        <legend className="mb-2 text-sm font-semibold text-ink">Choose a ticket</legend>
         {ticketTypes.map((ticketType) => {
-          const quantity = quantities[ticketType.id] ?? 1;
-          const isSoldOut =
-            ticketType.quantity <= 0 || ticketType.availableQuantity <= 0;
-          const isLoading = activeTicketTypeId === ticketType.id;
+          const soldOut = isSoldOut(ticketType);
 
           return (
-            <div
-              className="grid gap-4 rounded-control border border-line p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+            <label
+              className={`flex items-center gap-3 rounded-control border px-3 py-3 ${
+                soldOut
+                  ? "cursor-not-allowed border-line text-ink-muted"
+                  : "cursor-pointer border-line-strong has-[:checked]:border-brand has-[:checked]:bg-brand-tint"
+              }`}
               key={ticketType.id}
             >
-              <div>
-                <h3 className="font-medium text-ink">{ticketType.name}</h3>
-                <p className="mt-1 text-sm text-ink-muted">
-                  {formatMoney(ticketType.price)} -{" "}
-                  {ticketType.availableQuantity} remaining
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="sr-only" htmlFor={`quantity-${ticketType.id}`}>
-                  Quantity
-                </label>
-                <input
-                  className="h-10 w-24 rounded-control border border-line-strong px-3 text-sm text-ink disabled:bg-surface-subtle"
-                  disabled={isSoldOut || isLoading}
-                  id={`quantity-${ticketType.id}`}
-                  max={Math.max(ticketType.availableQuantity, 1)}
-                  min={1}
-                  onChange={(event) => {
-                    setQuantities((current) => ({
-                      ...current,
-                      [ticketType.id]: Number(event.target.value)
-                    }));
-                  }}
-                  type="number"
-                  value={quantity}
-                />
-                <button
-                  className="h-10 rounded-control bg-brand px-4 text-sm font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={
-                    isSoldOut ||
-                    isLoading ||
-                    activeTicketTypeId !== null ||
-                    status === "loading" ||
-                    quantity < 1 ||
-                    quantity > ticketType.availableQuantity
-                  }
-                  onClick={() => startCheckout(ticketType)}
-                  type="button"
-                >
-                  {isLoading ? "Redirecting..." : isSoldOut ? "Sold out" : "Buy Ticket"}
-                </button>
-              </div>
-            </div>
+              <input
+                checked={selectedId === ticketType.id}
+                className="size-4 accent-brand"
+                disabled={soldOut || busy}
+                name="ticket-type"
+                onChange={() => {
+                  setSelectedId(ticketType.id);
+                  setQuantity(1);
+                }}
+                type="radio"
+                value={ticketType.id}
+              />
+              <span className="grid min-w-0 flex-1">
+                <span className="font-semibold text-ink [overflow-wrap:anywhere]">{ticketType.name}</span>
+                <span className="text-sm text-ink-soft">
+                  {soldOut ? "Sold out" : `${ticketType.availableQuantity} remaining`}
+                </span>
+              </span>
+              <span className="font-semibold tabular-nums text-ink">{formatMoney(ticketType.price)}</span>
+            </label>
           );
         })}
-      </div>
+      </fieldset>
+
+      {needsVerification ? (
+        <Notice title="Verify your email to buy tickets">
+          <p>Purchases need a verified email so your tickets reach you.</p>
+          <Link
+            className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4"
+            href={`/verify-email?callbackUrl=${encodeURIComponent(`/events/${eventId}`)}`}
+          >
+            Verify email
+          </Link>
+        </Notice>
+      ) : (
+        <>
+          <div className="w-32">
+            <TextInput
+              disabled={allSoldOut || busy}
+              inputMode="numeric"
+              label="Quantity"
+              max={Math.max(selected?.availableQuantity ?? 1, 1)}
+              min={1}
+              onChange={(event) => setQuantity(Number(event.target.value))}
+              type="number"
+              value={quantity}
+            />
+          </div>
+
+          {error ? (
+            <Notice role="alert" tone="danger">
+              {error}
+            </Notice>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+            {selected && validQuantity && !allSoldOut ? (
+              <p className="text-sm text-ink-soft">
+                {quantity} × {selected.name}{" "}
+                <span className="font-semibold tabular-nums text-ink">{formatMoney(selected.price * quantity)}</span>
+              </p>
+            ) : <span />}
+            <Button
+              disabled={allSoldOut || busy || status === "loading" || !validQuantity}
+              onClick={startCheckout}
+              size="lg"
+              type="button"
+            >
+              {busy ? "Redirecting..." : allSoldOut ? "Sold out" : "Buy tickets"}
+            </Button>
+          </div>
+          <p className="text-[13px] text-ink-muted">
+            You pay securely with Stripe on the next page. Your tickets are emailed and appear in My tickets.
+          </p>
+        </>
+      )}
     </section>
   );
 }

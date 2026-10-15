@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DateRail } from "@/components/events/date-rail";
 import { formatDateTime } from "@/lib/format";
 
 type EventCardProps = {
@@ -21,25 +22,9 @@ export function EventCard({
   timeZone,
   society
 }: EventCardProps) {
-  const parts = new Intl.DateTimeFormat("en-AU", {
-    day: "numeric",
-    month: "short",
-    timeZone
-  }).formatToParts(startTime);
-  const part = (type: string) =>
-    parts.find((entry) => entry.type === type)?.value ?? "";
-
   return (
     <article className="relative flex gap-4 rounded-card border border-line bg-surface p-5 transition-shadow duration-150 hover:shadow-card">
-      <div
-        aria-hidden="true"
-        className="flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center rounded-control bg-brand-tint text-brand-ink"
-      >
-        <span className="font-display text-2xl font-semibold leading-none">
-          {part("day")}
-        </span>
-        <span className="mt-1 text-xs font-semibold">{part("month")}</span>
-      </div>
+      <DateRail date={startTime} timeZone={timeZone} />
       <div className="grid min-w-0 content-start gap-1">
         {society ? (
           <Link

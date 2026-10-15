@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
-import { MemberProfileForm } from "@/components/account/member-profile-form";
+import { DateRail } from "@/components/events/date-rail";
 import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
 import {
   OrganisationAccessError,
@@ -283,6 +283,7 @@ async function MemberDashboard(userId: string, contexts: ContextChoices) {
     getUpcomingTicketOrders(userId),
     getAccessibleOrganisationsForCurrentAccount()
   ]);
+  const moreLink = "text-sm font-semibold text-brand underline underline-offset-4";
 
   return (
     <PersonalShell contexts={contexts}>
@@ -290,87 +291,79 @@ async function MemberDashboard(userId: string, contexts: ContextChoices) {
 
       {!user?.onboardingCompletedAt ? (
         <Card>
-          <h2 className="text-xl font-semibold text-ink">Complete your profile</h2>
-          <div className="mt-4">
-            <MemberProfileForm
-              initialProfile={{
-                displayName: user?.displayName ?? "",
-                firstName: user?.firstName ?? "",
-                lastName: user?.lastName ?? "",
-                phone: user?.phone ?? "",
-                studentNumber: user?.studentNumber ?? ""
-              }}
-            />
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+            <div className="grid min-w-0 gap-1">
+              <h2 className="text-xl font-semibold text-ink">Complete your profile</h2>
+              <p className="text-sm text-ink-soft">
+                Add your first and last name. Societies see them on the tickets you buy.
+              </p>
+            </div>
+            <Link className={`inline-flex min-h-11 items-center ${moreLink}`} href="/account/settings#profile">
+              Finish profile
+            </Link>
           </div>
         </Card>
       ) : null}
 
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold text-ink">Upcoming tickets</h2>
-          <Link className="text-sm font-semibold text-brand underline" href="/tickets">
-            All tickets
-          </Link>
-        </div>
-        {upcoming.length === 0 ? (
-          <p className="mt-3 text-sm text-ink-soft">
-            You have no upcoming tickets.{" "}
-            <Link className="text-brand underline" href="/">
-              Browse events
+      <div className="grid grid-cols-1 items-start gap-6">
+        <Card>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-xl font-semibold text-ink">Upcoming tickets</h2>
+            <Link className={moreLink} href="/tickets">
+              All my tickets
             </Link>
-          </p>
-        ) : (
-          <ul className="mt-4 grid gap-3">
-            {upcoming.map((order) => (
-              <li
-                className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line p-4"
-                key={order.id}
-              >
-                <div className="min-w-0">
-                  <p className="font-semibold text-ink [overflow-wrap:anywhere]">
-                    {order.event.title}
-                  </p>
-                  <p className="text-sm text-ink-soft">
-                    {formatDateTime(order.event.startTime, {
-                      timeZone: order.event.organisation.timeZone
-                    })}{" "}
-                    · {order.event.location}
-                  </p>
-                  <p className="text-sm text-ink-muted">
-                    {order.quantity} × {order.ticketType.name} ·{" "}
-                    {order.event.organisation.name}
-                  </p>
-                </div>
-                <Link
-                  className={buttonClasses({ variant: "secondary", size: "sm" })}
-                  href="/tickets"
-                >
-                  View ticket
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-ink">Your societies</h2>
-            <p className="mt-1 text-sm text-ink-soft">
-              Societies you have joined for free.
-            </p>
           </div>
-          <Link
-            className={buttonClasses({ size: "sm" })}
-            href="/dashboard/organisations"
-          >
-            Find societies
-          </Link>
-        </div>
+          {upcoming.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-soft">
+              You have no upcoming tickets.{" "}
+              <Link className="font-semibold text-brand underline underline-offset-4" href="/">
+                Browse events
+              </Link>
+            </p>
+          ) : (
+            <ul className="mt-3 grid">
+              {upcoming.map((order) => (
+                <li className="flex items-center gap-4 border-t border-line py-3.5 first:border-0" key={order.id}>
+                  <DateRail date={order.event.startTime} size="md" timeZone={order.event.organisation.timeZone} />
+                  <div className="grid min-w-0 gap-0.5">
+                    <Link
+                      className="font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]"
+                      href={`/events/${order.event.id}`}
+                    >
+                      {order.event.title}
+                    </Link>
+                    <span className="text-sm text-ink-soft">
+                      {formatDateTime(order.event.startTime, {
+                        timeZone: order.event.organisation.timeZone
+                      })}{" "}
+                      · {order.event.organisation.name}
+                    </span>
+                    <span className="text-sm text-ink-soft">
+                      {order.quantity} × {order.ticketType.name}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
-        <MemberOrganisationsList organisations={organisations} />
-      </Card>
+        <Card>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-ink">Your societies</h2>
+              <p className="mt-1 text-sm text-ink-soft">
+                Societies you have joined for free.
+              </p>
+            </div>
+            <Link className={moreLink} href="/dashboard/organisations">
+              Find societies
+            </Link>
+          </div>
+
+          <MemberOrganisationsList organisations={organisations} />
+        </Card>
+      </div>
     </PersonalShell>
   );
 }

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-16
 owner: engineering
 related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
 sources: [app, components, lib/auth/page-access.ts]
@@ -147,7 +147,7 @@ User visits /dashboard
 
 Current UI:
 
-- Member dashboard shows profile completion, upcoming tickets and joined societies.
+- Member dashboard shows a profile prompt (the form is on Account settings), upcoming tickets and joined societies.
 - Organisation dashboard shows its name and permitted upcoming events/navigation; recent orders and current-month revenue are queried/rendered only with orders:read. Revoked selection never chooses another tenant.
 
 ## Member Organisation Search And Join

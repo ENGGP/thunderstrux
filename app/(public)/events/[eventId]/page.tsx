@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { PublicTicketPurchase } from "@/components/events/public-ticket-purchase";
 import { getPublishedEventDetail } from "@/lib/events/public-events";
-import { formatDateTime } from "@/lib/format";
+import { Icon } from "@/components/ui/icon";
+import { formatDateRange } from "@/lib/format";
 
 type PublicEventPageProps = {
   params: Promise<{
@@ -46,32 +47,24 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
             </h1>
           </header>
 
-          <dl className="grid gap-4 rounded-card border border-line bg-surface p-5 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="font-semibold text-ink">Starts</dt>
-              <dd className="mt-1 text-ink-soft">
-                {formatDateTime(event.startTime, { dateStyle: "full", timeZone })}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-ink">Ends</dt>
-              <dd className="mt-1 text-ink-soft">
-                {formatDateTime(event.endTime, { dateStyle: "full", timeZone })}
-              </dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="font-semibold text-ink">Location</dt>
-              <dd className="mt-1 text-ink-soft [overflow-wrap:anywhere]">
-                {event.location}
-              </dd>
-            </div>
-            <p className="text-ink-muted sm:col-span-2">
-              Times are shown in {timeZone}.
-            </p>
-          </dl>
+          <div className="grid gap-2 text-ink-soft sm:flex sm:flex-wrap sm:gap-x-8">
+            <span className="inline-flex items-start gap-2">
+              <Icon className="mt-1" name="calendar" />
+              <span>
+                {formatDateRange(event.startTime, event.endTime, timeZone)}
+                <span className="block text-sm text-ink-muted">
+                  {timeZone.split("/").pop()?.replaceAll("_", " ")} time
+                </span>
+              </span>
+            </span>
+            <span className="inline-flex items-start gap-2 [overflow-wrap:anywhere]">
+              <Icon className="mt-1" name="pin" />
+              {event.location}
+            </span>
+          </div>
 
           <section>
-            <h2 className="text-2xl font-semibold text-ink">About this event</h2>
+            <h2 className="text-2xl font-semibold text-ink">About</h2>
             <p className="mt-3 max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
               {event.description}
             </p>

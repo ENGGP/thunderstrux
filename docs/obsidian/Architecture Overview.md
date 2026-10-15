@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-16
 owner: engineering
 related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]"]
 sources: [package.json, prisma/schema.prisma, docker-compose.yml]
@@ -151,7 +151,7 @@ app/
 
 `/dashboard`
 
-- Personal member mode shows profile completion, the caller's nearest upcoming paid tickets and joined societies inside the personal shell. Selected staff mode shows only permitted management content; revocation never falls back to another tenant.
+- Personal member mode shows a profile prompt linking to Account settings, the caller's nearest upcoming paid tickets and joined societies inside the personal shell. Selected staff mode shows only permitted management content; revocation never falls back to another tenant.
 - Authorised organisation context shows setup tasks the caller may act on (payments, profile, scheduling an event), upcoming events (sold and left only with analytics:read) and role-filtered recent orders and month-to-date revenue. Finance queries are omitted when orders:read is absent. The data streams in after the guards behind a skeleton.
 
 `/dashboard/events`

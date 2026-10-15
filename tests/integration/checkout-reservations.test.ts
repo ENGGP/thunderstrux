@@ -176,7 +176,8 @@ describe("checkout and reservation logic", () => {
           ticketTypeId: event.ticketTypes[0].id,
           quantity: "2"
         })
-      })
+      }),
+      { idempotencyKey: expect.stringMatching(/^checkout_/) }
     );
     expect(info.mock.calls.map((call) => JSON.parse(String(call[0])))).toEqual(
       expect.arrayContaining([

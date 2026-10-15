@@ -40,6 +40,7 @@ test("reset clears every current model including dependent and unlinked recovery
   await prisma.orderLifecycleEvent.create({ data: { orderId: paid.id, sequence: 1, type: "legacy_baseline", source: "legacy" } });
   const failed = await createOrder({ ...references, status: "failed", failedAt: new Date(), failureReason: "synthetic_unfulfillable", requiresCompensationReview: true });
   const job = await prisma.compensationRefundJob.create({ data: { orderId: failed.id, amount: failed.totalAmount } });
+  await prisma.checkoutAttempt.create({ data: { family: "ticket", actorKind: "user", actorId: member.id, operationType: "event_checkout", clientIdempotencyKey: unique("reset-key"), requestHash: "synthetic", orderId: failed.id, providerOperationKey: unique("reset-provider-key"), state: "failed" } });
   await prisma.stripeRefundWebhookEvent.createMany({ data: [
     { stripeEventId: unique("evt_test"), refundJobId: job.id, eventType: "refund.updated", eventCreatedAt: new Date() },
     { stripeEventId: unique("evt_test_unlinked"), refundJobId: null, eventType: "refund.updated", eventCreatedAt: new Date() }

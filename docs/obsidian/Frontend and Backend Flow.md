@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-14
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
 sources: [app, components, lib/auth/page-access.ts]
@@ -258,13 +258,15 @@ Current UI:
 
 ## Events Dashboard
 
-The page requires events:read. Owner/admin/event-manager roles use the editable EventsList flow below; finance gets a bounded read-only list, and check-in staff get only published event/attendance links. They do not obtain events:manage by appearing in navigation.
+The page requires events:read and is rendered on the server for every role. Owner, admin and event-manager roles also get the event actions; finance gets a read-only list with sales; check-in staff get published events only, with links to Attendees. Nobody obtains events:manage by appearing in navigation.
 
 Files:
 
 - `app/(dashboard)/dashboard/events/page.tsx`
 - `app/(dashboard)/dashboard/events/layout.tsx`
-- `components/events/events-list.tsx`
+- `components/events/event-actions.tsx`
+- `components/events/event-tabs.tsx`
+- `lib/events/event-lifecycle.ts` (`listDashboardEvents`, `getDashboardEvent`)
 - `app/api/events/route.ts`
 - `app/api/events/[eventId]/route.ts`
 - `app/api/events/[eventId]/publish/route.ts`
@@ -272,11 +274,12 @@ Files:
 Flow:
 
 ```text
-Events page resolves the authorised user's canonical organisation
-  -> EventsList fetches organisation by slug via /api/orgs/[orgSlug] for API compatibility
-  -> EventsList fetches GET /api/events?orgId=...
-  -> API verifies live event-management capability for the canonical organisationId
-  -> events render with management actions
+Events page runs requireManagementPage("events:read")
+  -> header renders; the list streams inside <Suspense> behind a skeleton
+  -> listDashboardEvents(organisationId, view, query, publishedOnly, includeSales)
+  -> rows render with blocker reasons; EventActions calls
+     PATCH /api/events/[eventId]/publish or DELETE /api/events/[eventId]
+  -> the API re-checks live events:manage authority; the page refreshes
 ```
 
 Supported actions:
@@ -307,7 +310,8 @@ or current slugless form:
 The link is generated in:
 
 ```text
-components/events/events-list.tsx
+components/events/event-actions.tsx
+components/events/event-tabs.tsx
 ```
 
 The expected page is:

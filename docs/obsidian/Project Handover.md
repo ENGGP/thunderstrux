@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-14
+last-reviewed: 2026-10-15
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-12]]"]
@@ -56,7 +56,7 @@ Redis client qualification (2026-10-13): [PR #52](https://github.com/ENGGP/thund
 **Constraints the refactor keeps.**
 
 - Guard call order in the route adapters listed in tests/integration/domain-service-boundaries.test.ts is unchanged; payment reconciliation, reservations, webhooks, compensation, outbox internals, lock orders and rate-limit policies are not touched.
-- Shells are composed inside each page and stay synchronous, because integration tests render page output directly. No root or dashboard loading.tsx is added: it would stream a 200 where pages currently answer with a redirect or a concealed 404.
+- Shells are composed inside each page after its guards. No root or dashboard loading.tsx is added: it would stream a 200 where pages currently answer with a redirect or a concealed 404. Data read after the guards streams inside `<Suspense>` with a skeleton, and integration tests render pages through `renderPage` so they still see the content.
 - Navigation lists only destinations that exist. `/events/[eventId]`, `/tickets` and the email-link pages keep their URLs.
 
 **Specification conflicts resolved for this work.**
@@ -92,7 +92,8 @@ Redis client qualification (2026-10-13): [PR #52](https://github.com/ENGGP/thund
 The maintainer approved a Claude Design redesign (canvas "Thunderstrux redesign": rounds 1 and 2 plus a status colour system) and its plan: four PRs with no URL, permission, guard or API changes, skeletons only after guards (never a root or dashboard `loading.tsx`), and sold/remaining as the only new events data.
 
 - **PR1** (`codex/redesign-foundations`, PR #63): society sidebar regrouped (Overview, Events, Orders; Settings: Society profile, Staff, Payments, Email delivery), `Workspace` switcher label, one `h1` per dashboard page, status colour tokens with redesigned `Notice` and `StatusBadge`, and a dismissible verify-email banner that never changes verification. [[UI Architecture Rules]] records the current rules.
-- **Next:** PR2 events list with sold/remaining, event workspace tabs, overview and Suspense skeletons; PR3 the remaining T01–T09 screens; PR4 visual and UX spec updates plus a design-system re-sync. Part of T34's navigation work lands early through this redesign.
+- **PR2** (`codex/redesign-events-workspace`): events list rebuilt on the server (views with counts, title search, sold and left, Publish, Edit and a More menu with confirmed Unpublish and Delete), event workspace header and tabs on Summary, Attendees, Edit and the event's Orders, the Overview `Finish setting up` checklist with linked events and orders, and Suspense skeletons. `listOrganisationEventLinks` and `components/events/events-list.tsx` are gone.
+- **Next:** PR3 the remaining T01–T09 screens; PR4 visual and UX spec updates plus a design-system re-sync. Part of T34's navigation work lands early through this redesign.
 - Defects found during the audit and kept out of the redesign are EVT-001, EVT-002, EVT-003, PUB-001 and ORD-001 in [[Non-Blocking Issue Register]].
 
 ## Next Safe Actions

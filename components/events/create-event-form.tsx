@@ -368,12 +368,13 @@ export function CreateEventForm({
   return (
     <Card>
       <form className="grid max-w-2xl gap-5" onSubmit={onSubmit}>
-        <div>
-          <h1 className="text-2xl font-semibold text-ink">
-            {mode === "edit" ? "Edit event" : "New event"}
-          </h1>
-          <p className="mt-1 text-sm text-ink-muted">{organisation.name}</p>
-        </div>
+        {/* When editing, the event's workspace header carries the page title. */}
+        {mode === "create" ? (
+          <div>
+            <h1 className="text-2xl font-semibold text-ink">New event</h1>
+            <p className="mt-1 text-sm text-ink-muted">{organisation.name}</p>
+          </div>
+        ) : null}
 
         {errors.some((error) => !error.path?.length) ? (
           <div className="rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">

@@ -1,10 +1,11 @@
-import { hasOrganisationPermission } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { TicketCheckInButton } from "@/components/tickets/ticket-check-in-button";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
 import { formatDateTime } from "@/lib/format";
 import {
   OrganisationEventTicketsAccessError,
@@ -89,15 +90,21 @@ export default async function OrganiserEventTicketsPage({
   const organisation = await requireManagementPage("tickets:check_in", `/dashboard/events/${eventId}/tickets`);
 
   let payload: Awaited<ReturnType<typeof getOrganisationEventTickets>>;
+  let event: Awaited<ReturnType<typeof getDashboardEvent>>;
 
+  // The ticket read decides the 404 (check-in staff see published events only).
   try {
     payload = await getOrganisationEventTickets(
       organisation.id,
       eventId,
       pagination
     );
+    event = await getDashboardEvent(organisation.id, eventId);
   } catch (error) {
-    if (error instanceof OrganisationEventTicketsAccessError) {
+    if (
+      error instanceof OrganisationEventTicketsAccessError ||
+      error instanceof EventLifecycleNotFoundError
+    ) {
       notFound();
     }
 
@@ -106,31 +113,8 @@ export default async function OrganiserEventTicketsPage({
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <div className="mx-auto max-w-6xl space-y-6 px-6 py-10">
-        <section className="rounded-card border border-line bg-surface p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-ink-muted">Tickets</p>
-              <h1 className="mt-2 text-3xl font-semibold text-ink">
-                {payload.event.title}
-              </h1>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {hasOrganisationPermission(organisation.staffRole, "analytics:read") && <Link
-                className="rounded-control border border-line-strong px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
-                href={`/dashboard/events/${payload.event.id}`}
-              >
-                Back to event
-              </Link>}
-              {hasOrganisationPermission(organisation.staffRole, "orders:read") && <Link
-                className="rounded-control bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover"
-                href={`/dashboard/orders?eventId=${payload.event.id}`}
-              >
-                View orders
-              </Link>}
-            </div>
-          </div>
-        </section>
+      <div className="mx-auto grid max-w-admin grid-cols-1 gap-6 px-4 py-8 sm:px-8">
+        <EventWorkspaceHeader active="attendees" event={event} staffRole={organisation.staffRole} />
 
         <section className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-card border border-line bg-surface p-5">

@@ -1,4 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderPage } from "@/tests/helpers/render";
 import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { encodeTimestampCursor } from "@/lib/pagination/cursor";
@@ -34,7 +34,7 @@ async function renderTicketsPage(
     searchParams: Promise.resolve(searchParams)
   });
 
-  return renderToStaticMarkup(element);
+  return renderPage(element);
 }
 
 describe("member features", () => {

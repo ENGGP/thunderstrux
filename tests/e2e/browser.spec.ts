@@ -273,3 +273,26 @@ test('private staff invitation email supports explicit acceptance, resend and re
   await expect(pending).toBeVisible(); await pending.getByRole('button', { name: 'Revoke invitation' }).click();
   await expect(pending).toHaveCount(0);
 });
+
+test('organisers filter and search events and confirm before unpublishing', async ({ page, data }) => {
+  await createEvent({ organisationId: data.organisation.id, title: 'Draft Gala' });
+  await login(page, data.owner.email, '/dashboard/events');
+  const views = page.getByRole('navigation', { name: 'Event views' });
+  await expect(views.getByRole('link', { name: /^Upcoming/ })).toHaveAttribute('aria-current', 'page');
+  await views.getByRole('link', { name: /^Drafts/ }).click();
+  await expect(page).toHaveURL(/view=drafts/);
+  await expect(page.getByRole('link', { name: 'Draft Gala', exact: true })).toBeVisible();
+  await page.getByLabel('Search events').fill('nothing-matches');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /^No drafts match/ })).toBeVisible();
+  await page.getByRole('link', { name: 'Clear search' }).click();
+  await expect(page.getByRole('link', { name: 'Draft Gala', exact: true })).toBeVisible();
+  await views.getByRole('link', { name: /^Upcoming/ }).click();
+  await page.getByRole('button', { name: `More actions for ${data.event.title}` }).click();
+  await page.getByRole('button', { name: 'Unpublish', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('It leaves the public page');
+  await dialog.getByRole('button', { name: 'Unpublish', exact: true }).click();
+  await expect(page.getByText('Unpublished. It is hidden from the public page.')).toBeVisible();
+  expect((await prisma.event.findUniqueOrThrow({ where: { id: data.event.id } })).status).toBe('draft');
+});

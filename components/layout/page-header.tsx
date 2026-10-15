@@ -7,11 +7,14 @@ export function PageHeader({
   title,
   description,
   breadcrumbs = [],
+  badge,
   actions
 }: {
   title: ReactNode;
   description?: ReactNode;
   breadcrumbs?: Array<{ label: string; href: string }>;
+  // Sits beside the h1, outside it, so the heading's name stays the title.
+  badge?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
@@ -30,7 +33,10 @@ export function PageHeader({
       ) : null}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="grid min-w-0 gap-1">
-          <h1 className="text-3xl font-semibold text-ink [overflow-wrap:anywhere]">{title}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-semibold text-ink [overflow-wrap:anywhere]">{title}</h1>
+            {badge}
+          </div>
           {description ? <p className="text-ink-soft">{description}</p> : null}
         </div>
         {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}

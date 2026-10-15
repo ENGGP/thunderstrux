@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-14
+last-reviewed: 2026-10-15
 owner: engineering
 related: ["[[Architecture Overview]]", "[[Project Handover]]"]
 sources: [app, lib, package.json]
@@ -162,7 +162,7 @@ docs/obsidian/
 - Organisation dashboard primary route is `/dashboard`.
 - Sidebar capability-filters Overview, Events, Orders, then Settings (Society profile, Staff, Payments, Email delivery) with longest-route active state. Protected pages independently enforce authority.
 - Status colours are tokens in app/globals.css (text, `-bg`, `-border`, `-icon` per role); `components/ui/notice.tsx`, `components/ui/status-badge.tsx` and `components/ui/icon.tsx` use them. The verify-email reminder is `components/layout/verify-email-banner.tsx`.
-- Event analytics links to the event ticket list.
+- `/dashboard/events` is server-rendered (views, search, sold and left) from `listDashboardEvents`; every page of one event shares `EventWorkspaceHeader` and its tabs (components/events/event-tabs.tsx), and `components/events/event-actions.tsx` holds Publish, Edit and the More menu. Data read after the guards streams behind `components/ui/skeleton.tsx`.
 - Order rows link to organiser order detail.
 - Member dashboard does not use the organisation management sidebar.
 - Buttons come from components/ui/button.tsx; the primary action is the brand purple.

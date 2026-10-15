@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import type { z } from "zod";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
@@ -56,19 +57,136 @@ export async function listOrganisationEvents(organisationId: string) {
   });
 }
 
-export async function listOrganisationEventLinks(
-  organisationId: string,
-  publishedOnly: boolean
+export const eventViews = ["upcoming", "drafts", "past", "all"] as const;
+export type EventView = (typeof eventViews)[number];
+
+const dashboardEventSelect = {
+  id: true,
+  title: true,
+  location: true,
+  startTime: true,
+  endTime: true,
+  status: true,
+  ticketTypes: { select: { quantity: true } },
+  _count: { select: { orders: true, tickets: true } }
+} satisfies Prisma.EventSelect;
+
+// The blocker texts mirror the publish, unpublish and delete rules below so the
+// UI can say why an action is unavailable; the mutations still enforce them.
+function toDashboardEvent(
+  event: Prisma.EventGetPayload<{ select: typeof dashboardEventSelect }>
 ) {
-  return prisma.event.findMany({
-    where: {
-      organisationId,
-      ...(publishedOnly ? { status: "published" as const } : {})
-    },
-    orderBy: [{ startTime: "asc" }, { id: "asc" }],
-    take: 100,
-    select: { id: true, title: true, startTime: true, location: true }
+  const remaining = event.ticketTypes.reduce((total, ticketType) => total + ticketType.quantity, 0);
+
+  return {
+    id: event.id,
+    title: event.title,
+    location: event.location,
+    startTime: event.startTime,
+    endTime: event.endTime,
+    status: event.status,
+    ticketTypeCount: event.ticketTypes.length,
+    remaining,
+    publishBlocker:
+      event.status !== "draft"
+        ? null
+        : event.ticketTypes.length === 0
+          ? "Add a ticket type before publishing."
+          : remaining <= 0
+            ? "Add ticket quantity before publishing."
+            : null,
+    unpublishBlocker:
+      event.status === "published" && event._count.orders > 0
+        ? "This event has orders, so it stays published."
+        : null,
+    deleteBlocker:
+      event._count.orders > 0 || event._count.tickets > 0
+        ? "Events with orders or tickets cannot be deleted."
+        : null
+  };
+}
+
+export type DashboardEvent = ReturnType<typeof toDashboardEvent>;
+
+// One view of the dashboard events list (at most `take` rows), the count for
+// every view, and tickets sold per event only when the caller may see sales.
+// Upcoming means not yet ended, so an event in progress still shows there.
+export async function listDashboardEvents(
+  organisationId: string,
+  {
+    view,
+    query,
+    publishedOnly,
+    includeSales,
+    take = 100
+  }: {
+    view: EventView;
+    query?: string;
+    publishedOnly: boolean;
+    includeSales: boolean;
+    take?: number;
+  }
+) {
+  const now = new Date();
+  const base: Prisma.EventWhereInput = {
+    organisationId,
+    ...(publishedOnly ? { status: "published" as const } : {}),
+    ...(query ? { title: { contains: query, mode: "insensitive" as const } } : {})
+  };
+  const viewWhere: Record<EventView, Prisma.EventWhereInput> = {
+    upcoming: { endTime: { gte: now } },
+    drafts: { status: "draft" },
+    past: { endTime: { lt: now } },
+    all: {}
+  };
+  const [rows, counts] = await Promise.all([
+    prisma.event.findMany({
+      where: { AND: [base, viewWhere[view]] },
+      orderBy: [{ startTime: view === "past" ? "desc" : "asc" }, { id: "asc" }],
+      take,
+      select: dashboardEventSelect
+    }),
+    Promise.all(
+      eventViews.map((name) => prisma.event.count({ where: { AND: [base, viewWhere[name]] } }))
+    )
+  ]);
+  const sold =
+    includeSales && rows.length > 0
+      ? await prisma.order.groupBy({
+          by: ["eventId"],
+          where: {
+            eventId: { in: rows.map((row) => row.id) },
+            event: { is: { organisationId } },
+            status: "paid"
+          },
+          _sum: { quantity: true }
+        })
+      : [];
+  const soldByEvent = new Map(sold.map((group) => [group.eventId, group._sum.quantity ?? 0]));
+
+  return {
+    events: rows.map((row) => ({
+      ...toDashboardEvent(row),
+      sold: includeSales ? soldByEvent.get(row.id) ?? 0 : null
+    })),
+    counts: Object.fromEntries(eventViews.map((name, index) => [name, counts[index]])) as Record<
+      EventView,
+      number
+    >
+  };
+}
+
+export async function getDashboardEvent(organisationId: string, eventId: string) {
+  const event = await prisma.event.findFirst({
+    where: scopedByOrganisation(organisationId, { id: eventId }),
+    select: dashboardEventSelect
   });
+
+  if (!event) {
+    throw new EventLifecycleNotFoundError();
+  }
+
+  return toDashboardEvent(event);
 }
 
 export async function getOrganisationEvent(

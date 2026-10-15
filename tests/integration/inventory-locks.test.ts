@@ -30,6 +30,7 @@ vi.mock("@/lib/stripe", () => {
 type TestEvent = Awaited<ReturnType<typeof createEvent>>;
 
 function mockSessions() {
+  stripeMocks.createSession.mockClear();
   let next = 0;
   stripeMocks.createSession.mockImplementation(async () => {
     next += 1;

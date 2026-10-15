@@ -347,6 +347,7 @@ model Order {
   emailOutboxJobs EmailOutbox[]
   lifecycleEvents            OrderLifecycleEvent[]
   compensationRefundJob      CompensationRefundJob?
+  checkoutAttempt            CheckoutAttempt?
 
   @@index([organisationId])
   @@index([eventId])
@@ -355,6 +356,33 @@ model Order {
   @@index([userId])
   @@index([userId, status, createdAt, id], map: "Order_userId_status_createdAt_id_idx")
   @@index([status, createdAt], map: "Order_status_createdAt_idx")
+}
+
+// One durable record per intended checkout (database spec 6.1). The same actor
+// and client key returns the same result; the provider key is Stripe's
+// idempotency key, so a retried Session creation can never charge twice.
+model CheckoutAttempt {
+  id                   String               @id @default(cuid())
+  family               CheckoutFamily
+  actorKind            CheckoutActorKind
+  actorId              String
+  operationType        String
+  clientIdempotencyKey String
+  requestHash          String
+  orderId              String?              @unique
+  providerOperationKey String               @unique
+  stripeSessionId      String?              @unique
+  stripeSessionUrl     String?
+  state                CheckoutAttemptState @default(created)
+  reconcileDueAt       DateTime?
+  lastOutcome          String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([actorKind, actorId, family, operationType, clientIdempotencyKey], map: "CheckoutAttempt_actor_key_key")
+  @@index([state, reconcileDueAt])
 }
 
 model CompensationRefundJob {
@@ -582,6 +610,21 @@ enum EmailOutboxStatus {
   pending
   processing
   sent
+  failed
+}
+
+enum CheckoutFamily {
+  ticket
+}
+
+enum CheckoutActorKind {
+  user
+}
+
+enum CheckoutAttemptState {
+  created
+  provider_uncertain
+  provider_attached
   failed
 }
 

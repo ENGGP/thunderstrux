@@ -12,7 +12,8 @@ import {
   createEvent,
   createMember,
   createOrder,
-  createOrganisationAccount
+  createOrganisationAccount,
+  unique
 } from "@/tests/helpers/test-data";
 
 const stripeMocks = vi.hoisted(() => ({ createSession: vi.fn() }));
@@ -39,7 +40,7 @@ function mockSessions() {
 }
 
 function buy(userId: string, event: TestEvent, index: number, quantity: number, expectedUnitPrice = event.ticketTypes[index].price) {
-  return createEventCheckout({ userId, eventId: event.id, ticketTypeId: event.ticketTypes[index].id, quantity, expectedUnitPrice });
+  return createEventCheckout({ userId, eventId: event.id, ticketTypeId: event.ticketTypes[index].id, quantity, expectedUnitPrice, idempotencyKey: unique("checkout") });
 }
 
 function editStock(
@@ -129,7 +130,7 @@ describe("inventory and capacity locks", () => {
     const member = await createMember();
     setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
     const response = await checkoutRoute(jsonRequest("http://localhost/api/payments/checkout/event", {
-      eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: shownPrice
+      eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: shownPrice, idempotencyKey: unique("checkout")
     }));
 
     expect(response.status).toBe(409);
@@ -140,7 +141,7 @@ describe("inventory and capacity locks", () => {
     expect(stripeMocks.createSession).not.toHaveBeenCalled();
 
     const tooMany = await checkoutRoute(jsonRequest("http://localhost/api/payments/checkout/event", {
-      eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 11, expectedUnitPrice: shownPrice + 500
+      eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 11, expectedUnitPrice: shownPrice + 500, idempotencyKey: unique("checkout")
     }));
     expect(tooMany.status).toBe(400);
   });

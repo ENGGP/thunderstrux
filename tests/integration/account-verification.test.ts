@@ -11,7 +11,7 @@ import { POST as join } from "@/app/api/orgs/[orgSlug]/join/route";
 import { POST as bootstrap } from "@/app/api/orgs/route";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { jsonRequest } from "@/tests/helpers/http";
-import { createUser, createOrganisationAccount, createEvent } from "@/tests/helpers/test-data";
+import { createUser, createOrganisationAccount, createEvent, unique } from "@/tests/helpers/test-data";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { createOrganisationStaffInvite, acceptOrganisationStaffInvite } from "@/lib/staff/invites";
 import { setMockSession } from "@/tests/helpers/auth";
@@ -103,7 +103,7 @@ test("direct checkout and invite transactions reject unverified identities befor
   const event = await createEvent({ organisationId: society.organisation.id, status: "published" });
   const invite = await createOrganisationStaffInvite({ organisationId: society.organisation.id, actor: { id: society.user.id, authVersion: society.user.authVersion }, email: user.email, role: "event_manager" });
   await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: null } });
-  await expect(createEventCheckout({ userId: user.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price })).rejects.toThrow("Verify your email");
+  await expect(createEventCheckout({ userId: user.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price, idempotencyKey: unique("checkout") })).rejects.toThrow("Verify your email");
   await expect(acceptOrganisationStaffInvite({ token: await readStaffInviteToken(invite.invite.id), actor: { id: user.id, authVersion: user.authVersion } })).rejects.toThrow("Verify your email");
   expect(await prisma.order.count()).toBe(0); expect(await prisma.ticketReservation.count()).toBe(0);
   expect(await prisma.organisationStaff.count({ where: { userId: user.id } })).toBe(0);

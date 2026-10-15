@@ -328,6 +328,30 @@ const checks: AuditCheck[] = [
       `)
     })
   },
+  {
+    name: "checkout_attempt_session_matches_order",
+    classification: "relationship/audit-only",
+    recommendation:
+      "Audit-only: an attached checkout attempt must name the same Stripe Session as its order; review before any repair.",
+    run: async () => ({
+      count: await rawCount(prisma.$queryRaw<RawCount>`
+        SELECT COUNT(*)::bigint AS count FROM "CheckoutAttempt"
+        INNER JOIN "Order" ON "Order"."id" = "CheckoutAttempt"."orderId"
+        WHERE "Order"."stripeSessionId" IS NOT NULL
+          AND "CheckoutAttempt"."stripeSessionId" IS NOT NULL
+          AND "Order"."stripeSessionId" <> "CheckoutAttempt"."stripeSessionId"
+      `),
+      sampleIds: await rawSampleIds(prisma.$queryRaw<RawIds>`
+        SELECT "CheckoutAttempt"."id" FROM "CheckoutAttempt"
+        INNER JOIN "Order" ON "Order"."id" = "CheckoutAttempt"."orderId"
+        WHERE "Order"."stripeSessionId" IS NOT NULL
+          AND "CheckoutAttempt"."stripeSessionId" IS NOT NULL
+          AND "Order"."stripeSessionId" <> "CheckoutAttempt"."stripeSessionId"
+        ORDER BY "CheckoutAttempt"."id" ASC
+        LIMIT ${SAMPLE_LIMIT}
+      `)
+    })
+  },
   ...(["Order", "Ticket", "TicketReservation"] as const).map((table) => ({
     name: `${table.toLowerCase()}_organisation_matches_event`,
     classification: "relationship/audit-only" as const,

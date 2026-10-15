@@ -14,7 +14,8 @@ import {
   createMember,
   createOrder,
   createOrganisationAccount,
-  futureDate
+  futureDate,
+  unique
 } from "@/tests/helpers/test-data";
 
 async function signedInOrganiser(stripeReady = false) {
@@ -177,7 +178,7 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(closed.status).toBe(200);
     expect((await parseJsonResponse(closed)).event).toMatchObject({ status: "published", saleState: "closed", version: 2 });
     expect((await getDashboardEvent(organisation.id, event.id)).salesOpen).toBe(false);
-    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price }))
+    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price, idempotencyKey: unique("checkout") }))
       .rejects.toMatchObject({ kind: "sales_closed" });
     expect(await prisma.order.count({ where: { eventId: event.id } })).toBe(0);
 
@@ -187,7 +188,7 @@ describe("event policy, readiness and explicit transitions", () => {
     const pastWindow = await setSales(event.id, { saleState: "open", version: 4 });
     expect(pastWindow.status).toBe(400);
     await prisma.event.update({ where: { id: event.id }, data: { saleState: "open" } });
-    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price }))
+    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price, idempotencyKey: unique("checkout") }))
       .rejects.toBeInstanceOf(CheckoutCreationError);
     expect(await prisma.auditLog.count({ where: { targetId: event.id, action: { in: ["event.sales_closed", "event.sales_reopened"] } } })).toBe(2);
   });
@@ -231,7 +232,7 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(ids).not.toContain(membersOnly.id);
     expect(await getPublishedEventDetail(unlisted.id)).toMatchObject({ id: unlisted.id });
     expect(await getPublishedEventDetail(membersOnly.id)).toBeNull();
-    await expect(createEventCheckout({ userId: member.id, eventId: membersOnly.id, ticketTypeId: membersOnly.ticketTypes[0].id, quantity: 1, expectedUnitPrice: membersOnly.ticketTypes[0].price }))
+    await expect(createEventCheckout({ userId: member.id, eventId: membersOnly.id, ticketTypeId: membersOnly.ticketTypes[0].id, quantity: 1, expectedUnitPrice: membersOnly.ticketTypes[0].price, idempotencyKey: unique("checkout") }))
       .rejects.toMatchObject({ kind: "event_not_found" });
   });
 });

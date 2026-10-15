@@ -37,6 +37,20 @@ try {
         snapshotVersion: 1
       }
     });
+    await transaction.checkoutAttempt.create({
+      data: {
+        family: "ticket",
+        actorKind: "user",
+        actorId: actor.id,
+        operationType: "event_checkout",
+        clientIdempotencyKey: "p217-restore-attempt",
+        requestHash: "p217-restore-request-hash",
+        orderId: order.id,
+        providerOperationKey: "p217-restore-provider-key",
+        state: "provider_uncertain",
+        reconcileDueAt: new Date("2099-01-01T00:00:00.000Z")
+      }
+    });
     await transaction.orderLifecycleEvent.create({
       data: {
         orderId: order.id,

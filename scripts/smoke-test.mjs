@@ -540,7 +540,8 @@ async function main() {
           eventId: editedEvent.id,
           ticketTypeId: ticketType.id,
           quantity: 1,
-          expectedUnitPrice: ticketType.price
+          expectedUnitPrice: ticketType.price,
+          idempotencyKey: `smoke-${Date.now()}-${ticketType.id}`
         })
       });
 
@@ -581,7 +582,8 @@ async function main() {
           eventId: detail.body.event.id,
           ticketTypeId: ticketType.id,
           quantity: 1,
-          expectedUnitPrice: ticketType.price
+          expectedUnitPrice: ticketType.price,
+          idempotencyKey: `smoke-${Date.now()}-${ticketType.id}`
         })
       });
 

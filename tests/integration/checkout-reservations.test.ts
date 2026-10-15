@@ -7,7 +7,8 @@ import {
   createMember,
   createOrder,
   createOrganisationAccount,
-  createReservation
+  createReservation,
+  unique
 } from "@/tests/helpers/test-data";
 import { getActiveReservedQuantity } from "@/lib/tickets/reservations";
 
@@ -56,6 +57,7 @@ describe("checkout and reservation logic", () => {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
         expectedUnitPrice: event.ticketTypes[0].price,
+        idempotencyKey: unique("checkout"),
         quantity: 1
       })
     );
@@ -82,6 +84,7 @@ describe("checkout and reservation logic", () => {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
         expectedUnitPrice: event.ticketTypes[0].price,
+        idempotencyKey: unique("checkout"),
         quantity: 1
       })
     );
@@ -117,6 +120,7 @@ describe("checkout and reservation logic", () => {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
         expectedUnitPrice: event.ticketTypes[0].price,
+        idempotencyKey: unique("checkout"),
         quantity: 2
       })
     );
@@ -249,10 +253,10 @@ describe("checkout and reservation logic", () => {
     expect(ticketType.quantity - reserved).toBe(3);
   });
 
-  test("Stripe session creation failure fails order and releases reservation", async () => {
+  test("a definite Stripe refusal fails the order, its attempt and the reservation", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
-    stripeMocks.createSession.mockRejectedValueOnce(new Error("stripe unavailable"));
+    stripeMocks.createSession.mockRejectedValueOnce(Object.assign(new Error("stripe unavailable"), { type: "StripeInvalidRequestError" }));
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const member = await createMember();
     const event = await createEvent({
@@ -267,6 +271,7 @@ describe("checkout and reservation logic", () => {
         eventId: event.id,
         ticketTypeId: event.ticketTypes[0].id,
         expectedUnitPrice: event.ticketTypes[0].price,
+        idempotencyKey: unique("checkout"),
         quantity: 1
       })
     );
@@ -282,6 +287,10 @@ describe("checkout and reservation logic", () => {
       "order_created",
       "order_failed"
     ]);
+    await expect(prisma.checkoutAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).resolves.toMatchObject({
+      state: "failed",
+      reconcileDueAt: null
+    });
 
     expect(parseConsoleJson(error, 0)).toMatchObject({
       level: "error",

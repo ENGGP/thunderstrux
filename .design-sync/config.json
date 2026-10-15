@@ -17,7 +17,10 @@
     "TextInput": ".design-sync/docs/Forms.md",
     "TextArea": ".design-sync/docs/Forms.md",
     "Select": ".design-sync/docs/Forms.md",
-    "Card": ".design-sync/docs/Layout.md"
+    "Card": ".design-sync/docs/Layout.md",
+    "Skeleton": ".design-sync/docs/Feedback.md",
+    "ListSkeleton": ".design-sync/docs/Feedback.md",
+    "Icon": ".design-sync/docs/Layout.md"
   },
   "overrides": {
     "ConfirmDialog": {

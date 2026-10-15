@@ -13,9 +13,9 @@ Use the semantic names below, never raw palette classes (`bg-purple-600`, `text-
 | Family | Classes |
 |---|---|
 | Surfaces | `bg-paper` `bg-warm-paper` `bg-surface` `bg-surface-subtle` `bg-brand-tint` |
-| Text | `text-ink` `text-ink-soft` `text-ink-muted` `text-brand` `text-danger` `text-success` `text-warning` `text-info` |
+| Text | `text-ink` `text-ink-soft` `text-ink-muted` `text-brand` `text-danger` `text-success` `text-warning` `text-info` `text-neutral` |
 | Brand | `bg-brand` `hover:bg-brand-hover` `bg-brand-ink` `bg-lime` (accent) |
-| Status fills | `bg-success-bg` `bg-warning-bg` `bg-danger-bg` `bg-info-bg` (pair with the matching `text-*` and `border-*`) |
+| Status | per role `success` `warning` `danger` `info` `neutral`: text `text-*`, wash `bg-*-bg`, hairline `border-*-border`, icon `text-*-icon`. Warning is for real risk only; drafts and disabled states are neutral |
 | Borders | `border` + `border-line` (hairline), `border-line-strong` (controls) |
 | Radius | `rounded-tag` 6px, `rounded-control` 9px, `rounded-card` 14px, `rounded-feature` 20px |
 | Shadow | `shadow-card`, `shadow-float` (overlays) |
@@ -23,10 +23,10 @@ Use the semantic names below, never raw palette classes (`bg-purple-600`, `text-
 | Width | `max-w-auth` 440, `max-w-read` 760, `max-w-checkout` 1060, `max-w-personal` 1160, `max-w-page` 1248, `max-w-admin` 1420 |
 | Layout glue | `flex` `grid` `gap-{0-6,8,10,12,16}` `p/px/py/m/mx/my/mt/mb-{0-6,8,10,12,16}` `grid-cols-{1-4}` (+ `sm:` `md:` `lg:`) `items-*` `justify-*` `w-full` `mx-auto` |
 
-Raw tokens: `var(--ts-ink)`, `--ts-ink-soft`, `--ts-ink-muted`, `--ts-brand`, `--ts-brand-hover`, `--ts-brand-ink`, `--ts-brand-tint`, `--ts-paper`, `--ts-surface`, `--ts-surface-subtle`, `--ts-border`, `--ts-input-border`, `--ts-focus`, `--ts-success[-bg]`, `--ts-warning[-bg]`, `--ts-danger[-bg]`, `--ts-info[-bg]`.
+Raw tokens: `var(--ts-ink)`, `--ts-ink-soft`, `--ts-ink-muted`, `--ts-brand`, `--ts-brand-hover`, `--ts-brand-ink`, `--ts-brand-tint`, `--ts-paper`, `--ts-surface`, `--ts-surface-subtle`, `--ts-border`, `--ts-input-border`, `--ts-focus`, `--ts-{success,warning,danger,info,neutral}` with `-bg`, `-border` and `-icon`.
 
 ## Rules
-- Use library components for controls: `Button` (never a styled `<button>`), `TextInput`/`TextArea`/`Select` (they own the label, hint and error wiring; pass `label`, `hint`, `error`), `Notice` for inline messages, `StatusBadge` for server states, `Card` for any bordered surface, `ConfirmDialog` for confirmations.
+- Use library components for controls: `Button` (never a styled `<button>`), `TextInput`/`TextArea`/`Select` (they own the label, hint and error wiring; pass `label`, `hint`, `error`), `Notice` for inline messages (optional `action` link), `Skeleton`/`ListSkeleton` while data loads, `Icon` for the outline icon set, `StatusBadge` for server states, `Card` for any bordered surface, `ConfirmDialog` for confirmations.
 - Colour never carries meaning alone: statuses and notices always include words. Destructive actions use `Button variant="danger"`; `dangerSolid` only on the confirming button of a `ConfirmDialog`.
 - Keyboard focus ring is global (2px `--ts-focus`); do not add `outline-none`.
 - Keep copy plain and British ("organisation", "society"). Buttons say what happens ("Buy tickets", "Publish event").

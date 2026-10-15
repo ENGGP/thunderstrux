@@ -6,6 +6,7 @@
 **Date:** 9 October 2026
 **Status:** Proposed product experience and implementation specification, not evidence that screens or services exist
 **Implementation alignment reviewed:** 12 October 2026, main `4a8024b`. Packages 1–3 are locally qualified; personal/staff context, safe profiles and anonymous society discovery/free affiliation are implemented. Guest/event-detail completion, paid membership/merchandise and wider integrated journeys remain future work. The specification-alignment refactor (PRs #54 to #58, 12 October 2026) then moved every existing screen onto the visual design tokens and shells, made `/societies` the canonical public society URL, and routed server pages and T01-T09 route adapters through `lib` services, without adding T10+ features or schema. Navigation lists only destinations that exist, and dashboard URLs for payments, staff and society settings keep their live paths under the labels Payments, Staff and Settings. [Project Handover](obsidian/Project%20Handover.md) and [Readiness Plan](MVP_READINESS_PLAN.md) own current status and evidence. Original research/proposal dates below remain unchanged.
+**Redesign implemented:** 16 October 2026. The approved Claude Design redesign (PRs #63 to #66) delivered the society Settings group, the Workspace switcher, event views and workspace tabs, inline feedback and confirmations, and the verify-at-point-of-need prompts, delivering part of T34 early. [Section 24](#24-implemented-navigation-journeys-and-feedback-october-2026) records the live model.
 **Audience:** Product designer, frontend engineer, backend engineer, QA engineer, Codex/Claude coding agent
 **Markets and defaults:** Australian student societies; English (UK spelling); AUD; society-configured IANA timezone (initial default `Australia/Brisbane`)
 **Source of truth:** Use the subject-specific document authority above; this specification governs interactions, not competing presentation tokens or domain invariants.
@@ -39,6 +40,7 @@
 21. [Glossary](#21-glossary-for-designers-and-coding-agents)
 22. [Researched references](#22-research-source-register)
 23. [Final implementation handoff](#23-final-ux-quality-gate-and-agent-handoff)
+24. [Implemented navigation, journeys and feedback, October 2026](#24-implemented-navigation-journeys-and-feedback-october-2026)
 
 ---
 
@@ -1646,3 +1648,39 @@ Official primary references checked 9 October 2026. The platform descriptions in
 **This document is ready to be used as a page-flow and component acceptance guide, not an implementation-complete certificate.** It deliberately combines event-ticketing conventions from Humanitix/Eventbrite/Ticket Tailor/TryBooking, society-specific navigation and merchandise/membership patterns from Rubric, and calendar/community cues from Luma. However, a convention is only adopted where compatible with the uploaded PRD and technical plan. The strongest differentiator is a **single society identity connecting events, actual free/paid membership entitlements, a pickup-based merch shop, calendar, ticket wallet and committee operations**, with reliable transaction state at each transition.
 
 Before declaring the frontend complete, a reviewer must traverse all J01-J15 journeys and UX-001..050 cases, verify every required screen (PUB/AUTH/BUY/PER/ORG), compare design copy and finance states with server DTOs, confirm role/tenancy/privacy denials and document every unimplemented [E] enhancement honestly. Finish with a two-society real-device pilot using a guest, member, owner, event organiser, finance staff, door volunteer and merch operator, as required by hosted task H06. No page should promise a payment, ticket, paid benefit, shipment, refund or external integration the system cannot actually confirm.
+
+---
+
+## 24. Implemented navigation, journeys and feedback, October 2026
+
+The approved Claude Design redesign was delivered in PRs [#63](https://github.com/ENGGP/thunderstrux/pull/63) to [#66](https://github.com/ENGGP/thunderstrux/pull/66) without changing URLs, permissions, guards, APIs or schema. Part of T34's "coherent member/society navigation" landed early through it. This section records the live interaction model where it refines sections 3 to 14; [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md) owns the details and the [visual design specification](THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) section 16 owns the presentation.
+
+### 24.1 Contexts and navigation
+
+- Three contexts only: **public**, **personal** and **society**. Society roles are permission sets over one society, so there is one permission-filtered society sidebar rather than a context per role.
+- Society sidebar: Overview, Events, Orders; Settings: Society profile, Staff, Payments, Email delivery. Labels changed, URLs did not: Payments is `/dashboard/settings`, Society profile `/dashboard/settings/profile`, Email delivery `/dashboard/notifications`.
+- The staff authenticator is reached from Account settings (Password and security) and automatically when a page requires verification; it is not society navigation. Account settings shows it only to people who can use it.
+- The workspace switcher is labelled "Workspace" and records a preference only; every page and API re-checks live authority.
+
+### 24.2 Journey changes
+
+| Journey | Live behaviour |
+|---|---|
+| C-D Buy tickets | One ticket choice, one quantity, "Buy tickets". A signed-in member without a verified email sees "Verify your email to buy tickets" with a link instead of a button that fails at checkout. Checkout still enforces verification. |
+| G-I Create, tickets, publish | Publish blockers ("Add a ticket type before publishing.") show next to the disabled Publish button on the list and in the event header; publish and unpublish are available inside the event. |
+| J-K Manage, sales, attendees | Events list with Upcoming, Drafts, Past and All views, counts, title search and sold/left; each event opens a workspace with Summary, Attendees, Orders and Edit tabs filtered by permission. |
+| L Society admin | Settings group; Society profile, Staff, Payments and Email delivery share page headers and inline results. |
+| M Account and security | Section links to Profile, Password and security, Email address and Close account; closure blockers listed before the confirmation fields. |
+| N Verification | Dismissible banner (seven days per user) plus prompts where the action happens. |
+| O Errors and interruptions | One message pattern; confirmations for unpublish, delete event, recording a refund made outside Thunderstrux, disconnecting Stripe, staff role changes and revocation. |
+
+### 24.3 Feedback rules
+
+- Categories: information, success, warning (real risk only, for example payments not ready), error, and "action needed" (information with an action link). Each has an icon and words.
+- No toasts and no notification centre; results stay inline next to the action. A result carries `role="status"` or `role="alert"`; standing guidance carries no live region.
+- Loading: skeletons only where data loads after the guards; never a route-level loading screen that could turn a redirect or concealed 404 into a 200.
+
+### 24.4 Section 14 acceptance additions
+
+- Tab bars scroll sideways on narrow screens instead of wrapping; lists become cards below 768px; pages must not scroll sideways at 390px (browser-tested for the event workspace and events list).
+- Repeated row actions name their target for screen readers ("More actions for Engineering Mixer", "Check in Sam Lee").

@@ -1,6 +1,6 @@
 # design-sync notes
 
-Project: "Thunderstrux UI" — https://claude.ai/design/p/6075c42a-6f43-4f56-8d3c-6554004a550a (8 components from `components/ui/`).
+Project: "Thunderstrux UI" — https://claude.ai/design/p/6075c42a-6f43-4f56-8d3c-6554004a550a (8 components from `components/ui/` at the first sync; the redesign added `Icon`, `Skeleton` and `ListSkeleton`, mapped and previewed for the next sync).
 
 ## How this repo is synced
 - Not a published package: no `dist/`, no Storybook. Package shape, synthesized entry from `srcDir: components/ui` (only the 8 self-contained UI primitives; feature components import `next/*`, `next-auth` and `@/lib/*` so they are deliberately out of scope).

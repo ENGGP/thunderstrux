@@ -2,7 +2,7 @@
 
 **Document authority:** Follow the [PRD authority contract](THUNDERSTRUX_PRD.md), reconciled 11 October 2026. This document governs its assigned subject within accepted product scope and readiness-plan invariants; it is not evidence of deployed features.
 
-Status: implementation queue, not full feature acceptance or release approval. Initial assessment: 2026-10-04 against b2ef999 (after PR #25). Current progress reviewed 2026-10-12 against main `4a8024b`: T01 and Packages 1–3 (T02–T09) are implemented and locally qualified; local development is activated and Package 4 starts at T10. The specification-alignment refactor (PRs #54 to #58, 2026-10-12) changed presentation, public society URLs and server layering for the delivered tasks; it completes no unchecked task. Hosted activation remains unverified. Dated task ledgers retain their tested revisions; the capability table below reflects current delivery rather than the initial snapshot.
+Status: implementation queue, not full feature acceptance or release approval. Initial assessment: 2026-10-04 against b2ef999 (after PR #25). Current progress reviewed 2026-10-16 against main `e60809e`: T01 and Packages 1–3 (T02–T09) are implemented and locally qualified; in Package 4, T10 is complete and T11a has merged (T11 stays open until T11b). Local development is activated with all 36 migrations. The specification-alignment refactor (PRs #54 to #58, 2026-10-12) changed presentation, public society URLs and server layering for the delivered tasks; it completes no unchecked task. Hosted activation remains unverified. Dated task ledgers retain their tested revisions; the capability table below reflects current delivery rather than the initial snapshot.
 
 ## 1. Objective and execution protocol
 
@@ -12,7 +12,7 @@ The PRD owns product requirements. Current code/schema/configuration own impleme
 
 ### Inspection evidence
 
-Read the complete PRD, relevant living references and current implementations: Prisma schema and full migration chain (currently 22 models/34 migrations), auth.ts, proxy.ts, staff/context/permission helpers, account/profile/asset/discovery routes and services, event lifecycle/public services, reservations, checkout/reconciliation/refunds, ticket email/outbox, attendance, order history, member/organisation dashboards, browser/integration fixtures, Docker/Compose, package scripts and CI.
+Read the complete PRD, relevant living references and current implementations: Prisma schema and full migration chain (22 models/34 migrations at the initial assessment; 36 migrations after T11a), auth.ts, proxy.ts, staff/context/permission helpers, account/profile/asset/discovery routes and services, event lifecycle/public services, reservations, checkout/reconciliation/refunds, ticket email/outbox, attendance, order history, member/organisation dashboards, browser/integration fixtures, Docker/Compose, package scripts and CI.
 
 Relevant references:
 
@@ -60,9 +60,9 @@ The requirement-level matrix in section 8 supplies finer classification. This ta
 | Tenant/origin/CSRF/rate controls | COMPLETE | Event.organisationId authority, session CSRF, trusted-origin, Redis and denial tests exist. Extend them to all new surfaces; AUD-001/API-001 remain open. |
 | Public society identity and private settings | COMPLETE | T07–T08 safe assets, public DTO/branding/contact/policies/timezone and settings/MFA-protected optimistic editing are qualified. Paid tabs and wider visual rollout remain later tasks. |
 | Organisation discovery/join/leave | COMPLETE | T09 anonymous bounded literal/cursor discovery, dynamic caller-only verified joins, idempotent leave and fresh client state are qualified. Free affiliation grants neither paid benefits nor staff authority. |
-| Event lifecycle | PARTIAL | Draft/edit/publish/unpublish/delete service exists; create accepts published status, publish checks only ticket inventory; no capacity/visibility/sales-window policy. |
+| Event lifecycle | PARTIAL | T11a added capacity, visibility, sales close/state, version, always-draft create and readiness-checked explicit publish and sales routes. Builder UI, dollar prices and society-zone times remain T11b; locked capacity and sold-edit safety remain T12. |
 | Public discovery/detail | PARTIAL | Anonymous public APIs and cursor listing exist; proxy blocks anonymous HTML detail; filters and sale-state presentation need completion. The detail page reads through the shared service (UI-002 resolved). |
-| Ticket types/history | PARTIAL | Multiple types, cents, remaining quantities, unitPrice/total snapshots exist; purchased names/seller/fee snapshots and locked sold edits missing. |
+| Ticket types/history | PARTIAL | T10 added purchased name, seller, currency, fee and buyer snapshots and ticket validity. Price and quantity of sold types stay editable without locks until T12. |
 | Reservations and paid fulfilment | COMPLETE | 30-minute holds, serializable retries, locked inventory, signed webhook, atomic tickets/outbox and replay tests. Extend capacity, locked quotes and uncertain Session creation; don't replace reconciler. |
 | Free acquisition | MISSING | Validators allow zero price; checkout rejects total <= 0 and requires Stripe. |
 | Guest checkout/private access | MISSING | Checkout requires member; nullable Order.userId is not guest authentication. |
@@ -103,7 +103,7 @@ Retain purchased snapshots and financial/attendance/history records. Archive ref
 
 **Inventory:** TicketType.quantity stays remaining inventory. Active holds reduce sellable quantity without decrementing stock. Fulfilment decrements exactly once. Optional Event.capacity is a separate ceiling, not the sum of remaining quantities. Occupancy = valid issued tickets + active unexpired holds. Sellable = max(0, min(type remaining - type holds, capacity - occupancy)); omit the second limit when capacity is unknown/unset.
 
-**Lock order:** Event, TicketType IDs sorted, Order, then reservation/refund/outbox/history rows. Apply consistently to checkout, fulfilment, edits, refund and cleanup paths that share these resources. Candidate discovery may precede a transaction; mutation revalidates after locks. Use existing bounded serializable conflict retries, never suppress unrelated errors. Reload price/name/state/window/entitlement under lock and snapshot there. Changed browser quote returns 409 and requires review.
+**Lock order:** User row first on paths that fence the buyer account (checkout and account closure already do), then Event, TicketType IDs sorted, Order, then reservation/refund/outbox/history rows. Apply consistently to checkout, fulfilment, edits, refund and cleanup paths that share these resources. Candidate discovery may precede a transaction; mutation revalidates after locks. Use existing bounded serializable conflict retries, never suppress unrelated errors. Reload price/name/state/window/entitlement under lock and snapshot there. Changed browser quote returns 409 and requires review.
 
 **Paid creation:** Transaction creates pending order/snapshots, active 30-minute hold, durable operation record and lifecycle. Stripe creation is outside the DB transaction with a stable operation key. A second fenced transaction attaches its Session. Provider timeout or success-before-DB-attachment becomes uncertain, not a blind new checkout or ordinary failure. Recover the original Session by stable key/verified bounded lookup; never replace a different existing binding.
 
@@ -142,6 +142,25 @@ AI proposes typed actions only. Registry maps actor, tenant, strict schema, live
 ## 4. Dependency-ordered pre-hosting tasks
 
 Every T task is required before claiming the candidate feature-complete. Credentials may block verification but do not defer implementable code. Shared contracts above cover recurring security/transactions/API conventions; task-specific differences below override only where stated.
+
+**Work packages.** Packages group related tasks for planning and handover; the task text below stays the acceptance contract. Packages 1–3 were delivered through PRs #31–#33, #36–#38, #42–#44 and #47–#49.
+
+| Package | Tasks | Internal checkpoints |
+|---|---|---|
+| 1. Account lifecycle | T02–T04 | Notification foundation → verification → recovery/settings, email change and closure |
+| 2. Staff and permissions | T05–T06 | Permissions/context → invitations and handover |
+| 3. Society profiles and discovery | T07–T09 | Safe assets → profiles → discovery/join |
+| 4. Ticket foundations | T10–T14 | Snapshots → policy/readiness → inventory locks → checkout attempts and recovery (T14) → free tickets (T13) → builder UI (T11b) |
+| 5. Payment trust | T17, F1 | Connect safety and fee disclosure → one live-staff authority helper |
+| 6. Public and guest journeys | T15–T16 | Public pages → verified guest access |
+| 7. Refunds and attendee experience | T18–T19 | Refund correctness → purchases, wallet and attendance |
+| 8. Membership commerce | T20–T24 | Commerce foundation/dispatcher → membership products → fulfilment/UI |
+| 9. Merchandise | T25–T28 | Catalogue → basket → holds and sale → pickup/returns |
+| 10. Integrated member/operator experience | T29–T34 | Unified orders/email → analytics → calendar/dashboards |
+| 11. Controlled OpenClaw actions | T35–T37 | Action registry → confirmation receipts → AI interface |
+| 12. Security and reliability | T38–T42 | Audit → security → accessibility → integrity/recovery/workers |
+| 13. Release qualification | T43–T44 | Ordered substeps below |
+| 14. Provider acceptance and final audit | T45–T46 | Real provider verification → final PRD audit |
 
 ### Foundation and identity
 
@@ -337,7 +356,7 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 
 #### T10 — Purchase snapshots and ticket validity
 - [x] Complete. **Dependencies:** T05, T08. Merged as [PR #68](https://github.com/ENGGP/thunderstrux/pull/68) (`aa391be`).
-- **Schema:** Nullable purchasedTicketTypeName/sellerName/buyerEmail/name/currency/feeAmount/feePolicyVersion/paymentKind/fulfilledAt/snapshotVersion on Order; Ticket validity active|void|refund_review/reason/time. Add unique new issue units (orderId, issueSequence) after audited legacy backfill.
+- **Schema:** Order paymentKind (required, no default) and fulfilledAt; nullable purchasedTicketTypeName/sellerName/sellerStripeAccountId/currency/feeAmount/feePolicyVersion/snapshotVersion; the buyer capture reuses the T04c snapshot columns with provenance `purchase`. Ticket validity active|void|refund_review/reason/time. Unique issue units (orderId, issueSequence) after audited legacy backfill.
 - **Code/UI:** Checkout/reconciliation, grouped-orders/order-detail, ticket-delivery, wallet/attendance/timeline use snapshots. Old unknown name shows current label plus Historical label unavailable, never fabricated snapshot. Live schedule separate from purchase facts.
 - **Tests/done:** Rename/reprice/fee rounding/new free classification/legacy rendering, invalid ticket filtering, integrity and expanded-schema compatibility pass across organiser/member/email views.
 
@@ -346,21 +365,24 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 #### T11 — Common publication/readiness and event policy
 - [ ] Complete. **Dependencies:** T10.
 - **Schema/API:** Event.capacity nullable positive, visibility public|unlisted|members_only, salesCloseAt default startTime, saleState open|closed, version. Shared lib/events/event-readiness used by create/edit/publish/public/checkout.
-- **Rules/UI:** Always create draft; explicit target-status/version publish replaces replay-unsafe toggle. Require details/times/types/future sales/stock and at least one checkout-eligible type. Initial publication and continued sale of a mixed event are allowed without charge readiness when a zero-standard-price type passes the other checks; paid types remain unavailable. A paid-only event requires charge readiness to publish. Publication readiness and per-type checkout eligibility are separate predicates from the same service. Close sales independently of unpublish; existing order-backed delete/unpublish restrictions retained. Block members_only publication until T24 exists.
+- **Rules/UI:** Always create draft; explicit target-status/version publish replaces replay-unsafe toggle. Require details/times/types/future sales/stock and at least one checkout-eligible type. Initial publication and continued sale of a mixed event are allowed without charge readiness when a zero-standard-price type passes the other checks; paid types remain unavailable. A paid-only event requires charge readiness to publish. Publication readiness and per-type checkout eligibility are separate predicates from the same service. Close sales independently of unpublish; existing order-backed delete/unpublish restrictions retained. Block members_only publication until T24 exists. Until T13 a free type is not checkout-eligible, because checkout cannot issue a zero-total order: it neither sells nor makes an event publishable.
 - **Tests/done:** Direct published-create bypass, missing tickets/details, past/closed/free/mixed/not-ready, protected edits and capacity below commitments pass with clear blocker messages; no fake capacity backfill.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [x] **T11a:** Event policy schema, shared readiness module, always-draft create, explicit versioned publish and sales routes, edit version and capacity floor. Done: [PR #70](https://github.com/ENGGP/thunderstrux/pull/70), with the free-ticket gate follow-up.
+  - [ ] **T11b (after T11a and design round A):** Builder UI with dollar prices (EVT-002), society-zone times (EVT-001), sales close, Public/Link-only access and capacity, a readiness checklist in Summary, Close/Reopen sales, and visibility and sale state in the events list. Done when DST unit tests, the builder journey and the visual check pass.
 
-**T11a implementation (2026-10-16, `codex/t11a-event-policy`):** migration `20261016010000_event_policy` adds Event `capacity`, `visibility`, `salesCloseAt` (backfilled from start), `saleState` and `version`. `lib/events/event-readiness.ts` holds the publication and per-type checkout predicates used by the publish API, the dashboard's Publish reason and checkout. Create always drafts (EVT-003); publish takes `{ targetStatus, version }` with same-target no-op and stale-version 409; `PATCH /api/events/[eventId]/sales` closes and reopens sales; edits compare versions and refuse capacity below valid issued tickets plus active holds (unlocked until T12). Checkout refuses closed sales and members-only events; public lists show only public events. Event routes use the central error mapper. Validation on executable `da3d1cd`: baseline `p216-0df2cacd43b0da094d89d92c` passed the production build, typecheck, all 398 integration tests in 49 files (seven new in `event-policy.test.ts`) and the dependency audit with no known vulnerabilities; browser campaign `p216-77ee3d5d176e0dfc2ad507f6` passed 3 enforced-MFA, 24 desktop/mobile and 7 signed-webhook/notification checks; operations run `p217-ci-0cd7a77c28` passed deployment with all 36 migrations on seeded data, workers, backup and restore verification of the event policy fields, and the asset rehearsal. An earlier baseline, `p216-81f96db63696523362bfe9aa`, stopped at a type error in the edit page's local form type, fixed before the passing run. Every run reports cleanup complete with zero run-owned containers, volumes or networks. T11 stays unchecked until T11b (builder UI, dollar prices, society-zone times) also merges.
+**T11a implementation (2026-10-16, `codex/t11a-event-policy`):** migration `20261016010000_event_policy` adds Event `capacity`, `visibility`, `salesCloseAt` (backfilled from start), `saleState` and `version`. `lib/events/event-readiness.ts` holds the publication and per-type checkout predicates used by the publish API, the dashboard's Publish reason and checkout. Create always drafts (EVT-003); publish takes `{ targetStatus, version }` with same-target no-op and stale-version 409; `PATCH /api/events/[eventId]/sales` closes and reopens sales; edits compare versions and refuse capacity below valid issued tickets plus active holds (unlocked until T12). Checkout refuses closed sales and members-only events; public lists show only public events. Event routes use the central error mapper. Validation on executable `da3d1cd`: baseline `p216-0df2cacd43b0da094d89d92c` passed the production build, typecheck, all 398 integration tests in 49 files (seven new in `event-policy.test.ts`) and the dependency audit with no known vulnerabilities; browser campaign `p216-77ee3d5d176e0dfc2ad507f6` passed 3 enforced-MFA, 24 desktop/mobile and 7 signed-webhook/notification checks; operations run `p217-ci-0cd7a77c28` passed deployment with all 36 migrations on seeded data, workers, backup and restore verification of the event policy fields, and the asset rehearsal. An earlier baseline, `p216-81f96db63696523362bfe9aa`, stopped at a type error in the edit page's local form type, fixed before the passing run. Every run reports cleanup complete with zero run-owned containers, volumes or networks. Merged 2026-10-16 as `c4696af` ([PR #70](https://github.com/ENGGP/thunderstrux/pull/70)); development migrated after a verified dump. A follow-up on `codex/t11a-free-ticket-gate` turns free-type checkout eligibility off until T13 (`FREE_TICKETS_ENABLED`): checkout still rejects zero totals, so a free-only event could otherwise publish with nothing anyone can buy. T11 stays unchecked until T11b (builder UI, dollar prices, society-zone times) also merges.
 
 #### T12 — Inventory/capacity locks and sold-edit safety
 - [ ] Complete. **Dependencies:** T11.
 - **Code:** Apply section 3.2 lock hierarchy consistently in event-lifecycle, reservations, checkout-creation, checkout-reconciliation and stale-orders. Reload locked price/name/window/owner/policy; return quote-version conflict before reserving changed amount.
-- **Rules:** Quantity remains remaining stock; edits cannot shrink below holds or capacity below issued+holds. Used types can't delete; event owner immutable. Hold predicate active and expiresAt > DB time. Fulfilment validates event ceiling and type quantity once.
+- **Rules:** Quantity remains remaining stock; edits cannot shrink below holds or capacity below issued+holds. Used types can't delete; event owner immutable. Hold predicate active and expiresAt > DB time (today the code compares with application time). Fulfilment validates event ceiling and type quantity once. Paid and free requests are capped at 10 tickets (UX BUY-01, extended to paid). Checkout rechecks publication, sale state, close time, price and name under the lock (today they are read before it) and takes sold-out and payment eligibility from the shared readiness module. The stale-order worker's unused SKIP LOCKED helpers are either used or removed.
 - **Tests/done:** Two types compete for final seat; edit/reprice/close/refund/expiry versus checkout/webhook; sorted locks/bounded conflict retry; no oversell/negative quantity. Existing replay/cleanup suites remain green.
 
 #### T13 — Provider-free ticket acquisition
-- [ ] Complete. **Dependencies:** T12.
+- [ ] Complete. **Dependencies:** T12, T14a (free requests reuse CheckoutAttempt idempotency).
 - **Backend:** lib/payments/free-ticket-issuance, existing checkout adapter dispatches by locked price. Verified member initially; stable request key, maximum 10 units/request. Atomically free Order/snapshots, stock decrement, unique tickets, history/outbox; no Stripe or long-lived hold.
-- **UI/API:** Typed free fulfilled receipt response versus existing paid redirect URL compatibility; Get free tickets, Free receipt/wallet/metrics. Zero total never calls fee helper requiring positive cents.
+- **UI/API:** Typed free fulfilled receipt response versus existing paid redirect URL compatibility; Get free tickets, Free receipt/wallet/metrics. Zero total never calls fee helper requiring positive cents. Turns on `FREE_TICKETS_ENABLED`. Every `status = paid` money read distinguishes `paymentKind` first (analytics, overview revenue, grouped orders, order detail, member tickets, ticket delivery and email, account closure, dashboard orders page).
 - **Tests/done:** Replay/content-mismatch/last-seat concurrency, no configured keys/provider calls, members-only denial, enqueue rollback/provider-email failure pass; free acquisition doesn't inflate revenue.
 
 #### T14 — Idempotent paid creation and uncertain Session recovery
@@ -368,18 +390,28 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **Schema/backend:** CheckoutAttempt unique actor-or-guest+operation+key with canonical payload hash/order/session/state/due time. Same key+payload returns same result; different payload 409. Existing checkout creation uses stable provider key; bounded recovery command in scripts and operations profiles.
 - **Rules:** Timeout after provider success remains uncertain with hold pending reconciliation/expiry; recover original Session by stable key/verified lookup. No blind new order/charge, ordinary failure of unknown outcome or replacing Session binding. Handle webhook-before-attachment/response safely.
 - **Tests/done:** Double click, lost response, DB attachment failure, worker crash, late/early webhook and expiry during recovery produce one purchase and actionable terminal/compensation state.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [ ] **T14a:** CheckoutAttempt table and idempotent paid creation with a stable Stripe idempotency key; an unknown outcome stays uncertain with its hold and an owner-scoped status read. Done when double click, lost response and attachment failure produce one purchase.
+  - [ ] **T14b (after T14a):** Leased recovery worker that replays the same key, then attaches, expires or hands over to compensation, in the Compose worker and operations profiles. Done when worker crash, late/early webhook and expiry during recovery pass, including the operations rehearsal.
 
 #### T15 — Anonymous public pages and honest availability
 - [ ] Complete. **Dependencies:** T09, T11, T13, T14.
-- **Code/UI:** proxy permits anonymous event details, dashboard stays protected; remove accountRole-only public redirect so authorised manager can inspect public preview. Public page calls public-events service directly. Add bounded q/date/society filters, organiser link and per-type sale status/quote.
+- **Code/UI:** proxy permits anonymous event details, dashboard stays protected; remove accountRole-only public redirect so authorised manager can inspect public preview. Public page calls public-events service directly. Add bounded q/date/society filters, organiser link and per-type sale status/quote taken from the shared readiness module.
 - **Rules:** Public list excludes unlisted/member-only/drafts; member-only read concealed unless entitled. Show Free/Sold out/Closed/Payment unavailable/sign-in verification, price/total/AUD/support/refund. Public stock advisory; checkout authoritative, no writes from read paths.
 - **Tests/done:** Anonymous HTML not just API, visibility concealment, price/availability race, login callback, invalid filters, empty/error and mobile overflow pass.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [ ] **T15a:** Anonymous event detail, honest per-type availability, organiser/support/refund details and a dashboard draft preview. Done when anonymous HTML, concealment, the login callback and mobile overflow pass.
+  - [ ] **T15b (after T15a):** Explore events at `/events` with search, date and society filters and cursors; lists exclude drafts, unlisted, members-only and ended events (PUB-001). Done when invalid filters and empty/error states pass.
 
 #### T16 — Verified guest purchase and private access
 - [ ] Complete. **Dependencies:** T02, T03, T13, T14, T15.
 - **Schema/API:** GuestIdentity/GuestAccessGrant with purpose/hash/expiry/email verification and purchase scope; /api/guest/email/request/confirm, guest checkout/session-CSRF cookie and receipt recovery. Origin and fail-closed IP/email acquisition/token limits.
 - **Rules/UI:** Verify email before hold; guest public/unlisted free/paid ticket only, no membership products/member discounts. POST token redemption to clean URL; no Session/order-ID access. Explicit verified member claim transaction, not matching submitted emails. No token/referrer/cookie secrets logged; no-store private views.
 - **Tests/done:** Wrong/stolen/replayed/expired token, GET prefetch, guessed order, changed recipient, concurrent claim, cookie expiry/CSRF/rate failure and guest free/paid recovery journey pass.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [ ] **T16a:** Guest identity, email verification and access sessions (limits, POST redemption, session CSRF, no-store). Done when token misuse, prefetch, cookie and rate-failure cases pass.
+  - [ ] **T16b (after T16a):** Guest ticket checkout and purchase-scoped receipt recovery. Done when the guest free/paid recovery journey and guessed-order denial pass.
+  - [ ] **T16c (after T16b):** Explicit verified-member claim of guest purchases. Done when the concurrent claim and changed-recipient cases pass.
 
 #### T17 — Connect safety and fee/payout disclosure
 - [ ] Complete. **Dependencies:** T05, T08, T14.
@@ -393,12 +425,20 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **External changes:** Add signed charge.dispute.created/updated/closed handling and provider reconciliation for dashboard-created refunds. Store unique provider event IDs and dispute IDs/state; verify the charge belongs to the recorded purchase before changing its financial-review projection. A dispute is not a successful refund. Preserve tickets and historical attendance; block further automated financial actions while reviewed, and resolve validity only through an explicit audited policy. Unknown charge events cannot mutate another purchase.
 - **Rules:** Full-order request, amount/currency/charge/destination/dispute checks; financial fence prevents ordinary+compensation double refund. Provider calls outside DB with stable keys; reverse destination/application fee per disclosed snapshot policy. Partial/external/unknown outcome review; full verified refund voids tickets, preserves attendance, no auto-restock.
 - **Tests/done:** Concurrent refund/recovery/late fulfilment, provider pending/fail/response loss, out-of-order/duplicate/partial/wrong charge, audit and verified confirmation pass. Include PAY-001 mismatch diagnostic and TEST-001 missing direct cases.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [ ] **F1 (prerequisite):** One database-only live-staff authority helper for routes and workers, replacing the six AUTHZ-001 copies with a denial regression per former copy and each caller's guard order kept.
+  - [ ] **T18a (after F1):** Whole-order refunds with RefundRequest, the shared financial fence and refund-webhook dispatch. Done when concurrent refund/compensation/late fulfilment and provider pending/fail/response loss pass.
+  - [ ] **T18b (after T18a):** Disputes, dashboard-created/external/partial refund projection, PAY-001 and TEST-001. Done when duplicate/out-of-order/wrong-charge events pass.
+  - [ ] **T18c (after T18a and T13):** Free-purchase cancellation for tickets in the section 3.3 shape. Done when cancellation replay, notice and stock separation pass.
 
 #### T19 — Purchases, wallet and reliable attendance
 - [ ] Complete. **Dependencies:** T13, T16, T18.
 - **Code/UI:** /purchases and protected order-status read; guest grant equivalent. success/cancel displays actual projection and never claims success from URL or fulfils in production. Wallet valid fulfilled units; history pending/failed/expired/compensation/refunds.
 - **Attendance:** Extend check-in service/page/button with scoped ticket/name/email search, validity checks, actor history and server-state refresh on uncertain network outcome; retain conditional check-in/out.
 - **Tests/done:** Free whole-order cancellation/replay/notice/stock separation; foreign buyer/guest receipt denial, delayed webhook/email failure, duplicate admission/out, void/refund-review arrival, check-in-only staff and timeout/retry pass. No offline success promise.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [ ] **T19a:** Purchases list and order status, success/cancel projections and the wallet. Done when foreign buyer/guest denial and delayed webhook/email cases pass.
+  - [ ] **T19b (after T19a):** Check-in console search, validity enforcement and uncertain-retry refresh. Done when duplicate admission, void/refund-review arrival, check-in-only staff and timeout/retry pass.
 
 ### Commerce and memberships
 
@@ -431,6 +471,9 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **Schema/UI:** TicketType.memberPrice optional cents; reservation/order quote stores grant/policy/price. Society offers, member purchase/renew/status, organiser product/roster; complete members_only access and public member pricing.
 - **Rules:** Free join is not entitlement; guest denied. Check live grant when hold starts; normal expiry during valid 30-minute hold preserves quote. Refunded/revoked grant before fulfilment uses reviewed failure/compensation policy, not unauthorized issue. Never reprice issued history.
 - **Tests/done:** Join-only/guest/future/expired denial, price edits, refund/expiry/checkout race, member-only read and fee parity pass with desktop/mobile flows.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [ ] **T24a:** Membership offers, member purchase/renewal and My memberships. Done when join-only, guest and expired denials pass in desktop and mobile flows.
+  - [ ] **T24b (after T24a):** Member prices and members-only events (turns on `MEMBERS_ONLY_EVENTS_ENABLED`). Done when price edits, the refund/expiry/checkout race and member-only reads pass.
 
 ### Merchandise
 
@@ -516,6 +559,9 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **Integration checkpoint:** Before implementing the real adapter, record founder-approved provider/model/data-retention/cost settings; if unavailable, implement remaining UI/registry and mark only real-adapter verification blocked. Credentials/provider choice aren't silently deferred until hosting.
 - **Safety:** No arbitrary URL/code/SQL tools; context/input/output/call/time limits, server-only secrets, untrusted descriptions treated as data, schema reject hallucinated IDs. Minimal personal data; audit receipt, not raw private prompt. Never say Executed until receipt.
 - **Tests/done:** Real UI action, unauthorized summaries/injection/ambiguous intent/invalid provider output/outage/replay pass; real provider smoke runnable locally with supplied credentials.
+- **Ordered PR-sized substeps (parent requires all):**
+  - [ ] **T37a:** Workspace and deterministic adapter, fully usable with no model configured. Done when real UI actions, outage and replay pass.
+  - [ ] **T37b (after T37a and the recorded provider decision):** Real model adapter behind the bounded interface. Done when injection, ambiguous intent and invalid-output tests pass and the local smoke runs or is recorded as blocked.
 
 ### Audit and pre-production qualification
 

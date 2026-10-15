@@ -482,7 +482,7 @@ Rules:
 - Auth required.
 - Event-management role required.
 - Asking for the status the event already has returns it unchanged (a retried request cannot flip it back). Otherwise a stale `version` returns `409 CONFLICT`.
-- Publishing applies the shared readiness rules in `lib/events/event-readiness.ts`: title, description and location; end after start; a sales close time in the future and not after the end; at least one ticket type with remaining quantity; and at least one type that can be bought now (a free type, or a paid type when the society can take payments). A paid-only event therefore needs payments set up; a mixed event can publish without them. Each blocker comes back as a 400 detail with its field.
+- Publishing applies the shared readiness rules in `lib/events/event-readiness.ts`: title, description and location; end after start; a sales close time in the future and not after the end; at least one ticket type with remaining quantity; and at least one type that can be bought now (a paid type when the society can take payments; free types count once T13 adds free checkout). Until then an event needs payments set up to publish, and a free-only event is refused with `Free tickets are not available yet`. Each blocker comes back as a 400 detail with its field.
 - Unpublishing is blocked after orders exist.
 - Each change is audited (`event.published`, `event.unpublished`) and increments `version`.
 

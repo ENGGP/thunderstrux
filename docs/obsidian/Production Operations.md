@@ -16,7 +16,7 @@ The hardened repository contract is `docker-compose.hosted.yml`. It consumes a p
 
 This is not evidence of a live production deployment. Hosting, external health monitoring and alert delivery, off-machine encrypted backups, recovery objectives, and the platform scheduler remain deployment-time work.
 
-Packages 1–3 are locally qualified and development was separately activated on 2026-10-12; [[Project Handover]] owns that dated state. Hosted activation still requires independent security/migration review and provider acceptance. T07/T08 add asset metadata and profile references: apply the full 34-migration chain, retain the additive fields on code rollback and preserve image bytes.
+Packages 1–3 are locally qualified and Package 4 is in progress; local development carries every migration, each applied after a verified dump. [[Project Handover]] owns the dated activations. Hosted activation still requires independent security/migration review and provider acceptance. T07/T08 add asset metadata and profile references: apply the full 34-migration chain, retain the additive fields on code rollback and preserve image bytes.
 
 Hosted assets additionally require `docker-compose.assets.hosted.yml`, a configured S3-compatible bucket/endpoint/region/path style and server-only access/secret file mounts. The PostgreSQL `ops:backup` command below does not back up object bytes. Pair it with a coordinated object backup and integrity check, pause uploads/maintenance during recovery, restore metadata and objects together, and keep unfamiliar bucket objects. [[Society Profiles and Assets]] owns quotas, reference checks and bounded dry-run/integrity/object inspection. Scheduling maintenance and off-machine byte recovery remain hosted gates.
 

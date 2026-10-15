@@ -428,6 +428,8 @@ Rules:
 - Ticket types with existing orders or issued tickets cannot be deleted, but their name, price, and quantity can be edited for future purchases.
 - Ticket quantity may be `0` on update because sold-out inventory is valid.
 - Ticket quantity must not be negative.
+- An existing ticket type must send `expectedQuantity`, the remaining quantity the editor loaded. The edit runs under the event lock (T12): if sales changed the stock since and the submitted quantity is unchanged, the current stock is kept; if both changed, the response is `409 CONFLICT`.
+- Remaining quantity cannot drop below that type's active checkout holds (400 on the type's `quantity` field).
 
 Expected request shape:
 
@@ -445,7 +447,8 @@ Expected request shape:
       "id": "existing_ticket_type_id",
       "name": "General Admission",
       "price": 1000,
-      "quantity": 0
+      "quantity": 0,
+      "expectedQuantity": 4
     },
     {
       "name": "New Ticket",
@@ -791,7 +794,8 @@ Request:
 {
   "eventId": "event_id",
   "ticketTypeId": "ticket_type_id",
-  "quantity": 1
+  "quantity": 1,
+  "expectedUnitPrice": 1200
 }
 ```
 
@@ -807,7 +811,9 @@ Rules:
 - Creates an active `TicketReservation` after checkout preconditions pass.
 - Uses 30-minute reservation expiry and sets Stripe Checkout `expires_at` to match.
 - Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}` for dev fallback diagnostics.
-- Validates availability as `TicketType.quantity - activeReservedQuantity`.
+- Since T12 every rule is checked under the buyer, event and ticket type locks: publication, sale state and close time, the shared readiness eligibility, and sellable stock = min(remaining minus that type's active holds, capacity minus valid issued tickets and all active holds).
+- `quantity` is 1 to 10 per order.
+- `expectedUnitPrice` is the unit price in cents the buyer was shown. If the locked price differs, the response is `409 CONFLICT` with a `expectedUnitPrice` detail naming the new price, and no order or hold is created.
 
 ### `POST /api/payments/webhook`
 

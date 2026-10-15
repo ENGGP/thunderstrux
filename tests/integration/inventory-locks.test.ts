@@ -228,6 +228,24 @@ describe("inventory and capacity locks", () => {
     expect([editStatus, remaining]).toEqual(editStatus === 200 ? [200, 0] : [409, 1]);
   });
 
+  test("closing sales racing a checkout either sells before the close or refuses after it", async () => {
+    mockSessions();
+    const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const { PATCH: salesRoute } = await import("@/app/api/events/[eventId]/sales/route");
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+
+    const [checkout, close] = await Promise.allSettled([
+      buy((await createMember()).id, event, 0, 1),
+      salesRoute(jsonRequest(`http://localhost/api/events/${event.id}/sales`, { saleState: "closed", version: 1 }, { method: "PATCH" }), routeContext({ eventId: event.id }))
+    ]);
+
+    expect(close).toMatchObject({ status: "fulfilled", value: { status: 200 } });
+    if (checkout.status === "rejected") expect(checkout.reason).toMatchObject({ kind: "sales_closed" });
+    // The close and the hold serialise on the Event row: an order exists only if checkout won.
+    expect(await prisma.order.count({ where: { eventId: event.id } })).toBe(checkout.status === "fulfilled" ? 1 : 0);
+  });
+
   test("deleting an event re-checks orders under the event lock", async () => {
     mockSessions();
     const { organisation, user } = await createOrganisationAccount({ stripeReady: true });

@@ -57,15 +57,19 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    return NextResponse.json(
-      await createEventCheckout({
-        userId: user.id,
-        eventId: validation.data.eventId,
-        ticketTypeId: validation.data.ticketTypeId,
-        quantity: validation.data.quantity,
-        expectedUnitPrice: validation.data.expectedUnitPrice
-      })
-    );
+    const result = await createEventCheckout({
+      userId: user.id,
+      eventId: validation.data.eventId,
+      ticketTypeId: validation.data.ticketTypeId,
+      quantity: validation.data.quantity,
+      expectedUnitPrice: validation.data.expectedUnitPrice,
+      idempotencyKey: validation.data.idempotencyKey
+    });
+
+    // 202: the Stripe outcome is not known yet; the buyer polls the attempt.
+    return result.status === "redirect"
+      ? NextResponse.json({ url: result.url })
+      : NextResponse.json({ attemptId: result.attemptId, status: "processing" }, { status: 202 });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
         return notFound(error.message);
       }
 
-      if (error.kind === "quote_changed") {
+      if (error.kind === "quote_changed" || error.kind === "idempotency_conflict") {
         return apiError("CONFLICT", error.message, 409, error.details);
       }
 

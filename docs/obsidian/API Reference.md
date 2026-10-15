@@ -795,7 +795,8 @@ Request:
   "eventId": "event_id",
   "ticketTypeId": "ticket_type_id",
   "quantity": 1,
-  "expectedUnitPrice": 1200
+  "expectedUnitPrice": 1200,
+  "idempotencyKey": "client-generated-per-purchase-intent"
 }
 ```
 
@@ -813,7 +814,15 @@ Rules:
 - Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}` for dev fallback diagnostics.
 - Since T12 every rule is checked under the buyer, event and ticket type locks: publication, sale state and close time, the shared readiness eligibility, and sellable stock = min(remaining minus that type's active holds, capacity minus valid issued tickets and all active holds).
 - `quantity` is 1 to 10 per order.
+- `idempotencyKey` (16–128 letters, digits, `-` or `_`) identifies one purchase intent. Repeating it with the same selection returns the same checkout; with a different selection it is `409 CONFLICT`.
+- Responses: `200 { url }` to redirect to Stripe, or `202 { attemptId, status: "processing" }` when Stripe's answer is not known yet (the order and hold are kept).
 - `expectedUnitPrice` is the unit price in cents the buyer was shown. If the locked price differs, the response is `409 CONFLICT` with a `expectedUnitPrice` detail naming the new price, and no order or hold is created.
+
+### `GET /api/payments/checkout/attempts/[attemptId]`
+
+Status of the caller's own checkout attempt, for polling after a 202. Auth required; another actor's or a missing attempt is the same 404. `no-store`.
+
+Response: `{ attemptId, status }` where status is `ready` (with `url`), `processing`, `completed` (with `orderId`) or `failed`.
 
 ### `POST /api/payments/webhook`
 

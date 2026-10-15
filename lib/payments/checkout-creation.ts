@@ -10,6 +10,17 @@ import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/
 import { formatMoney } from "@/lib/format";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 import {
+  attemptReconcileDelayMs,
+  checkoutAttemptStatus,
+  checkoutRequestHash,
+  eventCheckoutOperation,
+  findUserCheckoutAttempt,
+  isDefiniteProviderFailure,
+  markAttemptUncertain,
+  newProviderOperationKey,
+  type CheckoutAttemptWithOrder
+} from "@/lib/payments/checkout-attempts";
+import {
   appendOrderLifecycleEvent,
   lockOrder
 } from "@/lib/payments/order-lifecycle";
@@ -34,7 +45,8 @@ export type CheckoutCreationErrorKind =
   | "insufficient_availability"
   | "stripe_not_ready"
   | "invalid_amount"
-  | "quote_changed";
+  | "quote_changed"
+  | "idempotency_conflict";
 
 export class CheckoutCreationError extends Error {
   constructor(
@@ -60,7 +72,29 @@ type CreateEventCheckoutInput = {
   ticketTypeId: string;
   quantity: number;
   expectedUnitPrice: number;
+  // One key per purchase intent; a repeat with the same key returns the same attempt.
+  idempotencyKey: string;
 };
+
+export type EventCheckoutResult =
+  | { status: "redirect"; attemptId: string; url: string }
+  | { status: "processing"; attemptId: string };
+
+function replayAttempt(attempt: CheckoutAttemptWithOrder, requestHash: string): EventCheckoutResult {
+  if (attempt.requestHash !== requestHash) {
+    throw new CheckoutCreationError("idempotency_conflict", "This checkout was already started with a different selection", [
+      { path: ["idempotencyKey"], message: "Start a new checkout to change the selection" }
+    ]);
+  }
+  const current = checkoutAttemptStatus(attempt);
+  return current.status === "ready"
+    ? { status: "redirect", attemptId: attempt.id, url: current.url }
+    : { status: "processing", attemptId: attempt.id };
+}
+
+function isUniqueViolation(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+}
 
 function lockedEventSelect(ticketTypeId: string) {
   return {
@@ -123,6 +157,10 @@ async function failPendingOrder(orderId: string, message: string) {
     if (updated.count === 0) return;
 
     await releaseReservationForOrder(tx, orderId, message);
+    await tx.checkoutAttempt.updateMany({
+      where: { orderId },
+      data: { state: "failed", reconcileDueAt: null, lastOutcome: "provider_failed" }
+    });
     await appendOrderLifecycleEvent(tx, {
       orderId,
       type: "order_failed",
@@ -142,7 +180,7 @@ async function failPendingOrder(orderId: string, message: string) {
   });
 }
 
-async function attachStripeSession(orderId: string, stripeSessionId: string) {
+async function attachStripeSession(orderId: string, stripeSessionId: string, stripeSessionUrl: string) {
   await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, orderId))) {
       throw new CheckoutCreationInternalError();
@@ -151,9 +189,22 @@ async function attachStripeSession(orderId: string, stripeSessionId: string) {
       where: { id: orderId },
       select: { status: true, stripeSessionId: true }
     });
+    const attachAttempt = () =>
+      tx.checkoutAttempt.updateMany({
+        where: { orderId },
+        data: { state: "provider_attached", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "session_attached" }
+      });
 
-    if (order.stripeSessionId === stripeSessionId) return;
+    // The webhook may have bound this Session first; converge on it.
+    if (order.stripeSessionId === stripeSessionId) {
+      await attachAttempt();
+      return;
+    }
     if (order.status !== "pending" || order.stripeSessionId) {
+      await tx.checkoutAttempt.updateMany({
+        where: { orderId },
+        data: { state: "failed", reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
+      });
       throw new CheckoutCreationInternalError();
     }
 
@@ -162,6 +213,7 @@ async function attachStripeSession(orderId: string, stripeSessionId: string) {
       data: { stripeSessionId }
     });
     if (updated.count === 0) throw new CheckoutCreationInternalError();
+    await attachAttempt();
 
     await appendOrderLifecycleEvent(tx, {
       orderId,
@@ -179,11 +231,16 @@ export async function createEventCheckout({
   eventId,
   ticketTypeId,
   quantity,
-  expectedUnitPrice
-}: CreateEventCheckoutInput) {
+  expectedUnitPrice,
+  idempotencyKey
+}: CreateEventCheckoutInput): Promise<EventCheckoutResult> {
   let pendingOrderId: string | null = null;
+  const requestHash = checkoutRequestHash({ eventId, ticketTypeId, quantity, expectedUnitPrice });
 
   try {
+    const earlier = await findUserCheckoutAttempt(prisma, userId, idempotencyKey);
+    if (earlier) return replayAttempt(earlier, requestHash);
+
     await failStalePreCheckoutOrders({ userId });
 
     const reservationNow = new Date();
@@ -191,9 +248,13 @@ export async function createEventCheckout({
 
     // Every check reads state under the User, Event and TicketType locks, so an
     // edit, close or reprice cannot land between the quote and the hold.
-    const pendingOrder = await runSerializableReservationTransaction(
-      async (tx) => {
+    let created;
+    try {
+      created = await runSerializableReservationTransaction(async (tx) => {
         const buyer = await lockVerifiedAccount(tx, userId);
+        // A same-key request that committed while this one waited for the User lock.
+        const raced = await findUserCheckoutAttempt(tx, userId, idempotencyKey);
+        if (raced) return { kind: "replay" as const, attempt: raced };
         const event = (await lockEventInventory(tx, eventId, [ticketTypeId]))
           ? await tx.event.findUnique({ where: { id: eventId }, select: lockedEventSelect(ticketTypeId) })
           : null;
@@ -347,8 +408,25 @@ export async function createEventCheckout({
           toReservationStatus: "active"
         });
 
-        return {
+        const attempt = await tx.checkoutAttempt.create({
+          data: {
+            family: "ticket",
+            actorKind: "user",
+            actorId: userId,
+            operationType: eventCheckoutOperation,
+            clientIdempotencyKey: idempotencyKey,
+            requestHash,
+            orderId: order.id,
+            providerOperationKey: newProviderOperationKey(),
+            reconcileDueAt: new Date(reservationNow.getTime() + attemptReconcileDelayMs)
+          },
+          select: { id: true, providerOperationKey: true }
+        });
+
+        return { kind: "created" as const, order: {
           id: order.id,
+          attemptId: attempt.id,
+          providerOperationKey: attempt.providerOperationKey,
           stripe,
           appUrl,
           totalAmount,
@@ -358,12 +436,21 @@ export async function createEventCheckout({
           organisationId: event.organisationId,
           // Payment eligibility above guarantees a connected account.
           stripeAccountId: organisation.stripeAccountId as string
-        };
-      }
-    );
+        } };
+      });
+    } catch (error) {
+      // A same-key request inserted its attempt first.
+      const raced = isUniqueViolation(error) ? await findUserCheckoutAttempt(prisma, userId, idempotencyKey) : null;
+      if (raced) return replayAttempt(raced, requestHash);
+      throw error;
+    }
+
+    if (created.kind === "replay") return replayAttempt(created.attempt, requestHash);
+    const pendingOrder = created.order;
 
     logInfo("checkout.session.create_started", {
       orderId: pendingOrder.id,
+      attemptId: pendingOrder.attemptId,
       eventId,
       organisationId: pendingOrder.organisationId,
       ticketTypeId,
@@ -380,23 +467,36 @@ export async function createEventCheckout({
       data: { expiresAt: new Date(stripeExpiresAt * 1000) }
     });
 
-    const session = await pendingOrder.stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "aud",
-            product_data: { name: pendingOrder.eventTitle },
-            unit_amount: pendingOrder.unitPrice
-          },
-          quantity
-        }
-      ],
-      payment_intent_data: {
-        application_fee_amount: pendingOrder.platformFeeAmount,
-        on_behalf_of: pendingOrder.stripeAccountId,
-        transfer_data: { destination: pendingOrder.stripeAccountId },
+    let session;
+    try {
+      session = await pendingOrder.stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "aud",
+              product_data: { name: pendingOrder.eventTitle },
+              unit_amount: pendingOrder.unitPrice
+            },
+            quantity
+          }
+        ],
+        payment_intent_data: {
+          application_fee_amount: pendingOrder.platformFeeAmount,
+          on_behalf_of: pendingOrder.stripeAccountId,
+          transfer_data: { destination: pendingOrder.stripeAccountId },
+          metadata: {
+            orderId: pendingOrder.id,
+            eventId,
+            organisationId: pendingOrder.organisationId,
+            ticketTypeId,
+            quantity: String(quantity)
+          }
+        },
+        success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${pendingOrder.appUrl}/cancel`,
+        expires_at: stripeExpiresAt,
         metadata: {
           orderId: pendingOrder.id,
           eventId,
@@ -404,18 +504,22 @@ export async function createEventCheckout({
           ticketTypeId,
           quantity: String(quantity)
         }
-      },
-      success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${pendingOrder.appUrl}/cancel`,
-      expires_at: stripeExpiresAt,
-      metadata: {
+      }, { idempotencyKey: pendingOrder.providerOperationKey });
+    } catch (error) {
+      if (isDefiniteProviderFailure(error)) throw error;
+      // Stripe may have created the Session (timeout, connection or unknown
+      // error): keep the order and hold, and let recovery replay the same key.
+      emitCheckoutSessionCreationFailure("provider_uncertain", {
         orderId: pendingOrder.id,
+        attemptId: pendingOrder.attemptId,
         eventId,
-        organisationId: pendingOrder.organisationId,
+        quantity,
         ticketTypeId,
-        quantity: String(quantity)
-      }
-    });
+        error
+      });
+      await markAttemptUncertain(pendingOrder.attemptId, "session_create_unknown");
+      return { status: "processing", attemptId: pendingOrder.attemptId };
+    }
 
     if (!session.url) {
       emitCheckoutSessionCreationFailure("missing_redirect_url", {
@@ -433,7 +537,20 @@ export async function createEventCheckout({
       throw new CheckoutCreationInternalError();
     }
 
-    await attachStripeSession(pendingOrder.id, session.id);
+    try {
+      await attachStripeSession(pendingOrder.id, session.id, session.url);
+    } catch (error) {
+      if (error instanceof CheckoutCreationInternalError) throw error;
+      // The Session exists but could not be bound; recovery binds the same Session.
+      emitCheckoutSessionCreationFailure("session_attach_failed", {
+        orderId: pendingOrder.id,
+        attemptId: pendingOrder.attemptId,
+        stripeSessionId: session.id,
+        error
+      });
+      await markAttemptUncertain(pendingOrder.attemptId, "session_attach_failed").catch(() => undefined);
+      return { status: "processing", attemptId: pendingOrder.attemptId };
+    }
 
     logInfo("checkout.session.created", {
       orderId: pendingOrder.id,
@@ -443,7 +560,7 @@ export async function createEventCheckout({
       ticketTypeId
     });
 
-    return { url: session.url };
+    return { status: "redirect", attemptId: pendingOrder.attemptId, url: session.url };
   } catch (error) {
     if (error instanceof CheckoutCreationError || error instanceof AccountVerificationError) {
       throw error;

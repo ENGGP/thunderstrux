@@ -62,8 +62,11 @@ Public event page
   -> POST /api/payments/checkout/event
   -> route validates origin, input, member auth, and rate limit
   -> checkout creation service validates event, ticket type, amount, and Stripe readiness
-  -> serializable transaction creates local pending Order and active TicketReservation
-  -> Stripe Checkout Session created with expires_at matching reservation expiry
+  -> serializable transaction creates local pending Order, active TicketReservation and CheckoutAttempt
+     (a repeated idempotencyKey returns the existing attempt instead)
+  -> Stripe Checkout Session created with expires_at matching reservation expiry,
+     using the attempt's providerOperationKey as the Stripe idempotency key
+     (timeout or unknown error: attempt stays provider_uncertain, response 202)
   -> Checkout Session metadata includes orderId, eventId, organisationId, ticketTypeId, and quantity
   -> local Order is updated with stripeSessionId
   -> browser redirected to Stripe

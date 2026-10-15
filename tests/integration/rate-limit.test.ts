@@ -488,6 +488,7 @@ describe("rate-limited routes", () => {
           eventId: event.id,
           ticketTypeId: ticketType.id,
           expectedUnitPrice: ticketType.price,
+          idempotencyKey: unique("checkout"),
           quantity: 1
         })
       );
@@ -499,6 +500,7 @@ describe("rate-limited routes", () => {
         eventId: event.id,
         ticketTypeId: ticketType.id,
         expectedUnitPrice: ticketType.price,
+        idempotencyKey: unique("checkout"),
         quantity: 1
       })
     );

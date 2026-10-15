@@ -19,7 +19,8 @@ import {
   createEvent,
   createMember,
   createOrder,
-  createOrganisationAccount
+  createOrganisationAccount,
+  unique
 } from "@/tests/helpers/test-data";
 
 const stripeMocks = vi.hoisted(() => ({ createSession: vi.fn() }));
@@ -49,7 +50,7 @@ async function buyTwoEarlyBirdTickets() {
   const sessionId = `cs_${ticketType.id}`;
   stripeMocks.createSession.mockResolvedValueOnce({ id: sessionId, url: "https://checkout.stripe.test/session" });
 
-  await createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: ticketType.id, quantity: 2, expectedUnitPrice: ticketType.price });
+  await createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: ticketType.id, quantity: 2, expectedUnitPrice: ticketType.price, idempotencyKey: unique("checkout") });
   const order = await prisma.order.findFirstOrThrow({ where: { eventId: event.id } });
   const session = checkoutSession({
     id: sessionId,

@@ -14,3 +14,11 @@ export const WithoutTitle = () => (
     <Notice>Changes are saved automatically.</Notice>
   </div>
 );
+
+export const WithAction = () => (
+  <div style={{ maxWidth: 560 }}>
+    <Notice action={<a href="#" style={{ fontWeight: 600 }}>Set up payments</a>} title="Finish payment setup" tone="warning">
+      Paid tickets cannot be sold until Stripe is connected.
+    </Notice>
+  </div>
+);

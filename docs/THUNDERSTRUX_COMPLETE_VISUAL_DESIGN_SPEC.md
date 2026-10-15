@@ -5,6 +5,7 @@
 
 **Version:** 1.0 | **Prepared:** 9 October 2026 | **Status:** Proposed design specification, not proof of implementation or product approval
 **Implementation alignment reviewed:** 12 October 2026. The specification-alignment refactor (PRs #54 to #58) moved every existing screen onto the visual design tokens and shells, made `/societies` the canonical public society URL, and routed server pages and T01-T09 route adapters through `lib` services, without adding T10+ features or schema. `app/globals.css` is the single token source (the `--ts-*` contract plus the status washes), DM Sans and Space Grotesk are served by the app, and the public, auth, personal and organisation shells exist. Screens whose features belong to T10+ (event builder, orders, check-in, ticket wallet, payment setup) carry the new presentation over their existing behaviour; the page designs below remain targets for those tasks, and screens for features not yet built do not exist. [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md), [Society Profiles and Assets](obsidian/Society%20Profiles%20and%20Assets.md) and [Project Handover](obsidian/Project%20Handover.md) own current behavior and progress. This review does not claim a full app redesign or hosted activation.
+**Redesign implemented:** 16 October 2026. The approved Claude Design redesign (PRs #63 to #66) replaced the status colours, society navigation, page headers, feedback, loading states and the existing T01-T09 screens; [section 16](#16-implemented-redesign-october-2026) records what is live and where it departs from sections 2 to 12. It does not claim hosted activation.
 **Audience:** Product/UI designers, UX researchers, frontend developers, QA, Claude Code and Codex
 **Design direction:** **THE CAMPUS EDITION** - a purple-first, editorial event brand paired with a precise, calm society operations application
 **Baseline:** Australian student societies; `en-AU`-appropriate AUD amounts, UK English UI wording and society-configured timezone (initial `Australia/Brisbane`).
@@ -28,6 +29,7 @@
 - [13. Coding-agent acceptance matrix for all 43 screens](#13-design-to-code-implementation-contract)
 - [14. Cross-document consistency and open decisions](#14-consistency-review-and-decision-register)
 - [15. Research and uploaded sources](#15-references-and-provenance)
+- [16. Implemented redesign, October 2026](#16-implemented-redesign-october-2026)
 
 ### Source hierarchy, documents and implementation authority
 
@@ -114,14 +116,7 @@ Tokens below are deliberate design choices, not claims about an existing theme. 
 | `--line` | `#DDD6E7` | Borders, rules, inputs | 3:1 required where boundary is sole indication of control |
 | `--line-strong` | `#9E8AAC` | Input boundaries on white and drag affordance | Ensure non-text contrast vs surrounding surface |
 | `--lime` | `#DEF17B` | Sparing editorial highlight on dark violet | Decorative only; not a trust/status colour |
-| `--success` | `#146B50` | Confirmed, fulfilled, checked in | Colour and word/icon together |
-| `--success-bg` | `#E9F6ED` | Confirmation wash | Dark green text |
-| `--warning` | `#834500` | Needs action/processing | Colour and word together |
-| `--warning-bg` | `#FFF3DF` | Pending/readiness wash | Dark amber text |
-| `--danger` | `#9A3F53` | Destructive actions, invalid/refunded | Do not use violet for danger |
-| `--danger-bg` | `#FFF0F3` | Failure/invalid wash | Dark red text |
-| `--info` | `#254C88` | Non-financial informational states | Not a substitute for label |
-| `--info-bg` | `#EAF2FF` | Information banner | Stable shade |
+| `--success`, `--warning`, `--danger`, `--info`, `--neutral` | see 16.2 | Status roles, each with text, `-bg`, `-border` and `-icon` shades | Replaced on 16 October 2026 by the approved status colour system in section 16.2; colour always paired with a word or icon |
 | `--focus` | `#1E72D8` | Focus ring distinguished from purple buttons | Explicit 2px outer + white separation |
 
 **Accessible colour discipline:** Contrast ratios shown are indicative calculations using the exact colour pairs, **not a WCAG certification**. Check real combinations, overlays and disabled states. Body text >=4.5:1, large text >=3:1, essential UI boundaries >=3:1 where required by WCAG 2.2 AA. Do not dim critical financial/status copy below threshold. At 200% zoom and 320 CSS px width, preserve content with no two-dimensional scrolling outside legitimate tables. [R12]
@@ -252,6 +247,7 @@ Desktop public grid uses **12 columns / 24px gutter / 32px side padding** (minim
 - `Orders`, `Payments`, finance charts and `Staff` are **not** assumed visible to every staff account; filter by *server-supported capability*, including role and enrolled MFA where required. Sidebar labels 14px/500, row height 40-44px; active item has pale violet surface, high-contrast white/ink text as appropriate and 3px left marker. No flashing rainbow gradients.
 - 64px main header: breadcrumb/context + account/staff identity, organisation state. Body uses max-width 1420px, 32px padding. H1 + single primary action; toolbar/filters below. Lists and charts appear after task/status elements.
 - Desktop 768-1199: collapsed icon+tooltip rail **only if icons retain accessible names and expansion control**; otherwise use a drawer. Mobile <768: standard 60px top bar with society identity and Menu; labelled drawer; filters wrap or open sheet. **Check-in and pickup workflows are full-width task pages** rather than compressed multi-column dashboards.
+- **Implemented (October 2026):** the groups are Overview, Events, Orders and a Settings group (Society profile, Staff, Payments, Email delivery); the column is fixed from 1024px with a labelled disclosure below, and there is no icon rail. See section 16.3.
 - Public preview in authorised staff context carries `DRAFT PREVIEW` banner and hides buy CTA; does not publish for a moment to preview.
 
 ## 3.6 Overlay and navigation specification
@@ -1106,3 +1102,76 @@ The website meets this design brief when a reviewer can traverse **every** scree
 # End of design specification
 
 **Release instruction to coding agents:** Implement visual pages from this brief while treating PRD, technical plan and UX flow as higher authority. Before each PR inspect existing code and preserve proven payment/security/tenancy behaviour. Never fill an unsupported capability with a persuasive fake visual control. Verify every page in all critical states and viewport sizes, not just the happy-path desktop screenshot.
+
+---
+
+# 16. Implemented redesign, October 2026
+
+This section records what the approved Claude Design redesign (canvas "Thunderstrux redesign": round 1, round 2 and the status colour system, approved 14 October 2026) delivered in PRs [#63](https://github.com/ENGGP/thunderstrux/pull/63) to [#66](https://github.com/ENGGP/thunderstrux/pull/66), and where it deliberately departs from sections 2 to 12. Where they conflict, this section describes the live product; the earlier sections remain the target for features not yet built. [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md) owns the current rules in more detail.
+
+## 16.1 What stayed
+
+Tokens, fonts and the deep-plum society sidebar from section 2 and 3 are unchanged: they are the identity and already pass contrast. No URL, permission, guard, API or schema changed. Designs show only data the model holds: no cover images, QR codes, guest checkout or invented counts.
+
+## 16.2 Status colours [implemented]
+
+Section 2.1's single-shade status rows are replaced by a four-part set per role, defined once in `app/globals.css` (`--ts-*`, exposed to Tailwind as `success`, `success-bg`, `success-border`, `success-icon` and so on):
+
+| Role | Text | Wash (`-bg`) | Hairline (`-border`) | Icon (`-icon`) | Used for |
+|---|---|---|---|---|---|
+| success | `#0B6B55` | `#EEF8F4` | `#BFE3D6` | `#12866A` | Published, paid, active, accepted, checked in, saved |
+| warning | `#8A4A06` | `#FDF5E7` | `#F1D9AE` | `#B5650C` | Real risk only: payments not ready, pending, fulfilment review |
+| danger | `#A61E3F` | `#FDF1F3` | `#F4C6D0` | `#C42D4F` | Failures, destructive actions, refused requests |
+| info | `#4A4360` | `#F7F5FB` | `#E3DDEE` | `#5B2ACB` | Guidance and "action needed" prompts |
+| neutral | `#595265` | `#F3F1F6` | `#E2DDE9` | `#8E869B` | Draft, expired, revoked, unused, disabled controls |
+
+Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries meaning alone: every badge has a word and every notice an icon and title. A joined society uses the brand accent (a relationship, not a success). Disabled buttons turn neutral instead of looking like a faded primary action.
+
+## 16.3 Navigation and shells [implemented, part of T34]
+
+- **Header:** Explore events, Explore societies; signed in, My tickets (members), Dashboard, Account and a visible Sign out button. The current section is marked; the phone menu closes after navigation.
+- **Society sidebar:** Overview, Events, Orders, then a **Settings** group: Society profile, Staff, Payments, Email delivery. Capability-filtered; every page and API still enforces its own permission. The staff authenticator is not in the sidebar: it lives in Account settings and is reached automatically when a page requires it.
+- **Deviation from 3.5:** the sidebar is a fixed 244px column from 1024px (not 1200px), sticky below the header, with a labelled "Organisation menu" disclosure below that width. There is no collapsed icon rail. Calendar, Members, Memberships, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them.
+- **Workspace switcher:** labelled "Workspace" in both shells.
+- **Content width:** the society shell owns one content width (`max-w-admin`) for every society page.
+- **Page titles:** every page has exactly one `h1`, its title, through `PageHeader` (breadcrumb, title, status badge beside the heading, primary actions).
+
+## 16.4 Components [implemented]
+
+| Component | File | Contract |
+|---|---|---|
+| `Notice` | `components/ui/notice.tsx` | info, success, warning, danger; icon, toned title, optional `action` and `onDismiss`. `role="alert"`/`"status"` only for the result of an action. |
+| `StatusBadge` | `components/ui/status-badge.tsx` | The one mapping from a server status to word and colour, as a dot pill. |
+| `Skeleton`, `ListSkeleton` | `components/ui/skeleton.tsx` | Grey blocks hidden from assistive technology with one screen-reader label; pulse only when motion is allowed. |
+| `Icon` | `components/ui/icon.tsx` | Inline 24px outline icons, decorative by default; no icon dependency. |
+| `ConfirmDialog` | `components/ui/confirm-dialog.tsx` | Native dialog; names the action and its consequence. |
+| `PageHeader` | `components/layout/page-header.tsx` | Breadcrumb, `h1`, badge slot, actions. |
+| `EventWorkspaceHeader`, `tabClasses` | `components/events/event-tabs.tsx` | Event header and permission-filtered link tabs; tab bars scroll sideways on phones. |
+| `EventActions` | `components/events/event-actions.tsx` | Publish, Edit and a popover "More" menu; disabled actions say why. |
+| `DateRail` | `components/events/date-rail.tsx` | Day and month in the society's zone. |
+| `VerifyEmailBanner` | `components/layout/verify-email-banner.tsx` | Dismissible labelled region; never changes verification. |
+
+## 16.5 Feedback, confirmation and loading rules [implemented]
+
+- **No toasts.** Results appear inline next to the action, so they persist and stay findable.
+- **Confirm only what is irreversible or disruptive:** delete event, unpublish, record a refund made outside Thunderstrux, disconnect Stripe, revoke staff access, change a staff role, leave a society. Revoking a pending invitation stays immediate.
+- **Verification:** a slim information banner with a close button (dismissal stored for seven days per user) plus prompts at the point of need, such as the buy box "Verify your email to buy tickets". Server enforcement is unchanged.
+- **Skeletons only where data loads after the guards**, inside `<Suspense>`: events list, society overview, orders, revenue by day, My tickets, home listings, society search, Payments and the event form while they fetch, and the two public `loading.tsx` files. There is no root or dashboard `loading.tsx`, because it would turn redirects and concealed 404s into 200 responses. Reads that decide a 404 run before the boundary.
+
+## 16.6 Page treatments that differ from sections 5 to 9
+
+- **ORG-01 Overview:** "Finish setting up" checklist with only tasks the viewer can act on (payments in warning tone; profile and scheduling an event in information tone), upcoming count with the next event, revenue this month with `orders:read`, linked upcoming events with sold and left, recent orders (pending orders unlinked).
+- **ORG-03 Events:** server-rendered views Upcoming (not yet ended, default), Drafts, Past, All with counts and title search in the URL; table from 768px, cards below; "N sold · N left" only with `analytics:read`; check-in staff see published events only.
+- **ORG-05 Event workspace:** tabs are **Summary, Attendees, Orders, Edit** (not the six tabs in 5.x): each shown only with its permission and hidden when only one would show. Orders is the society orders list filtered to the event. Summary shows tickets sold, tickets left, revenue (finance roles), ticket performance and revenue by day.
+- **ORG-04 Event form:** Details, Ticket types and "If tickets cannot be issued" cards; the price field is labelled "Price in cents" with an example until dollar entry lands (EVT-002).
+- **ORG-06 Attendees:** tiles, cards on phones, buttons that name the attendee, "Undo check-in". No QR scanning.
+- **ORG-08 Orders:** status tabs, event filter, one table in time order (cards on phones); order detail has Summary and "Manage this order" cards.
+- **ORG-14 Payments:** status badge and notice per Stripe state, plain readiness rows, separate disconnect zone.
+- **ORG-15 Staff:** role hints under the invitation role; tables for current staff and past invitations, a list for pending invitations; handover form in a warning-bordered zone.
+- **AUTH-04 Account settings:** section links, signed-in summary, authenticator row only for people the authenticator page accepts.
+- **PER-01, PER-02:** profile prompt linking to Account settings; My tickets cards with short ticket and order references.
+- **PUB-03 / BUY-01:** one ticket choice, one quantity and "Buy tickets" with the running total; unverified members see the verify prompt instead.
+
+## 16.7 Still targets
+
+Everything in sections 5 to 9 that depends on T10+ features (event cover images, guest checkout, memberships, merchandise, calendar, analytics, check-in console with scanning, activity history, OpenClaw) remains a target and has no screen.

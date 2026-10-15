@@ -26,6 +26,9 @@
     "ConfirmDialog": {
       "cardMode": "single",
       "viewport": "640x420"
+    },
+    "Icon": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

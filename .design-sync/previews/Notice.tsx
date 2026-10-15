@@ -17,7 +17,7 @@ export const WithoutTitle = () => (
 
 export const WithAction = () => (
   <div style={{ maxWidth: 560 }}>
-    <Notice action={<a href="#" style={{ fontWeight: 600 }}>Set up payments</a>} title="Finish payment setup" tone="warning">
+    <Notice action={<a className="text-sm font-semibold text-brand underline" href="#">Set up payments</a>} title="Finish payment setup" tone="warning">
       Paid tickets cannot be sold until Stripe is connected.
     </Notice>
   </div>

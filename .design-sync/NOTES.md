@@ -19,6 +19,9 @@ Project: "Thunderstrux UI" — https://claude.ai/design/p/6075c42a-6f43-4f56-8d3
 - ConfirmDialog `Busy` cell shows a dark outline on the dialog: all buttons are disabled so the dialog itself takes focus. True to the product.
 
 ## Re-sync risks
+- Re-sync of 2026-10-16 (after the UI redesign): Button and StatusBadge counted as "unchanged" because grades follow preview sources, not styling, even though their look changed (dot badges, neutral disabled buttons). They were spot-checked with `--spot-check-components`; do the same after any token or primitive restyle.
+- `Icon` uses `cardMode: column` (the labelled grid is wider than a grid cell). Its preview lists icon names by hand: add new icons there when `components/ui/icon.tsx` grows.
+- `text-neutral-icon` is not compiled (nothing in the app uses it); neutral dots use `bg-neutral-icon`. conventions.md says so; keep it that way unless the app starts using the class.
 - Previews and conventions hardcode component props and class names. If `components/ui/*` or `app/globals.css` tokens change, re-run the driver and re-validate `conventions.md` names (class table, `--ts-*` list).
 - Google Fonts are fetched at runtime; if offline the render falls back to system fonts.
 - New components in `components/ui/` are picked up automatically as floor cards; add `docsMap` + `previews/` entries to author them. Components outside `ui/` need `srcDir` changed and likely stubs for `next/link`/`next/navigation`.

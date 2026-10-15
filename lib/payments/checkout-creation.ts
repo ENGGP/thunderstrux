@@ -136,7 +136,12 @@ function emitCheckoutSessionCreationFailure(
 
 type CheckoutLifecycleSource = "checkout" | "checkout_recovery";
 
-export async function failPendingOrder(orderId: string, message: string, source: CheckoutLifecycleSource = "checkout") {
+export async function failPendingOrder(
+  orderId: string,
+  message: string,
+  source: CheckoutLifecycleSource = "checkout",
+  attemptOutcome = "provider_failed"
+) {
   await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, orderId))) return;
     const order = await tx.order.findUniqueOrThrow({
@@ -162,7 +167,7 @@ export async function failPendingOrder(orderId: string, message: string, source:
     await releaseReservationForOrder(tx, orderId, message);
     await tx.checkoutAttempt.updateMany({
       where: { orderId },
-      data: { state: "failed", reconcileDueAt: null, lastOutcome: "provider_failed" }
+      data: { state: "failed", reconcileDueAt: null, lastOutcome: attemptOutcome }
     });
     await appendOrderLifecycleEvent(tx, {
       orderId,
@@ -189,7 +194,7 @@ export async function attachStripeSession(
   stripeSessionUrl: string,
   source: CheckoutLifecycleSource = "checkout"
 ) {
-  await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, orderId))) {
       throw new CheckoutCreationInternalError();
     }
@@ -206,7 +211,7 @@ export async function attachStripeSession(
     // The webhook may have bound this Session first; converge on it.
     if (order.stripeSessionId === stripeSessionId) {
       await attachAttempt();
-      return;
+      return "attached" as const;
     }
     if (order.status !== "pending" || order.stripeSessionId) {
       await tx.checkoutAttempt.updateMany({
@@ -214,7 +219,8 @@ export async function attachStripeSession(
         // Keep the Session on record: a payment on it reaches compensation through the webhook.
         data: { state: "failed", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
       });
-      throw new CheckoutCreationInternalError();
+      // Report it after the transaction commits, so this record is not rolled back.
+      return "order_closed" as const;
     }
 
     const updated = await tx.order.updateMany({
@@ -232,7 +238,10 @@ export async function attachStripeSession(
       fromOrderStatus: "pending",
       toOrderStatus: "pending"
     });
+    return "attached" as const;
   });
+
+  if (outcome === "order_closed") throw new CheckoutCreationInternalError();
 }
 
 export async function createEventCheckout({

@@ -85,7 +85,7 @@ async function closeAttempt(attemptId: string, outcome: string, session?: { id: 
 async function recoverAttempt(attempt: ClaimedAttempt, now: Date): Promise<AttemptRecoveryOutcome> {
   // The request is stored before Stripe is called, so without it Stripe never saw this attempt.
   if (!attempt.providerRequest) {
-    await failPendingOrder(attempt.orderId, "Checkout stopped before Stripe was called", "checkout_recovery");
+    await failPendingOrder(attempt.orderId, "Checkout stopped before Stripe was called", "checkout_recovery", "provider_never_called");
     await closeAttempt(attempt.id, "provider_never_called");
     return "provider_never_called";
   }
@@ -103,7 +103,7 @@ async function recoverAttempt(attempt: ClaimedAttempt, now: Date): Promise<Attem
     });
   } catch (error) {
     if (isDefiniteProviderFailure(error)) {
-      await failPendingOrder(attempt.orderId, "Stripe refused the recovered checkout", "checkout_recovery");
+      await failPendingOrder(attempt.orderId, "Stripe refused the recovered checkout", "checkout_recovery", "provider_refused");
       await closeAttempt(attempt.id, "provider_refused");
       return "provider_refused";
     }
@@ -115,7 +115,7 @@ async function recoverAttempt(attempt: ClaimedAttempt, now: Date): Promise<Attem
   }
 
   if (!session.url) {
-    await failPendingOrder(attempt.orderId, "Stripe Checkout Session did not include a redirect URL", "checkout_recovery");
+    await failPendingOrder(attempt.orderId, "Stripe Checkout Session did not include a redirect URL", "checkout_recovery", "missing_redirect_url");
     await closeAttempt(attempt.id, "missing_redirect_url", session);
     return "provider_refused";
   }

@@ -22,6 +22,16 @@ Checkout records what was bought when it creates the order: `paymentKind` (`stri
 
 `lib/purchases/projection.ts` turns status, kind and compensation review into the one displayed status: Processing, Paid, Free, Payment review, Failed or Expired. Free orders keep the compatible `status = paid` and `paidAt`, so money queries must filter on `paymentKind`, not status. Legacy rows keep unknown names, sellers and fees as null; readers show today's ticket name followed by "(historical label unavailable)" and never write it back. Migration `20261015010000_ticket_purchase_snapshots` backfills only known facts: every existing order is Stripe (checkout always rejected zero totals), `fulfilledAt` is the first ticket's creation time for paid orders, and existing tickets are numbered by `(createdAt, id)`.
 
+## Checkout Attempts (T14a)
+
+Every paid checkout is a `CheckoutAttempt` (`lib/payments/checkout-attempts.ts`): the actor, the client's `idempotencyKey`, a hash of the selection (event, ticket type, quantity, expected price), the order, a stable server-generated `providerOperationKey` and, once bound, the Stripe Session. The attempt is created in the same transaction as the pending order and hold.
+
+- The same actor and key returns the same attempt: a double click or a retry after a lost response never creates a second order or Session. The same key with a different selection is a 409.
+- The provider key is sent to Stripe as its idempotency key, so replaying Session creation returns the original Session.
+- Only a definite Stripe refusal (card, invalid request, authentication, permission or rate-limit error) fails the order, its attempt and the hold. A timeout, connection or unknown error, or a Session that cannot be bound, leaves the attempt `provider_uncertain` with its order and hold, and checkout answers 202. The buyer polls `GET /api/payments/checkout/attempts/[attemptId]`.
+- A webhook that fulfils before the Session is bound converges: binding finds the order already on that Session and marks the attempt attached.
+- States: `created`, `provider_uncertain`, `provider_attached`, `failed`. Completed and expired come from the order. `reconcileDueAt` marks attempts the T14b recovery worker will replay with the same key; until T14b ships, an uncertain attempt's hold expires after 30 minutes like any other, and a late payment goes to compensation review.
+
 ## Storage
 
 `OrderLifecycleEvent` belongs to one order and has a unique `(orderId, sequence)` pair. Events store a typed event and source, optional staff actor, Stripe event/session references, email job reference, reason, before/after order and reservation statuses, and a small allowlisted `facts` object.

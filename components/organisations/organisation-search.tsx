@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
+import { ListSkeleton } from "@/components/ui/skeleton";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type SearchOrganisation = {
@@ -144,7 +145,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
       ) : null}
 
       {isLoading ? (
-        <p className="text-sm text-ink-soft" role="status">Loading societies…</p>
+        <ListSkeleton label="Loading societies" rows={3} />
       ) : organisations.length === 0 ? (
         <div className="rounded-card border border-line bg-surface p-5 text-sm text-ink-muted">
           No societies found.

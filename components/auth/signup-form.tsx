@@ -69,27 +69,13 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
         </Notice>
       ) : null}
 
-      <TextInput
-        label="Email"
-        onChange={(event) => setEmail(event.target.value)}
-        type="email"
-        value={email}
-      />
-      <TextInput
-        label="Password"
-        minLength={8}
-        onChange={(event) => setPassword(event.target.value)}
-        type="password"
-        value={password}
-      />
-
       <fieldset className="grid gap-2">
-        <legend className="text-sm font-semibold text-ink">Account type</legend>
+        <legend className="mb-2 text-sm font-semibold text-ink">This account is for</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {(
             [
-              ["member", "Member", "For you. Buy tickets and join societies."],
-              ["organisation", "Organisation", "For a society. Create its page and run its events."]
+              ["member", "Me", "Buy tickets and join societies."],
+              ["organisation", "A society", "Run events and sell tickets."]
             ] as const
           ).map(([value, label, help]) => (
             <label
@@ -133,8 +119,25 @@ export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
         </div>
       ) : null}
 
+      <TextInput
+        label="Email"
+        onChange={(event) => setEmail(event.target.value)}
+        type="email"
+        value={email}
+      />
+      <TextInput
+        hint="At least 8 characters"
+        label="Password"
+        minLength={8}
+        onChange={(event) => setPassword(event.target.value)}
+        type="password"
+        value={password}
+      />
+
+
+
       <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={isSubmitting} type="submit">
+        <Button disabled={isSubmitting} size="lg" type="submit">
           {isSubmitting ? "Creating account..." : "Create account"}
         </Button>
         <Link

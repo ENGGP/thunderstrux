@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type Profile = {
@@ -54,14 +55,14 @@ export function MemberProfileForm({
   return (
     <form className="grid max-w-2xl gap-4" onSubmit={onSubmit}>
       {error ? (
-        <div role="alert" className="rounded-control border border-danger bg-danger-bg px-3 py-2 text-sm text-danger">
+        <Notice role="alert" tone="danger">
           {error}
-        </div>
+        </Notice>
       ) : null}
       {message ? (
-        <div role="status" className="rounded-control border border-success bg-success-bg px-3 py-2 text-sm text-success">
+        <Notice role="status" tone="success">
           {message}
-        </div>
+        </Notice>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">

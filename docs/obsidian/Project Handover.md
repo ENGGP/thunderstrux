@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-16
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-12]]"]
@@ -94,7 +94,8 @@ The maintainer approved a Claude Design redesign (canvas "Thunderstrux redesign"
 - **PR1** (`codex/redesign-foundations`, PR #63): society sidebar regrouped (Overview, Events, Orders; Settings: Society profile, Staff, Payments, Email delivery), `Workspace` switcher label, one `h1` per dashboard page, status colour tokens with redesigned `Notice` and `StatusBadge`, and a dismissible verify-email banner that never changes verification. [[UI Architecture Rules]] records the current rules.
 - **PR2** (`codex/redesign-events-workspace`): events list rebuilt on the server (views with counts, title search, sold and left, Publish, Edit and a More menu with confirmed Unpublish and Delete), event workspace header and tabs on Summary, Attendees, Edit and the event's Orders, the Overview `Finish setting up` checklist with linked events and orders, and Suspense skeletons. `listOrganisationEventLinks` and `components/events/events-list.tsx` are gone.
 - **PR3** (`codex/redesign-organiser-screens`): organiser screens. The society shell owns the page container; orders list (status tabs, event filter, one table, pending rows unlinked), order detail (summary, manage card, confirmed refund record), attendees, event form, Payments (status badge, confirmed disconnect, skeleton), Email delivery, Staff and handover, and Society profile notices.
-- **Next:** PR4 member, public and sign-in screens; PR5 visual and UX spec updates plus a design-system re-sync. Part of T34's navigation work lands early through this redesign.
+- **PR4** (`codex/redesign-member-public-screens`): member, public and sign-in screens. Account settings (section links, signed-in summary, authenticator row only for eligible people), member overview (profile prompt instead of an inline form), My tickets (cards, short references, skeleton), the event buy box (one choice, one quantity, `Buy tickets`, verify prompt), signup order, staff authenticator setup, notices across the sign-in and account forms, skeletons for home and the public loading states. `scripts/staging-driver.mjs` now uses a verified buyer and the new button name.
+- **Next:** PR5 visual and UX spec updates plus a design-system re-sync. Part of T34's navigation work lands early through this redesign.
 - Defects found during the audit and kept out of the redesign are EVT-001, EVT-002, EVT-003, PUB-001 and ORD-001 in [[Non-Blocking Issue Register]].
 
 ## Next Safe Actions

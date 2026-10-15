@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-16
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Stripe Payments and Connect]]"]
 sources: [scripts/run-e2e.mjs, scripts/staging-payments.mjs, docker-compose.e2e.yml]
@@ -46,7 +46,7 @@ This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into
 
 To repeat a missing scenario, append exactly one of `--scenario=success`, `--scenario=decline` or `--scenario=cancel`. The manifest records the selected scenarios. A passing focused run is not full payment acceptance: all three scenarios still require evidence, including successful resource cleanup. Previously verified payment evidence can be combined only when the relevant application and assertion code is unchanged.
 
-The command drives the app's real Buy Ticket flow, then presents a private Stripe URL. Complete the success, decline and cancel prompts using Stripe test cards. Each prompt permits 15 minutes, followed by up to 120 seconds for webhook reconciliation. Successful payment verifies destination charge configuration, real event identity, listener HTTP 200, app receipt, database fulfilment and buyer ticket visibility. Decline requires provider error evidence. Cancel navigation is explicitly recorded as manual attestation; pending/unfulfilled state and subsequent real Session expiry are verified automatically.
+The command drives the app's real `Buy tickets` flow as a verified buyer, then presents a private Stripe URL. Complete the success, decline and cancel prompts using Stripe test cards. Each prompt permits 15 minutes, followed by up to 120 seconds for webhook reconciliation. Successful payment verifies destination charge configuration, real event identity, listener HTTP 200, app receipt, database fulfilment and buyer ticket visibility. Decline requires provider error evidence. Cancel navigation is explicitly recorded as manual attestation; pending/unfulfilled state and subsequent real Session expiry are verified automatically.
 
 The isolated stack uses enabled Redis rate limiting and a private mail-capture service. Automated account-lifecycle/notification scenarios process captured messages with synthetic credentials; they do not establish real provider or inbox delivery. Guided Stripe acceptance verifies ticket outbox state separately from real email acceptance.
 

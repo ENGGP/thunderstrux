@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-16
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -34,7 +34,7 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - `skeleton.tsx`: `Skeleton` blocks and `ListSkeleton`, a list stand-in with one screen-reader label. They are used only as a `<Suspense>` fallback after a page's guards (see below).
 - `confirm-dialog.tsx`: native `<dialog>` confirmation that names the action and its consequences. Its body is mounted only while open, and Escape cancels. Use it instead of `window.confirm`.
 
-Shared content components: `components/events/event-card.tsx` (date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows an image, price or count that the data model does not hold.
+Shared content components: `components/events/date-rail.tsx` (day and month in the society's zone, used by event cards, the member overview and My tickets), `components/events/event-card.tsx` (date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows an image, price or count that the data model does not hold.
 
 Event workspace components live in `components/events/` because they import `next/link`:
 
@@ -74,6 +74,7 @@ Where data loads after the guards, the page wraps that part in `<Suspense>` with
 - Navigation: `Overview`, `My tickets`, `Societies`, `Account`. Organisation accounts see `Overview` and `Account` only.
 - It shows the context switcher only when the page passes `contexts`; `/dashboard` does. Exactly one switcher is rendered.
 - It must never show society management controls.
+- Under the switcher it says `Switch to a society you staff to manage its events.`
 
 ### Organisation shell
 
@@ -109,7 +110,7 @@ The staff authenticator (`/mfa`) is not organisation navigation: it is reached f
 
 Member accounts in personal mode, including named staff on a fresh login:
 
-- See profile completion, their nearest upcoming paid tickets and joined societies inside the personal shell. The overview has no metric tiles.
+- See a `Complete your profile` prompt (linking to Account settings, Profile) until onboarding is complete, their nearest upcoming paid tickets and joined societies inside the personal shell. The overview has no metric tiles.
 - Can navigate to `/dashboard/organisations` to search and join organisations.
 - Can browse public events and view `/tickets`.
 - Must not see organisation management navigation.
@@ -125,7 +126,17 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard`
 
-- Member: profile completion, upcoming tickets, joined societies with a Find societies entry point.
+- Member: a profile prompt that links to Account settings (the form lives there only), upcoming tickets with date rails, joined societies with a Find societies entry point.
+
+`/tickets` (My tickets)
+
+- One card per paid order: date rail, event link, date and society, quantity and total, ticket numbers (last six characters, full id in the title) and `Order` plus a short reference. The list streams behind a skeleton after the sign-in guard.
+
+`/account/settings`
+
+- `On this page` links to Profile (members), Password and security, Email address and Close account. A `Signed in as` summary shows the email, account type and verification state.
+- The authenticator row appears only for people who could use it, decided by the same eligibility check `/mfa` uses (active staff, legacy owner, or already enrolled). Everyone else sees password, security activity, email and closure only.
+- Closure lists its blockers in a warning notice; the confirmation fields stay disabled until they are resolved.
 - Organisation: a `Finish setting up` card lists only tasks the caller may act on: payment setup in the warning tone (it blocks paid sales), and the society profile and scheduling an event in the information tone. Then the upcoming count with the next event, month-to-date revenue with `orders:read` (labelled with its period; no chart), linked upcoming events (sold and left with `analytics:read`) and recent orders. A pending order is listed without a link, because order detail serves settled orders only.
 
 `/dashboard/events`
@@ -173,6 +184,8 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard/create` uses the auth shell and asks only for the society name. [[Society Profiles and Assets]] owns their full contracts.
 
+`/events/[eventId]` shows the date range with its time zone and the location under the title. The buy box offers one ticket choice (sold-out types disabled), one `Quantity` and `Buy tickets` with the running total; a signed-in member without a verified email sees `Verify your email to buy tickets` with a link instead. The checkout API still enforces verification. The home page streams its event and society listings behind a skeleton under the hero; `/societies` and `/events/[eventId]` keep their public `loading.tsx`, built from `Skeleton`.
+
 `/success` and `/cancel` are the payment return pages. `/success` says `Checking payment status` and links to My tickets; it never states that a payment succeeded, because only the signed webhook establishes that.
 
 `app/not-found.tsx` and `app/error.tsx` are the shared missing-page and failure pages. The missing page is also what a foreign tenant resource renders and must not hint at whether the resource exists.
@@ -203,7 +216,6 @@ Do not call an account "ready" just because `stripeAccountId` exists.
 
 - In an event's Orders tab the sidebar highlights Orders, because that tab is the orders list filtered to the event.
 - The event builder, order, check-in and payment screens keep their pre-specification structure under the new presentation; their target layouts belong to T11-T19.
-- `components/auth/staff-mfa-form.tsx` styles its own controls with token classes instead of the `Button` and `Select` primitives.
 
 ## Notification Recovery
 

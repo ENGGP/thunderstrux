@@ -2,8 +2,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAccountLinkToken } from "./account-link-token";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackUrl: string; defaultEmail?: string }) {
   const [token, setToken] = useAccountLinkToken();
@@ -32,15 +33,15 @@ export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackU
     finally { setBusy(false); }
   }
   return <div className="grid gap-4">
-    {error && <p role="alert" className="text-danger">{error}</p>}
-    {message && <p role="status">{message}</p>}
-    {verifiedPath ? <Link className="underline" href={`/login?callbackUrl=${encodeURIComponent(verifiedPath)}`}>Sign in to continue</Link> : <>
-      {token && <Button disabled={busy} onClick={confirm} type="button">{busy ? "Verifying..." : "Verify email"}</Button>}
+    {error && <Notice role="alert" tone="danger">{error}</Notice>}
+    {message && <Notice role="status" tone="success">{message}</Notice>}
+    {verifiedPath ? <Link className={buttonClasses({ size: "lg" })} href={`/login?callbackUrl=${encodeURIComponent(verifiedPath)}`}>Sign in to continue</Link> : <>
+      {token && <Button disabled={busy} onClick={confirm} size="lg" type="button">{busy ? "Verifying..." : "Verify email"}</Button>}
       <form className="grid gap-3" onSubmit={resend}>
         <TextInput label="Email" type="email" required maxLength={320} value={email} onChange={event => setEmail(event.target.value)} />
         <Button type="submit" disabled={busy}>{busy ? "Sending..." : "Send verification email"}</Button>
       </form>
-      <Link className="underline" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Sign in</Link>
+      <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Sign in</Link>
     </>}
   </div>;
 }

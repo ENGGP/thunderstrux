@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAccountLinkToken } from "./account-link-token";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 export function StaffInviteAcceptForm() {
@@ -27,13 +28,13 @@ export function StaffInviteAcceptForm() {
     {/* The invitation link is held in this page's memory, so sign-in and verification open in a new tab. */}
     <p className="text-ink-soft">Sign in with the invited email address and verify it before accepting. Both links open in a new tab so this page keeps your invitation.</p>
     <div className="flex flex-wrap gap-4">
-      <a className="text-brand underline" href="/login?callbackUrl=/staff/invites/accept" target="_blank" rel="noopener noreferrer">Sign in (new tab)</a>
-      <a className="text-brand underline" href="/verify-email" target="_blank" rel="noopener noreferrer">Verify your email (new tab)</a>
+      <a className="text-sm font-semibold text-brand underline underline-offset-4" href="/login?callbackUrl=/staff/invites/accept" target="_blank" rel="noopener noreferrer">Sign in (new tab)</a>
+      <a className="text-sm font-semibold text-brand underline underline-offset-4" href="/verify-email" target="_blank" rel="noopener noreferrer">Verify your email (new tab)</a>
     </div>
-    {error && <p role="alert" className="text-danger">{error}</p>}
-    {status ? <><p role="status">{status}</p><Link className="text-brand underline" href="/dashboard">Open dashboard</Link></> : <>
-      {!token && <p>Open the link from your invitation email. After a full reload, reopen that link.</p>}
-      <div><Button disabled={!token || busy} type="button" onClick={accept}>
+    {error && <Notice role="alert" tone="danger">{error}</Notice>}
+    {status ? <Notice action={<Link className="text-sm font-semibold text-brand underline underline-offset-4" href="/dashboard">Open dashboard</Link>} role="status" tone="success">{status}</Notice> : <>
+      {!token && <Notice>Open the link from your invitation email. After a full reload, reopen that link.</Notice>}
+      <div><Button disabled={!token || busy} size="lg" type="button" onClick={accept}>
         {busy ? "Accepting..." : "Accept staff invitation"}
       </Button></div>
     </>}

@@ -2,8 +2,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAccountLinkToken } from "./account-link-token";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 export function PasswordRecoveryForm({ mode, callbackUrl }: { mode: "request" | "reset"; callbackUrl: string }) {
   const [email, setEmail] = useState(""); const [token, setToken] = useAccountLinkToken(mode === "reset");
@@ -28,11 +29,11 @@ export function PasswordRecoveryForm({ mode, callbackUrl }: { mode: "request" | 
     finally { setBusy(false); }
   }
   return <div className="grid gap-4">
-    {error && <p role="alert" className="text-danger">{error}</p>}
-    {message && <p role="status">{message}</p>}
-    {completedPath ? <Link className="underline" href={`/login?callbackUrl=${encodeURIComponent(completedPath)}`}>Sign in with new password</Link> : <form className="grid gap-3" onSubmit={submit}>
+    {error && <Notice role="alert" tone="danger">{error}</Notice>}
+    {message && <Notice role="status" tone="success">{message}</Notice>}
+    {completedPath ? <Link className={buttonClasses({ size: "lg" })} href={`/login?callbackUrl=${encodeURIComponent(completedPath)}`}>Sign in with new password</Link> : <form className="grid gap-3" onSubmit={submit}>
       {mode === "request" ? <TextInput label="Email" type="email" required maxLength={320} value={email} onChange={event => setEmail(event.target.value)} /> : <>
-        {!token && <p>Open your reset email link, or <Link className="underline" href="/forgot-password">request a new link</Link>.</p>}
+        {!token && <Notice>Open your reset email link, or <Link className="font-semibold text-brand underline underline-offset-4" href="/forgot-password">request a new link</Link>.</Notice>}
         <TextInput label="New password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} />
         <TextInput label="Confirm new password" type="password" autoComplete="new-password" minLength={8} required value={confirmation} onChange={event => setConfirmation(event.target.value)} />
         <p className="text-sm text-ink-muted">Use at least 8 characters and no more than 72 UTF-8 bytes. Your enrolled authenticator remains enabled.</p>

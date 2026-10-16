@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-23
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-15]]", "[[Project Handover 2026-10-12]]"]
@@ -13,7 +13,7 @@ This is the only current handover. It covers the session that began on **2026-10
 
 ## Current State
 
-**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified; Package 4 is in progress (T10, T11a, T12 and T14 merged; T11b and T13 merged; Wave 1b is complete: the checkout state screens merged as #80). Wave 2a is in progress: design round A2 batch 1 is approved, T17 (Connect safety and fee disclosure) is merged and T15a (public event pages) is in review. F1 (one staff authority rule) is merged.** Completion does not establish full MVP or hosted production readiness. See the [[../MVP_READINESS_PLAN|Readiness Plan]] for packages, dependencies, substeps and detailed evidence.
+**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified; Package 4 is in progress (T10, T11a, T12 and T14 merged; T11b and T13 merged; Wave 1b is complete: the checkout state screens merged as #80). Wave 2a is in progress: design round A2 batches 1 and 2 are approved, T17 (Connect safety and fee disclosure) and T15a (public event pages) are merged, and T15b (Explore events) is in review. F1 (one staff authority rule) is merged.** Completion does not establish full MVP or hosted production readiness. See the [[../MVP_READINESS_PLAN|Readiness Plan]] for packages, dependencies, substeps and detailed evidence.
 
 | Package | Tasks | Delivered capability | Evidence |
 | --- | --- | --- | --- |
@@ -65,7 +65,8 @@ Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CL
 | A1 checkout state screens | [#80](https://github.com/ENGGP/thunderstrux/pull/80) | Merged as `21db2a3`. Checkout refusal details carry `reason` and `value`; the checkout page shows the approved screen for a changed price, sold out, fewer left, closed sales, payments unavailable and still confirming. No migration. Baseline `p216-dd3c0317cd84b9e684688b2e` on `0f72f9a` (438/438 integration tests in 56 files, clean audit); browser `p216-48b7445886b3aee6bd04c983` on `a074e9b` (3 MFA, 29 desktop/mobile including `checkout-states.spec.ts` at 390 and 1280px, 7 webhook checks). An earlier browser run, `p216-48c05b428e0fa5a4ac655ebe`, failed two assertions (an older test expected the raw onboarding message; a locator also matched Next's route announcer), fixed in tests only. |
 | T17 Connect safety and fee disclosure | [#81](https://github.com/ENGGP/thunderstrux/pull/81) | Merged as `626e228`. Built from design round A2 batch 1 (Payments and public event pages; both passes approved on the canvas, sections 15 and 16). Baseline `p216-2e9b2e4904001d2c6781a9bf` (447/447 integration tests in 57 files, clean audit); browser `p216-7e31b4a0076715e77e249310` (3 MFA, 30 desktop/mobile, 7 webhook checks). No migration. Narrows API-001. |
 
-| T15a anonymous event pages, honest availability and draft preview | [#82](https://github.com/ENGGP/thunderstrux/pull/82) | In review, from design round A2 batch 1. Baseline `p216-45b1be2b01e16b596ebeec91` (442/442 integration tests in 57 files, clean audit); browser `p216-7d64ebe51deb600e78d68b86` (3 MFA, 31 desktop/mobile, 7 webhook checks). No migration. Brought up to date with `main` after #81 merged. |
+| T15a anonymous event pages, honest availability and draft preview | [#82](https://github.com/ENGGP/thunderstrux/pull/82) | Merged as `baee06b`, from design round A2 batch 1. Baseline `p216-45b1be2b01e16b596ebeec91` (442/442 integration tests in 57 files, clean audit); browser `p216-7d64ebe51deb600e78d68b86` (3 MFA, 31 desktop/mobile, 7 webhook checks). No migration. Brought up to date with `main` after #81 merged. |
+| T15b Explore events with search, date and society filters | PR to follow on `codex/t15b-explore-events` | In review, from design round A2 batch 2. Baseline `p216-ea48342054953b79098c7f12` (455/455 integration tests in 59 files, clean audit); browser `p216-79bb35745215ac764ad71cb7` (3 MFA, 33 desktop/mobile, 7 webhook checks). Resolves PUB-001. No migration. |
 Every run above reports cleanup complete with zero run-owned containers, volumes or networks.
 
 **Development activations.** T13 (2026-10-20): verified dump `tmp/dev-before-t13-20261020.dump`, then an app-only restart applied `20261020010000_free_ticket_lifecycle`; 40 migrations, counts unchanged, integrity audit 0 violations. T11b (2026-10-19): the dev app applied `20261019010000_event_hero_image` on startup when Docker Desktop started, before a dump; it is additive. The post-migration dump `tmp/dev-after-t11b-hero-20261019.dump` shows counts unchanged (27 orders, 32 tickets, 14 users, 14 events) and the integrity audit 0 violations. T10 (2026-10-15): 27 orders (12 paid), 32 tickets, 14 users and 14 events unchanged; every order backfilled as Stripe, every paid order has `fulfilledAt`, every ticket active with a unique number; integrity audit 0 violations across 19 checks; orders, order detail, overview, attendees, My tickets and member overview checked at 1280, 768 and 390px. T11a (2026-10-16): counts unchanged, every event closes sales at its start, 0 violations; events list, event, edit and public pages load at 1280 and 390px. Old drafts whose start has passed show "Move the sales close time into the future before publishing."; moving their start forward on the Edit page fixes it, because a close time never set separately follows the start. Setting a different close time, capacity or visibility from the dashboard arrives with the T11b builder.
@@ -74,7 +75,7 @@ Every run above reports cleanup complete with zero run-owned containers, volumes
 
 ## Next Safe Actions
 
-1. Review and merge [PR #82](https://github.com/ENGGP/thunderstrux/pull/82) (T15a public event pages). Then design round A2 batch 2 (Explore events and guest checkout) for T15b and T16.
+1. Review and merge the T15b PR (Explore events). Then T16a (guest email verification and access sessions, migration `guest_access`), T16b and T16c, all from design round A2 batch 2.
 2. Schedule `checkout-recovery-worker` every minute alongside the other workers when hosting is chosen (T42 owns schedules).
 3. Before activating account lifecycle, obtain independent security and migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 4. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work.

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-21
+last-reviewed: 2026-10-23
 owner: engineering
 related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]"]
 ---
@@ -26,7 +26,6 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`, `resolved`, and `
 | PAY-001 | Low | Webhook diagnostics | open | 2026-09-29 | A repeated compensation webhook with mismatched metadata may report the existing compensation state without a distinct mismatch event. It does not issue tickets or mutate a paid order. | Existing compensation remains safe and idempotent. | Payments: add a focused mismatch log branch and regression test. |
 | TEST-001 | Low | Payment tests | open | 2026-09-29 | Missing direct regressions remain for local-order lookup with absent metadata, reservation quantity mismatch release, and non-paid completed sessions avoiding compensation. | Broader reconciliation suites cover adjacent behavior. | Payments: add focused integration cases when payment reconciliation next changes. |
 | PAG-001 | Low | Pagination | open | 2026-10-12 | Cursor encoding is implemented four times (`lib/pagination/cursor.ts`, `lib/tickets/check-in.ts`, `lib/payments/order-lifecycle-history.ts`, `lib/email/notification-outbox.ts`). | Each has its own tests and stable ordering. | Engineering: fold into `lib/pagination/cursor.ts` when one of those lists next changes. |
-| PUB-001 | Low | Public discovery | open | 2026-10-14 | The home page "Upcoming events" lists every published event, including past ones. | `lib/events/public-events.ts` has no start-time filter. | Engineering: filter to upcoming in T15b (Explore events). |
 | UI-001 | Low | Public availability | accepted-risk | 2026-09-29 | Displayed availability can change between page load and checkout. | Checkout transaction remains authoritative. | Product/engineering: consider refresh/realtime behavior only when demand justifies it. |
 
 ## External Production Gates
@@ -48,6 +47,7 @@ Cloudflare preview verification (2026-10-13) passes local loopback port 3080, pu
 
 | ID | Resolved | Defect and root cause | Fix and evidence |
 | --- | --- | --- | --- |
+| PUB-001 | 2026-10-23 | The home page "Upcoming events" listed every published event, including past ones: the public list query had no time filter. | T15b: every public list (home, `/events`, `GET /api/public/events`) keeps only events that have not ended (`endTime` after now); `explore-events.test.ts` and `explore-events.spec.ts` cover an ended event. |
 | EVT-001 | 2026-10-19 | The event form loaded stored UTC instants into `datetime-local` as UTC wall time and submitted a bare local string that the server parsed in its own zone (UTC in the containers), while the dashboard showed Australia/Brisbane, so a typed 18:00 was saved as 04:00 the next day. | T11b: the builder edits wall-clock times in the society's `timeZone` and sends ISO instants (`lib/zoned-time.ts`), refusing daylight-saving gaps and asking which occurrence in an overlap. `zoned-time.test.ts` covers Brisbane, the Sydney gap and overlap; `event-builder.spec.ts` creates an event in Sydney time and checks the stored instant. Existing events may still carry the old offset; organisers correct them on the Edit page. |
 | EVT-002 | 2026-10-19 | Ticket price was entered as integer cents, so 15 meant $0.15. | T11b: a `$` price field parsed to cents without floating point (`parseMoneyInput`); the API stays in cents. `zoned-time.test.ts` covers parsing; `event-builder.spec.ts` saves 15.5 as 1550 and reloads it as 15.50. |
 | AUTHZ-001 | 2026-10-18 | The active-staff-or-legacy-owner check was written six times and the copies disagreed: an unset `LEGACY_ORGANISATION_ACCESS_MODE` threw in some and denied in others, the ticket-email requeue ignored the mode, two requeues did not require an organisation account, and reading an organisation by slug or listing an organisation account's organisations granted legacy ownership even after the account's own staff row was revoked. | F1: one database-only rule in `lib/staff/live-authority.ts` used by every former copy with each caller's guard order kept; unset mode denies in production and readiness still fails on it. `live-staff-authority.test.ts` has a denial regression per former copy. |

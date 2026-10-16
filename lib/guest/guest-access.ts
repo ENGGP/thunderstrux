@@ -1,6 +1,5 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { authSecret } from "@/auth";
 import { prisma } from "@/lib/db";
 import { assertNotificationConfiguration } from "@/lib/email/notification-crypto";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
@@ -11,7 +10,6 @@ import { safeReturnPath } from "@/lib/security/safe-return-path";
 // exist only in the email and the cookie; the database keeps their digests.
 
 export const guestCookieName = "thunderstrux-guest";
-export const GUEST_CSRF_HEADER = "x-thunderstrux-guest-csrf";
 const linkLifetimeMs = 30 * 60 * 1000;
 // Purchase links (ticket email and recovery) open one order for a day.
 const purchaseLinkLifetimeMs = 24 * 60 * 60 * 1000;
@@ -121,16 +119,14 @@ function orderLink(raw: string) {
   return link.toString();
 }
 
-// The link in a guest's ticket email. Derived from the email job, so a provider
-// retry sends the same link and nothing raw is stored; a new email job (a
-// resend) gets a new one.
-export async function purchaseLinkForEmail(orderId: string, guestIdentityId: string, jobId: string, now = new Date()) {
-  const raw = createHmac("sha256", authSecret).update(`guest-purchase:v1:${jobId}`).digest("base64url");
-  await prisma.guestAccessGrant.upsert({
-    where: { tokenDigest: guestDigest(raw) },
-    create: { guestIdentityId, purpose: "purchase", orderId, tokenDigest: guestDigest(raw), expiresAt: new Date(now.getTime() + purchaseLinkLifetimeMs) },
-    update: {}
-  });
+// The link in a guest's ticket email, minted on each send attempt: only its
+// digest is stored, and a retry sends a new, equally valid link. No secret is
+// needed, so the email worker can mint it.
+export async function purchaseLinkForEmail(orderId: string, guestIdentityId: string, now = new Date()) {
+  const raw = newSecret();
+  await prisma.guestAccessGrant.create({ data: {
+    guestIdentityId, purpose: "purchase", orderId, tokenDigest: guestDigest(raw), expiresAt: new Date(now.getTime() + purchaseLinkLifetimeMs)
+  } });
   return orderLink(raw);
 }
 
@@ -180,16 +176,6 @@ export async function lockGuestBuyer(tx: Prisma.TransactionClient, grantId: stri
     throw new GuestAccessError(guestSessionEndedMessage);
   }
   return { email: grant.guestIdentity.email, firstName: null, lastName: null, displayName: null };
-}
-
-// The guest session's own CSRF token, bound to the session id (not the login cookie).
-export function guestCsrfToken(sessionId: string) {
-  return createHmac("sha256", authSecret).update(`guest-csrf:v1:${sessionId}`).digest("hex");
-}
-
-export function verifyGuestCsrf(sessionId: string, supplied: string | null) {
-  if (!supplied || !/^[a-f0-9]{64}$/.test(supplied)) return false;
-  return timingSafeEqual(Buffer.from(supplied, "hex"), Buffer.from(guestCsrfToken(sessionId), "hex"));
 }
 
 export function guestSessionIdFrom(request: Request) {

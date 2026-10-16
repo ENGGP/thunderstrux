@@ -283,9 +283,11 @@ export async function sendWithResend({
 export async function sendTicketDeliveryEmailToProvider(
   orderId: string,
   {
-    idempotencyKey
+    idempotencyKey,
+    attempt = 0
   }: {
     idempotencyKey?: string;
+    attempt?: number;
   } = {}
 ) {
   const order = await loadTicketDeliveryOrder(orderId);
@@ -300,14 +302,13 @@ export async function sendTicketDeliveryEmailToProvider(
     throw new TicketEmailRecipientError();
   }
 
-  // Minted at send time from the job's key, so no raw link is stored and a provider retry sends the same one.
-  const guestOrderLink = order.guestIdentityId && !order.userId
-    ? await purchaseLinkForEmail(order.id, order.guestIdentityId, idempotencyKey ?? `ticket-email/${order.id}`)
-    : undefined;
+  // A guest's link is minted per send attempt, so no raw link is stored.
+  // shortcut: a retry carries a new link, so its provider key includes the attempt and a lost response can mean a second email; move the link to an encrypted notification if duplicates matter.
+  const guestOrderLink = order.guestIdentityId && !order.userId ? await purchaseLinkForEmail(order.id, order.guestIdentityId) : undefined;
   const email = renderTicketEmail(order, guestOrderLink);
   const delivery = await sendWithResend({
     to: recipient,
-    idempotencyKey,
+    idempotencyKey: guestOrderLink && idempotencyKey ? `${idempotencyKey}/${attempt}` : idempotencyKey,
     ...email
   });
 

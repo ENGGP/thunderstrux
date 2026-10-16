@@ -22,7 +22,8 @@ import {
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { StripeConfigurationError } from "@/lib/stripe";
-import { GUEST_CSRF_HEADER, GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession, verifyGuestCsrf } from "@/lib/guest/guest-access";
+import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
+import { GUEST_CSRF_HEADER, verifyGuestCsrf } from "@/lib/guest/guest-csrf";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { validateJson } from "@/lib/validators";
 import { createEventCheckoutSchema } from "@/lib/validators/payments";

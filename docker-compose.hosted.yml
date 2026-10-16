@@ -100,6 +100,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       RESEND_API_KEY_FILE: /run/secrets/resend_api_key
       EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     secrets:
       - *database-secret
       - resend_api_key

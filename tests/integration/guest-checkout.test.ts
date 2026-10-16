@@ -6,7 +6,9 @@ import CheckoutPage from "@/app/(public)/events/[eventId]/checkout/page";
 import { prisma } from "@/lib/db";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { loadTicketDeliveryOrder, renderTicketEmail } from "@/lib/email/ticket-delivery";
-import { GuestAccessError, guestCookieName, guestCsrfToken, purchaseLinkForEmail, readGuestSession, redeemGuestAccess, requestGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
+import { processTicketEmailOutboxBatch } from "@/lib/email/ticket-email-outbox";
+import { GuestAccessError, guestCookieName, purchaseLinkForEmail, readGuestSession, redeemGuestAccess, requestGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
+import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
@@ -75,6 +77,18 @@ describe("guest checkout", () => {
     expect(await prisma.checkoutAttempt.findFirstOrThrow({ where: { orderId } })).toMatchObject({ actorKind: "guest", actorId: session.grantId });
     expect(await prisma.ticket.count({ where: { orderId } })).toBe(2);
     expect(await prisma.emailOutbox.count({ where: { orderId } })).toBe(1);
+
+    // The email worker sends the tickets with a link that opens this order.
+    vi.stubEnv("RESEND_API_KEY", "re_test_placeholder");
+    const sent: Array<{ key: string | null; text: string }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      sent.push({ key: new Headers(init.headers).get("Idempotency-Key"), text: JSON.parse(String(init.body)).text });
+      return new Response(JSON.stringify({ id: "msg_guest" }), { status: 200 });
+    }));
+    expect(await processTicketEmailOutboxBatch()).toMatchObject({ sent: 1 });
+    expect(sent[0].key).toMatch(/^ticket-email\/.+\/0$/);
+    const link = sent[0].text.match(/http:\/\/localhost:3000\/guest\/access#token=[A-Za-z0-9_-]{43}/)![0];
+    expect((await redeemGuestAccess(new URLSearchParams(new URL(link).hash.slice(1)).get("token")!)).callbackUrl).toBe(`/guest/orders/${orderId}`);
   });
 
   test("a paid guest checkout holds stock and returns from Stripe to the guest order page", async () => {
@@ -149,15 +163,17 @@ describe("guest order access", () => {
     expect(anonymous).not.toContain(fixture.event.title);
   });
 
-  test("the ticket email carries one stable purchase link per email job that opens just that order", async () => {
+  test("the ticket email carries a fresh purchase link on each send that opens just that order", async () => {
     const fixture = await eventWith(0);
     const buyer = await guestSession();
     const first = await createEventCheckout({ ...buy(fixture), guest: buyer.guest }) as { orderId: string };
     const second = await createEventCheckout({ ...buy(fixture, 1), guest: buyer.guest }) as { orderId: string };
 
-    const link = await purchaseLinkForEmail(first.orderId, buyer.guest.guestIdentityId, "ticket-email/job-1");
-    expect(await purchaseLinkForEmail(first.orderId, buyer.guest.guestIdentityId, "ticket-email/job-1")).toBe(link);
-    expect(await prisma.guestAccessGrant.count({ where: { orderId: first.orderId } })).toBe(1);
+    const link = await purchaseLinkForEmail(first.orderId, buyer.guest.guestIdentityId);
+    const retry = await purchaseLinkForEmail(first.orderId, buyer.guest.guestIdentityId);
+    expect(retry).not.toBe(link);
+    expect(await prisma.guestAccessGrant.count({ where: { orderId: first.orderId } })).toBe(2);
+    expect(JSON.stringify(await prisma.guestAccessGrant.findMany({ where: { orderId: first.orderId } }))).not.toContain(new URL(link).hash.slice(7));
     expect(renderTicketEmail(await loadTicketDeliveryOrder(first.orderId), link).text).toContain(link);
 
     const redeemed = await redeemGuestAccess(new URLSearchParams(new URL(link).hash.slice(1)).get("token")!);

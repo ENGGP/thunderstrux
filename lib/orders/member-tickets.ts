@@ -32,6 +32,7 @@ export async function getMemberTicketOrders(
       purchasedTicketTypeName: true,
       quantity: true,
       totalAmount: true,
+      paymentKind: true,
       createdAt: true,
       paidAt: true,
       failedAt: true,
@@ -99,6 +100,24 @@ export async function getUpcomingTicketOrders(userId: string, take = 3) {
           organisation: { select: { name: true, timeZone: true } }
         }
       }
+    }
+  });
+}
+
+// One of the caller's own fulfilled orders, for the confirmation page; another
+// member's order reads as missing.
+export function getMemberTicketOrder(userId: string, eventId: string, orderId: string) {
+  return prisma.order.findFirst({
+    where: { id: orderId, eventId, userId, status: "paid" },
+    select: {
+      id: true,
+      quantity: true,
+      totalAmount: true,
+      paymentKind: true,
+      purchasedTicketTypeName: true,
+      buyerEmailSnapshot: true,
+      ticketType: { select: { name: true } },
+      tickets: { where: { validity: "active" }, select: { id: true }, orderBy: { issueSequence: "asc" } }
     }
   });
 }

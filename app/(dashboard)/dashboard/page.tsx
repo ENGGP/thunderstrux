@@ -26,7 +26,7 @@ import { Notice } from "@/components/ui/notice";
 import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { listDashboardEvents } from "@/lib/events/event-lifecycle";
-import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatPrice } from "@/lib/format";
 import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
@@ -263,7 +263,7 @@ async function OrganisationOverview({
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
                       <span className="text-sm font-semibold tabular-nums text-ink">
-                        {formatMoney(order.totalAmount)}
+                        {formatPrice(order.totalAmount)}
                       </span>
                       <StatusBadge status={ticketOrderProjection(order)} />
                     </div>

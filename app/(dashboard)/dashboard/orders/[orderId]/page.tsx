@@ -7,7 +7,7 @@ import { Notice } from "@/components/ui/notice";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatPrice } from "@/lib/format";
 import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
@@ -115,10 +115,10 @@ export default async function OrganisationOrderDetailPage({
             </dd>
             <dt className="text-ink-soft">Tickets</dt>
             <dd className="text-ink">
-              {order.quantity} × {order.purchasedTicketType} at {formatMoney(order.unitPrice)}
+              {order.quantity} × {order.purchasedTicketType} at {formatPrice(order.unitPrice)}
             </dd>
             <dt className="text-ink-soft">Total</dt>
-            <dd className="font-semibold tabular-nums text-ink">{formatMoney(order.totalAmount)}</dd>
+            <dd className="font-semibold tabular-nums text-ink">{formatPrice(order.totalAmount)}</dd>
             <dt className="text-ink-soft">Ordered</dt>
             <dd className="text-ink">{formatDateTime(order.createdAt)}</dd>
             <dt className="text-ink-soft">Paid</dt>
@@ -134,6 +134,7 @@ export default async function OrganisationOrderDetailPage({
           <OrderDetailActions
             buyerEmail={buyer?.email ?? null}
             canResendTickets={order.tickets.length > 0}
+            free={order.paymentKind === "free"}
             isManuallyRefunded={order.isManuallyRefunded}
             orderId={order.id}
             requiresCompensationReview={order.requiresCompensationReview}

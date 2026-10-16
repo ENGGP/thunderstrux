@@ -650,6 +650,7 @@ enum OrderLifecycleEventType {
   order_expired
   compensation_required
   payment_fulfilled
+  free_fulfilled
   compensation_recovered
   manual_refund_marked
   compensation_refund_queued

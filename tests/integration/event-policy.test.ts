@@ -89,7 +89,7 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(membersOnly.status).toBe(400);
   });
 
-  test("readiness blocks paid-only events without payments, free tickets until T13, and needs a future sales window", async () => {
+  test("readiness blocks paid-only events without payments, lets free tickets publish, and needs a future sales window", async () => {
     const { organisation } = await signedInOrganiser(false);
     const paidOnly = await createEvent({ organisationId: organisation.id });
     const blocked = await publish(paidOnly.id, { targetStatus: "published", version: 1 });
@@ -99,24 +99,15 @@ describe("event policy, readiness and explicit transitions", () => {
     });
     expect((await getDashboardEvent(organisation.id, paidOnly.id)).publishBlocker).toContain("Set up payments");
 
-    const mixed = await createEvent({
-      organisationId: organisation.id,
-      ticketTypes: [{ name: "Free entry", price: 0, quantity: 20 }, { name: "Supporter", price: 2000, quantity: 5 }]
-    });
-    // Checkout cannot issue a zero-total order before T13, so free tickets do not make an event sellable.
-    const mixedBlocked = await publish(mixed.id, { targetStatus: "published", version: 1 });
-    expect(mixedBlocked.status).toBe(400);
-    expect(JSON.stringify(await parseJsonResponse(mixedBlocked))).toContain("Set up payments");
-
-    const freeOnly = await createEvent({
-      organisationId: organisation.id,
-      ticketTypes: [{ name: "Free entry", price: 0, quantity: 20 }]
-    });
-    const freeBlocked = await publish(freeOnly.id, { targetStatus: "published", version: 1 });
-    expect(freeBlocked.status).toBe(400);
-    expect(await parseJsonResponse(freeBlocked)).toMatchObject({
-      error: { details: [{ path: ["ticketTypes"], message: expect.stringContaining("Free tickets are not available yet") }] }
-    });
+    // Free tickets need no payment setup, so a mixed or free-only event publishes
+    // and sells its free tickets while the paid ones wait for Stripe.
+    for (const ticketTypes of [
+      [{ name: "Free entry", price: 0, quantity: 20 }, { name: "Supporter", price: 2000, quantity: 5 }],
+      [{ name: "Free entry", price: 0, quantity: 20 }]
+    ]) {
+      const event = await createEvent({ organisationId: organisation.id, ticketTypes });
+      expect((await publish(event.id, { targetStatus: "published", version: 1 })).status).toBe(200);
+    }
 
     const closedWindow = await createEvent({
       organisationId: organisation.id,
@@ -126,16 +117,6 @@ describe("event policy, readiness and explicit transitions", () => {
     const late = await publish(closedWindow.id, { targetStatus: "published", version: 1 });
     expect(late.status).toBe(400);
     expect(JSON.stringify(await parseJsonResponse(late))).toContain("Move the sales close time");
-
-    // With payments ready the paid type sells, so a mixed event publishes.
-    const ready = await signedInOrganiser(true);
-    const readyMixed = await createEvent({
-      organisationId: ready.organisation.id,
-      ticketTypes: [{ name: "Free entry", price: 0, quantity: 20 }, { name: "Supporter", price: 2000, quantity: 5 }]
-    });
-    const published = await publish(readyMixed.id, { targetStatus: "published", version: 1 });
-    expect(published.status).toBe(200);
-    expect((await parseJsonResponse(published)).event).toMatchObject({ status: "published", version: 2 });
   });
 
   test("a repeated publish is a no-op and a stale version is a conflict", async () => {

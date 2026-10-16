@@ -37,7 +37,7 @@ export async function getOrganisationOverview(
       : Promise.resolve([]),
     includeOrders
       ? prisma.order.findMany({
-          where: { ...ownedOrder, status: "paid", paidAt: { gte: paidSince } },
+          where: { ...ownedOrder, status: "paid", paymentKind: "stripe", paidAt: { gte: paidSince } },
           select: { totalAmount: true, paidAt: true }
         })
       : Promise.resolve([])

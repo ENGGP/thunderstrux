@@ -55,6 +55,8 @@ test("reset clears every current model including dependent and unlinked recovery
 
   await prisma.authToken.create({ data: { userId: member.id, tokenHash: unique("synthetic-auth-token"), purpose: "verify_account", email: member.email, authVersion: 0, expiresAt: new Date(Date.now() + 60000) } });
   await prisma.accountSecurityEvent.create({ data: { userId: member.id, type: "password_changed", authVersion: 0 } });
+  const guest = await prisma.guestIdentity.create({ data: { email: "synthetic-guest@example.com" } });
+  await prisma.guestAccessGrant.create({ data: { guestIdentityId: guest.id, purpose: "checkout", tokenDigest: unique("synthetic-guest-token"), expiresAt: new Date(Date.now() + 60000) } });
 
   // Derived from the schema so adding a model requires an intentional fixture
   // update; table names never come from request or environment input.

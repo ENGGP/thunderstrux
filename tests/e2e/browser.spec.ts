@@ -48,7 +48,8 @@ test('finance staff can page order history while another tenant cannot read it',
 });
 
 test('signup, duplicate email, incorrect password, logout and protected callback', async ({ page, data }) => {
-  await page.goto(`/events/${data.event.id}`);
+  // Event pages are public since T15a; account settings still need sign-in.
+  await page.goto('/account/settings');
   await expect(page).toHaveURL(/\/login\?callbackUrl=/);
   await page.getByRole('link', { name: "Don't have an account? Sign up" }).click();
   await expect(page).toHaveURL(/\/signup\?callbackUrl=/);
@@ -62,6 +63,8 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await expect(page).toHaveURL(/\/signup\?/);
   const identity = await prisma.user.findUniqueOrThrow({ where: { email } });
   expect(identity.emailVerifiedAt).toBeNull();
+  // Paid tickets are only offered once the society can take payments (T15a).
+  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: 'acct_e2e_verify', stripeChargesEnabled: true } });
   await login(page, email, `/events/${data.event.id}`);
   await expect(page.getByText('Verify your email to use purchases and society features.')).toBeVisible();
   // Dismissing hides the reminder across navigation and reloads, and verification is still enforced below.
@@ -69,10 +72,9 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
   await page.reload();
   await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
-  // The checkout page asks for verification before offering to pay.
-  await page.getByRole('button', { name: 'Buy tickets' }).click();
-  await expect(page.getByText('Verify your email to continue')).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Pay / })).toHaveCount(0);
+  // The ticket box asks for verification before offering to buy (T15a).
+  await expect(page.getByText('Verify your email to get tickets')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Buy tickets' })).toHaveCount(0);
   const csrf = await (await page.request.get('/api/security/csrf')).json();
   const blocked = await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': csrf.token }, data: { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1, expectedUnitPrice: data.ticket.price, idempotencyKey: `e2e-${Date.now()}-verify` } });
   expect(blocked.status()).toBe(403);
@@ -97,7 +99,7 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(`http://localhost:3100/events/${data.event.id}`);
+  await expect(page).toHaveURL('http://localhost:3100/account/settings');
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
   await page.goto('/dashboard');
@@ -135,23 +137,29 @@ test('published discovery, draft isolation, pagination and sold-out tickets', as
   expect(second.events[0].id).not.toBe(first.events[0].id);
   expect((await page.request.get(`/api/public/events/${draft.id}`)).status()).toBe(404);
   await login(page, data.member.email, `/events/${soldout.id}`);
-  await expect(page.getByRole('button', { name: 'Sold out' })).toBeDisabled();
+  await expect(page.getByText('Sold out', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(Buy|Get) / })).toHaveCount(0);
   await page.goto(`/events/${draft.id}`);
   await expect(page.getByText('This page could not be found.')).toBeVisible();
 });
 
 test('checkout validates quantities, readiness, origin and absent provider configuration', async ({ page, data }) => {
   await login(page, data.member.email, `/events/${data.event.id}`);
-  await page.getByLabel('Quantity').fill('0');
-  await expect(page.getByRole('button', { name: 'Buy tickets' })).toBeDisabled();
-  await page.getByLabel('Quantity').fill('1');
-  await page.getByRole('button', { name: 'Buy tickets' }).click();
-  await expect(page.getByRole('heading', { name: 'Review your order' })).toBeVisible();
+  // The ticket box shows why a paid ticket can't be bought instead of failing at checkout (T15a).
+  await expect(page.getByText('Paid tickets unavailable right now')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Buy tickets' })).toHaveCount(0);
+  // Checkout still refuses on its own when reached directly.
+  await page.goto(`/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=1`);
   await page.getByRole('button', { name: 'Pay $12.00' }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Paid checkout unavailable' })).toBeVisible();
   const body = { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1, expectedUnitPrice: data.ticket.price, idempotencyKey: `e2e-${Date.now()}-config` };
   expect((await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'https://example.com' }, data: body })).status()).toBe(403);
   await prisma.organisation.update({ where: {id: data.organisation.id}, data: {stripeAccountId: 'acct_synthetic', stripeChargesEnabled: true} });
+  await page.goto(`/events/${data.event.id}`);
+  await page.getByLabel('Quantity').fill('0');
+  await expect(page.getByRole('button', { name: 'Buy tickets' })).toBeDisabled();
+  await page.getByLabel('Quantity').fill('1');
+  await expect(page.getByRole('button', { name: 'Buy tickets' })).toBeEnabled();
   expect((await page.request.post('/api/payments/checkout/event', {headers: { Origin: 'http://localhost:3100' }, data: body})).status()).toBe(403);
   const { token } = await (await page.request.get('/api/security/csrf')).json();
   expect((await page.request.post('/api/payments/checkout/event', {headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token }, data: body})).status()).toBe(503);

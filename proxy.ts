@@ -11,21 +11,7 @@ export async function proxy(request: NextRequest) {
     // Match Auth.js's public URL even when TLS ends at the tunnel.
     secureCookie: new URL(process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? request.url).protocol === "https:"
   });
-  const pathname = request.nextUrl.pathname;
   const identity = token ? await getSessionIdentity(token.userId, token.authVersion) : null;
-
-  if (
-    identity?.accountRole === "organisation" &&
-    pathname.startsWith("/events/")
-  ) {
-    const eventId = pathname.split("/")[2];
-
-    if (eventId) {
-      return NextResponse.redirect(
-        new URL(`/dashboard/events/${eventId}`, request.nextUrl.origin)
-      );
-    }
-  }
 
   if (!identity) {
     const loginUrl = new URL("/login", request.nextUrl.origin);
@@ -41,5 +27,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/events/:path*", "/account/:path*"]
+  // Event pages are public (T15a); their checkout pages ask for sign-in themselves.
+  matcher: ["/dashboard/:path*", "/account/:path*"]
 };

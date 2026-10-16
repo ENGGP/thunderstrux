@@ -1,4 +1,8 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { eventReadiness, salesOpen, type TicketTypeUnavailableReason } from "@/lib/events/event-readiness";
+import { readEventInventory, sellableQuantity } from "@/lib/events/inventory";
+import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
   ascendingCursorWhere,
   decodeTimestampCursor,
@@ -31,7 +35,10 @@ export type PublicEventTicketType = {
   name: string;
   price: number;
   quantity: number;
+  // Advisory sellable stock: remaining minus live holds, within capacity.
   availableQuantity: number;
+  // Why it can't be bought now, from the shared readiness rules.
+  unavailable?: TicketTypeUnavailableReason | null;
 };
 
 export type PublicEventDetail = {
@@ -51,6 +58,9 @@ export type PublicEventDetail = {
     refundPolicy: string;
   };
   ticketTypes: PublicEventTicketType[];
+  status?: "draft" | "published";
+  salesOpen?: boolean;
+  salesCloseAt?: Date;
 };
 
 export async function getPublishedEvents({
@@ -105,80 +115,83 @@ export async function getPublishedEvents({
   };
 }
 
-export async function getPublishedEventDetail(
-  eventId: string
-): Promise<PublicEventDetail | null> {
-  const event = await prisma.event.findFirst({
-    where: {
-      id: eventId,
-      status: "published",
-      visibility: { not: "members_only" }
-    },
+const detailSelect = {
+  id: true,
+  title: true,
+  description: true,
+  startTime: true,
+  endTime: true,
+  location: true,
+  heroAssetId: true,
+  status: true,
+  visibility: true,
+  saleState: true,
+  salesCloseAt: true,
+  organisation: {
     select: {
-      id: true,
-      title: true,
-      description: true,
-      startTime: true,
-      endTime: true,
-      location: true,
-      heroAssetId: true,
-      organisation: {
-        select: {
-          name: true,
-          slug: true,
-          timeZone: true,
-          supportEmail: true,
-          refundPolicy: true
-        }
-      },
-      ticketTypes: {
-        select: {
-          id: true,
-          name: true,
-          price: true,
-          quantity: true
-        },
-        orderBy: { createdAt: "asc" }
-      }
+      name: true,
+      slug: true,
+      timeZone: true,
+      supportEmail: true,
+      refundPolicy: true,
+      stripeAccountId: true,
+      stripeChargesEnabled: true
     }
-  });
-
-  if (!event) {
-    return null;
+  },
+  ticketTypes: {
+    select: { id: true, name: true, price: true, quantity: true },
+    orderBy: { createdAt: "asc" as const }
   }
+} satisfies Prisma.EventSelect;
 
-  const ticketTypeIds = event.ticketTypes.map((ticketType) => ticketType.id);
+// One event page's data. Stock and per-type reasons are advisory (an unlocked
+// read that writes nothing); checkout decides again under its locks.
+async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEventDetail | null> {
+  const event = await prisma.event.findFirst({ where, select: detailSelect });
+  if (!event) return null;
+
   const now = new Date();
-  const activeReservationSums =
-    ticketTypeIds.length > 0
-      ? await prisma.ticketReservation.groupBy({
-          by: ["ticketTypeId"],
-          where: {
-            ticketTypeId: { in: ticketTypeIds },
-            status: "active",
-            expiresAt: { gt: now }
-          },
-          _sum: {
-            quantity: true
-          }
-        })
-      : [];
-
-  const reservedByTicketTypeId = new Map(
-    activeReservationSums.map((reservation) => [
-      reservation.ticketTypeId,
-      reservation._sum.quantity ?? 0
-    ])
+  const inventory = await readEventInventory(prisma, event.id, now);
+  const ticketTypes = event.ticketTypes.map((ticketType) => ({ ...ticketType, sellable: sellableQuantity(ticketType, inventory) }));
+  const reasons = new Map(
+    eventReadiness({ ...event, ticketTypes }, { chargesReady: isOrganisationStripeReady(event.organisation), now }).ticketTypes.map((type) => [type.id, type.reason])
   );
 
   return {
-    ...event,
-    ticketTypes: event.ticketTypes.map((ticketType) => ({
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    startTime: event.startTime,
+    endTime: event.endTime,
+    location: event.location,
+    heroAssetId: event.heroAssetId,
+    status: event.status,
+    salesOpen: salesOpen(event, now),
+    salesCloseAt: event.salesCloseAt,
+    // The society's Stripe fields decide availability but are not public.
+    organisation: {
+      name: event.organisation.name,
+      slug: event.organisation.slug,
+      timeZone: event.organisation.timeZone,
+      supportEmail: event.organisation.supportEmail,
+      refundPolicy: event.organisation.refundPolicy
+    },
+    ticketTypes: ticketTypes.map(({ sellable, ...ticketType }) => ({
       ...ticketType,
-      availableQuantity: Math.max(
-        0,
-        ticketType.quantity - (reservedByTicketTypeId.get(ticketType.id) ?? 0)
-      )
+      availableQuantity: sellable,
+      unavailable: reasons.get(ticketType.id) ?? null
     }))
   };
+}
+
+// Public and link-only events are readable; drafts and members-only events
+// read as missing.
+export function getPublishedEventDetail(eventId: string) {
+  return readEventDetail({ id: eventId, status: "published", visibility: { not: "members_only" } });
+}
+
+// The organiser's preview of the same page, draft or published, scoped to the
+// caller's society.
+export function getEventPreviewDetail(organisationId: string, eventId: string) {
+  return readEventDetail({ id: eventId, organisationId });
 }

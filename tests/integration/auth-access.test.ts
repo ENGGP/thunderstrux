@@ -76,7 +76,7 @@ describe("auth and role access", () => {
     });
   });
 
-  test("proxy redirects organisation public event visits and protects logged-out dashboard visits", async () => {
+  test("proxy leaves public event pages to everyone and protects logged-out dashboard visits", async () => {
     const { getToken } = await import("next-auth/jwt");
     const { proxy } = await import("@/proxy");
     const { user: owner, organisation } = await createOrganisationAccount();
@@ -88,13 +88,12 @@ describe("auth and role access", () => {
     vi.mocked(getToken).mockResolvedValueOnce({
       userId: owner.id, authVersion: owner.authVersion, accountRole: "organisation"
     });
-    const organisationRedirect = await proxy(
+    // Since T15a a society account sees the public page as buyers do.
+    const organisationVisit = await proxy(
       new NextRequest(`http://localhost/events/${event.id}`)
     );
-    expect(organisationRedirect.status).toBe(307);
-    expect(organisationRedirect.headers.get("location")).toContain(
-      `/dashboard/events/${event.id}`
-    );
+    expect(organisationVisit.status).toBe(200);
+    expect(organisationVisit.headers.get("location")).toBeNull();
 
     const member = await createMember();
     vi.mocked(getToken).mockResolvedValueOnce({

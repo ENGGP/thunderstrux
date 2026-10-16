@@ -12,7 +12,7 @@ import {
 } from "@/lib/permissions";
 import { zoneCity } from "@/lib/zoned-time";
 
-export type EventTab = "summary" | "attendees" | "orders" | "edit";
+export type EventTab = "summary" | "attendees" | "orders" | "edit" | "preview";
 
 // Selling state of a published event, beside its Published badge.
 export function SaleBadge({ event }: { event: Pick<DashboardEvent, "status" | "salesOpen" | "soldOut"> }) {
@@ -37,7 +37,9 @@ const sections: Array<{ id: EventTab; label: string; permission: OrganisationPer
   { id: "summary", label: "Summary", permission: "analytics:read" },
   { id: "attendees", label: "Attendees", permission: "tickets:check_in" },
   { id: "orders", label: "Orders", permission: "orders:read" },
-  { id: "edit", label: "Edit", permission: "events:manage" }
+  { id: "edit", label: "Edit", permission: "events:manage" },
+  // Drafts only: a published event's header links its real public page instead.
+  { id: "preview", label: "Preview", permission: "events:manage" }
 ];
 
 // Header and section tabs for every page of one event. Each page has passed
@@ -57,9 +59,12 @@ export function EventWorkspaceHeader({
     summary: base,
     attendees: `${base}/tickets`,
     orders: `/dashboard/orders?eventId=${event.id}`,
-    edit: `${base}/edit`
+    edit: `${base}/edit`,
+    preview: `${base}/preview`
   };
-  const tabs = sections.filter((tab) => hasOrganisationPermission(staffRole, tab.permission));
+  const tabs = sections.filter(
+    (tab) => hasOrganisationPermission(staffRole, tab.permission) && (tab.id !== "preview" || event.status === "draft")
+  );
   const editing = active === "edit";
   const canManage = hasOrganisationPermission(staffRole, "events:manage");
 

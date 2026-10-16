@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-22
 owner: engineering
 related: ["[[API Reference]]", "[[Email Delivery Implementation]]"]
 sources: [auth.ts, proxy.ts, lib/auth/access.ts, lib/auth/account-lifecycle.ts, lib/auth/account-closure.ts]
@@ -77,15 +77,16 @@ The first two values support dashboard routing and access checks. The random MFA
 
 ```text
 /dashboard/:path*
-/events/:path*
 /account/:path*
 ```
+
+Event pages under `/events/` are public since T15a; the checkout and confirmation pages beneath them ask for sign-in themselves and return the buyer to the same checkout.
 
 Behavior:
 
 - If no token exists, user is redirected to `/login`
 - Relative callback URL is preserved in the query string
-- Organisation accounts requesting `/events/[eventId]` are redirected to `/dashboard/events/[eventId]`
+- Organisation accounts see public event pages as buyers do; the ticket box tells them society accounts can't buy
 - Management pages resolve live staff/capability/MFA authority; a member accountRole alone neither grants nor prevents staff access.
 - In production, the shared secret resolver fails startup for unsafe `AUTH_SECRET` values: empty string, `dev-secret`, or `replace-with-a-non-empty-secret`
 

@@ -28,8 +28,12 @@ export default async function CheckoutPage({
 }) {
   const [{ eventId }, query, session] = await Promise.all([params, searchParams, getLiveSession()]);
   const eventHref = `/events/${eventId}`;
-  // The proxy already sends anonymous visitors to sign in and societies to the dashboard.
-  if (!session) redirect(`/login?callbackUrl=${encodeURIComponent(eventHref)}`);
+  // Event pages are public; buying needs a member account, and sign-in comes straight back here.
+  if (!session) {
+    const back = new URLSearchParams({ ticketTypeId: query.ticketTypeId ?? "", quantity: query.quantity ?? "" });
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/events/${eventId}/checkout?${back}`)}`);
+  }
+  if (session.user.accountRole !== "member") redirect(eventHref);
 
   const event = await getPublishedEventDetail(eventId);
   if (!event) notFound();

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-16
+last-reviewed: 2026-10-22
 owner: engineering
 related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
 sources: [app, components, lib/auth/page-access.ts]
@@ -55,19 +55,18 @@ Flow:
 
 ```text
 User visits /events/[eventId]
-  -> proxy redirects organisation accounts to /dashboard/events/[eventId]
+  -> anyone may open it (T15a); the page reads the live session only to choose the ticket box action
   -> page calls getPublishedEventDetail (lib/events/public-events.ts), the same read service as GET /api/public/events/[eventId]
-  -> the service returns only published events
-  -> the service computes ticketTypes.availableQuantity from active unexpired reservations
-  -> page renders event details and ticketTypes
-  -> PublicTicketPurchase handles client-side checkout start
+  -> the service returns only published, non-members-only events
+  -> the service computes each type's sellable stock (holds and capacity) and readiness reason, and whether sales are open
+  -> PublicEventView renders the page; PublicTicketPurchase sends the buyer to /events/[eventId]/checkout
 ```
 
 Important current behavior:
 
 - Public detail keeps raw `ticketType.quantity` for compatibility.
-- Although this API is anonymous, the HTML `/events/[eventId]` route still requires authentication through proxy.ts. T15 owns anonymous HTML detail; society pages are already anonymous.
-- Public purchase UI uses `ticketType.availableQuantity` for remaining count, sold-out state, quantity input max, client validation, and buy-button disabled state.
+- The HTML `/events/[eventId]` route is anonymous since T15a, like society pages.
+- Public purchase UI uses `ticketType.availableQuantity` and `unavailable` for remaining count, sold-out and paid-unavailable rows, quantity input max, client validation, and buy-button state.
 - Public detail reads are read-only. They do not expire reservations, run stale cleanup, create demo data, or write rows.
 - Checkout remains authoritative and revalidates availability before creating a reservation.
 

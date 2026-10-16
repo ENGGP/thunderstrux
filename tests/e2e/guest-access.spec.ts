@@ -38,5 +38,5 @@ test("a guest confirms their email from the link, which works once", async ({ pa
   await page.goto(link);
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { name: "This link has stopped working" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("invalid or expired");
+  await expect(page.locator("main").getByRole("alert")).toContainText("invalid or expired");
 });

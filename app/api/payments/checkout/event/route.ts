@@ -23,7 +23,7 @@ import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limi
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { GUEST_CSRF_HEADER, GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession, verifyGuestCsrf } from "@/lib/guest/guest-access";
-import { hasAuthSessionCookie } from "@/lib/security/csrf";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { validateJson } from "@/lib/validators";
 import { createEventCheckoutSchema } from "@/lib/validators/payments";
 
@@ -41,11 +41,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    // No login: a guest buys under their live checkout session, which has its own CSRF token.
-    if (!hasAuthSessionCookie(request)) {
-      const sessionId = guestSessionIdFrom(request);
+    // A guest cookie and no login: the guest buys under their live checkout
+    // session, which has its own CSRF token. A signed-in member always buys as the member.
+    const sessionId = guestSessionIdFrom(request);
+    if (sessionId && !(await getLiveSession())) {
       const guest = await readGuestSession(sessionId);
-      if (!guest || !sessionId || guest.purpose !== "checkout") return unauthorized(guestSessionEndedMessage);
+      if (!guest || guest.purpose !== "checkout") return unauthorized(guestSessionEndedMessage);
       if (!verifyGuestCsrf(sessionId, request.headers.get(GUEST_CSRF_HEADER))) return forbidden("Invalid CSRF token");
       const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: ["guest", guest.grantId, validation.data.eventId, getRateLimitClientIp(request)] });
       if (limit) return limit;

@@ -4,7 +4,7 @@ import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { readCheckoutAttempt } from "@/lib/payments/checkout-attempts";
 import { guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
-import { hasAuthSessionCookie } from "@/lib/security/csrf";
+import { getLiveSession } from "@/lib/auth/live-session";
 
 type RouteContext = { params: Promise<{ attemptId: string }> };
 
@@ -14,7 +14,8 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const { attemptId } = await context.params;
     // A guest reads only the attempts of their own checkout session.
-    const guest = hasAuthSessionCookie(request) ? null : await readGuestSession(guestSessionIdFrom(request));
+    const guestSessionId = guestSessionIdFrom(request);
+    const guest = guestSessionId && !(await getLiveSession()) ? await readGuestSession(guestSessionId) : null;
     const actor = guest ? { kind: "guest" as const, id: guest.grantId } : { kind: "user" as const, id: (await requireAuthenticatedUser()).id };
     const attempt = await readCheckoutAttempt(actor, attemptId);
 

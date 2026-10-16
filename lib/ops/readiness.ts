@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { checkRateLimitReadiness } from "@/lib/security/rate-limit";
 import { assertStaffMfaConfiguration } from "@/lib/security/staff-mfa";
 import schemaContract from "@/config/schema-contract.json";
-import { legacyOrganisationAccessMode } from "@/lib/auth/access";
+import { assertLegacyOrganisationAccessConfigured } from "@/lib/staff/live-authority";
 
 import { assertNotificationConfiguration } from "@/lib/email/notification-crypto";
 
@@ -36,7 +36,7 @@ export async function checkDatabaseReadiness() {
 
 export async function checkApplicationReadiness() {
   assertNotificationConfiguration();
-  legacyOrganisationAccessMode();
+  assertLegacyOrganisationAccessConfigured();
   assertStaffMfaConfiguration();
   await Promise.all([checkDatabaseReadiness(), checkRateLimitReadiness()]);
 }

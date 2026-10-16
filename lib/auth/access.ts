@@ -10,6 +10,9 @@ import {
   type OrganisationRole
 } from "@/lib/permissions";
 import type { OrganisationStaffRole } from "@/lib/permissions";
+import { legacyOrganisationAccessMode, liveStaffRole, roleHasPermission } from "@/lib/staff/live-authority";
+
+export { legacyOrganisationAccessMode };
 
 export type AccountRole = "member" | "organisation";
 
@@ -32,17 +35,6 @@ export class StaffMfaRequiredError extends OrganisationAccessError {
     super(message);
     this.name = "StaffMfaRequiredError";
   }
-}
-
-export function legacyOrganisationAccessMode() {
-  const mode = process.env.LEGACY_ORGANISATION_ACCESS_MODE ||
-    (process.env.NODE_ENV === "production" ? "unset" : "allow");
-  if (mode !== "allow" && mode !== "deny") {
-    throw new OrganisationAccessError(
-      "LEGACY_ORGANISATION_ACCESS_MODE must be set to allow or deny"
-    );
-  }
-  return mode;
 }
 
 async function requireCurrentStaffMfa(user: { id: string; mfaSessionId?: string }) {
@@ -117,20 +109,12 @@ export async function requireStripeConnectCapability() {
     return user;
   }
 
-  // Unrelated staff memberships must not hide legacy ownership. Any staff row
-  // for the owned tenant supersedes that legacy authority, including revocation.
-  if (user.accountRole === "organisation" && legacyOrganisationAccessMode() === "allow") {
-    const legacyOwner = await prisma.organisation.findFirst({
-      where: {
-        accountUserId: user.id,
-        staff: { none: { userId: user.id } }
-      },
-      select: { id: true }
-    });
-    if (legacyOwner) {
-      await requireCurrentStaffMfa(user);
-      return user;
-    }
+  // Unrelated staff memberships must not hide legacy ownership; the shared rule
+  // lets any staff row for the owned tenant supersede it, including revocation.
+  const legacyOrganisation = await prisma.organisation.findUnique({ where: { accountUserId: user.id }, select: { id: true } });
+  if (legacyOrganisation && roleHasPermission(await liveStaffRole(prisma, legacyOrganisation.id, user), "stripe:manage")) {
+    await requireCurrentStaffMfa(user);
+    return user;
   }
 
   throw new OrganisationAccessError("Insufficient permissions");
@@ -231,7 +215,7 @@ export async function getCurrentStaffOrganisations() {
   });
 
   const result = staffRows.map(staff => ({ ...staff.organisation, staffRole: staff.role as OrganisationStaffRole }));
-  if (user.accountRole !== "organisation" || legacyOrganisationAccessMode() === "deny") return result;
+  if (user.accountRole !== "organisation") return result;
 
   const legacyOrganisation = await prisma.organisation.findUnique({
     where: {
@@ -245,18 +229,8 @@ export async function getCurrentStaffOrganisations() {
     }
   });
 
-  if (legacyOrganisation) {
-    const existingStaffAuthority = await prisma.organisationStaff.findUnique({
-      where: {
-        organisationId_userId: {
-          organisationId: legacyOrganisation.id,
-          userId: user.id
-        }
-      },
-      select: { id: true }
-    });
-
-    if (existingStaffAuthority) return result;
+  if (legacyOrganisation && !result.some((organisation) => organisation.id === legacyOrganisation.id) &&
+      await liveStaffRole(prisma, legacyOrganisation.id, user) === "owner") {
     result.push({ ...legacyOrganisation, staffRole: "owner" });
   }
   return result;
@@ -265,11 +239,10 @@ export async function getCurrentStaffOrganisations() {
 export async function getOrganisationAccessForUser(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { accountRole: true }
+    select: { id: true, accountRole: true, disabledAt: true }
   });
 
   if (user?.accountRole === "organisation") {
-    if (legacyOrganisationAccessMode() === "deny") return [];
     const organisation = await prisma.organisation.findUnique({
       where: { accountUserId: userId },
       select: {
@@ -280,7 +253,7 @@ export async function getOrganisationAccessForUser(userId: string) {
       }
     });
 
-    return organisation
+    return organisation && await liveStaffRole(prisma, organisation.id, user)
       ? [
           {
             role: "org_owner" as OrganisationRole,
@@ -325,59 +298,21 @@ export function mapOrganisationAccessToOrganisations(
 export async function requireOrganisationAccessBySlug(orgSlug: string) {
   const user = await requireAuthenticatedUser();
 
-  const staff = await prisma.organisationStaff.findFirst({
-    where: {
-      userId: user.id,
-      status: "active",
-      organisation: {
-        slug: orgSlug
-      }
-    },
-    select: {
-      role: true,
-      organisation: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true
-        }
-      }
-    }
+  const target = await prisma.organisation.findUnique({
+    where: { slug: orgSlug },
+    select: { id: true, name: true, slug: true, createdAt: true }
   });
+  const staffRole = target ? await liveStaffRole(prisma, target.id, user) : null;
 
-  if (staff) {
+  if (target && staffRole) {
     return {
-      ...staff.organisation,
-      role: staff.role as unknown as OrganisationRole
+      ...target,
+      role: staffRole as unknown as OrganisationRole
     };
   }
 
   if (user.accountRole === "organisation") {
-    if (legacyOrganisationAccessMode() === "deny") {
-      throw new OrganisationAccessError("Organisation not found or access denied");
-    }
-    const organisation = await prisma.organisation.findFirst({
-      where: {
-        slug: orgSlug,
-        accountUserId: user.id
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        createdAt: true
-      }
-    });
-
-    if (!organisation) {
-      throw new OrganisationAccessError("Organisation not found or access denied");
-    }
-
-    return {
-      ...organisation,
-      role: "org_owner" as OrganisationRole
-    };
+    throw new OrganisationAccessError("Organisation not found or access denied");
   }
 
   // Member accounts can view organisations they have joined. This membership
@@ -423,77 +358,26 @@ export async function requireOrganisationPermission(
 ) {
   const user = await requireAuthenticatedUser();
 
-  const staff = await prisma.organisationStaff.findFirst({
-    where: {
-      organisationId,
-      userId: user.id,
-      status: "active"
-    },
-    select: {
-      role: true,
-      organisation: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true
-        }
-      }
-    }
-  });
+  const staffRole = await liveStaffRole(prisma, organisationId, user);
 
-  if (!staff) {
-    if (user.accountRole === "organisation" && legacyOrganisationAccessMode() === "allow") {
-      const legacyOrganisation = await prisma.organisation.findFirst({
-        where: {
-          id: organisationId,
-          accountUserId: user.id
-        },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          createdAt: true
-        }
-      });
-
-      if (legacyOrganisation) {
-        const existingStaffAuthority = await prisma.organisationStaff.findUnique({
-          where: {
-            organisationId_userId: {
-              organisationId,
-              userId: user.id
-            }
-          },
-          select: { id: true }
-        });
-
-        if (existingStaffAuthority) {
-          throw new OrganisationAccessError("Organisation not found or access denied");
-        }
-      }
-
-      if (legacyOrganisation && hasOrganisationPermission("owner", permission)) {
-        await requireCurrentStaffMfa(user);
-        return {
-          ...legacyOrganisation,
-          staffRole: "owner" as OrganisationStaffRole
-        };
-      }
-    }
-
+  if (!staffRole) {
     throw new OrganisationAccessError("Organisation not found or access denied");
   }
 
-  if (!hasOrganisationPermission(staff.role as OrganisationStaffRole, permission)) {
+  if (!hasOrganisationPermission(staffRole, permission)) {
     throw new OrganisationAccessError("Insufficient staff permissions");
   }
 
   await requireCurrentStaffMfa(user);
 
+  const organisation = await prisma.organisation.findUniqueOrThrow({
+    where: { id: organisationId },
+    select: { id: true, name: true, slug: true, createdAt: true }
+  });
+
   return {
-    ...staff.organisation,
-    staffRole: staff.role as OrganisationStaffRole
+    ...organisation,
+    staffRole
   };
 }
 

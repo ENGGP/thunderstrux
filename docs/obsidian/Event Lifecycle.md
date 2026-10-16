@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[API Reference]]", "[[Ticket Check-in Implementation]]"]
 sources: [lib/events/event-lifecycle.ts, app/api/events]
@@ -228,7 +228,7 @@ Public route behavior:
 
 - Anyone can open a published public or link-only event (T15a); drafts and members-only events are the standard not-found page. Society accounts see the page as buyers do.
 - Each ticket type shows its price or Free and its advisory availability from the shared readiness module: N left, Sold out, or "Paid tickets unavailable right now" while the society cannot take payments. Closed sales replace the choices with the close time. The page shows the organiser link and, when set, the society's support email and refund policy.
-- The ticket box action depends on the viewer: "Sign in to buy tickets" (checkout sends them to sign in and straight back), "Verify your email to get tickets", "Society accounts can't buy tickets", or "Buy tickets"/"Get free tickets" for a verified member.
+- The ticket box action depends on the viewer: "Continue as guest" and "Sign in to buy" for a visitor who is not signed in (T16b; signing in comes straight back to the same checkout), "Verify your email to get tickets", "Society accounts can't buy tickets", or "Buy tickets"/"Get free tickets" for a verified member.
 - `/dashboard/events/[eventId]/preview` (events:manage) renders the same page for a draft under a "Draft preview" banner with buying off; the workspace header shows Preview only for drafts, and a published event redirects to its public page.
 
 ## Public Demo Events

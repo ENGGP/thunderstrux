@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-24
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Production Operations]]"]
 sources: [lib/email/ticket-email-outbox.ts, lib/email/notification-outbox.ts, scripts/process-notifications.mjs]
@@ -160,6 +160,8 @@ T04a adds 30-minute reset links and atomic password-change security notices. Tok
 T04b email-change intents bind the new recipient and email-change template to the token while retaining the original account email/version fence. Requests alert the old inbox; confirmed changes atomically notify old and new inboxes. Cancelled/expired/superseded links cannot redeem even if an already in-flight provider request arrives. No old-inbox approval or email-based reassignment of historical records occurs.
 
 T16a guest links use the `guest_access` template and carry `guestAccessGrantId`. Before sending, the worker cancels the job as `obsolete_token` if the grant is consumed, revoked or expired, if the recipient is no longer the identity's email, or if a `guest/` job has lost its grant. A newer request for the same address cancels the older link's queued email as `superseded`; redemption cancels it as `consumed`.
+
+T16b adds `guest_order_link` (Find your tickets, one email per purchase); the worker checks that its template matches the grant's purpose. A guest order's ticket email (`EmailOutbox`, recipient the buyer snapshot) also carries an "Open your order" link minted on each send attempt; only its digest is stored, so the email worker needs `NEXT_PUBLIC_APP_URL` but no secret. Because a retry carries a new link, a guest email's provider idempotency key adds the attempt number, so a lost provider response can mean a second email with another valid link.
 
 ## Closed Account Contacts
 

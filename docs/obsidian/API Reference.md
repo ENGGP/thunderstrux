@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-24
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -183,6 +183,8 @@ POST `/api/guest/email/request` accepts `{email, callbackUrl?}` and returns a ge
 POST `/api/guest/email/confirm` accepts `{token}` and returns `{callbackUrl}` (a safe local path, default `/events`) with an `HttpOnly`, `SameSite=Lax`, path `/` cookie `thunderstrux-guest` (`Secure` in production) holding a random session id for two hours; wrong, replayed, revoked, superseded or expired links get the generic invalid/expired-link `400`. Redemption limits are 50 per IP and 10 per token digest in ten minutes, failing closed. Both endpoints require a trusted origin and send `Cache-Control: no-store`; like account links they use email/token authority, so a stale login cookie does not demand the login CSRF token.
 
 GET `/api/guest/session` returns `{email, expiresAt, csrfToken}` for a live guest session, or `401`; always `no-store`. `csrfToken` is an HMAC of the session id, checked with `verifyGuestCsrf` by guest writes (T16b). A guest session is not a login: it grants no member, staff or account access.
+
+Since T16b a session has a purpose. A `checkout` session (from the checkout email link) can buy tickets and open the orders it bought. A `purchase` session (from a ticket email or recovery link) opens one order. POST `/api/guest/recover` accepts `{email}` and returns a generic `202 {accepted:true}`: for a known guest it revokes unused links for each paid guest order (up to the latest ten; orders a member has claimed are excluded) and queues one encrypted `guest_order_link` email per order, each link valid for 24 hours and once. It shares the fail-closed guest request limits, under its own keys. `/guest/orders/[orderId]` opens only for a session allowed that order; every other case, including a real order id without the session, shows the same "Open your order from your email" page.
 
 ### `PATCH /api/me/profile`
 
@@ -813,15 +815,14 @@ Request:
 
 Rules:
 
-- Auth required.
-- Member account required.
+- A verified member account, or (T16b, no login cookie) a live guest `checkout` session from the `thunderstrux-guest` cookie with its `x-thunderstrux-guest-csrf` token; a missing or ended guest session is `401`, a wrong token `403`. A guest order has no `userId`; it records `guestIdentityId`, the guest's email as the buyer snapshot and provenance `verified_guest`, and the attempt's actor is the guest session (`actorKind: guest`).
 - Event must be published.
 - Ticket type must belong to event.
 - Organisation is resolved server-side from the event.
 - Paid types: the organisation must be Stripe-ready; checkout creates a pending `Order` and an active `TicketReservation`.
 - Free types: no Stripe configuration is read and nothing is held. One transaction creates a fulfilled `Order` (`paymentKind: free`, `status: paid`, total and fee 0), its tickets, one stock decrement, the `order_created` and `free_fulfilled` lifecycle events and the automatic ticket email. If the email cannot be queued, nothing is created.
 - Uses 30-minute reservation expiry and sets Stripe Checkout `expires_at` to match.
-- Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}` for dev fallback diagnostics.
+- Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}` for dev fallback diagnostics; for a guest, to `/guest/orders/[orderId]`, which only their session opens.
 - Since T12 every rule is checked under the buyer, event and ticket type locks: publication, sale state and close time, the shared readiness eligibility, and sellable stock = min(remaining minus that type's active holds, capacity minus valid issued tickets and all active holds).
 - `quantity` is 1 to 10 per order.
 - `idempotencyKey` (16–128 letters, digits, `-` or `_`) identifies one purchase intent. Repeating it with the same selection returns the same checkout; with a different selection it is `409 CONFLICT`.
@@ -831,7 +832,7 @@ Rules:
 
 ### `GET /api/payments/checkout/attempts/[attemptId]`
 
-Status of the caller's own checkout attempt, for polling after a 202. Auth required; another actor's or a missing attempt is the same 404. `no-store`.
+Status of the caller's own checkout attempt, for polling after a 202. A signed-in member, or a guest whose checkout session made the attempt; another actor's or a missing attempt is the same 404. `no-store`.
 
 Response: `{ attemptId, status }` where status is `ready` (with `url`), `processing`, `completed` (with `orderId`) or `failed`.
 

@@ -90,8 +90,10 @@ try {
     const event = await db.event.create({data: {organisationId: id, title: id, description: 'Isolated Stripe acceptance', location: 'Test only', status: 'published', startTime: new Date(Date.now()+86400000), salesCloseAt: new Date(Date.now()+86400000), endTime: new Date(Date.now()+90000000), ticketTypes: {create: {name: 'Test ticket', price: 1200, quantity: 5}}}, include: {ticketTypes: true}});
     const page = await openBuyer(user.email);
     await page.goto(`${baseURL}/events/${event.id}`);
-    const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/payments/checkout/event') && response.request().method() === 'POST');
+    // Buy tickets opens the review page (T13); Pay starts the Stripe checkout.
     await page.getByRole('button', {name: 'Buy tickets'}).click();
+    const responsePromise = page.waitForResponse(response => response.url().endsWith('/api/payments/checkout/event') && response.request().method() === 'POST');
+    await page.getByRole('button', {name: 'Pay $12.00'}).click();
     const response = await responsePromise;
     assert(response.ok(), 'App Checkout creation failed');
     const order = await db.order.findFirstOrThrow({where: {eventId: event.id}});

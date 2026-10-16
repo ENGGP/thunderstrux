@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-22
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -184,7 +184,7 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard/create` uses the auth shell and asks only for the society name. [[Society Profiles and Assets]] owns their full contracts.
 
-`/events/[eventId]` shows the date range with its time zone and the location under the title. The buy box offers one ticket choice (price or Free, "N left", sold-out types disabled), one `Quantity` (hint "Up to 10 per order") and `Get free tickets` or `Buy tickets` with the running total, then opens the checkout page.
+`/events/[eventId]` is public (T15a) and renders `PublicEventView` (`components/events/public-event-view.tsx`), shared with the organiser's draft preview: the 16:9 image across the page, the society link, title, date range with its time zone and location, About, and Hosted by with the support email and refund policy when set. The ticket box shows "Prices in AUD", each type's price or Free and N left, Sold out or "Paid tickets unavailable right now"; a Sales closed or Sold out badge replaces the choices when nothing can be bought, and its action follows the viewer (sign in, verify email, society account, or buy). The buy box offers one ticket choice (price or Free, "N left", sold-out types disabled), one `Quantity` (hint "Up to 10 per order") and `Get free tickets` or `Buy tickets` with the running total, then opens the checkout page.
 
 `/events/[eventId]/checkout?ticketTypeId=&quantity=` (T13) is the one review page for every ticket purchase, in `CheckoutShell` (`components/layout/checkout-shell.tsx`: "Booking for {society}", Change tickets, steps) with `MoneySummary` (`components/purchases/money-summary.tsx`). It shows the tickets and total ("Free" and "No payment needed." for a free registration; "No booking fee" for paid), who the tickets go to, the 30-minute hold for paid tickets, and the society's refund policy and support email when set. The event sits in the aside with the total and the one action, `Confirm free registration` or `Pay $X.XX` (`components/purchases/checkout-action.tsx`). The action sends the price shown and one idempotency key per reviewed quote; any server answer ends that key, so a new price or quantity goes out under a new one. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds.
 

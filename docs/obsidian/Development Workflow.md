@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-22
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Seeding and Data]]"]
 sources: [package.json, docker-compose.dev.yml, scripts/run-e2e.mjs]
@@ -513,7 +513,7 @@ It protects:
 
 ```text
 /dashboard/:path*
-/events/:path*
+/account/:path*
 ```
 
 Expected behavior:
@@ -521,7 +521,7 @@ Expected behavior:
 - Logged-out dashboard requests redirect to `/login`.
 - The `callbackUrl` query preserves the requested dashboard path.
 - Logged-in requests continue normally.
-- Organisation accounts requesting `/events/[eventId]` redirect to `/dashboard/events/[eventId]`.
+- `/events/[eventId]` is public (T15a); its checkout pages require a member sign-in.
 - Member accounts requesting `/dashboard/events/[eventId]` redirect to `/`.
 - Production startup rejects missing or placeholder `AUTH_SECRET` values. `auth.ts` and `proxy.ts` resolve the secret through `lib/auth/secret.ts`, so a placeholder in development gives both the same fallback.
 

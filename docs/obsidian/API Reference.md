@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-22
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -308,12 +308,11 @@ Returns public event details.
 Rules:
 
 - No auth required.
-- Event must be `published`.
-- Includes ticket types with raw `quantity` preserved and reservation-aware `availableQuantity`.
-- `availableQuantity` is computed as `max(0, quantity - activeReservedQuantity)`.
+- Event must be `published` and not `members_only`; link-only (`unlisted`) events are readable by link.
+- Includes ticket types with raw `quantity` preserved and advisory `availableQuantity`: since T15a the shared sellable stock, `min(quantity - that type's active holds, capacity - valid issued tickets - all active holds)`, never below 0.
+- Each type carries `unavailable`: `sold_out`, `payments_unavailable` (a paid type while the society cannot take payments) or `null`, from the shared readiness rules. The event carries `salesOpen` and `salesCloseAt`, and the society its `supportEmail` and `refundPolicy`. The society's Stripe fields are never included.
 - Only active, unexpired reservations reduce public availability.
 - Read-only. Does not run stale pending order cleanup or mutate orders/reservations.
-- Organisation accounts are redirected at the route/proxy layer from `/events/[eventId]` to `/dashboard/events/[eventId]`; this API remains public-safe.
 
 Example ticket type shape:
 
@@ -323,7 +322,8 @@ Example ticket type shape:
   "name": "General Admission",
   "price": 1200,
   "quantity": 50,
-  "availableQuantity": 42
+  "availableQuantity": 42,
+  "unavailable": null
 }
 ```
 

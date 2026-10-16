@@ -216,7 +216,7 @@ The Stripe Connect settings card should render from backend lifecycle state:
 - `READY`: show readiness and cached flags.
 - `ERROR`: show clear error and recovery actions.
 
-The state shows as a status badge (Not connected, Setup incomplete, Action needed, Ready, Needs attention) with a notice that explains it and lists what Stripe still requires. Always show the readiness rows when status exists:
+Since T17 (design round A2) the card shows two rows, Can take payments and Can receive payouts, each with its next action, a Fees card with the $20.00 worked example, and a Disconnect block that is disabled with the open-order count while orders depend on the account and asks for an authenticator code when staff MFA is on. The event builder shows under each paid price "For one ticket you receive $X after the 10% Thunderstrux fee, before Stripe's own fees" (computed with `calculatePlatformFee`), plus a set-up-payments link while the society cannot take payments; a free price says no fee or setup is needed. The state shows as a status badge (Not connected, Setup incomplete, Payouts not set up, Ready, Needs attention, Out of date) with a notice that explains it and lists what Stripe still requires. Always show the readiness rows when status exists:
 
 - Stripe account (the account id)
 - Card payments

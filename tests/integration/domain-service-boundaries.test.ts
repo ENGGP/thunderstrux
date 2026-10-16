@@ -109,9 +109,9 @@ describe("domain service boundaries", () => {
 
   test("Connect mutations authorize the target tenant before rate limiting and I/O", async () => {
     const cases = [
-      ["onboard", "startOrganisationStripeOnboarding(organisationId)"],
+      ["onboard", "startOrganisationStripeOnboarding(organisationId, user.id)"],
       ["continue", "continueOrganisationStripeOnboarding(organisationId)"],
-      ["disconnect", "disconnectAccount(organisationId)"]
+      ["disconnect", "disconnectAccount(organisationId, {"]
     ] as const;
 
     for (const [action, operation] of cases) {
@@ -119,7 +119,7 @@ describe("domain service boundaries", () => {
       expectInOrder(content, [
         "enforceTrustedMutationRequest(request)",
         "requireStripeConnectCapability()",
-        "validateJson(request, organisationConnectSchema)",
+        "validateJson(request, ",
         "requireOrganisationStripeConnectAccess(organisationId)",
         "enforceRateLimit({",
         operation

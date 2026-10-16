@@ -8,7 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
-import { formatMoneyInput, parseMoneyInput } from "@/lib/format";
+import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
+import { calculatePlatformFee } from "@/lib/stripe/fees";
 import { toZonedInput, zoneAbbreviation, zoneCity, zoneLabel, zonedCandidates } from "@/lib/zoned-time";
 
 type ErrorDetail = { path?: string[]; message: string };
@@ -152,10 +153,13 @@ export function CreateEventForm({
   mode = "create",
   organisationId,
   orgSlug,
-  timeZone
+  timeZone,
+  chargesReady
 }: {
   // The readiness panel on the Edit page.
   aside?: ReactNode;
+  // Whether the society can take card payments now; paid tickets wait for it.
+  chargesReady: boolean;
   eventId?: string;
   initialEvent?: EventFormData;
   mode?: "create" | "edit";
@@ -495,6 +499,7 @@ export function CreateEventForm({
                       value={ticketType.quantity}
                     />
                   </div>
+                  <FeeHint chargesReady={chargesReady} price={ticketType.price} />
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-ink-soft">
                       {ticketType.id
@@ -591,6 +596,30 @@ export function CreateEventForm({
       </form>
       {aside ? <aside aria-labelledby="ready-heading" className="lg:sticky lg:top-6">{aside}</aside> : null}
     </div>
+  );
+}
+
+// What the society receives for one ticket, with the same fee function checkout
+// uses. A multi-ticket order is rounded once, so it can differ by a cent.
+function FeeHint({ price, chargesReady }: { price: string; chargesReady: boolean }) {
+  const cents = parseMoneyInput(price);
+  if (cents === null) return null;
+  if (cents === 0) return <p className="text-sm text-ink-muted">Free. No fee and no payment setup needed.</p>;
+
+  return (
+    <p className="text-sm text-ink-muted">
+      For one ticket you receive <strong className="font-semibold text-ink">{formatMoney(cents - calculatePlatformFee(cents))}</strong> after
+      the 10% Thunderstrux fee, before Stripe&apos;s own fees.
+      {chargesReady ? null : (
+        <>
+          {" "}Paid tickets go on sale once you{" "}
+          <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/settings">
+            set up payments
+          </Link>
+          .
+        </>
+      )}
+    </p>
   );
 }
 

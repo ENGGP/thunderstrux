@@ -67,8 +67,15 @@ vi.mock("@/lib/stripe/connect", () => {
     actionUrl = "https://dashboard.stripe.com/settings/connect/platform-profile";
   }
 
+  class OrganisationStripeConnectNotFoundError extends Error {}
+  class OrganisationStripeConnectValidationError extends Error {}
+  class StripeDisconnectBlockedError extends Error {}
+
   return {
     StripeConnectPlatformNotReadyError,
+    OrganisationStripeConnectNotFoundError,
+    OrganisationStripeConnectValidationError,
+    StripeDisconnectBlockedError,
     startOrganisationStripeOnboarding:
       stripeConnectMocks.startOrganisationStripeOnboarding,
     continueOrganisationStripeOnboarding:

@@ -7,11 +7,20 @@ export class StripeConfigurationError extends Error {
   }
 }
 
+// Live keys move real money, so only a production build may use them.
+export function isLiveStripeKey(secretKey = process.env.STRIPE_SECRET_KEY) {
+  return /^(sk|rk)_live_/.test(secretKey ?? "");
+}
+
 export function getStripe() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
 
   if (!secretKey) {
     throw new StripeConfigurationError("STRIPE_SECRET_KEY missing at runtime");
+  }
+
+  if (isLiveStripeKey(secretKey) && process.env.NODE_ENV !== "production") {
+    throw new StripeConfigurationError("Live Stripe keys are refused outside production");
   }
 
   return new Stripe(secretKey, {

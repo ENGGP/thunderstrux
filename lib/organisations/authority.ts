@@ -2,8 +2,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { lockAccount } from "@/lib/auth/account-lock";
 import type { AccountActor } from "@/lib/auth/account-lifecycle";
-import { AuthenticationRequiredError, OrganisationAccessError, StaffMfaRequiredError, legacyOrganisationAccessMode } from "@/lib/auth/access";
-import { hasOrganisationPermission, type OrganisationPermission } from "@/lib/permissions";
+import { AuthenticationRequiredError, OrganisationAccessError, StaffMfaRequiredError } from "@/lib/auth/access";
+import type { OrganisationPermission } from "@/lib/permissions";
+import { liveStaffRole, roleHasPermission } from "@/lib/staff/live-authority";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 
@@ -13,9 +14,7 @@ export async function lockOrganisationActor(tx: Prisma.TransactionClient, actor:
   if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AuthenticationRequiredError();
   await tx.$queryRaw`SELECT "id" FROM "Organisation" WHERE "id" = ${organisationId} FOR UPDATE`;
   const organisation = await tx.organisation.findUnique({ where: { id: organisationId } });
-  const staff = await tx.organisationStaff.findUnique({ where: { organisationId_userId: { organisationId, userId: actor.id } } });
-  const permitted = staff ? staff.status === "active" && hasOrganisationPermission(staff.role, permission) :
-    user.accountRole === "organisation" && legacyOrganisationAccessMode() === "allow" && organisation?.accountUserId === user.id && hasOrganisationPermission("owner", permission);
+  const permitted = organisation !== null && roleHasPermission(await liveStaffRole(tx, organisationId, user), permission);
   if (!organisation || !permitted) throw new OrganisationAccessError("Organisation not found or access denied");
   const mode = mfaEnforcementMode();
   if (mode !== "off") {

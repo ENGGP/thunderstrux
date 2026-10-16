@@ -12,7 +12,7 @@ import {
   appendOrderLifecycleEvent,
   lockOrder
 } from "@/lib/payments/order-lifecycle";
-import { hasOrganisationPermission } from "@/lib/permissions";
+import { liveStaffRoleForUser, roleHasPermission } from "@/lib/staff/live-authority";
 
 const defaultBatchSize = 25;
 const defaultMaxAttempts = 5;
@@ -201,20 +201,14 @@ export async function requeueFailedTicketEmail({
         ticketEmailSentAt: true,
         requiresCompensationReview: true,
         reservation: { select: { status: true } },
-        event: { select: { organisationId: true, organisation: { select: { accountUserId: true } } } }
+        event: { select: { organisationId: true } }
       }
     });
     if (order.status !== "paid" || (job.mode === "automatic" && order.ticketEmailSentAt)) {
       throw new EmailRequeueError("Order is not eligible for email requeue");
     }
     const organisationId = order.event.organisationId;
-    const staff = await tx.organisationStaff.findUnique({
-      where: { organisationId_userId: { organisationId, userId: actorUserId } },
-      select: { status: true, role: true }
-    });
-    const authorised = staff
-      ? staff.status === "active" && hasOrganisationPermission(staff.role, "orders:email_resend")
-      : order.event.organisation.accountUserId === actorUserId;
+    const authorised = roleHasPermission(await liveStaffRoleForUser(tx, organisationId, actorUserId), "orders:email_resend");
     if (!authorised) throw new EmailRequeueError("Actor lacks email resend permission for this organisation");
 
     const updated = await tx.emailOutbox.updateMany({

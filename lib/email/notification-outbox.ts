@@ -7,7 +7,7 @@ import { notificationTemplateSchema, renderNotification, renderedNotificationSch
 import { sendWithResend } from "./ticket-delivery";
 import { logInfo } from "@/lib/ops/logger";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
-import { hasOrganisationPermission } from "@/lib/permissions";
+import { liveStaffRoleForUser, roleHasPermission } from "@/lib/staff/live-authority";
 import { invitationIssuerRole } from "@/lib/staff/invite-authority";
 
 const retrySeconds = [60, 300, 900, 3600, 21600];
@@ -169,10 +169,7 @@ export async function requeueBusinessNotification(input: { jobId: string; organi
   if (input.reason.trim().length < 8 || input.reason.length > 500) throw new NotificationRequeueError("A review reason between 8 and 500 characters is required");
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT "id" FROM "Organisation" WHERE "id" = ${input.organisationId} FOR UPDATE`;
-    const staff = await tx.organisationStaff.findUnique({ where: { organisationId_userId: { organisationId: input.organisationId, userId: input.actorUserId } } });
-    const legacyMode = process.env.LEGACY_ORGANISATION_ACCESS_MODE ?? (process.env.NODE_ENV === "production" ? "deny" : "allow");
-    const owner = !staff && legacyMode === "allow" && await tx.organisation.findFirst({ where: { id: input.organisationId, accountUserId: input.actorUserId } });
-    if (!(staff?.status === "active" && hasOrganisationPermission(staff.role, "orders:email_resend")) && !owner) throw new NotificationRequeueError("Notification is unavailable");
+    if (!roleHasPermission(await liveStaffRoleForUser(tx, input.organisationId, input.actorUserId), "orders:email_resend")) throw new NotificationRequeueError("Notification is unavailable");
     const job = await tx.notificationOutbox.findFirst({ where: { id: input.jobId, organisationId: input.organisationId, privacy: "business" } });
     if (!job || job.status !== "failed" || job.acceptedAt || (job.expiresAt && job.expiresAt <= now) ||
         (job.firstAttemptAt && now.getTime() - job.firstAttemptAt.getTime() >= safeRetryWindowMs)) throw new NotificationRequeueError("Job is not eligible; provider review or a new business intent is required");

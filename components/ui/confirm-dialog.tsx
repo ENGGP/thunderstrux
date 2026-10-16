@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Button } from "./button";
 
 // Native <dialog>: showModal() traps focus, Escape cancels and focus returns
@@ -25,6 +25,7 @@ export function ConfirmDialog({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -39,6 +40,7 @@ export function ConfirmDialog({
 
   return (
     <dialog
+      aria-labelledby={titleId}
       className="m-auto w-[min(92vw,520px)] rounded-card border border-line bg-surface p-6 text-ink shadow-float backdrop:bg-brand-ink/40"
       onCancel={(event) => {
         // Escape cancels; it never confirms, and not while a request is in flight.
@@ -49,7 +51,7 @@ export function ConfirmDialog({
     >
       {open ? (
         <div className="grid gap-4">
-          <h2 className="text-xl font-semibold">{title}</h2>
+          <h2 className="text-xl font-semibold" id={titleId}>{title}</h2>
           <div className="text-sm text-ink-soft">{children}</div>
           <div className="flex flex-wrap justify-end gap-3">
             <Button disabled={busy} onClick={onCancel} type="button" variant="secondary">

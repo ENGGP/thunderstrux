@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]"]
 sources: [prisma/schema.prisma, prisma/migrations, lib/db/organisation-scope.ts]
@@ -542,6 +542,8 @@ T13 brings the chain to 40 migrations (still 23 models), ending in `202610200100
 T16a brings the chain to 41 migrations and 25 models, ending in `20261023010000_guest_access`. `GuestIdentity` holds one normalised email (a check enforces lower-case and trimmed) and when it was first proven. `GuestAccessGrant` holds one emailed link per row: purpose, unique token digest, safe return path, expiry, consumed and revoked times, and after redemption a unique session digest with its expiry (a check requires both together, and only on a consumed grant). `Order.guestIdentityId` (nullable, restrict) is for guest purchases in T16b, and `NotificationOutbox.guestAccessGrantId` (set null) lets the worker cancel a link's email once the link is used, replaced or revoked. `Order_buyer_capture_check` also accepts the provenance `verified_guest`. All additive; rollback leaves the tables unused. Lock order: the `GuestIdentity` row before its grants, and (from T16b) before the Event and Order rows.
 
 T16b brings the chain to 42 migrations (still 25 models), ending in `20261024010000_guest_checkout`: `CheckoutActorKind` gains `guest`, and `GuestAccessGrant.orderId` (restrict) scopes a purchase link to one order, with a check that `checkout` grants have no order and `purchase` grants always do. A guest checkout locks the `GuestIdentity` row in place of the User row, then the Event and TicketType as before. Rollback leaves the value and column unused.
+
+T16c needs no migration. A member claim locks User, then GuestIdentity, then Order, sets `Order.userId` and writes an `AuditLog` row (`order.guest_claimed`, the society's tenant, actor the member, metadata the guest identity). The buyer capture columns are unchanged, as their trigger requires.
 
 ## Ownership retirement
 

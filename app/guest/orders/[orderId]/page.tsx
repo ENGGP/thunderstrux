@@ -7,6 +7,8 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { GuestClaim } from "@/components/guest/guest-claim";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { canOpenGuestOrder, guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { formatDateRange, formatMoney } from "@/lib/format";
 import { getGuestOrder } from "@/lib/orders/member-tickets";
@@ -21,10 +23,10 @@ export const metadata: Metadata = { title: "Your order", referrer: "no-referrer"
 // session, shows the same page, so an order id alone reveals nothing.
 export default async function GuestOrderPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
-  const session = await readGuestSession((await cookies()).get(guestCookieName)?.value);
+  const [session, live] = await Promise.all([readGuestSession((await cookies()).get(guestCookieName)?.value), getLiveSession()]);
   const order = session && (await canOpenGuestOrder(session, orderId)) ? await getGuestOrder(orderId) : null;
 
-  if (!order) {
+  if (!order || !session) {
     return (
       <AuthShell title="Open your order from your email">
         <Card>
@@ -85,16 +87,59 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
               {organisation.refundPolicy ? <><dt className="text-ink-soft">Refunds</dt><dd className="text-ink-soft">{organisation.refundPolicy}</dd></> : null}
             </dl>
           ) : null}
-          {order.userId ? null : (
-            <div className="grid gap-1 rounded-card bg-surface-subtle p-4">
-              <p className="font-semibold text-ink">Keep your tickets in one place</p>
-              <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">Sign in or create an account with {order.buyerEmailSnapshot}, then come back here to add this order to it.</p>
-              <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`/login?callbackUrl=${encodeURIComponent(`/guest/orders/${order.id}`)}`}>Sign in or create an account</Link>
-            </div>
-          )}
+          <AccountClaim live={live} order={order} guestEmail={session.email} summary={`${event.title}, ${count} ${count === 1 ? "ticket" : "tickets"}`} />
           <p className="text-sm text-ink-muted">Lost this page? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your tickets</Link> sends a fresh link for each purchase.</p>
         </div>
       </Card>
     </CheckoutShell>
   );
+}
+
+type LiveSession = Awaited<ReturnType<typeof getLiveSession>>;
+
+// Where this guest order stands against the signed-in account, if any.
+function AccountClaim({ live, order, guestEmail, summary }: {
+  live: LiveSession;
+  order: { id: string; userId: string | null; status: string; buyerEmailSnapshot: string | null };
+  guestEmail: string;
+  summary: string;
+}) {
+  const member = live?.user.accountRole === "member" ? live.user : null;
+  const link = "font-semibold text-brand underline underline-offset-4";
+  if (order.userId) {
+    return order.userId === member?.id ? (
+      <Notice title="This order is in your account" tone="success">
+        <p>Find these tickets in <Link className={link} href="/tickets">My tickets</Link>.</p>
+      </Notice>
+    ) : (
+      <Notice title="Already in an account">
+        <p>This order has already been added to an account. Sign in with that account to see it in My tickets.</p>
+      </Notice>
+    );
+  }
+  if (order.status !== "paid") return null;
+  if (!member) {
+    return (
+      <div className="grid gap-1 rounded-card bg-surface-subtle p-4">
+        <p className="font-semibold text-ink">Keep your tickets in one place</p>
+        <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">Sign in or create an account with {guestEmail}, then come back here to add this order to it.</p>
+        <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`/login?callbackUrl=${encodeURIComponent(`/guest/orders/${order.id}`)}`}>Sign in or create an account</Link>
+      </div>
+    );
+  }
+  if (!member.emailVerifiedAt) {
+    return (
+      <Notice title="Verify your email to add this order">
+        <p><Link className={link} href={`/verify-email?callbackUrl=${encodeURIComponent(`/guest/orders/${order.id}`)}`}>Verify email</Link></p>
+      </Notice>
+    );
+  }
+  if (member.email !== guestEmail) {
+    return (
+      <Notice title="This order uses a different email">
+        <p className="[overflow-wrap:anywhere]">It was bought with {guestEmail}, and you&apos;re signed in as {member.email}. Only an account with the same verified email can add it.</p>
+      </Notice>
+    );
+  }
+  return <GuestClaim email={guestEmail} orderId={order.id} summary={summary} />;
 }

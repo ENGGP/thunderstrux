@@ -4,34 +4,16 @@ import { EventCard } from "@/components/events/event-card";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SocietyCard } from "@/components/organisations/society-card";
 import { buttonClasses } from "@/components/ui/button";
-import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getPublishedEvents } from "@/lib/events/public-events";
 import {
   discoverOrganisations,
   discoveryInput
 } from "@/lib/organisations/discovery";
-import {
-  PaginationError,
-  parsePaginationOptionsOrDefault
-} from "@/lib/pagination/cursor";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({
-  searchParams
-}: {
-  searchParams: Promise<{
-    limit?: string;
-    cursor?: string;
-    direction?: string;
-  }>;
-}) {
-  const {
-    limit: limitParam,
-    cursor: cursorParam,
-    direction: directionParam
-  } = await searchParams;
+export default function Home() {
   return (
     <>
       <main className="bg-paper">
@@ -71,11 +53,7 @@ export default async function Home({
 
         <div className="mx-auto grid max-w-page gap-14 px-4 py-12 md:px-8 md:py-16">
           <Suspense fallback={<HomeSkeleton />}>
-            <HomeListings
-              cursor={cursorParam}
-              direction={directionParam}
-              limit={limitParam}
-            />
+            <HomeListings />
           </Suspense>
           <section className="grid gap-4 rounded-feature bg-warm-paper p-8 md:grid-cols-[1fr_auto] md:items-center">
             <div>
@@ -112,71 +90,30 @@ function HomeSkeleton() {
   );
 }
 
-async function HomeListings({
-  limit: limitParam,
-  cursor: cursorParam,
-  direction: directionParam
-}: {
-  limit?: string;
-  cursor?: string;
-  direction?: string;
-}) {
-  let pagination = parsePaginationOptionsOrDefault(
-    new URLSearchParams({
-      ...(limitParam ? { limit: limitParam } : {}),
-      ...(cursorParam ? { cursor: cursorParam } : {}),
-      ...(directionParam ? { direction: directionParam } : {})
-    })
-  );
-  let result;
-
-  try {
-    result = await getPublishedEvents(pagination);
-  } catch (error) {
-    if (!(error instanceof PaginationError)) {
-      throw error;
-    }
-
-    pagination = {
-      limit: 25,
-      direction: "next",
-      invalid: true
-    };
-    result = await getPublishedEvents(pagination);
-  }
-
+// A short look ahead; the full, filtered list lives at /events.
+async function HomeListings() {
+  const result = await getPublishedEvents({ limit: 6 });
   const societies = await discoverOrganisations(
     discoveryInput(new URLSearchParams({ limit: "4" }))
   );
-  const paginationBaseParams = new URLSearchParams();
-
-  if (result.pageInfo.limit !== 25) {
-    paginationBaseParams.set("limit", String(result.pageInfo.limit));
-  }
-
-  function paginationHref(cursor: string, direction: "next" | "prev") {
-    const params = new URLSearchParams(paginationBaseParams);
-    params.set("cursor", cursor);
-    params.set("direction", direction);
-    return `/?${params.toString()}`;
-  }
 
   return (
     <>
       <section aria-labelledby="upcoming-events" className="grid gap-6">
-        <h2
-          className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink"
-          id="upcoming-events"
-        >
-          Upcoming events
-        </h2>
-
-        {pagination.invalid ? (
-          <Notice tone="warning">
-            Invalid pagination parameters were ignored. Showing the first
-            page.
-          </Notice>
-        ) : null}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2
+            className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink"
+            id="upcoming-events"
+          >
+            Upcoming events
+          </h2>
+          <Link
+            className="text-sm font-semibold text-brand underline"
+            href="/events"
+          >
+            Explore all events
+          </Link>
+        </div>
 
         {result.events.length === 0 ? (
           <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">
@@ -205,32 +142,6 @@ async function HomeListings({
             ))}
           </div>
         )}
-
-        {result.pageInfo.hasPreviousPage || result.pageInfo.hasNextPage ? (
-          <nav
-            aria-label="Public event pagination"
-            className="flex flex-wrap items-center justify-between gap-3"
-          >
-            {result.pageInfo.previousCursor ? (
-              <Link
-                className={buttonClasses({ variant: "secondary" })}
-                href={paginationHref(result.pageInfo.previousCursor, "prev")}
-              >
-                Previous
-              </Link>
-            ) : (
-              <span />
-            )}
-            {result.pageInfo.nextCursor ? (
-              <Link
-                className={buttonClasses({ variant: "secondary" })}
-                href={paginationHref(result.pageInfo.nextCursor, "next")}
-              >
-                Next
-              </Link>
-            ) : null}
-          </nav>
-        ) : null}
       </section>
 
       {societies.organisations.length > 0 ? (

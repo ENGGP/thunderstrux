@@ -15,7 +15,6 @@ import { parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { GET as getPublicEvents } from "@/app/api/public/events/route";
 import { GET as getPublicEvent } from "@/app/api/public/events/[eventId]/route";
 import OrganisationDetailsPage from "@/app/(public)/societies/[orgSlug]/page";
-import HomePage from "@/app/page";
 
 vi.mock("next-auth/react", () => ({
   useSession: () => ({ status: "unauthenticated" })
@@ -499,42 +498,6 @@ describe("public-safe pages and APIs", () => {
         message: expect.any(String)
       }
     });
-  });
-
-  test("homepage falls back to first page with warning for invalid pagination params", async () => {
-    const { organisation } = await createOrganisationAccount({
-      name: "Homepage Public Org",
-      slug: "homepage-public-org"
-    });
-    const event = await createEvent({
-      organisationId: organisation.id,
-      title: "Homepage Event",
-      status: "published"
-    });
-
-    const invalidLimitHtml = await renderPage(
-      await HomePage({ searchParams: Promise.resolve({ limit: "0" }) })
-    );
-    expect(invalidLimitHtml).toContain(
-      "Invalid pagination parameters were ignored. Showing the first page."
-    );
-    expect(invalidLimitHtml).toContain(event.title);
-
-    const invalidCursorHtml = await renderPage(
-      await HomePage({ searchParams: Promise.resolve({ cursor: "bad-cursor" }) })
-    );
-    expect(invalidCursorHtml).toContain(
-      "Invalid pagination parameters were ignored. Showing the first page."
-    );
-    expect(invalidCursorHtml).toContain(event.title);
-
-    const invalidDirectionHtml = await renderPage(
-      await HomePage({ searchParams: Promise.resolve({ direction: "invalid" }) })
-    );
-    expect(invalidDirectionHtml).toContain(
-      "Invalid pagination parameters were ignored. Showing the first page."
-    );
-    expect(invalidDirectionHtml).toContain(event.title);
   });
 
   test("organisation details page renders only public-safe data", async () => {

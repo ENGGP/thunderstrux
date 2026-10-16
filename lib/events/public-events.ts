@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { eventReadiness, salesOpen, type TicketTypeUnavailableReason } from "@/lib/events/event-readiness";
+import type { ExploreRange } from "@/lib/events/explore-filters";
 import { readEventInventory, sellableQuantity } from "@/lib/events/inventory";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
@@ -66,22 +67,37 @@ export type PublicEventDetail = {
 export async function getPublishedEvents({
   limit = 25,
   cursor,
-  direction = "next"
+  direction = "next",
+  title,
+  societySlug,
+  startFrom,
+  startBefore,
+  now = new Date()
 }: {
   limit?: number;
   cursor?: string;
   direction?: PaginationDirection;
-} = {}): Promise<PublicEventsPage> {
+  title?: string;
+  societySlug?: string;
+} & ExploreRange & { now?: Date } = {}): Promise<PublicEventsPage> {
   const decodedCursor = cursor ? decodeTimestampCursor("startTime", cursor) : null;
   const cursorWhere = decodedCursor
     ? ascendingCursorWhere("startTime", decodedCursor, direction)
     : {};
   const events = await prisma.event.findMany({
-    // Unlisted events open by direct link only; members-only events never appear publicly.
+    // Unlisted events open by direct link only; members-only events never appear
+    // publicly; ended events drop out of every list (PUB-001).
     where: {
       status: "published",
       visibility: "public",
-      ...cursorWhere
+      endTime: { gt: now },
+      ...(title ? { title: { contains: title, mode: "insensitive" as const } } : {}),
+      ...(societySlug ? { organisation: { slug: societySlug } } : {}),
+      AND: [
+        cursorWhere,
+        ...(startFrom ? [{ startTime: { gte: startFrom } }] : []),
+        ...(startBefore ? [{ startTime: { lt: startBefore } }] : [])
+      ]
     },
     orderBy: orderByForDirection("startTime", direction, "asc"),
     take: limit + 1,
@@ -113,6 +129,15 @@ export async function getPublishedEvents({
     events: page.items,
     pageInfo: page.pageInfo
   };
+}
+
+// The societies the Explore filter offers: those with a listed event still to come.
+export function getExploreSocieties(now = new Date()) {
+  return prisma.organisation.findMany({
+    where: { events: { some: { status: "published", visibility: "public", endTime: { gt: now } } } },
+    orderBy: { name: "asc" },
+    select: { name: true, slug: true }
+  });
 }
 
 const detailSelect = {

@@ -6,7 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { buttonClasses } from "@/components/ui/button";
 
 const exploreLinks = [
-  { href: "/", label: "Explore events" },
+  { href: "/events", label: "Explore events" },
   { href: "/societies", label: "Explore societies" }
 ];
 
@@ -15,11 +15,9 @@ const exploreLinks = [
 export default function Navbar() {
   const { data: session } = useSession();
   const pathname = usePathname() ?? "";
-  // Explore events is the home page today; everything else matches its section.
   // Dashboard pages have a full-height sidebar at the left edge, so the header spans the window to line up with it.
   const fullWidth = pathname.startsWith("/dashboard");
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const user = session?.user?.id ? session.user : null;
   const accountLinks = user
     ? [

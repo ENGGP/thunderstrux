@@ -8,7 +8,7 @@ export default async function SettingsPage() {
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
-      <PageHeader description="Paid ticket sales go to your society's Stripe account." title="Payments" />
+      <PageHeader description="Paid ticket sales go to your society's Stripe account. Free tickets work without it." title="Payments" />
       <div className="grid max-w-4xl gap-6">
         <StripeConnectSettings orgSlug={organisation.slug} />
       </div>

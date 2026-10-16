@@ -6,6 +6,7 @@ import { emitMetric } from "@/lib/ops/metrics";
 import {
   getStripe,
   getStripeConnectWebhookSecret,
+  isLiveStripeKey,
   StripeConfigurationError
 } from "@/lib/stripe";
 import { persistConnectedAccountStatus } from "@/lib/stripe/connect";
@@ -72,6 +73,13 @@ export async function POST(request: Request) {
     stripeEventId: event.id,
     eventType: event.type
   });
+
+  // A test-mode event reaching a live deployment (or the reverse) is ignored, not applied.
+  if (event.livemode !== isLiveStripeKey()) {
+    logError("stripe.webhook.mode_mismatch", { stripeEventId: event.id, eventLivemode: event.livemode, webhook: "stripe_connect" });
+    emitOperationalAlert("stripe_webhook_mode_mismatch", { stripeEventId: event.id, webhook: "stripe_connect" });
+    return NextResponse.json({ received: true, ignored: "mode_mismatch" });
+  }
 
   if (event.type === "account.updated") {
     const account = event.data.object as Stripe.Account;

@@ -1,8 +1,10 @@
 import type Stripe from "stripe";
-import type { Organisation } from "@prisma/client";
+import type { Organisation, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ApiErrorDetail } from "@/lib/api/errors";
-import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
+import { mfaGrantDigest } from "@/lib/security/csrf";
+import { MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
+import { getAppUrl, getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
 
 export type StripeConnectState =
   | "NOT_CONNECTED"
@@ -30,6 +32,8 @@ export type StripeConnectStatus = {
   actionUrl?: string;
   actionRequired?: string;
   error?: string;
+  // Orders still tied to this account; while any exist it cannot be disconnected.
+  openObligations?: number;
 };
 
 type ConnectOrganisation = Pick<
@@ -55,6 +59,34 @@ export class OrganisationStripeConnectNotFoundError extends Error {
   }
 }
 
+export class StripeDisconnectBlockedError extends Error {
+  constructor(readonly count: number) {
+    super(
+      `${count} ${count === 1 ? "order is" : "orders are"} still being paid or reviewed, and ${count === 1 ? "it needs" : "they need"} this Stripe account. Try again once they finish.`
+    );
+    this.name = "StripeDisconnectBlockedError";
+  }
+}
+
+// Orders that still depend on the connected account: being paid, or waiting for
+// compensation review or a refund. Pre-T10 orders have no seller snapshot.
+function openObligationsWhere(organisationId: string, accountId: string): Prisma.OrderWhereInput {
+  return {
+    event: { is: { organisationId } },
+    paymentKind: "stripe",
+    AND: [
+      { OR: [{ sellerStripeAccountId: accountId }, { sellerStripeAccountId: null }] },
+      {
+        OR: [
+          { status: "pending" },
+          { requiresCompensationReview: true },
+          { compensationRefundJob: { is: { state: { in: ["review_required", "auto_queued", "auto_processing", "refund_pending", "refund_failed"] } } } }
+        ]
+      }
+    ]
+  };
+}
+
 export class OrganisationStripeConnectValidationError extends Error {
   constructor(message: string, readonly details: ApiErrorDetail[] = []) {
     super(message);
@@ -62,11 +94,7 @@ export class OrganisationStripeConnectValidationError extends Error {
   }
 }
 
-function isLiveStripeMode() {
-  return process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ?? false;
-}
-
-function stripeDashboardUrl(accountId: string, livemode = isLiveStripeMode()) {
+function stripeDashboardUrl(accountId: string, livemode = isLiveStripeKey()) {
   const modeSegment = livemode ? "" : "test/";
   return `https://dashboard.stripe.com/${modeSegment}connect/accounts/${accountId}`;
 }
@@ -169,7 +197,7 @@ export function isOrganisationStripeReady(
   return Boolean(organisation.stripeAccountId && organisation.stripeChargesEnabled);
 }
 
-export async function createExpressAccount(orgId: string) {
+export async function createExpressAccount(orgId: string, actorUserId: string) {
   const organisation = await prisma.organisation.findUnique({
     where: { id: orgId },
     select: {
@@ -225,16 +253,28 @@ export async function createExpressAccount(orgId: string) {
     throw error;
   }
 
-  await prisma.organisation.update({
-    where: { id: organisation.id },
-    data: {
-      stripeAccountId: account.id,
-      stripeAccountStatus: "CONNECTED_INCOMPLETE",
-      stripeChargesEnabled: false,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: false
-    }
-  });
+  await prisma.$transaction([
+    prisma.organisation.update({
+      where: { id: organisation.id },
+      data: {
+        stripeAccountId: account.id,
+        stripeAccountStatus: "CONNECTED_INCOMPLETE",
+        stripeChargesEnabled: false,
+        stripePayoutsEnabled: false,
+        stripeDetailsSubmitted: false
+      }
+    }),
+    prisma.auditLog.create({
+      data: {
+        organisationId: organisation.id,
+        actorUserId,
+        action: "stripe_connect.account_created",
+        targetType: "Organisation",
+        targetId: organisation.id,
+        metadata: { stripeAccountId: account.id }
+      }
+    })
+  ]);
 
   console.info("Stripe Express account created", {
     organisationId: organisation.id,
@@ -307,49 +347,65 @@ export async function persistConnectedAccountStatus(account: Stripe.Account) {
   });
 }
 
-export async function disconnectAccount(orgId: string) {
-  const organisation = await prisma.organisation.findUnique({
-    where: { id: orgId },
-    select: {
-      id: true,
-      stripeAccountId: true
-    }
-  });
-
-  if (!organisation) {
-    throw new Error("Organisation does not exist");
+// Unlinks the account locally; the Stripe account and its money are untouched,
+// and past orders keep the account they were paid to. Outside MFA "off", the
+// actor confirms with a fresh authenticator code.
+export async function disconnectAccount(
+  orgId: string,
+  { actor, mfaCode }: { actor: { id: string; mfaSessionId?: string }; mfaCode?: string }
+) {
+  if (mfaEnforcementMode() !== "off") {
+    if (!mfaCode) throw new MfaInputError("Enter your authenticator code to disconnect Stripe");
+    const digest = mfaGrantDigest(actor.mfaSessionId);
+    if (!digest) throw new MfaRequiredError();
+    await verifyStaffMfa(actor.id, mfaCode, digest);
   }
 
-  await prisma.organisation.update({
-    where: { id: organisation.id },
-    data: {
-      stripeAccountId: null,
-      stripeAccountStatus: "NOT_CONNECTED",
-      stripeChargesEnabled: false,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: false
-    }
-  });
+  await prisma.$transaction(async (tx) => {
+    // Locked so a concurrent connect or disconnect sees one outcome.
+    const [organisation] = await tx.$queryRaw<Array<{ id: string; stripeAccountId: string | null }>>`
+      SELECT "id", "stripeAccountId" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE
+    `;
+    if (!organisation) throw new OrganisationStripeConnectNotFoundError();
+    if (!organisation.stripeAccountId) return;
 
-  console.info("Stripe account disconnected locally", {
-    organisationId: organisation.id,
-    previousStripeAccountId: organisation.stripeAccountId
+    const open = await tx.order.count({ where: openObligationsWhere(organisation.id, organisation.stripeAccountId) });
+    if (open > 0) throw new StripeDisconnectBlockedError(open);
+
+    await tx.organisation.update({
+      where: { id: organisation.id },
+      data: {
+        stripeAccountId: null,
+        stripeAccountStatus: "NOT_CONNECTED",
+        stripeChargesEnabled: false,
+        stripePayoutsEnabled: false,
+        stripeDetailsSubmitted: false
+      }
+    });
+    await tx.auditLog.create({
+      data: {
+        organisationId: organisation.id,
+        actorUserId: actor.id,
+        action: "stripe_connect.disconnected",
+        targetType: "Organisation",
+        targetId: organisation.id,
+        metadata: { previousStripeAccountId: organisation.stripeAccountId }
+      }
+    });
   });
 }
 
+// A failed refresh keeps the last known flags, so sales follow them until a
+// refresh succeeds; the account.updated webhook keeps them current meanwhile.
 export async function markAccountStatusError(
   orgId: string,
   accountId: string,
   message: string
 ): Promise<StripeConnectStatus> {
-  await prisma.organisation.update({
+  const known = await prisma.organisation.update({
     where: { id: orgId },
-    data: {
-      stripeAccountStatus: "ERROR",
-      stripeChargesEnabled: false,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: false
-    }
+    data: { stripeAccountStatus: "ERROR" },
+    select: { stripeChargesEnabled: true, stripePayoutsEnabled: true, stripeDetailsSubmitted: true }
   });
 
   return {
@@ -357,9 +413,9 @@ export async function markAccountStatusError(
     connected: true,
     state: "ERROR",
     ready: false,
-    charges_enabled: false,
-    payouts_enabled: false,
-    details_submitted: false,
+    charges_enabled: known.stripeChargesEnabled,
+    payouts_enabled: known.stripePayoutsEnabled,
+    details_submitted: known.stripeDetailsSubmitted,
     currently_due: [],
     eventually_due: [],
     disabled_reason: null,
@@ -368,8 +424,8 @@ export async function markAccountStatusError(
   };
 }
 
-export async function startOrganisationStripeOnboarding(orgId: string) {
-  const { accountId, orgSlug } = await createExpressAccount(orgId);
+export async function startOrganisationStripeOnboarding(orgId: string, actorUserId: string) {
+  const { accountId, orgSlug } = await createExpressAccount(orgId, actorUserId);
   return createOnboardingLink(accountId, orgSlug);
 }
 
@@ -426,8 +482,10 @@ export async function getOrganisationStripeConnectStatus(orgId: string) {
     return notConnectedStatus();
   }
 
+  const openObligations = await prisma.order.count({ where: openObligationsWhere(orgId, organisation.stripeAccountId) });
+
   try {
-    return await getAccountStatus(organisation.stripeAccountId);
+    return { ...(await getAccountStatus(organisation.stripeAccountId)), openObligations };
   } catch (error) {
     console.error("Stripe Connect status refresh failed", {
       organisationId: orgId,
@@ -439,9 +497,10 @@ export async function getOrganisationStripeConnectStatus(orgId: string) {
       throw error;
     }
 
-    const message =
-      error instanceof Error ? error.message : "Unable to refresh Stripe status";
-
-    return markAccountStatusError(orgId, organisation.stripeAccountId, message);
+    // The provider's own message stays in the log, not the response.
+    return {
+      ...(await markAccountStatusError(orgId, organisation.stripeAccountId, "Thunderstrux couldn't reach Stripe to refresh this account.")),
+      openObligations
+    };
   }
 }

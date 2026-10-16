@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server";
-import {
-  badRequest,
-  forbidden,
-  notFound,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireStripeConnectCapability,
-  requireOrganisationStripeConnectAccess
-} from "@/lib/auth/access";
-import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
+import { mapRouteError, validationError } from "@/lib/api/errors";
+import { requireOrganisationStripeConnectAccess, requireStripeConnectCapability } from "@/lib/auth/access";
+import { requireOrganisationId } from "@/lib/db/organisation-scope";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { disconnectAccount, notConnectedStatus } from "@/lib/stripe/connect";
+import { connectRouteRules } from "@/lib/stripe/http";
 import { validateJson } from "@/lib/validators";
-import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
+import { disconnectAccount, notConnectedStatus } from "@/lib/stripe/connect";
+import { stripeDisconnectSchema } from "@/lib/validators/stripe-connect";
 
+// Refused while orders still depend on the account; needs a fresh authenticator code when staff MFA is on.
 export async function POST(request: Request) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
 
@@ -27,8 +18,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    await requireStripeConnectCapability();
-    const validation = await validateJson(request, organisationConnectSchema);
+    const user = await requireStripeConnectCapability();
+    const validation = await validateJson(request, stripeDisconnectSchema);
 
     if (!validation.success) {
       return validationError(validation.details);
@@ -46,44 +37,19 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    await disconnectAccount(organisationId);
+    // Authenticator guesses share the staff verification limit.
+    if (validation.data.mfaCode) {
+      const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [user.id] });
+      if (codeLimit) return codeLimit;
+    }
+
+    await disconnectAccount(organisationId, { actor: user, mfaCode: validation.data.mfaCode });
 
     return NextResponse.json({
       disconnected: true,
       status: notConnectedStatus()
     });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      if (error.message === "Organisation not found or access denied") {
-        return notFound("Organisation was not found");
-      }
-
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationScopeError) {
-      return badRequest(error.message, [
-        { path: ["organisationId"], message: error.message }
-      ]);
-    }
-
-    console.error("Stripe Connect disconnect failed", { error });
-    return NextResponse.json(
-      {
-        error: {
-          code: "STRIPE_DISCONNECT_ERROR",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Unable to disconnect Stripe account",
-          details: []
-        }
-      },
-      { status: 500 }
-    );
+    return mapRouteError(error, { operation: "stripe_connect.disconnect", request, rules: connectRouteRules });
   }
 }

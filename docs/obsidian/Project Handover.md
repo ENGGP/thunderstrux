@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-21
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-15]]", "[[Project Handover 2026-10-12]]"]
@@ -13,7 +13,7 @@ This is the only current handover. It covers the session that began on **2026-10
 
 ## Current State
 
-**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified; Package 4 is in progress (T10, T11a, T12 and T14 merged; T11b and T13 merged; Wave 1b is complete once the checkout state screens merge). F1 (one staff authority rule) is merged.** Completion does not establish full MVP or hosted production readiness. See the [[../MVP_READINESS_PLAN|Readiness Plan]] for packages, dependencies, substeps and detailed evidence.
+**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified; Package 4 is in progress (T10, T11a, T12 and T14 merged; T11b and T13 merged; Wave 1b is complete: the checkout state screens merged as #80). Wave 2a is in progress: design round A2 batch 1 is approved and T17 (Connect safety and fee disclosure) is in review. F1 (one staff authority rule) is merged.** Completion does not establish full MVP or hosted production readiness. See the [[../MVP_READINESS_PLAN|Readiness Plan]] for packages, dependencies, substeps and detailed evidence.
 
 | Package | Tasks | Delivered capability | Evidence |
 | --- | --- | --- | --- |
@@ -62,7 +62,8 @@ Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CL
 | Section 9 decisions for T11b and T13 | [#77](https://github.com/ENGGP/thunderstrux/pull/77) | Merged as `7450521`, docs only. |
 | T11b event builder with society-zone times, dollar prices and an event image | [#78](https://github.com/ENGGP/thunderstrux/pull/78) | Merged as `9f582c3`. Approved design round A1 (two passes on the canvas). Migration `20261019010000_event_hero_image`. Baseline `p216-d0899b4253407dec21cf5bcd` (433/433 integration tests in 55 files, clean audit); browser `p216-1c8a4d6d055cadc00fba80e1` (3 MFA, 25 desktop/mobile including the builder journey, 7 webhook checks); operations `p217-ci-19bf14a2b9` (39 migrations, restore). Closes EVT-001 and EVT-002. |
 | T13 free tickets through one checkout page | [#79](https://github.com/ENGGP/thunderstrux/pull/79) | Merged as `98315ed`. Migration `20261020010000_free_ticket_lifecycle`. Baseline `p216-1fceb3bee3fe118fb8883f7b` (438/438 integration tests in 56 files, clean audit); browser `p216-f1d5be477d43e50f63ed8f71` (3 MFA, 26 desktop/mobile including the free journey, 7 webhook checks); operations `p217-ci-2f0cc04dbc` (40 migrations, restore). |
-| A1 checkout state screens | [#80](https://github.com/ENGGP/thunderstrux/pull/80) | In review, rebased onto `main` after #79 merged. Checkout refusal details carry `reason` and `value`; the checkout page shows the approved screen for a changed price, sold out, fewer left, closed sales, payments unavailable and still confirming. No migration. Baseline `p216-dd3c0317cd84b9e684688b2e` on `0f72f9a` (438/438 integration tests in 56 files, clean audit); browser `p216-48b7445886b3aee6bd04c983` on `a074e9b` (3 MFA, 29 desktop/mobile including `checkout-states.spec.ts` at 390 and 1280px, 7 webhook checks). An earlier browser run, `p216-48c05b428e0fa5a4ac655ebe`, failed two assertions (an older test expected the raw onboarding message; a locator also matched Next's route announcer), fixed in tests only. |
+| A1 checkout state screens | [#80](https://github.com/ENGGP/thunderstrux/pull/80) | Merged as `21db2a3`. Checkout refusal details carry `reason` and `value`; the checkout page shows the approved screen for a changed price, sold out, fewer left, closed sales, payments unavailable and still confirming. No migration. Baseline `p216-dd3c0317cd84b9e684688b2e` on `0f72f9a` (438/438 integration tests in 56 files, clean audit); browser `p216-48b7445886b3aee6bd04c983` on `a074e9b` (3 MFA, 29 desktop/mobile including `checkout-states.spec.ts` at 390 and 1280px, 7 webhook checks). An earlier browser run, `p216-48c05b428e0fa5a4ac655ebe`, failed two assertions (an older test expected the raw onboarding message; a locator also matched Next's route announcer), fixed in tests only. |
+| T17 Connect safety and fee disclosure | PR to follow on `codex/t17-connect-safety` | In review. Built from design round A2 batch 1 (Payments and public event pages; both passes approved on the canvas, sections 15 and 16). Baseline `p216-2e9b2e4904001d2c6781a9bf` (447/447 integration tests in 57 files, clean audit); browser `p216-7e31b4a0076715e77e249310` (3 MFA, 30 desktop/mobile, 7 webhook checks). No migration. Narrows API-001. |
 
 Every run above reports cleanup complete with zero run-owned containers, volumes or networks.
 
@@ -72,7 +73,7 @@ Every run above reports cleanup complete with zero run-owned containers, volumes
 
 ## Next Safe Actions
 
-1. Review and merge the A1 checkout state screens PR ([#80](https://github.com/ENGGP/thunderstrux/pull/80)), which completes Wave 1b. Then Wave 2a (T17 Connect safety and fee disclosure, T15a anonymous event pages). Paid memberships, merchandise and T15 anonymous event pages remain later waves.
+1. Review and merge the T17 Connect safety PR. Then T15a (anonymous event pages and draft preview), built from the approved A2 batch 1 artboards.
 2. Schedule `checkout-recovery-worker` every minute alongside the other workers when hosting is chosen (T42 owns schedules).
 3. Before activating account lifecycle, obtain independent security and migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 4. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work.

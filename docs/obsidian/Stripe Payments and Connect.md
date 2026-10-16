@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-21
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]"]
 sources: [lib/stripe/connect.ts, lib/payments/checkout-creation.ts]
@@ -194,16 +194,16 @@ lib/stripe/connect.ts
 
 Responsibilities:
 
-- `startOrganisationStripeOnboarding(orgId)`: composes account creation/reuse with onboarding-link creation.
+- `startOrganisationStripeOnboarding(orgId, actorUserId)`: composes account creation/reuse with onboarding-link creation. Creating an account writes the audit entry `stripe_connect.account_created` with the actor and account id (T17).
 - `continueOrganisationStripeOnboarding(orgId)`: validates a connected account and creates a new onboarding link.
-- `getOrganisationStripeConnectStatus(orgId)`: resolves the organisation, returns canonical local states, refreshes connected accounts, and persists readiness.
+- `getOrganisationStripeConnectStatus(orgId)`: resolves the organisation, returns canonical local states, refreshes connected accounts, and persists readiness. A connected status also carries `openObligations`, the count of orders that still depend on the account.
 - `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`. If Stripe rejects account creation because platform setup is incomplete, stores `PLATFORM_NOT_READY` and throws `StripeConnectPlatformNotReadyError`.
 - `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid `/dashboard/settings` return and refresh URLs.
 - `getAccountStatus(accountId)`: retrieves the live Stripe account, maps it to a lifecycle state, and persists local readiness flags.
-- `disconnectAccount(orgId)`: clears the local Stripe fields. It does not delete the Stripe account in Stripe.
+- `disconnectAccount(orgId, { actor, mfaCode })` (T17): when staff MFA is not `off`, verifies a fresh authenticator code first. Under the Organisation row lock it refuses (`StripeDisconnectBlockedError`, 409) while any Stripe order of this society for that account (or with no seller snapshot) is pending, under compensation review, or has a compensation refund that is not `refunded` or `recovered`. Otherwise it clears the local Stripe fields and writes `stripe_connect.disconnected` with the previous account id. With no account it only resets a blocked `PLATFORM_NOT_READY` state. It never deletes the Stripe account, and past orders keep the account on their snapshot.
 - `notConnectedStatus()`: returns the canonical no-account status payload.
 - `platformNotReadyStatus()`: returns the canonical platform setup block payload.
-- `markAccountStatusError(...)`: stores `ERROR` when status refresh cannot retrieve the account.
+- `markAccountStatusError(...)`: stores `ERROR` when status refresh cannot retrieve the account, but keeps the last known charges, payouts and details flags, so sales follow them until a refresh succeeds (T17). The response says Thunderstrux couldn't reach Stripe; the provider's message stays in the log.
 
 The service layer does not decide whether the current user is allowed to perform an action. API routes perform live capability and target-organisation permission checks before calling service functions.
 
@@ -240,13 +240,13 @@ Settings page
 
 Control buttons:
 
-- `Connect Stripe Account`: shown for `NOT_CONNECTED`.
+The Payments page (T17, design round A2) shows the account as two rows, **Can take payments** (charges enabled) and **Can receive payouts** (payouts enabled), each with its next action, so a society that can sell but has no bank account keeps selling under an amber `Payouts not set up` badge. A Fees card works the 10% fee through a $20.00 example (the buyer pays $20.00, Thunderstrux keeps $2.00, the society receives $18.00, before Stripe's own fees) from `calculatePlatformFee`.
+
+- `Connect Stripe`: shown for `NOT_CONNECTED`.
 - `Open Stripe Platform Settings` and `Retry after completion`: shown for `PLATFORM_NOT_READY`.
-- `Continue onboarding`: shown for `CONNECTED_INCOMPLETE`.
-- `Fix account`: shown for `RESTRICTED`.
-- `Retry status check`: shown for `ERROR`.
-- `Open in Stripe dashboard`: shown when an account id is available.
-- `Disconnect Stripe account`: shown when connected and also for `PLATFORM_NOT_READY` to clear the local blocked state. It asks for confirmation first.
+- `Continue Stripe setup`: shown for `CONNECTED_INCOMPLETE`; `Fix in Stripe` for `RESTRICTED`; `Add a bank account in Stripe` when ready without payouts.
+- `Refresh status` (or `Try again` for `ERROR`) and `Open Stripe dashboard`: shown when connected.
+- `Disconnect Stripe account`: shown when connected and for `PLATFORM_NOT_READY`. While orders depend on the account it is disabled under "You can't disconnect right now" with the count. Its confirmation asks for an authenticator code when staff MFA is on.
 
 Stripe connected-account dashboard link format:
 
@@ -255,7 +255,7 @@ https://dashboard.stripe.com/test/connect/accounts/{accountId}
 https://dashboard.stripe.com/connect/accounts/{accountId}
 ```
 
-The code chooses test vs live from `STRIPE_SECRET_KEY`.
+The code chooses test vs live from `STRIPE_SECRET_KEY` (`isLiveStripeKey`: `sk_live_` or `rk_live_`). Since T17 `getStripe()` refuses a live key unless `NODE_ENV` is `production`, and both webhooks acknowledge an event whose `livemode` differs from the key's mode with `{ ignored: "mode_mismatch" }`, log `stripe.webhook.mode_mismatch` and raise `stripe_webhook_mode_mismatch`, changing nothing.
 
 Platform profile link:
 
@@ -263,7 +263,7 @@ Platform profile link:
 https://dashboard.stripe.com/settings/connect/platform-profile
 ```
 
-Disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the Stripe connected account. After disconnect, clicking `Connect Stripe Account` creates a new account unless the old `acct_...` value is restored manually.
+Disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the Stripe connected account. After disconnect, clicking `Connect Stripe` creates a new account unless the old `acct_...` value is restored manually.
 
 Manual reconnect to a previously disconnected account:
 

@@ -32,7 +32,7 @@ test("members register for free tickets through the checkout page without Stripe
   await page.getByRole("button", { name: "Confirm free registration" }).click();
   await expect(page.getByRole("heading", { name: "Free registration confirmed" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Ticket numbers" }).getByRole("listitem")).toHaveCount(2);
-  await page.screenshot({ path: "test-results/free-confirmed-390.png", fullPage: true });
+  await page.screenshot({ path: "test-results/free-confirmed-1280.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 900 });

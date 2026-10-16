@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-20
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -488,7 +488,7 @@ Rules:
 - Auth required.
 - Event-management role required.
 - Asking for the status the event already has returns it unchanged (a retried request cannot flip it back). Otherwise a stale `version` returns `409 CONFLICT`.
-- Publishing applies the shared readiness rules in `lib/events/event-readiness.ts`: title, description and location; end after start; a sales close time in the future and not after the end; at least one ticket type with remaining quantity; and at least one type that can be bought now (a paid type when the society can take payments; free types count once T13 adds free checkout). Until then an event needs payments set up to publish, and a free-only event is refused with `Free tickets are not available yet`. Each blocker comes back as a 400 detail with its field.
+- Publishing applies the shared readiness rules in `lib/events/event-readiness.ts`: title, description and location; end after start; a sales close time in the future and not after the end; at least one ticket type with remaining quantity; and at least one type that can be bought now (a free type, or a paid type when the society can take payments). Each blocker comes back as a 400 detail with its field.
 - Unpublishing is blocked after orders exist.
 - Each change is audited (`event.published`, `event.unpublished`) and increments `version`.
 
@@ -789,7 +789,7 @@ Confirms a manual compensation refund only after retrieving and verifying matchi
 
 ### `POST /api/payments/checkout/event`
 
-Creates a Stripe Checkout Session for a ticket purchase.
+Starts a ticket purchase. The locked price decides the path: a free type is registered and fulfilled in the same transaction (T13); a paid type gets a Stripe Checkout Session. The dashboard reaches it from the checkout page `/events/[eventId]/checkout`.
 
 Request:
 
@@ -810,15 +810,14 @@ Rules:
 - Event must be published.
 - Ticket type must belong to event.
 - Organisation is resolved server-side from the event.
-- Organisation must be Stripe-ready.
-- Creates a local pending `Order`.
-- Creates an active `TicketReservation` after checkout preconditions pass.
+- Paid types: the organisation must be Stripe-ready; checkout creates a pending `Order` and an active `TicketReservation`.
+- Free types: no Stripe configuration is read and nothing is held. One transaction creates a fulfilled `Order` (`paymentKind: free`, `status: paid`, total and fee 0), its tickets, one stock decrement, the `order_created` and `free_fulfilled` lifecycle events and the automatic ticket email. If the email cannot be queued, nothing is created.
 - Uses 30-minute reservation expiry and sets Stripe Checkout `expires_at` to match.
 - Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}` for dev fallback diagnostics.
 - Since T12 every rule is checked under the buyer, event and ticket type locks: publication, sale state and close time, the shared readiness eligibility, and sellable stock = min(remaining minus that type's active holds, capacity minus valid issued tickets and all active holds).
 - `quantity` is 1 to 10 per order.
 - `idempotencyKey` (16–128 letters, digits, `-` or `_`) identifies one purchase intent. Repeating it with the same selection returns the same checkout; with a different selection it is `409 CONFLICT`.
-- Responses: `200 { url }` to redirect to Stripe, or `202 { attemptId, status: "processing" }` when Stripe's answer is not known yet (the order and hold are kept).
+- Responses: `200 { kind: "stripe", url }` to redirect to Stripe; `200 { kind: "fulfilled", orderId }` for a free registration, or a replay of a checkout whose order is already fulfilled; or `202 { attemptId, status: "processing" }` when Stripe's answer is not known yet (the order and hold are kept).
 - `expectedUnitPrice` is the unit price in cents the buyer was shown. If the locked price differs, the response is `409 CONFLICT` with a `expectedUnitPrice` detail naming the new price, and no order or hold is created.
 
 ### `GET /api/payments/checkout/attempts/[attemptId]`

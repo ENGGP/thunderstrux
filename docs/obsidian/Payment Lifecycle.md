@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-20
 owner: engineering
 related: ["[[Stripe Payments and Connect]]", "[[Email Delivery Implementation]]"]
 sources: [lib/payments/checkout-reconciliation.ts, lib/payments/order-lifecycle.ts]
@@ -21,6 +21,12 @@ Closure retains original Order/User identifiers, tickets, attendance and lifecyc
 Checkout records what was bought when it creates the order: `paymentKind` (`stripe` or `free`; required with no default), the purchased ticket type name, seller name and connected Stripe account, currency, the platform fee in cents and its policy version (`platform_fee_10_percent_v1`), `snapshotVersion`, and the buyer contact with provenance `purchase`. These are the values the Stripe Session charges, and later edits to the ticket type, society or profile never change them. Fulfilment sets `fulfilledAt` with `paidAt` and numbers each ticket with a unique `(orderId, issueSequence)`, so a second issuance for the same order fails instead of adding tickets. Tickets carry `validity` (`active`, `void`, `refund_review`); only active tickets appear in the wallet, ticket email and door list.
 
 `lib/purchases/projection.ts` turns status, kind and compensation review into the one displayed status: Processing, Paid, Free, Payment review, Failed or Expired. Free orders keep the compatible `status = paid` and `paidAt`, so money queries must filter on `paymentKind`, not status. Legacy rows keep unknown names, sellers and fees as null; readers show today's ticket name followed by "(historical label unavailable)" and never write it back. Migration `20261015010000_ticket_purchase_snapshots` backfills only known facts: every existing order is Stripe (checkout always rejected zero totals), `fulfilledAt` is the first ticket's creation time for paid orders, and existing tickets are numbered by `(createdAt, id)`.
+
+## Free Registrations (T13)
+
+`lib/payments/free-ticket-issuance.ts` fulfils a zero-price selection where checkout locks it (User, Event, then TicketType), after the same sale-state, readiness, price and sellable-stock checks as a paid checkout. It writes a free `Order` (`paymentKind: free`, `status: paid`, `paidAt = fulfilledAt`, unit price, total and fee 0, no seller Stripe account), numbered tickets, one stock decrement, `order_created` and `free_fulfilled` lifecycle events, a `CheckoutAttempt` without a reconcile time (so the recovery worker never claims it) and the automatic ticket email, all in one transaction. No Stripe call, fee calculation or hold. A replay with the same key returns the same order.
+
+Free orders count as sold tickets (the Summary splits paid and free) but never as revenue: revenue by day and the overview's monthly revenue read `paymentKind: stripe`. The order page says nothing was charged and hides the refund and Stripe session controls, and marking a free order refunded is refused. Cancelling a free registration arrives with T18c.
 
 ## Checkout Attempts (T14a)
 

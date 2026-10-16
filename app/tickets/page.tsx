@@ -6,12 +6,13 @@ import { PersonalShell } from "@/components/layout/personal-shell";
 import { buttonClasses } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { ListSkeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { DateRail } from "@/components/events/date-rail";
 import {
   AuthenticationRequiredError,
   requireAuthenticatedUser
 } from "@/lib/auth/access";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatPrice } from "@/lib/format";
 import { getMemberTicketOrders } from "@/lib/orders/member-tickets";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import {
@@ -139,18 +140,21 @@ async function TicketOrders({
               <li className="flex gap-4 rounded-card border border-line bg-surface p-5" key={order.id}>
                 <DateRail date={order.event.startTime} timeZone={timeZone} />
                 <div className="grid min-w-0 flex-1 gap-1">
-                  <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">
-                    <Link className="underline-offset-4 hover:underline" href={`/events/${order.event.id}`}>
-                      {order.event.title}
-                    </Link>
-                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">
+                      <Link className="underline-offset-4 hover:underline" href={`/events/${order.event.id}`}>
+                        {order.event.title}
+                      </Link>
+                    </h2>
+                    <StatusBadge status={order.paymentKind === "free" ? "free" : "paid"} />
+                  </div>
                   <p className="text-sm text-ink-soft">
                     {formatDateTime(order.event.startTime, { dateStyle: "full", timeZone })} ·{" "}
                     {order.event.organisation.name}
                   </p>
                   <p className="text-sm text-ink">
                     {order.quantity} × {purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name)} ·{" "}
-                    <span className="tabular-nums">{formatMoney(order.totalAmount)}</span>
+                    <span className="tabular-nums">{formatPrice(order.totalAmount)}</span>
                   </p>
                   {order.tickets.length > 0 ? (
                     <ul aria-label="Ticket numbers" className="mt-1 flex flex-wrap gap-2">
@@ -168,7 +172,7 @@ async function TicketOrders({
                     <p className="text-sm text-ink-soft">Tickets have not been issued for this order yet.</p>
                   )}
                   <p className="text-[13px] text-ink-muted">
-                    Bought {formatDateTime(order.paidAt ?? order.createdAt)} ·{" "}
+                    {order.paymentKind === "free" ? "Registered" : "Bought"} {formatDateTime(order.paidAt ?? order.createdAt)} ·{" "}
                     <span title={order.id}>Order {order.id.slice(-6).toUpperCase()}</span>
                   </p>
                 </div>

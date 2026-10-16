@@ -12,7 +12,7 @@ import {
   getOrganisationEventRevenueSeries
 } from "@/lib/events/event-analytics";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
 type OrganiserEventPageProps = {
@@ -54,7 +54,11 @@ export default async function OrganiserEventPage({
   }
 
   const tiles = [
-    { label: "Tickets sold", value: analytics.totals.sold, note: "From paid orders" },
+    {
+      label: "Tickets sold",
+      value: analytics.totals.sold,
+      note: analytics.totals.free > 0 ? `${analytics.totals.sold - analytics.totals.free} paid, ${analytics.totals.free} free` : "From paid orders"
+    },
     {
       label: "Tickets left",
       value: analytics.totals.remaining,
@@ -111,7 +115,7 @@ export default async function OrganiserEventPage({
                       <th className="py-3.5 text-left font-semibold text-ink [overflow-wrap:anywhere]" scope="row">
                         {ticketType.name}
                       </th>
-                      <td className="px-2 py-3.5 text-right">{ticketType.price > 0 ? formatMoney(ticketType.price) : "Free"}</td>
+                      <td className="px-2 py-3.5 text-right">{formatPrice(ticketType.price)}</td>
                       <td className="px-2 py-3.5 text-right">{ticketType.sold}</td>
                       <td className="px-2 py-3.5 text-right">{event.heldByType[ticketType.id] ?? 0}</td>
                       <td className="px-2 py-3.5 text-right">{ticketType.remaining}</td>
@@ -171,7 +175,7 @@ export default async function OrganiserEventPage({
           <ul className="mt-3 grid list-disc gap-2 pl-5 text-[15px] text-ink">
             <li>{event.visibility === "unlisted" ? "Published, link only: not listed on Explore events" : "Published and listed publicly"}</li>
             {event.blockers
-              .filter((blocker) => ["payments_unavailable", "free_unavailable", "no_stock"].includes(blocker.code))
+              .filter((blocker) => ["payments_unavailable", "sold_out", "no_stock"].includes(blocker.code))
               .map((blocker) => (
                 <li className="text-warning" key={blocker.code}>{blocker.message}</li>
               ))}

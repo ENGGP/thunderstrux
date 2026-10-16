@@ -66,9 +66,12 @@ export async function POST(request: Request) {
       idempotencyKey: validation.data.idempotencyKey
     });
 
-    // 202: the Stripe outcome is not known yet; the buyer polls the attempt.
+    // fulfilled: a free registration (or a replay of a finished checkout) has its
+    // tickets; stripe: go to the Session; 202: the Stripe outcome is not known
+    // yet and the buyer polls the attempt.
+    if (result.status === "fulfilled") return NextResponse.json({ kind: "fulfilled", orderId: result.orderId });
     return result.status === "redirect"
-      ? NextResponse.json({ url: result.url })
+      ? NextResponse.json({ kind: "stripe", url: result.url })
       : NextResponse.json({ attemptId: result.attemptId, status: "processing" }, { status: 202 });
   } catch (error) {
     if (error instanceof AuthenticationRequiredError) {

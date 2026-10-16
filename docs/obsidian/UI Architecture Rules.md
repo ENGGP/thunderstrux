@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-20
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -184,7 +184,9 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard/create` uses the auth shell and asks only for the society name. [[Society Profiles and Assets]] owns their full contracts.
 
-`/events/[eventId]` shows the date range with its time zone and the location under the title. The buy box offers one ticket choice (sold-out types disabled), one `Quantity` (hint "Up to 10 per order") and `Buy tickets` with the running total. It sends the price it showed and one idempotency key per purchase intent (a new key when the ticket or quantity changes or the server answers; the same key after a lost response). If the price changed, the server's 409 message is shown and the page refreshes to the new price. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds; a signed-in member without a verified email sees `Verify your email to buy tickets` with a link instead. The checkout API still enforces verification. The home page streams its event and society listings behind a skeleton under the hero; `/societies` and `/events/[eventId]` keep their public `loading.tsx`, built from `Skeleton`.
+`/events/[eventId]` shows the date range with its time zone and the location under the title. The buy box offers one ticket choice (price or Free, "N left", sold-out types disabled), one `Quantity` (hint "Up to 10 per order") and `Get free tickets` or `Buy tickets` with the running total, then opens the checkout page.
+
+`/events/[eventId]/checkout?ticketTypeId=&quantity=` (T13) is the one review page for every ticket purchase, in `CheckoutShell` (`components/layout/checkout-shell.tsx`: "Booking for {society}", Change tickets, steps) with `MoneySummary` (`components/purchases/money-summary.tsx`). It shows the tickets and total ("Free" and "No payment needed." for a free registration; "No booking fee" for paid), who the tickets go to, the 30-minute hold for paid tickets, and the society's refund policy and support email when set. The event sits in the aside with the total and the one action, `Confirm free registration` or `Pay $X.XX` (`components/purchases/checkout-action.tsx`). The action sends the price shown and one idempotency key per reviewed quote; a 409 price change shows the server message and reloads the page at the new price. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds. An unverified member sees `Verify your email to continue` instead of the action; the API still enforces verification. A free registration, or a polled attempt that completes, lands on `/events/[eventId]/checkout/confirmed?orderId=`: the buyer's own order for that event, its ticket numbers, `View my tickets` and `Back to the event`. My tickets badges each order Paid or Free and says Registered for free orders. The home page streams its event and society listings behind a skeleton under the hero; `/societies` and `/events/[eventId]` keep their public `loading.tsx`, built from `Skeleton`.
 
 `/success` and `/cancel` are the payment return pages. `/success` says `Checking payment status` and links to My tickets; it never states that a payment succeeded, because only the signed webhook establishes that.
 

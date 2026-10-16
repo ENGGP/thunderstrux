@@ -8,8 +8,8 @@ const checks = [
   { label: "Title, description and location", codes: ["details_missing"] },
   { label: "Ends after it starts", codes: ["schedule_invalid"] },
   { label: "Sales close in the future, before the end", codes: ["sales_close_after_end", "sales_window_past"] },
-  { label: "A ticket type with tickets left", codes: ["no_ticket_types", "no_stock"] },
-  { label: "A ticket people can buy now", codes: ["payments_unavailable", "free_unavailable", "members_only_unavailable"] }
+  { label: "A ticket type with tickets left", codes: ["no_ticket_types", "no_stock", "sold_out"] },
+  { label: "A ticket people can buy now", codes: ["payments_unavailable", "members_only_unavailable"] }
 ];
 
 export function ReadinessChecklist({

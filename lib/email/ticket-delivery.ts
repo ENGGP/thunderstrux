@@ -44,6 +44,7 @@ export function truncateTicketEmailError(message: string) {
 }
 
 function formatCurrency(amountInCents: number) {
+  if (amountInCents === 0) return "Free";
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD"

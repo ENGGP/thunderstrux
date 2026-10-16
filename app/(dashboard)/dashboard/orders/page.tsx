@@ -14,7 +14,7 @@ import {
   getDashboardEvent,
   listEventOptions
 } from "@/lib/events/event-lifecycle";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatPrice } from "@/lib/format";
 import {
   OrganisationOrderEventAccessError,
   getGroupedOrganisationOrdersWithContext,
@@ -370,7 +370,7 @@ async function OrderResults({
                 {order.eventTitle} · {order.ticketType}
               </p>
               <p className="text-sm tabular-nums text-ink">
-                {order.quantity} {order.quantity === 1 ? "ticket" : "tickets"} · {formatMoney(order.totalAmount)} · {formatDateTime(order.createdAt)}
+                {order.quantity} {order.quantity === 1 ? "ticket" : "tickets"} · {formatPrice(order.totalAmount)} · {formatDateTime(order.createdAt)}
               </p>
               {order.isManuallyRefunded && order.status !== "paid" ? (
                 <p className="text-sm text-ink-soft">Refunded manually</p>
@@ -411,7 +411,7 @@ async function OrderResults({
                     <p className="text-sm text-ink-soft">{order.ticketType}</p>
                   </td>
                   <td className="px-3 py-3.5 text-right tabular-nums">{order.quantity}</td>
-                  <td className="px-3 py-3.5 text-right tabular-nums">{formatMoney(order.totalAmount)}</td>
+                  <td className="px-3 py-3.5 text-right tabular-nums">{formatPrice(order.totalAmount)}</td>
                   <td className="px-3 py-3.5">
                     <StatusBadge
                       label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · refunded manually" : undefined}

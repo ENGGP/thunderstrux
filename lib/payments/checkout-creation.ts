@@ -26,6 +26,7 @@ import {
   newProviderOperationKey,
   type CheckoutAttemptWithOrder
 } from "@/lib/payments/checkout-attempts";
+import { issueFreeOrder } from "@/lib/payments/free-ticket-issuance";
 import { appendOrderLifecycleEvent } from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
@@ -46,7 +47,6 @@ export type CheckoutCreationErrorKind =
   | "sold_out"
   | "insufficient_availability"
   | "stripe_not_ready"
-  | "invalid_amount"
   | "quote_changed"
   | "idempotency_conflict";
 
@@ -76,7 +76,9 @@ type CreateEventCheckoutInput = {
 
 export type EventCheckoutResult =
   | { status: "redirect"; attemptId: string; url: string }
-  | { status: "processing"; attemptId: string };
+  | { status: "processing"; attemptId: string }
+  // A free registration, or a replay of a checkout whose order is already fulfilled.
+  | { status: "fulfilled"; attemptId: string; orderId: string };
 
 function replayAttempt(attempt: CheckoutAttemptWithOrder, requestHash: string): EventCheckoutResult {
   if (attempt.requestHash !== requestHash) {
@@ -85,6 +87,7 @@ function replayAttempt(attempt: CheckoutAttemptWithOrder, requestHash: string): 
     ]);
   }
   const current = checkoutAttemptStatus(attempt);
+  if (current.status === "completed") return { status: "fulfilled", attemptId: attempt.id, orderId: current.orderId };
   return current.status === "ready"
     ? { status: "redirect", attemptId: attempt.id, url: current.url }
     : { status: "processing", attemptId: attempt.id };
@@ -227,15 +230,6 @@ export async function createEventCheckout({
           ]);
         }
 
-        if (eligibility.reason === "free_unavailable") {
-          throw new CheckoutCreationError("invalid_amount", "Invalid checkout amount", [
-            {
-              path: ["ticketTypeId"],
-              message: "Ticket price must be greater than zero"
-            }
-          ]);
-        }
-
         if (ticketType.price !== expectedUnitPrice) {
           throw new CheckoutCreationError("quote_changed", "The ticket price has changed", [
             {
@@ -256,6 +250,29 @@ export async function createEventCheckout({
               }
             ]
           );
+        }
+
+        // The locked price decides the path: a free registration completes here,
+        // without reading Stripe configuration.
+        if (ticketType.price === 0) {
+          const free = await issueFreeOrder(tx, {
+            userId,
+            buyer,
+            event,
+            ticketType,
+            quantity,
+            now: reservationNow,
+            attempt: {
+              family: "ticket",
+              actorKind: "user",
+              actorId: userId,
+              operationType: eventCheckoutOperation,
+              clientIdempotencyKey: idempotencyKey,
+              requestHash,
+              providerOperationKey: newProviderOperationKey()
+            }
+          });
+          return { kind: "free" as const, ...free };
         }
 
         // Configuration is read only once the request is valid, and before any write.
@@ -351,6 +368,11 @@ export async function createEventCheckout({
     }
 
     if (created.kind === "replay") return replayAttempt(created.attempt, requestHash);
+    if (created.kind === "free") {
+      logInfo("checkout.free.fulfilled", { orderId: created.orderId, attemptId: created.attemptId, eventId, ticketTypeId, quantity });
+      emitMetric("free_registrations_total", 1, {});
+      return { status: "fulfilled", attemptId: created.attemptId, orderId: created.orderId };
+    }
     const pendingOrder = created.order;
 
     logInfo("checkout.session.create_started", {

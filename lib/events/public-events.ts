@@ -46,6 +46,9 @@ export type PublicEventDetail = {
     name: string;
     slug: string;
     timeZone: string;
+    // Public profile text, shown at checkout; empty when the society has not set it.
+    supportEmail: string;
+    refundPolicy: string;
   };
   ticketTypes: PublicEventTicketType[];
 };
@@ -123,7 +126,9 @@ export async function getPublishedEventDetail(
         select: {
           name: true,
           slug: true,
-          timeZone: true
+          timeZone: true,
+          supportEmail: true,
+          refundPolicy: true
         }
       },
       ticketTypes: {

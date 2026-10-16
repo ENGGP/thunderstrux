@@ -148,12 +148,16 @@ export async function markOrganisationOrderManuallyRefunded(
       where: { id: orderId },
       select: {
         status: true,
+        paymentKind: true,
         isManuallyRefunded: true,
         requiresCompensationReview: true,
         compensationRefundJob: { select: { id: true } },
         reservation: { select: { status: true } }
       }
     });
+    if (order.paymentKind === "free") {
+      throw new OrganisationOrderOperationError("Free registrations have no payment to refund");
+    }
     if (order.requiresCompensationReview || order.compensationRefundJob) {
       throw new OrganisationOrderOperationError(
         "Compensation refunds require verified Stripe refund confirmation"

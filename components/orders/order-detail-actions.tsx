@@ -15,7 +15,8 @@ export function OrderDetailActions({
   stripeDashboardUrl,
   isManuallyRefunded,
   canResendTickets,
-  requiresCompensationReview
+  requiresCompensationReview,
+  free = false
 }: {
   orderId: string;
   buyerEmail: string | null;
@@ -24,6 +25,8 @@ export function OrderDetailActions({
   isManuallyRefunded: boolean;
   canResendTickets: boolean;
   requiresCompensationReview: boolean;
+  // A free registration charged nothing: no refund to record and no Stripe session.
+  free?: boolean;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -129,7 +132,12 @@ export function OrderDetailActions({
         </div>
       </div>
 
-      {requiresCompensationReview ? (
+      {free ? (
+        <div className={block}>
+          <p className="font-semibold text-ink">Free registration</p>
+          <p className="text-sm text-ink-soft">Nothing was charged, so there is no payment or refund to manage.</p>
+        </div>
+      ) : requiresCompensationReview ? (
         <div className={block}>
           <p className="font-semibold text-ink">Refund through Stripe</p>
           <p className="text-sm text-ink-soft">
@@ -170,7 +178,7 @@ export function OrderDetailActions({
         </div>
       )}
 
-      <div className={`${block} sm:flex sm:flex-wrap sm:items-center sm:gap-3`}>
+      {free ? null : <div className={`${block} sm:flex sm:flex-wrap sm:items-center sm:gap-3`}>
         <span className="text-sm text-ink-soft">Stripe session</span>
         <code className="rounded-control bg-surface-subtle px-2 py-1 text-sm text-ink [overflow-wrap:anywhere]">
           {stripeSessionId ?? "Not available"}
@@ -190,7 +198,7 @@ export function OrderDetailActions({
             </a>
           ) : null}
         </div>
-      </div>
+      </div>}
 
       <ConfirmDialog
         busy={isBusy}

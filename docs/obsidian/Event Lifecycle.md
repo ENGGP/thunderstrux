@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-20
 owner: engineering
 related: ["[[API Reference]]", "[[Ticket Check-in Implementation]]"]
 sources: [lib/events/event-lifecycle.ts, app/api/events]
@@ -26,7 +26,7 @@ Since T11 publication is one of several independent settings on an event:
 
 `lib/events/event-readiness.ts` is the only place that decides whether an event can be published and which ticket types can be bought. The publish API, the dashboard's disabled-Publish reason and checkout use it; checkout passes each type's sellable stock from `lib/events/inventory.ts` (T12). T15a makes the public event page read each type's state from it.
 
-Until T13 adds free acquisition, checkout cannot issue a zero-total order, so `FREE_TICKETS_ENABLED` is off: a free type is not checkout-eligible (`free_unavailable`) and does not make an event publishable. A free-only event is blocked with "Free tickets are not available yet. Add a paid ticket type to publish this event."; a mixed event publishes once payments are ready, selling its paid types.
+Free types are checkout-eligible without payments (T13), so a free-only event publishes without Stripe and a mixed event publishes and sells its free types while its paid types wait for payments. When no type can be bought because every one is sold out or held, the blocker is "Every ticket type is sold out or held in checkouts."
 
 ## Creation Flow
 
@@ -118,7 +118,7 @@ Status changes send an explicit target and the version the page loaded: `{ targe
 - Live events:manage authority (active staff or explicitly allowed legacy owner) for the event organisation.
 - Title, description and location, and an end after the start.
 - A sales close time in the future and not after the end.
-- At least one ticket type with remaining quantity, and at least one type that can be bought now: a paid type once the society can take payments (free types count from T13).
+- At least one ticket type with remaining quantity, and at least one type that can be bought now: a free type, or a paid type once the society can take payments.
 
 Events are always created as drafts, so a direct API call cannot skip these checks (EVT-003). Unpublishing is blocked once orders exist. `PATCH /api/events/[eventId]/sales` closes and reopens sales separately.
 

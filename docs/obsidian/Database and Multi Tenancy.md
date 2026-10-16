@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-20
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]"]
 sources: [prisma/schema.prisma, prisma/migrations, lib/db/organisation-scope.ts]
@@ -536,6 +536,8 @@ T14a brings the chain to 37 migrations and 23 models, ending in `20261017010000_
 T14b brings the chain to 38 migrations (still 23 models), ending in `20261018010000_checkout_attempt_recovery`: nullable `CheckoutAttempt.providerRequest` (JSONB, the exact Session request replayed by recovery; no secrets) and the `checkout_recovery` order lifecycle source. Attempts created before it have no stored request and are failed, not replayed. Rollback leaves the column and enum value unused.
 
 T11b brings the chain to 39 migrations (still 23 models), ending in `20261019010000_event_hero_image`: nullable `Event.heroAssetId` with an index and a composite foreign key `(heroAssetId, organisationId)` to `(Asset.id, organisationId)`, `ON DELETE RESTRICT`, so an event can only reference an image of its own society. No existing event gets an image. Rollback leaves the column unused; older code ignores it. [[Event Lifecycle]] owns the behaviour.
+
+T13 brings the chain to 40 migrations (still 23 models), ending in `20261020010000_free_ticket_lifecycle`: the `free_fulfilled` order lifecycle event. Free orders use the existing `paymentKind = free` and its zero-total check. Rollback leaves the enum value unused.
 
 ## Ownership retirement
 

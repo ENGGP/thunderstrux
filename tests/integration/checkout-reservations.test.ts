@@ -127,6 +127,7 @@ describe("checkout and reservation logic", () => {
 
     expect(response.status).toBe(200);
     expect(await parseJsonResponse(response)).toEqual({
+      kind: "stripe",
       url: "https://checkout.stripe.test/session"
     });
     const order = await prisma.order.findFirstOrThrow({

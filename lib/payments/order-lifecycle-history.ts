@@ -30,6 +30,7 @@ export function orderLifecycleLabel(type: OrderLifecycleEventType) {
     order_expired: "Checkout expired",
     compensation_required: "Payment needs compensation review",
     payment_fulfilled: "Payment fulfilled",
+    free_fulfilled: "Free registration confirmed",
     compensation_recovered: "Fulfilment recovered",
     manual_refund_marked: "Marked as manually refunded",
     compensation_refund_queued: "Automatic compensation refund queued",

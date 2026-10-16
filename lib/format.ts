@@ -7,6 +7,12 @@ export function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+// A ticket price or order total: "Free" for zero, otherwise money. Revenue and
+// other sums keep formatMoney, so $0.00 still reads as an amount.
+export function formatPrice(cents: number) {
+  return cents === 0 ? "Free" : formatMoney(cents);
+}
+
 // "15.00" for 1500 cents: the value of a "$" price input.
 export function formatMoneyInput(cents: number) {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;

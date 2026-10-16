@@ -69,9 +69,10 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
   await page.reload();
   await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
-  // The buy box asks for verification up front instead of failing at checkout.
-  await expect(page.getByText('Verify your email to buy tickets')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Buy tickets' })).toHaveCount(0);
+  // The checkout page asks for verification before offering to pay.
+  await page.getByRole('button', { name: 'Buy tickets' }).click();
+  await expect(page.getByText('Verify your email to continue')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Pay / })).toHaveCount(0);
   const csrf = await (await page.request.get('/api/security/csrf')).json();
   const blocked = await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': csrf.token }, data: { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1, expectedUnitPrice: data.ticket.price, idempotencyKey: `e2e-${Date.now()}-verify` } });
   expect(blocked.status()).toBe(403);
@@ -145,6 +146,8 @@ test('checkout validates quantities, readiness, origin and absent provider confi
   await expect(page.getByRole('button', { name: 'Buy tickets' })).toBeDisabled();
   await page.getByLabel('Quantity').fill('1');
   await page.getByRole('button', { name: 'Buy tickets' }).click();
+  await expect(page.getByRole('heading', { name: 'Review your order' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pay $12.00' }).click();
   await expect(page.getByText('Event organiser must complete Stripe onboarding before accepting payments')).toBeVisible();
   const body = { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1, expectedUnitPrice: data.ticket.price, idempotencyKey: `e2e-${Date.now()}-config` };
   expect((await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'https://example.com' }, data: body })).status()).toBe(403);

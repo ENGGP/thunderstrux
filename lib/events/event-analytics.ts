@@ -42,7 +42,8 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
       }
     }),
     prisma.order.groupBy({
-      by: ["ticketTypeId"],
+      // Free registrations count as sold tickets but never as revenue.
+      by: ["ticketTypeId", "paymentKind"],
       where: {
         eventId,
         event: {
@@ -63,20 +64,14 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
     throw new EventAnalyticsAccessError();
   }
 
-  const paidOrdersByTicketType = new Map(
-    paidOrderGroups.map((group) => [
-      group.ticketTypeId,
-      {
-        sold: group._sum.quantity ?? 0,
-        revenue: financial ? group._sum.totalAmount ?? 0 : null
-      }
-    ])
-  );
-
   const ticketTypes = event.ticketTypes.map((ticketType) => {
-    const paid = paidOrdersByTicketType.get(ticketType.id) ?? {
-      sold: 0,
-      revenue: financial ? 0 : null
+    const groups = paidOrderGroups.filter((group) => group.ticketTypeId === ticketType.id);
+    const paid = {
+      sold: groups.reduce((total, group) => total + (group._sum.quantity ?? 0), 0),
+      free: groups.reduce((total, group) => total + (group.paymentKind === "free" ? group._sum.quantity ?? 0 : 0), 0),
+      revenue: financial
+        ? groups.reduce((total, group) => total + (group.paymentKind === "stripe" ? group._sum.totalAmount ?? 0 : 0), 0)
+        : null
     };
 
     return {
@@ -85,6 +80,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
       price: ticketType.price,
       remaining: ticketType.quantity,
       sold: paid.sold,
+      free: paid.free,
       revenue: paid.revenue
     };
   });
@@ -103,6 +99,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
     totals: {
       revenue: financial ? ticketTypes.reduce((total, ticketType) => total + (ticketType.revenue ?? 0), 0) : null,
       sold: ticketTypes.reduce((total, ticketType) => total + ticketType.sold, 0),
+      free: ticketTypes.reduce((total, ticketType) => total + ticketType.free, 0),
       remaining: ticketTypes.reduce(
         (total, ticketType) => total + ticketType.remaining,
         0
@@ -136,6 +133,7 @@ export const getOrganisationEventRevenueSeries = cache(
             }
           },
           status: "paid",
+          paymentKind: "stripe",
           paidAt: {
             not: null
           }

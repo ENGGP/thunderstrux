@@ -333,6 +333,8 @@ model Order {
   buyerDisplayNameSnapshot String?
   buyerIdentityCapturedAt DateTime?
   buyerIdentityProvenance String?
+  // A verified guest buyer (T16); userId stays null until an explicit member claim.
+  guestIdentityId         String?
   // Purchase facts recorded when the order is created; null on legacy rows means unknown.
   paymentKind             PaymentKind
   fulfilledAt             DateTime?
@@ -347,6 +349,7 @@ model Order {
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
   user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestIdentity   GuestIdentity? @relation(fields: [guestIdentityId], references: [id], onDelete: Restrict)
   tickets         Ticket[]
   reservation     TicketReservation?
   emailOutboxJobs EmailOutbox[]
@@ -360,12 +363,45 @@ model Order {
   @@index([ticketTypeId])
   @@index([userId])
   @@index([userId, status, createdAt, id], map: "Order_userId_status_createdAt_id_idx")
+  @@index([guestIdentityId])
   @@index([status, createdAt], map: "Order_status_createdAt_idx")
 }
 
 // One durable record per intended checkout (database spec 6.1). The same actor
 // and client key returns the same result; the provider key is Stripe's
 // idempotency key, so a retried Session creation can never charge twice.
+// T16: an email address proven by a link, for buying without an account. It is
+// never a login and never matched to a member's purchases by the string alone.
+model GuestIdentity {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  verifiedAt DateTime?
+  createdAt  DateTime @default(now())
+  grants     GuestAccessGrant[]
+  orders     Order[]
+}
+
+// One emailed link. Only its digest is stored; redeeming it by POST starts a
+// browser session whose id is also stored only as a digest.
+model GuestAccessGrant {
+  id               String    @id @default(cuid())
+  guestIdentityId  String
+  purpose          String
+  tokenDigest      String    @unique
+  callbackPath     String    @default("/events")
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  revokedAt        DateTime?
+  sessionDigest    String?   @unique
+  sessionExpiresAt DateTime?
+  createdAt        DateTime  @default(now())
+  guestIdentity    GuestIdentity @relation(fields: [guestIdentityId], references: [id], onDelete: Cascade)
+  notifications    NotificationOutbox[]
+
+  @@index([guestIdentityId, purpose, createdAt])
+  @@index([expiresAt])
+}
+
 model CheckoutAttempt {
   id                   String               @id @default(cuid())
   family               CheckoutFamily
@@ -684,6 +720,9 @@ model NotificationOutbox {
   authTokenId         String?
   authToken           AuthToken? @relation(fields: [authTokenId], references: [id], onDelete: SetNull)
   @@index([authTokenId])
+  guestAccessGrantId  String?
+  guestAccessGrant    GuestAccessGrant? @relation(fields: [guestAccessGrantId], references: [id], onDelete: SetNull)
+  @@index([guestAccessGrantId])
   id String @id @default(cuid())
   eventKey String
   recipient String

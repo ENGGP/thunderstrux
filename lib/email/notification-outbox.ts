@@ -45,7 +45,7 @@ export async function businessNotificationExists(jobId: string, organisationId: 
 export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   eventKey: string; recipient: string; template: NotificationTemplate; payload: unknown;
   userId?: string; organisationId?: string; expiresAt?: Date; templateVersion?: number; authTokenId?: string;
-  staffInviteId?: string; staffInviteVersion?: number;
+  staffInviteId?: string; staffInviteVersion?: number; guestAccessGrantId?: string;
 }) {
   const recipient = z.string().trim().toLowerCase().email().max(320).parse(input.recipient);
   const template = notificationTemplateSchema.parse(input.template);
@@ -61,8 +61,8 @@ export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   const rendered = renderedNotificationSchema.parse({ ...renderNotification(template, input.payload), from: process.env.EMAIL_FROM });
   const encryptedPayload = encryptNotification(rendered, id);
   const rows = await tx.$queryRaw<Array<{ id: string }>>`
-    INSERT INTO "NotificationOutbox" ("id", "eventKey", "recipient", "template", "templateVersion", "privacy", "userId", "organisationId", "encryptedPayload", "expiresAt", "authTokenId", "staffInviteId", "staffInviteVersion", "updatedAt")
-    VALUES (${id}, ${eventKey}, ${recipient}, ${template}, ${templateVersion}, ${privacy}, ${input.userId ?? null}, ${input.organisationId ?? null}, ${encryptedPayload}, ${input.expiresAt ?? null}, ${input.authTokenId ?? null}, ${input.staffInviteId ?? null}, ${input.staffInviteVersion ?? null}, NOW())
+    INSERT INTO "NotificationOutbox" ("id", "eventKey", "recipient", "template", "templateVersion", "privacy", "userId", "organisationId", "encryptedPayload", "expiresAt", "authTokenId", "staffInviteId", "staffInviteVersion", "guestAccessGrantId", "updatedAt")
+    VALUES (${id}, ${eventKey}, ${recipient}, ${template}, ${templateVersion}, ${privacy}, ${input.userId ?? null}, ${input.organisationId ?? null}, ${encryptedPayload}, ${input.expiresAt ?? null}, ${input.authTokenId ?? null}, ${input.staffInviteId ?? null}, ${input.staffInviteVersion ?? null}, ${input.guestAccessGrantId ?? null}, NOW())
     ON CONFLICT ("eventKey", "recipient", "templateVersion") DO NOTHING RETURNING "id"
   `;
   return { enqueued: rows.length === 1, id: rows[0]?.id ?? null };
@@ -99,6 +99,18 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
   if (job.eventKey.startsWith("auth/") && !job.authTokenId) {
     await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
     return "cancelled";
+  }
+  if ((job.eventKey.startsWith("guest/") || job.template === "guest_access") && !job.guestAccessGrantId) {
+    await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
+    return "cancelled";
+  }
+  if (job.guestAccessGrantId) {
+    const grant = await prisma.guestAccessGrant.findUnique({ where: { id: job.guestAccessGrantId }, include: { guestIdentity: { select: { email: true } } } });
+    if (!grant || grant.consumedAt || grant.revokedAt || grant.expiresAt <= now || job.template !== "guest_access" ||
+        job.recipient !== grant.guestIdentity.email || job.userId || job.organisationId) {
+      await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
+      return "cancelled";
+    }
   }
   if (job.authTokenId) {
     const token = await prisma.authToken.findUnique({ where: { id: job.authTokenId }, include: { user: { select: { disabledAt: true, authVersion: true, email: true, emailVerifiedAt: true } } } });

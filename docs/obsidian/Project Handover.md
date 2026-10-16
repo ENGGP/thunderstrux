@@ -62,6 +62,7 @@ Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CL
 | Section 9 decisions for T11b and T13 | [#77](https://github.com/ENGGP/thunderstrux/pull/77) | Merged as `7450521`, docs only. |
 | T11b event builder with society-zone times, dollar prices and an event image | [#78](https://github.com/ENGGP/thunderstrux/pull/78) | Merged as `9f582c3`. Approved design round A1 (two passes on the canvas). Migration `20261019010000_event_hero_image`. Baseline `p216-d0899b4253407dec21cf5bcd` (433/433 integration tests in 55 files, clean audit); browser `p216-1c8a4d6d055cadc00fba80e1` (3 MFA, 25 desktop/mobile including the builder journey, 7 webhook checks); operations `p217-ci-19bf14a2b9` (39 migrations, restore). Closes EVT-001 and EVT-002. |
 | T13 free tickets through one checkout page | [#79](https://github.com/ENGGP/thunderstrux/pull/79) | In review. Migration `20261020010000_free_ticket_lifecycle`. Baseline `p216-1fceb3bee3fe118fb8883f7b` (438/438 integration tests in 56 files, clean audit); browser `p216-f1d5be477d43e50f63ed8f71` (3 MFA, 26 desktop/mobile including the free journey, 7 webhook checks); operations `p217-ci-2f0cc04dbc` (40 migrations, restore). |
+| A1 checkout state screens (stacked on T13) | PR_LINK | In review, base `codex/t13-free-tickets`. Checkout refusal details carry `reason` and `value`; the checkout page shows the approved screen for a changed price, sold out, fewer left, closed sales, payments unavailable and still confirming. No migration. Baseline `p216-dd3c0317cd84b9e684688b2e` on `0f72f9a` (438/438 integration tests in 56 files, clean audit); browser `p216-48b7445886b3aee6bd04c983` on `a074e9b` (3 MFA, 29 desktop/mobile including `checkout-states.spec.ts` at 390 and 1280px, 7 webhook checks). An earlier browser run, `p216-48c05b428e0fa5a4ac655ebe`, failed two assertions (an older test expected the raw onboarding message; a locator also matched Next's route announcer), fixed in tests only. |
 
 Every run above reports cleanup complete with zero run-owned containers, volumes or networks.
 
@@ -71,7 +72,7 @@ Every run above reports cleanup complete with zero run-owned containers, volumes
 
 ## Next Safe Actions
 
-1. Review and merge [PR #79](https://github.com/ENGGP/thunderstrux/pull/79) (T13 free tickets), which completes Wave 1b. Then Wave 2a (T17 Connect safety and fee disclosure, T15a anonymous event pages). Paid memberships, merchandise and T15 anonymous event pages remain later waves.
+1. Review and merge [PR #79](https://github.com/ENGGP/thunderstrux/pull/79) (T13 free tickets), which completes Wave 1b, then the stacked A1 checkout state screens PR (PR_LINK), retargeted to `main`. Then Wave 2a (T17 Connect safety and fee disclosure, T15a anonymous event pages). Paid memberships, merchandise and T15 anonymous event pages remain later waves.
 2. Schedule `checkout-recovery-worker` every minute alongside the other workers when hosting is chosen (T42 owns schedules).
 3. Before activating account lifecycle, obtain independent security and migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.
 4. Choose hosting and satisfy the release gates below. T43 still owns standalone images, immutable publication, SBOM/provenance and image-size work.

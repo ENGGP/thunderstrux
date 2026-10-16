@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-23
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -263,7 +263,7 @@ Returns published events for public discovery.
 Rules:
 
 - No auth required.
-- Only `published` events are returned.
+- Only `published`, `public` events that have not ended (`endTime` after now) are returned (PUB-001, T15b); drafts, link-only and members-only events never are.
 - Response is public-safe.
 - Cursor pagination uses stable `startTime ASC, id ASC` ordering.
 - Query params:

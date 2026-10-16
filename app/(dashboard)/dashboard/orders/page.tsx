@@ -3,7 +3,8 @@ import { Suspense } from "react";
 import { EventWorkspaceHeader, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { buttonClasses } from "@/components/ui/button";
+import { FilterBar } from "@/components/ui/filter-bar";
 import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -162,9 +163,10 @@ export default async function OrganisationOrdersPage({
         ))}
       </nav>
 
-      <form
+      <FilterBar
         action="/dashboard/orders"
-        className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+        className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+        label="Filter orders"
       >
         {activeFilter !== "all" ? (
           <input name="status" type="hidden" value={activeFilter} />
@@ -192,15 +194,7 @@ export default async function OrganisationOrdersPage({
         </Select>
         <TextInput defaultValue={startDateParam ?? ""} label="From" name="startDate" type="date" />
         <TextInput defaultValue={endDateParam ?? ""} label="To" name="endDate" type="date" />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="secondary">
-            Apply
-          </Button>
-          <Link className={buttonClasses({ variant: "tertiary" })} href="/dashboard/orders">
-            Clear
-          </Link>
-        </div>
-      </form>
+      </FilterBar>
 
       <Suspense fallback={<ListSkeleton label="Loading orders" rows={6} />}>
         <OrderResults

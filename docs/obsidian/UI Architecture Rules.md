@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-23
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -47,7 +47,7 @@ Event workspace components live in `components/events/` because they import `nex
 
 - Fixed, 60px high below `md` and 72px from `md`, including its bottom border. `app/layout.tsx` offsets content by the same amounts and `DashboardShell` starts its sidebar at 72px.
 - It reads only the session. It never shows a society, a role or an email address.
-- Desktop: `Thunderstrux` (to `/`), `Explore events` (`/`), `Explore societies` (`/societies`); signed in, `My tickets` for member accounts, `Dashboard`, `Account` (`/account/settings`) and a `Sign out` button; signed out, `Sign in` and `Create a society` (`/signup`).
+- Desktop: `Thunderstrux` (to `/`), `Explore events` (`/events`), `Explore societies` (`/societies`); signed in, `My tickets` for member accounts, `Dashboard`, `Account` (`/account/settings`) and a `Sign out` button; signed out, `Sign in` and `Create a society` (`/signup`).
 - Below `md`: a native `Menu` disclosure holds the links. `Sign out` (or `Sign in`) stays visible outside it.
 - The header owns the link names `Explore events` and `Explore societies`. Other links to the same places use different words (`Events`, `Find a society`, `Browse societies`) so every link name is unique on a page.
 
@@ -177,6 +177,8 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 `/dashboard/organisations`
 
 - Renders caller-only joined societies and bounded paged search. Explicit verified Join changes free affiliation only; Leave synchronises both views after refresh and never revokes staff or paid purchases.
+
+`/events` (T15b) is Explore events: a `FilterBar` (`components/ui/filter-bar.tsx`, a GET form with Clear, also used by the orders list) with Search by title, When (Upcoming, This week, This month, Choose dates with From and To, at most 366 days; presets run in Brisbane time) and Society, all kept in the URL. Below `md`, When and Society fold behind a Filters toggle that counts the filters on. Invalid values show as field errors and the list waits until they are fixed. `EmptyState` (`components/ui/empty-state.tsx`) says either "No events match these filters" with Clear filters or "No upcoming events yet" with Explore societies; a failed read is a danger `Notice`, never an empty list. Twenty cards a page with Earlier events and Later events links. The home page shows the next six events and an Explore all events link.
 
 `/societies` and `/societies/[orgSlug]` render anonymous discovery and public profile content. `/organisations` and `/organisations/[orgSlug]` redirect to them permanently. Profile join controls are personalized and dynamic; sign-in/verification never automatically joins. `/dashboard/settings/profile` (Settings) is the live-settings/MFA-protected resumable editor: four steps, a timezone list computed on the server, and a Finish step whose checklist shows only facts the caller may see (profile complete, payments ready, team size). On a version conflict it keeps the edits and offers `Save my version` or a confirmed reload.
 

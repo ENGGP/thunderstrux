@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-23
 owner: engineering
 related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
 sources: [app, components, lib/auth/page-access.ts]
@@ -15,24 +15,32 @@ Organisation management flows resolve a canonical tenant from active `Organisati
 Files:
 
 - `app/page.tsx`
+- `app/(public)/events/page.tsx`
 - `app/api/public/events/route.ts`
 - `lib/events/public-events.ts`
+- `lib/events/explore-filters.ts`
 
 Flow:
 
 ```text
 User visits /
-  -> page calls getPublishedEvents() directly from lib/events/public-events.ts
-  -> page renders public event cards
-  -> page renders cursor next/previous links when pageInfo indicates more rows
+  -> page calls getPublishedEvents({ limit: 6 }) directly from lib/events/public-events.ts
+  -> page renders up to six upcoming event cards and an "Explore all events" link to /events
+
+User visits /events?q=&when=&from=&to=&society=&cursor=&direction=
+  -> parseExploreFilters reads the URL; presets run in Brisbane time
+  -> invalid values become field errors and no list is read
+  -> getPublishedEvents applies the title, society and start-time filters, 20 a page
+  -> page renders cards with Earlier events / Later events cursor links that keep the filters
 ```
 
 Important current behavior:
 
 - `app/page.tsx` is `force-dynamic`.
 - Public homepage cards always link to `/events/[eventId]`.
-- Homepage supports `limit`, `cursor`, and `direction` query params for discovery pagination.
-- Invalid homepage pagination params fall back to first page with a non-blocking warning.
+- Every public list keeps only published, public events that have not ended (PUB-001).
+- The home page takes no query parameters; paging and filters live on `/events` (T15b).
+- On `/events`, a bad or stale page cursor falls back to the first page with a warning; a failed read shows "We couldn't load events" with the filters kept, never an empty list.
 - Public event reads are read-only. If there are zero published events in the whole database, the API returns an empty event list.
 - Demo public events come from `prisma/seed.mjs`, not from public runtime reads.
 

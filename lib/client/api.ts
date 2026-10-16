@@ -9,6 +9,8 @@ export type ApiErrorPayload = {
     details?: Array<{
       path?: string[];
       message: string;
+      reason?: string;
+      value?: number;
     }>;
   };
 };

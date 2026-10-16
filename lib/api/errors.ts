@@ -15,6 +15,10 @@ export type ApiErrorCode =
 export type ApiErrorDetail = {
   path?: Array<string | number>;
   message: string;
+  // A machine-readable cause, and the server's current value for `path`, so a
+  // client can choose what to show without parsing `message`.
+  reason?: string;
+  value?: number;
 };
 
 type ApiErrorBody = {

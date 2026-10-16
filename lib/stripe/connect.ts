@@ -367,10 +367,12 @@ export async function disconnectAccount(
       SELECT "id", "stripeAccountId" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE
     `;
     if (!organisation) throw new OrganisationStripeConnectNotFoundError();
-    if (!organisation.stripeAccountId) return;
 
-    const open = await tx.order.count({ where: openObligationsWhere(organisation.id, organisation.stripeAccountId) });
-    if (open > 0) throw new StripeDisconnectBlockedError(open);
+    // No account (for example PLATFORM_NOT_READY): only the local state is reset.
+    if (organisation.stripeAccountId) {
+      const open = await tx.order.count({ where: openObligationsWhere(organisation.id, organisation.stripeAccountId) });
+      if (open > 0) throw new StripeDisconnectBlockedError(open);
+    }
 
     await tx.organisation.update({
       where: { id: organisation.id },

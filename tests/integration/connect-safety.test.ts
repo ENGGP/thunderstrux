@@ -92,6 +92,13 @@ describe("disconnect", () => {
     });
   });
 
+  test("with no account, only resets a blocked platform state", async () => {
+    const owner = await createOrganisationAccount();
+    await prisma.organisation.update({ where: { id: owner.organisation.id }, data: { stripeAccountStatus: "PLATFORM_NOT_READY" } });
+    await disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } });
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountStatus).toBe("NOT_CONNECTED");
+  });
+
   test("needs an authenticator code when staff MFA is on", async () => {
     const owner = await createOrganisationAccount({ stripeReady: true });
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");

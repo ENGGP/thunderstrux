@@ -75,10 +75,13 @@ export default async function CheckoutPage({
               <CheckoutAction
                 backHref={eventHref}
                 eventId={event.id}
-                key={ticketType.price}
+                eventTitle={event.title}
+                freeTicketsAvailable={event.ticketTypes.some((type) => type.price === 0 && type.availableQuantity > 0)}
                 label={free ? "Confirm free registration" : `Pay ${formatMoney(total)}`}
                 quantity={quantity}
+                society={organisation.name}
                 ticketTypeId={ticketType.id}
+                ticketTypeName={ticketType.name}
                 unitPrice={ticketType.price}
               />
             ) : (

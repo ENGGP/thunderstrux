@@ -53,13 +53,17 @@ export type CheckoutCreationErrorKind =
 export { CheckoutCreationInternalError };
 
 export class CheckoutCreationError extends Error {
+  readonly details: ApiErrorDetail[];
+
   constructor(
     readonly kind: CheckoutCreationErrorKind,
     message: string,
-    readonly details: ApiErrorDetail[] = []
+    details: ApiErrorDetail[] = []
   ) {
     super(message);
     this.name = "CheckoutCreationError";
+    // Each detail carries its kind, so the checkout page picks its screen from the response.
+    this.details = details.map((detail) => ({ reason: kind, ...detail }));
   }
 }
 
@@ -234,7 +238,8 @@ export async function createEventCheckout({
           throw new CheckoutCreationError("quote_changed", "The ticket price has changed", [
             {
               path: ["expectedUnitPrice"],
-              message: `The price is now ${formatMoney(ticketType.price)} per ticket. Review it before buying.`
+              message: `The price is now ${formatMoney(ticketType.price)} per ticket. Review it before buying.`,
+              value: ticketType.price
             }
           ]);
         }
@@ -246,7 +251,8 @@ export async function createEventCheckout({
             [
               {
                 path: ["quantity"],
-                message: "Requested quantity exceeds availability"
+                message: "Requested quantity exceeds availability",
+                value: sellable
               }
             ]
           );

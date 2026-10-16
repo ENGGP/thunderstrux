@@ -135,7 +135,7 @@ describe("inventory and capacity locks", () => {
 
     expect(response.status).toBe(409);
     expect(await parseJsonResponse(response)).toMatchObject({
-      error: { code: "CONFLICT", details: [{ path: ["expectedUnitPrice"], message: expect.stringContaining("$17.00") }] }
+      error: { code: "CONFLICT", details: [{ path: ["expectedUnitPrice"], reason: "quote_changed", value: shownPrice + 500, message: expect.stringContaining("$17.00") }] }
     });
     expect(await prisma.order.count({ where: { eventId: event.id } })).toBe(0);
     expect(stripeMocks.createSession).not.toHaveBeenCalled();
@@ -144,6 +144,16 @@ describe("inventory and capacity locks", () => {
       eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 11, expectedUnitPrice: shownPrice + 500, idempotencyKey: unique("checkout")
     }));
     expect(tooMany.status).toBe(400);
+
+    // The checkout page offers the count that is left, read from the detail rather than the message.
+    await prisma.ticketType.update({ where: { id: event.ticketTypes[0].id }, data: { quantity: 3 } });
+    const short = await checkoutRoute(jsonRequest("http://localhost/api/payments/checkout/event", {
+      eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 4, expectedUnitPrice: shownPrice + 500, idempotencyKey: unique("checkout")
+    }));
+    expect(short.status).toBe(400);
+    expect(await parseJsonResponse(short)).toMatchObject({
+      error: { details: [{ path: ["quantity"], reason: "insufficient_availability", value: 3 }] }
+    });
   });
 
   test("an edit cannot drop stock below active holds and keeps stock sold since the form loaded", async () => {

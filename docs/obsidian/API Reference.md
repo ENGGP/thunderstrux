@@ -819,6 +819,7 @@ Rules:
 - `idempotencyKey` (16–128 letters, digits, `-` or `_`) identifies one purchase intent. Repeating it with the same selection returns the same checkout; with a different selection it is `409 CONFLICT`.
 - Responses: `200 { kind: "stripe", url }` to redirect to Stripe; `200 { kind: "fulfilled", orderId }` for a free registration, or a replay of a checkout whose order is already fulfilled; or `202 { attemptId, status: "processing" }` when Stripe's answer is not known yet (the order and hold are kept).
 - `expectedUnitPrice` is the unit price in cents the buyer was shown. If the locked price differs, the response is `409 CONFLICT` with a `expectedUnitPrice` detail naming the new price, and no order or hold is created.
+- Every checkout refusal detail carries `reason`, the refusal kind (`sales_closed`, `sold_out`, `stripe_not_ready`, `quote_changed`, `insufficient_availability`, `event_draft`, `idempotency_conflict`). The `quote_changed` detail adds `value`, the new unit price in cents; the `insufficient_availability` detail (400, path `quantity`) adds `value`, the tickets still sellable. Clients choose what to show from `reason` and `value`, never from `message`.
 
 ### `GET /api/payments/checkout/attempts/[attemptId]`
 

@@ -148,7 +148,7 @@ test('checkout validates quantities, readiness, origin and absent provider confi
   await page.getByRole('button', { name: 'Buy tickets' }).click();
   await expect(page.getByRole('heading', { name: 'Review your order' })).toBeVisible();
   await page.getByRole('button', { name: 'Pay $12.00' }).click();
-  await expect(page.getByText('Event organiser must complete Stripe onboarding before accepting payments')).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Paid checkout unavailable' })).toBeVisible();
   const body = { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1, expectedUnitPrice: data.ticket.price, idempotencyKey: `e2e-${Date.now()}-config` };
   expect((await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'https://example.com' }, data: body })).status()).toBe(403);
   await prisma.organisation.update({ where: {id: data.organisation.id}, data: {stripeAccountId: 'acct_synthetic', stripeChargesEnabled: true} });

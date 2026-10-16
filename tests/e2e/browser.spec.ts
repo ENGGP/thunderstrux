@@ -48,7 +48,8 @@ test('finance staff can page order history while another tenant cannot read it',
 });
 
 test('signup, duplicate email, incorrect password, logout and protected callback', async ({ page, data }) => {
-  await page.goto(`/events/${data.event.id}`);
+  // Event pages are public since T15a; account settings still need sign-in.
+  await page.goto('/account/settings');
   await expect(page).toHaveURL(/\/login\?callbackUrl=/);
   await page.getByRole('link', { name: "Don't have an account? Sign up" }).click();
   await expect(page).toHaveURL(/\/signup\?callbackUrl=/);
@@ -98,7 +99,7 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(`http://localhost:3100/events/${data.event.id}`);
+  await expect(page).toHaveURL('http://localhost:3100/account/settings');
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
   await page.goto('/dashboard');

@@ -100,13 +100,14 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
     await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
     return "cancelled";
   }
-  if ((job.eventKey.startsWith("guest/") || job.template === "guest_access") && !job.guestAccessGrantId) {
+  if ((job.eventKey.startsWith("guest/") || job.template === "guest_access" || job.template === "guest_order_link") && !job.guestAccessGrantId) {
     await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
     return "cancelled";
   }
   if (job.guestAccessGrantId) {
     const grant = await prisma.guestAccessGrant.findUnique({ where: { id: job.guestAccessGrantId }, include: { guestIdentity: { select: { email: true } } } });
-    if (!grant || grant.consumedAt || grant.revokedAt || grant.expiresAt <= now || job.template !== "guest_access" ||
+    if (!grant || grant.consumedAt || grant.revokedAt || grant.expiresAt <= now ||
+        job.template !== (grant.purpose === "purchase" ? "guest_order_link" : "guest_access") ||
         job.recipient !== grant.guestIdentity.email || job.userId || job.organisationId) {
       await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "cancelled", lastError: "obsolete_token", processingToken: null } });
       return "cancelled";

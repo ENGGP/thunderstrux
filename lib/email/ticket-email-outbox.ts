@@ -516,7 +516,8 @@ export async function processTicketEmailOutboxBatch({
       let delivery;
       try {
         delivery = await sendTicketDeliveryEmailToProvider(job.orderId, {
-          idempotencyKey: `ticket-email/${job.id}`
+          idempotencyKey: `ticket-email/${job.id}`,
+          attempt: job.attempts
         });
       } catch (error) {
         const failure = await markJobFailed({ job, error, now, maxAttempts });

@@ -17,7 +17,7 @@ test("a visitor who is not signed in can read an event, then signs in and lands 
     await page.screenshot({ path: `test-results/public-event-anonymous-${width}.png`, fullPage: true });
   }
 
-  await page.getByRole("button", { name: "Sign in to buy tickets" }).click();
+  await page.getByRole("button", { name: "Sign in to buy" }).click();
   await expect(page).toHaveURL(/\/login\?callbackUrl=/);
   await page.getByLabel("Email", { exact: true }).fill(data.member.email);
   await page.getByLabel("Password", { exact: true }).fill("password123");

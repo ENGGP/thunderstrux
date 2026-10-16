@@ -70,7 +70,8 @@ describe("public event pages", () => {
 
     const anonymous = await renderPage(await PublicEventPage({ params: Promise.resolve({ eventId: event.id }) }));
     expect(anonymous).toContain("Open Night");
-    expect(anonymous).toContain("Sign in to buy tickets");
+    expect(anonymous).toContain("Continue as guest");
+    expect(anonymous).toContain("Sign in to buy");
 
     setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
     const society = await renderPage(await PublicEventPage({ params: Promise.resolve({ eventId: event.id }) }));

@@ -22,6 +22,9 @@ import {
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { StripeConfigurationError } from "@/lib/stripe";
+import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
+import { GUEST_CSRF_HEADER, verifyGuestCsrf } from "@/lib/guest/guest-csrf";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { validateJson } from "@/lib/validators";
 import { createEventCheckoutSchema } from "@/lib/validators/payments";
 
@@ -39,6 +42,18 @@ export async function POST(request: Request) {
   }
 
   try {
+    // A guest cookie and no login: the guest buys under their live checkout
+    // session, which has its own CSRF token. A signed-in member always buys as the member.
+    const sessionId = guestSessionIdFrom(request);
+    if (sessionId && !(await getLiveSession())) {
+      const guest = await readGuestSession(sessionId);
+      if (!guest || guest.purpose !== "checkout") return unauthorized(guestSessionEndedMessage);
+      if (!verifyGuestCsrf(sessionId, request.headers.get(GUEST_CSRF_HEADER))) return forbidden("Invalid CSRF token");
+      const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: ["guest", guest.grantId, validation.data.eventId, getRateLimitClientIp(request)] });
+      if (limit) return limit;
+      return checkoutResponse(await createEventCheckout({ ...validation.data, guest: { grantId: guest.grantId, guestIdentityId: guest.guestIdentityId } }));
+    }
+
     const user = await requireVerifiedUser();
 
     if (user.accountRole !== "member") {
@@ -57,23 +72,16 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const result = await createEventCheckout({
+    return checkoutResponse(await createEventCheckout({
       userId: user.id,
       eventId: validation.data.eventId,
       ticketTypeId: validation.data.ticketTypeId,
       quantity: validation.data.quantity,
       expectedUnitPrice: validation.data.expectedUnitPrice,
       idempotencyKey: validation.data.idempotencyKey
-    });
-
-    // fulfilled: a free registration (or a replay of a finished checkout) has its
-    // tickets; stripe: go to the Session; 202: the Stripe outcome is not known
-    // yet and the buyer polls the attempt.
-    if (result.status === "fulfilled") return NextResponse.json({ kind: "fulfilled", orderId: result.orderId });
-    return result.status === "redirect"
-      ? NextResponse.json({ kind: "stripe", url: result.url })
-      : NextResponse.json({ attemptId: result.attemptId, status: "processing" }, { status: 202 });
+    }));
   } catch (error) {
+    if (error instanceof GuestAccessError) return unauthorized(error.message);
     if (error instanceof AuthenticationRequiredError) {
       return unauthorized();
     }
@@ -103,4 +111,14 @@ export async function POST(request: Request) {
 
     return internalError();
   }
+}
+
+// fulfilled: a free registration (or a replay of a finished checkout) has its
+// tickets; stripe: go to the Session; 202: the Stripe outcome is not known yet
+// and the buyer polls the attempt.
+function checkoutResponse(result: Awaited<ReturnType<typeof createEventCheckout>>) {
+  if (result.status === "fulfilled") return NextResponse.json({ kind: "fulfilled", orderId: result.orderId });
+  return result.status === "redirect"
+    ? NextResponse.json({ kind: "stripe", url: result.url })
+    : NextResponse.json({ attemptId: result.attemptId, status: "processing" }, { status: 202 });
 }

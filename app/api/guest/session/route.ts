@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { unauthorized } from "@/lib/api/errors";
-import { guestCsrfToken, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
+import { guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
+import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 
 // The live guest session and its CSRF token, for guest pages that write.
 export async function GET(request: Request) {

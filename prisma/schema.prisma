@@ -356,6 +356,7 @@ model Order {
   lifecycleEvents            OrderLifecycleEvent[]
   compensationRefundJob      CompensationRefundJob?
   checkoutAttempt            CheckoutAttempt?
+  guestAccessGrants          GuestAccessGrant[]
 
   @@index([organisationId])
   @@index([eventId])
@@ -394,12 +395,16 @@ model GuestAccessGrant {
   revokedAt        DateTime?
   sessionDigest    String?   @unique
   sessionExpiresAt DateTime?
+  // A purchase link opens this one order and nothing else (T16b).
+  orderId          String?
   createdAt        DateTime  @default(now())
   guestIdentity    GuestIdentity @relation(fields: [guestIdentityId], references: [id], onDelete: Cascade)
+  order            Order?    @relation(fields: [orderId], references: [id], onDelete: Restrict)
   notifications    NotificationOutbox[]
 
   @@index([guestIdentityId, purpose, createdAt])
   @@index([expiresAt])
+  @@index([orderId])
 }
 
 model CheckoutAttempt {
@@ -662,6 +667,7 @@ enum CheckoutFamily {
 
 enum CheckoutActorKind {
   user
+  guest
 }
 
 enum CheckoutAttemptState {

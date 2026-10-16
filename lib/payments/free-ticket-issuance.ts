@@ -4,7 +4,9 @@ import { appendOrderLifecycleEvent } from "@/lib/payments/order-lifecycle";
 import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
 
 export type FreeIssuanceInput = {
-  userId: string;
+  // Exactly one buyer: a member, or a verified guest (T16b).
+  userId: string | null;
+  guestIdentityId?: string | null;
   buyer: { email: string; firstName: string | null; lastName: string | null; displayName: string | null };
   event: { id: string; organisationId: string; compensationRefundMode: CompensationRefundMode; organisation: { name: string } };
   ticketType: { id: string; name: string };
@@ -25,6 +27,7 @@ export async function issueFreeOrder(tx: Prisma.TransactionClient, input: FreeIs
       eventId: event.id,
       ticketTypeId: ticketType.id,
       userId: input.userId,
+      guestIdentityId: input.guestIdentityId ?? null,
       quantity,
       unitPrice: 0,
       totalAmount: 0,
@@ -42,7 +45,7 @@ export async function issueFreeOrder(tx: Prisma.TransactionClient, input: FreeIs
       buyerLastNameSnapshot: input.buyer.lastName,
       buyerDisplayNameSnapshot: input.buyer.displayName,
       buyerIdentityCapturedAt: now,
-      buyerIdentityProvenance: "purchase"
+      buyerIdentityProvenance: input.guestIdentityId ? "verified_guest" : "purchase"
     },
     select: { id: true }
   });

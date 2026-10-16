@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
+import { GuestAccessError, lockGuestBuyer } from "@/lib/guest/guest-access";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
@@ -20,7 +21,8 @@ import {
   checkoutAttemptStatus,
   checkoutRequestHash,
   eventCheckoutOperation,
-  findUserCheckoutAttempt,
+  findCheckoutAttempt,
+  type CheckoutActor,
   isDefiniteProviderFailure,
   markAttemptUncertain,
   newProviderOperationKey,
@@ -69,7 +71,9 @@ export class CheckoutCreationError extends Error {
 
 
 type CreateEventCheckoutInput = {
-  userId: string;
+  // A verified member, or a guest's live checkout session (T16b); never both.
+  userId?: string;
+  guest?: { grantId: string; guestIdentityId: string };
   eventId: string;
   ticketTypeId: string;
   quantity: number;
@@ -140,6 +144,7 @@ function emitCheckoutSessionCreationFailure(
 
 export async function createEventCheckout({
   userId,
+  guest,
   eventId,
   ticketTypeId,
   quantity,
@@ -148,24 +153,27 @@ export async function createEventCheckout({
 }: CreateEventCheckoutInput): Promise<EventCheckoutResult> {
   let pendingOrderId: string | null = null;
   const requestHash = checkoutRequestHash({ eventId, ticketTypeId, quantity, expectedUnitPrice });
+  if (Boolean(userId) === Boolean(guest)) throw new Error("Checkout needs exactly one buyer");
+  const actor: CheckoutActor = guest ? { kind: "guest", id: guest.grantId } : { kind: "user", id: userId as string };
 
   try {
-    const earlier = await findUserCheckoutAttempt(prisma, userId, idempotencyKey);
+    const earlier = await findCheckoutAttempt(prisma, actor, idempotencyKey);
     if (earlier) return replayAttempt(earlier, requestHash);
 
-    await failStalePreCheckoutOrders({ userId });
+    if (userId) await failStalePreCheckoutOrders({ userId });
 
     const reservationNow = new Date();
     const reservationExpiresAt = getReservationExpiry(reservationNow);
 
-    // Every check reads state under the User, Event and TicketType locks, so an
-    // edit, close or reprice cannot land between the quote and the hold.
+    // Every check reads state under the buyer (User or GuestIdentity), Event and
+    // TicketType locks, so an edit, close or reprice cannot land between the
+    // quote and the hold.
     let created;
     try {
       created = await runSerializableReservationTransaction(async (tx) => {
-        const buyer = await lockVerifiedAccount(tx, userId);
-        // A same-key request that committed while this one waited for the User lock.
-        const raced = await findUserCheckoutAttempt(tx, userId, idempotencyKey);
+        const buyer = guest ? await lockGuestBuyer(tx, guest.grantId, reservationNow) : await lockVerifiedAccount(tx, actor.id);
+        // A same-key request that committed while this one waited for the buyer lock.
+        const raced = await findCheckoutAttempt(tx, actor, idempotencyKey);
         if (raced) return { kind: "replay" as const, attempt: raced };
         const event = (await lockEventInventory(tx, eventId, [ticketTypeId]))
           ? await tx.event.findUnique({ where: { id: eventId }, select: lockedEventSelect(ticketTypeId) })
@@ -262,7 +270,8 @@ export async function createEventCheckout({
         // without reading Stripe configuration.
         if (ticketType.price === 0) {
           const free = await issueFreeOrder(tx, {
-            userId,
+            userId: userId ?? null,
+            guestIdentityId: guest?.guestIdentityId ?? null,
             buyer,
             event,
             ticketType,
@@ -270,8 +279,8 @@ export async function createEventCheckout({
             now: reservationNow,
             attempt: {
               family: "ticket",
-              actorKind: "user",
-              actorId: userId,
+              actorKind: actor.kind,
+              actorId: actor.id,
               operationType: eventCheckoutOperation,
               clientIdempotencyKey: idempotencyKey,
               requestHash,
@@ -297,7 +306,8 @@ export async function createEventCheckout({
             status: "pending",
             totalAmount,
             compensationRefundModeSnapshot: event.compensationRefundMode,
-            userId,
+            userId: userId ?? null,
+            guestIdentityId: guest?.guestIdentityId ?? null,
             // The same values the Stripe Session below charges, so the receipt never drifts from the charge.
             paymentKind: "stripe",
             purchasedTicketTypeName: ticketType.name,
@@ -311,7 +321,7 @@ export async function createEventCheckout({
             buyerLastNameSnapshot: buyer.lastName,
             buyerDisplayNameSnapshot: buyer.displayName,
             buyerIdentityCapturedAt: reservationNow,
-            buyerIdentityProvenance: "purchase"
+            buyerIdentityProvenance: guest ? "verified_guest" : "purchase"
           },
           select: { id: true }
         });
@@ -322,7 +332,7 @@ export async function createEventCheckout({
             organisationId: event.organisationId,
             eventId: event.id,
             ticketTypeId: ticketType.id,
-            userId,
+            userId: userId ?? null,
             quantity,
             expiresAt: reservationExpiresAt
           }
@@ -339,8 +349,8 @@ export async function createEventCheckout({
         const attempt = await tx.checkoutAttempt.create({
           data: {
             family: "ticket",
-            actorKind: "user",
-            actorId: userId,
+            actorKind: actor.kind,
+            actorId: actor.id,
             operationType: eventCheckoutOperation,
             clientIdempotencyKey: idempotencyKey,
             requestHash,
@@ -368,7 +378,7 @@ export async function createEventCheckout({
       });
     } catch (error) {
       // A same-key request inserted its attempt first.
-      const raced = isUniqueViolation(error) ? await findUserCheckoutAttempt(prisma, userId, idempotencyKey) : null;
+      const raced = isUniqueViolation(error) ? await findCheckoutAttempt(prisma, actor, idempotencyKey) : null;
       if (raced) return replayAttempt(raced, requestHash);
       throw error;
     }
@@ -419,7 +429,8 @@ export async function createEventCheckout({
           quantity: String(quantity)
         }
       },
-      success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      // A guest comes back to their order page; their session cookie opens it, the address alone does not.
+      success_url: guest ? `${pendingOrder.appUrl}/guest/orders/${pendingOrder.id}` : `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${pendingOrder.appUrl}/cancel`,
       expires_at: stripeExpiresAt,
       metadata: {
@@ -504,7 +515,7 @@ export async function createEventCheckout({
 
     return { status: "redirect", attemptId: pendingOrder.attemptId, url: session.url };
   } catch (error) {
-    if (error instanceof CheckoutCreationError || error instanceof AccountVerificationError) {
+    if (error instanceof CheckoutCreationError || error instanceof AccountVerificationError || error instanceof GuestAccessError) {
       throw error;
     }
 

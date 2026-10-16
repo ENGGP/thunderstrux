@@ -1,4 +1,5 @@
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { purchaseLinkForEmail } from "@/lib/guest/guest-access";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
 
@@ -83,6 +84,8 @@ export async function loadTicketDeliveryOrder(orderId: string) {
       totalAmount: true,
       paidAt: true,
       ticketEmailSentAt: true,
+      userId: true,
+      guestIdentityId: true,
       purchasedTicketTypeName: true,
       sellerName: true,
       ...buyerIdentitySelect,
@@ -141,7 +144,8 @@ function buyerName(order: TicketDeliveryOrder) {
   return order.user.displayName ?? (fullName || null);
 }
 
-export function renderTicketEmail(order: TicketDeliveryOrder) {
+// A guest's email also carries a link that opens this order (T16b).
+export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: string) {
   const name = buyerName(order);
   const greeting = name ? `Hi ${name},` : "Hi,";
   const ticketIds = order.tickets.map((ticket) => ticket.id);
@@ -172,7 +176,8 @@ export function renderTicketEmail(order: TicketDeliveryOrder) {
     "Ticket IDs:",
     ticketIdLines || "- Not available",
     "",
-    "QR scanning is not required for this MVP. Keep this email or your ticket IDs handy for the event."
+    "QR scanning is not required for this MVP. Keep this email or your ticket IDs handy for the event.",
+    ...(guestOrderLink ? ["", `Open your order (works once, for 24 hours; after that use Find your tickets): ${guestOrderLink}`] : [])
   ].join("\n");
 
   const html = `
@@ -195,6 +200,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder) {
       <p><strong>Ticket IDs</strong></p>
       <ul>${ticketIdHtml || "<li>Not available</li>"}</ul>
       <p>QR scanning is not required for this MVP. Keep this email or your ticket IDs handy for the event.</p>
+      ${guestOrderLink ? `<p><a href="${escapeHtml(guestOrderLink)}">Open your order</a> (works once, for 24 hours; after that use Find your tickets).</p>` : ""}
     </div>
   `;
 
@@ -277,9 +283,11 @@ export async function sendWithResend({
 export async function sendTicketDeliveryEmailToProvider(
   orderId: string,
   {
-    idempotencyKey
+    idempotencyKey,
+    attempt = 0
   }: {
     idempotencyKey?: string;
+    attempt?: number;
   } = {}
 ) {
   const order = await loadTicketDeliveryOrder(orderId);
@@ -294,10 +302,13 @@ export async function sendTicketDeliveryEmailToProvider(
     throw new TicketEmailRecipientError();
   }
 
-  const email = renderTicketEmail(order);
+  // A guest's link is minted per send attempt, so no raw link is stored.
+  // shortcut: a retry carries a new link, so its provider key includes the attempt and a lost response can mean a second email; move the link to an encrypted notification if duplicates matter.
+  const guestOrderLink = order.guestIdentityId && !order.userId ? await purchaseLinkForEmail(order.id, order.guestIdentityId) : undefined;
+  const email = renderTicketEmail(order, guestOrderLink);
   const delivery = await sendWithResend({
     to: recipient,
-    idempotencyKey,
+    idempotencyKey: guestOrderLink && idempotencyKey ? `${idempotencyKey}/${attempt}` : idempotencyKey,
     ...email
   });
 

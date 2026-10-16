@@ -121,3 +121,29 @@ export function getMemberTicketOrder(userId: string, eventId: string, orderId: s
     }
   });
 }
+
+// A guest's own order, any status, for /guest/orders. The caller has already
+// checked that the guest session may open it.
+export function getGuestOrder(orderId: string) {
+  return prisma.order.findFirst({
+    where: { id: orderId, guestIdentityId: { not: null } },
+    select: {
+      id: true,
+      status: true,
+      paymentKind: true,
+      quantity: true,
+      totalAmount: true,
+      purchasedTicketTypeName: true,
+      buyerEmailSnapshot: true,
+      userId: true,
+      ticketType: { select: { name: true } },
+      tickets: { where: { validity: "active" }, select: { id: true }, orderBy: { issueSequence: "asc" } },
+      event: {
+        select: {
+          id: true, title: true, startTime: true, endTime: true, location: true,
+          organisation: { select: { name: true, timeZone: true, supportEmail: true, refundPolicy: true } }
+        }
+      }
+    }
+  });
+}

@@ -1,10 +1,20 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import PublicEventPage from "@/app/(public)/events/[eventId]/page";
 import { prisma } from "@/lib/db";
 import { getEventPreviewDetail, getPublishedEventDetail } from "@/lib/events/public-events";
 import { setMockSession } from "@/tests/helpers/auth";
 import { renderPage } from "@/tests/helpers/render";
 import { createEvent, createMember, createOrder, createOrganisationAccount, createReservation } from "@/tests/helpers/test-data";
+
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NOT_FOUND");
+  },
+  redirect: (path: string) => {
+    throw new Error(`REDIRECT:${path}`);
+  },
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() })
+}));
 
 describe("public event pages", () => {
   test("the proxy no longer guards event pages, and the dashboard stays protected", async () => {

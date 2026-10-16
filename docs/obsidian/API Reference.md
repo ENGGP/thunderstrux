@@ -131,6 +131,8 @@ Implemented alert names:
 - `checkout_session_creation_failure`
 - `email_outbox_retry_exhausted`
 - `stale_order_worker_failed`
+- `checkout_attempt_recovery_failed` (the recovery worker run failed)
+- `checkout_attempt_recovery_abandoned` (an attempt stayed uncertain past Stripe's 24-hour idempotency window)
 - `app_healthcheck_failed` is reserved for external healthcheck monitoring and is not emitted by app runtime code.
 - `db_migration_failed` is reserved for deployment/migration automation and is not emitted by app runtime code.
 

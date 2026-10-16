@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { CreateEventForm } from "@/components/events/create-event-form";
 import { EventWorkspaceHeader } from "@/components/events/event-tabs";
+import { ReadinessChecklist } from "@/components/events/readiness-checklist";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import {
@@ -9,27 +11,6 @@ import {
   getDashboardEvent,
   getOrganisationEventForEditing
 } from "@/lib/events/event-lifecycle";
-
-type EventFormData = {
-  id: string;
-  organisationId: string;
-  title: string;
-  description: string;
-  startTime: string;
-  endTime: string;
-  location: string;
-  status: "draft" | "published";
-  version: number;
-  compensationRefundMode: "manual_review" | "automatic_full";
-  ticketTypes: Array<{
-    id: string;
-    name: string;
-    price: number;
-    quantity: number;
-    ordersCount: number;
-    ticketsCount: number;
-  }>;
-};
 
 export default async function EditEventPage({
   params
@@ -39,7 +20,7 @@ export default async function EditEventPage({
   const { eventId } = await params;
   const organisation = await requireManagementPage("events:manage", `/dashboard/events/${eventId}/edit`);
 
-  let initialEvent: EventFormData;
+  let initialEvent: Awaited<ReturnType<typeof getOrganisationEventForEditing>>;
   let event: Awaited<ReturnType<typeof getDashboardEvent>>;
 
   try {
@@ -65,11 +46,25 @@ export default async function EditEventPage({
         </Notice>
       ) : null}
       <CreateEventForm
-        basePath="/dashboard"
+        aside={
+          event.status === "draft" ? (
+            <Card>
+              <div className="grid gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-ink" id="ready-heading">Ready to publish?</h2>
+                  <p className="mt-1 text-sm text-ink-soft">Checked when you save. Publish from the Summary.</p>
+                </div>
+                <ReadinessChecklist blockers={event.blockers} />
+              </div>
+            </Card>
+          ) : null
+        }
         eventId={eventId}
         initialEvent={initialEvent}
         mode="edit"
+        organisationId={organisation.id}
         orgSlug={organisation.slug}
+        timeZone={event.timeZone}
       />
     </DashboardShell>
   );

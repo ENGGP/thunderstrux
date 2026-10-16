@@ -47,6 +47,11 @@ export const profileSelect = {
   profileVersion: true,
 } as const;
 
+// The zone event times are entered and shown in.
+export async function readTimeZone(organisationId: string) {
+  return (await prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { timeZone: true } })).timeZone;
+}
+
 export async function readProfile(organisationId: string) {
   return prisma.organisation.findUnique({
     where: { id: organisationId },

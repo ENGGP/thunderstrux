@@ -12,7 +12,9 @@ const eventFieldsSchema = z
     capacity: z.number().int().positive().max(1_000_000).nullable().optional(),
     visibility: z.enum(["public", "unlisted", "members_only"]).optional(),
     // Defaults to the start time when omitted.
-    salesCloseAt: z.coerce.date().optional()
+    salesCloseAt: z.coerce.date().optional(),
+    // A ready `event` image uploaded for this society; null removes it.
+    heroAssetId: z.string().trim().min(1).max(64).nullable().optional()
   })
   .refine((data) => data.endTime > data.startTime, {
     message: "endTime must be after startTime",

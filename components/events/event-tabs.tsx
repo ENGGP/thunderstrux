@@ -4,14 +4,21 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Icon } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { DashboardEvent } from "@/lib/events/event-lifecycle";
-import { formatDateRange } from "@/lib/format";
+import { formatDateRange, formatDateTime } from "@/lib/format";
 import {
   hasOrganisationPermission,
   type OrganisationPermission,
   type OrganisationStaffRole
 } from "@/lib/permissions";
+import { zoneCity } from "@/lib/zoned-time";
 
 export type EventTab = "summary" | "attendees" | "orders" | "edit";
+
+// Selling state of a published event, beside its Published badge.
+export function SaleBadge({ event }: { event: Pick<DashboardEvent, "status" | "salesOpen" | "soldOut"> }) {
+  if (event.status !== "published") return null;
+  return <StatusBadge status={!event.salesOpen ? "sales-closed" : event.soldOut ? "sold-out" : "sales-open"} />;
+}
 
 // Link tabs share one look: the events list views and an event's sections.
 // The bar scrolls sideways on narrow screens instead of wrapping.
@@ -68,7 +75,12 @@ export function EventWorkspaceHeader({
             </Link>
           ) : null
         }
-        badge={<StatusBadge status={event.status} />}
+        badge={
+          <span className="flex flex-wrap gap-2">
+            <StatusBadge status={event.status} />
+            {editing ? null : <SaleBadge event={event} />}
+          </span>
+        }
         breadcrumbs={[
           { label: "Events", href: "/dashboard/events" },
           ...(editing ? [{ label: event.title, href: base }] : [])
@@ -78,12 +90,13 @@ export function EventWorkspaceHeader({
             <span className="flex flex-wrap gap-x-5 gap-y-1.5">
               <span className="inline-flex items-center gap-2">
                 <Icon name="calendar" />
-                {formatDateRange(event.startTime, event.endTime)}
+                {formatDateRange(event.startTime, event.endTime, event.timeZone)}, {zoneCity(event.timeZone)}
               </span>
               <span className="inline-flex items-center gap-2 [overflow-wrap:anywhere]">
                 <Icon name="pin" />
                 {event.location}
               </span>
+              <span>Sales close {formatDateTime(event.salesCloseAt, { timeZone: event.timeZone })}</span>
             </span>
           )
         }

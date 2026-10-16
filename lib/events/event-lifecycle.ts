@@ -8,6 +8,7 @@ import {
   MEMBERS_ONLY_EVENTS_ENABLED,
   salesOpen
 } from "@/lib/events/event-readiness";
+import { assetReferenced } from "@/lib/assets/references";
 import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
@@ -45,6 +46,29 @@ export class EventLifecycleConflictError extends Error {
   }
 }
 
+// The image must be a ready event image of this society. Callers hold the
+// Event lock (or are creating the event); the Asset row is locked after it.
+async function assertHeroAsset(tx: Prisma.TransactionClient, organisationId: string, heroAssetId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "Asset" WHERE "id" = ${heroAssetId} FOR UPDATE`;
+  const asset = await tx.asset.findFirst({
+    where: { id: heroAssetId, organisationId, kind: "event", status: "ready", deletedAt: null },
+    select: { id: true }
+  });
+
+  if (!asset) {
+    throw new EventLifecycleValidationError("Choose an event image uploaded for this society", [
+      { path: ["heroAssetId"], message: "That image is no longer available. Upload it again, then save." }
+    ]);
+  }
+}
+
+// Images that lost or gained a reference start or stop their cleanup delay.
+async function refreshAssetReferences(tx: Prisma.TransactionClient, ids: Array<string | null | undefined>) {
+  for (const id of [...new Set(ids.filter((value): value is string => Boolean(value)))].sort()) {
+    await tx.asset.update({ where: { id }, data: { unreferencedAt: (await assetReferenced(tx, id)) ? null : new Date() } });
+  }
+}
+
 function rejectMembersOnly(visibility: string | undefined) {
   if (visibility === "members_only" && !MEMBERS_ONLY_EVENTS_ENABLED) {
     throw new EventLifecycleValidationError("Members-only events are not available yet", [
@@ -67,6 +91,7 @@ export const eventSelect = {
   salesCloseAt: true,
   saleState: true,
   version: true,
+  heroAssetId: true,
   compensationRefundMode: true,
   createdAt: true,
   ticketTypes: {
@@ -103,8 +128,10 @@ const dashboardEventSelect = {
   salesCloseAt: true,
   saleState: true,
   version: true,
+  capacity: true,
+  heroAssetId: true,
   ticketTypes: { select: { id: true, price: true, quantity: true } },
-  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
+  organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true, timeZone: true } },
   _count: { select: { orders: true, tickets: true } }
 } satisfies Prisma.EventSelect;
 
@@ -130,9 +157,20 @@ function toDashboardEvent(
     salesCloseAt: event.salesCloseAt,
     salesOpen: readiness.salesOpen,
     version: event.version,
+    capacity: event.capacity,
+    heroAssetId: event.heroAssetId,
+    timeZone: event.organisation.timeZone,
     ticketTypeCount: event.ticketTypes.length,
     remaining,
+    // shortcut: counts remaining stock only, not holds or capacity; use sellableQuantity if lists need it.
+    soldOut: event.ticketTypes.length > 0 && remaining <= 0,
+    // Every readiness blocker, for the checklist; the first is the Publish reason.
+    blockers: readiness.blockers,
     publishBlocker: event.status === "draft" ? readiness.blockers[0]?.message ?? null : null,
+    reopenBlocker:
+      event.saleState === "closed" && event.salesCloseAt <= now
+        ? "The sales close time has passed. Move it later on the Edit page first."
+        : null,
     unpublishBlocker:
       event.status === "published" && event._count.orders > 0
         ? "This event has orders, so it stays published."
@@ -234,7 +272,13 @@ export async function getDashboardEvent(organisationId: string, eventId: string)
     throw new EventLifecycleNotFoundError();
   }
 
-  return toDashboardEvent(event);
+  const inventory = await readEventInventory(prisma, event.id, new Date());
+  return {
+    ...toDashboardEvent(event),
+    // Issued tickets plus live checkout holds, against the capacity.
+    occupancy: inventory.occupancy,
+    heldByType: Object.fromEntries(inventory.holdsByType) as Record<string, number>
+  };
 }
 
 export async function getOrganisationEvent(
@@ -278,17 +322,28 @@ export async function getOrganisationEventForEditing(
     throw new EventLifecycleNotFoundError();
   }
 
+  // Advisory numbers for the builder; the save re-checks them under the Event lock.
+  const [inventory, issued] = await Promise.all([
+    readEventInventory(prisma, event.id, new Date()),
+    prisma.ticket.groupBy({ by: ["ticketTypeId"], where: { eventId: event.id, validity: "active" }, _count: true })
+  ]);
+  const issuedByType = new Map(issued.map((row) => [row.ticketTypeId, row._count]));
+
   return {
     ...event,
     startTime: event.startTime.toISOString(),
     endTime: event.endTime.toISOString(),
+    salesCloseAt: event.salesCloseAt.toISOString(),
+    occupancy: inventory.occupancy,
     ticketTypes: event.ticketTypes.map((ticketType) => ({
       id: ticketType.id,
       name: ticketType.name,
       price: ticketType.price,
       quantity: ticketType.quantity,
       ordersCount: ticketType._count.orders,
-      ticketsCount: ticketType._count.tickets
+      ticketsCount: ticketType._count.tickets,
+      sold: issuedByType.get(ticketType.id) ?? 0,
+      held: inventory.holdsByType.get(ticketType.id) ?? 0
     }))
   };
 }
@@ -312,9 +367,11 @@ export async function createOrganisationEvent(
   rejectMembersOnly(input.visibility);
 
   return prisma.$transaction(async (transaction) => {
+    if (input.heroAssetId) await assertHeroAsset(transaction, organisationId, input.heroAssetId);
     const event = await transaction.event.create({
       data: {
       organisationId,
+      heroAssetId: input.heroAssetId ?? null,
       title: input.title,
       description: input.description,
       startTime: input.startTime,
@@ -336,6 +393,7 @@ export async function createOrganisationEvent(
     },
       select: eventSelect
     });
+    await refreshAssetReferences(transaction, [event.heroAssetId]);
     await transaction.auditLog.create({
       data: {
         organisationId,
@@ -435,6 +493,7 @@ export async function updateOrganisationEvent(
       where: { id: existingEvent.id },
       select: {
         version: true,
+        heroAssetId: true,
         ticketTypes: {
           select: { id: true, quantity: true, _count: { select: { orders: true, tickets: true } } }
         }
@@ -483,6 +542,10 @@ export async function updateOrganisationEvent(
       )
       .map((ticketType) => ticketType.id);
 
+    if (input.heroAssetId && input.heroAssetId !== locked.heroAssetId) {
+      await assertHeroAsset(transaction, organisationId, input.heroAssetId);
+    }
+
     const updated = await transaction.event.updateMany({
       where: { id: existingEvent.id, version: input.version },
       data: {
@@ -494,6 +557,7 @@ export async function updateOrganisationEvent(
         capacity,
         salesCloseAt,
         ...(input.visibility ? { visibility: input.visibility } : {}),
+        ...(input.heroAssetId !== undefined ? { heroAssetId: input.heroAssetId } : {}),
         version: { increment: 1 },
         ...(input.compensationRefundMode
           ? { compensationRefundMode: input.compensationRefundMode }
@@ -532,6 +596,10 @@ export async function updateOrganisationEvent(
             })
       )
     );
+
+    if (input.heroAssetId !== undefined && input.heroAssetId !== locked.heroAssetId) {
+      await refreshAssetReferences(transaction, [locked.heroAssetId, input.heroAssetId]);
+    }
 
     await transaction.auditLog.create({
       data: {
@@ -723,7 +791,7 @@ export async function deleteOrganisationEvent(
     await lockEventInventory(transaction, event.id, []);
     const locked = await transaction.event.findUniqueOrThrow({
       where: { id: event.id },
-      select: { _count: { select: { orders: true, tickets: true } } }
+      select: { heroAssetId: true, _count: { select: { orders: true, tickets: true } } }
     });
 
     if (locked._count.orders > 0 || locked._count.tickets > 0) {
@@ -733,6 +801,7 @@ export async function deleteOrganisationEvent(
     }
 
     await transaction.event.delete({ where: { id: event.id } });
+    await refreshAssetReferences(transaction, [locked.heroAssetId]);
     await transaction.auditLog.create({
       data: {
         organisationId,

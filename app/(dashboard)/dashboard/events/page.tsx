@@ -2,7 +2,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { Suspense } from "react";
 import { EventActions } from "@/components/events/event-actions";
-import { tabBarClasses, tabClasses } from "@/components/events/event-tabs";
+import { SaleBadge, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClasses } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/events/event-lifecycle";
 import { formatDateTime } from "@/lib/format";
 import { hasOrganisationPermission, type OrganisationStaffRole } from "@/lib/permissions";
+import { zoneCity } from "@/lib/zoned-time";
 
 const viewLabels: Record<EventView, string> = {
   upcoming: "Upcoming",
@@ -106,6 +107,8 @@ async function EventsResults({
     showSales ? `/dashboard/events/${event.id}` : `/dashboard/events/${event.id}/tickets`;
   const tickets = (event: DashboardEvent & { sold: number | null }) =>
     event.ticketTypeCount === 0 ? "No ticket types" : `${event.sold} sold · ${event.remaining} left`;
+  // Visibility is a setting, not a status: plain text after the location.
+  const place = (event: DashboardEvent) => (event.visibility === "unlisted" ? `${event.location} · Link only` : event.location);
   const [singular, plural] = viewNouns[view];
   const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
 
@@ -186,11 +189,14 @@ async function EventsResults({
                       <Link className={titleLink} href={eventHref(event)}>
                         {event.title}
                       </Link>
-                      <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{event.location}</p>
+                      <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{place(event)}</p>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-4">{formatDateTime(event.startTime)}</td>
+                    <td className="whitespace-nowrap px-3 py-4">{formatDateTime(event.startTime, { timeZone: event.timeZone })}</td>
                     <td className="px-3 py-4">
-                      <StatusBadge status={event.status} />
+                      <span className="flex flex-wrap gap-1.5">
+                        <StatusBadge status={event.status} />
+                        <SaleBadge event={event} />
+                      </span>
                     </td>
                     {showSales ? (
                       <td className="whitespace-nowrap px-3 py-4 tabular-nums">{tickets(event)}</td>
@@ -215,10 +221,13 @@ async function EventsResults({
                   <Link className={titleLink} href={eventHref(event)}>
                     {event.title}
                   </Link>
-                  <StatusBadge status={event.status} />
+                  <span className="flex flex-wrap justify-end gap-1.5">
+                    <StatusBadge status={event.status} />
+                    <SaleBadge event={event} />
+                  </span>
                 </div>
                 <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
-                  {formatDateTime(event.startTime)} · {event.location}
+                  {formatDateTime(event.startTime, { timeZone: event.timeZone })} · {place(event)}
                 </p>
                 {showSales ? <p className="text-sm tabular-nums">{tickets(event)}</p> : null}
                 {canManage ? <EventActions event={event} size="md" /> : null}
@@ -232,7 +241,7 @@ async function EventsResults({
         <p className="text-sm text-ink-soft">
           Showing {events.length}
           {counts[view] > events.length ? ` of ${counts[view]}` : ""}{" "}
-          {counts[view] === 1 ? singular : plural}. Times are shown in Brisbane time.
+          {counts[view] === 1 ? singular : plural}. Times are shown in {zoneCity(events[0].timeZone)}.
         </p>
       ) : null}
     </>

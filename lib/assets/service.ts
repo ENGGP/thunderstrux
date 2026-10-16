@@ -56,7 +56,7 @@ export async function deleteAsset(actor: AccountActor, organisationId: string, i
     if (!snapshot) throw new AssetError(404, "Image was not found");
     await lockOrganisationActor(tx, actor, organisationId, assetPermission(snapshot.kind as AssetKind));
     const current = await lockAsset(tx, organisationId, id);
-    if (await assetReferenced(tx, id)) throw new AssetError(409, "Remove this image from its profile before deleting it");
+    if (await assetReferenced(tx, id)) throw new AssetError(409, "Remove this image from its profile or event before deleting it");
     if (current.status === "pending") throw new AssetError(409, "Image is still uploading");
     if (current.status !== "deleted") {
       await tx.asset.update({ where: { id }, data: { status: "deleted" } });

@@ -8,24 +8,30 @@ type EventCardProps = {
   startTime: Date;
   location: string;
   timeZone: string;
+  heroAssetId?: string | null;
   // Omitted on a society's own page, where the host is already the page subject.
   society?: { name: string; slug: string };
 };
 
-// Date rail first: day and month in the hosting society's timezone. Price and
-// artwork are added when the event model carries them; nothing is invented here.
+// Date rail first: day and month in the hosting society's timezone. An event
+// image, when the society added one, sits above at 16:9; price is added later.
 export function EventCard({
   id,
   title,
   startTime,
   location,
   timeZone,
+  heroAssetId,
   society
 }: EventCardProps) {
   return (
-    <article className="relative flex gap-4 rounded-card border border-line bg-surface p-5 transition-shadow duration-150 hover:shadow-card">
+    <article className="relative flex flex-wrap gap-4 overflow-hidden rounded-card border border-line bg-surface p-5 transition-shadow duration-150 hover:shadow-card">
+      {heroAssetId ? (
+        // Decorative: the title link names the event.
+        <img alt="" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none object-cover" src={`/api/public/assets/${heroAssetId}`} />
+      ) : null}
       <DateRail date={startTime} timeZone={timeZone} />
-      <div className="grid min-w-0 content-start gap-1">
+      <div className="grid min-w-0 flex-1 content-start gap-1">
         {society ? (
           <Link
             className="relative z-10 w-fit text-sm text-ink-muted underline-offset-4 hover:text-brand hover:underline"

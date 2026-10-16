@@ -149,6 +149,7 @@ export default async function OrganisationDetailsPage({
                   id={event.id}
                   key={event.id}
                   location={event.location}
+                  heroAssetId={event.heroAssetId}
                   startTime={event.startTime}
                   timeZone={organisation.timeZone}
                   title={event.title}

@@ -12,6 +12,8 @@ type ActionEvent = {
   title: string;
   status: "draft" | "published";
   version: number;
+  saleState: "open" | "closed";
+  reopenBlocker: string | null;
   publishBlocker: string | null;
   unpublishBlocker: string | null;
   deleteBlocker: string | null;
@@ -60,24 +62,30 @@ export function EventActions({
     setConfirming(action);
   }
 
-  async function run(action: "publish" | "unpublish" | "delete") {
+  async function run(action: "publish" | "unpublish" | "delete" | "close" | "reopen") {
+    menu.current?.hidePopover();
     setBusy(true);
     setMessage(null);
 
+    // An explicit target and the version this page loaded, so a retry or stale page cannot flip it.
+    const patch = (body: object) => ({
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...body, version: event.version })
+    });
+
     try {
       await fetchJson(
-        action === "delete" ? `/api/events/${event.id}` : `/api/events/${event.id}/publish`,
+        action === "delete"
+          ? `/api/events/${event.id}`
+          : action === "close" || action === "reopen"
+            ? `/api/events/${event.id}/sales`
+            : `/api/events/${event.id}/publish`,
         action === "delete"
           ? { method: "DELETE" }
-          : {
-              method: "PATCH",
-              headers: { "content-type": "application/json" },
-              // An explicit target and the version this page loaded, so a retry or stale page cannot flip it.
-              body: JSON.stringify({
-                targetStatus: action === "publish" ? "published" : "draft",
-                version: event.version
-              })
-            }
+          : action === "close" || action === "reopen"
+            ? patch({ saleState: action === "close" ? "closed" : "open" })
+            : patch({ targetStatus: action === "publish" ? "published" : "draft" })
       );
       setMessage({
         ok: true,
@@ -86,7 +94,11 @@ export function EventActions({
             ? "Published. It is now on the public page."
             : action === "unpublish"
               ? "Unpublished. It is hidden from the public page."
-              : "Event deleted."
+              : action === "close"
+                ? "Sales closed. The event stays published."
+                : action === "reopen"
+                  ? "Sales reopened."
+                  : "Event deleted."
       });
       if (action === "delete" && inHeader) router.push("/dashboard/events");
       router.refresh();
@@ -165,6 +177,26 @@ export function EventActions({
         style={{ width: menuWidth }}
       >
         {inHeader ? null : publicLink}
+        {event.status === "published" ? (
+          event.saleState === "open" ? (
+            <button className={`${menuItem} text-ink`} disabled={busy} onClick={() => run("close")} type="button">
+              Close sales
+              <span className="text-[13px] font-normal text-ink-soft">Stops new orders. The event stays published.</span>
+            </button>
+          ) : (
+            <button
+              className={`${menuItem} text-ink`}
+              disabled={busy || Boolean(event.reopenBlocker)}
+              onClick={() => run("reopen")}
+              type="button"
+            >
+              Reopen sales
+              {event.reopenBlocker ? (
+                <span className="text-[13px] font-normal text-ink-soft">{event.reopenBlocker}</span>
+              ) : null}
+            </button>
+          )
+        ) : null}
         {event.status === "published" ? (
           <button
             className={`${menuItem} text-ink`}

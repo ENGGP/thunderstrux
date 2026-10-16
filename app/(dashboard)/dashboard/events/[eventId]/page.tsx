@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { EventWorkspaceHeader } from "@/components/events/event-tabs";
+import { EventWorkspaceHeader, SaleBadge } from "@/components/events/event-tabs";
+import { ReadinessChecklist } from "@/components/events/readiness-checklist";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,7 +12,7 @@ import {
   getOrganisationEventRevenueSeries
 } from "@/lib/events/event-analytics";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
-import { formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
 type OrganiserEventPageProps = {
@@ -34,6 +35,7 @@ export default async function OrganiserEventPage({
   const { eventId } = await params;
   const organisation = await requireManagementPage("analytics:read", `/dashboard/events/${eventId}`);
   const financial = hasOrganisationPermission(organisation.staffRole, "orders:read");
+  const canManage = hasOrganisationPermission(organisation.staffRole, "events:manage");
   let analytics: Awaited<ReturnType<typeof getOrganisationEventAnalytics>>;
   let event: Awaited<ReturnType<typeof getDashboardEvent>>;
 
@@ -58,6 +60,9 @@ export default async function OrganiserEventPage({
       value: analytics.totals.remaining,
       note: `Across ${analytics.ticketTypes.length} ticket ${analytics.ticketTypes.length === 1 ? "type" : "types"}`
     },
+    ...(event.capacity !== null
+      ? [{ label: "Capacity", value: `${event.occupancy} of ${event.capacity}`, note: "Issued tickets plus live checkout holds" }]
+      : []),
     ...(financial
       ? [{ label: "Revenue", value: formatMoney(analytics.totals.revenue ?? 0), note: "Gross, before fees and refunds" }]
       : [])
@@ -88,7 +93,9 @@ export default async function OrganiserEventPage({
                 <thead>
                   <tr className="text-left text-[13px] text-ink-soft">
                     <th className="py-2.5 font-semibold" scope="col">Ticket</th>
+                    <th className="px-2 py-2.5 text-right font-semibold" scope="col">Price</th>
                     <th className="px-2 py-2.5 text-right font-semibold" scope="col">Sold</th>
+                    <th className="px-2 py-2.5 text-right font-semibold" scope="col">Held</th>
                     <th className="px-2 py-2.5 text-right font-semibold" scope="col">Left</th>
                     {financial ? (
                       <>
@@ -104,7 +111,9 @@ export default async function OrganiserEventPage({
                       <th className="py-3.5 text-left font-semibold text-ink [overflow-wrap:anywhere]" scope="row">
                         {ticketType.name}
                       </th>
+                      <td className="px-2 py-3.5 text-right">{ticketType.price > 0 ? formatMoney(ticketType.price) : "Free"}</td>
                       <td className="px-2 py-3.5 text-right">{ticketType.sold}</td>
+                      <td className="px-2 py-3.5 text-right">{event.heldByType[ticketType.id] ?? 0}</td>
                       <td className="px-2 py-3.5 text-right">{ticketType.remaining}</td>
                       {financial ? (
                         <>
@@ -142,6 +151,40 @@ export default async function OrganiserEventPage({
           </Card>
         ) : null}
       </div>
+
+      {event.status === "draft" ? (
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">Ready to publish?</h2>
+          <div className="mt-3">
+            <ReadinessChecklist
+              blockers={event.blockers}
+              editHref={canManage ? `/dashboard/events/${event.id}/edit` : undefined}
+            />
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold text-ink">Selling status</h2>
+            <SaleBadge event={event} />
+          </div>
+          <ul className="mt-3 grid list-disc gap-2 pl-5 text-[15px] text-ink">
+            <li>{event.visibility === "unlisted" ? "Published, link only: not listed on Explore events" : "Published and listed publicly"}</li>
+            {event.blockers
+              .filter((blocker) => ["payments_unavailable", "free_unavailable", "no_stock"].includes(blocker.code))
+              .map((blocker) => (
+                <li className="text-warning" key={blocker.code}>{blocker.message}</li>
+              ))}
+            <li>
+              {event.saleState === "closed"
+                ? "Sales were closed by staff. Use More to reopen them."
+                : event.salesOpen
+                  ? `Sales close automatically at ${formatDateTime(event.salesCloseAt, { timeZone: event.timeZone })}. Use More to close them sooner.`
+                  : "Sales closed at the close time."}
+            </li>
+          </ul>
+        </Card>
+      )}
 
       <Card>
         <h2 className="text-lg font-semibold text-ink">About this event</h2>

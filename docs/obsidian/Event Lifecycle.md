@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-19
 owner: engineering
 related: ["[[API Reference]]", "[[Ticket Check-in Implementation]]"]
 sources: [lib/events/event-lifecycle.ts, app/api/events]
@@ -55,7 +55,7 @@ Flow:
 ```text
 Authorised management user opens /dashboard/events/new
   -> route resolves the canonical organisation from live staff authority or the configured legacy fallback
-  -> CreateEventForm resolves the organisation by slug for existing API compatibility
+  -> the page passes the canonical organisation id and the society time zone to CreateEventForm
   -> POST /api/events
   -> API validates live event-management access for the canonical organisation
   -> event lifecycle service creates Event and TicketType rows
@@ -66,6 +66,23 @@ Access:
 - Active staff authority or explicitly enabled legacy authority is required.
 - The submitted `organisationId` must match the server-resolved canonical organisation.
 - Members without live staff authority cannot create events; named staff with events:manage can, regardless of accountRole.
+
+### Builder (T11b)
+
+The new and Edit pages share `components/events/create-event-form.tsx`:
+
+- **Times are society wall-clock times.** The form shows and edits `datetime-local` values in `Organisation.timeZone` and sends ISO instants; the browser's own zone is never used. `lib/zoned-time.ts` converts both ways. A time inside a daylight-saving gap is refused ("clocks go forward"); a time inside an overlap shows a choice of the first or second occurrence, and an edit keeps whichever was saved. The Schedule card names the zone, for example "Sydney time (AEDT, UTC+11)".
+- **Sales close** shows the start time until it is changed and then sends its own value. The server already treats a close time equal to the start as the default that follows it.
+- **Prices are dollars.** The "$" field is parsed to cents without floating point (`parseMoneyInput` in `lib/format.ts`); the API stays in cents. Closes EVT-002.
+- **Access** offers Public and Link only (`unlisted`); members-only waits for T24. Capacity is optional and the hint names the tickets already issued or held.
+- **Event image.** An optional 16:9 image uploads as an `event` asset (`POST /api/orgs/[slug]/assets?kind=event`, needs events:manage) and previews through the private asset route; the event stores it on save. Replace and Remove change it on the next save.
+- Each existing ticket type shows sold (active tickets) and held (live checkout holds); a type with orders or tickets cannot be removed.
+- Saving an edit stays on the page and shows "Event saved"; a stale version shows "This event changed since you opened it" and keeps the edits on screen; changed stock after sales shows "Ticket stock changed while you were editing". Unsaved changes are marked and leaving the page asks first.
+- A draft's Edit page shows the readiness checklist beside the form.
+
+### Event hero image
+
+`Event.heroAssetId` references `(Asset.id, organisationId)`, so an event can only use an image of its own society. Create and edit lock the Asset row after the Event lock and accept only a ready, undeleted `event` asset ("That image is no longer available. Upload it again, then save."). Every change refreshes `unreferencedAt` on the old and new image, and deleting an event releases its image, so the 24-hour cleanup delay applies as for society images. A referenced image cannot be deleted. Public delivery (`/api/public/assets/[id]`) serves it only while the event is published and not members-only; it shows above the title on the public event page and at the top of event cards. See [[Society Profiles and Assets]].
 
 ## Ticket Types
 
@@ -197,7 +214,11 @@ Rules:
 - Draft and published events can be viewed by management users with live access to the owning organisation.
 - The route shows event details and remaining/sold counts. Financial DTO fields and revenue-series queries/rendering require orders:read; event managers receive nonfinancial analytics.
 - Sold and revenue values are derived from paid orders.
-- The UI does not show total capacity because original capacity is not stored.
+- The header shows dates in the society time zone, the sales close time and, for a published event, a selling badge: Sales open, Sold out (no remaining stock) or Sales closed.
+- The ticket table shows price, sold, held (live checkout holds) and left. When the event has a capacity, a Capacity tile shows issued tickets plus live holds against it.
+- A draft shows the readiness checklist ("Ready to publish?"): the five publish checks, each with the shared readiness message and a link to the Edit page field, or to payment setup. A published event shows its selling status instead.
+- **More** offers Close sales on a published event with open sales, and Reopen sales when they are closed; reopening is unavailable once the close time has passed ("Move it later on the Edit page first"). Both call `PATCH /api/events/[eventId]/sales` with the loaded version.
+- The events list shows the selling badge beside Published, "Link only" after the location of an unlisted event, and start times in the society time zone.
 
 Public route behavior:
 

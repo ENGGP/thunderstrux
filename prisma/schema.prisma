@@ -135,6 +135,7 @@ model Asset {
   uploadedBy       User         @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
   logoProfiles     Organisation[] @relation("SocietyLogo")
   coverProfiles    Organisation[] @relation("SocietyCover")
+  eventHeroes      Event[]        @relation("EventHero")
 
   @@unique([id, organisationId])
   @@index([organisationId, status])
@@ -273,7 +274,10 @@ model Event {
   version        Int         @default(1)
   compensationRefundMode CompensationRefundMode @default(manual_review)
   createdAt      DateTime    @default(now())
+  // Optional 16:9 event image: a ready `event` asset of the same society (T11b).
+  heroAssetId    String?
   organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  heroAsset      Asset?       @relation("EventHero", fields: [heroAssetId, organisationId], references: [id, organisationId], onDelete: Restrict)
   ticketTypes    TicketType[]
   tickets        Ticket[]
   orders         Order[]
@@ -282,6 +286,7 @@ model Event {
   @@index([organisationId])
   @@index([organisationId, status])
   @@index([status, startTime, id], map: "Event_status_startTime_id_idx")
+  @@index([heroAssetId])
 }
 
 model TicketType {

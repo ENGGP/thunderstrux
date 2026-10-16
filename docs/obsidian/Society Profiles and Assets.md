@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-19
 owner: engineering
 related: ["[[API Reference]]", "[[Database and Multi Tenancy]]", "[[Production Operations]]"]
 sources: [lib/assets, lib/organisations, prisma/schema.prisma, docker-compose.dev.yml]
@@ -44,9 +44,9 @@ JPEG/PNG/WebP input is limited to 5 MiB and 4096 by 4096 decoded dimensions. Str
 
 `GET /api/orgs/[orgSlug]/assets/[assetId]` is an authorised preview with private/no-store headers. `DELETE` denies referenced or uploading assets and creates an audited tombstone before deleting bytes. Repeat deletion recovers interrupted storage deletion without duplicate audit entries. Uploaded images are not automatically public.
 
-`GET /api/public/assets/[assetId]` serves only ready images referenced by public content, with an explicit WebP content type, nosniff, content-hash ETag and five-minute cache lifetime. Unattached/pending/deleted assets return 404. Profile logos/covers are the current public reference consumer; other uploads remain private previews.
+`GET /api/public/assets/[assetId]` serves only ready images referenced by public content, with an explicit WebP content type, nosniff, content-hash ETag and five-minute cache lifetime. Unattached/pending/deleted assets return 404. Public references are society logos and covers and, since T11b, the hero image of a published, non-members-only event (`Event.heroAssetId`). Any event reference, published or not, keeps an image from deletion and cleanup. Other uploads remain private previews.
 
-Uploads move pending -> ready only after storage verification and a transaction rechecking session version, live permission and MFA. Provider/authority failures retain a failed record/key for recovery. No provider call occurs while database locks are held. Lock ordering is User -> Organisation -> Asset.
+Uploads move pending -> ready only after storage verification and a transaction rechecking session version, live permission and MFA. Provider/authority failures retain a failed record/key for recovery. No provider call occurs while database locks are held. Lock ordering is User -> Organisation -> Asset, and Event -> Asset when an event attaches its image ([[Event Lifecycle]]).
 
 ## Local Storage and Recovery
 

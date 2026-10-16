@@ -13,6 +13,7 @@ export type PublicEventListItem = {
   title: string;
   startTime: Date;
   location: string;
+  heroAssetId: string | null;
   organisation: {
     name: string;
     slug: string;
@@ -40,6 +41,7 @@ export type PublicEventDetail = {
   startTime: Date;
   endTime: Date;
   location: string;
+  heroAssetId: string | null;
   organisation: {
     name: string;
     slug: string;
@@ -75,6 +77,7 @@ export async function getPublishedEvents({
       title: true,
       startTime: true,
       location: true,
+      heroAssetId: true,
       organisation: {
         select: {
           name: true,
@@ -115,6 +118,7 @@ export async function getPublishedEventDetail(
       startTime: true,
       endTime: true,
       location: true,
+      heroAssetId: true,
       organisation: {
         select: {
           name: true,

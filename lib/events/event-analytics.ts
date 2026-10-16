@@ -34,6 +34,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
           select: {
             id: true,
             name: true,
+            price: true,
             quantity: true
           },
           orderBy: { createdAt: "asc" }
@@ -81,6 +82,7 @@ export const getOrganisationEventAnalytics = cache(async function getOrganisatio
     return {
       id: ticketType.id,
       name: ticketType.name,
+      price: ticketType.price,
       remaining: ticketType.quantity,
       sold: paid.sold,
       revenue: paid.revenue

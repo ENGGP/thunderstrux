@@ -197,6 +197,7 @@ async function HomeListings({
                 key={event.id}
                 location={event.location}
                 society={event.organisation}
+                heroAssetId={event.heroAssetId}
                 startTime={event.startTime}
                 timeZone={event.organisation.timeZone}
                 title={event.title}

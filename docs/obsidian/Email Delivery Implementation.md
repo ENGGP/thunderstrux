@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-24
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Production Operations]]"]
 sources: [lib/email/ticket-email-outbox.ts, lib/email/notification-outbox.ts, scripts/process-notifications.mjs]
@@ -158,6 +158,8 @@ Rollout: back up the notification key independently, deploy the additive migrati
 T04a adds 30-minute reset links and atomic password-change security notices. Token jobs verify template/purpose, recipient/account, current email/version, expiry and disabled state before delivery. Reset/change cancels pending or claimed obsolete intents; a provider send already in flight may still arrive, but its token cannot redeem after commit. Security events and notice intent commit with the password/version change, so enqueue failure rolls the whole mutation back.
 
 T04b email-change intents bind the new recipient and email-change template to the token while retaining the original account email/version fence. Requests alert the old inbox; confirmed changes atomically notify old and new inboxes. Cancelled/expired/superseded links cannot redeem even if an already in-flight provider request arrives. No old-inbox approval or email-based reassignment of historical records occurs.
+
+T16a guest links use the `guest_access` template and carry `guestAccessGrantId`. Before sending, the worker cancels the job as `obsolete_token` if the grant is consumed, revoked or expired, if the recipient is no longer the identity's email, or if a `guest/` job has lost its grant. A newer request for the same address cancels the older link's queued email as `superseded`; redemption cancels it as `consumed`.
 
 ## Closed Account Contacts
 

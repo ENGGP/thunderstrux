@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-24
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -175,6 +175,14 @@ Rules:
 ### Verification
 
 POST `/api/auth/verification/request` accepts `{email, callbackUrl?}` and returns generic `202 {accepted:true}`. POST `/api/auth/verification/confirm` accepts `{token}` and returns `{verified:true, callbackUrl}` or generic invalid/expired-link `400`; IP/token redemption limits are 50/10 per ten minutes. Both require trusted origin, no-store responses and explicit POST. Email/token authority is independent of session cookies; these anonymous endpoints do not require cookie CSRF. Raw tokens travel in email fragments and POST bodies; no GET consumption. Latest token per purpose wins, expires after 24 hours and is single use. Disabled identities, wrong purpose/email/version, expiry, replay and superseded tokens are denied. Protected purchases/joins/bootstrap/invite acceptance require live verified identity; profile/login remain available while unverified.
+
+### Guest access (T16a)
+
+POST `/api/guest/email/request` accepts `{email, callbackUrl?}` and returns a generic `202 {accepted:true}` whatever the address. It creates or reuses the normalised `GuestIdentity`, revokes that identity's unused checkout links (cancelling their queued emails) and queues one encrypted `guest_access` email whose link is `/guest/access#token=…`, valid for 30 minutes and once. Limits fail closed: 20 per IP and 3 per address an hour.
+
+POST `/api/guest/email/confirm` accepts `{token}` and returns `{callbackUrl}` (a safe local path, default `/events`) with an `HttpOnly`, `SameSite=Lax`, path `/` cookie `thunderstrux-guest` (`Secure` in production) holding a random session id for two hours; wrong, replayed, revoked, superseded or expired links get the generic invalid/expired-link `400`. Redemption limits are 50 per IP and 10 per token digest in ten minutes, failing closed. Both endpoints require a trusted origin and send `Cache-Control: no-store`; like account links they use email/token authority, so a stale login cookie does not demand the login CSRF token.
+
+GET `/api/guest/session` returns `{email, expiresAt, csrfToken}` for a live guest session, or `401`; always `no-store`. `csrfToken` is an HMAC of the session id, checked with `verifyGuestCsrf` by guest writes (T16b). A guest session is not a login: it grants no member, staff or account access.
 
 ### `PATCH /api/me/profile`
 

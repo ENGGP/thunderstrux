@@ -30,7 +30,11 @@ export type RateLimitPolicy =
   | "staff_mfa_verify"
   | "asset_upload"
   | "asset_delete"
-  | "organisation_profile";
+  | "organisation_profile"
+  | "guest_email_ip"
+  | "guest_email_address"
+  | "guest_token_ip"
+  | "guest_token_digest";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -86,7 +90,11 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   staff_invite_actor: { limit: 20, windowSeconds: 3600, failureMode: "closed" },
   staff_invite_email: { limit: 3, windowSeconds: 3600, failureMode: "closed" },
   staff_mfa_setup: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
-  staff_mfa_verify: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" }
+  staff_mfa_verify: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" },
+  guest_email_ip: { limit: 20, windowSeconds: 60 * 60, failureMode: "closed" },
+  guest_email_address: { limit: 3, windowSeconds: 60 * 60, failureMode: "closed" },
+  guest_token_ip: { limit: 50, windowSeconds: 600, failureMode: "closed" },
+  guest_token_digest: { limit: 10, windowSeconds: 600, failureMode: "closed" }
 };
 
 const REDIS_CONNECT_TIMEOUT_MS = 1_500;

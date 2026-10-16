@@ -21,6 +21,7 @@ vi.mock("@/lib/stripe", () => {
   return {
     StripeConfigurationError,
     getAppUrl: () => "http://localhost:3000",
+    isLiveStripeKey: () => false,
     getStripe: () => ({
       accounts: {
         create: stripeMocks.createAccount,
@@ -92,7 +93,7 @@ describe("Stripe Connect application service", () => {
   });
 
   test("composes onboarding for an existing connected account", async () => {
-    const { organisation } = await createOrganisationAccount({
+    const { organisation, user } = await createOrganisationAccount({
       stripeReady: true
     });
     stripeMocks.createAccountLink.mockResolvedValue({
@@ -100,7 +101,7 @@ describe("Stripe Connect application service", () => {
     });
 
     await expect(
-      startOrganisationStripeOnboarding(organisation.id)
+      startOrganisationStripeOnboarding(organisation.id, user.id)
     ).resolves.toBe("https://connect.stripe.test/application-service");
     await expect(
       continueOrganisationStripeOnboarding(organisation.id)
@@ -111,6 +112,18 @@ describe("Stripe Connect application service", () => {
       refresh_url: "http://localhost:3000/dashboard/settings",
       return_url: "http://localhost:3000/dashboard/settings",
       type: "account_onboarding"
+    });
+  });
+
+  test("creating the Express account is audited with its actor", async () => {
+    const { organisation, user } = await createOrganisationAccount();
+    stripeMocks.createAccount.mockResolvedValueOnce({ id: "acct_created_audit" });
+    stripeMocks.createAccountLink.mockResolvedValueOnce({ url: "https://connect.stripe.test/new" });
+
+    await expect(startOrganisationStripeOnboarding(organisation.id, user.id)).resolves.toBe("https://connect.stripe.test/new");
+    expect(await prisma.auditLog.findFirst({ where: { organisationId: organisation.id, action: "stripe_connect.account_created" } })).toMatchObject({
+      actorUserId: user.id,
+      metadata: { stripeAccountId: "acct_created_audit" }
     });
   });
 

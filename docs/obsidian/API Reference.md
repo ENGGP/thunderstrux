@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-21
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -908,8 +908,8 @@ Rules:
 - Active staff authority or explicitly enabled legacy authority required.
 - Caller needs live stripe:manage capability and staff MFA for the resolved organisation, regardless of account role.
 - Organisation is resolved server-side from `organisationId`.
-- Existing `stripeAccountId` is reused and a fresh onboarding link is generated.
-- Returns structured Stripe errors instead of a generic 500.
+- Existing `stripeAccountId` is reused and a fresh onboarding link is generated; a newly created account is audited as `stripe_connect.account_created`.
+- Since T17 all four Connect routes use the central mapper (`lib/stripe/http.ts`): a missing or unreachable tenant is the same 404, and an unexpected provider failure is a generic 500 that never echoes Stripe's text.
 - Detects incomplete Stripe platform setup and returns `PLATFORM_NOT_READY` instead of raw Stripe text.
 
 Response:
@@ -955,7 +955,9 @@ Lifecycle states:
 - `CONNECTED_INCOMPLETE`: account exists but `details_submitted` is false.
 - `RESTRICTED`: details submitted but `charges_enabled` is false.
 - `READY`: `charges_enabled` is true.
-- `ERROR`: Stripe API failure or account mismatch.
+- `ERROR`: Stripe API failure. The last known flags are kept and returned, with `error: "Thunderstrux couldn't reach Stripe to refresh this account."`.
+
+A connected status also includes `openObligations`: orders that still depend on the account and block disconnect.
 
 Persists:
 
@@ -978,11 +980,14 @@ Rules:
 
 Disconnects the Stripe account locally.
 
+Request: `{ "organisationId": "...", "mfaCode": "123456" }`; `mfaCode` is required unless staff MFA is `off`.
+
 Rules:
 
-- Auth required.
-- Organisation account ownership required.
-- Clears local Stripe fields on the organisation.
+- Auth required; live stripe:manage authority and staff MFA for the target, then the Connect rate limit, then the staff verification limit when a code is sent.
+- A missing code is `400` (`path: ["mfaCode"]`); a wrong or reused code is `400`; no enrolled authenticator is `403`.
+- `409 CONFLICT` while orders still depend on the account (pending, under compensation review, or with an unresolved compensation refund); the message names the count.
+- Clears local Stripe fields on the organisation and writes `stripe_connect.disconnected`.
 - Does not delete or modify the account inside Stripe.
 - Also clears `PLATFORM_NOT_READY` back to `NOT_CONNECTED`.
 

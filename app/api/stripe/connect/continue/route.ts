@@ -1,28 +1,12 @@
 import { NextResponse } from "next/server";
-import {
-  badRequest,
-  forbidden,
-  notFound,
-  serviceUnavailable,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireStripeConnectCapability,
-  requireOrganisationStripeConnectAccess
-} from "@/lib/auth/access";
-import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
-import { StripeConfigurationError } from "@/lib/stripe";
-import {
-  continueOrganisationStripeOnboarding,
-  OrganisationStripeConnectNotFoundError,
-  OrganisationStripeConnectValidationError
-} from "@/lib/stripe/connect";
+import { mapRouteError, validationError } from "@/lib/api/errors";
+import { requireOrganisationStripeConnectAccess, requireStripeConnectCapability } from "@/lib/auth/access";
+import { requireOrganisationId } from "@/lib/db/organisation-scope";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { connectRouteRules } from "@/lib/stripe/http";
 import { validateJson } from "@/lib/validators";
+import { continueOrganisationStripeOnboarding } from "@/lib/stripe/connect";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
 
 export async function POST(request: Request) {
@@ -56,54 +40,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      if (error.message === "Organisation not found or access denied") {
-        return notFound("Organisation was not found");
-      }
-
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationScopeError) {
-      return badRequest(error.message, [
-        { path: ["organisationId"], message: error.message }
-      ]);
-    }
-
-    if (error instanceof OrganisationStripeConnectNotFoundError) {
-      return notFound(error.message);
-    }
-
-    if (error instanceof OrganisationStripeConnectValidationError) {
-      return badRequest(error.message, error.details);
-    }
-
-    if (error instanceof StripeConfigurationError) {
-      console.error("Stripe Connect continue configuration error", {
-        message: error.message
-      });
-      return serviceUnavailable(
-        "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
-      );
-    }
-
-    console.error("Stripe Connect continue onboarding failed", { error });
-    return NextResponse.json(
-      {
-        error: {
-          code: "STRIPE_CONTINUE_ONBOARDING_ERROR",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Unable to continue Stripe onboarding",
-          details: []
-        }
-      },
-      { status: 502 }
-    );
+    return mapRouteError(error, { operation: "stripe_connect.continue", request, rules: connectRouteRules });
   }
 }

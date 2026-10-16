@@ -277,10 +277,15 @@ export async function reconcileCompletedCheckoutSession(
   session: Stripe.Checkout.Session,
   {
     stripeEventId,
-    source = "webhook"
+    source = "webhook",
+    destination
   }: {
     stripeEventId?: string;
     source?: "webhook" | "dev_success_fallback";
+    // The connected account the payment was transferred to, read from Stripe.
+    // shortcut: undefined skips the check for direct test callers; production goes
+    // through reconcileCompletedCheckoutSessionWithSideEffects, which always sets it.
+    destination?: string | null;
   } = {}
 ): Promise<CheckoutReconciliationResult> {
   console.info("Stripe checkout completed reconciliation started", {
@@ -329,6 +334,7 @@ export async function reconcileCompletedCheckoutSession(
       unitPrice: true,
       totalAmount: true,
       stripeSessionId: true,
+      sellerStripeAccountId: true,
       paidAt: true,
       failedAt: true,
       failureReason: true,
@@ -825,6 +831,19 @@ export async function reconcileCompletedCheckoutSession(
         metadataOrganisationId: requiredMetadata.organisationId,
         orderQuantity: localOrder.quantity,
         metadataQuantity: requiredMetadata.quantity
+      }, {
+        releaseActiveReservation: true
+      });
+      return;
+    }
+
+    // The money must have gone to the account this order was sold for. Orders
+    // from before T10 have no seller snapshot and are not checked.
+    if (destination !== undefined && localOrder.sellerStripeAccountId && destination !== localOrder.sellerStripeAccountId) {
+      await markCompensationRequired("webhook_mismatch", {
+        mismatchReason: "Stripe payment destination does not match the order's seller account",
+        stripeDestination: destination,
+        sellerStripeAccountId: localOrder.sellerStripeAccountId
       }, {
         releaseActiveReservation: true
       });

@@ -1,46 +1,15 @@
 import { NextResponse } from "next/server";
-import {
-  badRequest,
-  forbidden,
-  notFound,
-  serviceUnavailable,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireStripeConnectCapability,
-  requireOrganisationStripeConnectAccess
-} from "@/lib/auth/access";
-import { OrganisationScopeError, requireOrganisationId } from "@/lib/db/organisation-scope";
-import {
-  startOrganisationStripeOnboarding,
-  StripeConnectPlatformNotReadyError
-} from "@/lib/stripe/connect";
-import { StripeConfigurationError } from "@/lib/stripe";
+import { mapRouteError, validationError } from "@/lib/api/errors";
+import { requireOrganisationStripeConnectAccess, requireStripeConnectCapability } from "@/lib/auth/access";
+import { requireOrganisationId } from "@/lib/db/organisation-scope";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { connectRouteRules } from "@/lib/stripe/http";
 import { validateJson } from "@/lib/validators";
+import { startOrganisationStripeOnboarding } from "@/lib/stripe/connect";
 import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
 
-function stripeErrorResponse(error: unknown) {
-  console.error("Stripe Connect onboarding failed", { error });
-  const message =
-    error instanceof Error ? error.message : "Unknown Stripe onboarding error";
-
-  return NextResponse.json(
-    {
-      error: {
-        code: "STRIPE_ONBOARDING_ERROR",
-        message,
-        details: []
-      }
-    },
-    { status: 502 }
-  );
-}
-
+// Creates the society's Express account if it has none, then returns Stripe's onboarding link.
 export async function POST(request: Request) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
 
@@ -49,7 +18,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await requireStripeConnectCapability();
+    const user = await requireStripeConnectCapability();
     const validation = await validateJson(request, organisationConnectSchema);
 
     if (!validation.success) {
@@ -68,49 +37,10 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const url = await startOrganisationStripeOnboarding(organisationId);
+    const url = await startOrganisationStripeOnboarding(organisationId, user.id);
 
     return NextResponse.json({ url });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      if (error.message === "Organisation not found or access denied") {
-        return notFound("Organisation was not found");
-      }
-
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationScopeError) {
-      return badRequest(error.message, [
-        { path: ["organisationId"], message: error.message }
-      ]);
-    }
-
-    if (error instanceof StripeConfigurationError) {
-      console.error("Stripe Connect onboarding configuration error", {
-        message: error.message
-      });
-      return serviceUnavailable(
-        "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
-      );
-    }
-
-    if (error instanceof StripeConnectPlatformNotReadyError) {
-      return NextResponse.json(
-        {
-          state: error.state,
-          message: error.message,
-          actionRequired: error.actionRequired,
-          actionUrl: error.actionUrl
-        },
-        { status: 409 }
-      );
-    }
-
-    return stripeErrorResponse(error);
+    return mapRouteError(error, { operation: "stripe_connect.onboard", request, rules: connectRouteRules });
   }
 }

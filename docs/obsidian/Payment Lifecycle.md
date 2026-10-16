@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-20
+last-reviewed: 2026-10-21
 owner: engineering
 related: ["[[Stripe Payments and Connect]]", "[[Email Delivery Implementation]]"]
 sources: [lib/payments/checkout-reconciliation.ts, lib/payments/order-lifecycle.ts]
@@ -21,6 +21,10 @@ Closure retains original Order/User identifiers, tickets, attendance and lifecyc
 Checkout records what was bought when it creates the order: `paymentKind` (`stripe` or `free`; required with no default), the purchased ticket type name, seller name and connected Stripe account, currency, the platform fee in cents and its policy version (`platform_fee_10_percent_v1`), `snapshotVersion`, and the buyer contact with provenance `purchase`. These are the values the Stripe Session charges, and later edits to the ticket type, society or profile never change them. Fulfilment sets `fulfilledAt` with `paidAt` and numbers each ticket with a unique `(orderId, issueSequence)`, so a second issuance for the same order fails instead of adding tickets. Tickets carry `validity` (`active`, `void`, `refund_review`); only active tickets appear in the wallet, ticket email and door list.
 
 `lib/purchases/projection.ts` turns status, kind and compensation review into the one displayed status: Processing, Paid, Free, Payment review, Failed or Expired. Free orders keep the compatible `status = paid` and `paidAt`, so money queries must filter on `paymentKind`, not status. Legacy rows keep unknown names, sellers and fees as null; readers show today's ticket name followed by "(historical label unavailable)" and never write it back. Migration `20261015010000_ticket_purchase_snapshots` backfills only known facts: every existing order is Stripe (checkout always rejected zero totals), `fulfilledAt` is the first ticket's creation time for paid orders, and existing tickets are numbered by `(createdAt, id)`.
+
+## Payment Destination and Mode (T17)
+
+Fulfilment checks where the money went. `reconcileCompletedCheckoutSessionWithSideEffects`, the only production entry (signed webhook and the development success fallback), reads the Session's PaymentIntent from Stripe before any lock and passes its `transfer_data.destination`. Reconciliation compares it with the order's `sellerStripeAccountId` snapshot: a different destination, or a paid Session without a PaymentIntent, is held for compensation review (`webhook_mismatch`) instead of fulfilled. Orders from before T10 have no snapshot and are not checked. Both webhooks ignore events from the other Stripe mode, and live keys are refused outside production (see [[Stripe Payments and Connect]]).
 
 ## Free Registrations (T13)
 

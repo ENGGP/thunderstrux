@@ -11,6 +11,7 @@ import {
   getDashboardEvent,
   getOrganisationEventForEditing
 } from "@/lib/events/event-lifecycle";
+import { readChargeReadiness } from "@/lib/organisations/profile";
 
 export default async function EditEventPage({
   params
@@ -22,11 +23,13 @@ export default async function EditEventPage({
 
   let initialEvent: Awaited<ReturnType<typeof getOrganisationEventForEditing>>;
   let event: Awaited<ReturnType<typeof getDashboardEvent>>;
+  let chargesReady: boolean;
 
   try {
-    [initialEvent, event] = await Promise.all([
+    [initialEvent, event, chargesReady] = await Promise.all([
       getOrganisationEventForEditing(organisation.id, eventId),
-      getDashboardEvent(organisation.id, eventId)
+      getDashboardEvent(organisation.id, eventId),
+      readChargeReadiness(organisation.id)
     ]);
   } catch (error) {
     if (error instanceof EventLifecycleNotFoundError) {
@@ -46,6 +49,7 @@ export default async function EditEventPage({
         </Notice>
       ) : null}
       <CreateEventForm
+        chargesReady={chargesReady}
         aside={
           event.status === "draft" ? (
             <Card>

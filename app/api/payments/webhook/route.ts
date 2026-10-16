@@ -8,6 +8,7 @@ import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments
 import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
 import {
   getStripe,
+  isLiveStripeKey,
   getStripeWebhookSecret,
   StripeConfigurationError
 } from "@/lib/stripe";
@@ -73,6 +74,13 @@ export async function POST(request: Request) {
     stripeEventId: event.id,
     eventType: event.type
   });
+
+  // A test-mode event reaching a live deployment (or the reverse) is ignored, not applied.
+  if (event.livemode !== isLiveStripeKey()) {
+    logError("stripe.webhook.mode_mismatch", { stripeEventId: event.id, eventLivemode: event.livemode, webhook: "payments" });
+    emitOperationalAlert("stripe_webhook_mode_mismatch", { stripeEventId: event.id, webhook: "payments" });
+    return NextResponse.json({ received: true, ignored: "mode_mismatch" });
+  }
 
   switch (event.type) {
     case "checkout.session.completed": {

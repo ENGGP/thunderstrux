@@ -86,7 +86,7 @@ Society images require the development object-store service and its persistent a
 - database port is not exposed to the host
 - Redis 7 is available as `redis` for rate limiting when `RATE_LIMIT_ENABLED=true`
 - the base PostgreSQL and Redis images are digest pinned and updated only through reviewed Renovate PRs
-- bounded `email-worker`, `stale-order-worker`, and `compensation-worker` services are available through the `workers` profile
+- bounded `email-worker`, `notification-worker`, `stale-order-worker`, `compensation-worker` and `checkout-recovery-worker` services are available through the `workers` profile
 
 `docker-compose.dev.yml` only adds development-specific overrides:
 
@@ -663,6 +663,15 @@ pnpm compensation-refunds:process -- --limit=25
 
 The worker processes a bounded, fenced batch and verifies Stripe identity and refund state before finalizing jobs. Production should schedule it every minute, subscribe the required refund webhooks, and keep event policy at `manual_review` until the real Stripe campaign in [[E2E and Staging Payments]] passes.
 
+Checkout attempt recovery worker:
+
+```text
+pnpm checkout-attempts:process
+pnpm checkout-attempts:process -- --limit=25
+```
+
+It replays uncertain checkout attempts with their stored Stripe request and idempotency key, then binds, fails or closes them ([[Payment Lifecycle]]). It needs `STRIPE_SECRET_KEY` only when an attempt is due. Production should schedule it every minute.
+
 Staff security and trusted-origin values:
 
 ```text
@@ -736,7 +745,7 @@ Production deployment must provide:
 - log aggregation for app stdout/stderr
 - alert routing from selected `event`, `metricName`, and alert names
 - liveness checks for `GET /api/health` and rollout/readiness checks for `GET /api/health/ready`
-- scheduler entries for `pnpm email:outbox:process`, `pnpm stale-orders:process`, and `pnpm compensation-refunds:process`
+- scheduler entries for `pnpm email:outbox:process`, `pnpm stale-orders:process`, `pnpm compensation-refunds:process` and `pnpm checkout-attempts:process`
 
 Alert immediately:
 
@@ -744,6 +753,7 @@ Alert immediately:
 - any `email_outbox_retry_exhausted`
 - any `stale_order_worker_failed`
 - any `compensation_refund.worker.failed`
+- any `checkout_attempt_recovery_failed` or `checkout_attempt_recovery_abandoned`
 - app healthcheck non-200, timeout, or malformed response
 
 Alert on threshold:

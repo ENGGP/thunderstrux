@@ -47,6 +47,7 @@ try {
         requestHash: "p217-restore-request-hash",
         orderId: order.id,
         providerOperationKey: "p217-restore-provider-key",
+        providerRequest: { mode: "payment", metadata: { restoreCheck: "p217" } },
         state: "provider_uncertain",
         reconcileDueAt: new Date("2099-01-01T00:00:00.000Z")
       }

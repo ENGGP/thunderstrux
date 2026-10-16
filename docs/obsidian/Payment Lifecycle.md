@@ -30,7 +30,19 @@ Every paid checkout is a `CheckoutAttempt` (`lib/payments/checkout-attempts.ts`)
 - The provider key is sent to Stripe as its idempotency key, so replaying Session creation returns the original Session.
 - Only a definite Stripe refusal (card, invalid request, authentication, permission or rate-limit error) fails the order, its attempt and the hold. A timeout, connection or unknown error, or a Session that cannot be bound, leaves the attempt `provider_uncertain` with its order and hold, and checkout answers 202. The buyer polls `GET /api/payments/checkout/attempts/[attemptId]`.
 - A webhook that fulfils before the Session is bound converges: binding finds the order already on that Session and marks the attempt attached.
-- States: `created`, `provider_uncertain`, `provider_attached`, `failed`. Completed and expired come from the order. `reconcileDueAt` marks attempts the T14b recovery worker will replay with the same key; until T14b ships, an uncertain attempt's hold expires after 30 minutes like any other, and a late payment goes to compensation review.
+- States: `created`, `provider_uncertain`, `provider_attached`, `failed`. Completed and expired come from the order. `reconcileDueAt` marks attempts due for recovery.
+
+## Checkout Attempt Recovery (T14b)
+
+Checkout stores the exact Stripe Session request on the attempt (`providerRequest`) before calling Stripe. `scripts/process-checkout-attempts` (`pnpm checkout-attempts:process`, Compose service `checkout-recovery-worker`) claims due `created` or `provider_uncertain` attempts, locking the order and then the attempt and hiding each claim for a two-minute lease, so a crashed worker's claim reappears. It replays the stored request with the attempt's idempotency key:
+
+- **Stripe returns a Session:** it is the original one. It is bound to the still-pending order, or the attempt converges on a webhook that bound it first.
+- **Stripe refuses:** no Session exists. A request Stripe never received is by then within 30 minutes of its stored expiry, which Stripe rejects. The order fails and its hold is released.
+- **Unknown again:** the hold is kept and recovery retries in two minutes, until Stripe's 24-hour idempotency window passes (alert `checkout_attempt_recovery_abandoned`).
+- **The order already closed** (its hold and the Session expire together): the Session is recorded on the failed attempt. A payment on it still arrives by webhook and goes to compensation review.
+- **No stored request:** checkout stopped before calling Stripe, so the order fails without a Stripe call.
+
+Worker actions appear in the order history with source `checkout_recovery`. A worker failure logs `checkout_attempt_recovery.worker.failed` and alerts `checkout_attempt_recovery_failed`.
 
 ## Storage
 

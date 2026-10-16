@@ -66,7 +66,8 @@ Public event page
      (a repeated idempotencyKey returns the existing attempt instead)
   -> Stripe Checkout Session created with expires_at matching reservation expiry,
      using the attempt's providerOperationKey as the Stripe idempotency key
-     (timeout or unknown error: attempt stays provider_uncertain, response 202)
+     (timeout or unknown error: attempt stays provider_uncertain, response 202;
+      the checkout-recovery worker later replays the stored request with the same key)
   -> Checkout Session metadata includes orderId, eventId, organisationId, ticketTypeId, and quantity
   -> local Order is updated with stripeSessionId
   -> browser redirected to Stripe

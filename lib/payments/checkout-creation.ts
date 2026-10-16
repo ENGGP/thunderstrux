@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import type Stripe from "stripe";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { AccountVerificationError, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
@@ -10,6 +11,11 @@ import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/
 import { formatMoney } from "@/lib/format";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 import {
+  attachStripeSession,
+  CheckoutCreationInternalError,
+  failPendingOrder
+} from "@/lib/payments/checkout-binding";
+import {
   attemptReconcileDelayMs,
   checkoutAttemptStatus,
   checkoutRequestHash,
@@ -20,10 +26,7 @@ import {
   newProviderOperationKey,
   type CheckoutAttemptWithOrder
 } from "@/lib/payments/checkout-attempts";
-import {
-  appendOrderLifecycleEvent,
-  lockOrder
-} from "@/lib/payments/order-lifecycle";
+import { appendOrderLifecycleEvent } from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
@@ -32,7 +35,6 @@ import {
   expireOldActiveReservations,
   getReservationExpiry,
   reservationMinutes,
-  releaseReservationForOrder,
   runSerializableReservationTransaction
 } from "@/lib/tickets/reservations";
 
@@ -48,6 +50,8 @@ export type CheckoutCreationErrorKind =
   | "quote_changed"
   | "idempotency_conflict";
 
+export { CheckoutCreationInternalError };
+
 export class CheckoutCreationError extends Error {
   constructor(
     readonly kind: CheckoutCreationErrorKind,
@@ -59,12 +63,6 @@ export class CheckoutCreationError extends Error {
   }
 }
 
-export class CheckoutCreationInternalError extends Error {
-  constructor() {
-    super("Checkout session creation failed");
-    this.name = "CheckoutCreationInternalError";
-  }
-}
 
 type CreateEventCheckoutInput = {
   userId: string;
@@ -130,99 +128,6 @@ function emitCheckoutSessionCreationFailure(
   emitOperationalAlert("checkout_session_creation_failure", {
     reason,
     ...context
-  });
-}
-
-async function failPendingOrder(orderId: string, message: string) {
-  await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, orderId))) return;
-    const order = await tx.order.findUniqueOrThrow({
-      where: { id: orderId },
-      select: {
-        status: true,
-        requiresCompensationReview: true,
-        reservation: { select: { status: true } }
-      }
-    });
-    if (order.status !== "pending") return;
-
-    const updated = await tx.order.updateMany({
-      where: { id: orderId, status: "pending" },
-      data: {
-        status: "failed",
-        failedAt: new Date(),
-        failureReason: "stripe_error"
-      }
-    });
-    if (updated.count === 0) return;
-
-    await releaseReservationForOrder(tx, orderId, message);
-    await tx.checkoutAttempt.updateMany({
-      where: { orderId },
-      data: { state: "failed", reconcileDueAt: null, lastOutcome: "provider_failed" }
-    });
-    await appendOrderLifecycleEvent(tx, {
-      orderId,
-      type: "order_failed",
-      source: "checkout",
-      reason: "stripe_error",
-      fromOrderStatus: "pending",
-      toOrderStatus: "failed",
-      fromReservationStatus: order.reservation?.status ?? null,
-      toReservationStatus:
-        order.reservation?.status === "active" ? "released" : order.reservation?.status,
-      baseline: {
-        orderStatus: order.status,
-        reservationStatus: order.reservation?.status,
-        compensationReview: order.requiresCompensationReview
-      }
-    });
-  });
-}
-
-async function attachStripeSession(orderId: string, stripeSessionId: string, stripeSessionUrl: string) {
-  await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, orderId))) {
-      throw new CheckoutCreationInternalError();
-    }
-    const order = await tx.order.findUniqueOrThrow({
-      where: { id: orderId },
-      select: { status: true, stripeSessionId: true }
-    });
-    const attachAttempt = () =>
-      tx.checkoutAttempt.updateMany({
-        where: { orderId },
-        data: { state: "provider_attached", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "session_attached" }
-      });
-
-    // The webhook may have bound this Session first; converge on it.
-    if (order.stripeSessionId === stripeSessionId) {
-      await attachAttempt();
-      return;
-    }
-    if (order.status !== "pending" || order.stripeSessionId) {
-      await tx.checkoutAttempt.updateMany({
-        where: { orderId },
-        data: { state: "failed", reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
-      });
-      throw new CheckoutCreationInternalError();
-    }
-
-    const updated = await tx.order.updateMany({
-      where: { id: orderId, status: "pending", stripeSessionId: null },
-      data: { stripeSessionId }
-    });
-    if (updated.count === 0) throw new CheckoutCreationInternalError();
-    await attachAttempt();
-
-    await appendOrderLifecycleEvent(tx, {
-      orderId,
-      type: "stripe_session_attached",
-      source: "checkout",
-      stripeSessionId,
-      fromOrderStatus: "pending",
-      toOrderStatus: "pending"
-    });
   });
 }
 
@@ -461,42 +366,23 @@ export async function createEventCheckout({
 
     pendingOrderId = pendingOrder.id;
     const stripeExpiresAt = Math.ceil(Date.now() / 1000) + reservationMinutes * 60;
-
-    await prisma.ticketReservation.update({
-      where: { orderId: pendingOrder.id },
-      data: { expiresAt: new Date(stripeExpiresAt * 1000) }
-    });
-
-    let session;
-    try {
-      session = await pendingOrder.stripe.checkout.sessions.create({
-        mode: "payment",
-        payment_method_types: ["card"],
-        line_items: [
-          {
-            price_data: {
-              currency: "aud",
-              product_data: { name: pendingOrder.eventTitle },
-              unit_amount: pendingOrder.unitPrice
-            },
-            quantity
-          }
-        ],
-        payment_intent_data: {
-          application_fee_amount: pendingOrder.platformFeeAmount,
-          on_behalf_of: pendingOrder.stripeAccountId,
-          transfer_data: { destination: pendingOrder.stripeAccountId },
-          metadata: {
-            orderId: pendingOrder.id,
-            eventId,
-            organisationId: pendingOrder.organisationId,
-            ticketTypeId,
-            quantity: String(quantity)
-          }
-        },
-        success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${pendingOrder.appUrl}/cancel`,
-        expires_at: stripeExpiresAt,
+    const sessionRequest: Stripe.Checkout.SessionCreateParams = {
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "aud",
+            product_data: { name: pendingOrder.eventTitle },
+            unit_amount: pendingOrder.unitPrice
+          },
+          quantity
+        }
+      ],
+      payment_intent_data: {
+        application_fee_amount: pendingOrder.platformFeeAmount,
+        on_behalf_of: pendingOrder.stripeAccountId,
+        transfer_data: { destination: pendingOrder.stripeAccountId },
         metadata: {
           orderId: pendingOrder.id,
           eventId,
@@ -504,7 +390,35 @@ export async function createEventCheckout({
           ticketTypeId,
           quantity: String(quantity)
         }
-      }, { idempotencyKey: pendingOrder.providerOperationKey });
+      },
+      success_url: `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${pendingOrder.appUrl}/cancel`,
+      expires_at: stripeExpiresAt,
+      metadata: {
+        orderId: pendingOrder.id,
+        eventId,
+        organisationId: pendingOrder.organisationId,
+        ticketTypeId,
+        quantity: String(quantity)
+      }
+    };
+
+    // Recovery (T14b) replays exactly this request with the same key, so Stripe
+    // returns the original Session instead of treating it as a new one.
+    await prisma.$transaction([
+      prisma.ticketReservation.update({
+        where: { orderId: pendingOrder.id },
+        data: { expiresAt: new Date(stripeExpiresAt * 1000) }
+      }),
+      prisma.checkoutAttempt.update({
+        where: { id: pendingOrder.attemptId },
+        data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue }
+      })
+    ]);
+
+    let session;
+    try {
+      session = await pendingOrder.stripe.checkout.sessions.create(sessionRequest, { idempotencyKey: pendingOrder.providerOperationKey });
     } catch (error) {
       if (isDefiniteProviderFailure(error)) throw error;
       // Stripe may have created the Session (timeout, connection or unknown

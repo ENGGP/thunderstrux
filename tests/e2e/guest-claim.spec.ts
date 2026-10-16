@@ -31,7 +31,8 @@ test("a guest who later signs in with the same email adds the order to their acc
     await page.screenshot({ path: `test-results/guest-claim-dialog-${width}.png`, fullPage: true });
   }
   await dialog.getByRole("button", { name: "Add to my account" }).click();
-  await expect(page.getByText("Added to your account")).toBeVisible();
+  // The page refreshes into its claimed state.
+  await expect(page.getByText("This order is in your account")).toBeVisible();
 
   await page.goto("/tickets");
   await expect(page.getByText("Claimable Quiz Night")).toBeVisible();

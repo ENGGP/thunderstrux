@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-24
 owner: engineering
 related: ["[[API Reference]]", "[[Email Delivery Implementation]]"]
 sources: [auth.ts, proxy.ts, lib/auth/access.ts, lib/auth/account-lifecycle.ts, lib/auth/account-closure.ts]
@@ -266,6 +266,10 @@ Closure locks the User and its orders before the final decision. Checkout, free 
 Orders, tickets, attendance, security/audit records and historical user IDs remain. Orders created since T10 already hold a purchase-time capture (provenance `purchase`). Older orders lacking a capture retain the current account email/name at closure with current_account_at_capture provenance and a capture timestamp; this does not claim unknown purchase-time profile facts. Existing captures are immutable. Tenant-scoped order details, email search/pagination, check-in and ticket delivery resolve retained contacts. Historical security notification recipients/encrypted payloads are retained privately; closure is profile/login anonymisation, not deletion of all personal information. A new signup at the former email gets a new user ID, unverified state and no old records. Later legitimate provider events still update payment/compensation truth without reopening the identity.
 
 Deploy 20261005030000_account_closure before the app/workers. The additive schema supports retained records, but anonymisation cannot be reversed by app rollback. Pause closure, account mutations and buyer contact/ticket delivery flows before rolling back to a version that cannot read captures or fence closure. Independent high-risk review and hosted recovery remain release gates; no activation is implied.
+
+## Verified guest access (T16a)
+
+`lib/guest/guest-access.ts` proves an email address without an account. The link token and the session id are random 32-byte values that exist only in the email fragment and the `thunderstrux-guest` cookie; `GuestAccessGrant` stores their SHA-256 digests, the purpose (`checkout`), the safe return path, expiry, consumption and revocation. `/guest/access` captures the fragment before hydration (the shared account-link capture script), removes it from the address and redeems only when the visitor presses Continue, so mail scanners and prefetching cannot use a link up. Redemption locks the `GuestIdentity` row and consumes the grant with a guarded update, so two concurrent redemptions start one session. A guest session never matches or merges with a member account by email; claiming guest purchases is the explicit T16c step.
 
 ## Private staff invitations
 

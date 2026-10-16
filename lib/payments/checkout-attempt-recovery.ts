@@ -8,7 +8,7 @@ import {
   attachStripeSession,
   CheckoutCreationInternalError,
   failPendingOrder
-} from "@/lib/payments/checkout-creation";
+} from "@/lib/payments/checkout-binding";
 import { lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 

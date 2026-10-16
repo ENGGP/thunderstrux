@@ -11,6 +11,11 @@ import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/
 import { formatMoney } from "@/lib/format";
 import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 import {
+  attachStripeSession,
+  CheckoutCreationInternalError,
+  failPendingOrder
+} from "@/lib/payments/checkout-binding";
+import {
   attemptReconcileDelayMs,
   checkoutAttemptStatus,
   checkoutRequestHash,
@@ -21,10 +26,7 @@ import {
   newProviderOperationKey,
   type CheckoutAttemptWithOrder
 } from "@/lib/payments/checkout-attempts";
-import {
-  appendOrderLifecycleEvent,
-  lockOrder
-} from "@/lib/payments/order-lifecycle";
+import { appendOrderLifecycleEvent } from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
@@ -33,7 +35,6 @@ import {
   expireOldActiveReservations,
   getReservationExpiry,
   reservationMinutes,
-  releaseReservationForOrder,
   runSerializableReservationTransaction
 } from "@/lib/tickets/reservations";
 
@@ -49,6 +50,8 @@ export type CheckoutCreationErrorKind =
   | "quote_changed"
   | "idempotency_conflict";
 
+export { CheckoutCreationInternalError };
+
 export class CheckoutCreationError extends Error {
   constructor(
     readonly kind: CheckoutCreationErrorKind,
@@ -60,12 +63,6 @@ export class CheckoutCreationError extends Error {
   }
 }
 
-export class CheckoutCreationInternalError extends Error {
-  constructor() {
-    super("Checkout session creation failed");
-    this.name = "CheckoutCreationInternalError";
-  }
-}
 
 type CreateEventCheckoutInput = {
   userId: string;
@@ -132,116 +129,6 @@ function emitCheckoutSessionCreationFailure(
     reason,
     ...context
   });
-}
-
-type CheckoutLifecycleSource = "checkout" | "checkout_recovery";
-
-export async function failPendingOrder(
-  orderId: string,
-  message: string,
-  source: CheckoutLifecycleSource = "checkout",
-  attemptOutcome = "provider_failed"
-) {
-  await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, orderId))) return;
-    const order = await tx.order.findUniqueOrThrow({
-      where: { id: orderId },
-      select: {
-        status: true,
-        requiresCompensationReview: true,
-        reservation: { select: { status: true } }
-      }
-    });
-    if (order.status !== "pending") return;
-
-    const updated = await tx.order.updateMany({
-      where: { id: orderId, status: "pending" },
-      data: {
-        status: "failed",
-        failedAt: new Date(),
-        failureReason: "stripe_error"
-      }
-    });
-    if (updated.count === 0) return;
-
-    await releaseReservationForOrder(tx, orderId, message);
-    await tx.checkoutAttempt.updateMany({
-      where: { orderId },
-      data: { state: "failed", reconcileDueAt: null, lastOutcome: attemptOutcome }
-    });
-    await appendOrderLifecycleEvent(tx, {
-      orderId,
-      type: "order_failed",
-      source,
-      reason: "stripe_error",
-      fromOrderStatus: "pending",
-      toOrderStatus: "failed",
-      fromReservationStatus: order.reservation?.status ?? null,
-      toReservationStatus:
-        order.reservation?.status === "active" ? "released" : order.reservation?.status,
-      baseline: {
-        orderStatus: order.status,
-        reservationStatus: order.reservation?.status,
-        compensationReview: order.requiresCompensationReview
-      }
-    });
-  });
-}
-
-export async function attachStripeSession(
-  orderId: string,
-  stripeSessionId: string,
-  stripeSessionUrl: string,
-  source: CheckoutLifecycleSource = "checkout"
-) {
-  const outcome = await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, orderId))) {
-      throw new CheckoutCreationInternalError();
-    }
-    const order = await tx.order.findUniqueOrThrow({
-      where: { id: orderId },
-      select: { status: true, stripeSessionId: true }
-    });
-    const attachAttempt = () =>
-      tx.checkoutAttempt.updateMany({
-        where: { orderId },
-        data: { state: "provider_attached", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "session_attached" }
-      });
-
-    // The webhook may have bound this Session first; converge on it.
-    if (order.stripeSessionId === stripeSessionId) {
-      await attachAttempt();
-      return "attached" as const;
-    }
-    if (order.status !== "pending" || order.stripeSessionId) {
-      await tx.checkoutAttempt.updateMany({
-        where: { orderId },
-        // Keep the Session on record: a payment on it reaches compensation through the webhook.
-        data: { state: "failed", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
-      });
-      // Report it after the transaction commits, so this record is not rolled back.
-      return "order_closed" as const;
-    }
-
-    const updated = await tx.order.updateMany({
-      where: { id: orderId, status: "pending", stripeSessionId: null },
-      data: { stripeSessionId }
-    });
-    if (updated.count === 0) throw new CheckoutCreationInternalError();
-    await attachAttempt();
-
-    await appendOrderLifecycleEvent(tx, {
-      orderId,
-      type: "stripe_session_attached",
-      source,
-      stripeSessionId,
-      fromOrderStatus: "pending",
-      toOrderStatus: "pending"
-    });
-    return "attached" as const;
-  });
-
-  if (outcome === "order_closed") throw new CheckoutCreationInternalError();
 }
 
 export async function createEventCheckout({

@@ -421,14 +421,13 @@ export function CreateEventForm({
                   <div className="flex flex-wrap gap-2">
                     <input
                       accept={imageTypes.join(",")}
-                      aria-labelledby="hero-label"
-                      className="sr-only"
+                      // The visible button opens it; hidden so it is not a second, unlabelled control.
+                      className="hidden"
                       onChange={(event) => {
                         void chooseImage(event.target.files?.[0]);
                         event.target.value = "";
                       }}
                       ref={fileInput}
-                      tabIndex={-1}
                       type="file"
                     />
                     <Button aria-describedby="hero-label" disabled={upload.busy} onClick={() => fileInput.current?.click()} type="button" variant="secondary">

@@ -32,7 +32,7 @@ test("organisers build an event in the society's time zone with a dollar price a
   }
 
   await page.getByRole("button", { name: "Create event", exact: true }).click();
-  await expect(page).toHaveURL(/\/dashboard\/events\/[^/]+$/);
+  await page.waitForURL((url) => /^\/dashboard\/events\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith("/new"));
   const event = await prisma.event.findFirstOrThrow({
     where: { organisationId: data.organisation.id, title: "Builder Night" },
     include: { ticketTypes: true }

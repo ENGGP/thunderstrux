@@ -11,11 +11,16 @@ vi.mock("@/auth", () => ({
 }));
 
 vi.mock("next/headers", () => ({
-  cookies: async () => ({ get: (name: string) => name === "thunderstrux-context" && globalThis.__THUNDERSTRUX_TEST_CONTEXT__ ? { value: globalThis.__THUNDERSTRUX_TEST_CONTEXT__ } : undefined })
+  cookies: async () => ({ get: (name: string) => {
+    if (name === "thunderstrux-context" && globalThis.__THUNDERSTRUX_TEST_CONTEXT__) return { value: globalThis.__THUNDERSTRUX_TEST_CONTEXT__ };
+    if (name === "thunderstrux-guest" && globalThis.__THUNDERSTRUX_TEST_GUEST__) return { value: globalThis.__THUNDERSTRUX_TEST_GUEST__ };
+    return undefined;
+  } })
 }));
 
 beforeEach(async () => {
   globalThis.__THUNDERSTRUX_TEST_CONTEXT__ = undefined;
+  globalThis.__THUNDERSTRUX_TEST_GUEST__ = undefined;
   globalThis.__THUNDERSTRUX_TEST_SESSION__ = null;
   vi.useRealTimers();
   vi.restoreAllMocks();

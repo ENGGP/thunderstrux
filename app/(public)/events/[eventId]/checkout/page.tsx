@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { GuestEmailForm } from "@/components/guest/guest-email-form";
 import { CheckoutShell } from "@/components/layout/checkout-shell";
 import { CheckoutAction } from "@/components/purchases/checkout-action";
 import { MoneySummary } from "@/components/purchases/money-summary";
@@ -9,6 +11,7 @@ import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { getPublishedEventDetail } from "@/lib/events/public-events";
+import { guestCookieName, guestCsrfToken, readGuestSession } from "@/lib/guest/guest-access";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { reservationMinutes } from "@/lib/tickets/reservations";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
@@ -24,16 +27,20 @@ export default async function CheckoutPage({
   searchParams
 }: {
   params: Promise<{ eventId: string }>;
-  searchParams: Promise<{ ticketTypeId?: string; quantity?: string }>;
+  searchParams: Promise<{ ticketTypeId?: string; quantity?: string; guest?: string }>;
 }) {
-  const [{ eventId }, query, session] = await Promise.all([params, searchParams, getLiveSession()]);
+  const [{ eventId }, query, session, cookieStore] = await Promise.all([params, searchParams, getLiveSession(), cookies()]);
   const eventHref = `/events/${eventId}`;
-  // Event pages are public; buying needs a member account, and sign-in comes straight back here.
-  if (!session) {
-    const back = new URLSearchParams({ ticketTypeId: query.ticketTypeId ?? "", quantity: query.quantity ?? "" });
+  // Event pages are public. A member buys signed in; a visitor either signs in
+  // (and comes straight back) or continues as a guest with a verified email.
+  const guestSessionId = session ? undefined : cookieStore.get(guestCookieName)?.value;
+  const guest = guestSessionId ? await readGuestSession(guestSessionId) : null;
+  const guestCheckout = guest?.purpose === "checkout" ? guest : null;
+  const back = new URLSearchParams({ ticketTypeId: query.ticketTypeId ?? "", quantity: query.quantity ?? "" });
+  if (!session && !guestCheckout && query.guest !== "1") {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/events/${eventId}/checkout?${back}`)}`);
   }
-  if (session.user.accountRole !== "member") redirect(eventHref);
+  if (session && session.user.accountRole !== "member") redirect(eventHref);
 
   const event = await getPublishedEventDetail(eventId);
   if (!event) notFound();
@@ -45,8 +52,25 @@ export default async function CheckoutPage({
   const free = ticketType.price === 0;
   const total = ticketType.price * quantity;
   const { organisation } = event;
-  const buyerName = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.name || "You";
   const callback = `/events/${eventId}/checkout?ticketTypeId=${ticketType.id}&quantity=${quantity}`;
+  if (!session && !guestCheckout) {
+    return (
+      <CheckoutShell backHref={eventHref} current={0} society={organisation.name} steps={free ? ["Your email", "Confirm"] : ["Your email", "Review", "Pay with Stripe"]} title="Where should we send your tickets?">
+        <Card>
+          <GuestEmailForm callbackUrl={callback} endpoint="/api/guest/email/request" submitLabel="Email me a link" />
+        </Card>
+        <Card>
+          <p className="flex justify-between gap-3 text-ink">
+            <span className="[overflow-wrap:anywhere]">{event.title} · {quantity} × {ticketType.name}</span>
+            <span className="font-semibold tabular-nums">{free ? "Free" : formatMoney(total)}</span>
+          </p>
+        </Card>
+      </CheckoutShell>
+    );
+  }
+  const buyerName = session ? [session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.name || "You" : null;
+  const buyerEmail = session ? session.user.email : guestCheckout?.email;
+  const verified = session ? Boolean(session.user.emailVerifiedAt) : true;
   const policy = [
     organisation.refundPolicy ? `${free ? "Can't make it? " : "Refunds: "}${organisation.refundPolicy}` : null,
     organisation.supportEmail ? `Questions: ${organisation.supportEmail}` : null
@@ -75,8 +99,9 @@ export default async function CheckoutPage({
               <span className="font-semibold text-ink">Total</span>
               <span className="text-lg font-semibold tabular-nums text-ink">{free ? "Free" : formatMoney(total)}</span>
             </div>
-            {session.user.emailVerifiedAt ? (
+            {verified ? (
               <CheckoutAction
+                guestCsrf={guestCheckout && guestSessionId ? guestCsrfToken(guestSessionId) : undefined}
                 backHref={eventHref}
                 eventId={event.id}
                 eventTitle={event.title}
@@ -104,9 +129,9 @@ export default async function CheckoutPage({
         </Card>
       }
       backHref={eventHref}
-      current={0}
+      current={guestCheckout ? 1 : 0}
       society={organisation.name}
-      steps={free ? ["Review", "Tickets"] : ["Review", "Pay with Stripe", "Tickets"]}
+      steps={guestCheckout ? (free ? ["Your email", "Confirm"] : ["Your email", "Review", "Pay with Stripe"]) : free ? ["Review", "Tickets"] : ["Review", "Pay with Stripe", "Tickets"]}
       title={free ? "Confirm your free tickets" : "Review your order"}
     >
       <Card>
@@ -119,9 +144,14 @@ export default async function CheckoutPage({
       <Card>
         <h2 className="text-lg font-semibold text-ink">Tickets go to</h2>
         <p className="mt-2 text-ink [overflow-wrap:anywhere]">
-          {buyerName} · {session.user.email}
+          {buyerName ? `${buyerName} · ` : null}{buyerEmail}
+          {guestCheckout ? <span className="ml-2 text-sm font-semibold text-success">Confirmed</span> : null}
         </p>
-        <p className="mt-1 text-sm text-ink-soft">We email your tickets, and they appear in My tickets.</p>
+        <p className="mt-1 text-sm text-ink-soft">
+          {guestCheckout ? (
+            <>Buying as a guest. Lost the email later? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your tickets</Link> with this address.</>
+          ) : "We email your tickets, and they appear in My tickets."}
+        </p>
       </Card>
       {free && policy.length === 0 ? null : (
         <Card>

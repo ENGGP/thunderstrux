@@ -139,6 +139,45 @@ export function PublicTicketPurchase({
           Verify email
         </Link>
       </Notice>
+    ) : viewer === "anonymous" ? (
+      <>
+        {/* A guest confirms their email in checkout; signing in comes straight back to the same checkout. */}
+        <Button
+          disabled={leaving || !validQuantity}
+          onClick={() => {
+            if (!checkoutHref) return;
+            setLeaving(true);
+            router.push(`${checkoutHref}&guest=1`);
+          }}
+          size="lg"
+          type="button"
+        >
+          Continue as guest
+        </Button>
+        <Button
+          disabled={leaving || !validQuantity}
+          onClick={() => {
+            if (!checkoutHref) return;
+            setLeaving(true);
+            router.push(checkoutHref);
+          }}
+          size="lg"
+          type="button"
+          variant="secondary"
+        >
+          {free ? "Sign in to get free tickets" : "Sign in to buy"}
+        </Button>
+        <p className="text-[13px] text-ink-muted">
+          As a guest you confirm your email and your tickets go there. Signed-in members also see them in My tickets. New here?{" "}
+          <Link
+            className="font-semibold text-brand underline underline-offset-4"
+            href={`/signup?callbackUrl=${encodeURIComponent(checkoutHref || `/events/${eventId}`)}`}
+          >
+            Create an account
+          </Link>
+          .
+        </p>
+      </>
     ) : (
       <>
         <Button
@@ -146,33 +185,17 @@ export function PublicTicketPurchase({
           onClick={() => {
             if (!checkoutHref) return;
             setLeaving(true);
-            // A visitor who is not signed in is sent to sign in, then straight back to this checkout.
             router.push(checkoutHref);
           }}
           size="lg"
           type="button"
         >
-          {viewer === "anonymous"
-            ? free ? "Sign in to get free tickets" : "Sign in to buy tickets"
-            : free ? "Get free tickets" : "Buy tickets"}
+          {free ? "Get free tickets" : "Buy tickets"}
         </Button>
         <p className="text-[13px] text-ink-muted">
-          {viewer === "anonymous" ? (
-            <>
-              You&apos;ll come straight back to review your order. New here?{" "}
-              <Link
-                className="font-semibold text-brand underline underline-offset-4"
-                href={`/signup?callbackUrl=${encodeURIComponent(checkoutHref || `/events/${eventId}`)}`}
-              >
-                Create an account
-              </Link>
-              .
-            </>
-          ) : free ? (
-            "You confirm on the next page. Your tickets are emailed and appear in My tickets."
-          ) : (
-            "You review your order on the next page, then pay securely with Stripe."
-          )}
+          {free
+            ? "You confirm on the next page. Your tickets are emailed and appear in My tickets."
+            : "You review your order on the next page, then pay securely with Stripe."}
         </p>
       </>
     );

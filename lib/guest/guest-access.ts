@@ -13,12 +13,15 @@ import { safeReturnPath } from "@/lib/security/safe-return-path";
 export const guestCookieName = "thunderstrux-guest";
 export const GUEST_CSRF_HEADER = "x-thunderstrux-guest-csrf";
 const linkLifetimeMs = 30 * 60 * 1000;
+// Purchase links (ticket email and recovery) open one order for a day.
+const purchaseLinkLifetimeMs = 24 * 60 * 60 * 1000;
 export const guestSessionLifetimeMs = 2 * 60 * 60 * 1000;
 const rawPattern = /^[A-Za-z0-9_-]{43}$/;
 
 export class GuestAccessError extends Error {
-  constructor() { super("This link is invalid or expired. Request a new link."); }
+  constructor(message = "This link is invalid or expired. Request a new link.") { super(message); }
 }
+export const guestSessionEndedMessage = "Your guest session has ended. Confirm your email again.";
 
 export const guestDigest = (raw: string) => createHash("sha256").update(raw).digest("hex");
 const newSecret = () => randomBytes(32).toString("base64url");
@@ -70,7 +73,7 @@ export async function redeemGuestAccess(raw: string, now = new Date()) {
     if (!candidate) throw new GuestAccessError();
     await tx.$queryRaw`SELECT "id" FROM "GuestIdentity" WHERE "id" = ${candidate.guestIdentityId} FOR UPDATE`;
     const grant = await tx.guestAccessGrant.findUnique({ where: { tokenDigest: digest } });
-    if (!grant || grant.purpose !== "checkout" || grant.consumedAt || grant.revokedAt || grant.expiresAt <= now) throw new GuestAccessError();
+    if (!grant || !["checkout", "purchase"].includes(grant.purpose) || grant.consumedAt || grant.revokedAt || grant.expiresAt <= now) throw new GuestAccessError();
     const sessionId = newSecret();
     const sessionExpiresAt = new Date(now.getTime() + guestSessionLifetimeMs);
     const consumed = await tx.guestAccessGrant.updateMany({
@@ -83,7 +86,8 @@ export async function redeemGuestAccess(raw: string, now = new Date()) {
       where: { guestAccessGrantId: grant.id, status: { in: ["pending", "processing"] } },
       data: { status: "cancelled", lastError: "consumed", processingToken: null }
     });
-    return { sessionId, sessionExpiresAt, callbackUrl: safeReturnPath(grant.callbackPath, "/events") };
+    const callbackUrl = grant.orderId ? `/guest/orders/${grant.orderId}` : safeReturnPath(grant.callbackPath, "/events");
+    return { sessionId, sessionExpiresAt, callbackUrl };
   });
 }
 
@@ -96,7 +100,86 @@ export async function readGuestSession(sessionId: string | undefined, now = new 
     include: { guestIdentity: { select: { id: true, email: true, verifiedAt: true } } }
   });
   if (!grant?.sessionExpiresAt || grant.sessionExpiresAt <= now || grant.revokedAt || !grant.guestIdentity.verifiedAt) return null;
-  return { grantId: grant.id, guestIdentityId: grant.guestIdentity.id, email: grant.guestIdentity.email, expiresAt: grant.sessionExpiresAt };
+  return {
+    grantId: grant.id, guestIdentityId: grant.guestIdentity.id, email: grant.guestIdentity.email, expiresAt: grant.sessionExpiresAt,
+    purpose: grant.purpose, orderId: grant.orderId
+  };
+}
+
+export type GuestSession = NonNullable<Awaited<ReturnType<typeof readGuestSession>>>;
+
+// A guest session opens one order: the order its purchase link names, or an
+// order bought during this checkout session. Nothing else, whatever the email.
+export async function canOpenGuestOrder(session: GuestSession, orderId: string) {
+  if (session.purpose === "purchase") return session.orderId === orderId;
+  return Boolean(await prisma.checkoutAttempt.findFirst({ where: { actorKind: "guest", actorId: session.grantId, orderId }, select: { id: true } }));
+}
+
+function orderLink(raw: string) {
+  const link = new URL("/guest/access", process.env.NEXT_PUBLIC_APP_URL);
+  link.hash = new URLSearchParams({ token: raw }).toString();
+  return link.toString();
+}
+
+// The link in a guest's ticket email. Derived from the email job, so a provider
+// retry sends the same link and nothing raw is stored; a new email job (a
+// resend) gets a new one.
+export async function purchaseLinkForEmail(orderId: string, guestIdentityId: string, jobId: string, now = new Date()) {
+  const raw = createHmac("sha256", authSecret).update(`guest-purchase:v1:${jobId}`).digest("base64url");
+  await prisma.guestAccessGrant.upsert({
+    where: { tokenDigest: guestDigest(raw) },
+    create: { guestIdentityId, purpose: "purchase", orderId, tokenDigest: guestDigest(raw), expiresAt: new Date(now.getTime() + purchaseLinkLifetimeMs) },
+    update: {}
+  });
+  return orderLink(raw);
+}
+
+// Find your tickets: a fresh link per paid guest purchase, sent to the address
+// only. The caller always gets the same answer.
+export async function requestGuestRecovery(email: string, now = new Date()) {
+  assertNotificationConfiguration();
+  const identity = await prisma.guestIdentity.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true } });
+  if (!identity) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "GuestIdentity" WHERE "id" = ${identity.id} FOR UPDATE`;
+    const orders = await tx.order.findMany({
+      where: { guestIdentityId: identity.id, userId: null, status: "paid" },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { id: true, event: { select: { title: true } } }
+    });
+    for (const order of orders) {
+      const open = { orderId: order.id, purpose: "purchase", consumedAt: null, revokedAt: null };
+      const older = await tx.guestAccessGrant.findMany({ where: open, select: { id: true } });
+      await tx.guestAccessGrant.updateMany({ where: open, data: { revokedAt: now } });
+      await tx.notificationOutbox.updateMany({
+        where: { guestAccessGrantId: { in: older.map((grant) => grant.id) }, status: { in: ["pending", "processing"] } },
+        data: { status: "cancelled", lastError: "superseded", processingToken: null, processingStartedAt: null }
+      });
+      const raw = newSecret();
+      const grant = await tx.guestAccessGrant.create({ data: {
+        guestIdentityId: identity.id, purpose: "purchase", orderId: order.id, tokenDigest: guestDigest(raw),
+        expiresAt: new Date(now.getTime() + purchaseLinkLifetimeMs)
+      } });
+      await enqueueNotification(tx, {
+        eventKey: `guest/${grant.id}`, guestAccessGrantId: grant.id, recipient: email.trim().toLowerCase(), template: "guest_order_link", expiresAt: grant.expiresAt,
+        payload: { message: `Open your order for ${order.event.title}. This link works once and stops working after 24 hours.`, link: orderLink(raw) }
+      });
+    }
+  });
+}
+
+// The buyer for a guest checkout, under the GuestIdentity lock: the session
+// must still be a live checkout session of a verified address.
+export async function lockGuestBuyer(tx: Prisma.TransactionClient, grantId: string, now: Date) {
+  const candidate = await tx.guestAccessGrant.findUnique({ where: { id: grantId }, select: { guestIdentityId: true } });
+  if (!candidate) throw new GuestAccessError(guestSessionEndedMessage);
+  await tx.$queryRaw`SELECT "id" FROM "GuestIdentity" WHERE "id" = ${candidate.guestIdentityId} FOR UPDATE`;
+  const grant = await tx.guestAccessGrant.findUnique({ where: { id: grantId }, include: { guestIdentity: true } });
+  if (!grant || grant.purpose !== "checkout" || grant.revokedAt || !grant.sessionExpiresAt || grant.sessionExpiresAt <= now || !grant.guestIdentity.verifiedAt) {
+    throw new GuestAccessError(guestSessionEndedMessage);
+  }
+  return { email: grant.guestIdentity.email, firstName: null, lastName: null, displayName: null };
 }
 
 // The guest session's own CSRF token, bound to the session id (not the login cookie).

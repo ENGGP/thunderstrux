@@ -63,7 +63,8 @@ export function CheckoutAction({
   unitPrice,
   freeTicketsAvailable,
   label,
-  backHref
+  backHref,
+  guestCsrf
 }: {
   eventId: string;
   eventTitle: string;
@@ -75,6 +76,8 @@ export function CheckoutAction({
   freeTicketsAvailable: boolean;
   label: string;
   backHref: string;
+  // Present for a guest checkout: the guest session's CSRF token.
+  guestCsrf?: string;
 }) {
   const router = useRouter();
   const key = useRef<string | null>(null);
@@ -83,7 +86,7 @@ export function CheckoutAction({
   const [screen, setScreen] = useState<Screen | null>(null);
 
   function finished(orderId: string) {
-    router.push(`/events/${eventId}/checkout/confirmed?orderId=${encodeURIComponent(orderId)}`);
+    router.push(guestCsrf ? `/guest/orders/${encodeURIComponent(orderId)}` : `/events/${eventId}/checkout/confirmed?orderId=${encodeURIComponent(orderId)}`);
   }
 
   async function submit(next: Selection = selection) {
@@ -95,7 +98,7 @@ export function CheckoutAction({
     try {
       const data = await fetchJson<CheckoutResponse>("/api/payments/checkout/event", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(guestCsrf ? { "x-thunderstrux-guest-csrf": guestCsrf } : {}) },
         body: JSON.stringify({ eventId, ticketTypeId, quantity: next.quantity, expectedUnitPrice: next.unitPrice, idempotencyKey: key.current })
       });
       if ("kind" in data && data.kind === "fulfilled") return finished(data.orderId);

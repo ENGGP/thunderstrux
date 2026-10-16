@@ -67,15 +67,15 @@ describe("guest email links", () => {
     expect(await prisma.notificationOutbox.count({ where: { status: "cancelled", lastError: "consumed" } })).toBe(1);
   });
 
-  test("wrong, malformed, expired, revoked and wrong-purpose links are refused", async () => {
+  test("wrong, malformed, expired and revoked links are refused", async () => {
     await requestGuestAccess("misuse@example.com");
     const raw = await emailedToken();
     const grant = await prisma.guestAccessGrant.findFirstOrThrow();
     for (const token of ["not-a-token", "A".repeat(43)]) await expect(redeemGuestAccess(token)).rejects.toBeInstanceOf(GuestAccessError);
-    for (const change of [{ expiresAt: new Date(0) }, { revokedAt: new Date() }, { purpose: "purchase" }]) {
+    for (const change of [{ expiresAt: new Date(0) }, { revokedAt: new Date() }]) {
       await prisma.guestAccessGrant.update({ where: { id: grant.id }, data: change });
       await expect(redeemGuestAccess(raw)).rejects.toBeInstanceOf(GuestAccessError);
-      await prisma.guestAccessGrant.update({ where: { id: grant.id }, data: { expiresAt: grant.expiresAt, revokedAt: null, purpose: "checkout" } });
+      await prisma.guestAccessGrant.update({ where: { id: grant.id }, data: { expiresAt: grant.expiresAt, revokedAt: null } });
     }
     expect((await prisma.guestAccessGrant.findUniqueOrThrow({ where: { id: grant.id } })).consumedAt).toBeNull();
   });

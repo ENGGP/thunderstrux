@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { mapRouteError, notFound } from "@/lib/api/errors";
 import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
-import { readUserCheckoutAttempt } from "@/lib/payments/checkout-attempts";
+import { readCheckoutAttempt } from "@/lib/payments/checkout-attempts";
+import { guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
+import { hasAuthSessionCookie } from "@/lib/security/csrf";
 
 type RouteContext = { params: Promise<{ attemptId: string }> };
 
@@ -10,9 +12,11 @@ type RouteContext = { params: Promise<{ attemptId: string }> };
 // can read it; any other attempt is the same 404 as a missing one.
 export async function GET(request: Request, context: RouteContext) {
   try {
-    const user = await requireAuthenticatedUser();
     const { attemptId } = await context.params;
-    const attempt = await readUserCheckoutAttempt(user.id, attemptId);
+    // A guest reads only the attempts of their own checkout session.
+    const guest = hasAuthSessionCookie(request) ? null : await readGuestSession(guestSessionIdFrom(request));
+    const actor = guest ? { kind: "guest" as const, id: guest.grantId } : { kind: "user" as const, id: (await requireAuthenticatedUser()).id };
+    const attempt = await readCheckoutAttempt(actor, attemptId);
 
     if (!attempt) return notFound("Checkout was not found");
     return NextResponse.json(attempt, { headers: { "Cache-Control": "no-store" } });

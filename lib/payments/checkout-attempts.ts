@@ -28,11 +28,15 @@ export function newProviderOperationKey() {
   return `checkout_${randomUUID()}`;
 }
 
-export function findUserCheckoutAttempt(db: AttemptClient, userId: string, clientIdempotencyKey: string) {
+export type CheckoutActor = { kind: "user" | "guest"; id: string };
+
+// A guest actor is the checkout session's grant, so a guest's attempts are
+// scoped to the session that made them.
+export function findCheckoutAttempt(db: AttemptClient, actor: CheckoutActor, clientIdempotencyKey: string) {
   return db.checkoutAttempt.findFirst({
     where: {
-      actorKind: "user",
-      actorId: userId,
+      actorKind: actor.kind,
+      actorId: actor.id,
       family: "ticket",
       operationType: eventCheckoutOperation,
       clientIdempotencyKey
@@ -41,7 +45,7 @@ export function findUserCheckoutAttempt(db: AttemptClient, userId: string, clien
   });
 }
 
-export type CheckoutAttemptWithOrder = NonNullable<Awaited<ReturnType<typeof findUserCheckoutAttempt>>>;
+export type CheckoutAttemptWithOrder = NonNullable<Awaited<ReturnType<typeof findCheckoutAttempt>>>;
 
 // Stripe answered and did not create anything: safe to release the hold. Any
 // other error (timeout, connection, 5xx, unknown) may have created a Session.
@@ -94,9 +98,9 @@ export function checkoutAttemptStatus(attempt: CheckoutAttemptWithOrder): Checko
 }
 
 // Owner-scoped read: another actor's attempt is indistinguishable from a missing one.
-export async function readUserCheckoutAttempt(userId: string, attemptId: string) {
+export async function readCheckoutAttempt(actor: CheckoutActor, attemptId: string) {
   const attempt = await prisma.checkoutAttempt.findFirst({
-    where: { id: attemptId, actorKind: "user", actorId: userId },
+    where: { id: attemptId, actorKind: actor.kind, actorId: actor.id },
     include: { order: { select: { status: true } } }
   });
   return attempt ? checkoutAttemptStatus(attempt) : null;

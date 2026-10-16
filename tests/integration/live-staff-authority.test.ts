@@ -44,6 +44,8 @@ describe("one live staff authority rule", () => {
   test("the rule: active staff grants its role, any staff row supersedes legacy, disabled accounts hold nothing", async () => {
     const legacy = await legacyOnlyOwner();
     const actor = { id: legacy.user.id, accountRole: "organisation" };
+    // The integration environment runs with legacy access denied, as production should.
+    vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "allow");
     expect(await liveStaffRole(prisma, legacy.organisation.id, actor)).toBe("owner");
     vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "deny");
     expect(await liveStaffRole(prisma, legacy.organisation.id, actor)).toBeNull();
@@ -106,8 +108,9 @@ describe("one live staff authority rule", () => {
     vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "deny");
     await expect(requeueFailedTicketEmail({ jobId: legacyJob.id, actorUserId: legacy.user.id, reason: "Provider issue resolved" }))
       .rejects.toThrow("permission");
-    vi.unstubAllEnvs();
+    vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "allow");
     await expect(requeueFailedTicketEmail({ jobId: legacyJob.id, actorUserId: legacy.user.id, reason: "Provider issue resolved" }))
       .resolves.toMatchObject({ orderId: expect.any(String) });
+    vi.unstubAllEnvs();
   });
 });

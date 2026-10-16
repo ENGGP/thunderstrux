@@ -182,6 +182,18 @@ Organisation dashboard access is authorized from the authenticated user, an acti
 
 The legacy `Organisation.accountUserId` ownership path is used only according to `LEGACY_ORGANISATION_ACCESS_MODE` during migration. Missing authority redirects to an appropriate safe page or resolves as `notFound()` where revealing the tenant would disclose information.
 
+### One live staff authority rule (F1)
+
+`lib/staff/live-authority.ts` is the only place that decides an actor's role in an organisation; routes (through `lib/auth/access.ts`), locked services (profile, assets, staff updates, invitations) and workers (notification and ticket-email requeue) all call it, each keeping its own guard order. It is database-only, so workers load no HTTP auth, session or CSRF modules.
+
+- An active `OrganisationStaff` row grants its role.
+- Any staff row for that organisation, active or revoked, supersedes legacy ownership.
+- Otherwise an organisation account still named on `Organisation.accountUserId` acts as owner only when `LEGACY_ORGANISATION_ACCESS_MODE=allow`.
+- A disabled account holds no authority.
+- The mode: `allow` or `deny`. Unset means allow in development. In production, unset or invalid denies, and the readiness check fails until it is set (`assertLegacyOrganisationAccessConfigured`).
+
+Invitation issuers must also have a verified email; that extra rule stays in `lib/staff/invite-authority.ts`.
+
 ## Explicit dashboard context
 
 GET `/api/me/context` lists only live authorized staff organisations and role capabilities. POST selects personal or staff mode with trusted origin/session CSRF; staff selection rechecks target permission and MFA. A signed HttpOnly SameSite cookie binds the preference to the account, authVersion and password-login ID. It carries no authority. Revocation, tampering or stale selection never selects another tenant. Member staff start in personal mode on a fresh login; selected staff context lasts only that login. Organisation accounts without a preference retain their owned tenant only when it still has live authority, for bootstrap compatibility. Personal tickets and private account settings stay available to individual accounts.

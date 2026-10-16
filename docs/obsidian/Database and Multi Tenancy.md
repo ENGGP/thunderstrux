@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-19
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]"]
 sources: [prisma/schema.prisma, prisma/migrations, lib/db/organisation-scope.ts]
@@ -534,6 +534,8 @@ T11 brings the chain to 36 migrations (still 22 models), ending in `202610160100
 T14a brings the chain to 37 migrations and 23 models, ending in `20261017010000_checkout_attempts`. `CheckoutAttempt` records one intended checkout: `family` (`ticket`; commerce families arrive with T21), `actorKind` (`user`; `guest` arrives with T16a) and `actorId`, `operationType`, the client's `clientIdempotencyKey` (unique per actor, family and operation), `requestHash`, a unique optional `orderId`, a unique `providerOperationKey` sent to Stripe, a unique `stripeSessionId` with its URL, `state`, `reconcileDueAt` and `lastOutcome`. Checks: only ticket attempts bind an Order, and an attached attempt has its Session. The integrity audit flags an attempt whose Session differs from its order's. No existing order gets an attempt. Rollback leaves the table unused; older code ignores it. [[Payment Lifecycle]] owns the behaviour.
 
 T14b brings the chain to 38 migrations (still 23 models), ending in `20261018010000_checkout_attempt_recovery`: nullable `CheckoutAttempt.providerRequest` (JSONB, the exact Session request replayed by recovery; no secrets) and the `checkout_recovery` order lifecycle source. Attempts created before it have no stored request and are failed, not replayed. Rollback leaves the column and enum value unused.
+
+T11b brings the chain to 39 migrations (still 23 models), ending in `20261019010000_event_hero_image`: nullable `Event.heroAssetId` with an index and a composite foreign key `(heroAssetId, organisationId)` to `(Asset.id, organisationId)`, `ON DELETE RESTRICT`, so an event can only reference an image of its own society. No existing event gets an image. Rollback leaves the column unused; older code ignores it. [[Event Lifecycle]] owns the behaviour.
 
 ## Ownership retirement
 

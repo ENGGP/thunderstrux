@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-19
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -401,6 +401,7 @@ Rules:
 - Ticket quantities must be greater than zero.
 - Always creates a `draft` (T11); a submitted `status` is ignored. Publishing goes through `PATCH /api/events/[eventId]/publish`.
 - Optional `capacity` (positive integer or null), `visibility` (`public` or `unlisted`; `members_only` is refused until memberships exist) and `salesCloseAt` (defaults to `startTime`, must not be after `endTime`).
+- Optional `heroAssetId` (T11b): a ready, undeleted `event` asset of the same society; anything else returns 400 with `path: ["heroAssetId"]`. Times are ISO instants; the dashboard builder converts the society's wall-clock times before sending.
 - The created event carries `version: 1`.
 
 ### `GET /api/events/[eventId]`
@@ -422,7 +423,7 @@ Rules:
 - Active staff authority or explicitly enabled legacy authority required.
 - Does not own publish/unpublish status transitions.
 - Request must include the `version` the editor loaded. A different current version returns `409 CONFLICT` and nothing is saved; a successful edit increments it.
-- Accepts the same optional `capacity`, `visibility` and `salesCloseAt` as create. A close time still equal to the old start follows a changed start; an explicit one is kept. Capacity below valid issued tickets plus active holds returns 400.
+- Accepts the same optional `capacity`, `visibility`, `salesCloseAt` and `heroAssetId` as create; `heroAssetId: null` removes the image and omitting it keeps the current one. A close time still equal to the old start follows a changed start; an explicit one is kept. Capacity below valid issued tickets plus active holds returns 400.
 - Request must include `organisationId`, but the API revalidates organisation ownership and scopes the event server-side.
 - Existing ticket types are matched by `id`.
 - New ticket types omit `id`.

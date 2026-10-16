@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-16
+last-reviewed: 2026-10-19
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
@@ -30,11 +30,11 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - `input.tsx`: `TextInput`, `TextArea`, `Select`. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
 - `card.tsx`: bordered surface with an optional `className`.
 - `notice.tsx`: inline message in `info`, `success`, `warning` or `danger`: a soft wash, a hairline border, an icon and a toned title, with body text in ink. `action` puts the link or button that resolves the message at the end of the row; `onDismiss` (client callers only) adds a close button. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
-- `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked and unused are neutral; joined uses the brand accent. Orders show the projection from `lib/purchases/projection.ts`: Processing and Payment review (charged but not fulfilled) are warnings, Paid and Free are successes. Add a status there, not in a page.
+- `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked, unused, Sales closed and Sold out are neutral; Sales open is a success; joined uses the brand accent. Orders show the projection from `lib/purchases/projection.ts`: Processing and Payment review (charged but not fulfilled) are warnings, Paid and Free are successes. Add a status there, not in a page.
 - `skeleton.tsx`: `Skeleton` blocks and `ListSkeleton`, a list stand-in with one screen-reader label. They are used only as a `<Suspense>` fallback after a page's guards (see below).
 - `confirm-dialog.tsx`: native `<dialog>` confirmation that names the action and its consequences. Its body is mounted only while open, and Escape cancels. Use it instead of `window.confirm`.
 
-Shared content components: `components/events/date-rail.tsx` (day and month in the society's zone, used by event cards, the member overview and My tickets), `components/events/event-card.tsx` (date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows an image, price or count that the data model does not hold.
+Shared content components: `components/events/date-rail.tsx` (day and month in the society's zone, used by event cards, the member overview and My tickets), `components/events/event-card.tsx` (the event image at 16:9 when there is one, date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows a price or count that the data model does not hold.
 
 Event workspace components live in `components/events/` because they import `next/link`:
 
@@ -147,9 +147,9 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard/events/[eventId]` (Summary), `/dashboard/events/[eventId]/tickets` (Attendees), `/dashboard/events/[eventId]/edit` (Edit) and `/dashboard/orders?eventId=` (Orders)
 
-- Share `EventWorkspaceHeader`. Summary shows tickets sold, tickets left and, with `orders:read`, revenue, the ticket performance table and revenue by day.
+- Share `EventWorkspaceHeader`: dates in the society time zone, the sales close time, and Published with a selling badge (Sales open, Sold out, Sales closed). Summary shows tickets sold, tickets left, capacity when set and, with `orders:read`, revenue; the ticket table (price, sold, held, left); revenue by day; and a draft's readiness checklist (`components/events/readiness-checklist.tsx`) or a published event's selling status. More offers Close sales or Reopen sales.
 - Edit is titled `Edit event` with the event as a breadcrumb; a published event shows a notice that changes go live on save and buyers are not emailed. `/dashboard/events/new` has its own `New event` header.
-- The event form has three cards (Details, Ticket types, If tickets cannot be issued), a skeleton while it loads, `Save changes` or `Create event`, and Cancel. Prices are labelled `Price in cents` with an example, because the field stores cents (EVT-002).
+- The event form (T11b) has five cards: Details with the optional 16:9 event image, Schedule (times in the society's zone, named in the card; sales close shows the start until changed), Tickets (a `$` price, quantity, sold and held per type), Access (Public or Link only, optional capacity) and If tickets cannot be issued. A sticky save bar says when there are unsaved changes; leaving asks first. A draft's Edit page shows the readiness checklist beside the form. A version conflict keeps the edits and offers a reload.
 
 `/dashboard/orders`
 

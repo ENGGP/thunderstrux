@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[API Reference]]", "[[Email Delivery Implementation]]"]
 sources: [auth.ts, proxy.ts, lib/auth/access.ts, lib/auth/account-lifecycle.ts, lib/auth/account-closure.ts]
@@ -272,6 +272,8 @@ Deploy 20261005030000_account_closure before the app/workers. The additive schem
 `lib/guest/guest-access.ts` proves an email address without an account. The link token and the session id are random 32-byte values that exist only in the email fragment and the `thunderstrux-guest` cookie; `GuestAccessGrant` stores their SHA-256 digests, the purpose (`checkout`), the safe return path, expiry, consumption and revocation. `/guest/access` captures the fragment before hydration (the shared account-link capture script), removes it from the address and redeems only when the visitor presses Continue, so mail scanners and prefetching cannot use a link up. Redemption locks the `GuestIdentity` row and consumes the grant with a guarded update, so two concurrent redemptions start one session. A guest session never matches or merges with a member account by email; claiming guest purchases is the explicit T16c step.
 
 T16b gives sessions a scope. A `checkout` session buys and can reopen only the orders whose checkout attempt it made; a `purchase` session, started from a ticket email or Find your tickets link (`GuestAccessGrant.orderId`), opens that one order. `canOpenGuestOrder` is the only rule `/guest/orders/[orderId]` uses, and the page is identical for a missing, foreign or guessed order. The ticket email's link is minted on each send attempt and stored only as a digest. The guest CSRF helpers live in `lib/guest/guest-csrf.ts`, the only guest module that loads the auth secret, so workers that load guest links never need it.
+
+T16c: "Add to my account" (`lib/guest/guest-claim.ts`) is the only way a guest order joins a member's purchases; signing up or signing in with the same email never claims anything. It needs the member's login, a verified account, and the guest session that opens the order. Under the User, then GuestIdentity, then Order locks it checks that the guest's verified email is the member's current email, sets `Order.userId` once (a repeat by the same member is a no-op), writes the audit entry `order.guest_claimed` and leaves the buyer snapshot and its `verified_guest` provenance unchanged. A colleague's account, a changed account email and an already claimed order are refused.
 
 ## Private staff invitations
 

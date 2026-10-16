@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -185,6 +185,8 @@ POST `/api/guest/email/confirm` accepts `{token}` and returns `{callbackUrl}` (a
 GET `/api/guest/session` returns `{email, expiresAt, csrfToken}` for a live guest session, or `401`; always `no-store`. `csrfToken` is an HMAC of the session id, checked with `verifyGuestCsrf` by guest writes (T16b). A guest session is not a login: it grants no member, staff or account access.
 
 Since T16b a session has a purpose. A `checkout` session (from the checkout email link) can buy tickets and open the orders it bought. A `purchase` session (from a ticket email or recovery link) opens one order. POST `/api/guest/recover` accepts `{email}` and returns a generic `202 {accepted:true}`: for a known guest it revokes unused links for each paid guest order (up to the latest ten; orders a member has claimed are excluded) and queues one encrypted `guest_order_link` email per order, each link valid for 24 hours and once. It shares the fail-closed guest request limits, under its own keys. `/guest/orders/[orderId]` opens only for a session allowed that order; every other case, including a real order id without the session, shows the same "Open your order from your email" page.
+
+POST `/api/guest/orders/[orderId]/claim` (T16c) adds a guest order to the signed-in member's account. It needs a trusted origin, the member's login and its CSRF token, and the guest session that opens the order. It returns `{claimed: true}`, or `{claimed: false}` when the order is already this member's; `401` without a login, `403` for an unverified account, `404` when the guest session does not open the order, and `409` with detail `reason` `email_mismatch` or `already_claimed`. `no-store`.
 
 ### `PATCH /api/me/profile`
 

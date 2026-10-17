@@ -99,7 +99,7 @@ The staff authenticator (`/mfa`) is not organisation navigation: it is reached f
 - From `lg` the navigation is a 244px deep-plum column whose contents stick below the fixed header, so the verify-email banner pushes it down instead of sitting under it. Below `lg` the same column holds `Current organisation`, the society name and the `Organisation menu` disclosure.
 - Each page renders its own title as the only `h1` through `components/layout/page-header.tsx` (or an `h1` of its own); section headings are `h2`. The society name is plain text in the sidebar.
 - The workspace switcher is labelled `Workspace`.
-- A navigation item is added only when its destination exists. Calendar, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them. Memberships arrived with T22 (Plans only; its Members tab arrives with T23, and the page shows tabs only once there are two).
+- A navigation item is added only when its destination exists. Calendar, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them. Memberships arrived with T22; its Plans and Members tabs (T23a) show only to staff with `memberships:manage` and `members:read` respectively.
 
 ### Context switcher
 
@@ -211,6 +211,8 @@ Any other failure keeps the button and shows the message in a danger `Notice` wi
 ### Membership plans (T22)
 
 `/dashboard/memberships` lists plans as a table from 768px and cards below, with Runs in the society's zone, Price (or Free), a status badge (Draft, Published, Ended, Archived), the holders and a Details or Edit link. `/dashboard/memberships/new` and `/dashboard/memberships/[planId]` share `components/memberships/plan-form.tsx`: Term (Semester 1, Semester 2, Full year or Custom dates, a year, then First day and Last day), Details, Price with the fee example, and What it unlocks; an unsaved-changes guard; a 409 on a stale version keeps the edits and offers Reload. A sold plan disables everything but the description under an information notice; an archived plan is read-only. The detail page's aside holds the publish check (`plan-checklist.tsx`, the server's blockers in a fixed order with a Payments link), Publish and Archive (`plan-actions.tsx`; Archive confirms and names what it does not undo), and a preview of the buyer's offer card. Design round B1 on the canvas is the approved source.
+
+`/dashboard/memberships/members` (T23a) uses view pills (Active, Upcoming, Expired, Revoked, then Free joins set apart) with counts, a search form, a table from 768px and a list below, Next page links, and a note that members, joins and staff are different lists. The member page is two cards, Membership and With the society; the Manage card arrives with revocation in T23b. `upcoming` joins the badge words (accent).
 
 ## Stripe Settings UI Rules
 

@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { test, expect, prisma } from './fixtures';
 import { createOrder, createReservation } from '@/tests/helpers/test-data';
+import { createCommerceOrder } from '@/lib/commerce/orders';
 
 const stripe = new Stripe('sk_test_synthetic');
 const secret = 'whsec_p216_synthetic';
@@ -94,4 +95,22 @@ test('Connect verifies its own secret and updates only a matching account', asyn
   const unknown = payload({...account, id: 'acct_unknown'}, 'account.updated');
   expect((await send(unknown, stripe.webhooks.generateTestHeaderString({payload: unknown, secret: 'whsec_p216_connect'}))).status()).toBe(200);
   expect(await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}})).toEqual(ready);
+});
+
+test('signed commerce Sessions route by family only, never to tickets, and nothing is fulfilled without a registered family', async ({request, data}) => {
+  await prisma.organisation.update({where: {id: data.organisation.id}, data: {stripeAccountId: 'acct_e2e_commerce', stripeChargesEnabled: true}});
+  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {organisationId: data.organisation.id, kind: 'merchandise', buyer: {userId: data.member.id}, buyerEmail: data.member.email, paymentKind: 'stripe', feeAmount: 150, lines: [{quantity: 1, unitAmount: 1500, name: 'Hoodie'}], source: 'checkout'}));
+  await prisma.commerceOrder.update({where: {id: order.id}, data: {stripeSessionId: `cs_e2e_${order.id}`}});
+  const paid = {id: `cs_e2e_${order.id}`, object: 'checkout.session', payment_status: 'paid', amount_total: 1500, currency: 'aud', payment_intent: {id: 'pi_e2e_commerce', transfer_data: {destination: 'acct_e2e_commerce'}}, metadata: {family: 'merchandise', commerceOrderId: order.id, organisationId: data.organisation.id}};
+  const send = async (object: unknown) => {
+    const body = payload(object);
+    expect((await request.post('/api/payments/webhook', {data: body, headers: {'stripe-signature': stripe.webhooks.generateTestHeaderString({payload: body, secret})}})).status()).toBe(200);
+  };
+  // Another family's metadata, and no family at all, change nothing.
+  await send({...paid, metadata: {...paid.metadata, family: 'membership'}});
+  await send({...paid, metadata: {}});
+  expect(await prisma.commerceOrder.findUniqueOrThrow({where: {id: order.id}})).toMatchObject({status: 'pending', requiresCompensationReview: false});
+  // A verified payment with no merchandise family registered yet is held for review, not fulfilled.
+  await send(paid);
+  expect(await prisma.commerceOrder.findUniqueOrThrow({where: {id: order.id}})).toMatchObject({status: 'failed', requiresCompensationReview: true, reviewReason: 'family_unavailable', fulfilledAt: null});
 });

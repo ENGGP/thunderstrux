@@ -8,6 +8,7 @@ import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments
 import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
 import { reconcileOrderRefundEvent } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
+import { isCommerceSession, reconcileCommerceCheckoutSession, reconcileExpiredCommerceSession } from "@/lib/commerce/reconciliation";
 import {
   getStripe,
   isLiveStripeKey,
@@ -82,6 +83,22 @@ export async function POST(request: Request) {
     logError("stripe.webhook.mode_mismatch", { stripeEventId: event.id, eventLivemode: event.livemode, webhook: "payments" });
     emitOperationalAlert("stripe_webhook_mode_mismatch", { stripeEventId: event.id, webhook: "payments" });
     return NextResponse.json({ received: true, ignored: "mode_mismatch" });
+  }
+
+  // A Session with a family is a membership or merchandise purchase (T21); one
+  // without is a ticket purchase, unless it is in fact a commerce order's.
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.expired") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.family !== undefined) {
+      if (event.type === "checkout.session.completed") await reconcileCommerceCheckoutSession(session, { stripeEventId: event.id });
+      else await reconcileExpiredCommerceSession(session, { stripeEventId: event.id });
+      return NextResponse.json({ received: true });
+    }
+    if (await isCommerceSession(session.id)) {
+      logWarn("commerce.webhook.ignored", { reason: "commerce_session_without_family", stripeEventId: event.id, stripeSessionId: session.id });
+      emitOperationalAlert("commerce_webhook_identity_mismatch", { reason: "commerce_session_without_family", stripeEventId: event.id, stripeSessionId: session.id });
+      return NextResponse.json({ received: true });
+    }
   }
 
   switch (event.type) {

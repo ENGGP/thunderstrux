@@ -42,9 +42,9 @@ Pause the platform schedules before deployment. Resume them only after readiness
 
 ```text
 every minute: node scripts/process-email-outbox.mjs
-every minute: node scripts/process-stale-orders.mjs
+every minute: node scripts/process-stale-orders.mjs   # also expires stale commerce orders (T21)
 every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a)
-every minute: node scripts/process-checkout-attempts.mjs
+every minute: node scripts/process-checkout-attempts.mjs   # ticket and commerce attempts (T21)
 every minute: node scripts/process-notifications.mjs
 ```
 

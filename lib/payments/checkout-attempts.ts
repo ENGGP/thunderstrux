@@ -82,11 +82,17 @@ export type CheckoutAttemptStatus =
 
 // The buyer-facing answer for an attempt: its order decides completed and
 // failed, its Session decides ready, and anything else is still processing.
-export function checkoutAttemptStatus(attempt: CheckoutAttemptWithOrder): CheckoutAttemptStatus {
-  const orderStatus = attempt.order?.status;
+// A commerce attempt (T21) answers from its commerce order the same way.
+export function checkoutAttemptStatus(attempt: Pick<CheckoutAttemptWithOrder, "id" | "state" | "orderId" | "stripeSessionUrl"> & {
+  order?: { status: string } | null;
+  commerceOrderId?: string | null;
+  commerceOrder?: { status: string } | null;
+}): CheckoutAttemptStatus {
+  const orderStatus = attempt.order?.status ?? attempt.commerceOrder?.status;
+  const completedId = attempt.orderId ?? attempt.commerceOrderId;
 
-  if (orderStatus === "paid" && attempt.orderId) {
-    return { attemptId: attempt.id, status: "completed", orderId: attempt.orderId };
+  if (orderStatus === "paid" && completedId) {
+    return { attemptId: attempt.id, status: "completed", orderId: completedId };
   }
   if (attempt.state === "failed" || orderStatus === "failed" || orderStatus === "expired") {
     return { attemptId: attempt.id, status: "failed" };
@@ -101,7 +107,7 @@ export function checkoutAttemptStatus(attempt: CheckoutAttemptWithOrder): Checko
 export async function readCheckoutAttempt(actor: CheckoutActor, attemptId: string) {
   const attempt = await prisma.checkoutAttempt.findFirst({
     where: { id: attemptId, actorKind: actor.kind, actorId: actor.id },
-    include: { order: { select: { status: true } } }
+    include: { order: { select: { status: true } }, commerceOrder: { select: { status: true } } }
   });
   return attempt ? checkoutAttemptStatus(attempt) : null;
 }

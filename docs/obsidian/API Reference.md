@@ -755,6 +755,10 @@ The server-rendered organiser order detail page also reads a separate, bounded l
 
 Refunds the whole order through Stripe (T18a). Body `{reason, confirmation, mfaCode?}`: a reason of 8 to 500 characters, the order's short reference typed back, and a fresh authenticator code unless staff MFA is off. Requires the current society's `orders:refund` (owners and finance managers) and a trusted origin with the CSRF token. Answers `200 {refundRequestId, status: "succeeded"}` when Stripe confirmed, or `202` with `status` `pending` or `uncertain`. Refusals: `400` with detail `confirmation` for a wrong reference or `mfaCode` for a wrong code; `404` for another society's or a missing order; `409` with detail `reason` `not_refundable`, `in_progress`, `already_refunded`, `disputed`, `verification_failed` or `provider_refused`. After a partial refund made in Stripe it refunds the remainder. See [[Payment Lifecycle]].
 
+### `POST /api/payments/checkout/membership` and `POST /api/payments/checkout/merchandise`
+
+Commerce checkout (T21). Body `{organisationId, selection, expectedTotal, idempotencyKey}`: `selection` is checked by the family's own schema, `expectedTotal` is the total in cents the buyer was shown, and `idempotencyKey` follows the ticket rule (16 to 128 letters, digits, `-` or `_`). Requires a trusted origin and a signed-in verified member account; merchandise also accepts a guest's live checkout session with its CSRF header. The checkout rate limit applies. Answers `200 {kind: "stripe", url}`, `200 {kind: "fulfilled", commerceOrderId}` for a free total or a finished replay, or `202 {attemptId, status: "processing"}` while Stripe's answer is confirmed (poll `GET /api/payments/checkout/attempts/[attemptId]`, which now also answers commerce attempts). Refusals: `404` while the family is not on sale (no family is registered before T22 and T27); `400` for a non-member, a guest buying a membership, a society that can't take payments or an invalid selection; `409` for a changed total, the same key with another selection, or a purchase the family can no longer honour; `503` when Stripe is not configured. See [[Payment Lifecycle]].
+
 ### `GET /api/commerce/orders/[orderId]`
 
 One membership or merchandise order (T20). Requires a signed-in account (`401` otherwise). The buyer gets `{view: "buyer", order}`: family, status, payment kind, currency, total, seller name and support email, lines (number, name, variant, quantity, unit and line amounts, membership term) and a history of types and times, with no buyer contact, fee or provider ids. Staff of the current society with `orders:read` get `{view: "finance", order}`, adding the buyer snapshot, fee and fee policy, guest flag, Stripe references, review reason, paid and failed facts, and the full history with actors. A ticket order id, another member's order and another society's order are the same `404`. `no-store`.
@@ -871,8 +875,9 @@ Handles:
 - `checkout.session.expired`
 - `refund.created`, `refund.updated`, `refund.failed`: dispatched to ordinary refunds (`refundRequestId`), compensation (`compensationRefundJobId`) or, with neither, a refund made outside Thunderstrux (T18b)
 - `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` (T18b)
+- Since T21 a `checkout.session.*` event whose Session carries `family` (`membership` or `merchandise`) goes to commerce reconciliation; anything else stays a ticket event, except a commerce order's Session without a family, which is ignored with an alert.
 
-See [[Payment Lifecycle]] for how refund and dispute events are verified and projected.
+See [[Payment Lifecycle]] for how refund, dispute and commerce events are verified and projected.
 
 Responsibilities:
 

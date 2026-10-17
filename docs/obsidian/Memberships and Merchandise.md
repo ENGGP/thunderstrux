@@ -21,9 +21,17 @@ A plan (`MembershipProduct`) is one fixed term a society sells: name, descriptio
 - **Concurrency.** Every change holds User, then Organisation, then the plan row (`lockOrganisationActor`, then `FOR UPDATE`), with a version check (409 on a stale version). Publishing and editing published plans therefore run one at a time per society, and T23 checkout, which locks the Organisation before reading a plan, never quotes a plan mid-edit.
 - **Access.** Staff with live `memberships:manage` (owners and admins) through `/api/orgs/[orgSlug]/memberships` and `/dashboard/memberships`; another society's plan is a 404. Every change is audited (`membership_plan.created`, `updated`, `published`, `archived`).
 
-`MembershipGrant` exists from T22 but is written by T23: one grant per purchased line (unique, same society), term and rights copied from the plan, facts immutable, revocable once with a reason. Its state is computed from the clock and `revokedAt`, never stored.
+## Grants, checkout and the roster (T23a)
 
-The membership commerce family is registered with checkout in T23, together with the fulfilment that creates grants; until then `/api/payments/checkout/membership` answers 404.
+A `MembershipGrant` is one member's membership from one purchased line: unique per line and in the line's society, with the plan's term and rights copied onto it. Its facts never change; it can be revoked once, with a reason (T23b). Its state comes only from the clock and `revokedAt` (`grantState`): Upcoming before `startsAt`, Active in `[startsAt, endsAt)`, Expired from `endsAt`, Revoked once revoked. No job ever changes it.
+
+- **Checkout.** The membership family is registered with commerce checkout (`lib/memberships/grants.ts`, `membershipFamily`). Body `selection: {planId}`; members only, never guests; one line of quantity 1 at the plan's price. Under the buyer, then society locks, the quote refuses a plan that is not published or has ended or belongs to another society (`plan_unavailable`), dates the member already holds (`term_overlap`), and dates with another checkout still waiting on Stripe (`purchase_in_progress`); each is a 409 with that `reason` and nothing is charged. Renewal is simply buying the next plan: terms are half-open, so a plan starting when the current one ends does not overlap.
+- **Fulfilment.** A free total grants inside checkout; a paid one only from the verified webhook. Under the member, society and order locks the grant is created once (a replay finds the line's grant), with a receipt notice in the same transaction. If the member meanwhile got overlapping dates another way, the paid order goes to compensation review (`term_overlap`) and no second grant is made. Lock order: User, Organisation, then the commerce order; plan edits take the same Organisation lock.
+- **Roster** (`lib/memberships/roster.ts`, `members:read`, owners and admins): `/dashboard/memberships/members` shows Active, Upcoming, Expired and Revoked grants, newest first with stable pages and name or email search, and Free joins as a separate list (a join gives no member prices; joiners who also hold a membership are marked). `/dashboard/memberships/members/[grantId]` shows the term, rights, source order (Paid or Free and its short reference), the free join, other terms and whether the person is staff; another society's grant is a 404.
+
+**T23b (next):** an exceptional revoke (reason, authenticator, audit, notice), cancelling a free membership in the T18c shape, and a full refund of a membership order through a commerce refund path, each revoking the grant. Until then a membership can only end by reaching its last day.
+
+The leave-society regression (leaving keeps a membership) belongs with T23b, beside revocation.
 
 ## Members-only gate (decided for T24b)
 

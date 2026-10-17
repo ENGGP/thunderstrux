@@ -25,6 +25,7 @@ const statuses = {
   expired: ["Expired", "neutral"],
   joined: ["Joined", "accent"],
   active: ["Active", "success"],
+  upcoming: ["Upcoming", "accent"],
   revoked: ["Revoked", "neutral"],
   accepted: ["Accepted", "success"],
   "checked-in": ["Checked in", "success"],

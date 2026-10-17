@@ -147,7 +147,7 @@ try {
         await writeFile(runtimeFile, afterMfa.replace('MFA_ENFORCEMENT_MODE=enforce\n', 'MFA_ENFORCEMENT_MODE=off\n'));
         await compose('up', '-d', '--force-recreate', 'app');
         await ready();
-        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'browser.spec.ts', 'mobile.spec.ts', 'account-lifecycle.spec.ts', 'society-profiles.spec.ts', 'society-discovery.spec.ts', 'event-builder.spec.ts', 'free-tickets.spec.ts', 'payments-page.spec.ts', 'checkout-states.spec.ts', 'public-event-pages.spec.ts', 'explore-events.spec.ts', 'guest-access.spec.ts', 'guest-checkout.spec.ts', 'guest-claim.spec.ts', 'order-refunds.spec.ts', 'purchases.spec.ts');
+        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'browser.spec.ts', 'mobile.spec.ts', 'account-lifecycle.spec.ts', 'society-profiles.spec.ts', 'society-discovery.spec.ts', 'event-builder.spec.ts', 'free-tickets.spec.ts', 'payments-page.spec.ts', 'checkout-states.spec.ts', 'public-event-pages.spec.ts', 'explore-events.spec.ts', 'guest-access.spec.ts', 'guest-checkout.spec.ts', 'guest-claim.spec.ts', 'order-refunds.spec.ts', 'purchases.spec.ts', 'check-in.spec.ts');
         await compose('stop', 'app');
         const runtime = await readFile(runtimeFile, 'utf8');
         await writeFile(runtimeFile, runtime.replace('STRIPE_SECRET_KEY=\n', 'STRIPE_SECRET_KEY=sk_test_synthetic\n'));

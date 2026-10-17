@@ -3,13 +3,14 @@ import { GET as getEventTickets } from "@/app/api/events/[eventId]/tickets/route
 import { POST as checkInTicket } from "@/app/api/tickets/[ticketId]/check-in/route";
 import { POST as checkOutTicket } from "@/app/api/tickets/[ticketId]/check-out/route";
 import { prisma } from "@/lib/db";
-import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
+import { clearMockSession, selectMockContext, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import {
   createEvent,
   createMember,
   createOrder,
-  createOrganisationAccount
+  createOrganisationAccount,
+  createOrganisationStaff
 } from "@/tests/helpers/test-data";
 
 async function createPaidTicket({
@@ -836,5 +837,72 @@ describe("ticket visibility and check-in API", () => {
 
       expect(response.status).toBe(401);
     });
+  });
+
+  // T19b: the check-in console.
+  async function doorFixture() {
+    const owner = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: owner.organisation.id, status: "published" });
+    const member = await createMember({ email: `sam.lee.${Date.now()}@example.com` });
+    const buyer = await prisma.user.update({ where: { id: member.id }, data: { firstName: "Sam", lastName: "Lee" } });
+    const { order, ticket } = await createPaidTicket({ organisationId: owner.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id });
+    setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
+    return { owner, event, buyer, order, ticket };
+  }
+  const post = (route: typeof checkInTicket, ticketId: string) =>
+    route(jsonRequest(`http://localhost/api/tickets/${ticketId}/check-in`, undefined, { method: "POST" }), routeContext({ ticketId }));
+  const search = async (eventId: string, q: string) =>
+    parseJsonResponse(await getEventTickets(jsonRequest(`http://localhost/api/events/${eventId}/tickets?q=${encodeURIComponent(q)}`), routeContext({ eventId })));
+  const conflictReason = async (response: Response) => (await parseJsonResponse(response)).error.details[0].reason;
+
+  test("two check-ins at once admit the ticket once; the loser is told it is already checked in, and by whom", async () => {
+    const { owner, event, ticket } = await doorFixture();
+    const responses = await Promise.all([post(checkInTicket, ticket.id), post(checkInTicket, ticket.id)]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(await conflictReason(responses.find((response) => response.status === 409)!)).toBe("already_checked_in");
+    expect(await prisma.auditLog.count({ where: { targetId: ticket.id, action: "ticket.checked_in" } })).toBe(1);
+    const found = (await search(event.id, ticket.id.slice(-6).toUpperCase())).tickets[0];
+    expect(found).toMatchObject({ id: ticket.id, status: "checked-in", checkedInBy: expect.any(String), validity: "active" });
+    expect(found.checkedInBy).toBe([owner.user.firstName, owner.user.lastName].filter(Boolean).join(" ") || owner.user.email);
+  });
+
+  test("a refunded or disputed ticket is refused with its reason, and its attendance record is left as it was", async () => {
+    const { event, ticket } = await doorFixture();
+    const checkedInAt = new Date("2026-05-02T12:00:00.000Z");
+    await prisma.ticket.update({ where: { id: ticket.id }, data: { validity: "void", validityReason: "refunded", validityChangedAt: new Date(), checkedInAt } });
+    const refused = await post(checkInTicket, ticket.id);
+    expect(refused.status).toBe(409);
+    expect(await conflictReason(refused)).toBe("not_valid");
+    const undo = await post(checkOutTicket, ticket.id);
+    expect(await conflictReason(undo)).toBe("not_valid");
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).checkedInAt).toEqual(checkedInAt);
+    await prisma.ticket.update({ where: { id: ticket.id }, data: { validity: "refund_review", validityReason: "disputed", checkedInAt: null } });
+    expect(await conflictReason(await post(checkInTicket, ticket.id))).toBe("under_review");
+    // The door list leaves it out; a search finds it so staff can say why.
+    expect((await search(event.id, "")).tickets).toEqual([]);
+    expect((await search(event.id, "Sam Lee")).tickets).toEqual([expect.objectContaining({ id: ticket.id, validity: "refund_review" })]);
+  });
+
+  test("search matches name, email, order and ticket references within this event only", async () => {
+    const { owner, event, buyer, order, ticket } = await doorFixture();
+    const otherEvent = await createEvent({ organisationId: owner.organisation.id, status: "published" });
+    await createPaidTicket({ organisationId: owner.organisation.id, eventId: otherEvent.id, ticketTypeId: otherEvent.ticketTypes[0].id, userId: buyer.id });
+    for (const q of ["sam lee", "LEE", buyer.email.slice(0, 8), order.id.slice(-6).toUpperCase(), ticket.id.slice(-6).toUpperCase()]) {
+      expect((await search(event.id, q)).tickets.map((found: { id: string }) => found.id), q).toEqual([ticket.id]);
+    }
+    expect((await search(event.id, "nobody here")).tickets).toEqual([]);
+  });
+
+  test("check-in-only staff work published events only", async () => {
+    const { owner, event, ticket } = await doorFixture();
+    const draft = await createEvent({ organisationId: owner.organisation.id, status: "draft" });
+    const { ticket: draftTicket } = await createPaidTicket({ organisationId: owner.organisation.id, eventId: draft.id, ticketTypeId: draft.ticketTypes[0].id, userId: (await createMember()).id });
+    const staff = await createMember();
+    await createOrganisationStaff({ organisationId: owner.organisation.id, userId: staff.id, role: "check_in_staff" });
+    setMockSession({ userId: staff.id, email: staff.email, accountRole: "member" });
+    selectMockContext({ mode: "staff", organisationId: owner.organisation.id });
+    expect((await post(checkInTicket, ticket.id)).status).toBe(200);
+    expect((await post(checkInTicket, draftTicket.id)).status).toBe(404);
+    expect((await getEventTickets(jsonRequest(`http://localhost/api/events/${draft.id}/tickets`), routeContext({ eventId: draft.id }))).status).toBe(404);
   });
 });

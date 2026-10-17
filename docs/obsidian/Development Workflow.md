@@ -26,6 +26,15 @@ The real Redis integration regression also requires `INTEGRATION_REDIS_URL` poin
 
 ### Integration test speed (2026-10-17)
 
+**Current state: the original, slower reset is active; the fast reset is kept but switched off.** By the maintainer's decision, the suite again empties the database with the original `TRUNCATE ... RESTART IDENTITY CASCADE` of the same table list, and gives every fixture user its own bcrypt hash of the test password, exactly as before PR #93. The fast path below is still in `tests/helpers/db-reset.ts` and `tests/helpers/test-data.ts` and runs only when the test process has `THUNDERSTRUX_FAST_TEST_RESET=1`. Nothing sets it today: the baseline runner (`node scripts/run-e2e.mjs baseline`) does not pass it, so turning it on for the baseline means adding `THUNDERSTRUX_FAST_TEST_RESET: "1"` to the runner's `environment` in `docker-compose.e2e.yml`; for a local `vitest run`, set it in the shell.
+
+| Mode | Reset | Fixture password | Integration suite | Evidence |
+| --- | --- | --- | --- | --- |
+| Default (active) | `TRUNCATE` of the listed tables | One bcrypt hash per user | 582.7 s (9.7 min); whole baseline 11 min | `p216-0dca1807d327a688b829f716` on `b60c980`, 511/511 in 67 files, clean audit |
+| Fast (switched off) | Children-first `DELETE` planned from the foreign keys | One shared bcrypt hash per run | 70.6 s; whole baseline 2.6 min | `p216-8aeddde4a63a314200b94b0c` on `9d3aeb9` (PR #93), 511/511 in 67 files; still passes when switched on (`test-database-safety`, `commerce-orders`, `account-closure`: 26 tests in 5 s) |
+
+Keep in mind with the default: its `TRUNCATE` table list is maintained by hand, so a new model must be added to it (the `test-database-safety` test fails if a model is left out). The fast path reads tables from the database and needs no list. What follows describes the fast path, its upsides and its limits.
+
 Before every integration test, `tests/helpers/db-reset.ts` empties the disposable `_test` database, and fixture users are created by `tests/helpers/test-data.ts`. Two changes made the suite about ten times faster with the same tests, the same assertions and the same code paths:
 
 - **Children-first `DELETE` instead of `TRUNCATE`.** The reset used `TRUNCATE ... RESTART IDENTITY CASCADE`, which replaces the files of every table and index and took about 480 ms per test whether the database held ten rows or none: about 4 of the suite's 11 minutes. It now runs one `DO` block of `DELETE` statements, about 4 ms. The order is planned once per run from the database's own foreign keys, children before parents, so no `ON DELETE SET NULL` or `CASCADE` action fires and the update-guarding triggers (append-only commerce history, fixed purchase snapshots, buyer capture, account closure) never see a write. The one key cycle, an organisation's logo and cover pointing at its assets and each asset pointing back, is broken first by clearing those nullable columns. A future cycle with nothing nullable to clear falls back to the old `TRUNCATE`.

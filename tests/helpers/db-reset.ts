@@ -58,12 +58,45 @@ async function planReset() {
   return [...breaks, ...deletes];
 }
 
-// Empties the disposable test database before each test. DELETE on a few
-// small tables costs a few milliseconds; TRUNCATE of every table cost about
-// half a second per test, because it replaces the files of every table and
-// index. The result is the same empty database.
+// The fast children-first reset (PR #93) is kept but switched off: set
+// THUNDERSTRUX_FAST_TEST_RESET=1 to use it. By default the suite uses the
+// original TRUNCATE reset below. See Development Workflow, "Integration test speed".
+export const fastTestReset = () => process.env.THUNDERSTRUX_FAST_TEST_RESET === "1";
+
+// Empties the disposable test database before each test.
 export async function resetTestDatabase() {
   assertTestDatabaseUrl();
+  if (!fastTestReset()) {
+    // The original reset: one TRUNCATE of every table, about half a second per test.
+    await prisma.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      "NotificationOutbox",
+      "OrderLifecycleEvent",
+      "AuditLog",
+      "Asset",
+      "OrganisationStaffInvite",
+      "OrganisationStaff",
+      "Ticket",
+      "TicketReservation",
+      "CheckoutAttempt",
+      "CommerceLifecycleEvent",
+      "CommerceOrderLine",
+      "CommerceOrder",
+      "RefundRequest",
+      "PurchaseDispute",
+      "Order",
+      "GuestAccessGrant",
+      "GuestIdentity",
+      "TicketType",
+      "Event",
+      "OrganisationMember",
+      "Organisation",
+      "User"
+    RESTART IDENTITY CASCADE
+  `);
+    return;
+  }
+  // Fast reset: DELETE on a few small tables costs a few milliseconds.
   const statements = await (resetStatements ??= planReset());
   if (statements) {
     await prisma.$executeRawUnsafe(`DO $$ BEGIN ${statements.join(" ")} END $$`);

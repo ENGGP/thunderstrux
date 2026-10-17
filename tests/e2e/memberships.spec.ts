@@ -68,8 +68,9 @@ test("a member buys a free membership through checkout and the owner finds them 
   });
   await prisma.user.update({ where: { id: data.member.id }, data: { firstName: "Robin", lastName: "Member" } });
   await login(page, data.member.email, "/dashboard");
+  const { token } = await (await page.request.get("/api/security/csrf")).json();
   const bought = await page.request.post("/api/payments/checkout/membership", {
-    headers: { Origin: "http://localhost:3100" },
+    headers: { Origin: "http://localhost:3100", "x-thunderstrux-csrf-token": token },
     data: { organisationId: data.organisation.id, selection: { planId: plan.id }, expectedTotal: 0, idempotencyKey: "e2e-membership-free-0001" }
   });
   expect(bought.status()).toBe(200);

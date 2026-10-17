@@ -1658,7 +1658,7 @@ The approved Claude Design redesign was delivered in PRs [#63](https://github.co
 ### 24.1 Contexts and navigation
 
 - Three contexts only: **public**, **personal** and **society**. Society roles are permission sets over one society, so there is one permission-filtered society sidebar rather than a context per role.
-- Society sidebar: Overview, Events, Orders; Settings: Society profile, Staff, Payments, Email delivery. Labels changed, URLs did not: Payments is `/dashboard/settings`, Society profile `/dashboard/settings/profile`, Email delivery `/dashboard/notifications`.
+- Society sidebar: Overview, Events, Orders; Community: Memberships (T22, plans; members with T23); Settings: Society profile, Staff, Payments, Email delivery. Labels changed, URLs did not: Payments is `/dashboard/settings`, Society profile `/dashboard/settings/profile`, Email delivery `/dashboard/notifications`.
 - The staff authenticator is reached from Account settings (Password and security) and automatically when a page requires verification; it is not society navigation. Account settings shows it only to people who can use it.
 - The workspace switcher is labelled "Workspace" and records a preference only; every page and API re-checks live authority.
 

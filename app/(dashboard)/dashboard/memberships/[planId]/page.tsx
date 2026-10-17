@@ -49,7 +49,6 @@ export default async function MembershipPlanPage({ params }: { params: Promise<{
           ) : null}
           <PlanForm
             archived={archived}
-            key={plan.version}
             locked={sold}
             orgSlug={organisation.slug}
             plan={plan}

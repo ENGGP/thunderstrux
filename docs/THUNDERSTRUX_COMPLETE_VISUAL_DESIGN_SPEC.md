@@ -1130,7 +1130,7 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 ## 16.3 Navigation and shells [implemented, part of T34]
 
 - **Header:** Explore events, Explore societies; signed in, My tickets (members), Dashboard, Account and a visible Sign out button. The current section is marked; the phone menu closes after navigation.
-- **Society sidebar:** Overview, Events, Orders, then a **Settings** group: Society profile, Staff, Payments, Email delivery. Capability-filtered; every page and API still enforces its own permission. The staff authenticator is not in the sidebar: it lives in Account settings and is reached automatically when a page requires it.
+- **Society sidebar:** Overview, Events, Orders, then a **Community** group (Memberships, since T22), then a **Settings** group: Society profile, Staff, Payments, Email delivery. Capability-filtered; every page and API still enforces its own permission. The staff authenticator is not in the sidebar: it lives in Account settings and is reached automatically when a page requires it.
 - **Deviation from 3.5:** the sidebar is a fixed 244px column from 1024px (not 1200px), sticky below the header, with a labelled "Organisation menu" disclosure below that width. There is no collapsed icon rail. Calendar, Members, Memberships, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them.
 - **Workspace switcher:** labelled "Workspace" in both shells.
 - **Content width:** the society shell owns one content width (`max-w-admin`) for every society page.

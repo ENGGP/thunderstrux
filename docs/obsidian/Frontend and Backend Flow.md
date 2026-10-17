@@ -214,7 +214,7 @@ Important rules:
 
 - `/societies/[orgSlug]` exposes only public-safe organisation data and upcoming published events.
 - Leave is idempotent when the member is already not joined.
-- Leave retains origin/CSRF/rate/live-version checks, permits removal by an unverified member, and preserves staff, paid purchases/tickets and other users. MembershipGrant does not exist yet; T22/T24 owns its survival regression.
+- Leave retains origin/CSRF/rate/live-version checks, permits removal by an unverified member, and preserves staff, paid purchases/tickets and other users. MembershipGrant exists since T22 and is written by T23, which owns the regression that leaving keeps a paid grant.
 - Organisation accounts cannot leave their owned organisation through the member leave endpoint.
 
 ## Create Organisation

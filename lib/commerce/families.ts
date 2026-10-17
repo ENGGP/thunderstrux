@@ -2,7 +2,7 @@ import type { CommerceKind, Prisma } from "@prisma/client";
 import type { z } from "zod";
 import type { CommerceLineInput } from "@/lib/commerce/orders";
 
-// What a commerce family (memberships T22, merchandise T25-T27) plugs into
+// What a commerce family (memberships T23, merchandise T25-T27) plugs into
 // checkout and fulfilment (T21). Every hook runs inside the caller's
 // transaction; Stripe is never called from a hook.
 //
@@ -30,7 +30,7 @@ export type CommerceFamilyAdapter<Selection = unknown> = {
   release(tx: Prisma.TransactionClient, order: CommerceOrderForHooks, reason: string): Promise<void>;
 };
 
-// Filled by the family tasks (T22 memberships, T27 merchandise). Until a
+// Filled by the family tasks (T23 memberships, T27 merchandise). Until a
 // family is registered its checkout route answers 404 and a webhook naming it
 // changes nothing.
 export const commerceFamilies: Partial<Record<CommerceKind, CommerceFamilyAdapter>> = {};

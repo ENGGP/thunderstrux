@@ -20,6 +20,7 @@ export async function resetTestDatabase() {
       "TicketReservation",
       "CheckoutAttempt",
       "RefundRequest",
+      "PurchaseDispute",
       "Order",
       "GuestAccessGrant",
       "GuestIdentity",

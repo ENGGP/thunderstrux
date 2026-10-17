@@ -5,7 +5,7 @@ import { isTransactionConflict } from "@/lib/transaction-conflict";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
 import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
-import { logError, logInfo } from "@/lib/ops/logger";
+import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import {
   appendOrderLifecycleEvent,
   lockOrder,
@@ -631,6 +631,16 @@ export async function reconcileCompletedCheckoutSession(
 
     if (localOrder.status === "failed") {
       if (localOrder.requiresCompensationReview) {
+        // PAY-001: a replay reports the existing compensation state, so a replay
+        // whose metadata no longer matches the order is logged on its own.
+        if (
+          !hasRequiredMetadata || orderId !== localOrder.id || eventId !== localOrder.eventId || ticketTypeId !== localOrder.ticketTypeId ||
+          organisationId !== localOrder.event.organisationId || metadataQuantity !== localOrder.quantity
+        ) {
+          logWarn("stripe.webhook.compensation_replay_mismatch", {
+            source, stripeEventId, orderId: localOrder.id, stripeSessionId: session.id, metadataOrderId: orderId, metadataQuantity
+          });
+        }
         console.info("Retrying compensation-required checkout reconciliation", {
           source,
           orderId: localOrder.id,

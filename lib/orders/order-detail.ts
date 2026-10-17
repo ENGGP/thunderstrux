@@ -1,5 +1,6 @@
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { latestRefundRequest } from "@/lib/payments/order-refunds";
+import { latestPurchaseDispute } from "@/lib/payments/purchase-disputes";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -70,6 +71,10 @@ export async function getOrganisationOrderDetail(
       failureReason: true,
       requiresCompensationReview: true,
       refundStatus: true,
+      disputeStatus: true,
+      externalRefundedAmount: true,
+      externalRefundReviewedAt: true,
+      stripePaymentIntentId: true,
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
@@ -125,6 +130,7 @@ export async function getOrganisationOrderDetail(
     user: retainedBuyerIdentity(order),
     projection: ticketOrderProjection(order),
     latestRefund: await latestRefundRequest(prisma, order.id),
+    latestDispute: await latestPurchaseDispute(order.id),
     purchasedTicketType: purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name),
     stripeDashboardUrl: getStripeSessionDashboardUrl(order.stripeSessionId)
   };
@@ -155,6 +161,7 @@ export async function markOrganisationOrderManuallyRefunded(
         isManuallyRefunded: true,
         requiresCompensationReview: true,
         refundStatus: true,
+        disputeStatus: true,
         compensationRefundJob: { select: { id: true } },
         reservation: { select: { status: true } }
       }
@@ -169,6 +176,9 @@ export async function markOrganisationOrderManuallyRefunded(
     }
     if (order.refundStatus) {
       throw new OrganisationOrderOperationError("This order has a refund through Thunderstrux");
+    }
+    if (order.disputeStatus) {
+      throw new OrganisationOrderOperationError("The buyer has disputed this payment");
     }
     if (order.isManuallyRefunded) return;
     const updated = await tx.order.updateMany({
@@ -246,7 +256,7 @@ export async function enqueueOrganisationOrderTicketEmail(
       event: { is: { organisationId } },
       status: { in: visibleOrderStatuses }
     },
-    select: { id: true, status: true }
+    select: { id: true, status: true, disputeStatus: true }
   });
 
   if (!order) {
@@ -257,6 +267,11 @@ export async function enqueueOrganisationOrderTicketEmail(
     throw new OrganisationOrderOperationError(
       "Ticket email can only be resent for paid orders"
     );
+  }
+
+  // Paused while a dispute is open, and the tickets of a lost one are void.
+  if (order.disputeStatus) {
+    throw new OrganisationOrderOperationError("Tickets can't be resent while this payment is disputed");
   }
 
   await enqueueTicketEmail({ orderId: order.id, mode: "manual", actorUserId });

@@ -41,6 +41,7 @@ model User {
   notificationJobs        NotificationOutbox[]
   orders                  Order[]
   refundRequests          RefundRequest[]
+  resolvedDisputes        PurchaseDispute[]
   reservations            TicketReservation[]
 
   @@index([accountRole])
@@ -111,6 +112,7 @@ model Organisation {
   reservations        TicketReservation[]
   assets              Asset[]
   refundRequests      RefundRequest[]
+  purchaseDisputes    PurchaseDispute[]
 
   @@index([accountUserId])
   @@index([stripeAccountId])
@@ -341,6 +343,12 @@ model Order {
   // once it succeeds; compensation refunds never start while it is set.
   refundStatus            OrderRefundStatus?
   stripePaymentIntentId   String?
+  // T18b: a verified Stripe dispute fences refunds, resends and compensation.
+  // It stays set once lost; once won it clears when staff restore the tickets.
+  disputeStatus           OrderDisputeStatus?
+  // Succeeded refunds made outside Thunderstrux (the Stripe dashboard), as Stripe reports them.
+  externalRefundedAmount  Int          @default(0)
+  externalRefundReviewedAt DateTime?
   // Purchase facts recorded when the order is created; null on legacy rows means unknown.
   paymentKind             PaymentKind
   fulfilledAt             DateTime?
@@ -364,6 +372,7 @@ model Order {
   checkoutAttempt            CheckoutAttempt?
   guestAccessGrants          GuestAccessGrant[]
   refundRequests             RefundRequest[]
+  disputes                   PurchaseDispute[]
 
   @@index([organisationId])
   @@index([eventId])
@@ -467,6 +476,7 @@ model CompensationRefundJob {
   @@index([stripePaymentIntentId])
 }
 
+// Also journals dispute and outside-refund events (T18b), which link to neither.
 model StripeRefundWebhookEvent {
   stripeEventId   String                @id
   refundJobId     String?
@@ -514,6 +524,33 @@ model RefundRequest {
 
   @@index([orderId, createdAt])
   @@index([status, nextAttemptAt])
+}
+
+// A Stripe dispute on an order's charge (T18b), kept as Stripe last reported
+// it. A dispute is not a refund: the tickets go under review, and only a lost
+// dispute voids them; a won one needs staff to restore them with a reason.
+model PurchaseDispute {
+  id               String       @id @default(cuid())
+  orderId          String
+  organisationId   String
+  stripeDisputeId  String       @unique
+  stripeChargeId   String
+  amount           Int
+  currency         String
+  reason           String?
+  providerStatus   String
+  evidenceDueBy    DateTime?
+  closedAt         DateTime?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolutionReason String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  order            Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  organisation     Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  resolvedBy       User?        @relation(fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
 }
 
 model Ticket {
@@ -734,6 +771,12 @@ enum OrderRefundStatus {
   refunded
 }
 
+enum OrderDisputeStatus {
+  open
+  won
+  lost
+}
+
 enum RefundRequestStatus {
   pending
   uncertain
@@ -761,6 +804,11 @@ enum OrderLifecycleEventType {
   refund_pending
   refunded
   refund_failed
+  dispute_opened
+  dispute_closed
+  dispute_resolved
+  external_refund_recorded
+  external_refund_reviewed
   email_enqueued
   email_retry_scheduled
   email_provider_accepted

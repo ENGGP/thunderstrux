@@ -1119,4 +1119,54 @@ describe("webhook reconciliation", () => {
 
     await expect(prisma.ticket.count()).resolves.toBe(0);
   });
+
+  // TEST-001 direct cases and the PAY-001 replay diagnostic.
+  async function pendingWithHold(quantity = 1) {
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const ticketType = event.ticketTypes[0];
+    const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, quantity, unitPrice: ticketType.price });
+    await createReservation({ orderId: order.id, organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, quantity, expiresAt: new Date(Date.now() + 30 * 60 * 1000) });
+    const session = (extra: Parameters<typeof checkoutSession>[0] = {}) => checkoutSession({
+      id: order.stripeSessionId as string, orderId: order.id, eventId: event.id, organisationId: organisation.id, ticketTypeId: ticketType.id,
+      quantity, amountTotal: ticketType.price * quantity, ...extra
+    });
+    const state = () => prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { reservation: true, tickets: true, compensationRefundJob: true } });
+    return { order, session, state };
+  }
+
+  test("a paid session without metadata finds its order by session id and requires compensation", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { order, state } = await pendingWithHold();
+    const bare = checkoutSession({ id: order.stripeSessionId as string, amountTotal: order.totalAmount });
+    expect(await reconcileCompletedCheckoutSession(bare)).toEqual({ status: "compensation_required", orderId: order.id, reason: "missing_required_metadata_after_payment" });
+    expect(await state()).toMatchObject({ status: "failed", requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
+  });
+
+  test("a quantity mismatch releases the hold; replaying it logs the mismatch, and a matching replay does not", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const replayMismatches = () => warn.mock.calls.filter(([line]) => String(line).includes("stripe.webhook.compensation_replay_mismatch")).length;
+
+    const wrongQuantity = await pendingWithHold();
+    const session = wrongQuantity.session({ quantity: 2 });
+    expect(await reconcileCompletedCheckoutSession(session)).toMatchObject({ status: "compensation_required", reason: "webhook_mismatch" });
+    expect(await wrongQuantity.state()).toMatchObject({ requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
+    expect(replayMismatches()).toBe(0);
+    expect(await reconcileCompletedCheckoutSession(session)).toMatchObject({ status: "compensation_required", orderId: wrongQuantity.order.id });
+    expect(replayMismatches()).toBe(1);
+
+    const wrongAmount = await pendingWithHold();
+    const amountSession = wrongAmount.session({ amountTotal: 1 });
+    await reconcileCompletedCheckoutSession(amountSession);
+    await reconcileCompletedCheckoutSession(amountSession);
+    expect(replayMismatches()).toBe(1);
+  });
+
+  test("a completed session that isn't paid fails the order without compensation", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { order, session, state } = await pendingWithHold();
+    expect(await reconcileCompletedCheckoutSession(session({ paymentStatus: "unpaid" }))).toMatchObject({ status: "failed", orderId: order.id });
+    expect(await state()).toMatchObject({ status: "failed", failureReason: "webhook_mismatch", requiresCompensationReview: false, compensationRefundJob: null, tickets: [] });
+  });
 });

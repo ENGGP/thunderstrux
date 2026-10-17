@@ -93,4 +93,15 @@ test("a member buys a free membership through checkout and the owner finds them 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/memberships-member-${width}.png`, fullPage: true });
   }
+
+  // Ending it early: the free membership is cancelled through the dialog.
+  await page.getByRole("button", { name: "Cancel free membership" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Nothing was charged, so there's nothing to refund.")).toBeVisible();
+  await dialog.getByLabel("Reason").fill("Signed up twice by mistake.");
+  await page.screenshot({ path: "test-results/memberships-cancel-dialog-1280.png" });
+  await dialog.getByRole("button", { name: "Cancel membership" }).click();
+  await expect(page.getByText("Free membership cancelled")).toBeVisible();
+  await expect(page.getByText("Revoked", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel free membership" })).toHaveCount(0);
 });

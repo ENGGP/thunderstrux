@@ -764,6 +764,8 @@ Staff routes for a society's membership plans (T22). Every route needs a signed-
 - `PATCH /[planId]` takes the same fields plus `expectedVersion`. A stale version, an archived plan, or a change to anything but the description once the plan has sold is `409`; a published plan must still pass the publish check.
 - `POST /[planId]/publish` and `POST /[planId]/archive` take `{expectedVersion}`. Repeating either for a plan already in that state returns it unchanged. Publish answers `409` with one detail per blocker (`reason`: `term_past`, `overlap`, `payments_unavailable`); an archived plan never republishes.
 
+`POST /api/orgs/[orgSlug]/memberships/members/[grantId]/revoke` (`memberships:manage`) and `.../cancel` (`orders:refund`, free memberships only) end a membership early (T23b). Body (strict): `{reason (8 to 500), mfaCode}`; the code is required unless staff MFA is off. `200 {status: "revoked" | "cancelled", ...}`, or `already_revoked` / `already_cancelled` on a repeat; `409` with `reason` `not_revocable` (already ended) or `not_cancellable` (not a free membership); another society's grant is `404`.
+
 See [[Memberships and Merchandise]].
 
 ### `POST /api/payments/checkout/membership` and `POST /api/payments/checkout/merchandise`

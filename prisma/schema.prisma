@@ -46,6 +46,7 @@ model User {
   commerceOrders          CommerceOrder[]
   membershipGrants        MembershipGrant[]
   revokedMembershipGrants MembershipGrant[]  @relation("MembershipGrantRevokedBy")
+  cancelledCommerceOrders CommerceOrder[]    @relation("CommerceOrderCancelledBy")
   commerceLifecycleEvents CommerceLifecycleEvent[]
   reservations            TicketReservation[]
 
@@ -907,6 +908,7 @@ enum CommerceLifecycleEventType {
   order_failed
   order_expired
   compensation_required
+  free_cancelled
 }
 
 model CommerceOrder {
@@ -941,8 +943,13 @@ model CommerceOrder {
   fulfilledAt                DateTime?
   failedAt                   DateTime?
   failureReason              String?
+  // A free order cancelled by staff (T23b): never a refund.
+  cancelledAt                DateTime?
+  cancelledByUserId          String?
+  cancellationReason         String?
 
   organisation     Organisation             @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  cancelledBy      User?                    @relation("CommerceOrderCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   user             User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   guestIdentity    GuestIdentity?           @relation(fields: [guestIdentityId], references: [id], onDelete: Restrict)
   lines            CommerceOrderLine[]

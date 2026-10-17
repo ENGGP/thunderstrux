@@ -750,7 +750,11 @@ The server-rendered organiser order detail page also reads a separate, bounded l
 
 ### `POST /api/orders/[orderId]/refunds`
 
-Refunds the whole order through Stripe (T18a). Body `{reason, confirmation, mfaCode?}`: a reason of 8 to 500 characters, the order's short reference typed back, and a fresh authenticator code unless staff MFA is off. Requires the current society's `orders:refund` (owners and finance managers) and a trusted origin with the CSRF token. Answers `200 {refundRequestId, status: "succeeded"}` when Stripe confirmed, or `202` with `status` `pending` or `uncertain`. Refusals: `400` with detail `confirmation` for a wrong reference or `mfaCode` for a wrong code; `404` for another society's or a missing order; `409` with detail `reason` `not_refundable`, `in_progress`, `already_refunded`, `verification_failed` or `provider_refused`. See [[Payment Lifecycle]].
+Refunds the whole order through Stripe (T18a). Body `{reason, confirmation, mfaCode?}`: a reason of 8 to 500 characters, the order's short reference typed back, and a fresh authenticator code unless staff MFA is off. Requires the current society's `orders:refund` (owners and finance managers) and a trusted origin with the CSRF token. Answers `200 {refundRequestId, status: "succeeded"}` when Stripe confirmed, or `202` with `status` `pending` or `uncertain`. Refusals: `400` with detail `confirmation` for a wrong reference or `mfaCode` for a wrong code; `404` for another society's or a missing order; `409` with detail `reason` `not_refundable`, `in_progress`, `already_refunded`, `disputed`, `verification_failed` or `provider_refused`. After a partial refund made in Stripe it refunds the remainder. See [[Payment Lifecycle]].
+
+### `POST /api/orders/[orderId]/review`
+
+Staff decisions after Stripe reports a dispute or a refund made outside Thunderstrux (T18b). Neither moves money. Requires the current society's `orders:refund` and a trusted origin with the CSRF token. Body `{action: "restore_tickets", reason}` (8 to 500 characters) restores the tickets of a dispute Stripe closed in the society's favour; `{action: "mark_reviewed"}` records that a partial outside refund was reviewed (repeating it is a no-op). Answers `200 {ok: true}`; `400` for a short reason; `404` for another society's or a missing order; `409` with detail `reason` `not_allowed` when there is no won dispute or partial refund to act on.
 
 ### `PATCH /api/orders/[orderId]/refund-manual`
 
@@ -850,6 +854,10 @@ Handles:
 
 - `checkout.session.completed`
 - `checkout.session.expired`
+- `refund.created`, `refund.updated`, `refund.failed`: dispatched to ordinary refunds (`refundRequestId`), compensation (`compensationRefundJobId`) or, with neither, a refund made outside Thunderstrux (T18b)
+- `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` (T18b)
+
+See [[Payment Lifecycle]] for how refund and dispute events are verified and projected.
 
 Responsibilities:
 

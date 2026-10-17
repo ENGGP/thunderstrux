@@ -344,6 +344,10 @@ Handled event:
 
 - `checkout.session.completed`
 - `checkout.session.expired`
+- `refund.created`, `refund.updated`, `refund.failed` (T18a ordinary refunds, compensation and, since T18b, refunds made in the dashboard)
+- `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` (T18b)
+
+The hosted webhook endpoint must subscribe to all of these; see [[Payment Lifecycle]].
 
 Reconciliation checks:
 

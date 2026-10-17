@@ -144,7 +144,7 @@ const lineSelect = {
 
 const summarySelect = {
   id: true, kind: true, status: true, paymentKind: true, currency: true, totalAmount: true, sellerName: true,
-  requiresCompensationReview: true, createdAt: true, fulfilledAt: true
+  requiresCompensationReview: true, createdAt: true, fulfilledAt: true, cancelledAt: true
 } satisfies Prisma.CommerceOrderSelect;
 
 // The buyer's own order: what they bought, from whom, and what happened.

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { MembershipActions } from "@/components/memberships/membership-actions";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -10,6 +11,8 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { readMembership } from "@/lib/memberships/roster";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { orderReference } from "@/lib/payments/order-refunds";
+import { hasOrganisationPermission } from "@/lib/permissions";
+import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const metadata: Metadata = { title: "Member" };
@@ -24,6 +27,10 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
   const timeZone = await readTimeZone(organisation.id);
   const lastDay = (endsAt: Date) => formatDate(new Date(endsAt.getTime() - 1), timeZone);
   const row = "grid gap-x-6 gap-y-2.5 text-[15px] sm:grid-cols-[max-content_1fr]";
+  // Only a running or upcoming membership can be ended early.
+  const live = membership.state === "active" || membership.state === "upcoming";
+  const canRevoke = live && hasOrganisationPermission(organisation.staffRole, "memberships:manage");
+  const canCancel = live && !membership.paid && !membership.cancelled && hasOrganisationPermission(organisation.staffRole, "orders:refund");
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -36,10 +43,11 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
         title={membership.name}
       />
       {membership.revokedAt ? (
-        <Notice title="Ended early" tone="info">
+        <Notice title={membership.cancelled ? "Free membership cancelled" : "Ended early"} tone="info">
           <p className="mt-0.5">
-            Revoked on {formatDate(membership.revokedAt, timeZone)}
+            {membership.cancelled ? "Cancelled" : "Revoked"} on {formatDate(membership.revokedAt, timeZone)}
             {membership.revokedBy ? ` by ${membership.revokedBy}` : ""}: “{membership.revocationReason}”
+            {membership.cancelled ? " Nothing was charged, so there was nothing to refund." : " No refund was made."}
           </p>
         </Notice>
       ) : null}
@@ -94,6 +102,21 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
             <p className="text-sm text-ink-soft">Joining, membership and staff access are separate. Each changes on its own.</p>
           </div>
         </Card>
+        {canRevoke || canCancel ? (
+          <Card>
+            <div className="grid gap-4">
+              <h2 className="font-display text-xl font-semibold text-ink">Manage this membership</h2>
+              <MembershipActions
+                canCancel={canCancel}
+                canRevoke={canRevoke}
+                grantId={membership.id}
+                member={membership.name}
+                needsCode={mfaEnforcementMode() !== "off"}
+                orgSlug={organisation.slug}
+              />
+            </div>
+          </Card>
+        ) : null}
       </div>
     </DashboardShell>
   );

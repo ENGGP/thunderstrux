@@ -135,7 +135,7 @@ export default async function OrganisationOrderDetailPage({
 
         <Card>
           <h2 className="text-lg font-semibold text-ink">Manage this order</h2>
-          <p className="mt-1 text-sm text-ink-soft">These actions do not change the payment in Stripe.</p>
+          <p className="mt-1 text-sm text-ink-soft">Only a refund through Stripe moves money; the other actions here don&apos;t.</p>
           <OrderDetailActions
             refund={
               roleHasPermission(organisation.staffRole, "orders:refund") && order.projection === "paid" && !order.isManuallyRefunded

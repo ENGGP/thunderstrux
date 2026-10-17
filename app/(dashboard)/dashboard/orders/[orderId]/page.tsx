@@ -96,7 +96,7 @@ export default async function OrganisationOrderDetailPage({
           <p>
             Cancelled on {formatDate(order.cancelledAt)}
             {order.cancelledBy ? ` by ${[order.cancelledBy.firstName, order.cancelledBy.lastName].filter(Boolean).join(" ") || order.cancelledBy.email}` : ""}:
-            {" "}&ldquo;{order.cancellationReason}&rdquo;. Nothing was charged, so there is nothing to refund.
+            {" "}&ldquo;{order.cancellationReason}&rdquo; Nothing was charged, so there is nothing to refund.
           </p>
         </Notice>
       ) : null}

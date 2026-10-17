@@ -174,6 +174,8 @@ export function OrderDetailActions({
         <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
           {disputed
             ? "Resends are paused while the payment is disputed."
+            : cancelFree?.cancelled
+            ? "The registration was cancelled, so its tickets are no longer valid and can't be resent."
             : canResendTickets
             ? `Send the tickets to ${buyerEmail ?? "the buyer"} again.`
             : "No tickets have been issued for this order, so there is nothing to resend."}

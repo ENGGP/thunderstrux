@@ -39,9 +39,10 @@ model User {
   orderLifecycleEvents    OrderLifecycleEvent[]     @relation("OrderLifecycleActor")
   ownedOrganisation       Organisation?        @relation("OrganisationAccount")
   notificationJobs        NotificationOutbox[]
-  orders                  Order[]
+  orders                  Order[]              @relation("OrderBuyer")
   refundRequests          RefundRequest[]
   resolvedDisputes        PurchaseDispute[]
+  cancelledOrders         Order[]              @relation("OrderCancelledBy")
   reservations            TicketReservation[]
 
   @@index([accountRole])
@@ -349,6 +350,12 @@ model Order {
   // Succeeded refunds made outside Thunderstrux (the Stripe dashboard), as Stripe reports them.
   externalRefundedAmount  Int          @default(0)
   externalRefundReviewedAt DateTime?
+  // T18c: a free purchase cancelled by staff. Nothing was charged, so this is
+  // never a refund; the order keeps status paid and its original fulfilment.
+  cancelledAt             DateTime?
+  cancelledByUserId       String?
+  cancellationReason      String?
+  cancelledBy             User?        @relation("OrderCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   // Purchase facts recorded when the order is created; null on legacy rows means unknown.
   paymentKind             PaymentKind
   fulfilledAt             DateTime?
@@ -362,7 +369,7 @@ model Order {
   organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
-  user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user            User?        @relation("OrderBuyer", fields: [userId], references: [id], onDelete: SetNull)
   guestIdentity   GuestIdentity? @relation(fields: [guestIdentityId], references: [id], onDelete: Restrict)
   tickets         Ticket[]
   reservation     TicketReservation?
@@ -809,6 +816,7 @@ enum OrderLifecycleEventType {
   dispute_resolved
   external_refund_recorded
   external_refund_reviewed
+  free_cancelled
   email_enqueued
   email_retry_scheduled
   email_provider_accepted

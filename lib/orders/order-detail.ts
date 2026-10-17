@@ -75,6 +75,9 @@ export async function getOrganisationOrderDetail(
       externalRefundedAmount: true,
       externalRefundReviewedAt: true,
       stripePaymentIntentId: true,
+      cancelledAt: true,
+      cancellationReason: true,
+      cancelledBy: { select: { firstName: true, lastName: true, email: true } },
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
@@ -256,7 +259,7 @@ export async function enqueueOrganisationOrderTicketEmail(
       event: { is: { organisationId } },
       status: { in: visibleOrderStatuses }
     },
-    select: { id: true, status: true, disputeStatus: true }
+    select: { id: true, status: true, disputeStatus: true, cancelledAt: true }
   });
 
   if (!order) {
@@ -272,6 +275,10 @@ export async function enqueueOrganisationOrderTicketEmail(
   // Paused while a dispute is open, and the tickets of a lost one are void.
   if (order.disputeStatus) {
     throw new OrganisationOrderOperationError("Tickets can't be resent while this payment is disputed");
+  }
+
+  if (order.cancelledAt) {
+    throw new OrganisationOrderOperationError("This registration was cancelled, so its tickets are no longer valid");
   }
 
   await enqueueTicketEmail({ orderId: order.id, mode: "manual", actorUserId });

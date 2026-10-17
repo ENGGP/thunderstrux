@@ -20,6 +20,7 @@ const statuses = {
   refunded: ["Refunded", "neutral"],
   "refund-processing": ["Refund processing", "warning"],
   disputed: ["Disputed", "warning"],
+  cancelled: ["Cancelled", "neutral"],
   failed: ["Failed", "danger"],
   expired: ["Expired", "neutral"],
   joined: ["Joined", "accent"],

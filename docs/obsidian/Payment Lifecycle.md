@@ -75,6 +75,12 @@ The order keeps `status: paid`; projections read `refundStatus` first, so lists 
 
 Lists and order detail read `disputeStatus` first: Disputed, then Refunded, Refund processing, and Payment review for compensation or an unreviewed partial refund.
 
+## Cancelling a Free Registration (T18c)
+
+`lib/payments/free-cancellation.ts`, the readiness plan section 3.3 shape that T23 (membership grants) and T28 (pickups) reuse. Staff with `orders:refund` cancel a confirmed free order (`paymentKind = free`, `status = paid`, fulfilled) from order detail with a reason of 8 to 500 characters and, unless staff MFA is off, a fresh authenticator code (POST `/api/orders/[orderId]/cancel`). Under the Order lock it records `cancelledAt`, `cancelledByUserId` and `cancellationReason`, voids the tickets (reason `cancelled`; check-ins are kept), appends `free_cancelled`, writes `order.free_cancelled` to the audit log and queues one cancellation notice to the buyer (event key `cancellation/{orderId}`). It is never a refund: no `RefundRequest`, no refund totals, and the order keeps `status = paid` and its original fulfilment. Stock is not restored; that stays a separate reviewed action. A repeat answers `already_cancelled` without changing anything, and the database refuses a cancellation on a non-free order or without a reason.
+
+Read models show Cancelled before every other state ("Cancelled", long form "Cancelled – free purchase"); resends are refused, and the guest order page says the registration was cancelled instead of listing tickets.
+
 ## Storage
 
 `OrderLifecycleEvent` belongs to one order and has a unique `(orderId, sequence)` pair. Events store a typed event and source, optional staff actor, Stripe event/session references, email job reference, reason, before/after order and reservation statuses, and a small allowlisted `facts` object.

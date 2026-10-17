@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { TextInput } from "@/components/ui/input";
+import { TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, fetchWithCsrf, getClientErrorMessage } from "@/lib/client/api";
 
@@ -18,7 +18,8 @@ export function OrderDetailActions({
   canResendTickets,
   requiresCompensationReview,
   free = false,
-  disputed = false
+  disputed = false,
+  cancelFree = null
 }: {
   orderId: string;
   buyerEmail: string | null;
@@ -31,6 +32,8 @@ export function OrderDetailActions({
   free?: boolean;
   // A buyer's dispute pauses resends and every refund action until it is resolved.
   disputed?: boolean;
+  // Set when this staff member may cancel this free registration; cancelled once it has been.
+  cancelFree?: { buyer: string; ticketCount: number; needsCode: boolean; cancelled: boolean } | null;
   // Set when this staff member may refund this order through Stripe.
   // rest: part of the order was already refunded in Stripe; this refunds what is left.
   refund?: { amount: string; rest?: boolean; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
@@ -43,6 +46,26 @@ export function OrderDetailActions({
   const [refunding, setRefunding] = useState(false);
   const [refundForm, setRefundForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
   const [refundError, setRefundError] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+
+  // One form and error for both dialogs: only one is ever open.
+  async function cancelRegistration() {
+    setIsBusy(true);
+    setRefundError("");
+    try {
+      await fetchJson(`/api/orders/${orderId}/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: refundForm.reason, ...(cancelFree?.needsCode ? { mfaCode: refundForm.mfaCode } : {}) })
+      });
+      setCancelling(false);
+      router.refresh();
+    } catch (failure) {
+      setRefundError(getClientErrorMessage(failure, "The registration wasn't cancelled. Nothing changed."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   async function refundOrder() {
     setIsBusy(true);
@@ -151,6 +174,8 @@ export function OrderDetailActions({
         <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
           {disputed
             ? "Resends are paused while the payment is disputed."
+            : cancelFree?.cancelled
+            ? "The registration was cancelled, so its tickets are no longer valid and can't be resent."
             : canResendTickets
             ? `Send the tickets to ${buyerEmail ?? "the buyer"} again.`
             : "No tickets have been issued for this order, so there is nothing to resend."}
@@ -165,7 +190,18 @@ export function OrderDetailActions({
       {free ? (
         <div className={block}>
           <p className="font-semibold text-ink">Free registration</p>
-          <p className="text-sm text-ink-soft">Nothing was charged, so there is no payment or refund to manage.</p>
+          <p className="text-sm text-ink-soft">
+            {cancelFree?.cancelled
+              ? "This registration was cancelled. Nothing was charged, so there is nothing to refund."
+              : "Nothing was charged, so there is no payment or refund to manage. Owners and finance managers can cancel the registration."}
+          </p>
+          {cancelFree && !cancelFree.cancelled ? (
+            <div>
+              <Button disabled={isBusy} onClick={() => setCancelling(true)} type="button" variant="danger">
+                Cancel registration
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : requiresCompensationReview ? (
         <div className={block}>
@@ -266,6 +302,32 @@ export function OrderDetailActions({
             <TextInput hint="Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} value={refundForm.reason} />
             <TextInput autoComplete="off" label={`Type ${refund.reference} to confirm`} onChange={(event) => setRefundForm({ ...refundForm, confirmation: event.target.value })} value={refundForm.confirmation} />
             {refund.needsCode ? (
+              <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
+            ) : null}
+          </div>
+        </ConfirmDialog>
+      ) : null}
+
+      {cancelFree && !cancelFree.cancelled ? (
+        <ConfirmDialog
+          busy={isBusy}
+          cancelLabel="Keep registration"
+          confirmLabel="Cancel registration"
+          destructive
+          onCancel={() => setCancelling(false)}
+          onConfirm={cancelRegistration}
+          open={cancelling}
+          title={`Cancel ${cancelFree.buyer}'s free registration?`}
+        >
+          <div className="grid gap-3">
+            {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
+            <ul className="grid list-disc gap-1 pl-5">
+              <li>{cancelFree.ticketCount === 1 ? "The free ticket stops" : `All ${cancelFree.ticketCount} free tickets stop`} working straight away, and the buyer is emailed.</li>
+              <li>Anyone already checked in stays in the attendance record.</li>
+              <li>The places don&apos;t go back on sale by themselves.</li>
+            </ul>
+            <TextArea hint="Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} rows={2} value={refundForm.reason} />
+            {cancelFree.needsCode ? (
               <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
             ) : null}
           </div>

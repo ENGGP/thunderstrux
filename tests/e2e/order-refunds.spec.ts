@@ -86,3 +86,31 @@ test("a disputed order pauses refunds until staff restore it, and a partial refu
   await expect(page.getByText("Partly refunded in Stripe", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Refund the rest" })).toBeVisible();
 });
+
+test("finance staff cancel a free registration: the dialog names the consequences and the order reads Cancelled", async ({ page, data }) => {
+  await prisma.organisationStaff.update({ where: { id: data.staff.id }, data: { role: "finance_manager" } });
+  const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, status: "paid", paidAt: new Date(), paymentKind: "free", unitPrice: 0, quantity: 2 });
+  await prisma.ticket.createMany({ data: [1, 2].map((issueSequence) => ({ issueSequence, orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id })) });
+
+  await login(page, data.manager.email);
+  await selectStaffContext(page, data.organisation.id);
+  await page.goto(`/dashboard/orders/${order.id}`);
+  await page.getByRole("button", { name: "Cancel registration" }).click();
+  const dialog = page.getByRole("dialog", { name: /free registration\?$/ });
+  await expect(dialog).toContainText("The places don't go back on sale by themselves.");
+  await expect(dialog.getByRole("button", { name: "Keep registration" })).toBeVisible();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({ path: `test-results/free-cancel-dialog-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await dialog.getByLabel("Reason").fill("Duplicate registration.");
+  await dialog.getByRole("button", { name: "Cancel registration" }).click();
+  await expect(page.getByText("Registration cancelled", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing was charged, so there is nothing to refund.").first()).toBeVisible();
+  await page.screenshot({ path: "test-results/free-cancelled-1280.png", fullPage: true });
+  expect(await prisma.ticket.count({ where: { orderId: order.id, validity: "void", validityReason: "cancelled" } })).toBe(2);
+  await page.goto("/dashboard/orders");
+  await expect(page.getByText("Cancelled", { exact: true }).filter({ visible: true }).first()).toBeVisible();
+});

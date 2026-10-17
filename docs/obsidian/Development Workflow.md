@@ -18,7 +18,7 @@ See [[Dependency Automation]] for the current security baseline, Prisma override
 
 ### Safe baseline verification
 
-Start from refreshed local `main` and create a `codex/...` branch in the primary folder as specified by [[Engineering Delivery Workflow]]. Run `node scripts/run-e2e.mjs baseline` for isolated production builds, typecheck, the full integration suite and dependency audit. Use `pnpm test:e2e` for browser/signed-webhook coverage and `pnpm ops:test` for disposable recovery rehearsal. These projects do not reuse development data or its dependency volume.
+Start from refreshed local `main` and create a `codex/...` branch in the primary folder as specified by [[Engineering Delivery Workflow]]. Run `node scripts/run-e2e.mjs baseline` for isolated production builds, the runner guard tests (`pnpm test:e2e:guards`, which include the readiness schema-contract check), typecheck, the full integration suite and dependency audit. Use `pnpm test:e2e` for browser/signed-webhook coverage and `pnpm ops:test` for disposable recovery rehearsal. These projects do not reuse development data or its dependency volume.
 
 The integration launcher and SQL reset helper share one URL guard: PostgreSQL only, a single simple database name ending in `_test`, with connection parameters such as `schema=public` retained. A name such as `project_test_archive` is refused before Prisma reset or SQL. The launcher retains precedence `INTEGRATION_DATABASE_URL`, then `TEST_DATABASE_URL`, then its disposable default; the reset helper checks `DATABASE_URL`. E2E fixtures retain their stricter exact Compose URL requirement. A `_test` name is a necessary guard, not evidence that an arbitrary external database is disposable: use only explicitly run-owned test infrastructure.
 
@@ -335,7 +335,7 @@ Integration tests:
 node scripts/run-e2e.mjs baseline
 ```
 
-The isolated baseline builds its own app/runner and run-owned database. It includes typecheck, integration and audit. Do not use the development app/dependency volume for normal validation.
+The isolated baseline builds its own app/runner and run-owned database. Inside the runner it runs, in order and stopping at the first failure: `pnpm test:e2e:guards` (every `tests/runner/*.test.mjs`, including the check that `config/schema-contract.json` names the newest migration folder), `pnpm typecheck`, `pnpm test` (integration) and `pnpm security:audit`. A migration added without updating the readiness contract fails the baseline. Do not use the development app/dependency volume for normal validation.
 
 Current test database behavior:
 

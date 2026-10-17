@@ -53,7 +53,7 @@ Use the existing local entrypoints; do not rewrite tests merely to move executio
 | `node scripts/run-e2e.mjs baseline` | Isolated Docker production build, typecheck, full integration and dependency audit when that combined coverage is required |
 | `pnpm test:integration` | Integration suite inside a disposable Docker environment with `INTEGRATION_DATABASE_URL` pointing to its run-owned database |
 | `pnpm test:e2e` | One complete isolated production-mode browser and signed-webhook run |
-| `pnpm test:e2e:guards` | Runner safety tests when test infrastructure or its guards change |
+| `pnpm test:e2e:guards` | Runner safety and schema-contract tests (the baseline runs them first); run alone when test infrastructure or its guards change |
 | `pnpm ops:test` | Disposable migration/deploy/backup/restore/rollback rehearsal for operational or schema/recovery changes |
 
 See [[Development Workflow]] for Docker setup and [[Dependency Automation]] for frozen installation, audit and container validation when dependencies or container configuration change. Baseline and E2E already build the app; reuse that build evidence when the relevant inputs match rather than building it again.

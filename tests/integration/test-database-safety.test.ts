@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { createCommerceOrder } from "@/lib/commerce/orders";
 import { assertTestDatabaseUrl, resetTestDatabase } from "@/tests/helpers/db-reset";
 import {
   createEvent, createMember, createOrder, createOrganisationAccount,
@@ -39,6 +40,7 @@ test("reset clears every current model including dependent and unlinked recovery
   await prisma.emailOutbox.create({ data: { orderId: paid.id, mode: "automatic" } });
   await prisma.orderLifecycleEvent.create({ data: { orderId: paid.id, sequence: 1, type: "legacy_baseline", source: "legacy" } });
   await prisma.refundRequest.create({ data: { orderId: paid.id, organisationId: organisation.id, amount: paid.totalAmount, reason: "Synthetic reset fixture", operationKey: unique("reset-refund") } });
+  await prisma.$transaction((tx) => createCommerceOrder(tx, { organisationId: organisation.id, kind: "merchandise", buyer: { userId: member.id }, buyerEmail: member.email, paymentKind: "free", lines: [{ quantity: 1, unitAmount: 0, name: "Synthetic tote" }], source: "checkout" }));
   await prisma.purchaseDispute.create({ data: { orderId: paid.id, organisationId: organisation.id, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"), amount: paid.totalAmount, currency: "aud", providerStatus: "needs_response" } });
   const failed = await createOrder({ ...references, status: "failed", failedAt: new Date(), failureReason: "synthetic_unfulfillable", requiresCompensationReview: true });
   const job = await prisma.compensationRefundJob.create({ data: { orderId: failed.id, amount: failed.totalAmount } });

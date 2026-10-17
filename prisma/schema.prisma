@@ -43,6 +43,8 @@ model User {
   refundRequests          RefundRequest[]
   resolvedDisputes        PurchaseDispute[]
   cancelledOrders         Order[]              @relation("OrderCancelledBy")
+  commerceOrders          CommerceOrder[]
+  commerceLifecycleEvents CommerceLifecycleEvent[]
   reservations            TicketReservation[]
 
   @@index([accountRole])
@@ -114,6 +116,7 @@ model Organisation {
   assets              Asset[]
   refundRequests      RefundRequest[]
   purchaseDisputes    PurchaseDispute[]
+  commerceOrders      CommerceOrder[]
 
   @@index([accountUserId])
   @@index([stripeAccountId])
@@ -403,6 +406,7 @@ model GuestIdentity {
   createdAt  DateTime @default(now())
   grants     GuestAccessGrant[]
   orders     Order[]
+  commerceOrders CommerceOrder[]
 }
 
 // One emailed link. Only its digest is stored; redeeming it by POST starts a
@@ -450,7 +454,11 @@ model CheckoutAttempt {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
-  order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  // A membership or merchandise purchase (T20); never set together with orderId.
+  commerceOrderId      String?              @unique
+
+  order         Order?         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  commerceOrder CommerceOrder? @relation(fields: [commerceOrderId], references: [id], onDelete: Restrict)
 
   @@unique([actorKind, actorId, family, operationType, clientIdempotencyKey], map: "CheckoutAttempt_actor_key_key")
   @@index([state, reconcileDueAt])
@@ -752,6 +760,8 @@ enum EmailOutboxStatus {
 
 enum CheckoutFamily {
   ticket
+  membership
+  merchandise
 }
 
 enum CheckoutActorKind {
@@ -874,4 +884,109 @@ model NotificationOutbox {
   @@index([status, processingStartedAt])
   @@index([organisationId, privacy, status, createdAt])
   @@index([userId])
+}
+
+// T20: a membership or merchandise purchase, kept apart from ticket orders.
+// One society and one family per order; every line repeats both, and the
+// composite key makes the database refuse a line of another family or
+// society. Buyer, seller and line snapshots never change once written.
+enum CommerceKind {
+  membership
+  merchandise
+}
+
+enum CommerceLifecycleEventType {
+  order_created
+  payment_fulfilled
+  free_fulfilled
+  order_failed
+  order_expired
+  compensation_required
+}
+
+model CommerceOrder {
+  id                         String        @id @default(cuid())
+  organisationId             String
+  kind                       CommerceKind
+  // A member buys memberships; merchandise may also go to a verified guest.
+  userId                     String?
+  guestIdentityId            String?
+  status                     OrderStatus   @default(pending)
+  paymentKind                PaymentKind
+  currency                   String        @default("aud")
+  totalAmount                Int
+  // The platform fee, taken from the society's share; the buyer pays totalAmount.
+  feeAmount                  Int           @default(0)
+  buyerEmailSnapshot         String
+  buyerNameSnapshot          String?
+  sellerName                 String
+  sellerSupportEmail         String?
+  sellerStripeAccountId      String?
+  feePolicyVersion           Int?
+  stripeSessionId            String?       @unique
+  stripePaymentIntentId      String?
+  requiresCompensationReview Boolean       @default(false)
+  reviewReason               String?
+  version                    Int           @default(1)
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+  paidAt                     DateTime?
+  fulfilledAt                DateTime?
+  failedAt                   DateTime?
+  failureReason              String?
+
+  organisation     Organisation             @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  user             User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestIdentity    GuestIdentity?           @relation(fields: [guestIdentityId], references: [id], onDelete: Restrict)
+  lines            CommerceOrderLine[]
+  lifecycleEvents  CommerceLifecycleEvent[]
+  checkoutAttempt  CheckoutAttempt?
+
+  @@unique([id, organisationId, kind], map: "CommerceOrder_id_organisation_kind_key")
+  @@index([organisationId, createdAt, id])
+  @@index([userId, createdAt, id])
+  @@index([guestIdentityId])
+}
+
+model CommerceOrderLine {
+  id             String       @id @default(cuid())
+  orderId        String
+  organisationId String
+  kind           CommerceKind
+  lineNumber     Int
+  quantity       Int
+  unitAmount     Int
+  lineAmount     Int
+  currency       String
+  nameSnapshot   String
+  // Size, colour or other variant label for merchandise.
+  variantSnapshot String?
+  // The term a membership line bought.
+  termStartsAt   DateTime?
+  termEndsAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  order CommerceOrder @relation(fields: [orderId, organisationId, kind], references: [id, organisationId, kind], onDelete: Restrict)
+
+  @@unique([orderId, lineNumber])
+}
+
+model CommerceLifecycleEvent {
+  id              String                     @id @default(cuid())
+  commerceOrderId String
+  sequence        Int
+  type            CommerceLifecycleEventType
+  source          OrderLifecycleSource
+  actorUserId     String?
+  stripeEventId   String?
+  fromStatus      OrderStatus?
+  toStatus        OrderStatus?
+  reason          String?
+  facts           Json?
+  createdAt       DateTime                   @default(now())
+
+  commerceOrder CommerceOrder @relation(fields: [commerceOrderId], references: [id], onDelete: Restrict)
+  actor         User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([commerceOrderId, sequence])
 }

@@ -55,6 +55,7 @@ Security-sensitive routes are transport adapters. They retain request parsing, t
 - `lib/assets`: sanitisation, quota reservation, verified S3 bytes, reference-gated reads and recoverable deletion/maintenance.
 - `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery, caller-only join transactions and the dashboard overview reads.
 - `lib/orders/member-tickets.ts`: the caller's upcoming orders for the personal overview, the checkout confirmation and the guest order page.
+- `lib/commerce/orders.ts` (T20): membership and merchandise orders. `createCommerceOrder` validates lines and checked integer arithmetic and writes the order, lines, seller snapshot and first history entry in the caller's transaction; `appendCommerceLifecycleEvent` under `lockCommerceOrder`; buyer and finance reads and the buyer's paged list for the unified Purchases (T29).
 - `lib/purchases/ticket-purchases.ts` (T19a): the buyer's own purchases (`/purchases`, `/purchases/tickets/[orderId]` with a buyer-safe history), the wallet's tickets by view (`/tickets`), the success-page lookup and the buyer-or-guest access check behind the status read. Every query is scoped to the buyer.
 - `lib/format.ts`: the single money and date formatter; dates take the society's IANA zone and default to `Australia/Brisbane`.
 

@@ -107,7 +107,7 @@ test("finance staff cancel a free registration: the dialog names the consequence
 
   await dialog.getByLabel("Reason").fill("Duplicate registration.");
   await dialog.getByRole("button", { name: "Cancel registration" }).click();
-  await expect(page.getByText("Registration cancelled")).toBeVisible();
+  await expect(page.getByText("Registration cancelled", { exact: true })).toBeVisible();
   await expect(page.getByText("Nothing was charged, so there is nothing to refund.").first()).toBeVisible();
   await page.screenshot({ path: "test-results/free-cancelled-1280.png", fullPage: true });
   expect(await prisma.ticket.count({ where: { orderId: order.id, validity: "void", validityReason: "cancelled" } })).toBe(2);

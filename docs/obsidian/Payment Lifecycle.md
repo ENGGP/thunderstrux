@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-21
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Stripe Payments and Connect]]", "[[Email Delivery Implementation]]"]
 sources: [lib/payments/checkout-reconciliation.ts, lib/payments/order-lifecycle.ts]
@@ -53,6 +53,18 @@ Checkout stores the exact Stripe Session request on the attempt (`providerReques
 - **No stored request:** checkout stopped before calling Stripe, so the order fails without a Stripe call.
 
 Worker actions appear in the order history with source `checkout_recovery`. A worker failure logs `checkout_attempt_recovery.worker.failed` and alerts `checkout_attempt_recovery_failed`.
+
+## Whole-Order Refunds (T18a)
+
+`lib/payments/order-refunds.ts`. A refund is one `RefundRequest` for the whole order, started by staff with `orders:refund` from order detail (POST `/api/orders/[orderId]/refunds`). Rules, in order:
+
+- **Request:** under the Order lock the order must be a paid, fulfilled Stripe order with no compensation review, no manual "recorded outside Thunderstrux" mark, no live compensation job and no `refundStatus`; the staff member types the order's short reference, gives a reason (8 to 500 characters) and, unless staff MFA is off, a fresh authenticator code. The request is recorded and `Order.refundStatus` becomes `processing`: the financial fence. Compensation refunds never start on a fenced order, and ordinary refunds never start on an order in compensation.
+- **Stripe, outside the transaction:** the Checkout Session and PaymentIntent are re-read and must match the order (amount, currency, order id, the snapshot destination account, not disputed). A refund Stripe already holds that this request did not make (dashboard or compensation) stops the request for review rather than adding a second one. Then `refunds.create` with `reverse_transfer` and `refund_application_fee`, metadata `refundRequestId` and `orderId`, and the request's `operationKey` as the idempotency key.
+- **Outcome:** `succeeded` sets `refundStatus = refunded`, voids every ticket (`validity: void`, reason `refunded`; attendance and check-ins are kept, stock is not restored), appends `refunded` and queues a refund notice to the buyer. `pending` keeps the fence until a webhook or the worker confirms. `failed`, a definite Stripe refusal or a verification mismatch lifts the fence and leaves the tickets valid.
+- **No answer:** the request becomes `uncertain`. The refund worker (`scripts/process-compensation-refunds`, which now also runs `processOrderRefundBatch`) first looks for the request's own refund at Stripe; only if there is none does it send the same key again. After six attempts it stops retrying, keeps the fence and alerts `order_refund_unresolved`.
+- **Webhooks:** `refund.created`, `refund.updated` and `refund.failed` carrying `refundRequestId` go to the ordinary refund, everything else to compensation. The event must match the request's recorded PaymentIntent, amount and currency, is journalled once in `StripeRefundWebhookEvent`, and an older event never overrides a newer one.
+
+The order keeps `status: paid`; projections read `refundStatus` first, so lists and detail show Refund processing or Refunded.
 
 ## Storage
 

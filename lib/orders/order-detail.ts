@@ -1,4 +1,5 @@
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { latestRefundRequest } from "@/lib/payments/order-refunds";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -68,6 +69,7 @@ export async function getOrganisationOrderDetail(
       failedAt: true,
       failureReason: true,
       requiresCompensationReview: true,
+      refundStatus: true,
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
@@ -122,6 +124,7 @@ export async function getOrganisationOrderDetail(
     ...order,
     user: retainedBuyerIdentity(order),
     projection: ticketOrderProjection(order),
+    latestRefund: await latestRefundRequest(prisma, order.id),
     purchasedTicketType: purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name),
     stripeDashboardUrl: getStripeSessionDashboardUrl(order.stripeSessionId)
   };
@@ -151,6 +154,7 @@ export async function markOrganisationOrderManuallyRefunded(
         paymentKind: true,
         isManuallyRefunded: true,
         requiresCompensationReview: true,
+        refundStatus: true,
         compensationRefundJob: { select: { id: true } },
         reservation: { select: { status: true } }
       }
@@ -162,6 +166,9 @@ export async function markOrganisationOrderManuallyRefunded(
       throw new OrganisationOrderOperationError(
         "Compensation refunds require verified Stripe refund confirmation"
       );
+    }
+    if (order.refundStatus) {
+      throw new OrganisationOrderOperationError("This order has a refund through Thunderstrux");
     }
     if (order.isManuallyRefunded) return;
     const updated = await tx.order.updateMany({

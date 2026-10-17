@@ -11,6 +11,7 @@ export type OperationalAlertName =
   | "stale_order_worker_failed"
   | "checkout_attempt_recovery_failed"
   | "checkout_attempt_recovery_abandoned"
+  | "order_refund_unresolved"
   | "db_migration_failed"
   | "app_healthcheck_failed";
 

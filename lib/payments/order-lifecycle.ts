@@ -14,6 +14,7 @@ export type OrderLifecycleFacts = {
   emailTerminal?: boolean;
   legacyHistoryIncomplete?: boolean;
   ticketCount?: number;
+  amount?: number;
 };
 
 export type AppendOrderLifecycleEventInput = {

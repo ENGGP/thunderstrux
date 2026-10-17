@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { test, expect, prisma } from './fixtures';
 import { createOrder, createReservation } from '@/tests/helpers/test-data';
+import { createCommerceOrder } from '@/lib/commerce/orders';
 
 const stripe = new Stripe('sk_test_synthetic');
 const secret = 'whsec_p216_synthetic';
@@ -97,7 +98,6 @@ test('Connect verifies its own secret and updates only a matching account', asyn
 });
 
 test('signed commerce Sessions route by family only, never to tickets, and nothing is fulfilled without a registered family', async ({request, data}) => {
-  const {createCommerceOrder} = await import('@/lib/commerce/orders');
   await prisma.organisation.update({where: {id: data.organisation.id}, data: {stripeAccountId: 'acct_e2e_commerce', stripeChargesEnabled: true}});
   const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {organisationId: data.organisation.id, kind: 'merchandise', buyer: {userId: data.member.id}, buyerEmail: data.member.email, paymentKind: 'stripe', feeAmount: 150, lines: [{quantity: 1, unitAmount: 1500, name: 'Hoodie'}], source: 'checkout'}));
   await prisma.commerceOrder.update({where: {id: order.id}, data: {stripeSessionId: `cs_e2e_${order.id}`}});

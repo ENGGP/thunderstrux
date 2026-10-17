@@ -34,7 +34,10 @@ const statuses = {
   unused: ["Unused", "neutral"],
   "sales-open": ["Sales open", "success"],
   "sales-closed": ["Sales closed", "neutral"],
-  "sold-out": ["Sold out", "neutral"]
+  "sold-out": ["Sold out", "neutral"],
+  // Membership plans (T22): published but past their last day, or withdrawn.
+  ended: ["Ended", "neutral"],
+  archived: ["Archived", "neutral"]
 } as const satisfies Record<string, readonly [string, keyof typeof tones]>;
 
 export type Status = keyof typeof statuses;

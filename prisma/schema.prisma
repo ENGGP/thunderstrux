@@ -44,6 +44,8 @@ model User {
   resolvedDisputes        PurchaseDispute[]
   cancelledOrders         Order[]              @relation("OrderCancelledBy")
   commerceOrders          CommerceOrder[]
+  membershipGrants        MembershipGrant[]
+  revokedMembershipGrants MembershipGrant[]  @relation("MembershipGrantRevokedBy")
   commerceLifecycleEvents CommerceLifecycleEvent[]
   reservations            TicketReservation[]
 
@@ -117,6 +119,8 @@ model Organisation {
   refundRequests      RefundRequest[]
   purchaseDisputes    PurchaseDispute[]
   commerceOrders      CommerceOrder[]
+  membershipProducts  MembershipProduct[]
+  membershipGrants    MembershipGrant[]
 
   @@index([accountUserId])
   @@index([stripeAccountId])
@@ -968,11 +972,86 @@ model CommerceOrderLine {
   // The term a membership line bought.
   termStartsAt   DateTime?
   termEndsAt     DateTime?
+  // The plan a membership line bought (T22).
+  membershipProductId String?
   createdAt      DateTime     @default(now())
 
-  order CommerceOrder @relation(fields: [orderId, organisationId, kind], references: [id, organisationId, kind], onDelete: Restrict)
+  order             CommerceOrder      @relation(fields: [orderId, organisationId, kind], references: [id, organisationId, kind], onDelete: Restrict)
+  membershipProduct MembershipProduct? @relation(fields: [membershipProductId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  membershipGrant   MembershipGrant?
 
   @@unique([orderId, lineNumber])
+  @@unique([id, organisationId])
+  @@index([membershipProductId])
+}
+
+enum MembershipPlanStatus {
+  draft
+  published
+  archived
+}
+
+enum MembershipEntitlement {
+  member_prices
+  members_only_events
+}
+
+// A fixed-term membership a society sells (T22). Terms are [startsAt, endsAt);
+// once sold, name, term, price and rights never change.
+model MembershipProduct {
+  id                 String                  @id @default(cuid())
+  organisationId     String
+  name               String
+  description        String                  @default("")
+  priceAmount        Int
+  currency           String                  @default("aud")
+  startsAt           DateTime
+  endsAt             DateTime
+  entitlements       MembershipEntitlement[] @default([])
+  entitlementVersion Int                     @default(1)
+  status             MembershipPlanStatus    @default(draft)
+  publishedAt        DateTime?
+  archivedAt         DateTime?
+  version            Int                     @default(1)
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  organisation Organisation        @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  lines        CommerceOrderLine[]
+  grants       MembershipGrant[]
+
+  @@unique([id, organisationId])
+  @@index([organisationId, status, startsAt, id])
+}
+
+// One member's membership from one purchased line; state comes from the
+// clock and revokedAt (T23 writes these).
+model MembershipGrant {
+  id                  String                  @id @default(cuid())
+  userId              String
+  organisationId      String
+  membershipProductId String
+  commerceOrderLineId String                  @unique
+  startsAt            DateTime
+  endsAt              DateTime
+  entitlements        MembershipEntitlement[]
+  entitlementVersion  Int
+  grantedAt           DateTime                @default(now())
+  revokedAt           DateTime?
+  revokedByUserId     String?
+  revocationReason    String?
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  product      MembershipProduct @relation(fields: [membershipProductId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  line         CommerceOrderLine @relation(fields: [commerceOrderLineId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  revokedBy    User?             @relation("MembershipGrantRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+
+  // Same line, pinned to the grant's society (required for the composite relation).
+  @@unique([commerceOrderLineId, organisationId])
+@@index([userId, organisationId, startsAt])
+  @@index([organisationId, startsAt, id])
+  @@index([membershipProductId])
 }
 
 model CommerceLifecycleEvent {

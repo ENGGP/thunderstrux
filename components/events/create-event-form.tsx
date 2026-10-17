@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Select, TextArea, TextInput } from "@/components/ui/input";
+import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
@@ -620,38 +620,5 @@ function FeeHint({ price, chargesReady }: { price: string; chargesReady: boolean
         </>
       )}
     </p>
-  );
-}
-
-// Dollars with a fixed "$" prefix; the value is parsed to cents on save.
-function MoneyInput({ value, error, onChange }: { value: string; error?: string; onChange: (value: string) => void }) {
-  const id = useId();
-
-  return (
-    <div className="grid gap-1.5">
-      <label className="text-sm font-semibold text-ink" htmlFor={id}>
-        Price
-      </label>
-      <div className="flex h-11 items-center rounded-control border border-line-strong bg-surface has-[[aria-invalid]]:border-danger">
-        <span aria-hidden="true" className="pl-3 text-ink-soft">
-          $
-        </span>
-        <input
-          aria-describedby={error ? `${id}-error` : undefined}
-          aria-invalid={error ? true : undefined}
-          className="h-full w-full min-w-0 bg-transparent px-2 text-base text-ink"
-          id={id}
-          inputMode="decimal"
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="0.00"
-          value={value}
-        />
-      </div>
-      {error ? (
-        <p className="text-sm text-danger" id={`${id}-error`}>
-          {error}
-        </p>
-      ) : null}
-    </div>
   );
 }

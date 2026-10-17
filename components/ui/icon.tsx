@@ -19,7 +19,8 @@ const paths = {
   search: "M11 4.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM16 16l4.5 4.5",
   shield: "M12 3 5 6v6c0 4.2 2.9 7.4 7 9 4.1-1.6 7-4.8 7-9V6zM9 12l2.2 2.2L15 10.4",
   chevronDown: "m6 9 6 6 6-6",
-  chevronRight: "m9 6 6 6-6 6"
+  chevronRight: "m9 6 6 6-6 6",
+  badge: "M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM9 9.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM6 17c.5-1.3 1.6-2 3-2s2.5.7 3 2M14.5 10h3.5M14.5 13.5h3.5"
 } as const;
 
 export type IconName = keyof typeof paths;

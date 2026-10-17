@@ -27,7 +27,7 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 `components/ui/` holds the shared primitives. Extend them rather than writing class strings in pages.
 
 - `button.tsx`: `Button` and `buttonClasses()` for links that look like buttons. Variants `primary`, `secondary`, `tertiary`, `danger`; sizes `sm` (36px), `md` (44px), `lg` (48px).
-- `input.tsx`: `TextInput`, `TextArea`, `Select`. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
+- `input.tsx`: `TextInput`, `TextArea`, `Select`, and `MoneyInput` (a `$` prefix; callers turn the text into cents with `parseMoneyInput`), shared by the event builder and membership plans since T22. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
 - `card.tsx`: bordered surface with an optional `className`.
 - `notice.tsx`: inline message in `info`, `success`, `warning` or `danger`: a soft wash, a hairline border, an icon and a toned title, with body text in ink. `action` puts the link or button that resolves the message at the end of the row; `onDismiss` (client callers only) adds a close button. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
 - `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked, unused, Sales closed and Sold out are neutral; Sales open is a success; joined uses the brand accent. Orders show the projection from `lib/purchases/projection.ts`: Processing and Payment review (charged but not fulfilled) are warnings, Paid and Free are successes. Add a status there, not in a page.
@@ -85,6 +85,7 @@ Where data loads after the guards, the page wraps that part in `<Suspense>` with
 | (none) | Overview | `/dashboard` | none |
 | (none) | Events | `/dashboard/events` | `events:read` |
 | (none) | Orders | `/dashboard/orders` | `orders:read` |
+| Community | Memberships | `/dashboard/memberships` | `memberships:manage` |
 | Settings | Society profile | `/dashboard/settings/profile` | `organisation:settings` |
 | Settings | Staff | `/dashboard/settings/staff` | `staff:manage` |
 | Settings | Payments | `/dashboard/settings` | `stripe:manage` |
@@ -98,7 +99,7 @@ The staff authenticator (`/mfa`) is not organisation navigation: it is reached f
 - From `lg` the navigation is a 244px deep-plum column whose contents stick below the fixed header, so the verify-email banner pushes it down instead of sitting under it. Below `lg` the same column holds `Current organisation`, the society name and the `Organisation menu` disclosure.
 - Each page renders its own title as the only `h1` through `components/layout/page-header.tsx` (or an `h1` of its own); section headings are `h2`. The society name is plain text in the sidebar.
 - The workspace switcher is labelled `Workspace`.
-- A navigation item is added only when its destination exists. Calendar, Members, Memberships, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them.
+- A navigation item is added only when its destination exists. Calendar, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them. Memberships arrived with T22 (Plans only; its Members tab arrives with T23, and the page shows tabs only once there are two).
 
 ### Context switcher
 
@@ -206,6 +207,10 @@ Any other failure keeps the button and shows the message in a danger `Notice` wi
 `/success` and `/cancel` are the payment return pages. `/success` says `Checking payment status` and links to My tickets; it never states that a payment succeeded, because only the signed webhook establishes that.
 
 `app/not-found.tsx` and `app/error.tsx` are the shared missing-page and failure pages. The missing page is also what a foreign tenant resource renders and must not hint at whether the resource exists.
+
+### Membership plans (T22)
+
+`/dashboard/memberships` lists plans as a table from 768px and cards below, with Runs in the society's zone, Price (or Free), a status badge (Draft, Published, Ended, Archived), the holders and a Details or Edit link. `/dashboard/memberships/new` and `/dashboard/memberships/[planId]` share `components/memberships/plan-form.tsx`: Term (Semester 1, Semester 2, Full year or Custom dates, a year, then First day and Last day), Details, Price with the fee example, and What it unlocks; an unsaved-changes guard; a 409 on a stale version keeps the edits and offers Reload. A sold plan disables everything but the description under an information notice; an archived plan is read-only. The detail page's aside holds the publish check (`plan-checklist.tsx`, the server's blockers in a fixed order with a Payments link), Publish and Archive (`plan-actions.tsx`; Archive confirms and names what it does not undo), and a preview of the buyer's offer card. Design round B1 on the canvas is the approved source.
 
 ## Stripe Settings UI Rules
 

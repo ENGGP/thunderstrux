@@ -103,7 +103,7 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
     <CheckoutShell current={going ? 2 : 1} society={order.event.organisation.name} steps={["Review", "Pay with Stripe", "Tickets"]} title={title}>
       <Card>
         <div className="grid gap-4">
-          <StatusBadge label={badge.label} status={badge.status} />
+          <div><StatusBadge label={badge.label} status={badge.status} /></div>
           {projection === "processing" ? (
             <>
               <p className="text-ink" role="status">Stripe is telling us about your payment for {order.event.title}. This usually takes under a minute; this page updates by itself.</p>

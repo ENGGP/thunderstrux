@@ -15,6 +15,7 @@ import { GET as searchOrganisations } from "@/app/api/orgs/search/route";
 import { POST as joinOrganisationRoute } from "@/app/api/orgs/[orgSlug]/join/route";
 import { POST as leaveOrganisationRoute } from "@/app/api/orgs/[orgSlug]/leave/route";
 import MyTicketsPage from "@/app/tickets/page";
+import PurchasesPage from "@/app/purchases/page";
 
 // The tickets page renders inside PersonalShell, which reads the pathname.
 // redirect and notFound stay real so the guard assertions below still hold.
@@ -23,18 +24,19 @@ vi.mock("next/navigation", async (importOriginal) => ({
   usePathname: () => "/tickets"
 }));
 
-async function renderTicketsPage(
+async function renderTicketsPage(searchParams: { view?: string } = {}) {
+  return renderPage(await MyTicketsPage({ searchParams: Promise.resolve(searchParams) }));
+}
+
+// Purchases keeps the cursor paging the wallet used to have (T19a).
+async function renderPurchasesPage(
   searchParams: {
     limit?: string;
     cursor?: string;
     direction?: string;
   } = {}
 ) {
-  const element = await MyTicketsPage({
-    searchParams: Promise.resolve(searchParams)
-  });
-
-  return renderPage(element);
+  return renderPage(await PurchasesPage({ searchParams: Promise.resolve(searchParams) }));
 }
 
 describe("member features", () => {
@@ -206,7 +208,7 @@ describe("member features", () => {
     await expect(renderTicketsPage()).rejects.toThrow("NEXT_REDIRECT");
   });
 
-  test("tickets page paginates paid orders with stable same-createdAt cursors", async () => {
+  test("purchases page paginates orders with stable same-createdAt cursors", async () => {
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();
     setMockSession({
@@ -246,17 +248,17 @@ describe("member features", () => {
         createdAt: true
       }
     });
-    const firstPage = await renderTicketsPage({ limit: "2" });
+    const firstPage = await renderPurchasesPage({ limit: "2" });
 
     expect(firstPage).toContain(orderedOrders[0].id);
     expect(firstPage).toContain(orderedOrders[1].id);
     expect(firstPage).not.toContain(orderedOrders[2].id);
-    expect(firstPage).toContain("Ticket pagination");
+    expect(firstPage).toContain("Purchases pagination");
     expect(firstPage).toContain("direction=next");
     expect(firstPage).toContain("limit=2");
 
     const nextCursor = encodeTimestampCursor("createdAt", orderedOrders[1]);
-    const secondPage = await renderTicketsPage({
+    const secondPage = await renderPurchasesPage({
       limit: "2",
       cursor: nextCursor,
       direction: "next"
@@ -268,7 +270,7 @@ describe("member features", () => {
     expect(secondPage).toContain("direction=prev");
 
     const previousCursor = encodeTimestampCursor("createdAt", orderedOrders[2]);
-    const previousPage = await renderTicketsPage({
+    const previousPage = await renderPurchasesPage({
       limit: "2",
       cursor: previousCursor,
       direction: "prev"
@@ -279,7 +281,7 @@ describe("member features", () => {
     expect(previousPage).not.toContain(orderedOrders[2].id);
   });
 
-  test("tickets page ignores invalid pagination params and shows first page warning", async () => {
+  test("purchases page ignores invalid pagination params and shows first page warning", async () => {
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();
     setMockSession({
@@ -299,13 +301,13 @@ describe("member features", () => {
       unitPrice: ticketType.price
     });
 
-    const invalidLimitHtml = await renderTicketsPage({ limit: "0" });
+    const invalidLimitHtml = await renderPurchasesPage({ limit: "0" });
     expect(invalidLimitHtml).toContain(
       "Invalid pagination parameters were ignored. Showing the first page."
     );
     expect(invalidLimitHtml).toContain(paid.id);
 
-    const invalidCursorHtml = await renderTicketsPage({
+    const invalidCursorHtml = await renderPurchasesPage({
       cursor: "not-a-valid-cursor"
     });
     expect(invalidCursorHtml).toContain(
@@ -313,7 +315,7 @@ describe("member features", () => {
     );
     expect(invalidCursorHtml).toContain(paid.id);
 
-    const invalidDirectionHtml = await renderTicketsPage({
+    const invalidDirectionHtml = await renderPurchasesPage({
       direction: "backwards"
     });
     expect(invalidDirectionHtml).toContain(

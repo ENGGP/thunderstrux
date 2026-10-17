@@ -133,7 +133,7 @@ Current behavior:
 - Thunderstrux logo links to `/`
 - Everyone sees Explore events and Explore societies. Logged-out users also see Sign in and Create a society.
 - Desktop signed-in users see Dashboard, Account (/account/settings), and Sign out; members also see My tickets. Mobile keeps Sign out visible and places Explore events, Explore societies and account links in a native Menu disclosure.
-- Member accounts see `My tickets`
+- Member accounts see `My tickets`, and the personal menu also lists `Purchases` (T19a)
 - Organisation accounts do not see `My tickets`
 - Sign out redirects to `/` on the current site, including isolated staging ports.
 

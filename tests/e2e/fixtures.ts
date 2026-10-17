@@ -1,4 +1,5 @@
 import { test as base, expect, type Page } from '@playwright/test';
+import { createClient } from '@redis/client';
 import { prisma } from '@/lib/db';
 import { createEvent, createMember, createOrganisationAccount, createOrganisationStaff } from '@/tests/helpers/test-data';
 
@@ -15,8 +16,22 @@ export async function seed() {
   return { owner, organisation, member, manager, staff, event, ticket: event.ticketTypes[0] };
 }
 
+// Every test signs in from the same address, so the per-address sign-in budget
+// (login_ip_global) would make a long run lock out its last tests. Each test
+// starts with a fresh budget; per-email limits and the limit itself are untouched.
+async function resetSharedLoginBudget() {
+  const client = createClient({ url: process.env.INTEGRATION_REDIS_URL });
+  await client.connect();
+  try {
+    const keys = await client.keys('thunderstrux:rate-limit:login_ip_global:*');
+    if (keys.length) await client.del(keys);
+  } finally {
+    await client.quit();
+  }
+}
+
 export const test = base.extend<{ data: Awaited<ReturnType<typeof seed>>; appErrors: void }>({
-  data: async ({}, use) => { await use(await seed()); },
+  data: async ({}, use) => { await resetSharedLoginBudget(); await use(await seed()); },
   appErrors: [async ({ page }, use) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 import { OrderReviewActions } from "@/components/orders/order-review-actions";
+import { AuditTimeline } from "@/components/ui/audit-timeline";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate, formatDateTime, formatMoney, formatPrice } from "@/lib/format";
@@ -177,68 +178,42 @@ export default async function OrganisationOrderDetailPage({
       </div>
 
       {/* Exactly one section holds the history, which the browser tests rely on. */}
-      <Card>
-        <h2 className="text-lg font-semibold text-ink">Order history</h2>
-        {lifecycle.historyIncomplete ? (
-          <p className="mt-2 text-sm text-ink-soft">
-            This order predates lifecycle history. Earlier activity may not be shown.
-          </p>
-        ) : null}
-        {lifecycle.events.length === 0 ? (
-          <p className="mt-4 text-sm text-ink-soft">
-            No lifecycle history has been recorded for this order yet.
-          </p>
-        ) : (
-          <ol className="mt-3 divide-y divide-line">
-            {lifecycle.events.map((event) => (
-              <li className="break-words py-3" key={event.id}>
-                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-                  <div>
-                    <p className="text-[15px] font-semibold text-ink">{event.label}</p>
-                    <p className="text-sm text-ink-soft">
-                      {event.actorName ?? event.source.replaceAll("_", " ")}
-                    </p>
-                  </div>
-                  <time className="text-sm text-ink-soft">{formatDateTime(event.createdAt)}</time>
-                </div>
-                {event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? (
-                  <p className="mt-1 text-sm text-ink-soft">
-                    Order: {event.fromOrderStatus ?? "unknown"} to {event.toOrderStatus}
-                  </p>
-                ) : null}
-                {event.fromReservationStatus !== event.toReservationStatus && event.toReservationStatus ? (
-                  <p className="mt-1 text-sm text-ink-soft">
-                    Reservation: {event.fromReservationStatus ?? "none"} to {event.toReservationStatus}
-                  </p>
-                ) : null}
-                {event.reason ? (
-                  <p className="mt-1 text-sm text-ink-soft">
-                    Reason: {event.reason.replaceAll("_", " ")}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        )}
-        <div className="mt-3 flex items-center justify-between gap-4">
-          {lifecycle.pageInfo.newerCursor ? (
-            <Link
-              className="text-sm font-semibold text-brand underline underline-offset-4"
-              href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.newerCursor}&historyDirection=newer`}
-            >
-              Newer activity
-            </Link>
-          ) : <span />}
-          {lifecycle.pageInfo.olderCursor ? (
-            <Link
-              className="text-sm font-semibold text-brand underline underline-offset-4"
-              href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.olderCursor}&historyDirection=older`}
-            >
-              Older activity
-            </Link>
-          ) : null}
-        </div>
-      </Card>
+      <AuditTimeline
+        empty="No lifecycle history has been recorded for this order yet."
+        entries={lifecycle.events.map((event) => ({
+          id: event.id,
+          title: event.label,
+          time: event.createdAt,
+          meta: event.actorName ?? event.source.replaceAll("_", " "),
+          details: [
+            event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? `Order: ${event.fromOrderStatus ?? "unknown"} to ${event.toOrderStatus}` : null,
+            event.fromReservationStatus !== event.toReservationStatus && event.toReservationStatus ? `Reservation: ${event.fromReservationStatus ?? "none"} to ${event.toReservationStatus}` : null,
+            event.reason ? `Reason: ${event.reason.replaceAll("_", " ")}` : null
+          ].filter((detail): detail is string => detail !== null)
+        }))}
+        footer={
+          <div className="mt-3 flex items-center justify-between gap-4">
+            {lifecycle.pageInfo.newerCursor ? (
+              <Link
+                className="text-sm font-semibold text-brand underline underline-offset-4"
+                href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.newerCursor}&historyDirection=newer`}
+              >
+                Newer activity
+              </Link>
+            ) : <span />}
+            {lifecycle.pageInfo.olderCursor ? (
+              <Link
+                className="text-sm font-semibold text-brand underline underline-offset-4"
+                href={`/dashboard/orders/${order.id}?historyCursor=${lifecycle.pageInfo.olderCursor}&historyDirection=older`}
+              >
+                Older activity
+              </Link>
+            ) : null}
+          </div>
+        }
+        heading="Order history"
+        note={lifecycle.historyIncomplete ? "This order predates lifecycle history. Earlier activity may not be shown." : undefined}
+      />
     </DashboardShell>
   );
 }

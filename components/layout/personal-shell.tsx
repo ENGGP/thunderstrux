@@ -24,7 +24,8 @@ export function PersonalShell({
     ...(accountRole === "member"
       ? [
           { label: "My tickets", href: "/tickets", icon: "ticket" as const },
-          { label: "Societies", href: "/dashboard/organisations", icon: "users" as const }
+          { label: "Societies", href: "/dashboard/organisations", icon: "users" as const },
+          { label: "Purchases", href: "/purchases", icon: "receipt" as const }
         ]
       : []),
     { label: "Account", href: "/account/settings", icon: "user" }
@@ -41,11 +42,14 @@ export function PersonalShell({
             aria-label="Personal navigation"
             className="flex gap-1 overflow-x-auto lg:grid"
           >
-            {items.map((item) => (
+            {items.map((item) => {
+              // A purchase's own page sits under Purchases.
+              const current = pathname === item.href || (item.href === "/purchases" && pathname.startsWith("/purchases/"));
+              return (
               <Link
-                aria-current={pathname === item.href ? "page" : undefined}
+                aria-current={current ? "page" : undefined}
                 className={`flex min-h-11 shrink-0 items-center gap-2.5 rounded-control px-3 text-sm font-medium ${
-                  pathname === item.href
+                  current
                     ? "bg-brand-tint text-brand-ink"
                     : "text-ink-soft hover:bg-surface-subtle hover:text-ink"
                 }`}
@@ -55,7 +59,8 @@ export function PersonalShell({
                 <Icon name={item.icon} />
                 {item.label}
               </Link>
-            ))}
+              );
+            })}
           </nav>
           {contexts && contexts.organisations.length > 0 ? (
             <div className="grid gap-1.5 border-t border-line pt-4">

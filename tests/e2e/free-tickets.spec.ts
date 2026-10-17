@@ -47,7 +47,8 @@ test("members register for free tickets through the checkout page without Stripe
   expect((await prisma.ticketType.findFirstOrThrow({ where: { eventId: event.id } })).quantity).toBe(18);
 
   await page.getByRole("link", { name: "View my tickets" }).click();
-  const card = page.getByRole("listitem").filter({ hasText: "Free Mixer" });
-  await expect(card.getByText("Free", { exact: true }).first()).toBeVisible();
-  await expect(card.getByText(/^Registered /)).toBeVisible();
+  // The wallet groups the event's two ticket faces, each marked free.
+  const group = page.getByRole("region", { name: /^Free Mixer/ });
+  await expect(group.getByRole("article")).toHaveCount(2);
+  await expect(group.getByText("Ticket 1 of 2 · Free")).toBeVisible();
 });

@@ -5,10 +5,12 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { LinkTabs } from "@/components/ui/link-tabs";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatPrice } from "@/lib/format";
+import { hasOrganisationPermission } from "@/lib/permissions";
 import { formatDay, listPlans, type StaffPlan } from "@/lib/memberships/plans";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -29,6 +31,15 @@ export default async function MembershipsPage() {
         description="Fixed-term memberships. Buyers get member prices and members-only events for the dates you set."
         title="Memberships"
       />
+      {hasOrganisationPermission(organisation.staffRole, "members:read") ? (
+        <LinkTabs
+          label="Membership sections"
+          tabs={[
+            { href: "/dashboard/memberships", label: "Plans", active: true },
+            { href: "/dashboard/memberships/members", label: "Members", active: false }
+          ]}
+        />
+      ) : null}
       <Suspense fallback={<ListSkeleton label="Loading membership plans" />}>
         <Plans organisationId={organisation.id} />
       </Suspense>

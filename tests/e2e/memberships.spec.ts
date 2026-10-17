@@ -1,4 +1,4 @@
-import { test, expect, login, selectStaffContext } from "./fixtures";
+import { test, expect, login, prisma, selectStaffContext } from "./fixtures";
 
 // T22: an owner drafts, fixes, publishes and archives a membership plan; staff
 // without memberships:manage never see it. The society has no Stripe, so a
@@ -57,4 +57,39 @@ test("staff without memberships:manage see no Memberships item and get not found
   await expect(page.getByRole("link", { name: "Memberships" })).toHaveCount(0);
   const response = await page.goto("/dashboard/memberships");
   expect(response?.status()).toBe(404);
+});
+
+test("a member buys a free membership through checkout and the owner finds them on the Members tab", async ({ page, data }) => {
+  const plan = await prisma.membershipProduct.create({
+    data: {
+      organisationId: data.organisation.id, name: "Semester 2 free", priceAmount: 0, entitlements: ["members_only_events"], status: "published", publishedAt: new Date(),
+      startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 100 * 86_400_000)
+    }
+  });
+  await prisma.user.update({ where: { id: data.member.id }, data: { firstName: "Robin", lastName: "Member" } });
+  await login(page, data.member.email, "/dashboard");
+  const bought = await page.request.post("/api/payments/checkout/membership", {
+    headers: { Origin: "http://localhost:3100" },
+    data: { organisationId: data.organisation.id, selection: { planId: plan.id }, expectedTotal: 0, idempotencyKey: "e2e-membership-free-0001" }
+  });
+  expect(bought.status()).toBe(200);
+  expect((await bought.json()).kind).toBe("fulfilled");
+  await page.context().clearCookies();
+
+  await login(page, data.owner.email, "/dashboard/memberships/members");
+  await expect(page.getByRole("link", { name: "Members", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: "Active · 1" })).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/memberships-roster-${width}.png`, fullPage: true });
+  }
+  await page.getByRole("link", { name: "Robin Member" }).first().click();
+  await expect(page.getByRole("heading", { name: "Robin Member", level: 1 })).toBeVisible();
+  await expect(page.getByText("Members-only events", { exact: true })).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/memberships-member-${width}.png`, fullPage: true });
+  }
 });

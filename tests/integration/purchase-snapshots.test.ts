@@ -11,7 +11,7 @@ import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/
 import {
   checkInOrganisationTicket,
   getOrganisationEventTickets,
-  OrganisationTicketAccessError
+  TicketNotValidError
 } from "@/lib/tickets/check-in";
 import { setMockSession } from "@/tests/helpers/auth";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
@@ -201,8 +201,8 @@ describe("purchase snapshots and ticket validity", () => {
     const door = await getOrganisationEventTickets(owner.organisation.id, event.id);
     expect(door.tickets.map((ticket) => ticket.id)).toEqual([valid.id]);
     expect(door.counts).toEqual({ total: 1, unused: 1, checkedIn: 0 });
-    await expect(checkInOrganisationTicket(owner.organisation.id, voided.id, owner.user.id)).rejects.toBeInstanceOf(OrganisationTicketAccessError);
-    await expect(checkInOrganisationTicket(owner.organisation.id, review.id, owner.user.id)).rejects.toBeInstanceOf(OrganisationTicketAccessError);
+    await expect(checkInOrganisationTicket(owner.organisation.id, voided.id, owner.user.id)).rejects.toMatchObject({ validity: "void", validityReason: "refunded" });
+    await expect(checkInOrganisationTicket(owner.organisation.id, review.id, owner.user.id)).rejects.toBeInstanceOf(TicketNotValidError);
     await expect(checkInOrganisationTicket(owner.organisation.id, valid.id, owner.user.id)).resolves.toMatchObject({ status: "checked-in" });
   });
 

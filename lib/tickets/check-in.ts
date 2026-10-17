@@ -1,5 +1,14 @@
+import type { Prisma, TicketValidity } from "@prisma/client";
 import { requireOrganisationPermission } from "@/lib/auth/access";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import {
+  ascendingCursorWhere,
+  decodeTimestampCursor,
+  defaultPageLimit,
+  orderByForDirection,
+  pageInfoForPage,
+  type ParsedPaginationOptions
+} from "@/lib/pagination/cursor";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
 
@@ -31,428 +40,160 @@ export class TicketNotCheckedInError extends Error {
   }
 }
 
-export type OrganisationEventTicket = Awaited<
-  ReturnType<typeof getOrganisationEventTickets>
->["tickets"][number];
-
-export const defaultTicketPageLimit = 25;
-export const maxTicketPageLimit = 100;
-
-export class TicketPaginationError extends Error {
-  constructor(message = "Invalid ticket pagination parameters") {
-    super(message);
-    this.name = "TicketPaginationError";
+// A void or under-review ticket admits no one, and its attendance record is
+// kept as it was: neither check-in nor undo applies (T19b).
+export class TicketNotValidError extends Error {
+  constructor(readonly validity: TicketValidity, readonly validityReason: string | null) {
+    super(validity === "refund_review" ? "This ticket is under review" : "This ticket is no longer valid");
+    this.name = "TicketNotValidError";
   }
 }
 
-type TicketCursor = {
-  createdAt: Date;
-  id: string;
-};
+export type OrganisationEventTicket = Awaited<ReturnType<typeof getOrganisationEventTickets>>["tickets"][number];
 
-type TicketPaginationOptions = {
-  limit?: number;
-  cursor?: string;
-  direction?: "next" | "prev";
-};
-
-type ParsedTicketPaginationOptions = {
-  limit: number;
-  cursor?: string;
-  direction: "next" | "prev";
-};
-
-function buyerName(user: {
-  firstName: string | null;
-  lastName: string | null;
-  displayName: string | null;
-}) {
+function buyerName(user: { firstName: string | null; lastName: string | null; displayName: string | null }) {
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
   return user.displayName ?? (fullName || null);
 }
 
-function ticketStatus(checkedInAt: Date | null): "unused" | "checked-in" {
-  return checkedInAt ? "checked-in" : "unused";
-}
+const personName = (user: { firstName: string | null; lastName: string | null; email: string } | null) =>
+  user ? [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email : null;
 
-function encodeTicketCursor(ticket: { createdAt: Date; id: string }) {
-  return Buffer.from(
-    JSON.stringify({
-      createdAt: ticket.createdAt.toISOString(),
-      id: ticket.id
-    })
-  ).toString("base64url");
-}
-
-function decodeTicketCursor(cursor: string): TicketCursor {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
-      createdAt?: unknown;
-      id?: unknown;
-    };
-
-    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") {
-      throw new Error("Invalid cursor shape");
-    }
-
-    const createdAt = new Date(parsed.createdAt);
-
-    if (Number.isNaN(createdAt.getTime()) || parsed.id.trim().length === 0) {
-      throw new Error("Invalid cursor values");
-    }
-
-    return {
-      createdAt,
-      id: parsed.id
-    };
-  } catch {
-    throw new TicketPaginationError("Invalid ticket cursor");
-  }
-}
-
-export function parseTicketPaginationOptions(
-  searchParams: URLSearchParams
-): ParsedTicketPaginationOptions {
-  const limitParam = searchParams.get("limit");
-  const cursor = searchParams.get("cursor")?.trim() || undefined;
-  const directionParam = searchParams.get("direction") ?? "next";
-
-  if (directionParam !== "next" && directionParam !== "prev") {
-    throw new TicketPaginationError("Invalid ticket pagination direction");
-  }
-
-  if (!limitParam) {
-    return {
-      limit: defaultTicketPageLimit,
-      cursor,
-      direction: directionParam as "next" | "prev"
-    };
-  }
-
-  if (!/^\d+$/.test(limitParam)) {
-    throw new TicketPaginationError("Invalid ticket page limit");
-  }
-
-  const limit = Number(limitParam);
-
-  if (limit < 1 || limit > maxTicketPageLimit) {
-    throw new TicketPaginationError("Invalid ticket page limit");
-  }
-
+// Search by name, email, order or ticket reference. Every word of a name must
+// match some name or email field; a reference matches anywhere in the id.
+function searchWhere(query: string): Prisma.TicketWhereInput {
+  const text = (value: string) => ({ contains: value, mode: "insensitive" as const });
+  const words = query.split(/\s+/).filter(Boolean);
   return {
-    limit,
-    cursor,
-    direction: directionParam as "next" | "prev"
+    OR: [
+      { id: text(query) },
+      { orderId: text(query) },
+      {
+        AND: words.map((word) => ({
+          order: {
+            OR: [
+              { buyerEmailSnapshot: text(word) }, { buyerFirstNameSnapshot: text(word) }, { buyerLastNameSnapshot: text(word) },
+              { buyerDisplayNameSnapshot: text(word) }, { guestIdentity: { email: text(word) } },
+              { user: { OR: [{ email: text(word) }, { firstName: text(word) }, { lastName: text(word) }, { displayName: text(word) }] } }
+            ]
+          }
+        }))
+      }
+    ]
   };
 }
 
+// The event's tickets for the check-in console. Without a search it lists the
+// tickets that admit (oldest first, paged); a search of 2 or more characters
+// also finds void and under-review tickets so staff can see why they don't.
 export async function getOrganisationEventTickets(
   organisationId: string,
   eventId: string,
-  {
-    limit = defaultTicketPageLimit,
-    cursor,
-    direction = "next"
-  }: TicketPaginationOptions = {}
+  { limit = defaultPageLimit, cursor, direction = "next", query }: Partial<ParsedPaginationOptions> & { query?: string } = {}
 ) {
   const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
   const publishedOnly = authority.staffRole === "check_in_staff" ? { status: "published" as const } : {};
   const event = await prisma.event.findFirst({
-    where: {
-      id: eventId,
-      organisationId,
-      ...publishedOnly
-    },
-    select: {
-      id: true,
-      title: true
-    }
+    where: { id: eventId, organisationId, ...publishedOnly },
+    select: { id: true, title: true }
   });
+  if (!event) throw new OrganisationEventTicketsAccessError();
 
-  if (!event) {
-    throw new OrganisationEventTicketsAccessError();
-  }
-
-  if (!Number.isInteger(limit) || limit < 1 || limit > maxTicketPageLimit) {
-    throw new TicketPaginationError("Invalid ticket page limit");
-  }
-
-  const decodedCursor = cursor ? decodeTicketCursor(cursor) : null;
-  const cursorWhere = decodedCursor
-    ? direction === "prev"
-      ? {
-          OR: [
-            { createdAt: { lt: decodedCursor.createdAt } },
-            {
-              createdAt: decodedCursor.createdAt,
-              id: { lt: decodedCursor.id }
-            }
-          ]
-        }
-      : {
-          OR: [
-            { createdAt: { gt: decodedCursor.createdAt } },
-            {
-              createdAt: decodedCursor.createdAt,
-              id: { gt: decodedCursor.id }
-            }
-          ]
-        }
-    : {};
-  // Void and under-review units no longer admit anyone, so the door list and its counts leave them out.
-  const ticketWhere = {
-      eventId,
-      validity: "active" as const,
-      event: {
-        organisationId,
-        ...publishedOnly
-      },
-      ...cursorWhere
-    };
-
+  const search = query?.trim() ?? "";
+  const scope = { eventId, event: { organisationId, ...publishedOnly } };
+  const decoded = cursor ? decodeTimestampCursor("createdAt", cursor) : null;
   const [tickets, totalCount, checkedInCount] = await prisma.$transaction([
     prisma.ticket.findMany({
-      where: ticketWhere,
-      orderBy:
-        direction === "prev"
-          ? [{ createdAt: "desc" }, { id: "desc" }]
-          : [{ createdAt: "asc" }, { id: "asc" }],
+      where: {
+        ...scope,
+        ...(search.length >= 2 ? searchWhere(search) : { validity: "active" as const }),
+        ...(decoded ? ascendingCursorWhere("createdAt", decoded, direction) : {})
+      },
+      orderBy: orderByForDirection("createdAt", direction, "asc"),
       take: limit + 1,
       select: {
-        id: true,
-        createdAt: true,
-        checkedInAt: true,
-        ticketType: {
-          select: {
-            name: true
-          }
-        },
+        id: true, createdAt: true, checkedInAt: true, issueSequence: true, validity: true, validityReason: true, validityChangedAt: true,
+        ticketType: { select: { name: true } },
         order: {
           select: {
-            id: true,
-            purchasedTicketTypeName: true,
-            ...buyerIdentitySelect,
-            user: {
-              select: {
-                email: true,
-                firstName: true,
-                lastName: true,
-                displayName: true
-              }
-            }
+            id: true, quantity: true, purchasedTicketTypeName: true, guestIdentityId: true, ...buyerIdentitySelect,
+            user: { select: { email: true, firstName: true, lastName: true, displayName: true } }
           }
         }
       }
     }),
-    prisma.ticket.count({
-      where: {
-        eventId,
-        validity: "active",
-        event: {
-          organisationId,
-        ...publishedOnly
-        }
-      }
-    }),
-    prisma.ticket.count({
-      where: {
-        eventId,
-        validity: "active",
-        checkedInAt: {
-          not: null
-        },
-        event: {
-          organisationId,
-        ...publishedOnly
-        }
-      }
-    })
+    // Void and under-review tickets admit no one, so the counts leave them out.
+    prisma.ticket.count({ where: { ...scope, validity: "active" } }),
+    prisma.ticket.count({ where: { ...scope, validity: "active", checkedInAt: { not: null } } })
   ]);
+  const page = pageInfoForPage({ items: tickets, limit, direction, cursor, timestampField: "createdAt" });
 
-  const hasExtraTicket = tickets.length > limit;
-  const pageTickets = tickets.slice(0, limit);
-  const orderedTickets =
-    direction === "prev" ? [...pageTickets].reverse() : pageTickets;
-  const firstTicket = orderedTickets[0] ?? null;
-  const lastTicket = orderedTickets[orderedTickets.length - 1] ?? null;
-  const hasPreviousPage = direction === "prev" ? hasExtraTicket : Boolean(cursor);
-  const hasNextPage = direction === "prev" ? Boolean(cursor) : hasExtraTicket;
+  // Who checked each ticket in: the latest check-in in the audit history.
+  const checkedIn = page.items.filter((ticket) => ticket.checkedInAt).map((ticket) => ticket.id);
+  const checkIns = checkedIn.length
+    ? await prisma.auditLog.findMany({
+        where: { organisationId, action: "ticket.checked_in", targetType: "Ticket", targetId: { in: checkedIn } },
+        orderBy: { createdAt: "desc" },
+        select: { targetId: true, actor: { select: { firstName: true, lastName: true, email: true } } }
+      })
+    : [];
+  const checkedInBy = new Map<string, string | null>();
+  for (const entry of checkIns) if (entry.targetId && !checkedInBy.has(entry.targetId)) checkedInBy.set(entry.targetId, personName(entry.actor));
 
   return {
     event,
-    tickets: orderedTickets.map((ticket) => ({
-      id: ticket.id,
-      status: ticketStatus(ticket.checkedInAt),
-      createdAt: ticket.createdAt,
-      checkedInAt: ticket.checkedInAt,
-      ticketTypeName: purchasedTicketTypeLabel(ticket.order.purchasedTicketTypeName, ticket.ticketType.name),
-      orderId: ticket.order.id,
-      buyerEmail: retainedBuyerIdentity(ticket.order)?.email ?? null,
-      buyerName: retainedBuyerIdentity(ticket.order) ? buyerName(retainedBuyerIdentity(ticket.order)!) : null
-    })),
-    pageInfo: {
-      limit,
-      hasNextPage,
-      hasPreviousPage,
-      nextCursor: lastTicket && hasNextPage ? encodeTicketCursor(lastTicket) : null,
-      previousCursor:
-        firstTicket && hasPreviousPage ? encodeTicketCursor(firstTicket) : null
-    },
-    counts: {
-      total: totalCount,
-      unused: totalCount - checkedInCount,
-      checkedIn: checkedInCount
-    }
+    tickets: page.items.map((ticket) => {
+      const buyer = retainedBuyerIdentity(ticket.order);
+      return {
+        id: ticket.id,
+        status: ticket.checkedInAt ? ("checked-in" as const) : ("unused" as const),
+        createdAt: ticket.createdAt,
+        checkedInAt: ticket.checkedInAt,
+        checkedInBy: checkedInBy.get(ticket.id) ?? null,
+        validity: ticket.validity,
+        validityReason: ticket.validityReason,
+        validityChangedAt: ticket.validityChangedAt,
+        issueSequence: ticket.issueSequence,
+        orderQuantity: ticket.order.quantity,
+        ticketTypeName: purchasedTicketTypeLabel(ticket.order.purchasedTicketTypeName, ticket.ticketType.name),
+        orderId: ticket.order.id,
+        guest: ticket.order.guestIdentityId !== null,
+        buyerEmail: buyer?.email ?? null,
+        buyerName: buyer ? buyerName(buyer) : null
+      };
+    }),
+    pageInfo: page.pageInfo,
+    counts: { total: totalCount, unused: totalCount - checkedInCount, checkedIn: checkedInCount }
   };
 }
 
-export async function checkInOrganisationTicket(
-  organisationId: string,
-  ticketId: string,
-  actorUserId: string
-) {
+// Check in or undo one ticket of the society's events. The ticket must still
+// admit (active); the conditional update means two staff at the door can't
+// both admit the same ticket, and the loser is told it is already checked in.
+async function setCheckIn(organisationId: string, ticketId: string, actorUserId: string, checkIn: boolean) {
   const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
-  const publishedOnly = authority.staffRole === "check_in_staff" ? { status: "published" as const } : {};
+  const scope = { id: ticketId, event: { organisationId, ...(authority.staffRole === "check_in_staff" ? { status: "published" as const } : {}) } };
   return prisma.$transaction(async (tx) => {
-  const existingTicket = await tx.ticket.findFirst({
-    where: {
-      id: ticketId,
-      // Exact denial reasons arrive with the check-in console (T19b); until then a void unit is not found.
-      validity: "active",
-      event: {
-        organisationId,
-        ...publishedOnly
-      }
-    },
-    select: {
-      id: true,
-      checkedInAt: true
+    const existing = await tx.ticket.findFirst({ where: scope, select: { checkedInAt: true, validity: true, validityReason: true } });
+    if (!existing) throw new OrganisationTicketAccessError();
+    if (existing.validity !== "active") throw new TicketNotValidError(existing.validity, existing.validityReason);
+    const checkedInAt = checkIn ? new Date() : null;
+    const updated = await tx.ticket.updateMany({
+      where: { ...scope, validity: "active", checkedInAt: checkIn ? null : { not: null } },
+      data: { checkedInAt }
+    });
+    if (updated.count === 0) {
+      const current = await tx.ticket.findFirstOrThrow({ where: scope, select: { validity: true, validityReason: true } });
+      if (current.validity !== "active") throw new TicketNotValidError(current.validity, current.validityReason);
+      throw checkIn ? new TicketAlreadyCheckedInError() : new TicketNotCheckedInError();
     }
-  });
-
-  if (!existingTicket) {
-    throw new OrganisationTicketAccessError();
-  }
-
-  if (existingTicket.checkedInAt) {
-    throw new TicketAlreadyCheckedInError();
-  }
-
-  const checkedInAt = new Date();
-  const updated = await tx.ticket.updateMany({
-    where: {
-      id: ticketId,
-      event: {
-        organisationId,
-        ...publishedOnly
-      },
-      checkedInAt: null
-    },
-    data: {
-      checkedInAt
-    }
-  });
-
-  if (updated.count === 0) {
-    throw new TicketAlreadyCheckedInError();
-  }
-
-  const ticket = await tx.ticket.findFirstOrThrow({
-    where: {
-      id: ticketId,
-      event: {
-        organisationId,
-        ...publishedOnly
-      }
-    },
-    select: {
-      id: true,
-      checkedInAt: true
-    }
-  });
-
-  await tx.auditLog.create({ data: { organisationId, actorUserId,
-    action: "ticket.checked_in", targetType: "Ticket", targetId: ticketId } });
-  return {
-    id: ticket.id,
-    status: ticketStatus(ticket.checkedInAt),
-    checkedInAt: ticket.checkedInAt
-  };
+    await tx.auditLog.create({ data: { organisationId, actorUserId, action: checkIn ? "ticket.checked_in" : "ticket.checked_out", targetType: "Ticket", targetId: ticketId } });
+    return { id: ticketId, status: checkIn ? ("checked-in" as const) : ("unused" as const), checkedInAt };
   });
 }
 
-export async function checkOutOrganisationTicket(
-  organisationId: string,
-  ticketId: string,
-  actorUserId: string
-) {
-  const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
-  const publishedOnly = authority.staffRole === "check_in_staff" ? { status: "published" as const } : {};
-  return prisma.$transaction(async (tx) => {
-  const existingTicket = await tx.ticket.findFirst({
-    where: {
-      id: ticketId,
-      // Exact denial reasons arrive with the check-in console (T19b); until then a void unit is not found.
-      validity: "active",
-      event: {
-        organisationId,
-        ...publishedOnly
-      }
-    },
-    select: {
-      id: true,
-      checkedInAt: true
-    }
-  });
+export const checkInOrganisationTicket = (organisationId: string, ticketId: string, actorUserId: string) =>
+  setCheckIn(organisationId, ticketId, actorUserId, true);
 
-  if (!existingTicket) {
-    throw new OrganisationTicketAccessError();
-  }
-
-  if (!existingTicket.checkedInAt) {
-    throw new TicketNotCheckedInError();
-  }
-
-  const updated = await tx.ticket.updateMany({
-    where: {
-      id: ticketId,
-      event: {
-        organisationId,
-        ...publishedOnly
-      },
-      checkedInAt: {
-        not: null
-      }
-    },
-    data: {
-      checkedInAt: null
-    }
-  });
-
-  if (updated.count === 0) {
-    throw new TicketNotCheckedInError();
-  }
-
-  const ticket = await tx.ticket.findFirstOrThrow({
-    where: {
-      id: ticketId,
-      event: {
-        organisationId,
-        ...publishedOnly
-      }
-    },
-    select: {
-      id: true,
-      checkedInAt: true
-    }
-  });
-
-  await tx.auditLog.create({ data: { organisationId, actorUserId,
-    action: "ticket.checked_out", targetType: "Ticket", targetId: ticketId } });
-  return {
-    id: ticket.id,
-    status: ticketStatus(ticket.checkedInAt),
-    checkedInAt: ticket.checkedInAt
-  };
-  });
-}
+export const checkOutOrganisationTicket = (organisationId: string, ticketId: string, actorUserId: string) =>
+  setCheckIn(organisationId, ticketId, actorUserId, false);

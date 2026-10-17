@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Project Handover]]", "[[Database and Multi Tenancy]]"]
 sources: [scripts/operations.mjs, docker-compose.hosted.yml, scripts/run-operations-tests.mjs]
@@ -43,7 +43,7 @@ Pause the platform schedules before deployment. Resume them only after readiness
 ```text
 every minute: node scripts/process-email-outbox.mjs
 every minute: node scripts/process-stale-orders.mjs
-every minute: node scripts/process-compensation-refunds.mjs
+every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a)
 every minute: node scripts/process-checkout-attempts.mjs
 every minute: node scripts/process-notifications.mjs
 ```

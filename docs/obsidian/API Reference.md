@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Database and Multi Tenancy]]"]
 sources: [app/api, lib/api/errors.ts]
@@ -748,9 +748,13 @@ Includes:
 
 The server-rendered organiser order detail page also reads a separate, bounded lifecycle timeline. It is not included in this API payload. History pages use `historyCursor=<sequence>` and `historyDirection=older|newer`, with 25 events per page and the same event-owned tenant boundary.
 
+### `POST /api/orders/[orderId]/refunds`
+
+Refunds the whole order through Stripe (T18a). Body `{reason, confirmation, mfaCode?}`: a reason of 8 to 500 characters, the order's short reference typed back, and a fresh authenticator code unless staff MFA is off. Requires the current society's `orders:refund` (owners and finance managers) and a trusted origin with the CSRF token. Answers `200 {refundRequestId, status: "succeeded"}` when Stripe confirmed, or `202` with `status` `pending` or `uncertain`. Refusals: `400` with detail `confirmation` for a wrong reference or `mfaCode` for a wrong code; `404` for another society's or a missing order; `409` with detail `reason` `not_refundable`, `in_progress`, `already_refunded`, `verification_failed` or `provider_refused`. See [[Payment Lifecycle]].
+
 ### `PATCH /api/orders/[orderId]/refund-manual`
 
-Sets the local manual refund flag on an organiser-owned order.
+Sets the local manual refund flag on an organiser-owned order. Since T18a it reads "Refund recorded outside Thunderstrux": bookkeeping only, no money moves, and it is refused while the order has a Thunderstrux refund.
 
 Rules:
 

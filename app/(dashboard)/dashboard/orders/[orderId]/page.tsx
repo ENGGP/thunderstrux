@@ -5,12 +5,14 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
+import { OrderReviewActions } from "@/components/orders/order-review-actions";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatPrice } from "@/lib/format";
 import { orderReference } from "@/lib/payments/order-refunds";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { roleHasPermission } from "@/lib/staff/live-authority";
+import { isLiveStripeKey } from "@/lib/stripe";
 import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
@@ -65,6 +67,10 @@ export default async function OrganisationOrderDetailPage({
     throw error;
   }
 
+  const canRefund = roleHasPermission(organisation.staffRole, "orders:refund");
+  // A partial refund made in Stripe leaves the rest to refund here.
+  const refundable = order.paymentKind === "stripe" && order.status === "paid" && !order.requiresCompensationReview &&
+    !order.refundStatus && !order.disputeStatus && !order.isManuallyRefunded;
   const buyer = order.user
     ? {
         email: order.user.email,
@@ -86,6 +92,7 @@ export default async function OrganisationOrderDetailPage({
       />
 
       <RefundNotice order={order} />
+      <ReviewNotice canAct={canRefund} order={order} />
 
       {order.requiresCompensationReview ? (
         <Notice title="Payment received, tickets not issued" tone="warning">
@@ -138,12 +145,12 @@ export default async function OrganisationOrderDetailPage({
           <p className="mt-1 text-sm text-ink-soft">Only a refund through Stripe moves money; the other actions here don&apos;t.</p>
           <OrderDetailActions
             refund={
-              roleHasPermission(organisation.staffRole, "orders:refund") && order.projection === "paid" && !order.isManuallyRefunded
-                ? { amount: formatMoney(order.totalAmount), buyer: buyer?.name ?? buyer?.email ?? "the buyer", reference: orderReference(order.id), ticketCount: order.quantity, needsCode: mfaEnforcementMode() !== "off" }
+              canRefund && refundable
+                ? { amount: formatMoney(order.totalAmount - order.externalRefundedAmount), rest: order.externalRefundedAmount > 0, buyer: buyer?.name ?? buyer?.email ?? "the buyer", reference: orderReference(order.id), ticketCount: order.quantity, needsCode: mfaEnforcementMode() !== "off" }
                 : null
             }
             buyerEmail={buyer?.email ?? null}
-            canResendTickets={order.tickets.length > 0}
+            canResendTickets={order.tickets.length > 0 && !order.disputeStatus}
             free={order.paymentKind === "free"}
             isManuallyRefunded={order.isManuallyRefunded}
             orderId={order.id}
@@ -232,7 +239,7 @@ function RefundNotice({ order }: { order: Awaited<ReturnType<typeof getOrganisat
   const refund = order.latestRefund;
   if (!refund) return null;
   const by = refund.actor ? [refund.actor.firstName, refund.actor.lastName].filter(Boolean).join(" ") || refund.actor.email : "a staff member";
-  if (order.refundStatus === "refunded") {
+  if (order.refundStatus === "refunded" && refund.status === "succeeded") {
     return (
       <Notice role="status" title={`Refunded ${formatMoney(refund.amount)}`} tone="success">
         <p>Refunded {formatDateTime(refund.resolvedAt)} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid and the buyer was emailed.</p>
@@ -255,4 +262,62 @@ function RefundNotice({ order }: { order: Awaited<ReturnType<typeof getOrganisat
       <p>{refundFailures[refund.lastErrorCode ?? ""] ?? "Stripe didn't complete the refund."} The tickets are still valid.</p>
     </Notice>
   ) : null;
+}
+
+// What Stripe reported that Thunderstrux didn't do: a dispute, or a refund made
+// in the Stripe dashboard. A dispute is not a refund.
+function ReviewNotice({ order, canAct }: { order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>; canAct: boolean }) {
+  const dispute = order.latestDispute;
+  if (order.disputeStatus && dispute) {
+    const link = (
+      <a className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`https://dashboard.stripe.com/${isLiveStripeKey() ? "" : "test/"}disputes/${dispute.stripeDisputeId}`} rel="noreferrer" target="_blank">
+        Open the dispute in Stripe
+      </a>
+    );
+    if (order.disputeStatus === "open") {
+      return (
+        <Notice title="The buyer has disputed this payment" tone="warning">
+          <p>
+            Their bank opened a dispute for {formatMoney(dispute.amount)} on {formatDate(dispute.createdAt)}.
+            {dispute.evidenceDueBy ? ` Respond in Stripe by ${formatDate(dispute.evidenceDueBy)}.` : ""} Until it&apos;s resolved, refunds and
+            resends are paused and the tickets show as &ldquo;Under review&rdquo; at the door.
+          </p>
+          {link}
+        </Notice>
+      );
+    }
+    if (order.disputeStatus === "won") {
+      return (
+        <Notice action={canAct ? <OrderReviewActions action="restore_tickets" orderId={order.id} /> : undefined} title="Stripe closed the dispute in the society's favour">
+          <p>The tickets stay under review until an owner or finance manager restores them with a reason. Restoring doesn&apos;t move money.</p>
+          {link}
+        </Notice>
+      );
+    }
+    return (
+      <Notice title="The buyer won the dispute" tone="danger">
+        <p>Their bank returned {formatMoney(dispute.amount)} to them{dispute.closedAt ? ` on ${formatDate(dispute.closedAt)}` : ""}. The tickets are no longer valid.</p>
+        {link}
+      </Notice>
+    );
+  }
+  if (!order.externalRefundedAmount) return null;
+  if (order.refundStatus === "refunded" && order.externalRefundedAmount >= order.totalAmount) {
+    return (
+      <Notice title="Fully refunded in Stripe">
+        <p>{formatMoney(order.externalRefundedAmount)} was refunded from the Stripe dashboard. The tickets are no longer valid.</p>
+      </Notice>
+    );
+  }
+  if (order.refundStatus) return null;
+  const part = `${formatMoney(order.externalRefundedAmount)} of ${formatMoney(order.totalAmount)} was refunded from the Stripe dashboard.`;
+  return order.externalRefundReviewedAt ? (
+    <Notice title="Partly refunded in Stripe">
+      <p>{part} Reviewed on {formatDate(order.externalRefundReviewedAt)}; the tickets stay valid.</p>
+    </Notice>
+  ) : (
+    <Notice action={canAct ? <OrderReviewActions action="mark_reviewed" orderId={order.id} /> : undefined} title="Partly refunded in Stripe: needs review" tone="warning">
+      <p>{part} Thunderstrux can&apos;t tell which ticket that covers, so the tickets stay valid until you decide. Refund the rest below, or mark it as reviewed.</p>
+    </Notice>
+  );
 }

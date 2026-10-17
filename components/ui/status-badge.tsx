@@ -19,6 +19,7 @@ const statuses = {
   review: ["Payment review", "warning"],
   refunded: ["Refunded", "neutral"],
   "refund-processing": ["Refund processing", "warning"],
+  disputed: ["Disputed", "warning"],
   failed: ["Failed", "danger"],
   expired: ["Expired", "neutral"],
   joined: ["Joined", "accent"],

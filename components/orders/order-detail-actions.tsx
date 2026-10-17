@@ -29,7 +29,8 @@ export function OrderDetailActions({
   // A free registration charged nothing: no refund to record and no Stripe session.
   free?: boolean;
   // Set when this staff member may refund this order through Stripe.
-  refund?: { amount: string; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
+  // rest: part of the order was already refunded in Stripe; this refunds what is left.
+  refund?: { amount: string; rest?: boolean; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -186,10 +187,12 @@ export function OrderDetailActions({
         {refund ? (
           <div className={block}>
             <p className="font-semibold text-ink">Refund through Stripe</p>
-            <p className="text-sm text-ink-soft">Refunds the whole order to the buyer&apos;s card. Owners and finance managers can refund.</p>
+            <p className="text-sm text-ink-soft">
+              {refund.rest ? `Refunds the ${refund.amount} not yet refunded in Stripe.` : "Refunds the whole order to the buyer’s card."} Owners and finance managers can refund.
+            </p>
             <div>
               <Button disabled={isBusy} onClick={() => setRefunding(true)} type="button" variant="danger">
-                Refund whole order
+                {refund.rest ? "Refund the rest" : "Refund whole order"}
               </Button>
             </div>
           </div>

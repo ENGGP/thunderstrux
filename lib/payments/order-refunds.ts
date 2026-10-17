@@ -25,6 +25,7 @@ export type RefundFailureKind =
   | "not_refundable"
   | "in_progress"
   | "already_refunded"
+  | "disputed"
   | "confirmation_mismatch"
   | "verification_failed"
   | "provider_refused";
@@ -78,26 +79,29 @@ export async function requestOrderRefund(input: {
     }
     if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
     if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
+    if (order.disputeStatus) throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
+    // After a partial refund made in Stripe, this refunds the rest.
+    const amount = order.totalAmount - order.externalRefundedAmount;
     if (
       order.paymentKind !== "stripe" || order.status !== "paid" || order.requiresCompensationReview || order.isManuallyRefunded ||
-      !order.stripeSessionId || !order.sellerStripeAccountId || (order.compensationRefundJob && order.compensationRefundJob.state !== "recovered")
+      !order.stripeSessionId || !order.sellerStripeAccountId || (order.compensationRefundJob && order.compensationRefundJob.state !== "recovered") || amount <= 0
     ) {
       throw new OrderRefundError("not_refundable", "This order can't be refunded here");
     }
     await tx.order.update({ where: { id: order.id }, data: { refundStatus: "processing" } });
     const created = await tx.refundRequest.create({
       data: {
-        orderId: order.id, organisationId: input.organisationId, amount: order.totalAmount, currency: order.currency, reason,
+        orderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
         actorUserId: input.actor.id, operationKey: `order-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
         attempts: 1, processingToken: token, processingStartedAt: now
       }
     });
     await appendOrderLifecycleEvent(tx, {
-      orderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount: order.totalAmount }
+      orderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount }
     });
     await tx.auditLog.create({ data: {
       organisationId: input.organisationId, actorUserId: input.actor.id, action: "order.refund_requested", targetType: "Order", targetId: order.id,
-      metadata: { refundRequestId: created.id, amount: order.totalAmount, reason }
+      metadata: { refundRequestId: created.id, amount, reason }
     } });
     return created;
   });
@@ -107,6 +111,7 @@ export async function requestOrderRefund(input: {
 
 // The charge this request refunds, checked against the order and the snapshot
 // of who was paid; and the request's own refund at Stripe, if one exists.
+// Refunds made elsewhere must be exactly the part of the order this one leaves out.
 async function verifiedPayment(request: { id: string; orderId: string; amount: number; currency: string; destinationAccountId: string | null }) {
   const order = await prisma.order.findUniqueOrThrow({ where: { id: request.orderId } });
   const stripe = getStripe();
@@ -114,16 +119,18 @@ async function verifiedPayment(request: { id: string; orderId: string; amount: n
   const intent = typeof session.payment_intent === "object" ? session.payment_intent : null;
   const charge = intent && typeof intent.latest_charge === "object" ? intent.latest_charge : null;
   if (
-    session.payment_status !== "paid" || session.amount_total !== request.amount || session.currency?.toLowerCase() !== request.currency ||
-    session.metadata?.orderId !== order.id || !intent || intent.amount_received !== request.amount ||
+    session.payment_status !== "paid" || session.amount_total !== order.totalAmount || session.currency?.toLowerCase() !== request.currency ||
+    session.metadata?.orderId !== order.id || !intent || intent.amount_received !== order.totalAmount ||
     intent.transfer_data?.destination !== request.destinationAccountId || !charge || charge.disputed !== false
   ) {
     throw new RefundVerificationError("provider_identity_not_eligible");
   }
   const refunds = await stripe.refunds.list({ payment_intent: intent.id, limit: 100 });
   const own = refunds.data.find((refund) => refund.metadata?.refundRequestId === request.id);
-  // A refund this request didn't make (dashboard, compensation) is reviewed in T18b, never stacked.
-  if (!own && refunds.data.some((refund) => refund.status !== "failed" && refund.status !== "canceled")) {
+  const elsewhere = refunds.data
+    .filter((refund) => refund !== own && refund.status !== "failed" && refund.status !== "canceled")
+    .reduce((sum, refund) => sum + refund.amount, 0);
+  if (!own && elsewhere !== order.totalAmount - request.amount) {
     throw new RefundVerificationError("existing_refund_requires_review");
   }
   return { stripe, intent, own: own ?? null };

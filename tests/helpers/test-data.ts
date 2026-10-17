@@ -27,11 +27,12 @@ export function futureDate(days = 7, hour = 10) {
   return date;
 }
 
-// One real bcrypt hash of the shared test password, made once per run: every
-// fixture user still signs in through the normal password check, without
-// paying about 70ms of hashing per user created.
+// By default every fixture user gets its own bcrypt hash of the test password,
+// as before PR #93. With THUNDERSTRUX_FAST_TEST_RESET=1 (switched off by
+// default) one real hash is made per run and shared, saving about 60ms a user.
 let testPasswordHash: Promise<string> | null = null;
-const sharedTestPasswordHash = () => (testPasswordHash ??= hash("password123", 10));
+const testPassword = () =>
+  process.env.THUNDERSTRUX_FAST_TEST_RESET === "1" ? (testPasswordHash ??= hash("password123", 10)) : hash("password123", 10);
 
 export async function createUser({
   email = `${unique("user")}@example.com`,
@@ -45,7 +46,7 @@ export async function createUser({
       email,
       emailVerifiedAt: new Date(),
       accountRole,
-      password: await sharedTestPasswordHash(),
+      password: await testPassword(),
       firstName: accountRole === "member" ? "Test" : null,
       lastName: accountRole === "member" ? "Member" : null,
       onboardingCompletedAt: accountRole === "member" ? new Date() : null

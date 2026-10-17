@@ -139,7 +139,7 @@ try {
       await compose('up', '-d', 'app');
       await ready();
       if (mode === 'baseline') {
-        await compose('run', '--rm', '--no-deps', 'runner', 'sh', '-c', 'pnpm typecheck && pnpm test && pnpm security:audit');
+        await compose('run', '--rm', '--no-deps', 'runner', 'sh', '-c', 'pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit');
       } else {
         await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'mfa-enforced.spec.ts', '--project=desktop');
         await compose('stop', 'app');

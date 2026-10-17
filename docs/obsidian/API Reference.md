@@ -752,6 +752,10 @@ The server-rendered organiser order detail page also reads a separate, bounded l
 
 Refunds the whole order through Stripe (T18a). Body `{reason, confirmation, mfaCode?}`: a reason of 8 to 500 characters, the order's short reference typed back, and a fresh authenticator code unless staff MFA is off. Requires the current society's `orders:refund` (owners and finance managers) and a trusted origin with the CSRF token. Answers `200 {refundRequestId, status: "succeeded"}` when Stripe confirmed, or `202` with `status` `pending` or `uncertain`. Refusals: `400` with detail `confirmation` for a wrong reference or `mfaCode` for a wrong code; `404` for another society's or a missing order; `409` with detail `reason` `not_refundable`, `in_progress`, `already_refunded`, `disputed`, `verification_failed` or `provider_refused`. After a partial refund made in Stripe it refunds the remainder. See [[Payment Lifecycle]].
 
+### `GET /api/purchases/tickets/[orderId]/status`
+
+The status of the caller's own ticket order, for the payment return page to poll (T19a). Answers `200 {status}` (the order projection: `processing`, `paid`, `free`, `review`, `refund-processing`, `refunded`, `disputed`, `cancelled`, `failed` or `expired`) only to the member who bought it or a guest session allowed to open it (`canOpenGuestOrder`); everyone else, including an anonymous caller with a real order id, gets the same `404`. `no-store`. It never changes the order: only the signed webhook fulfils.
+
 ### `POST /api/orders/[orderId]/cancel`
 
 Cancels a confirmed free registration (T18c). Body `{reason, mfaCode?}`: a reason of 8 to 500 characters and a fresh authenticator code unless staff MFA is off. Requires the current society's `orders:refund` and a trusted origin with the CSRF token. Answers `200 {status: "cancelled", cancelledAt}`, or `200 {status: "already_cancelled", cancelledAt}` for a repeat. Refusals: `400` for a short reason or with detail `mfaCode` for a missing or wrong code; `404` for another society's or a missing order; `409` with detail `reason` `not_cancellable` for a paid, pending or unfulfilled order. Moves no money and restores no stock. See [[Payment Lifecycle]].
@@ -836,7 +840,7 @@ Rules:
 - Paid types: the organisation must be Stripe-ready; checkout creates a pending `Order` and an active `TicketReservation`.
 - Free types: no Stripe configuration is read and nothing is held. One transaction creates a fulfilled `Order` (`paymentKind: free`, `status: paid`, total and fee 0), its tickets, one stock decrement, the `order_created` and `free_fulfilled` lifecycle events and the automatic ticket email. If the email cannot be queued, nothing is created.
 - Uses 30-minute reservation expiry and sets Stripe Checkout `expires_at` to match.
-- Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}` for dev fallback diagnostics; for a guest, to `/guest/orders/[orderId]`, which only their session opens.
+- Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}`, which shows the member's order as it really stands (and, outside production only, runs the dev fallback); for a guest, to `/guest/orders/[orderId]`, which only their session opens. The cancel URL is `/cancel?order={orderId}`, which names the order only to its buyer (T19a).
 - Since T12 every rule is checked under the buyer, event and ticket type locks: publication, sale state and close time, the shared readiness eligibility, and sellable stock = min(remaining minus that type's active holds, capacity minus valid issued tickets and all active holds).
 - `quantity` is 1 to 10 per order.
 - `idempotencyKey` (16–128 letters, digits, `-` or `_`) identifies one purchase intent. Repeating it with the same selection returns the same checkout; with a different selection it is `409 CONFLICT`.

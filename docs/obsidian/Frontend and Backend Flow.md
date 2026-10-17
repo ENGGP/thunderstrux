@@ -93,7 +93,9 @@ User selects quantity
   -> payment webhook marks Order paid and issues Ticket rows
   -> fulfilment commits its automatic email intent atomically; a bounded worker sends after commit
   -> in non-production only, /success?session_id=... can reconcile paid sessions if local webhook forwarding is absent
-  -> buyer sees the result at /tickets
+  -> /success shows the order's real state to the member who bought it: "Confirming your payment" while it is pending, polling GET /api/purchases/tickets/[orderId]/status every 3 seconds for about a minute (then "Still confirming"), and "You're going" once the webhook has fulfilled it; it says the tickets were emailed only after the provider accepted the email
+  -> /cancel?order=... says no payment was taken (or that the order went through after all) and names the event only to the buyer
+  -> buyer sees the order at /purchases and /purchases/tickets/[orderId], and the tickets at /tickets (Upcoming, Past and Not valid tabs, one ticket face per unit)
 ```
 
 Buyer tickets page:

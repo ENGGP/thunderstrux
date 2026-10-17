@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-16
+last-reviewed: 2026-10-17
 owner: engineering
 related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]"]
 sources: [package.json, prisma/schema.prisma, docker-compose.yml]
@@ -54,7 +54,8 @@ Security-sensitive routes are transport adapters. They retain request parsing, t
 - `lib/auth/account-*`, `lib/auth/context.ts` and `lib/staff`: account lifecycle/version fencing, login-bound personal/staff selection, private invitations and atomic owner handover.
 - `lib/assets`: sanitisation, quota reservation, verified S3 bytes, reference-gated reads and recoverable deletion/maintenance.
 - `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery, caller-only join transactions and the dashboard overview reads.
-- `lib/orders/member-tickets.ts`: the caller's own paid orders and issued tickets for `/tickets`.
+- `lib/orders/member-tickets.ts`: the caller's upcoming orders for the personal overview, the checkout confirmation and the guest order page.
+- `lib/purchases/ticket-purchases.ts` (T19a): the buyer's own purchases (`/purchases`, `/purchases/tickets/[orderId]` with a buyer-safe history), the wallet's tickets by view (`/tickets`), the success-page lookup and the buyer-or-guest access check behind the status read. Every query is scoped to the buyer.
 - `lib/format.ts`: the single money and date formatter; dates take the society's IANA zone and default to `Australia/Brisbane`.
 
 Server pages and route adapters do not import Prisma. Pages call the same read services as the API routes, never their own HTTP endpoints, and `tests/integration/domain-service-boundaries.test.ts` fails if any file under `app/` reaches the database directly. Routes map failures through `mapRouteError` (`lib/api/errors.ts`) with shared guard rules in `lib/api/route-rules.ts`; event, order, ticket, Connect and payment routes keep their established catch blocks (API-001).

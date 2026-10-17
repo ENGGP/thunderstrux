@@ -136,6 +136,7 @@ export function getGuestOrder(orderId: string) {
       purchasedTicketTypeName: true,
       buyerEmailSnapshot: true,
       userId: true,
+      cancelledAt: true,
       ticketType: { select: { name: true } },
       tickets: { where: { validity: "active" }, select: { id: true }, orderBy: { issueSequence: "asc" } },
       event: {

@@ -91,6 +91,15 @@ export default async function OrganisationOrderDetailPage({
         title={`Order ${order.id.slice(-6).toUpperCase()}`}
       />
 
+      {order.cancelledAt ? (
+        <Notice title="Registration cancelled">
+          <p>
+            Cancelled on {formatDate(order.cancelledAt)}
+            {order.cancelledBy ? ` by ${[order.cancelledBy.firstName, order.cancelledBy.lastName].filter(Boolean).join(" ") || order.cancelledBy.email}` : ""}:
+            {" "}&ldquo;{order.cancellationReason}&rdquo;. Nothing was charged, so there is nothing to refund.
+          </p>
+        </Notice>
+      ) : null}
       <RefundNotice order={order} />
       <ReviewNotice canAct={canRefund} order={order} />
 
@@ -150,9 +159,14 @@ export default async function OrganisationOrderDetailPage({
                 : null
             }
             buyerEmail={buyer?.email ?? null}
-            canResendTickets={order.tickets.length > 0}
+            canResendTickets={order.tickets.length > 0 && !order.cancelledAt}
             disputed={Boolean(order.disputeStatus)}
             free={order.paymentKind === "free"}
+            cancelFree={
+              canRefund && order.paymentKind === "free" && order.status === "paid"
+                ? { buyer: buyer?.name ?? buyer?.email ?? "the buyer", ticketCount: order.quantity, needsCode: mfaEnforcementMode() !== "off", cancelled: Boolean(order.cancelledAt) }
+                : null
+            }
             isManuallyRefunded={order.isManuallyRefunded}
             orderId={order.id}
             requiresCompensationReview={order.requiresCompensationReview}

@@ -42,14 +42,20 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
   const { event } = order;
   const { organisation } = event;
   const count = order.tickets.length;
+  // A cancelled free registration keeps status paid; it is no longer a ticket to show at the door.
+  const going = order.status === "paid" && !order.cancelledAt;
   const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
 
   return (
-    <CheckoutShell current={order.status === "paid" ? 2 : 1} society={organisation.name} steps={["Your email", "Review", "Tickets"]} title={order.status === "paid" ? `You're going to ${event.title}` : "Your order"}>
+    <CheckoutShell current={going ? 2 : 1} society={organisation.name} steps={["Your email", "Review", "Tickets"]} title={going ? `You're going to ${event.title}` : "Your order"}>
       <Card>
         <div className="grid gap-4">
-          {order.status === "paid" ? (
+          {going ? (
             <StatusBadge status={order.paymentKind === "free" ? "free" : "paid"} />
+          ) : order.cancelledAt ? (
+            <Notice title="Registration cancelled">
+              <p>The society cancelled this free registration. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p>
+            </Notice>
           ) : order.status === "pending" ? (
             <Notice role="status" title="Confirming your payment">
               <p>This usually takes under a minute. <Link className="font-semibold text-brand underline underline-offset-4" href={`/guest/orders/${order.id}`}>Refresh</Link> to check again.</p>
@@ -62,7 +68,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
           <p className="text-ink-soft [overflow-wrap:anywhere]">
             {formatDateRange(event.startTime, event.endTime, organisation.timeZone)}, {zoneCity(organisation.timeZone)} · {event.location}
           </p>
-          {order.status === "paid" ? (
+          {going ? (
             <section aria-label="Your tickets" className="grid gap-2 rounded-card border border-line p-4">
               <h2 className="font-semibold text-ink">Your tickets</h2>
               <ul className="grid gap-1.5">
@@ -80,7 +86,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
               <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">Sent to {order.buyerEmailSnapshot}</p>
             </section>
           ) : null}
-          {order.status === "paid" ? <p className="text-sm text-ink-soft">Show this page or your email at the door.</p> : null}
+          {going ? <p className="text-sm text-ink-soft">Show this page or your email at the door.</p> : null}
           {organisation.supportEmail || organisation.refundPolicy ? (
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-sm">
               {organisation.supportEmail ? <><dt className="text-ink-soft">Questions</dt><dd className="[overflow-wrap:anywhere]"><a className="text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>{organisation.supportEmail}</a></dd></> : null}

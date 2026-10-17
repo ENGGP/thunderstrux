@@ -3,7 +3,7 @@ import type { OrderDisputeStatus, OrderRefundStatus, OrderStatus, PaymentKind } 
 // Bump when the set of facts recorded at purchase changes.
 export const PURCHASE_SNAPSHOT_VERSION = 1;
 
-export type TicketOrderProjection = "processing" | "paid" | "free" | "review" | "failed" | "expired" | "refunded" | "refund-processing" | "disputed";
+export type TicketOrderProjection = "processing" | "paid" | "free" | "review" | "failed" | "expired" | "refunded" | "refund-processing" | "disputed" | "cancelled";
 
 // The one status shown for a ticket order. `paid` on a free order is a storage
 // compatibility detail, so the kind decides whether it reads Paid or Free, and a
@@ -16,7 +16,10 @@ export function ticketOrderProjection(order: {
   disputeStatus?: OrderDisputeStatus | null;
   externalRefundedAmount?: number;
   externalRefundReviewedAt?: Date | null;
+  cancelledAt?: Date | null;
 }): TicketOrderProjection {
+  // A cancelled free purchase reads Cancelled, never Refunded or Free.
+  if (order.cancelledAt) return "cancelled";
   if (order.disputeStatus) return "disputed";
   if (order.refundStatus === "refunded") return "refunded";
   if (order.refundStatus === "processing") return "refund-processing";

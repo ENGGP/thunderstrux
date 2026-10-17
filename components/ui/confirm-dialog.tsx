@@ -9,6 +9,7 @@ export function ConfirmDialog({
   open,
   title,
   confirmLabel,
+  cancelLabel = "Cancel",
   destructive = false,
   busy = false,
   onConfirm,
@@ -18,6 +19,8 @@ export function ConfirmDialog({
   open: boolean;
   title: string;
   confirmLabel: string;
+  // Name the safe choice when "Cancel" would be ambiguous, e.g. "Keep registration".
+  cancelLabel?: string;
   destructive?: boolean;
   busy?: boolean;
   onConfirm: () => void;
@@ -55,7 +58,7 @@ export function ConfirmDialog({
           <div className="text-sm text-ink-soft">{children}</div>
           <div className="flex flex-wrap justify-end gap-3">
             <Button disabled={busy} onClick={onCancel} type="button" variant="secondary">
-              Cancel
+              {cancelLabel}
             </Button>
             <Button
               disabled={busy}

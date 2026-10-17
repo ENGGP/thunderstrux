@@ -31,6 +31,7 @@ export async function getOrganisationOverview(
             disputeStatus: true,
             externalRefundedAmount: true,
             externalRefundReviewedAt: true,
+            cancelledAt: true,
             quantity: true,
             totalAmount: true,
             createdAt: true,

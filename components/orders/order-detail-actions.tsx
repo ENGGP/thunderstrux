@@ -17,7 +17,8 @@ export function OrderDetailActions({
   isManuallyRefunded,
   canResendTickets,
   requiresCompensationReview,
-  free = false
+  free = false,
+  disputed = false
 }: {
   orderId: string;
   buyerEmail: string | null;
@@ -28,6 +29,8 @@ export function OrderDetailActions({
   requiresCompensationReview: boolean;
   // A free registration charged nothing: no refund to record and no Stripe session.
   free?: boolean;
+  // A buyer's dispute pauses resends and every refund action until it is resolved.
+  disputed?: boolean;
   // Set when this staff member may refund this order through Stripe.
   // rest: part of the order was already refunded in Stripe; this refunds what is left.
   refund?: { amount: string; rest?: boolean; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
@@ -146,12 +149,14 @@ export function OrderDetailActions({
       <div className="grid gap-2">
         <p className="font-semibold text-ink">Ticket email</p>
         <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
-          {canResendTickets
+          {disputed
+            ? "Resends are paused while the payment is disputed."
+            : canResendTickets
             ? `Send the tickets to ${buyerEmail ?? "the buyer"} again.`
             : "No tickets have been issued for this order, so there is nothing to resend."}
         </p>
         <div>
-          <Button disabled={isBusy || !canResendTickets} onClick={resendTickets} type="button" variant="secondary">
+          <Button disabled={isBusy || !canResendTickets || disputed} onClick={resendTickets} type="button" variant="secondary">
             Resend tickets
           </Button>
         </div>
@@ -182,7 +187,7 @@ export function OrderDetailActions({
             </Button>
           </div>
         </div>
-      ) : (
+      ) : disputed ? null : (
         <>
         {refund ? (
           <div className={block}>

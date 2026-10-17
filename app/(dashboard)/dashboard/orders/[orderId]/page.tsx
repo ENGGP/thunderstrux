@@ -150,7 +150,8 @@ export default async function OrganisationOrderDetailPage({
                 : null
             }
             buyerEmail={buyer?.email ?? null}
-            canResendTickets={order.tickets.length > 0 && !order.disputeStatus}
+            canResendTickets={order.tickets.length > 0}
+            disputed={Boolean(order.disputeStatus)}
             free={order.paymentKind === "free"}
             isManuallyRefunded={order.isManuallyRefunded}
             orderId={order.id}

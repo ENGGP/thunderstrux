@@ -11,11 +11,11 @@ test("an owner drafts a plan, sees the publish check, publishes it free and arch
   await page.getByRole("link", { name: "New plan" }).first().click();
   await expect(page.getByRole("heading", { name: "New membership plan", level: 1 })).toBeVisible();
   const year = String(new Date().getFullYear() + 1);
-  await page.getByLabel("Year").selectOption(year);
+  await page.getByLabel("Year", { exact: true }).selectOption(year);
   await page.getByRole("radio", { name: "Semester 1" }).check();
   await expect(page.getByLabel("First day")).toHaveValue(`${year}-01-01`);
   await expect(page.getByLabel("Last day")).toHaveValue(`${year}-06-30`);
-  await expect(page.getByLabel("Name")).toHaveValue(`Semester 1 ${year}`);
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(`Semester 1 ${year}`);
   await page.getByLabel("Price", { exact: true }).fill("25");
   await expect(page.getByText("your society receives $22.50")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();

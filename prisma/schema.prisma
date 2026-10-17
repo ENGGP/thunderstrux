@@ -897,6 +897,7 @@ enum CommerceKind {
 
 enum CommerceLifecycleEventType {
   order_created
+  stripe_session_attached
   payment_fulfilled
   free_fulfilled
   order_failed
@@ -922,7 +923,9 @@ model CommerceOrder {
   sellerName                 String
   sellerSupportEmail         String?
   sellerStripeAccountId      String?
-  feePolicyVersion           Int?
+  feePolicyVersion           String?
+  // A pending paid order's hold ends with its Stripe Session (T21).
+  expiresAt                  DateTime?
   stripeSessionId            String?       @unique
   stripePaymentIntentId      String?
   requiresCompensationReview Boolean       @default(false)
@@ -946,6 +949,7 @@ model CommerceOrder {
   @@index([organisationId, createdAt, id])
   @@index([userId, createdAt, id])
   @@index([guestIdentityId])
+  @@index([status, expiresAt])
 }
 
 model CommerceOrderLine {

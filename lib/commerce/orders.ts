@@ -43,14 +43,15 @@ export type CreateCommerceOrderInput = {
   buyerName?: string | null;
   paymentKind: PaymentKind;
   feeAmount?: number;
-  feePolicyVersion?: number | null;
+  feePolicyVersion?: string | null;
+  expiresAt?: Date | null;
   lines: CommerceLineInput[];
   source: OrderLifecycleSource;
   actorUserId?: string | null;
 };
 
 // Checked arithmetic: integer cents, no floating point, no overflow.
-function totals(kind: CommerceKind, paymentKind: PaymentKind, lines: CommerceLineInput[], feeAmount: number) {
+export function commerceTotals(kind: CommerceKind, paymentKind: PaymentKind, lines: CommerceLineInput[], feeAmount: number) {
   if (lines.length < 1 || lines.length > maxLines) throw new CommerceOrderError(`An order has 1 to ${maxLines} lines`);
   let total = BigInt(0);
   const priced = lines.map((line) => {
@@ -96,7 +97,7 @@ export async function appendCommerceLifecycleEvent(
 // caller's transaction. The seller is read from the society here, so the
 // snapshot is what the society was at the moment of purchase.
 export async function createCommerceOrder(tx: Prisma.TransactionClient, input: CreateCommerceOrderInput) {
-  const { priced, totalAmount } = totals(input.kind, input.paymentKind, input.lines, input.feeAmount ?? 0);
+  const { priced, totalAmount } = commerceTotals(input.kind, input.paymentKind, input.lines, input.feeAmount ?? 0);
   if (input.kind === "membership" && !("userId" in input.buyer)) throw new CommerceOrderError("Memberships are bought by members, not guests");
   const seller = await tx.organisation.findUnique({
     where: { id: input.organisationId },
@@ -112,6 +113,7 @@ export async function createCommerceOrder(tx: Prisma.TransactionClient, input: C
       totalAmount,
       feeAmount: input.feeAmount ?? 0,
       feePolicyVersion: input.feePolicyVersion ?? null,
+      expiresAt: input.expiresAt ?? null,
       buyerEmailSnapshot: input.buyerEmail.trim().toLowerCase(),
       buyerNameSnapshot: input.buyerName ?? null,
       sellerName: seller.name,

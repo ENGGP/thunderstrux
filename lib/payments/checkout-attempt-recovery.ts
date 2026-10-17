@@ -9,6 +9,8 @@ import {
   CheckoutCreationInternalError,
   failPendingOrder
 } from "@/lib/payments/checkout-binding";
+import { attachCommerceSession, failPendingCommerceOrder } from "@/lib/commerce/binding";
+import { lockCommerceOrder } from "@/lib/commerce/orders";
 import { lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -26,9 +28,11 @@ export const attemptRetryDelayMs = 2 * 60 * 1000;
 export const attemptReplayWindowMs = 24 * 60 * 60 * 1000;
 const recoverableStates = ["created", "provider_uncertain"] as const;
 
+// An attempt buys a ticket order or (T21) a commerce order, never both.
 type ClaimedAttempt = {
   id: string;
-  orderId: string;
+  orderId: string | null;
+  commerceOrderId: string | null;
   providerOperationKey: string;
   providerRequest: Stripe.Checkout.SessionCreateParams | null;
   createdAt: Date;
@@ -45,11 +49,13 @@ export type AttemptRecoveryOutcome =
 async function claimNextAttempt(now: Date): Promise<ClaimedAttempt | null> {
   return prisma.$transaction(async (tx) => {
     const candidate = await tx.checkoutAttempt.findFirst({
-      where: { state: { in: [...recoverableStates] }, reconcileDueAt: { lte: now }, orderId: { not: null } },
+      where: { state: { in: [...recoverableStates] }, reconcileDueAt: { lte: now }, OR: [{ orderId: { not: null } }, { commerceOrderId: { not: null } }] },
       orderBy: [{ reconcileDueAt: "asc" }, { id: "asc" }],
-      select: { id: true, orderId: true, reconcileDueAt: true }
+      select: { id: true, orderId: true, commerceOrderId: true, reconcileDueAt: true }
     });
-    if (!candidate?.orderId || !(await lockOrder(tx, candidate.orderId))) return null;
+    if (!candidate) return null;
+    const locked = candidate.orderId ? await lockOrder(tx, candidate.orderId) : await lockCommerceOrder(tx, candidate.commerceOrderId as string);
+    if (!locked) return null;
 
     // Order, then attempt: the same order checkout's binding step uses.
     const claimed = await tx.checkoutAttempt.updateMany({
@@ -60,11 +66,10 @@ async function claimNextAttempt(now: Date): Promise<ClaimedAttempt | null> {
 
     const attempt = await tx.checkoutAttempt.findUniqueOrThrow({
       where: { id: candidate.id },
-      select: { id: true, orderId: true, providerOperationKey: true, providerRequest: true, createdAt: true }
+      select: { id: true, orderId: true, commerceOrderId: true, providerOperationKey: true, providerRequest: true, createdAt: true }
     });
     return {
       ...attempt,
-      orderId: candidate.orderId,
       providerRequest: attempt.providerRequest as unknown as Stripe.Checkout.SessionCreateParams | null
     };
   });
@@ -82,17 +87,35 @@ async function closeAttempt(attemptId: string, outcome: string, session?: { id: 
   });
 }
 
+// Fail or bind the attempt's order, whichever family it belongs to.
+function failAttemptOrder(attempt: ClaimedAttempt, message: string, outcome: string) {
+  return attempt.orderId
+    ? failPendingOrder(attempt.orderId, message, "checkout_recovery", outcome)
+    : failPendingCommerceOrder(attempt.commerceOrderId as string, outcome, "checkout_recovery");
+}
+
+async function attachAttemptSession(attempt: ClaimedAttempt, session: { id: string; url: string }) {
+  if (!attempt.orderId) return attachCommerceSession(attempt.commerceOrderId as string, session.id, session.url, "checkout_recovery");
+  try {
+    await attachStripeSession(attempt.orderId, session.id, session.url, "checkout_recovery");
+    return "attached" as const;
+  } catch (error) {
+    if (!(error instanceof CheckoutCreationInternalError)) throw error;
+    return "order_closed" as const;
+  }
+}
+
 async function recoverAttempt(attempt: ClaimedAttempt, now: Date): Promise<AttemptRecoveryOutcome> {
   // The request is stored before Stripe is called, so without it Stripe never saw this attempt.
   if (!attempt.providerRequest) {
-    await failPendingOrder(attempt.orderId, "Checkout stopped before Stripe was called", "checkout_recovery", "provider_never_called");
+    await failAttemptOrder(attempt, "Checkout stopped before Stripe was called", "provider_never_called");
     await closeAttempt(attempt.id, "provider_never_called");
     return "provider_never_called";
   }
 
   if (now.getTime() - attempt.createdAt.getTime() > attemptReplayWindowMs) {
     await closeAttempt(attempt.id, "replay_window_passed");
-    emitOperationalAlert("checkout_attempt_recovery_abandoned", { attemptId: attempt.id, orderId: attempt.orderId });
+    emitOperationalAlert("checkout_attempt_recovery_abandoned", { attemptId: attempt.id, orderId: attempt.orderId, commerceOrderId: attempt.commerceOrderId });
     return "replay_window_passed";
   }
 
@@ -103,7 +126,7 @@ async function recoverAttempt(attempt: ClaimedAttempt, now: Date): Promise<Attem
     });
   } catch (error) {
     if (isDefiniteProviderFailure(error)) {
-      await failPendingOrder(attempt.orderId, "Stripe refused the recovered checkout", "checkout_recovery", "provider_refused");
+      await failAttemptOrder(attempt, "Stripe refused the recovered checkout", "provider_refused");
       await closeAttempt(attempt.id, "provider_refused");
       return "provider_refused";
     }
@@ -115,21 +138,16 @@ async function recoverAttempt(attempt: ClaimedAttempt, now: Date): Promise<Attem
   }
 
   if (!session.url) {
-    await failPendingOrder(attempt.orderId, "Stripe Checkout Session did not include a redirect URL", "checkout_recovery", "missing_redirect_url");
+    await failAttemptOrder(attempt, "Stripe Checkout Session did not include a redirect URL", "missing_redirect_url");
     await closeAttempt(attempt.id, "missing_redirect_url", session);
     return "provider_refused";
   }
 
-  try {
-    await attachStripeSession(attempt.orderId, session.id, session.url, "checkout_recovery");
-    return "attached";
-  } catch (error) {
-    if (!(error instanceof CheckoutCreationInternalError)) throw error;
-    // The order closed first (its hold expired with the Session); binding
-    // recorded the Session on the failed attempt. A payment on it still arrives
-    // by webhook and goes to compensation review.
-    return "order_closed";
-  }
+  // order_closed: the order closed first (its hold expired with the Session);
+  // binding recorded the Session on the failed attempt. A payment on it still
+  // arrives by webhook and goes to compensation review.
+  const bound = await attachAttemptSession(attempt, { id: session.id, url: session.url });
+  return bound === "attached" ? "attached" : "order_closed";
 }
 
 export async function processCheckoutAttemptRecoveryBatch({ limit = 25, now = new Date() }: { limit?: number; now?: Date } = {}) {

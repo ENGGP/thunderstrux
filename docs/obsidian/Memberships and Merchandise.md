@@ -29,9 +29,17 @@ A `MembershipGrant` is one member's membership from one purchased line: unique p
 - **Fulfilment.** A free total grants inside checkout; a paid one only from the verified webhook. Under the member, society and order locks the grant is created once (a replay finds the line's grant), with a receipt notice in the same transaction. If the member meanwhile got overlapping dates another way, the paid order goes to compensation review (`term_overlap`) and no second grant is made. Lock order: User, Organisation, then the commerce order; plan edits take the same Organisation lock.
 - **Roster** (`lib/memberships/roster.ts`, `members:read`, owners and admins): `/dashboard/memberships/members` shows Active, Upcoming, Expired and Revoked grants, newest first with stable pages and name or email search, and Free joins as a separate list (a join gives no member prices; joiners who also hold a membership are marked). `/dashboard/memberships/members/[grantId]` shows the term, rights, source order (Paid or Free and its short reference), the free join, other terms and whether the person is staff; another society's grant is a 404.
 
-**T23b (next):** an exceptional revoke (reason, authenticator, audit, notice), cancelling a free membership in the T18c shape, and a full refund of a membership order through a commerce refund path, each revoking the grant. Until then a membership can only end by reaching its last day.
+## Ending a membership early (T23b)
 
-The leave-society regression (leaving keeps a membership) belongs with T23b, beside revocation.
+`lib/memberships/revocation.ts`, under member, society and order locks. Both actions need a reason (8 to 500 characters) and, unless staff MFA is off, a fresh authenticator code; both are audited, email the member (`membership-ended/{grantId}`) and answer a repeat with the first result. Neither moves money.
+
+- **Revoke** (`memberships:manage`, owners and admins): stops a running or upcoming membership now, with no refund (`membership.revoked`). An ended membership can't be revoked. Tickets already bought at a member price keep their price (T24b).
+- **Cancel a free membership** (`orders:refund`): the T18c shape. The free order gets `cancelledAt`, `cancelledByUserId` and `cancellationReason` (allowed only on free, paid-status orders), keeps its status and fulfilment, gains a `free_cancelled` history entry, and its grant is revoked with the same reason. Never a refund row. A paid membership is refused (`not_cancellable`): refund it instead.
+- **Leaving the society** removes only the free join; the membership stays (regression test).
+
+The member page's Manage this membership card holds the two dialogs; Cancel free membership replaces Revoke for a free membership. Commerce order pages arrive with T29, so the cancellation lives on the member page for now.
+
+**T23c (next):** a full refund of a paid membership order through Stripe (the T18a machinery extended to commerce orders: refund request, fence, worker and webhook), which revokes the grant once the refund is confirmed.
 
 ## Members-only gate (decided for T24b)
 

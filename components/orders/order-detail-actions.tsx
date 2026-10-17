@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
-import { fetchWithCsrf } from "@/lib/client/api";
+import { fetchJson, fetchWithCsrf, getClientErrorMessage } from "@/lib/client/api";
 
 export function OrderDetailActions({
+  refund = null,
   orderId,
   buyerEmail,
   stripeSessionId,
@@ -27,12 +28,35 @@ export function OrderDetailActions({
   requiresCompensationReview: boolean;
   // A free registration charged nothing: no refund to record and no Stripe session.
   free?: boolean;
+  // Set when this staff member may refund this order through Stripe.
+  refund?: { amount: string; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [confirmingRefund, setConfirmingRefund] = useState(false);
   const [refundId, setRefundId] = useState("");
+  const [refunding, setRefunding] = useState(false);
+  const [refundForm, setRefundForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
+  const [refundError, setRefundError] = useState("");
+
+  async function refundOrder() {
+    setIsBusy(true);
+    setRefundError("");
+    try {
+      await fetchJson(`/api/orders/${orderId}/refunds`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: refundForm.reason, confirmation: refundForm.confirmation, ...(refund?.needsCode ? { mfaCode: refundForm.mfaCode } : {}) })
+      });
+      setRefunding(false);
+      router.refresh();
+    } catch (failure) {
+      setRefundError(getClientErrorMessage(failure, "The refund couldn't start. Nothing was refunded."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   async function confirmCompensationRefund() {
     setIsBusy(true);
@@ -158,6 +182,18 @@ export function OrderDetailActions({
           </div>
         </div>
       ) : (
+        <>
+        {refund ? (
+          <div className={block}>
+            <p className="font-semibold text-ink">Refund through Stripe</p>
+            <p className="text-sm text-ink-soft">Refunds the whole order to the buyer&apos;s card. Owners and finance managers can refund.</p>
+            <div>
+              <Button disabled={isBusy} onClick={() => setRefunding(true)} type="button" variant="danger">
+                Refund whole order
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div className={block}>
           <p className="font-semibold text-ink">Refund recorded outside Thunderstrux</p>
           {isManuallyRefunded ? (
@@ -176,6 +212,7 @@ export function OrderDetailActions({
             </>
           )}
         </div>
+        </>
       )}
 
       {free ? null : <div className={`${block} sm:flex sm:flex-wrap sm:items-center sm:gap-3`}>
@@ -199,6 +236,33 @@ export function OrderDetailActions({
           ) : null}
         </div>
       </div>}
+
+      {refund ? (
+        <ConfirmDialog
+          busy={isBusy}
+          confirmLabel={`Refund ${refund.amount}`}
+          destructive
+          onCancel={() => setRefunding(false)}
+          onConfirm={refundOrder}
+          open={refunding}
+          title={`Refund ${refund.amount} to ${refund.buyer}?`}
+        >
+          <div className="grid gap-3">
+            {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
+            <ul className="grid list-disc gap-1 pl-5">
+              <li>{refund.ticketCount === 1 ? "The ticket stops" : `All ${refund.ticketCount} tickets stop`} working straight away.</li>
+              <li>Anyone already checked in stays in the attendance record.</li>
+              <li>The tickets don&apos;t go back on sale. You can add stock on the event if you want to.</li>
+              <li>The refund comes out of the society&apos;s Stripe balance, and the Thunderstrux fee is returned too.</li>
+            </ul>
+            <TextInput hint="Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} value={refundForm.reason} />
+            <TextInput autoComplete="off" label={`Type ${refund.reference} to confirm`} onChange={(event) => setRefundForm({ ...refundForm, confirmation: event.target.value })} value={refundForm.confirmation} />
+            {refund.needsCode ? (
+              <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
+            ) : null}
+          </div>
+        </ConfirmDialog>
+      ) : null}
 
       <ConfirmDialog
         busy={isBusy}

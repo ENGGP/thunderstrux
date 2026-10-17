@@ -356,7 +356,7 @@ async function OrderResults({
                   )}
                 </div>
                 <StatusBadge
-                  label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · refunded manually" : undefined}
+                  label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined}
                   status={order.projection}
                 />
               </div>
@@ -408,7 +408,7 @@ async function OrderResults({
                   <td className="px-3 py-3.5 text-right tabular-nums">{formatPrice(order.totalAmount)}</td>
                   <td className="px-3 py-3.5">
                     <StatusBadge
-                      label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · refunded manually" : undefined}
+                      label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined}
                       status={order.projection}
                     />
                     {order.isManuallyRefunded && order.status !== "paid" ? (

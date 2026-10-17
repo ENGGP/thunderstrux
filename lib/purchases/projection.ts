@@ -1,9 +1,9 @@
-import type { OrderStatus, PaymentKind } from "@prisma/client";
+import type { OrderRefundStatus, OrderStatus, PaymentKind } from "@prisma/client";
 
 // Bump when the set of facts recorded at purchase changes.
 export const PURCHASE_SNAPSHOT_VERSION = 1;
 
-export type TicketOrderProjection = "processing" | "paid" | "free" | "review" | "failed" | "expired";
+export type TicketOrderProjection = "processing" | "paid" | "free" | "review" | "failed" | "expired" | "refunded" | "refund-processing";
 
 // The one status shown for a ticket order. `paid` on a free order is a storage
 // compatibility detail, so the kind decides whether it reads Paid or Free, and a
@@ -12,7 +12,10 @@ export function ticketOrderProjection(order: {
   status: OrderStatus;
   paymentKind: PaymentKind;
   requiresCompensationReview: boolean;
+  refundStatus?: OrderRefundStatus | null;
 }): TicketOrderProjection {
+  if (order.refundStatus === "refunded") return "refunded";
+  if (order.refundStatus === "processing") return "refund-processing";
   if (order.requiresCompensationReview) return "review";
   if (order.status === "pending") return "processing";
   if (order.status === "paid") return order.paymentKind === "free" ? "free" : "paid";

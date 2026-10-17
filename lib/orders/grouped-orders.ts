@@ -181,6 +181,7 @@ export async function getGroupedOrganisationOrdersWithContext(
       failedAt: true,
       failureReason: true,
       requiresCompensationReview: true,
+      refundStatus: true,
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,

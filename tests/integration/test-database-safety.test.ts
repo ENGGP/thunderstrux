@@ -38,6 +38,7 @@ test("reset clears every current model including dependent and unlinked recovery
   await createReservation({ ...references, orderId: paid.id, status: "confirmed", confirmedAt: new Date(), expiresAt: new Date(Date.now() + 60000) });
   await prisma.emailOutbox.create({ data: { orderId: paid.id, mode: "automatic" } });
   await prisma.orderLifecycleEvent.create({ data: { orderId: paid.id, sequence: 1, type: "legacy_baseline", source: "legacy" } });
+  await prisma.refundRequest.create({ data: { orderId: paid.id, organisationId: organisation.id, amount: paid.totalAmount, reason: "Synthetic reset fixture", operationKey: unique("reset-refund") } });
   const failed = await createOrder({ ...references, status: "failed", failedAt: new Date(), failureReason: "synthetic_unfulfillable", requiresCompensationReview: true });
   const job = await prisma.compensationRefundJob.create({ data: { orderId: failed.id, amount: failed.totalAmount } });
   await prisma.checkoutAttempt.create({ data: { family: "ticket", actorKind: "user", actorId: member.id, operationType: "event_checkout", clientIdempotencyKey: unique("reset-key"), requestHash: "synthetic", orderId: failed.id, providerOperationKey: unique("reset-provider-key"), state: "failed" } });

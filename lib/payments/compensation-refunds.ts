@@ -121,6 +121,7 @@ async function claimNextRefund(now = new Date()): Promise<ClaimedRefund | null> 
       order.status !== "failed" ||
       !order.requiresCompensationReview ||
       order.isManuallyRefunded ||
+      order.refundStatus !== null ||
       order.compensationRefundModeSnapshot !== "automatic_full" ||
       order.tickets.length !== 0 ||
       !order.stripeSessionId ||

@@ -7,7 +7,10 @@ import { Notice } from "@/components/ui/notice";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatDateTime, formatPrice } from "@/lib/format";
+import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
+import { orderReference } from "@/lib/payments/order-refunds";
+import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
+import { roleHasPermission } from "@/lib/staff/live-authority";
 import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
@@ -74,13 +77,15 @@ export default async function OrganisationOrderDetailPage({
       <PageHeader
         badge={
           <StatusBadge
-            label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · refunded manually" : undefined}
+            label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined}
             status={order.projection}
           />
         }
         breadcrumbs={[{ label: "Orders", href: "/dashboard/orders" }]}
         title={`Order ${order.id.slice(-6).toUpperCase()}`}
       />
+
+      <RefundNotice order={order} />
 
       {order.requiresCompensationReview ? (
         <Notice title="Payment received, tickets not issued" tone="warning">
@@ -132,6 +137,11 @@ export default async function OrganisationOrderDetailPage({
           <h2 className="text-lg font-semibold text-ink">Manage this order</h2>
           <p className="mt-1 text-sm text-ink-soft">These actions do not change the payment in Stripe.</p>
           <OrderDetailActions
+            refund={
+              roleHasPermission(organisation.staffRole, "orders:refund") && order.projection === "paid" && !order.isManuallyRefunded
+                ? { amount: formatMoney(order.totalAmount), buyer: buyer?.name ?? buyer?.email ?? "the buyer", reference: orderReference(order.id), ticketCount: order.quantity, needsCode: mfaEnforcementMode() !== "off" }
+                : null
+            }
             buyerEmail={buyer?.email ?? null}
             canResendTickets={order.tickets.length > 0}
             free={order.paymentKind === "free"}
@@ -209,4 +219,40 @@ export default async function OrganisationOrderDetailPage({
       </Card>
     </DashboardShell>
   );
+}
+
+const refundFailures: Record<string, string> = {
+  provider_refused: "Stripe refused the refund. Check the society's Stripe balance, then try again.",
+  existing_refund_requires_review: "Stripe already has a refund for this payment. Review it in Stripe before refunding here.",
+  provider_identity_not_eligible: "Stripe's record of this payment doesn't match the order, or it is disputed."
+};
+
+// Where the latest Thunderstrux refund stands. The tickets stay valid unless it succeeded.
+function RefundNotice({ order }: { order: Awaited<ReturnType<typeof getOrganisationOrderDetail>> }) {
+  const refund = order.latestRefund;
+  if (!refund) return null;
+  const by = refund.actor ? [refund.actor.firstName, refund.actor.lastName].filter(Boolean).join(" ") || refund.actor.email : "a staff member";
+  if (order.refundStatus === "refunded") {
+    return (
+      <Notice role="status" title={`Refunded ${formatMoney(refund.amount)}`} tone="success">
+        <p>Refunded {formatDateTime(refund.resolvedAt)} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid and the buyer was emailed.</p>
+      </Notice>
+    );
+  }
+  if (order.refundStatus === "processing") {
+    return refund.status === "uncertain" ? (
+      <Notice role="status" title="Checking the refund with Stripe">
+        <p>We didn&apos;t get Stripe&apos;s answer. We&apos;re checking before anything is retried, so the buyer can&apos;t be refunded twice.</p>
+      </Notice>
+    ) : (
+      <Notice role="status" title="Refund processing">
+        <p>Stripe has the refund for {formatMoney(refund.amount)}. Banks usually take 5 to 10 business days to return the money.</p>
+      </Notice>
+    );
+  }
+  return refund.status === "failed" ? (
+    <Notice title="The last refund didn't go through" tone="danger">
+      <p>{refundFailures[refund.lastErrorCode ?? ""] ?? "Stripe didn't complete the refund."} The tickets are still valid.</p>
+    </Notice>
+  ) : null;
 }

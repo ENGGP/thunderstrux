@@ -6,6 +6,7 @@ import { emitMetric } from "@/lib/ops/metrics";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
+import { reconcileOrderRefundEvent } from "@/lib/payments/order-refunds";
 import {
   getStripe,
   isLiveStripeKey,
@@ -118,7 +119,10 @@ export async function POST(request: Request) {
     case "refund.created":
     case "refund.updated":
     case "refund.failed": {
-      await reconcileRefundEvent(event);
+      // An ordinary refund names its request; anything else is a compensation refund or unknown.
+      const refund = event.data.object as { metadata?: Record<string, string> | null };
+      if (refund.metadata?.refundRequestId) await reconcileOrderRefundEvent(event);
+      else await reconcileRefundEvent(event);
       return NextResponse.json({ received: true });
     }
 

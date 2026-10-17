@@ -40,6 +40,7 @@ model User {
   ownedOrganisation       Organisation?        @relation("OrganisationAccount")
   notificationJobs        NotificationOutbox[]
   orders                  Order[]
+  refundRequests          RefundRequest[]
   reservations            TicketReservation[]
 
   @@index([accountRole])
@@ -109,6 +110,7 @@ model Organisation {
   tickets             Ticket[]
   reservations        TicketReservation[]
   assets              Asset[]
+  refundRequests      RefundRequest[]
 
   @@index([accountUserId])
   @@index([stripeAccountId])
@@ -335,6 +337,10 @@ model Order {
   buyerIdentityProvenance String?
   // A verified guest buyer (T16); userId stays null until an explicit member claim.
   guestIdentityId         String?
+  // T18a: the financial fence. Set while an ordinary refund is in flight and
+  // once it succeeds; compensation refunds never start while it is set.
+  refundStatus            OrderRefundStatus?
+  stripePaymentIntentId   String?
   // Purchase facts recorded when the order is created; null on legacy rows means unknown.
   paymentKind             PaymentKind
   fulfilledAt             DateTime?
@@ -357,6 +363,7 @@ model Order {
   compensationRefundJob      CompensationRefundJob?
   checkoutAttempt            CheckoutAttempt?
   guestAccessGrants          GuestAccessGrant[]
+  refundRequests             RefundRequest[]
 
   @@index([organisationId])
   @@index([eventId])
@@ -463,12 +470,50 @@ model CompensationRefundJob {
 model StripeRefundWebhookEvent {
   stripeEventId   String                @id
   refundJobId     String?
+  refundRequestId String?
+  refundRequest   RefundRequest?        @relation(fields: [refundRequestId], references: [id], onDelete: SetNull)
   eventType       String
   eventCreatedAt  DateTime
   processedAt     DateTime              @default(now())
   refundJob       CompensationRefundJob? @relation(fields: [refundJobId], references: [id], onDelete: SetNull)
 
   @@index([refundJobId, eventCreatedAt])
+  @@index([refundRequestId, eventCreatedAt])
+}
+
+// One staff-initiated whole-order refund (T18a). Stripe is called outside the
+// database with operationKey as its idempotency key; an unknown outcome is
+// looked up at Stripe before the same key is ever sent again.
+model RefundRequest {
+  id                    String              @id @default(cuid())
+  orderId               String
+  organisationId        String
+  amount                Int
+  currency              String              @default("aud")
+  reason                String
+  actorUserId           String?
+  operationKey          String              @unique
+  status                RefundRequestStatus @default(pending)
+  stripePaymentIntentId String?
+  stripeRefundId        String?             @unique
+  destinationAccountId  String?
+  providerStatus        String?
+  attempts              Int                 @default(0)
+  nextAttemptAt         DateTime            @default(now())
+  processingToken       String?
+  processingStartedAt   DateTime?
+  lastErrorCode         String?
+  lastProviderEventAt   DateTime?
+  resolvedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  order                 Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  organisation          Organisation        @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  actor                 User?               @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  webhookEvents         StripeRefundWebhookEvent[]
+
+  @@index([orderId, createdAt])
+  @@index([status, nextAttemptAt])
 }
 
 model Ticket {
@@ -684,6 +729,18 @@ enum ReservationStatus {
   expired
 }
 
+enum OrderRefundStatus {
+  processing
+  refunded
+}
+
+enum RefundRequestStatus {
+  pending
+  uncertain
+  succeeded
+  failed
+}
+
 enum OrderLifecycleEventType {
   legacy_baseline
   order_created
@@ -700,6 +757,10 @@ enum OrderLifecycleEventType {
   compensation_refund_pending
   compensation_refunded
   compensation_refund_failed
+  refund_requested
+  refund_pending
+  refunded
+  refund_failed
   email_enqueued
   email_retry_scheduled
   email_provider_accepted

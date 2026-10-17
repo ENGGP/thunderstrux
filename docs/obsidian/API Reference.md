@@ -546,6 +546,9 @@ Query params:
 - `limit`: optional integer from 1 to 100.
 - `cursor`: optional opaque cursor returned by `pageInfo.nextCursor` or `pageInfo.previousCursor`.
 - `direction`: optional, either `next` or `prev`; defaults to `next`.
+- `q`: optional search, 2 to 100 characters, by name, email, order or ticket reference (T19b). A search also returns void and under-review tickets.
+
+Since T19b each ticket also carries `checkedInBy`, `validity`, `validityReason`, `validityChangedAt`, `issueSequence`, `orderQuantity` and `guest`. Errors map through `mapRouteError`.
 
 Response:
 
@@ -622,7 +625,7 @@ Status:
 - `401` unauthenticated.
 - `403` insufficient live authority/capability or required MFA.
 - `404` ticket missing or not owned by the current organisation.
-- `409` ticket is already checked in.
+- `409` with detail `reason`: `already_checked_in`, `not_valid` (void) or `under_review` (disputed). Since T19b a void or under-review ticket is refused with its reason rather than as missing.
 
 ### `POST /api/tickets/[ticketId]/check-out`
 
@@ -655,7 +658,7 @@ Status:
 - `401` unauthenticated.
 - `403` insufficient live authority/capability or required MFA.
 - `404` ticket missing or not owned by the current organisation.
-- `409` ticket is already unused.
+- `409` with detail `reason`: `not_checked_in`, `not_valid` or `under_review`.
 
 ## Orders
 

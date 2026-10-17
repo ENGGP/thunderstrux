@@ -67,7 +67,7 @@ export default async function MyTicketsPage({ searchParams }: { searchParams: Pr
               <h2 className="text-[17px] font-semibold text-ink [overflow-wrap:anywhere]" id={`event-${event.id}`}>
                 <Link className="underline-offset-4 hover:underline" href={`/events/${event.id}`}>{event.title}</Link>{" "}
                 <span className="font-normal text-ink-soft">
-                  · {formatDateTime(event.startTime, { dateStyle: "full", timeZone })} {zoneCity(timeZone)} time · {event.location}
+                  · {formatDateTime(event.startTime, { dateStyle: "full", timeZone })} {zoneCity(timeZone)} · {event.location}
                 </span>
               </h2>
               <div className="grid gap-4 sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))]">

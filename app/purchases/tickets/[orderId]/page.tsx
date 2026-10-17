@@ -85,7 +85,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
           <StatusBadge label={badge.label} status={badge.status} />
         </div>
         <p className="text-ink-soft [overflow-wrap:anywhere]">
-          {formatDateRange(event.startTime, event.endTime, organisation.timeZone)}, {zoneCity(organisation.timeZone)} time · {event.location}
+          {formatDateRange(event.startTime, event.endTime, organisation.timeZone)}, {zoneCity(organisation.timeZone)} · {event.location}
         </p>
       </div>
       <StatusNotice order={order} />

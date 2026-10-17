@@ -164,6 +164,7 @@ describe("whole-order refunds", () => {
     const fixture = await paidOrder();
     // "enroll" lets the dashboard through without a grant, so the route's own code check answers.
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
+    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
     setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
     const send = (body: Record<string, string>) => refundRoute(
       jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/refunds`, { reason: "Buyer asked for a refund.", confirmation: orderReference(fixture.order.id), ...body }),

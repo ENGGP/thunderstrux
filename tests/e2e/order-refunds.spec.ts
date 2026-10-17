@@ -35,5 +35,6 @@ test("finance staff see the refund confirmation, a wrong reference refunds nothi
   await expect(page.getByText("Refunded $30.00")).toBeVisible();
   await expect(page.getByRole("button", { name: "Refund whole order" })).toHaveCount(0);
   await page.goto("/dashboard/orders");
-  await expect(page.getByText("Refunded").first()).toBeVisible();
+  // The list renders a phone copy too; check the one on screen.
+  await expect(page.getByText("Refunded", { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });

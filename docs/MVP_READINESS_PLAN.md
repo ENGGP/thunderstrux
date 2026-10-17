@@ -463,7 +463,7 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 ### Commerce and memberships
 
 #### T20 — Additive commerce orders and history
-- [ ] Complete. **Dependencies:** T02, T05, T10, T14, T17.
+- [x] Complete. Merged as `1c17e15` ([PR #92](https://github.com/ENGGP/thunderstrux/pull/92)). **Dependencies:** T02, T05, T10, T14, T17.
 - **Schema/services:** CommerceOrder/Line/Lifecycle per section 3.3; numeric constraints, owner/kind checks, immutable snapshots, unique provider IDs; lib/commerce/orders/lifecycle, finance/buyer DTOs and /api/commerce/orders/[id]. Shared compensation/refund adapters, not ticket schema replacement.
 - **Transactions:** Lines/arithmetic/owner validated in order transaction; sequence locking and no duplicate business events; references archived not erased.
 - **Tests/done:** Fresh/populated migrations/restore, mixed-kind/cross-tenant line rejection, snapshot durability, concealed foreign targets, cursor ties and ticket regression pass.

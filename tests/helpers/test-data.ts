@@ -27,6 +27,12 @@ export function futureDate(days = 7, hour = 10) {
   return date;
 }
 
+// One real bcrypt hash of the shared test password, made once per run: every
+// fixture user still signs in through the normal password check, without
+// paying about 70ms of hashing per user created.
+let testPasswordHash: Promise<string> | null = null;
+const sharedTestPasswordHash = () => (testPasswordHash ??= hash("password123", 10));
+
 export async function createUser({
   email = `${unique("user")}@example.com`,
   accountRole = "member"
@@ -39,7 +45,7 @@ export async function createUser({
       email,
       emailVerifiedAt: new Date(),
       accountRole,
-      password: await hash("password123", 10),
+      password: await sharedTestPasswordHash(),
       firstName: accountRole === "member" ? "Test" : null,
       lastName: accountRole === "member" ? "Member" : null,
       onboardingCompletedAt: accountRole === "member" ? new Date() : null

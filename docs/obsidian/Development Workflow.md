@@ -24,6 +24,27 @@ The integration launcher and SQL reset helper share one URL guard: PostgreSQL on
 
 The real Redis integration regression also requires `INTEGRATION_REDIS_URL` pointing to a run-owned disposable Redis service. The baseline Docker runner and manual Dependency Validation job provide it automatically. It uses a random key prefix and deletes only those keys; its TCP outage fixture interrupts only the test client's connections. Never supply development or production Redis for integration tests.
 
+### Integration test speed (2026-10-17)
+
+Before every integration test, `tests/helpers/db-reset.ts` empties the disposable `_test` database, and fixture users are created by `tests/helpers/test-data.ts`. Two changes made the suite about ten times faster with the same tests, the same assertions and the same code paths:
+
+- **Children-first `DELETE` instead of `TRUNCATE`.** The reset used `TRUNCATE ... RESTART IDENTITY CASCADE`, which replaces the files of every table and index and took about 480 ms per test whether the database held ten rows or none: about 4 of the suite's 11 minutes. It now runs one `DO` block of `DELETE` statements, about 4 ms. The order is planned once per run from the database's own foreign keys, children before parents, so no `ON DELETE SET NULL` or `CASCADE` action fires and the update-guarding triggers (append-only commerce history, fixed purchase snapshots, buyer capture, account closure) never see a write. The one key cycle, an organisation's logo and cover pointing at its assets and each asset pointing back, is broken first by clearing those nullable columns. A future cycle with nothing nullable to clear falls back to the old `TRUNCATE`.
+- **One shared password hash.** Every fixture user hashed `password123` with bcrypt (about 60 ms each, several users per test). The hash is now made once per run and reused. It is still a real bcrypt hash, so sign-in, password change, recovery and closure tests still go through the normal password check; signup and password changes still hash through application code.
+
+Measured: the integration suite went from 674 s (baseline `p216-3a8e989002acb0b37bee0c5a`) to 70.6 s (baseline `p216-8aeddde4a63a314200b94b0c`), and the whole baseline from about 13.5 to 2.6 minutes, with all 511 tests in 67 files passing both times.
+
+Upsides: each test still starts from an empty database; the reset needs no table list (a new table is covered automatically, and `test-database-safety.test.ts` still checks that every model is empty after a reset); nothing about test isolation, ordering or parallelism changed.
+
+Downsides and limits:
+
+- `DELETE` does not reset sequences (`RESTART IDENTITY`). Every id is a cuid string, so nothing depends on them; a future integer id would keep counting across tests.
+- The reset plan is computed once per run. A test that adds a table or foreign key at run time would not be covered; none do.
+- A future trigger that blocks `DELETE`, or an `UPDATE` trigger on a table in a key cycle, would make the reset fail loudly rather than silently: fix the plan or the trigger then.
+- Fixture users share one stored hash, so a test comparing two fixture users' hashes would see them equal. None does; a test needing distinct hashes should hash its own.
+- Large tables would make `DELETE` slower than `TRUNCATE`; test data stays tiny, so this does not arise.
+
+Not done, and why: running test files in parallel (one database per worker) would cut the remaining 70 s further but needs per-worker Redis prefixes and fixes for shared module state, which is a bigger and riskier change; a fixture that signs browser tests in without the login form would speed up `pnpm test:e2e` but stop most browser tests exercising the real sign-in.
+
 Do not run type generation/builds in an active production server container or integration resets in the development stack. Prefer the isolated baseline runner so generated Next/Prisma metadata remains inside its container. Record actual revision/counts/run IDs and cleanup rather than copying historical test totals. Run the runner safety suite with `pnpm test:e2e:guards`; unsafe database and occupied-port regressions require no real database or provider credentials.
 
 Port 3100 conflicts are refused before creating an E2E run. Cleanup uses generated project IDs and ownership checks; repeat `pnpm test:e2e:cleanup -- <run-id>` to verify a completed run. Preserve interrupted payment recovery manifests and their required volumes until recovery succeeds. Never delete unrelated Docker resources or the entire `tmp` tree.

@@ -128,3 +128,39 @@ export function Select({
     </Field>
   );
 }
+
+// Dollars with a fixed "$" prefix; callers parse the text to cents with
+// parseMoneyInput on save (EVT-002), so no float ever holds money.
+export function MoneyInput({
+  label = "Price",
+  hint,
+  error,
+  value,
+  disabled,
+  onChange
+}: Omit<FieldProps, "label"> & { label?: string; value: string; disabled?: boolean; onChange: (value: string) => void }) {
+  const id = useId();
+
+  return (
+    <Field error={error} hint={hint} id={id} label={label}>
+      {(describedBy) => (
+        <div className="flex h-11 items-center rounded-control border border-line-strong bg-surface has-[[aria-invalid]]:border-danger has-[:disabled]:bg-surface-subtle">
+          <span aria-hidden="true" className="pl-3 text-ink-soft">
+            $
+          </span>
+          <input
+            aria-describedby={describedBy}
+            aria-invalid={error ? true : undefined}
+            className="h-full w-full min-w-0 bg-transparent px-2 text-base text-ink disabled:cursor-not-allowed"
+            disabled={disabled}
+            id={id}
+            inputMode="decimal"
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="0.00"
+            value={value}
+          />
+        </div>
+      )}
+    </Field>
+  );
+}

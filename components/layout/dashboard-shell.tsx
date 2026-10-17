@@ -26,6 +26,10 @@ const navGroups: Array<{ label?: string; items: NavItem[] }> = [
     ]
   },
   {
+    label: "Community",
+    items: [{ label: "Memberships", href: "/dashboard/memberships", icon: "badge", permission: "memberships:manage" }]
+  },
+  {
     label: "Settings",
     items: [
       { label: "Society profile", href: "/dashboard/settings/profile", icon: "profile", permission: "organisation:settings" },

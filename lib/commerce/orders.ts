@@ -33,6 +33,8 @@ export type CommerceLineInput = {
   variant?: string | null;
   termStartsAt?: Date | null;
   termEndsAt?: Date | null;
+  // The plan a membership line buys (T22); the database keeps it in the order's society.
+  membershipProductId?: string | null;
 };
 
 export type CreateCommerceOrderInput = {
@@ -125,7 +127,8 @@ export async function createCommerceOrder(tx: Prisma.TransactionClient, input: C
     data: priced.map((line, index) => ({
       orderId: order.id, organisationId: input.organisationId, kind: input.kind, lineNumber: index + 1,
       quantity: line.quantity, unitAmount: line.unitAmount, lineAmount: line.lineAmount, currency: order.currency,
-      nameSnapshot: line.name.trim(), variantSnapshot: line.variant ?? null, termStartsAt: line.termStartsAt ?? null, termEndsAt: line.termEndsAt ?? null
+      nameSnapshot: line.name.trim(), variantSnapshot: line.variant ?? null, termStartsAt: line.termStartsAt ?? null, termEndsAt: line.termEndsAt ?? null,
+      membershipProductId: line.membershipProductId ?? null
     }))
   });
   await appendCommerceLifecycleEvent(tx, {

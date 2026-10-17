@@ -431,7 +431,8 @@ export async function createEventCheckout({
       },
       // A guest comes back to their order page; their session cookie opens it, the address alone does not.
       success_url: guest ? `${pendingOrder.appUrl}/guest/orders/${pendingOrder.id}` : `${pendingOrder.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${pendingOrder.appUrl}/cancel`,
+      // The cancel page names the order only to whoever bought it.
+      cancel_url: `${pendingOrder.appUrl}/cancel?order=${pendingOrder.id}`,
       expires_at: stripeExpiresAt,
       metadata: {
         orderId: pendingOrder.id,

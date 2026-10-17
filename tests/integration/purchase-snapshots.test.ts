@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { loadTicketDeliveryOrder, renderTicketEmail } from "@/lib/email/ticket-delivery";
 import { getGroupedOrganisationOrdersWithContext } from "@/lib/orders/grouped-orders";
-import { getMemberTicketOrders } from "@/lib/orders/member-tickets";
+import { getWalletTickets } from "@/lib/purchases/ticket-purchases";
 import { getOrganisationOrderDetail } from "@/lib/orders/order-detail";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
@@ -35,7 +35,6 @@ vi.mock("@/lib/stripe", () => {
   };
 });
 
-const page = { limit: 25, direction: "next" as const };
 
 // A real purchase through checkout and the webhook: 2 x $19.99 makes the fee round (399.8 -> 400).
 async function buyTwoEarlyBirdTickets() {
@@ -124,8 +123,8 @@ describe("purchase snapshots and ticket validity", () => {
     expect(detail).toMatchObject({ purchasedTicketType: "Early bird", unitPrice: 1999, buyerIdentityProvenance: "purchase" });
     expect(detail.user).toMatchObject({ email: member.email, firstName: "Test" });
 
-    const wallet = await getMemberTicketOrders(member.id, page);
-    expect(wallet.items[0].purchasedTicketTypeName).toBe("Early bird");
+    const wallet = await getWalletTickets(member.id, "upcoming");
+    expect(wallet.tickets[0].order.purchasedTicketTypeName).toBe("Early bird");
 
     const mail = renderTicketEmail(await loadTicketDeliveryOrder(order.id));
     expect(mail.text).toContain("Ticket: Early bird");
@@ -159,13 +158,13 @@ describe("purchase snapshots and ticket validity", () => {
     expect((await getOrganisationOrderDetail(owner.organisation.id, legacy.id)).purchasedTicketType).toBe(label);
     expect(renderTicketEmail(await loadTicketDeliveryOrder(legacy.id)).text).toContain(`Ticket: ${label}`);
     expect((await getOrganisationEventTickets(owner.organisation.id, event.id)).tickets[0].ticketTypeName).toBe(label);
-    const walletOrder = (await getMemberTicketOrders(member.id, page)).items[0];
-    expect(purchasedTicketTypeLabel(walletOrder.purchasedTicketTypeName, walletOrder.ticketType.name)).toBe(label);
+    const walletTicket = (await getWalletTickets(member.id, "upcoming")).tickets[0];
+    expect(purchasedTicketTypeLabel(walletTicket.order.purchasedTicketTypeName, walletTicket.ticketType.name)).toBe(label);
     // The unknown name is never written back.
     expect((await prisma.order.findUniqueOrThrow({ where: { id: legacy.id } })).purchasedTicketTypeName).toBeNull();
   });
 
-  test("void and under-review tickets leave the wallet, the email, the door list and check-in", async () => {
+  test("void and under-review tickets move to Not valid and leave the email, the door list and check-in", async () => {
     const owner = await createOrganisationAccount();
     const member = await createMember();
     const event = await createEvent({ organisationId: owner.organisation.id, status: "published" });
@@ -192,7 +191,8 @@ describe("purchase snapshots and ticket validity", () => {
     await prisma.ticket.update({ where: { id: review.id }, data: { validity: "refund_review", validityReason: "dispute", validityChangedAt: changedAt } });
     setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
 
-    expect((await getMemberTicketOrders(member.id, page)).items[0].tickets.map((ticket) => ticket.id)).toEqual([valid.id]);
+    expect((await getWalletTickets(member.id, "upcoming")).tickets.map((ticket) => ticket.id)).toEqual([valid.id]);
+    expect((await getWalletTickets(member.id, "not-valid")).tickets.map((ticket) => ticket.id).sort()).toEqual([voided.id, review.id].sort());
     const mail = renderTicketEmail(await loadTicketDeliveryOrder(order.id)).text;
     expect(mail).toContain(valid.id);
     expect(mail).not.toContain(voided.id);

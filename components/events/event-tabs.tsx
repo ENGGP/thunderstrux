@@ -3,6 +3,7 @@ import { EventActions } from "@/components/events/event-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { Icon } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
 import type { DashboardEvent } from "@/lib/events/event-lifecycle";
 import { formatDateRange, formatDateTime } from "@/lib/format";
 import {
@@ -20,18 +21,8 @@ export function SaleBadge({ event }: { event: Pick<DashboardEvent, "status" | "s
   return <StatusBadge status={!event.salesOpen ? "sales-closed" : event.soldOut ? "sold-out" : "sales-open"} />;
 }
 
-// Link tabs share one look: the events list views and an event's sections.
-// The bar scrolls sideways on narrow screens instead of wrapping.
-export const tabBarClasses =
-  "flex overflow-x-auto shadow-[inset_0_-1px_0_var(--color-line)] sm:gap-1";
-
-export function tabClasses(active: boolean) {
-  return `inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-[3px] px-3 text-[15px] sm:px-4 ${
-    active
-      ? "border-brand font-semibold text-brand-ink"
-      : "border-transparent font-medium text-ink-soft hover:text-ink"
-  }`;
-}
+// Link tabs share one look, now in components/ui/link-tabs (T19a).
+export { tabBarClasses, tabClasses };
 
 const sections: Array<{ id: EventTab; label: string; permission: OrganisationPermission }> = [
   { id: "summary", label: "Summary", permission: "analytics:read" },

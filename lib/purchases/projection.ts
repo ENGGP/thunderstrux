@@ -34,3 +34,15 @@ export function ticketOrderProjection(order: {
 export function purchasedTicketTypeLabel(purchasedName: string | null, currentName: string) {
   return purchasedName ?? `${currentName} (historical label unavailable)`;
 }
+
+// The words a buyer sees for their own order (design round A2 batch 3): the
+// same states staff see, said from the buyer's side.
+export function buyerPurchaseBadge(order: Parameters<typeof ticketOrderProjection>[0]): { status: TicketOrderProjection; label?: string } {
+  const projection = ticketOrderProjection(order);
+  if (projection === "failed" || projection === "expired") return { status: "expired", label: "Didn't complete" };
+  if (projection === "processing") return { status: projection, label: "Confirming payment" };
+  if (projection === "cancelled") return { status: projection, label: "Cancelled by the society" };
+  // Payment review is either a charge awaiting compensation or a partial refund made in Stripe.
+  if (projection === "review") return { status: projection, label: order.requiresCompensationReview ? "Payment issue" : "Partly refunded" };
+  return { status: projection };
+}

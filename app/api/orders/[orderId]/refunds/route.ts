@@ -6,7 +6,8 @@ import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrgani
 import { OrderRefundError, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
+import { mfaGrantDigest } from "@/lib/security/csrf";
+import { MfaConfigurationError, MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { validateJson } from "@/lib/validators";
 
@@ -34,8 +35,15 @@ export async function POST(request: Request, context: RouteContext) {
       const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [actor.id] });
       if (codeLimit) return codeLimit;
     }
+    // Verified here, not in the refund service, which workers load without the auth secret.
+    if (mfaEnforcementMode() !== "off") {
+      if (!body.data.mfaCode) throw new MfaInputError("Enter your authenticator code to refund this order");
+      const digest = mfaGrantDigest(actor.mfaSessionId);
+      if (!digest) throw new MfaRequiredError();
+      await verifyStaffMfa(actor.id, body.data.mfaCode, digest);
+    }
     const { orderId } = await context.params;
-    const result = await requestOrderRefund({ organisationId: organisation.id, orderId, actor, ...body.data });
+    const result = await requestOrderRefund({ organisationId: organisation.id, orderId, actor, reason: body.data.reason, confirmation: body.data.confirmation });
     return NextResponse.json(result, { status: result.status === "succeeded" ? 200 : 202, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return mapRouteError(error, {

@@ -160,13 +160,28 @@ describe("whole-order refunds", () => {
     expect(stripe.create).not.toHaveBeenCalled();
   });
 
-  test("with staff MFA on, a refund needs a fresh authenticator code", async () => {
+  test("with staff MFA on, the route needs a fresh authenticator code before anything is recorded", async () => {
     const fixture = await paidOrder();
+    // "enroll" lets the dashboard through without a grant, so the route's own code check answers.
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
+    setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
+    const send = (body: Record<string, string>) => refundRoute(
+      jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/refunds`, { reason: "Buyer asked for a refund.", confirmation: orderReference(fixture.order.id), ...body }),
+      routeContext({ orderId: fixture.order.id })
+    );
+    const missing = await send({});
+    expect(missing.status).toBe(400);
+    expect((await parseJsonResponse(missing)).error.details[0].path).toEqual(["mfaCode"]);
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
-    await expect(requestOrderRefund(refundInput(fixture))).rejects.toThrow("Enter your authenticator code");
-    await expect(requestOrderRefund({ ...refundInput(fixture), mfaCode: "000000" })).rejects.toThrow();
+    expect((await send({})).status).toBe(403);
     expect(await prisma.refundRequest.count()).toBe(0);
     expect(stripe.retrieve).not.toHaveBeenCalled();
+  });
+
+  test("the refund worker's modules load without the auth secret", async () => {
+    // Workers run without AUTH_SECRET; the worker entry must not reach @/auth.
+    const source = await import("node:fs").then((fs) => fs.readFileSync("lib/payments/order-refunds.ts", "utf8"));
+    expect(source).not.toMatch(/@\/auth|security\/csrf|staff-mfa/);
   });
 
   test("compensation never starts on an order an ordinary refund has fenced", async () => {

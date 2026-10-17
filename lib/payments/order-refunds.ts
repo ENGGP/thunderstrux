@@ -8,8 +8,6 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { isDefiniteProviderFailure } from "@/lib/payments/checkout-attempts";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
-import { mfaGrantDigest } from "@/lib/security/csrf";
-import { MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
 import { getStripe } from "@/lib/stripe";
 
 // Staff-initiated whole-order refunds (T18a). The order's refundStatus is the
@@ -45,7 +43,7 @@ class RefundVerificationError extends Error {
 // The short order reference staff type to confirm, as shown in the dashboard.
 export const orderReference = (orderId: string) => orderId.slice(-6).toUpperCase();
 
-type Actor = { id: string; mfaSessionId?: string };
+type Actor = { id: string };
 
 function providerStatus(refund: Stripe.Refund): RefundRequestStatus {
   if (refund.status === "succeeded") return "succeeded";
@@ -62,14 +60,8 @@ export async function requestOrderRefund(input: {
   actor: Actor;
   reason: string;
   confirmation: string;
-  mfaCode?: string;
 }) {
-  if (mfaEnforcementMode() !== "off") {
-    if (!input.mfaCode) throw new MfaInputError("Enter your authenticator code to refund this order");
-    const digest = mfaGrantDigest(input.actor.mfaSessionId);
-    if (!digest) throw new MfaRequiredError();
-    await verifyStaffMfa(input.actor.id, input.mfaCode, digest);
-  }
+  // The caller has verified the staff member's authenticator code (see the route).
   const reason = input.reason.trim();
   const token = randomUUID();
   const now = new Date();

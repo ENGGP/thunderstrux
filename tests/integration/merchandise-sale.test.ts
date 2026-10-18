@@ -7,7 +7,8 @@ import { createCommerceCheckout } from "@/lib/commerce/checkout";
 import { expireStaleCommerceOrders } from "@/lib/commerce/reconciliation";
 import { prisma } from "@/lib/db";
 import { decryptNotification } from "@/lib/email/notification-crypto";
-import { guestCookieName, readGuestSession, redeemGuestAccess, requestGuestAccess } from "@/lib/guest/guest-access";
+import { processNotificationClaim } from "@/lib/email/notification-outbox";
+import { GuestAccessError, guestCookieName, readGuestSession, redeemGuestAccess, requestGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
 import { updateProduct } from "@/lib/merchandise/catalogue";
 import { quoteVersion } from "@/lib/merchandise/sale";
 import { quoteBasket, shopProduct } from "@/lib/merchandise/shop";
@@ -68,8 +69,8 @@ function buy(organisationId: string, buyer: { userId: string } | { guest: { gran
   return createCommerceCheckout({ family: "merchandise", organisationId, buyer, selection: selectionFor(items), expectedTotal: totalOf(items), idempotencyKey });
 }
 
-async function verifiedGuest() {
-  const identity = await prisma.guestIdentity.create({ data: { email: `${unique("guest")}@example.com`, verifiedAt: new Date() } });
+async function verifiedGuest(email = `${unique("guest")}@example.com`) {
+  const identity = await prisma.guestIdentity.upsert({ where: { email }, create: { email, verifiedAt: new Date() }, update: {} });
   const grant = await prisma.guestAccessGrant.create({
     data: { guestIdentityId: identity.id, purpose: "checkout", tokenDigest: unique("digest"), expiresAt: new Date(Date.now() + 60_000), consumedAt: new Date(), sessionDigest: unique("session"), sessionExpiresAt: new Date(Date.now() + 3_600_000) }
   });
@@ -92,6 +93,15 @@ async function deliverPaid(commerceOrderId: string, overrides: Record<string, un
 const orderOf = async (attemptId: string) => (await prisma.checkoutAttempt.findUniqueOrThrow({ where: { id: attemptId } })).commerceOrderId as string;
 const stock = async (variantId: string) => prisma.merchandiseVariant.findUniqueOrThrow({ where: { id: variantId }, select: { remaining: true, version: true } });
 const receipts = (commerceOrderId: string) => prisma.notificationOutbox.count({ where: { eventKey: `merchandise-receipt/${commerceOrderId}` } });
+const tokenIn = (job: { id: string; encryptedPayload: string }) => {
+  const { text } = decryptNotification(job.encryptedPayload, job.id) as { text: string };
+  return { text, token: new URLSearchParams(new URL(text.split("\n\n").at(-1)!).hash.slice(1)).get("token")! };
+};
+async function readOrder(orderId: string, sessionId?: string) {
+  const request = new Request(`http://localhost:3000/api/commerce/orders/${orderId}`, { headers: sessionId ? { cookie: `${guestCookieName}=${sessionId}` } : {} });
+  const response = await commerceOrderRoute(request, routeContext({ orderId }));
+  return { status: response.status, body: await parseJsonResponse(response) };
+}
 
 describe("merchandise sale", () => {
   test("two buyers race for the last unit: one holds it, the other is refused, and the paid webhook takes it from stock once", async () => {
@@ -120,6 +130,8 @@ describe("merchandise sale", () => {
     expect(await stock(variants[0].id)).toEqual({ remaining: 0, version: 2 });
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: commerceOrderId } })).toMatchObject({ status: "paid", requiresCompensationReview: false });
     expect(await receipts(commerceOrderId)).toBe(1);
+    // A member's receipt stays a plain business notice: their account opens the order.
+    expect(await prisma.notificationOutbox.findFirst({ where: { eventKey: `merchandise-receipt/${commerceOrderId}` } })).toMatchObject({ template: "business_notice", organisationId: organisation.id, guestAccessGrantId: null });
   });
 
   test("baskets listing options in opposite orders both finish, and a basket one option can't fill takes nothing", async () => {
@@ -238,16 +250,11 @@ describe("merchandise sale", () => {
     const session = async (email: string) => {
       await requestGuestAccess(email);
       const job = await prisma.notificationOutbox.findFirstOrThrow({ where: { recipient: email, status: "pending" }, orderBy: { createdAt: "desc" } });
-      const { text } = decryptNotification(job.encryptedPayload, job.id) as { text: string };
-      const { sessionId } = await redeemGuestAccess(new URLSearchParams(new URL(text.split("\n\n").at(-1)!).hash.slice(1)).get("token")!);
+      const { sessionId } = await redeemGuestAccess(tokenIn(job).token);
       const guest = (await readGuestSession(sessionId))!;
       return { sessionId, guest: { grantId: guest.grantId, guestIdentityId: guest.guestIdentityId } };
     };
-    const read = async (orderId: string, sessionId?: string) => {
-      const request = new Request(`http://localhost:3000/api/commerce/orders/${orderId}`, { headers: sessionId ? { cookie: `${guestCookieName}=${sessionId}` } : {} });
-      const response = await commerceOrderRoute(request, routeContext({ orderId }));
-      return { status: response.status, body: await parseJsonResponse(response) };
-    };
+    const read = readOrder;
     clearMockSession();
     const email = `${unique("guest")}@example.com`;
     const first = await session(email);
@@ -265,5 +272,61 @@ describe("merchandise sale", () => {
     const member = await createMember();
     setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
     expect((await read(bought.commerceOrderId)).status).toBe(404);
+  });
+
+  test("a guest's receipt link opens that one order on any device, once, and Find your purchase resends a link per paid merchandise order", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 0, remaining: 5 }, { priceAmount: 2500, remaining: 5 }]);
+    const free = [{ variantId: variants[0].id, quantity: 1, unitPrice: 0 }];
+    const email = `${unique("guest")}@example.com`;
+    const first = await buy(organisation.id, { guest: await verifiedGuest(email) }, free);
+    const second = await buy(organisation.id, { guest: await verifiedGuest(email) }, free);
+    const stranger = await buy(organisation.id, { guest: await verifiedGuest() }, free);
+    const pending = await buy(organisation.id, { guest: await verifiedGuest(email) }, [{ variantId: variants[1].id, quantity: 1, unitPrice: 2500 }]);
+    if (first.status !== "fulfilled" || second.status !== "fulfilled" || stranger.status !== "fulfilled" || pending.status !== "redirect") throw new Error("unexpected checkout");
+    const pendingOrderId = await orderOf(pending.attemptId);
+
+    // The receipt is a guest link email tied to a purchase grant for this one order.
+    const receipt = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `merchandise-receipt/${first.commerceOrderId}` } });
+    expect(receipt).toMatchObject({ template: "guest_order_link", recipient: email, organisationId: null, userId: null, status: "pending" });
+    expect(await prisma.guestAccessGrant.findUniqueOrThrow({ where: { id: receipt.guestAccessGrantId! } })).toMatchObject({ purpose: "purchase", commerceOrderId: first.commerceOrderId, orderId: null, consumedAt: null });
+    const { text, token } = tokenIn(receipt);
+    expect(text).toContain("Collect it in person: EngSoc office, weekdays 10 to 2");
+    expect(text).toContain("Find your purchase");
+
+    // The notification worker accepts and sends it.
+    const processingToken = unique("lease");
+    await prisma.notificationOutbox.update({ where: { id: receipt.id }, data: { status: "processing", processingToken, processingStartedAt: new Date() } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ id: "synthetic-message" }), { status: 200 })));
+    expect(await processNotificationClaim({ id: receipt.id, processingToken })).toBe("sent");
+    vi.unstubAllGlobals();
+
+    // Another device, no account: the link opens this order, and only once.
+    clearMockSession();
+    const opened = await redeemGuestAccess(token);
+    expect(opened.callbackUrl).toBe(`/merchandise/orders/${first.commerceOrderId}`);
+    await expect(redeemGuestAccess(token)).rejects.toThrow(GuestAccessError);
+    expect(await readOrder(first.commerceOrderId, opened.sessionId)).toMatchObject({ status: 200, body: { view: "buyer", order: { id: first.commerceOrderId, status: "paid" } } });
+    // Not the same email's other order, not another email's, and it can't buy.
+    expect((await readOrder(second.commerceOrderId, opened.sessionId)).status).toBe(404);
+    expect((await readOrder(stranger.commerceOrderId, opened.sessionId)).status).toBe(404);
+    const link = (await readGuestSession(opened.sessionId))!;
+    await expect(buy(organisation.id, { guest: { grantId: link.grantId, guestIdentityId: link.guestIdentityId } }, free)).rejects.toThrow(GuestAccessError);
+
+    // Find your purchase: one fresh link per paid merchandise order of this email;
+    // none for the unpaid order or the other email's order.
+    const strangerGrants = await prisma.guestAccessGrant.count({ where: { commerceOrderId: stranger.commerceOrderId } });
+    await requestGuestRecovery(email.toUpperCase());
+    const links = await prisma.notificationOutbox.findMany({ where: { recipient: email, template: "guest_order_link", eventKey: { startsWith: "guest/" } } });
+    expect(links).toHaveLength(2);
+    const callbacks = await Promise.all(links.map(async (job) => (await redeemGuestAccess(tokenIn(job).token)).callbackUrl));
+    expect(callbacks.sort()).toEqual([first.commerceOrderId, second.commerceOrderId].map((id) => `/merchandise/orders/${id}`).sort());
+    expect(await prisma.guestAccessGrant.count({ where: { commerceOrderId: pendingOrderId } })).toBe(0);
+    expect(await prisma.guestAccessGrant.count({ where: { commerceOrderId: stranger.commerceOrderId } })).toBe(strangerGrants);
+
+    // The database keeps a purchase link to exactly one order, and a checkout link to none.
+    const later = new Date(Date.now() + 60_000);
+    const guestIdentityId = link.guestIdentityId;
+    await expect(prisma.guestAccessGrant.create({ data: { guestIdentityId, purpose: "purchase", tokenDigest: unique("digest"), expiresAt: later } })).rejects.toThrow();
+    await expect(prisma.guestAccessGrant.create({ data: { guestIdentityId, purpose: "checkout", commerceOrderId: first.commerceOrderId, tokenDigest: unique("digest"), expiresAt: later } })).rejects.toThrow();
   });
 });

@@ -112,7 +112,7 @@ async function emailedLink(request: APIRequestContext, to: string, subject: stri
 
 // T27b: a guest checks out a free basket after confirming their email; a
 // member reviews a paid one; the order page shows each payment state.
-test("a guest checks out free merchandise, a member reviews a paid basket, and the order page shows each state", async ({ page, data }) => {
+test("a guest checks out free merchandise, a member reviews a paid basket, and the order page shows each state", async ({ page, data, browser }) => {
   const { organisation } = data;
   await prisma.organisation.update({ where: { id: organisation.id }, data: { pickupPolicy: "EngSoc office, Level 2. Tuesdays and Thursdays, 12 to 2 pm.", refundPolicy: "Unworn items within 14 days." } });
   const now = new Date();
@@ -148,6 +148,21 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   expect(await page.evaluate(() => localStorage.getItem("thunderstrux:merchandise-basket"))).toBeNull();
   expect((await prisma.merchandiseVariant.findUniqueOrThrow({ where: { id: free.id } })).remaining).toBe(3);
   await shoot(page, "order-confirmed");
+
+  // Another browser with no session: the receipt's link opens this one order.
+  const orderPath = new URL(page.url()).pathname;
+  const other = await browser.newContext({ baseURL: "http://localhost:3100" });
+  try {
+    const device = await other.newPage();
+    await device.goto(await emailedLink(device.request, email, "Your Thunderstrux order"));
+    await device.getByRole("button", { name: "Continue" }).click();
+    await expect(device.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
+    expect(new URL(device.url()).pathname).toBe(orderPath);
+    await expect(device.getByRole("link", { name: "Find your purchase" })).toBeVisible();
+    await shoot(device, "receipt-link");
+  } finally {
+    await other.close();
+  }
 
   // A member's paid basket: the review names the price; this society can't take payments, and says nothing was charged.
   await login(page, data.member.email, checkout);

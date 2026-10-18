@@ -164,7 +164,7 @@ export default async function CheckoutPage({
         </p>
         <p className="mt-1 text-sm text-ink-soft">
           {guestCheckout ? (
-            <>Buying as a guest. Lost the email later? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your tickets</Link> with this address.</>
+            <>Buying as a guest. Lost the email later? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your purchase</Link> with this address.</>
           ) : "We email your tickets, and they appear in My tickets."}
         </p>
       </Card>

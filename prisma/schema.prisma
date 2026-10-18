@@ -436,16 +436,20 @@ model GuestAccessGrant {
   revokedAt        DateTime?
   sessionDigest    String?   @unique
   sessionExpiresAt DateTime?
-  // A purchase link opens this one order and nothing else (T16b).
+  // A purchase link opens this one order and nothing else (T16b), or this
+  // one merchandise order; never both.
   orderId          String?
+  commerceOrderId  String?
   createdAt        DateTime  @default(now())
   guestIdentity    GuestIdentity @relation(fields: [guestIdentityId], references: [id], onDelete: Cascade)
   order            Order?    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  commerceOrder    CommerceOrder? @relation(fields: [commerceOrderId], references: [id], onDelete: Restrict)
   notifications    NotificationOutbox[]
 
   @@index([guestIdentityId, purpose, createdAt])
   @@index([expiresAt])
   @@index([orderId])
+  @@index([commerceOrderId])
 }
 
 model CheckoutAttempt {
@@ -975,6 +979,7 @@ model CommerceOrder {
   lifecycleEvents  CommerceLifecycleEvent[]
   checkoutAttempt  CheckoutAttempt?
   refundRequests   RefundRequest[]
+  guestAccessGrants GuestAccessGrant[]
 
   @@unique([id, organisationId, kind], map: "CommerceOrder_id_organisation_kind_key")
   @@index([organisationId, createdAt, id])

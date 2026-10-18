@@ -104,7 +104,7 @@ describe("guest checkout", () => {
     expect(stripeMocks.createSession.mock.calls[0][0].success_url).toBe(`http://localhost:3000/guest/orders/${order.id}`);
     expect(await prisma.ticketReservation.findUniqueOrThrow({ where: { orderId: order.id } })).toMatchObject({ userId: null, status: "active" });
 
-    // The signed webhook fulfils it like any order, and Find your tickets then opens it.
+    // The signed webhook fulfils it like any order, and Find your purchase then opens it.
     vi.spyOn(console, "info").mockImplementation(() => {});
     const attached = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
     const session = checkoutSession({ id: attached.stripeSessionId!, orderId: order.id, eventId: fixture.event.id, organisationId: fixture.organisation.id, ticketTypeId: fixture.ticketType.id, quantity: 2, amountTotal: 3000 });
@@ -183,7 +183,7 @@ describe("guest order access", () => {
     expect(await renderPage(await GuestOrderPage({ params: Promise.resolve({ orderId: second.orderId }) }))).toContain("Open your order from your email");
   });
 
-  test("Find your tickets sends one fresh link per paid guest purchase, and nothing for other addresses", async () => {
+  test("Find your purchase sends one fresh link per paid guest purchase, and nothing for other addresses", async () => {
     const fixture = await eventWith(0);
     const buyer = await guestSession();
     const orders = [

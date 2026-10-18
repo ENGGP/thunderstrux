@@ -19,7 +19,8 @@ type RouteContext = { params: Promise<{ orderId: string }> };
 // staff with orders:read see their current society's order with the buyer
 // snapshot. A ticket order id, another member's order or another society's
 // order is the same 404, so an id alone reveals nothing. A signed-out guest
-// reads only a merchandise order bought in their checkout session (T27b).
+// reads only a merchandise order bought in their checkout session (T27b) or
+// named by the purchase link they opened.
 export async function GET(request: Request, context: RouteContext) {
   try {
     const { orderId } = await context.params;

@@ -8,7 +8,7 @@ import { validateJson } from "@/lib/validators";
 
 const schema = z.object({ email: z.string().trim().toLowerCase().email().max(320) }).strict();
 
-// Find your tickets: the same 202 whether or not the address has purchases;
+// Find your purchase: the same 202 whether or not the address has purchases;
 // limits fail closed, so no link is sent while request protection is down.
 export async function POST(request: Request) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;

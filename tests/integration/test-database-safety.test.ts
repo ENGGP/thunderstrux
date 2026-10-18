@@ -29,7 +29,10 @@ test("reset refuses unsafe configuration before SQL and does not expose credenti
 test("reset clears every current model including dependent and unlinked recovery records", async () => {
   const { user: owner, organisation } = await createOrganisationAccount();
   const member = await createMember();
-  await prisma.asset.create({ data: { organisationId: organisation.id, uploadedByUserId: owner.id, storageKey: unique("assets/reset"), kind: "logo", byteSize: 10, width: 1, height: 1, sha256: "0".repeat(64) } });
+  const photo = await prisma.asset.create({ data: { organisationId: organisation.id, uploadedByUserId: owner.id, storageKey: unique("assets/reset"), kind: "product", byteSize: 10, width: 1, height: 1, sha256: "0".repeat(64) } });
+  const product = await prisma.merchandiseProduct.create({ data: { organisationId: organisation.id, name: "Synthetic tote" } });
+  await prisma.merchandiseProductImage.create({ data: { productId: product.id, organisationId: organisation.id, assetId: photo.id, position: 0 } });
+  await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, sku: "RESET-TOTE", priceAmount: 0, remaining: 1 } });
   await joinOrganisation(member.id, organisation.id);
   const event = await createEvent({ organisationId: organisation.id });
   const ticketTypeId = event.ticketTypes[0].id;

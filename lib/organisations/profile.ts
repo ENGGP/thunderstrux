@@ -77,6 +77,15 @@ export async function updateProfile(
         409,
         "This profile changed. Reload the latest version before saving.",
       );
+    // Published products show these pickup details; buyers must always have them.
+    if (
+      !values.pickupPolicy &&
+      (await tx.merchandiseProduct.count({ where: { organisationId, status: "published" } })) > 0
+    )
+      throw new AssetError(
+        400,
+        "You have merchandise on sale, so buyers need pickup details. Keep them, or archive those products first.",
+      );
     const ids = [
       ...new Set(
         [

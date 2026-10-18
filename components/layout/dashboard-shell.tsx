@@ -27,7 +27,10 @@ const navGroups: Array<{ label?: string; items: NavItem[] }> = [
   },
   {
     label: "Community",
-    items: [{ label: "Memberships", href: "/dashboard/memberships", icon: "badge", permission: "memberships:manage" }]
+    items: [
+      { label: "Memberships", href: "/dashboard/memberships", icon: "badge", permission: "memberships:manage" },
+      { label: "Merchandise", href: "/dashboard/merchandise", icon: "bag", permission: "merchandise:manage" }
+    ]
   },
   {
     label: "Settings",

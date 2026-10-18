@@ -12,6 +12,8 @@ export type FreeIssuanceInput = {
   ticketType: { id: string; name: string };
   quantity: number;
   now: Date;
+  // The membership a member price of zero came from (T24b).
+  membership?: { grantId: string; entitlementVersion: number } | null;
   attempt: Omit<Prisma.CheckoutAttemptUncheckedCreateInput, "orderId">;
 };
 
@@ -31,6 +33,8 @@ export async function issueFreeOrder(tx: Prisma.TransactionClient, input: FreeIs
       quantity,
       unitPrice: 0,
       totalAmount: 0,
+      membershipGrantId: input.membership?.grantId ?? null,
+      membershipEntitlementVersion: input.membership?.entitlementVersion ?? null,
       status: "paid",
       paidAt: now,
       fulfilledAt: now,

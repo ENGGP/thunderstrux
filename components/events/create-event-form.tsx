@@ -34,6 +34,8 @@ type TicketTypeFormState = {
   id?: string;
   name: string;
   price: string;
+  // Optional member price (T24b); blank means none.
+  memberPrice: string;
   quantity: string;
   // Remaining stock when the form loaded; the server keeps sales made since.
   loadedQuantity?: number;
@@ -62,6 +64,7 @@ type EventFormData = {
     id: string;
     name: string;
     price: number;
+    memberPrice: number | null;
     quantity: number;
     ordersCount: number;
     ticketsCount: number;
@@ -70,7 +73,7 @@ type EventFormData = {
   }>;
 };
 
-const emptyTicketType: TicketTypeFormState = { name: "", price: "", quantity: "" };
+const emptyTicketType: TicketTypeFormState = { name: "", price: "", memberPrice: "", quantity: "" };
 const imageTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxImageBytes = 5 * 1024 * 1024;
 const timeLabels: Record<TimeField, string> = {
@@ -120,6 +123,7 @@ function initialState(event: EventFormData | undefined, timeZone: string) {
         id: ticketType.id,
         name: ticketType.name,
         price: formatMoneyInput(ticketType.price),
+        memberPrice: ticketType.memberPrice === null ? "" : formatMoneyInput(ticketType.memberPrice),
         quantity: String(ticketType.quantity),
         loadedQuantity: ticketType.quantity,
         ordersCount: ticketType.ordersCount,
@@ -154,12 +158,15 @@ export function CreateEventForm({
   organisationId,
   orgSlug,
   timeZone,
-  chargesReady
+  chargesReady,
+  memberPricesOnSale = false
 }: {
   // The readiness panel on the Edit page.
   aside?: ReactNode;
   // Whether the society can take card payments now; paid tickets wait for it.
   chargesReady: boolean;
+  // Whether a published membership plan unlocks member prices now (T24b).
+  memberPricesOnSale?: boolean;
   eventId?: string;
   initialEvent?: EventFormData;
   mode?: "create" | "edit";
@@ -257,6 +264,10 @@ export function CreateEventForm({
       if (!ticketType.id && !ticketType.name.trim() && !ticketType.price.trim() && !ticketType.quantity.trim()) return;
       if (!ticketType.name.trim()) add(at("name"), "Add a ticket name.");
       if (parseMoneyInput(ticketType.price) === null) add(at("price"), "Enter a price in dollars, like 15.00. Use 0 for free.");
+      const memberPrice = ticketType.memberPrice.trim() ? parseMoneyInput(ticketType.memberPrice) : undefined;
+      const price = parseMoneyInput(ticketType.price);
+      if (memberPrice === null) add(at("memberPrice"), "Enter a member price like 10.00, or leave it blank.");
+      else if (memberPrice !== undefined && price !== null && memberPrice > price) add(at("memberPrice"), `The member price can't be more than the price (${formatMoney(price)}).`);
       const quantity = ticketType.quantity.trim();
       if (!/^\d+$/.test(quantity)) add(at("quantity"), "Enter a whole number.");
       else if (!ticketType.id && Number(quantity) === 0) add(at("quantity"), "Quantity must be at least 1.");
@@ -299,6 +310,7 @@ export function CreateEventForm({
             ...(ticketType.id ? { id: ticketType.id, expectedQuantity: ticketType.loadedQuantity } : {}),
             name: ticketType.name,
             price: parseMoneyInput(ticketType.price),
+            memberPrice: ticketType.memberPrice.trim() ? parseMoneyInput(ticketType.memberPrice) : null,
             quantity: Number(ticketType.quantity)
           }))
       };
@@ -488,9 +500,16 @@ export function CreateEventForm({
               return (
                 <fieldset className="grid gap-3 border-t border-line pt-4" key={ticketType.id ?? index}>
                   <legend className="sr-only">Ticket {index + 1}</legend>
-                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem_9rem] sm:items-start">
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem_8rem_8rem] sm:items-start">
                     <TextInput error={errorFor(errors, "ticketTypes", String(index), "name")} label="Name" onChange={(event) => setTicketType(index, { name: event.target.value })} value={ticketType.name} />
                     <MoneyInput error={errorFor(errors, "ticketTypes", String(index), "price")} onChange={(price) => setTicketType(index, { price })} value={ticketType.price} />
+                    <MoneyInput
+                      error={errorFor(errors, "ticketTypes", String(index), "memberPrice")}
+                      hint="Optional"
+                      label="Member price"
+                      onChange={(memberPrice) => setTicketType(index, { memberPrice })}
+                      value={ticketType.memberPrice}
+                    />
                     <TextInput
                       error={errorFor(errors, "ticketTypes", String(index), "quantity")}
                       inputMode="numeric"
@@ -500,6 +519,14 @@ export function CreateEventForm({
                     />
                   </div>
                   <FeeHint chargesReady={chargesReady} price={ticketType.price} />
+                  {ticketType.memberPrice.trim() && !memberPricesOnSale ? (
+                    <p className="text-sm text-warning">
+                      Nobody can buy at the member price until a published membership plan includes member prices.{" "}
+                      <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/memberships">
+                        Go to Memberships
+                      </Link>
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-ink-soft">
                       {ticketType.id

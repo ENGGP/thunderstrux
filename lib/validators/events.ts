@@ -25,15 +25,23 @@ const eventFieldsSchema = z
     path: ["salesCloseAt"]
   });
 
-export const createTicketTypeSchema = z.object({
+// What a member with the member_prices right pays (T24b): optional, never above the price.
+const memberPrice = z.number().int().min(0).nullable().optional();
+const withinPrice = (ticketType: { price: number; memberPrice?: number | null }) => ticketType.memberPrice == null || ticketType.memberPrice <= ticketType.price;
+const withinPriceError = { message: "The member price can't be more than the price", path: ["memberPrice"] };
+
+const createTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
   price: z.number().int().min(0),
+  memberPrice,
   quantity: z.number().int().min(1)
 });
+export const createTicketTypeSchema = createTicketTypeFieldsSchema.refine(withinPrice, withinPriceError);
 
 const updateTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
   price: z.number().int().min(0),
+  memberPrice,
   quantity: z.number().int().min(0)
 });
 
@@ -50,6 +58,7 @@ export const updateTicketTypeSchema = updateTicketTypeFieldsSchema
     id: z.string().trim().min(1).optional(),
     expectedQuantity: z.number().int().min(0).optional()
   })
+  .refine(withinPrice, withinPriceError)
   .refine((ticketType) => !ticketType.id || ticketType.expectedQuantity !== undefined, {
     message: "Send the quantity you loaded for an existing ticket type",
     path: ["expectedQuantity"]
@@ -73,6 +82,6 @@ export const eventSaleStateSchema = z.object({
   version: versionSchema
 });
 
-export const createScopedTicketTypeSchema = createTicketTypeSchema.extend({
+export const createScopedTicketTypeSchema = createTicketTypeFieldsSchema.extend({
   organisationId: z.string().trim().min(1)
-});
+}).refine(withinPrice, withinPriceError);

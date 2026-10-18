@@ -164,7 +164,7 @@ export async function createEvent({
   saleState?: EventSaleState;
   salesCloseAt?: Date;
   capacity?: number | null;
-  ticketTypes?: Array<{ name: string; price: number; quantity: number }>;
+  ticketTypes?: Array<{ name: string; price: number; quantity: number; memberPrice?: number | null }>;
 }) {
   const startTime = futureDate(14, 9);
   const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);

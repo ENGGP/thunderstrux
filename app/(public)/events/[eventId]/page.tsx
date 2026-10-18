@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { PublicEventView } from "@/components/events/public-event-view";
 import type { BuyBoxViewer } from "@/components/events/public-ticket-purchase";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { getPublishedEventDetail } from "@/lib/events/public-events";
+import { getPublishedEventDetail, priceForViewer } from "@/lib/events/public-events";
+import { memberPricePlan } from "@/lib/memberships/offers";
 
 type PublicEventPageProps = {
   params: Promise<{
@@ -28,9 +29,14 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
         ? "member"
         : "unverified";
 
+  // Member prices apply only to a verified member account with the right membership.
+  const memberPlan = viewer === "member" && session && event.ticketTypes.some((type) => type.memberPrice !== null)
+    ? await memberPricePlan(event.organisation.slug, session.user.id)
+    : null;
+
   return (
     <main className="bg-paper">
-      <PublicEventView event={event} viewer={viewer} />
+      <PublicEventView event={{ ...event, ticketTypes: priceForViewer(event.ticketTypes, memberPlan !== null) }} memberPlan={memberPlan} viewer={viewer} />
     </main>
   );
 }

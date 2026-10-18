@@ -34,7 +34,12 @@ export type PublicEventsPage = {
 export type PublicEventTicketType = {
   id: string;
   name: string;
+  // The price this viewer pays (see priceForViewer).
   price: number;
+  // What members pay, when the type has a member price (T24b).
+  memberPrice: number | null;
+  // Set when `price` is a member price: the standard price, for display.
+  standardPrice?: number | null;
   quantity: number;
   // Advisory sellable stock: remaining minus live holds, within capacity.
   availableQuantity: number;
@@ -164,7 +169,7 @@ const detailSelect = {
     }
   },
   ticketTypes: {
-    select: { id: true, name: true, price: true, quantity: true },
+    select: { id: true, name: true, price: true, memberPrice: true, quantity: true },
     orderBy: { createdAt: "asc" as const }
   }
 } satisfies Prisma.EventSelect;
@@ -207,6 +212,23 @@ async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEve
       unavailable: reasons.get(ticketType.id) ?? null
     }))
   };
+}
+
+// What one viewer pays (T24b): a member whose running membership in the
+// society carries member prices gets each member price as the price, with the
+// standard price kept for display; a member price of zero needs no payments.
+// Everyone else keeps the standard price. Checkout decides again under locks.
+export function priceForViewer(ticketTypes: PublicEventTicketType[], member: boolean): PublicEventTicketType[] {
+  return ticketTypes.map((ticketType) =>
+    member && ticketType.memberPrice !== null
+      ? {
+          ...ticketType,
+          price: ticketType.memberPrice,
+          standardPrice: ticketType.price,
+          unavailable: ticketType.memberPrice === 0 && ticketType.unavailable === "payments_unavailable" ? null : ticketType.unavailable
+        }
+      : ticketType
+  );
 }
 
 // Public and link-only events are readable; drafts and members-only events

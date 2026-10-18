@@ -1,4 +1,4 @@
-import type { MembershipGrant, Prisma } from "@prisma/client";
+import type { MembershipEntitlement, MembershipGrant, Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { CommerceFamilyAdapter, CommerceOrderForHooks } from "@/lib/commerce/families";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
@@ -20,6 +20,23 @@ export function grantState(grant: Pick<MembershipGrant, "startsAt" | "endsAt" | 
   if (grant.revokedAt) return "revoked";
   if (now < grant.startsAt) return "upcoming";
   return now < grant.endsAt ? "active" : "expired";
+}
+
+// The member's running membership in a society that carries a right, if any:
+// unrevoked, started and not yet ended at `now` (T24b). Several can overlap
+// only across rights versions; the latest ending one is used.
+export function activeEntitlementGrant(
+  tx: Pick<Prisma.TransactionClient, "membershipGrant">,
+  userId: string,
+  organisationId: string,
+  entitlement: MembershipEntitlement,
+  now: Date
+) {
+  return tx.membershipGrant.findFirst({
+    where: { userId, organisationId, revokedAt: null, startsAt: { lte: now }, endsAt: { gt: now }, entitlements: { has: entitlement } },
+    orderBy: [{ endsAt: "desc" }, { id: "asc" }],
+    select: { id: true, entitlementVersion: true, product: { select: { name: true } } }
+  });
 }
 
 export class MembershipUnavailableError extends Error {

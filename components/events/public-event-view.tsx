@@ -10,8 +10,11 @@ import { zoneCity } from "@/lib/zoned-time";
 export function PublicEventView({
   event,
   viewer,
+  memberPlan = null,
   preview = false
 }: {
+  // The viewer's membership plan giving member prices, if any (T24b).
+  memberPlan?: string | null;
   event: PublicEventDetail;
   viewer: BuyBoxViewer;
   preview?: boolean;
@@ -90,7 +93,9 @@ export function PublicEventView({
         <div className="lg:sticky lg:top-24">
           <PublicTicketPurchase
             eventId={event.id}
+            memberPlan={memberPlan}
             preview={preview}
+            societySlug={organisation.slug}
             salesCloseLabel={event.salesCloseAt ? formatDateTime(event.salesCloseAt, { timeZone }) : undefined}
             salesOpen={event.salesOpen ?? true}
             society={organisation.name}

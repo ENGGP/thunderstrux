@@ -14,6 +14,9 @@ type TicketType = {
   id: string;
   name: string;
   price: number;
+  // What members pay; `standardPrice` is set when `price` already is it (T24b).
+  memberPrice?: number | null;
+  standardPrice?: number | null;
   quantity: number;
   availableQuantity: number;
   unavailable?: "sold_out" | "payments_unavailable" | null;
@@ -52,9 +55,13 @@ export function PublicTicketPurchase({
   viewer = "member",
   salesOpen = true,
   salesCloseLabel,
+  memberPlan = null,
+  societySlug,
   preview = false
 }: {
   eventId: string;
+  memberPlan?: string | null;
+  societySlug?: string;
   ticketTypes: TicketType[];
   society?: string;
   viewer?: BuyBoxViewer;
@@ -236,14 +243,32 @@ export function PublicTicketPurchase({
                     : ticketType.unavailable === "payments_unavailable"
                       ? "Paid tickets unavailable right now"
                       : `${ticketType.availableQuantity} left`}
+                  {ticketType.standardPrice != null
+                    ? " · Member price"
+                    : ticketType.memberPrice != null
+                      ? ` · Members pay ${formatPrice(ticketType.memberPrice)}`
+                      : ""}
                 </span>
               </span>
-              <span className="font-semibold tabular-nums">{formatPrice(ticketType.price)}</span>
+              <span className="grid justify-items-end">
+                <span className="font-semibold tabular-nums">{formatPrice(ticketType.price)}</span>
+                {ticketType.standardPrice != null ? <s className="text-sm tabular-nums text-ink-muted">{formatPrice(ticketType.standardPrice)}</s> : null}
+              </span>
             </label>
           );
         })}
       </fieldset>
 
+      {memberPlan && ticketTypes.some((ticketType) => ticketType.standardPrice != null) ? (
+        <p className="text-sm text-ink-soft">Member price through your {memberPlan} membership.</p>
+      ) : !memberPlan && societySlug && ticketTypes.some((ticketType) => ticketType.memberPrice != null) ? (
+        <p className="text-sm text-ink-soft">
+          {society} members pay less. Joining for free doesn&apos;t include member prices.{" "}
+          <Link className="font-semibold text-brand underline underline-offset-4" href={`/societies/${societySlug}/memberships`}>
+            See memberships
+          </Link>
+        </p>
+      ) : null}
       {paymentsUnavailable && selected ? (
         <p className="text-sm text-ink-soft">{society} can&apos;t take card payments at the moment. Free tickets are still available.</p>
       ) : null}

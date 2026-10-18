@@ -343,6 +343,7 @@ export async function reconcileCompletedCheckoutSession(
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
       compensationRefundModeSnapshot: true,
+      membershipGrantId: true,
       compensationRefundJob: {
         select: { id: true, state: true }
       },
@@ -932,6 +933,24 @@ export async function reconcileCompletedCheckoutSession(
         releaseActiveReservation: true
       });
       return;
+    }
+
+    // A member price stands only while its membership does (T24b). Normal
+    // expiry during the hold keeps the quote; a revocation or refund before
+    // payment lands sends the payment to review instead of issuing tickets.
+    // FOR SHARE makes a concurrent revoke wait until this order is settled.
+    if (localOrder.membershipGrantId) {
+      const [grant] = await tx.$queryRaw<Array<{ revokedAt: Date | null }>>`
+        SELECT "revokedAt" FROM "MembershipGrant" WHERE "id" = ${localOrder.membershipGrantId} FOR SHARE
+      `;
+      if (!grant || grant.revokedAt) {
+        await markCompensationRequired("member_price_membership_revoked", {
+          mismatchReason: "The membership that gave this order its member price ended before payment was confirmed"
+        }, {
+          releaseActiveReservation: true
+        });
+        return;
+      }
     }
 
     // This order's hold already counts toward occupancy, so turning it into

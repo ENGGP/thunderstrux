@@ -10,7 +10,8 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { getPublishedEventDetail } from "@/lib/events/public-events";
+import { getPublishedEventDetail, priceForViewer } from "@/lib/events/public-events";
+import { memberPricePlan } from "@/lib/memberships/offers";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -46,7 +47,10 @@ export default async function CheckoutPage({
   const event = await getPublishedEventDetail(eventId);
   if (!event) notFound();
 
-  const ticketType = event.ticketTypes.find((type) => type.id === query.ticketTypeId);
+  const listed = event.ticketTypes.find((type) => type.id === query.ticketTypeId);
+  // A member account with the right membership is quoted the member price; guests never are (T24b).
+  const memberPlan = listed && listed.memberPrice !== null && session?.user.emailVerifiedAt ? await memberPricePlan(event.organisation.slug, session.user.id) : null;
+  const ticketType = listed ? priceForViewer([listed], memberPlan !== null)[0] : undefined;
   const quantity = Number(query.quantity);
   if (!ticketType || !Number.isInteger(quantity) || quantity < 1 || quantity > maxTicketsPerOrder) redirect(eventHref);
 
@@ -138,8 +142,14 @@ export default async function CheckoutPage({
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink">Your tickets</h2>
         <MoneySummary
-          lines={[{ label: ticketType.name, quantity, unitPrice: ticketType.price }]}
-          note={free ? "No payment needed." : "No booking fee. You pay the ticket price shown."}
+          lines={[{ label: memberPlan && ticketType.standardPrice != null ? `${ticketType.name} (member price)` : ticketType.name, quantity, unitPrice: ticketType.price }]}
+          note={
+            memberPlan && ticketType.standardPrice != null
+              ? `Member price through your ${memberPlan} membership. If it ends while we hold your tickets, you keep this price.`
+              : free
+                ? "No payment needed."
+                : "No booking fee. You pay the ticket price shown."
+          }
         />
       </Card>
       <Card>

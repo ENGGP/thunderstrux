@@ -238,7 +238,17 @@ test("a members-only event shows anyone without access a gate with nothing about
   expect(html).not.toContain(sentinel);
   expect(signedOut.headers()["cache-control"]).toMatch(/private/);
   expect(signedOut.headers()["cache-control"]).toMatch(/no-store/);
-  expect((await request.get("/events/no-such-event")).status()).toBe(404);
+  // A wrong id or a draft members-only event is the not-found page, never the
+  // gate. (The page streams after its loading state, so the status stays 200.)
+  const draft = await prisma.event.create({
+    data: { organisationId: data.organisation.id, title: `${sentinel}-draft`, description: "Draft", location: "Hall", startTime: new Date(Date.now() + 86_400_000), endTime: new Date(Date.now() + 90_000_000), salesCloseAt: new Date(Date.now() + 86_400_000), visibility: "members_only" }
+  });
+  for (const id of ["no-such-event", draft.id]) {
+    const missing = await (await request.get(`/events/${id}`)).text();
+    expect(missing).toContain("This page could not be found.");
+    expect(missing).not.toContain("Members-only event");
+    expect(missing).not.toContain(sentinel);
+  }
 
   // Signed in without a membership: the gate, its reason and no event details.
   await login(page, data.member.email, path);

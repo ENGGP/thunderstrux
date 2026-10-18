@@ -1,6 +1,7 @@
 import type { CommerceKind, Prisma } from "@prisma/client";
 import type { z } from "zod";
 import type { CommerceLineInput } from "@/lib/commerce/orders";
+import { merchandiseFamily } from "@/lib/merchandise/sale";
 import { membershipFamily } from "@/lib/memberships/grants";
 
 // What a commerce family (memberships T23, merchandise T25-T27) plugs into
@@ -35,5 +36,6 @@ export type CommerceFamilyAdapter<Selection = unknown> = {
 // family is registered its checkout route answers 404 and a paid webhook for
 // it goes to compensation review.
 export const commerceFamilies: Partial<Record<CommerceKind, CommerceFamilyAdapter>> = {
-  membership: membershipFamily as CommerceFamilyAdapter
+  membership: membershipFamily as CommerceFamilyAdapter,
+  merchandise: merchandiseFamily as CommerceFamilyAdapter
 };

@@ -8,6 +8,7 @@ import { OrganisationAccessError, requireVerifiedUser } from "@/lib/auth/access"
 import { getLiveSession } from "@/lib/auth/live-session";
 import { CommerceCheckoutError, createCommerceCheckout } from "@/lib/commerce/checkout";
 import { MembershipUnavailableError } from "@/lib/memberships/grants";
+import { MerchandiseUnavailableError } from "@/lib/merchandise/sale";
 import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
 import { GUEST_CSRF_HEADER, verifyGuestCsrf } from "@/lib/guest/guest-csrf";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
@@ -62,6 +63,9 @@ export async function commerceCheckoutRoute(request: Request, family: CommerceKi
         routeErrorRule(ZodError, (failure) => validationError(failure.issues.map((issue) => ({ path: ["selection", ...issue.path.map(String)], message: issue.message })))),
         // Nothing charged: the plan left sale, the dates are already covered, or a checkout for them is open.
         routeErrorRule(MembershipUnavailableError, (failure) => apiError("CONFLICT", failure.message, 409, [{ path: ["selection"], message: failure.message, reason: failure.reason }])),
+        routeErrorRule(MerchandiseUnavailableError, (failure) =>
+          apiError("CONFLICT", failure.message, 409, [{ path: failure.variantId ? ["selection", "items", failure.variantId] : ["selection"], message: failure.message, reason: failure.reason, value: failure.available }])
+        ),
         routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),
         routeErrorRule(CommerceCheckoutError, (failure) =>
           failure.kind === "not_available"

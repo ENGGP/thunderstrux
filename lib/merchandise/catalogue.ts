@@ -5,6 +5,7 @@ import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import { assetReferenced } from "@/lib/assets/references";
 import { prisma } from "@/lib/db";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
+import { heldByVariant } from "@/lib/merchandise/sale";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 
 // The merchandise catalogue (T25, design round B2): products a society sells
@@ -174,6 +175,13 @@ async function saveOptions(tx: Prisma.TransactionClient, product: MerchandisePro
         { path: ["variants", String(index), "remaining"], message: "Changed since you opened this product." }
       ]);
     }
+  });
+
+  // Stock can't go below what checkouts waiting on Stripe are holding (T27a).
+  const held = await heldByVariant(tx, existing.map((option) => option.id), new Date());
+  inputs.forEach((input, index) => {
+    const holding = input.id ? (held.get(input.id) ?? 0) : 0;
+    if (input.remaining < holding) throw invalid(["variants", index, "remaining"], `${holding} are held in checkouts right now, so stock can't go below ${holding}.`);
   });
 
   const seen = new Map<string, number>();

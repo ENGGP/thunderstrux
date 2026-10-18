@@ -86,7 +86,7 @@ describe("merchandise shop", () => {
     });
     expect(result.status).toBe(200);
     expect(result.cache).toBe("no-store");
-    const { lines, problems, total, pickupPolicy, refundPolicy, checkoutEnabled } = result.body.quote;
+    const { lines, problems, total, pickupPolicy, refundPolicy } = result.body.quote;
     expect(lines.map((line: { variantId: string; quantity: number; lineTotal: number }) => [line.variantId, line.quantity, line.lineTotal])).toEqual([
       [variants[0].id, 10, 45000],
       [variants[1].id, 2, 3000],
@@ -103,7 +103,7 @@ describe("merchandise shop", () => {
       { variantId: draft.variants[0].id, problem: "unavailable" },
       { variantId: foreign.variants[0].id, problem: "unavailable" }
     ]);
-    expect({ pickupPolicy, refundPolicy, checkoutEnabled }).toEqual({ pickupPolicy: "EngSoc office", refundPolicy: "14 days", checkoutEnabled: false });
+    expect({ pickupPolicy, refundPolicy }).toEqual({ pickupPolicy: "EngSoc office", refundPolicy: "14 days" });
   });
 
   test("a quote holds ten lines at most, its version follows prices and quantities, and bad input is refused", async () => {

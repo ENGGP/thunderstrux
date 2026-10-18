@@ -1,15 +1,18 @@
 import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { GET as commerceOrderRoute } from "@/app/api/commerce/orders/[orderId]/route";
 import { POST as merchandiseCheckout } from "@/app/api/payments/checkout/merchandise/route";
 import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { createCommerceCheckout } from "@/lib/commerce/checkout";
 import { expireStaleCommerceOrders } from "@/lib/commerce/reconciliation";
 import { prisma } from "@/lib/db";
+import { decryptNotification } from "@/lib/email/notification-crypto";
+import { guestCookieName, readGuestSession, redeemGuestAccess, requestGuestAccess } from "@/lib/guest/guest-access";
 import { updateProduct } from "@/lib/merchandise/catalogue";
 import { quoteVersion } from "@/lib/merchandise/sale";
 import { quoteBasket, shopProduct } from "@/lib/merchandise/shop";
-import { setMockSession } from "@/tests/helpers/auth";
-import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
+import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
+import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { createMember, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 const webhookSecret = "whsec_merchandise_test";
@@ -227,5 +230,40 @@ describe("merchandise sale", () => {
       expect((await parseJsonResponse(refused)).error.details[0]).toMatchObject({ reason: "unavailable" });
     }
     expect((await route({ items: [{ variantId: variants[0].id, quantity: 1 }, { variantId: variants[0].id, quantity: 1 }], quoteVersion: "0".repeat(16) })).status).toBe(400);
+  });
+
+  test("a guest's checkout session reads the order it bought, and no other session of that email, member or stranger can", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 0, remaining: 5 }]);
+    // A real emailed link redeemed into a checkout session.
+    const session = async (email: string) => {
+      await requestGuestAccess(email);
+      const job = await prisma.notificationOutbox.findFirstOrThrow({ where: { recipient: email, status: "pending" }, orderBy: { createdAt: "desc" } });
+      const { text } = decryptNotification(job.encryptedPayload, job.id) as { text: string };
+      const { sessionId } = await redeemGuestAccess(new URLSearchParams(new URL(text.split("\n\n").at(-1)!).hash.slice(1)).get("token")!);
+      const guest = (await readGuestSession(sessionId))!;
+      return { sessionId, guest: { grantId: guest.grantId, guestIdentityId: guest.guestIdentityId } };
+    };
+    const read = async (orderId: string, sessionId?: string) => {
+      const request = new Request(`http://localhost:3000/api/commerce/orders/${orderId}`, { headers: sessionId ? { cookie: `${guestCookieName}=${sessionId}` } : {} });
+      const response = await commerceOrderRoute(request, routeContext({ orderId }));
+      return { status: response.status, body: await parseJsonResponse(response) };
+    };
+    clearMockSession();
+    const email = `${unique("guest")}@example.com`;
+    const first = await session(email);
+    const bought = await buy(organisation.id, { guest: first.guest }, [{ variantId: variants[0].id, quantity: 1, unitPrice: 0 }]);
+    if (bought.status !== "fulfilled") throw new Error("not fulfilled");
+
+    const own = await read(bought.commerceOrderId, first.sessionId);
+    expect(own.status).toBe(200);
+    expect(own.body).toMatchObject({ view: "buyer", order: { id: bought.commerceOrderId, kind: "merchandise", status: "paid", organisation: { slug: organisation.slug }, lines: [{ quantity: 1, variantSnapshot: "S0" }] } });
+    expect(JSON.stringify(own.body)).not.toContain(email);
+
+    // A later session for the same email, a member and a stranger all get nothing.
+    expect((await read(bought.commerceOrderId, (await session(email)).sessionId)).status).toBe(404);
+    expect((await read(bought.commerceOrderId)).status).toBe(401);
+    const member = await createMember();
+    setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
+    expect((await read(bought.commerceOrderId)).status).toBe(404);
   });
 });

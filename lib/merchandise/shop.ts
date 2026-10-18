@@ -9,10 +9,6 @@ import { heldByVariant, quoteVersion } from "@/lib/merchandise/sale";
 // archived products and options that stopped selling are never returned.
 // Prices and stock here are advice; checkout re-quotes under locks (lib/merchandise/sale.ts).
 
-// T27b turns checkout on with its pages; until then the basket can be filled but not paid.
-export const MERCHANDISE_CHECKOUT_ENABLED = false;
-
-
 const optionSelect = { id: true, colour: true, size: true, priceAmount: true, remaining: true } as const;
 const liveProduct = (organisationId: string) => ({ organisationId, status: "published" as const });
 
@@ -149,8 +145,7 @@ export async function quoteBasket(input: QuoteInput) {
     version,
     pickupPolicy: organisation.pickupPolicy,
     refundPolicy: organisation.refundPolicy,
-    supportEmail: organisation.supportEmail,
-    checkoutEnabled: MERCHANDISE_CHECKOUT_ENABLED
+    supportEmail: organisation.supportEmail
   };
 }
 export type Quote = NonNullable<Awaited<ReturnType<typeof quoteBasket>>>;

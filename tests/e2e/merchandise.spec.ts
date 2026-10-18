@@ -1,5 +1,7 @@
+import { execFileSync } from "node:child_process";
 import sharp from "sharp";
-import type { Page } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
+import { createCommerceOrder } from "@/lib/commerce/orders";
 import { test, expect, login, prisma, selectStaffContext } from "./fixtures";
 
 async function shoot(page: Page, name: string) {
@@ -68,7 +70,7 @@ test("an owner drafts a product with a photo and options, publishes it and archi
   await page.getByRole("button", { name: "Add to basket · Free" }).click();
   await page.getByRole("link", { name: "View basket" }).click();
   await expect(page.getByRole("heading", { name: /merchandise basket/ })).toBeVisible();
-  await expect(page.getByText("Checkout isn't open yet")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Checkout merchandise" })).toBeVisible();
   await expect(page.getByText("3 items")).toBeVisible();
   await page.getByRole("group", { name: "Quantity of EngSoc hoodie, Navy · L" }).getByRole("button", { name: "One fewer" }).click();
   await expect(page.getByText("2 items")).toBeVisible();
@@ -97,4 +99,83 @@ test("staff without merchandise:manage see no Merchandise item and get not found
   await expect(page.getByRole("navigation", { name: "Organisation navigation" }).getByRole("link", { name: "Events" }).first()).toBeAttached();
   await expect(page.getByRole("link", { name: "Merchandise" })).toHaveCount(0);
   expect((await page.goto("/dashboard/merchandise"))?.status()).toBe(404);
+});
+
+// The newest emailed link for an address, after the notification worker sends what is queued.
+async function emailedLink(request: APIRequestContext, to: string, subject: string) {
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const messages = await (await request.get("http://mail-capture:8025/messages")).json();
+  const message = messages.filter((item: { data: { to: string; subject: string } }) => item.data.to === to && item.data.subject.includes(subject)).at(-1);
+  expect(message, `an email "${subject}" to ${to}`).toBeTruthy();
+  return message.data.text.split("\n\n").at(-1) as string;
+}
+
+// T27b: a guest checks out a free basket after confirming their email; a
+// member reviews a paid one; the order page shows each payment state.
+test("a guest checks out free merchandise, a member reviews a paid basket, and the order page shows each state", async ({ page, data }) => {
+  const { organisation } = data;
+  await prisma.organisation.update({ where: { id: organisation.id }, data: { pickupPolicy: "EngSoc office, Level 2. Tuesdays and Thursdays, 12 to 2 pm.", refundPolicy: "Unworn items within 14 days." } });
+  const now = new Date();
+  const product = await prisma.merchandiseProduct.create({ data: { organisationId: organisation.id, name: "Sticker pack", status: "published", publishedAt: now, firstPublishedAt: now } });
+  const free = await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, sku: `E2E-FREE-${Date.now()}`, priceAmount: 0, remaining: 5 } });
+  const paid = await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, size: "Large", sku: `E2E-PAID-${Date.now()}`, priceAmount: 4500, remaining: 5, position: 1 } });
+  const basket = (variantId: string, quantity: number) =>
+    page.evaluate(([society, id, count]) => localStorage.setItem("thunderstrux:merchandise-basket", JSON.stringify({ society, lines: [{ variantId: id, quantity: count }] })), [organisation.slug, variantId, quantity] as const);
+  const checkout = `/societies/${organisation.slug}/merchandise/checkout`;
+
+  // A guest: email first, then back from the link to confirm.
+  const email = `merch-guest-${Date.now()}@example.com`;
+  await page.goto(`/societies/${organisation.slug}/merchandise`);
+  await basket(free.id, 2);
+  await page.goto(`/societies/${organisation.slug}/merchandise/basket`);
+  await page.getByRole("link", { name: "Checkout merchandise" }).click();
+  await expect(page.getByRole("heading", { name: "Where should we send your receipt?" })).toBeVisible();
+  await expect(page.getByText("2 items from")).toBeVisible();
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Email me a link" }).click();
+  await expect(page.getByRole("status")).toContainText(email);
+  await shoot(page, "guest-email");
+  await page.goto(await emailedLink(page.request, email, "Confirm your email"));
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Confirm your order" })).toBeVisible();
+  await expect(page.getByText("Buying as a guest")).toBeVisible();
+  await expect(page.getByText("EngSoc office, Level 2.")).toBeVisible();
+  await shoot(page, "guest-review");
+  await page.getByRole("button", { name: "Confirm free order" }).click();
+  await expect(page.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
+  await expect(page.getByText("2 × Sticker pack")).toBeVisible();
+  await expect(page.getByText(/Free · Order [A-Z0-9]{6}/)).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("thunderstrux:merchandise-basket"))).toBeNull();
+  expect((await prisma.merchandiseVariant.findUniqueOrThrow({ where: { id: free.id } })).remaining).toBe(3);
+  await shoot(page, "order-confirmed");
+
+  // A member's paid basket: the review names the price; this society can't take payments, and says nothing was charged.
+  await login(page, data.member.email, checkout);
+  await basket(paid.id, 1);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Review your order" })).toBeVisible();
+  await expect(page.getByText("We hold these items for 30 minutes while you pay.")).toBeVisible();
+  await shoot(page, "review");
+  await page.getByRole("button", { name: "Pay $45.00" }).click();
+  await expect(page.getByRole("alert")).toContainText("Nothing has been charged.");
+
+  // The order page for a member's paid order: confirming, left Stripe, and held for review.
+  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: organisation.id, kind: "merchandise", buyer: { userId: data.member.id }, buyerEmail: data.member.email, paymentKind: "stripe", feeAmount: 450,
+    lines: [{ quantity: 1, unitAmount: 4500, name: "Sticker pack", variant: "Large", merchandiseVariantId: paid.id }], source: "checkout", expiresAt: new Date(Date.now() + 30 * 60_000)
+  }));
+  await page.goto(`/merchandise/orders/${order.id}`);
+  await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible();
+  await expect(page.getByText("Processing")).toBeVisible();
+  await shoot(page, "order-confirming");
+  await page.goto(`/merchandise/orders/${order.id}?left=1`);
+  await expect(page.getByRole("heading", { name: "No payment taken" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to basket" }).last()).toBeVisible();
+  await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "failed", requiresCompensationReview: true, reviewReason: "sold_out", paidAt: new Date(), failedAt: new Date() } });
+  await page.goto(`/merchandise/orders/${order.id}`);
+  await expect(page.getByRole("heading", { name: "We're checking your payment" })).toBeVisible();
+
+  // Someone else's order is not found.
+  await login(page, data.manager.email, `/merchandise/orders/${order.id}`);
+  await expect(page.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
 });

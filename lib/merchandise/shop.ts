@@ -41,6 +41,7 @@ export async function shopProducts(organisationId: string) {
       coverAssetId: product.images[0]?.assetId ?? null,
       summary: optionSummary(distinct(product.variants.map((option) => option.colour)), distinct(product.variants.map((option) => option.size))),
       minPrice: prices.length ? Math.min(...prices) : 0,
+      maxPrice: prices.length ? Math.max(...prices) : 0,
       priceVaries: new Set(prices).size > 1,
       soldOut: left === 0,
       lowStock: left > 0 && left <= LOW_STOCK ? left : null

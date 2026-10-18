@@ -49,7 +49,7 @@ export function BasketLink({ society }: { society: string }) {
   return (
     <Link className="inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-brand underline-offset-4 hover:underline" href={basketHref(society)}>
       <Icon name="bag" size={20} />
-      Basket · {items(count)}
+      {count ? `Basket · ${items(count)}` : "Basket"}
     </Link>
   );
 }
@@ -75,6 +75,8 @@ export function ProductPicker({ society, societyName, product }: { society: stri
   const sizesHere = colours.length ? sizes.filter((value) => forColour(colour).some((option) => option.size === value)) : sizes;
   const selected = variants.find((option) => option.colour === colour && option.size === size) ?? null;
   const maxQuantity = selected ? Math.min(MAX_LINE_QUANTITY, selected.available) : 0;
+  // A price beside each size only when the sizes on offer here cost different amounts.
+  const sizePrices = new Set((colours.length ? forColour(colour) : variants).map((option) => option.priceAmount)).size > 1;
 
   function chooseColour(value: string) {
     setColour(value);
@@ -106,7 +108,6 @@ export function ProductPicker({ society, societyName, product }: { society: stri
     `flex min-h-11 cursor-pointer items-center gap-2 rounded-control border px-3.5 text-[15px] ${
       off ? "cursor-not-allowed border-dashed border-line-strong text-ink-muted" : on ? "border-2 border-brand bg-brand-tint px-[13px] font-semibold text-brand-ink" : "border-line-strong text-ink"
     }`;
-  const priceVaries = new Set(variants.map((option) => option.priceAmount)).size > 1;
   const images = product.imageAssetIds;
 
   return (
@@ -185,7 +186,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
                       type="radio"
                     />
                     {value}
-                    {off ? " · sold out" : priceVaries && option ? ` · ${formatPrice(option.priceAmount)}` : ""}
+                    {off ? " · sold out" : sizePrices && option ? ` · ${formatPrice(option.priceAmount)}` : ""}
                   </label>
                 );
               })}

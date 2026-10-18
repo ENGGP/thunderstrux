@@ -84,8 +84,7 @@ export default async function SocietyMerchandisePage({ params }: { params: Promi
                         <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{product.lowStock ? `Only ${product.lowStock} left` : product.summary || "One option"}</span>
                       )}
                       <span className={`font-semibold tabular-nums ${product.soldOut ? "text-ink-soft" : ""}`}>
-                        {product.priceVaries ? "From " : ""}
-                        {formatPrice(product.minPrice)}
+                        {!product.priceVaries ? formatPrice(product.minPrice) : product.minPrice === 0 ? `Free to ${formatPrice(product.maxPrice)}` : `From ${formatPrice(product.minPrice)}`}
                       </span>
                     </Link>
                   </li>

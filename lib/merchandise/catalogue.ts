@@ -106,6 +106,11 @@ export function suggestSku(name: string, colour: string, size: string) {
   return [skuPart(name, 20), skuPart(colour, 12), skuPart(size, 8)].filter(Boolean).join("-") || "ITEM";
 }
 
+// "Navy, Heather grey · S to XXL" for a product card or row.
+export function optionSummary(colours: string[], sizes: string[]) {
+  return [colours.join(", "), sizes.length > 1 ? `${sizes[0]} to ${sizes[sizes.length - 1]}` : sizes[0]].filter(Boolean).join(" · ");
+}
+
 const optionLabel = (option: { colour: string; size: string }) => [option.colour, option.size].filter(Boolean).join(", ") || "its only option";
 
 async function lockProduct(tx: Prisma.TransactionClient, actor: AccountActor, organisationId: string, productId: string) {

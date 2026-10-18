@@ -9,7 +9,7 @@ import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatPrice } from "@/lib/format";
-import { readProduct } from "@/lib/merchandise/catalogue";
+import { optionSummary, readProduct } from "@/lib/merchandise/catalogue";
 
 export const metadata: Metadata = { title: "Product" };
 
@@ -23,8 +23,10 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
   const archived = product.status === "archived";
   const prices = product.variants.map((variant) => variant.priceAmount);
   const low = prices.length ? Math.min(...prices) : null;
-  const price = low === null ? null : `${low === Math.max(...prices) ? "" : "From "}${formatPrice(low)}`;
-  const options = [...new Set(product.variants.flatMap((variant) => [variant.size, variant.colour]).filter(Boolean))];
+  const high = prices.length ? Math.max(...prices) : null;
+  const price = low === null || high === null ? null : low === high ? formatPrice(low) : `${formatPrice(low)} to ${formatPrice(high)}`;
+  const distinct = (values: string[]) => [...new Set(values.filter(Boolean))];
+  const summary = optionSummary(distinct(product.variants.map((variant) => variant.colour)), distinct(product.variants.map((variant) => variant.size)));
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -68,7 +70,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
                 </div>
               )}
               <p className="font-semibold text-ink [overflow-wrap:anywhere]">{product.name}</p>
-              {options.length ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{options.join(" · ")}</p> : null}
+              {summary ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{summary}</p> : null}
               {price ? <p className="font-semibold tabular-nums text-ink">{price}</p> : null}
             </div>
           </section>

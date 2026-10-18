@@ -9,7 +9,7 @@ import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatPrice } from "@/lib/format";
-import { listProducts } from "@/lib/merchandise/catalogue";
+import { listProducts, optionSummary } from "@/lib/merchandise/catalogue";
 
 export const metadata: Metadata = { title: "Merchandise" };
 
@@ -39,7 +39,6 @@ type Row = Awaited<ReturnType<typeof listProducts>>["products"][number];
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 const price = (row: Row) =>
   row.minPrice === null ? "No options" : row.minPrice === row.maxPrice ? formatPrice(row.minPrice) : `${formatPrice(row.minPrice)} to ${formatPrice(row.maxPrice ?? row.minPrice)}`;
-const labels = (row: Row) => [row.colours.join(", "), row.sizes.length > 1 ? `${row.sizes[0]} to ${row.sizes[row.sizes.length - 1]}` : row.sizes[0]].filter(Boolean).join(" · ");
 const soldOut = (row: Row) => row.status !== "archived" && row.options > 0 && row.remaining === 0;
 
 async function Products({ organisationId, orgSlug }: { organisationId: string; orgSlug: string }) {
@@ -96,7 +95,7 @@ async function Products({ organisationId, orgSlug }: { organisationId: string; o
                       <Link className={titleLink} href={`/dashboard/merchandise/${row.id}`}>
                         {row.name}
                       </Link>
-                      <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{row.status === "draft" ? "Not on sale" : labels(row) || "One option"}</p>
+                      <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{row.status === "draft" ? "Not on sale" : optionSummary(row.colours, row.sizes) || "One option"}</p>
                     </div>
                   </div>
                 </td>

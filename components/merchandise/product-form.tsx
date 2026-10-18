@@ -227,10 +227,12 @@ export function ProductForm({
           <p className="text-sm text-ink-soft">
             Each option is one thing a buyer picks, like Navy, L. Leave colour and size blank for a one-option product. Stock is what&apos;s left to sell.
           </p>
-          <div aria-hidden="true" className="hidden gap-3 text-[13px] font-semibold text-ink-soft md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_7.5rem_6rem_6.5rem]">
+          {/* Wide on purpose: on a narrow desktop column the rows scroll sideways rather than clip. */}
+          <div className="md:overflow-x-auto">
+          <div aria-hidden="true" className="hidden gap-3 pb-2 text-[13px] font-semibold text-ink-soft md:grid md:min-w-[680px] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_7.5rem_6rem_6.5rem]">
             <span>Colour</span><span>Size</span><span>SKU</span><span>Price</span><span>Stock left</span><span />
           </div>
-          <ul className="grid gap-4 md:gap-2">
+          <ul className="grid gap-4 md:min-w-[680px] md:gap-2">
             {form.options.map((option, index) => {
               const label = [option.colour, option.size].filter(Boolean).join(", ") || `option ${index + 1}`;
               const fieldError = (field: string) => errors[`variants.${index}.${field}`];
@@ -297,6 +299,7 @@ export function ProductForm({
               );
             })}
           </ul>
+          </div>
           {errors.variants ? <p className="text-sm text-danger" role="alert">{errors.variants}</p> : null}
           <p className="text-sm text-ink-soft">
             {product?.everPublished

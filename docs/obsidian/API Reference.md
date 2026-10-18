@@ -755,6 +755,15 @@ The server-rendered organiser order detail page also reads a separate, bounded l
 
 Refunds the whole order through Stripe (T18a). Body `{reason, confirmation, mfaCode?}`: a reason of 8 to 500 characters, the order's short reference typed back, and a fresh authenticator code unless staff MFA is off. Requires the current society's `orders:refund` (owners and finance managers) and a trusted origin with the CSRF token. Answers `200 {refundRequestId, status: "succeeded"}` when Stripe confirmed, or `202` with `status` `pending` or `uncertain`. Refusals: `400` with detail `confirmation` for a wrong reference or `mfaCode` for a wrong code; `404` for another society's or a missing order; `409` with detail `reason` `not_refundable`, `in_progress`, `already_refunded`, `disputed`, `verification_failed` or `provider_refused`. After a partial refund made in Stripe it refunds the remainder. See [[Payment Lifecycle]].
 
+### `POST /api/merchandise/quote`
+
+Prices a basket of one society's merchandise options against today's catalogue and stock (T26). Public: no session, CSRF or rate limit, because nothing is held or changed; `Cache-Control: no-store`. Body (strict): `{society (slug), items: [{variantId, quantity (1 to 100)}] (up to 50)}`.
+
+- `200 {quote: {society, lines, problems, total, version, pickupPolicy, refundPolicy, supportEmail, checkoutEnabled}}`. Each line has `variantId`, `productId`, `name`, `option`, `coverAssetId`, `unitPrice`, `quantity`, `lineTotal` and `available`. Repeated options merge; a quantity comes back lowered to 10 and to what's left.
+- `problems` lists `{variantId, problem}`: `reduced` (quantity lowered), `sold_out` (kept at quantity 0), `unavailable` (not a published option of this society) and `too_many_lines` (past ten lines).
+- `version` changes whenever a price, quantity or line changes; T27 checkout compares it.
+- `404` for an unknown society; `400` for a malformed body.
+
 ### Merchandise products: `/api/orgs/[orgSlug]/merchandise`
 
 Staff routes for a society's merchandise catalogue (T25). Every route needs a signed-in account with live `merchandise:manage` for that society (owners and admins) and its staff authenticator where enforced; a mutation also needs a trusted origin. Another society's slug or product is `404`; staff of this society without the permission get `403`. Responses are `Cache-Control: private, no-store`.

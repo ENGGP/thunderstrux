@@ -1,9 +1,9 @@
 ---
 status: living
-last-reviewed: 2026-10-18
+last-reviewed: 2026-10-19
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[UI Architecture Rules]]", "[[Society Profiles and Assets]]"]
-sources: [lib/merchandise/catalogue.ts, lib/memberships/plans.ts, lib/events/public-events.ts, lib/commerce/orders.ts, lib/commerce/families.ts, prisma/migrations/20261030010000_memberships/migration.sql]
+sources: [lib/merchandise/shop.ts, lib/merchandise/basket.ts, lib/merchandise/catalogue.ts, lib/memberships/plans.ts, lib/events/public-events.ts, lib/commerce/orders.ts, lib/commerce/families.ts, prisma/migrations/20261030010000_memberships/migration.sql]
 ---
 
 # Memberships and Merchandise
@@ -85,3 +85,13 @@ Refund membership on the member page (`orders:refund`; reason, the order's short
 - **Pickup details** are one society-wide text (Society profile, `Organisation.pickupPolicy`), shown with every product, the basket and receipts; a society can't clear them while it has products on sale.
 - **Concurrency**: every change holds User, then Organisation, then the product row, then its options in ascending id (`lockOrganisationActor`, then `FOR UPDATE`), then any photo assets. T27 checkout locks options in the same ascending order and never the product, so the two can't deadlock.
 - **Access**: live `merchandise:manage` (owners and admins) through `/api/orgs/[orgSlug]/merchandise` and `/dashboard/merchandise` (Community menu). A member who isn't staff, and another society's slug, get `404`; staff of this society without the permission get `403`. Changes are audited (`merchandise_product.created`, `updated`, `published`, `archived`, `restored`).
+
+## Shop and basket (T26)
+
+`lib/merchandise/shop.ts` (server) and `lib/merchandise/basket.ts` (browser), from design round B batch 2.
+
+- **What buyers see**: published products of the society only, with their photos and the options still on sale; drafts, archived products and options that stopped selling never appear. The society page shows a Merchandise tab while it has products on sale (`hasShop`). Cards show the cover photo, the option summary, "From $X" when prices differ, "Only N left" at 5 or fewer, and Sold out. Stock shown is advice; checkout (T27) decides under locks and will subtract checkout holds from it.
+- **Product page** (`/societies/[slug]/merchandise/[productId]`): photo gallery with thumbnails, labelled colour and size radio groups (sold-out options stay visible, disabled, with "sold out"; a price shows beside a size when prices differ), a quantity stepper capped at 10 and at what's left, Add to basket, and the pickup, refund and contact details before any checkout.
+- **Basket** (`/societies/[slug]/merchandise/basket`): one society's option ids and quantities in this browser's storage, never prices or names. Repeats merge; at most 10 different options and 10 of each. Adding another society's item asks to keep that basket (with a link to it) or clear it. Every view re-quotes through `POST /api/merchandise/quote`: options no longer sold leave the basket with a notice, quantities above what's left are lowered with a note, sold-out lines must be removed, and the quote's version changes with any price, quantity or line so checkout can refuse a stale basket.
+- **Checkout is off** until T27 (`MERCHANDISE_CHECKOUT_ENABLED`); the basket says so instead of showing a button that does nothing.
+- **Decisions** (against Shopify, Eventbrite and Humanitix): a standalone shop and basket rather than add-ons inside ticket checkout (as Eventbrite and Humanitix do), because societies sell merchandise outside events; the basket lives on the device, as Shopify carts do, with no account needed to browse; low stock is shown only at 5 or fewer (Humanitix hides counts, Eventbrite can show remaining), to help without inventing urgency; sold-out options stay visible rather than vanishing, so buyers know the size exists.

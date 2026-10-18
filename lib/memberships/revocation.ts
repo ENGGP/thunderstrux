@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { appendCommerceLifecycleEvent, lockCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
+import { requestCommerceRefund } from "@/lib/payments/order-refunds";
 
 // Ending a membership early (T23b). Both paths need a reason and the staff
 // member's authenticator code, which the route checks. Neither moves money:
@@ -87,4 +88,15 @@ export async function cancelFreeMembership(input: { organisationId: string; gran
     } });
     return { status: "cancelled" as const, cancelledAt: now };
   });
+}
+
+// Refund a paid membership's whole order through Stripe (T23c). The grant
+// ends only when Stripe confirms the refund; until then it stays active.
+export async function refundMembership(input: { organisationId: string; grantId: string; actor: { id: string }; reason: string; confirmation: string }) {
+  const grant = await prisma.membershipGrant.findFirst({
+    where: { id: input.grantId, organisationId: input.organisationId },
+    select: { line: { select: { orderId: true } } }
+  });
+  if (!grant) throw new MembershipRevocationError("not_found", "Membership not found");
+  return requestCommerceRefund({ organisationId: input.organisationId, commerceOrderId: grant.line.orderId, actor: input.actor, reason: input.reason, confirmation: input.confirmation });
 }

@@ -105,7 +105,7 @@ export async function readMembership(organisationId: string, grantId: string, no
       id: true, userId: true, startsAt: true, endsAt: true, revokedAt: true, revocationReason: true, grantedAt: true, entitlements: true,
       user: { select: { firstName: true, lastName: true, email: true } },
       product: { select: { id: true, name: true } },
-      line: { select: { order: { select: { id: true, paymentKind: true, cancelledAt: true } } } },
+      line: { select: { order: { select: { id: true, paymentKind: true, cancelledAt: true, totalAmount: true, refundStatus: true } } } },
       revokedBy: { select: { firstName: true, lastName: true, email: true } }
     }
   });
@@ -136,6 +136,8 @@ export async function readMembership(organisationId: string, grantId: string, no
     paid: grant.line.order.paymentKind === "stripe",
     orderId: grant.line.order.id,
     cancelled: grant.line.order.cancelledAt !== null,
+    amount: grant.line.order.totalAmount,
+    refundStatus: grant.line.order.refundStatus,
     joinedAt: join?.createdAt ?? null,
     staff: !!staff,
     others: others.map((other) => ({ id: other.id, plan: other.product.name, startsAt: other.startsAt, endsAt: other.endsAt, state: grantState(other, now) as GrantState }))

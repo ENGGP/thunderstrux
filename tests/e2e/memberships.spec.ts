@@ -1,3 +1,4 @@
+import { createCommerceOrder } from "@/lib/commerce/orders";
 import { test, expect, login, prisma, selectStaffContext } from "./fixtures";
 
 // T22: an owner drafts, fixes, publishes and archives a membership plan; staff
@@ -104,4 +105,32 @@ test("a member buys a free membership through checkout and the owner finds them 
   await expect(page.getByText("Free membership cancelled")).toBeVisible();
   await expect(page.getByText("Revoked", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel free membership" })).toHaveCount(0);
+});
+
+test("a paid membership offers a refund that names the amount and asks for the order reference", async ({ page, data }) => {
+  const term = { startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 100 * 86_400_000) };
+  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: "acct_e2e_membership", stripeChargesEnabled: true } });
+  const plan = await prisma.membershipProduct.create({ data: { organisationId: data.organisation.id, name: "Semester 2 paid", priceAmount: 1500, ...term, entitlements: ["member_prices"], status: "published", publishedAt: new Date() } });
+  await prisma.user.update({ where: { id: data.member.id }, data: { firstName: "Sam", lastName: "Paid" } });
+  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: data.organisation.id, kind: "membership", buyer: { userId: data.member.id }, buyerEmail: data.member.email, paymentKind: "stripe", feeAmount: 150, source: "checkout",
+    lines: [{ quantity: 1, unitAmount: 1500, name: plan.name, termStartsAt: term.startsAt, termEndsAt: term.endsAt, membershipProductId: plan.id }]
+  }));
+  await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "paid", paidAt: new Date(), fulfilledAt: new Date(), stripeSessionId: "cs_e2e_membership_paid" } });
+  const line = await prisma.commerceOrderLine.findFirstOrThrow({ where: { orderId: order.id } });
+  const grant = await prisma.membershipGrant.create({ data: { userId: data.member.id, organisationId: data.organisation.id, membershipProductId: plan.id, commerceOrderLineId: line.id, ...term, entitlements: plan.entitlements, entitlementVersion: 1 } });
+
+  await login(page, data.owner.email, `/dashboard/memberships/members/${grant.id}`);
+  await expect(page.getByRole("button", { name: "Revoke membership" })).toBeVisible();
+  await page.getByRole("button", { name: "Refund membership" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Refund $15.00 to Sam Paid?" })).toBeVisible();
+  await expect(dialog.getByLabel(`Type ${order.id.slice(-6).toUpperCase()} to confirm`)).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({ path: `test-results/memberships-refund-dialog-${width}.png` });
+  }
+  await dialog.getByRole("button", { name: "Keep membership" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await prisma.refundRequest.count({ where: { commerceOrderId: order.id } })).toBe(0);
 });

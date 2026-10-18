@@ -514,9 +514,11 @@ model StripeRefundWebhookEvent {
 // One staff-initiated whole-order refund (T18a). Stripe is called outside the
 // database with operationKey as its idempotency key; an unknown outcome is
 // looked up at Stripe before the same key is ever sent again.
+// A whole-order refund of a ticket order or (T23c) a commerce order, never both.
 model RefundRequest {
   id                    String              @id @default(cuid())
-  orderId               String
+  orderId               String?
+  commerceOrderId       String?
   organisationId        String
   amount                Int
   currency              String              @default("aud")
@@ -537,12 +539,14 @@ model RefundRequest {
   resolvedAt            DateTime?
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
-  order                 Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  order                 Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  commerceOrder         CommerceOrder?      @relation(fields: [commerceOrderId], references: [id], onDelete: Restrict)
   organisation          Organisation        @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   actor                 User?               @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
   webhookEvents         StripeRefundWebhookEvent[]
 
   @@index([orderId, createdAt])
+  @@index([commerceOrderId, createdAt])
   @@index([status, nextAttemptAt])
 }
 
@@ -909,6 +913,10 @@ enum CommerceLifecycleEventType {
   order_expired
   compensation_required
   free_cancelled
+  refund_requested
+  refund_pending
+  refunded
+  refund_failed
 }
 
 model CommerceOrder {
@@ -947,6 +955,8 @@ model CommerceOrder {
   cancelledAt                DateTime?
   cancelledByUserId          String?
   cancellationReason         String?
+  // The financial fence for a Stripe-paid order (T23c), as Order.refundStatus.
+  refundStatus               OrderRefundStatus?
 
   organisation     Organisation             @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   cancelledBy      User?                    @relation("CommerceOrderCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
@@ -955,6 +965,7 @@ model CommerceOrder {
   lines            CommerceOrderLine[]
   lifecycleEvents  CommerceLifecycleEvent[]
   checkoutAttempt  CheckoutAttempt?
+  refundRequests   RefundRequest[]
 
   @@unique([id, organisationId, kind], map: "CommerceOrder_id_organisation_kind_key")
   @@index([organisationId, createdAt, id])

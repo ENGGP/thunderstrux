@@ -9,8 +9,17 @@ const maxChecks = 20;
 
 // While Stripe's confirmation is on its way, check the order's status every
 // few seconds and refresh the page once it changes. After about a minute it
-// stops and says so; it never claims success itself.
-export function PaymentStatusPoller({ orderId }: { orderId: string }) {
+// stops and says so; it never claims success itself. A membership order
+// (T24a) passes its commerce order's status URL, whose pending is "processing".
+export function PaymentStatusPoller({
+  orderId,
+  statusUrl = `/api/purchases/tickets/${orderId}/status`,
+  slowMessage = "Stripe hasn't confirmed yet. If you paid, your tickets will appear in Purchases and My tickets when it does, and we'll email you."
+}: {
+  orderId: string;
+  statusUrl?: string;
+  slowMessage?: string;
+}) {
   const router = useRouter();
   const [slow, setSlow] = useState(false);
 
@@ -21,8 +30,10 @@ export function PaymentStatusPoller({ orderId }: { orderId: string }) {
     async function check() {
       checks += 1;
       try {
-        const response = await fetch(`/api/purchases/tickets/${orderId}/status`, { cache: "no-store" });
-        if (response.ok && (await response.json()).status !== "processing") {
+        const response = await fetch(statusUrl, { cache: "no-store" });
+        const body = response.ok ? await response.json() : null;
+        const status = body?.status ?? body?.order?.status;
+        if (status && status !== "processing" && status !== "pending") {
           router.refresh();
           return;
         }
@@ -38,11 +49,11 @@ export function PaymentStatusPoller({ orderId }: { orderId: string }) {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [orderId, router]);
+  }, [statusUrl, router]);
 
   return slow ? (
     <Notice role="status" title="Still confirming">
-      <p>Stripe hasn&apos;t confirmed yet. If you paid, your tickets will appear in Purchases and My tickets when it does, and we&apos;ll email you.</p>
+      <p>{slowMessage}</p>
     </Notice>
   ) : null;
 }

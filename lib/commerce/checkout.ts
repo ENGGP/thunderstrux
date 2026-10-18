@@ -172,8 +172,9 @@ export async function createCommerceCheckout(input: {
       metadata
     },
     customer_email: order.buyerEmailSnapshot,
-    success_url: `${created.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${created.appUrl}/cancel`,
+    // A membership returns to its own order page (T24a); merchandise gets its own in T27.
+    success_url: input.family === "membership" ? `${created.appUrl}/memberships/orders/${order.id}` : `${created.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: input.family === "membership" ? `${created.appUrl}/memberships/orders/${order.id}?left=1` : `${created.appUrl}/cancel`,
     expires_at: expiresAt,
     metadata
   };

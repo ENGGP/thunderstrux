@@ -9,6 +9,7 @@ import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate, formatPrice, formatTerm, renewLabel } from "@/lib/format";
 import { membershipOffers, type Offer } from "@/lib/memberships/offers";
+import { hasShop } from "@/lib/merchandise/shop";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
 import { zoneCity } from "@/lib/zoned-time";
 import { societyViewer } from "../viewer";
@@ -24,7 +25,7 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
   const organisation = await publicOrganisation((await params).orgSlug);
   if (!organisation) notFound();
   const viewer = await societyViewer(organisation.id);
-  const { offers, memberUntil } = await membershipOffers(organisation.id, viewer.memberId);
+  const [{ offers, memberUntil }, hasMerchandise] = await Promise.all([membershipOffers(organisation.id, viewer.memberId), hasShop(organisation.id)]);
   const zone = organisation.timeZone;
   const day = (date: Date) => formatDate(date, zone);
   const lastDay = (endsAt: Date) => formatDate(new Date(endsAt.getTime() - 1), zone);
@@ -78,7 +79,7 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
   return (
     <main className="bg-paper pb-14">
       <div className="mx-auto max-w-page px-4 md:px-8">
-        <SocietyHeader current="memberships" hasMemberships={offers.length > 0} joined={viewer.joinState === "joined"} memberUntil={memberUntil} organisation={organisation} />
+        <SocietyHeader current="memberships" hasMemberships={offers.length > 0} hasMerchandise={hasMerchandise} joined={viewer.joinState === "joined"} memberUntil={memberUntil} organisation={organisation} />
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <section aria-labelledby="memberships-heading" className="grid content-start gap-5">

@@ -48,7 +48,43 @@ test("an owner drafts a product with a photo and options, publishes it and archi
   await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
   await shoot(page, "products");
 
+  // T26: a visitor who isn't signed in shops it.
+  await page.context().clearCookies();
+  const shop = `/societies/${data.organisation.slug}/merchandise`;
+  await page.goto(shop);
+  await expect(page.getByRole("link", { name: "Merchandise" }).first()).toHaveAttribute("aria-current", "page");
+  await expect(page.getByText("Buy online, collect in person.")).toBeVisible();
+  await shoot(page, "shop");
+  await page.getByRole("link", { name: /EngSoc hoodie/ }).click();
+  await expect(page.getByRole("heading", { name: "EngSoc hoodie", level: 1 })).toBeVisible();
+  await expect(page.getByText("only 5 left")).toBeVisible();
+  await page.getByRole("button", { name: "One more" }).click();
+  await page.getByRole("button", { name: "Add to basket · $90.00" }).click();
+  await expect(page.getByText("Added 2 × EngSoc hoodie (Navy, L) to your basket.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Basket · 2 items" })).toBeVisible();
+  await shoot(page, "product");
+  // The free option, then the basket: re-quoted by the server.
+  await page.getByText("Sticker pack", { exact: true }).click();
+  await page.getByRole("button", { name: "Add to basket · Free" }).click();
+  await page.getByRole("link", { name: "View basket" }).click();
+  await expect(page.getByRole("heading", { name: /merchandise basket/ })).toBeVisible();
+  await expect(page.getByText("Checkout isn't open yet")).toBeVisible();
+  await expect(page.getByText("3 items")).toBeVisible();
+  await page.getByRole("group", { name: "Quantity of EngSoc hoodie, Navy · L" }).getByRole("button", { name: "One fewer" }).click();
+  await expect(page.getByText("2 items")).toBeVisible();
+  await shoot(page, "basket");
+  // Another society's item asks before mixing baskets.
+  await page.evaluate(() => localStorage.setItem("thunderstrux:merchandise-basket", JSON.stringify({ society: "another-society", lines: [{ variantId: "x", quantity: 1 }] })));
+  await page.goto(shop);
+  await page.getByRole("link", { name: /EngSoc hoodie/ }).click();
+  await page.getByRole("button", { name: /Add to basket/ }).click();
+  await expect(page.getByRole("dialog").getByText("Your basket has another society's items")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Clear and add this" }).click();
+  await expect(page.getByRole("link", { name: "Basket · 1 item" })).toBeVisible();
+
+  await login(page, data.owner.email, "/dashboard/merchandise");
   await page.getByRole("link", { name: "Edit EngSoc hoodie" }).first().click();
+
   await page.getByRole("button", { name: "Archive product" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Archive product" }).click();
   await expect(page.getByRole("button", { name: "Restore as draft" })).toBeVisible();

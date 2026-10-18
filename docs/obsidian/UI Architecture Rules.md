@@ -86,6 +86,7 @@ Where data loads after the guards, the page wraps that part in `<Suspense>` with
 | (none) | Events | `/dashboard/events` | `events:read` |
 | (none) | Orders | `/dashboard/orders` | `orders:read` |
 | Community | Memberships | `/dashboard/memberships` | `memberships:manage` |
+| Community | Merchandise | `/dashboard/merchandise` | `merchandise:manage` |
 | Settings | Society profile | `/dashboard/settings/profile` | `organisation:settings` |
 | Settings | Staff | `/dashboard/settings/staff` | `staff:manage` |
 | Settings | Payments | `/dashboard/settings` | `stripe:manage` |

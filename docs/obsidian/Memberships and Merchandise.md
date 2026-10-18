@@ -3,7 +3,7 @@ status: living
 last-reviewed: 2026-10-18
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[UI Architecture Rules]]", "[[Society Profiles and Assets]]"]
-sources: [lib/memberships/plans.ts, lib/events/public-events.ts, lib/commerce/orders.ts, lib/commerce/families.ts, prisma/migrations/20261030010000_memberships/migration.sql]
+sources: [lib/merchandise/catalogue.ts, lib/memberships/plans.ts, lib/events/public-events.ts, lib/commerce/orders.ts, lib/commerce/families.ts, prisma/migrations/20261030010000_memberships/migration.sql]
 ---
 
 # Memberships and Merchandise
@@ -71,3 +71,17 @@ Refund membership on the member page (`orders:refund`; reason, the order's short
 - **Everything else stays hidden.** Explore, home, the society page and its Events list, and `GET /api/public/events/[eventId]` leave members-only events out. Ticket checkout re-checks access under the buyer lock (the lock revocation and refunds also take) and refuses anyone else, guests included, with the same `event_not_found` as a missing event; the checkout page sends them back to the gate. Fulfilment does not re-check: a membership revoked during a valid 30-minute hold still gets the tickets it started buying.
 - **The image.** `GET /api/public/assets/[assetId]` serves a members-only event's image only to a member it is open to, with `private, no-store`; it is never on the public, cached path.
 - **The member's view.** The full page with "Members only. You can see this because your {society} membership includes members-only events." The confirmation page reads the event for the buyer's own order, so a ticket holder keeps it.
+
+## Merchandise catalogue (T25)
+
+`lib/merchandise/catalogue.ts`, from design round B batch 2. A product (`MerchandiseProduct`) is something a society sells for pickup: a name, an optional description, up to four photos and the options buyers pick. It is draft, published or archived, and never deleted. Nothing sells until T27; the shop arrives with T26.
+
+- **Options** (`MerchandiseVariant`): colour and size (either may be blank; a product with one option leaves both blank), a SKU, an integer AUD price and the stock left. Each saved option carries a version that a sale (T27) or another editor bumps, so a save made from a stale page is a `409` and changes nothing. The same colour and size twice is refused. Up to 50 options.
+- **SKUs** are unique in the society for good, including options that stopped selling, so a receipt's SKU always names one option. A blank SKU is made from the name, colour and size (`ENGSOC-HOODIE-NAVY-L`, then `-2` if taken). Decision: unlike the readiness plan's "tenant-unique SKU" field, staff never have to type one; Shopify treats SKUs as optional and Eventbrite and Humanitix add-ons have none, but stock and pickups still need a stable identifier.
+- **Photos**: ready `product` images of the same society (`MerchandiseProductImage`, position 0 to 3; the first is the cover), uploaded through the shared asset route. Alt text is derived ("{product}, photo 1 of 3") rather than asked for. Photos count as references for asset cleanup and deletion, and are public once the product is published.
+- **Publish check** (`productReadiness`, the one rule for the button and the API): a photo; an option buyers can get, meaning in stock and either free or payable (like event ticket types, free options in stock let a product publish before payments are set up); and the society's pickup details. Decision: a photo is required although Eventbrite and Humanitix add-ons don't need one, because clothing is bought on its look. A published product must keep a photo and an option; stock may run out and prices may change (receipts keep the price paid).
+- **Removing an option**: deleted while the product has never been on sale (`firstPublishedAt` is null); after that it stops selling (`archivedAt`) and keeps its SKU.
+- **Archive and restore**: archiving stops sales and hides the product; Restore brings it back as a draft. Decision (changed after round B2 approval): reversible, unlike membership plans, because a product is often sold again next semester and Shopify lets you unarchive for the same reason.
+- **Pickup details** are one society-wide text (Society profile, `Organisation.pickupPolicy`), shown with every product, the basket and receipts; a society can't clear them while it has products on sale.
+- **Concurrency**: every change holds User, then Organisation, then the product row, then its options in ascending id (`lockOrganisationActor`, then `FOR UPDATE`), then any photo assets. T27 checkout locks options in the same ascending order and never the product, so the two can't deadlock.
+- **Access**: live `merchandise:manage` (owners and admins) through `/api/orgs/[orgSlug]/merchandise` and `/dashboard/merchandise` (Community menu). A member who isn't staff, and another society's slug, get `404`; staff of this society without the permission get `403`. Changes are audited (`merchandise_product.created`, `updated`, `published`, `archived`, `restored`).

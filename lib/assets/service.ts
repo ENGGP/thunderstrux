@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import type { OrganisationPermission } from "@/lib/permissions";
+import { activeEntitlementGrant } from "@/lib/memberships/grants";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
 import { AssetError, sanitiseImage } from "./image";
 import { assetStorage, type AssetStorage } from "./storage";
@@ -85,4 +86,16 @@ export async function publicAsset(id: string) {
   const asset = await prisma.asset.findUnique({ where: { id }, select: { organisationId: true, status: true } });
   if (!asset || asset.status !== "ready" || !await prisma.$transaction(tx => assetPublicReferenced(tx, id))) return null;
   return previewAsset(asset.organisationId, id);
+}
+// The image of a published members-only event, for a verified member whose
+// live membership of that society unlocks members-only events (T24b); the
+// route serves it privately and uncached.
+export async function memberEventAsset(id: string, userId: string, storage: AssetStorage = assetStorage(), now = new Date()) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { accountRole: true, emailVerifiedAt: true } });
+  if (user?.accountRole !== "member" || !user.emailVerifiedAt) return null;
+  const events = await prisma.event.findMany({ where: { heroAssetId: id, status: "published", visibility: "members_only" }, select: { organisationId: true } });
+  for (const organisationId of new Set(events.map((event) => event.organisationId))) {
+    if (await activeEntitlementGrant(prisma, userId, organisationId, "members_only_events", now)) return previewAsset(organisationId, id, storage);
+  }
+  return null;
 }

@@ -162,10 +162,10 @@ export function ownMembershipOrder(userId: string, orderId: string) {
   });
 }
 
-// Whether a member price on this society's tickets can be used now: a
-// published plan still to end unlocks member prices (the builder's warning).
-export async function memberPricesOnSale(organisationId: string, now = new Date()) {
-  return (await prisma.membershipProduct.count({ where: { organisationId, status: "published", endsAt: { gt: now }, entitlements: { has: "member_prices" } } })) > 0;
+// Whether a published plan still to end unlocks this right: member prices
+// (the builder's warning) or members-only events (needed to publish one).
+export async function entitlementOnSale(organisationId: string, entitlement: MembershipEntitlement, now = new Date()) {
+  return (await prisma.membershipProduct.count({ where: { organisationId, status: "published", endsAt: { gt: now }, entitlements: { has: entitlement } } })) > 0;
 }
 
 // The plan whose membership gives this member the society's member prices

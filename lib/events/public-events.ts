@@ -1,8 +1,10 @@
 import type { Prisma } from "@prisma/client";
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { eventReadiness, salesOpen, type TicketTypeUnavailableReason } from "@/lib/events/event-readiness";
 import type { ExploreRange } from "@/lib/events/explore-filters";
 import { readEventInventory, sellableQuantity } from "@/lib/events/inventory";
+import { activeEntitlementGrant } from "@/lib/memberships/grants";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
   ascendingCursorWhere,
@@ -64,6 +66,8 @@ export type PublicEventDetail = {
     refundPolicy: string;
   };
   ticketTypes: PublicEventTicketType[];
+  // Set only on a page a member's membership opened (T24b).
+  membersOnly: boolean;
   status?: "draft" | "published";
   salesOpen?: boolean;
   salesCloseAt?: Date;
@@ -196,6 +200,7 @@ async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEve
     location: event.location,
     heroAssetId: event.heroAssetId,
     status: event.status,
+    membersOnly: event.visibility === "members_only",
     salesOpen: salesOpen(event, now),
     salesCloseAt: event.salesCloseAt,
     // The society's Stripe fields decide availability but are not public.
@@ -232,9 +237,74 @@ export function priceForViewer(ticketTypes: PublicEventTicketType[], member: boo
 }
 
 // Public and link-only events are readable; drafts and members-only events
-// read as missing.
+// read as missing (the public API, and the first step of getEventForViewer).
 export function getPublishedEventDetail(eventId: string) {
   return readEventDetail({ id: eventId, status: "published", visibility: { not: "members_only" } });
+}
+
+// Why a published members-only event is closed to this viewer (round B1).
+export type MembersOnlyGate = {
+  society: { name: string; slug: string; logoAssetId: string | null };
+  reason: "signed_out" | "unverified" | "no_membership" | "not_included" | "upcoming";
+  // For "upcoming": the day a membership that includes members-only events starts.
+  startsAt: Date | null;
+  timeZone: string;
+};
+
+export type ViewerEvent = { kind: "open"; event: PublicEventDetail } | { kind: "gated"; gate: MembersOnlyGate };
+
+// The event page and ticket checkout read an event through this; null is a 404
+// (missing, draft). Safety contract (T24b): a members-only event is decided from
+// its id, status, visibility and society alone, and its other fields are read
+// only once the viewer's live membership of that society unlocks members-only
+// events (verified member account; unrevoked; inside its dates). Free joins,
+// staff, guests and other societies' members get the gate, which names only
+// the society. Cached per request so page and metadata decide once.
+export const getEventForViewer = cache(async (eventId: string, userId: string | null): Promise<ViewerEvent | null> => {
+  const head = await prisma.event.findFirst({ where: { id: eventId, status: "published" }, select: { visibility: true, organisationId: true } });
+  if (!head) return null;
+  if (head.visibility !== "members_only") {
+    // Re-filtered, so an event turned members-only meanwhile reads as missing.
+    const event = await getPublishedEventDetail(eventId);
+    return event && { kind: "open", event };
+  }
+
+  const now = new Date();
+  const user = userId ? await prisma.user.findUnique({ where: { id: userId }, select: { accountRole: true, emailVerifiedAt: true } }) : null;
+  const verifiedMember = Boolean(user && user.accountRole === "member" && user.emailVerifiedAt);
+  if (verifiedMember && (await activeEntitlementGrant(prisma, userId as string, head.organisationId, "members_only_events", now))) {
+    const event = await readEventDetail({ id: eventId, status: "published", visibility: "members_only", organisationId: head.organisationId });
+    return event && { kind: "open", event };
+  }
+
+  const [society, grants] = await Promise.all([
+    prisma.organisation.findUniqueOrThrow({ where: { id: head.organisationId }, select: { name: true, slug: true, logoAssetId: true, timeZone: true } }),
+    verifiedMember
+      ? prisma.membershipGrant.findMany({
+          where: { userId: userId as string, organisationId: head.organisationId, revokedAt: null, endsAt: { gt: now } },
+          orderBy: { startsAt: "asc" },
+          select: { startsAt: true, entitlements: true }
+        })
+      : []
+  ]);
+  const upcoming = grants.find((grant) => grant.startsAt > now && grant.entitlements.includes("members_only_events"));
+  const reason: MembersOnlyGate["reason"] = !user
+    ? "signed_out"
+    : user.accountRole === "member" && !user.emailVerifiedAt
+      ? "unverified"
+      : upcoming
+        ? "upcoming"
+        : grants.some((grant) => grant.startsAt <= now)
+          ? "not_included"
+          : "no_membership";
+  const { timeZone, ...publicSociety } = society;
+  return { kind: "gated", gate: { society: publicSociety, reason, startsAt: upcoming?.startsAt ?? null, timeZone } };
+});
+
+// The buyer's own confirmation page: callers must already hold the buyer's
+// order for this event, so a members-only event shows to its ticket holder.
+export function getBookedEventDetail(eventId: string) {
+  return readEventDetail({ id: eventId, status: "published" });
 }
 
 // The organiser's preview of the same page, draft or published, scoped to the

@@ -173,7 +173,13 @@ export default async function OrganiserEventPage({
             <SaleBadge event={event} />
           </div>
           <ul className="mt-3 grid list-disc gap-2 pl-5 text-[15px] text-ink">
-            <li>{event.visibility === "unlisted" ? "Published, link only: not listed on Explore events" : "Published and listed publicly"}</li>
+            <li>
+              {event.visibility === "unlisted"
+                ? "Published, link only: not listed on Explore events"
+                : event.visibility === "members_only"
+                  ? "Published, members only: not listed; only members whose membership unlocks members-only events can see it"
+                  : "Published and listed publicly"}
+            </li>
             {event.blockers
               .filter((blocker) => ["payments_unavailable", "sold_out", "no_stock"].includes(blocker.code))
               .map((blocker) => (

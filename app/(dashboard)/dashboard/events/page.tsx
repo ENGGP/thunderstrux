@@ -108,7 +108,8 @@ async function EventsResults({
   const tickets = (event: DashboardEvent & { sold: number | null }) =>
     event.ticketTypeCount === 0 ? "No ticket types" : `${event.sold} sold · ${event.remaining} left`;
   // Visibility is a setting, not a status: plain text after the location.
-  const place = (event: DashboardEvent) => (event.visibility === "unlisted" ? `${event.location} · Link only` : event.location);
+  const place = (event: DashboardEvent) =>
+    event.visibility === "unlisted" ? `${event.location} · Link only` : event.visibility === "members_only" ? `${event.location} · Members only` : event.location;
   const [singular, plural] = viewNouns[view];
   const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
 

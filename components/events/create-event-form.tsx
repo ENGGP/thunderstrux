@@ -159,7 +159,8 @@ export function CreateEventForm({
   orgSlug,
   timeZone,
   chargesReady,
-  memberPricesOnSale = false
+  memberPricesOnSale = false,
+  membersOnlyOnSale = false
 }: {
   // The readiness panel on the Edit page.
   aside?: ReactNode;
@@ -167,6 +168,8 @@ export function CreateEventForm({
   chargesReady: boolean;
   // Whether a published membership plan unlocks member prices now (T24b).
   memberPricesOnSale?: boolean;
+  // Whether a published membership plan unlocks members-only events now.
+  membersOnlyOnSale?: boolean;
   eventId?: string;
   initialEvent?: EventFormData;
   mode?: "create" | "edit";
@@ -568,7 +571,12 @@ export function CreateEventForm({
               {(
                 [
                   ["public", "Public", "Listed on Explore events and the society page."],
-                  ["unlisted", "Link only", "Not listed. Anyone with the link can view and buy."]
+                  ["unlisted", "Link only", "Not listed. Anyone with the link can view and buy."],
+                  [
+                    "members_only",
+                    "Members only",
+                    "Not listed anywhere. Members whose membership unlocks members-only events see the full page; anyone else with the link sees only that it's a members-only event of your society."
+                  ]
                 ] as const
               ).map(([value, label, hint]) => (
                 <label className="flex min-h-11 items-start gap-3 rounded-control border border-line p-3" key={value}>
@@ -579,6 +587,14 @@ export function CreateEventForm({
                   </span>
                 </label>
               ))}
+              {form.visibility === "members_only" && !membersOnlyOnSale ? (
+                <p className="text-sm text-warning">
+                  Publishing a members-only event needs a published plan that unlocks members-only events.{" "}
+                  <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/memberships">
+                    Go to Memberships
+                  </Link>
+                </p>
+              ) : null}
             </fieldset>
             <TextInput
               error={errorFor(errors, "capacity")}

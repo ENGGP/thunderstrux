@@ -1,8 +1,5 @@
 import type { EventSaleState, EventStatus, EventVisibility } from "@prisma/client";
 
-// Members-only events need the membership entitlements delivered by T24.
-export const MEMBERS_ONLY_EVENTS_ENABLED = false;
-
 export type ReadinessEvent = {
   title: string;
   description: string;
@@ -29,10 +26,11 @@ export function salesOpen(event: Pick<ReadinessEvent, "saleState" | "salesCloseA
 // ticket types can be bought. Publication and per-type checkout eligibility are
 // separate answers: a mixed event may publish and sell its free tickets while its
 // paid tickets wait for Stripe. `chargesReady` comes from the society's
-// Connect state.
+// Connect state; `membersOnlyReady` says a published plan still to end unlocks
+// members-only events (T24b), which a members-only event needs to publish.
 export function eventReadiness(
   event: ReadinessEvent,
-  { chargesReady, now = new Date() }: { chargesReady: boolean; now?: Date }
+  { chargesReady, membersOnlyReady = false, now = new Date() }: { chargesReady: boolean; membersOnlyReady?: boolean; now?: Date }
 ) {
   const ticketTypes = event.ticketTypes.map((ticketType) => {
     const reason: TicketTypeUnavailableReason | null =
@@ -58,8 +56,8 @@ export function eventReadiness(
   if (event.salesCloseAt <= now) {
     block("sales_window_past", "salesCloseAt", "Move the sales close time into the future before publishing.");
   }
-  if (event.visibility === "members_only" && !MEMBERS_ONLY_EVENTS_ENABLED) {
-    block("members_only_unavailable", "visibility", "Members-only events become available with memberships.");
+  if (event.visibility === "members_only" && !membersOnlyReady) {
+    block("members_only_unavailable", "visibility", "Publish a membership plan that unlocks members-only events first.");
   }
   if (event.ticketTypes.length === 0) {
     block("no_ticket_types", "ticketTypes", "Add a ticket type before publishing.");

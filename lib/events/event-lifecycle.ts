@@ -3,13 +3,10 @@ import type { z } from "zod";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
 import { scopedByOrganisation } from "@/lib/db/organisation-scope";
-import {
-  eventReadiness,
-  MEMBERS_ONLY_EVENTS_ENABLED,
-  salesOpen
-} from "@/lib/events/event-readiness";
+import { eventReadiness, salesOpen } from "@/lib/events/event-readiness";
 import { assetReferenced } from "@/lib/assets/references";
 import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
+import { entitlementOnSale } from "@/lib/memberships/offers";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
   createEventSchema,
@@ -62,18 +59,16 @@ async function assertHeroAsset(tx: Prisma.TransactionClient, organisationId: str
   }
 }
 
+// Whether a published plan still to end unlocks members-only events, asked
+// only when one of these events is members-only.
+async function membersOnlyReadyFor(organisationId: string, events: Array<{ visibility: string }>) {
+  return events.some((event) => event.visibility === "members_only") && (await entitlementOnSale(organisationId, "members_only_events"));
+}
+
 // Images that lost or gained a reference start or stop their cleanup delay.
 async function refreshAssetReferences(tx: Prisma.TransactionClient, ids: Array<string | null | undefined>) {
   for (const id of [...new Set(ids.filter((value): value is string => Boolean(value)))].sort()) {
     await tx.asset.update({ where: { id }, data: { unreferencedAt: (await assetReferenced(tx, id)) ? null : new Date() } });
-  }
-}
-
-function rejectMembersOnly(visibility: string | undefined) {
-  if (visibility === "members_only" && !MEMBERS_ONLY_EVENTS_ENABLED) {
-    throw new EventLifecycleValidationError("Members-only events are not available yet", [
-      { path: ["visibility"], message: "Members-only events become available with memberships" }
-    ]);
   }
 }
 
@@ -140,10 +135,11 @@ const dashboardEventSelect = {
 // is unavailable; the mutations still enforce them.
 function toDashboardEvent(
   event: Prisma.EventGetPayload<{ select: typeof dashboardEventSelect }>,
+  membersOnlyReady: boolean,
   now = new Date()
 ) {
   const remaining = event.ticketTypes.reduce((total, ticketType) => total + ticketType.quantity, 0);
-  const readiness = eventReadiness(event, { chargesReady: isOrganisationStripeReady(event.organisation), now });
+  const readiness = eventReadiness(event, { chargesReady: isOrganisationStripeReady(event.organisation), membersOnlyReady, now });
 
   return {
     id: event.id,
@@ -239,10 +235,11 @@ export async function listDashboardEvents(
         })
       : [];
   const soldByEvent = new Map(sold.map((group) => [group.eventId, group._sum.quantity ?? 0]));
+  const membersOnlyReady = await membersOnlyReadyFor(organisationId, rows);
 
   return {
     events: rows.map((row) => ({
-      ...toDashboardEvent(row),
+      ...toDashboardEvent(row, membersOnlyReady),
       sold: includeSales ? soldByEvent.get(row.id) ?? 0 : null
     })),
     counts: Object.fromEntries(eventViews.map((name, index) => [name, counts[index]])) as Record<
@@ -274,7 +271,7 @@ export async function getDashboardEvent(organisationId: string, eventId: string)
 
   const inventory = await readEventInventory(prisma, event.id, new Date());
   return {
-    ...toDashboardEvent(event),
+    ...toDashboardEvent(event, await membersOnlyReadyFor(organisationId, [event])),
     // Issued tickets plus live checkout holds, against the capacity.
     occupancy: inventory.occupancy,
     heldByType: Object.fromEntries(inventory.holdsByType) as Record<string, number>
@@ -366,8 +363,6 @@ export async function createOrganisationEvent(
     ]);
   }
 
-  rejectMembersOnly(input.visibility);
-
   return prisma.$transaction(async (transaction) => {
     if (input.heroAssetId) await assertHeroAsset(transaction, organisationId, input.heroAssetId);
     const event = await transaction.event.create({
@@ -436,7 +431,6 @@ export async function updateOrganisationEvent(
     throw new EventLifecycleConflictError();
   }
 
-  rejectMembersOnly(input.visibility);
   // A close time still at its default follows the start time; an explicit one stays.
   const salesCloseAt =
     input.salesCloseAt ??
@@ -670,7 +664,10 @@ export async function setOrganisationEventPublication(
     }
 
     if (targetStatus === "published") {
-      const readiness = eventReadiness(event, { chargesReady: isOrganisationStripeReady(event.organisation) });
+      const readiness = eventReadiness(event, {
+        chargesReady: isOrganisationStripeReady(event.organisation),
+        membersOnlyReady: await membersOnlyReadyFor(organisationId, [event])
+      });
 
       if (!readiness.publishable) {
         throw new EventLifecycleValidationError(

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { POST as createEventRoute } from "@/app/api/events/route";
-import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { getPublishedEventDetail, priceForViewer } from "@/lib/events/public-events";
 import { decryptNotification } from "@/lib/email/notification-crypto";
@@ -12,7 +11,7 @@ import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEn
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
-import { createEvent, createMember, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
+import { createEvent, createMember, createMembershipGrant as membership, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 const stripe = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("@/lib/stripe", () => ({
@@ -39,17 +38,6 @@ async function society({ memberPrice = 1000, stripeReady = true } = {}) {
   const account = await createOrganisationAccount({ stripeReady });
   const event = await createEvent({ organisationId: account.organisation.id, status: "published", ticketTypes: [{ name: "General", price: 1500, memberPrice, quantity: 20 }] });
   return { ...account, event, ticketType: event.ticketTypes[0] };
-}
-
-// A membership as fulfilment leaves it.
-async function membership(organisationId: string, userId: string, email: string, { startsAt = new Date(now - day), endsAt = new Date(now + 100 * day), entitlements = ["member_prices"] as Array<"member_prices" | "members_only_events"> } = {}) {
-  const plan = await prisma.membershipProduct.create({ data: { organisationId, name: unique("Plan"), priceAmount: 0, startsAt, endsAt, entitlements, status: "published", publishedAt: new Date() } });
-  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
-    organisationId, kind: "membership", buyer: { userId }, buyerEmail: email, paymentKind: "free", source: "checkout",
-    lines: [{ quantity: 1, unitAmount: 0, name: plan.name, termStartsAt: startsAt, termEndsAt: endsAt, membershipProductId: plan.id }]
-  }));
-  const line = await prisma.commerceOrderLine.findFirstOrThrow({ where: { orderId: order.id } });
-  return prisma.membershipGrant.create({ data: { userId, organisationId, membershipProductId: plan.id, commerceOrderLineId: line.id, startsAt, endsAt, entitlements, entitlementVersion: 3 } });
 }
 
 const buy = (fixture: Awaited<ReturnType<typeof society>>, userId: string, expectedUnitPrice: number, quantity = 2) =>

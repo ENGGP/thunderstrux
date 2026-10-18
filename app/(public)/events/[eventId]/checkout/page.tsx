@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { getPublishedEventDetail, priceForViewer } from "@/lib/events/public-events";
+import { getEventForViewer, priceForViewer } from "@/lib/events/public-events";
 import { memberPricePlan } from "@/lib/memberships/offers";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
@@ -44,8 +44,12 @@ export default async function CheckoutPage({
   }
   if (session && session.user.accountRole !== "member") redirect(eventHref);
 
-  const event = await getPublishedEventDetail(eventId);
-  if (!event) notFound();
+  // A members-only event checks out only for members it is open to; anyone
+  // else goes back to the page, which shows the gate (T24b).
+  const access = await getEventForViewer(eventId, session?.user.id ?? null);
+  if (!access) notFound();
+  if (access.kind === "gated") redirect(eventHref);
+  const { event } = access;
 
   const listed = event.ticketTypes.find((type) => type.id === query.ticketTypeId);
   // A member account with the right membership is quoted the member price; guests never are (T24b).

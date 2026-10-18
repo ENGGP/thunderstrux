@@ -9,7 +9,9 @@ const checks = [
   { label: "Ends after it starts", codes: ["schedule_invalid"] },
   { label: "Sales close in the future, before the end", codes: ["sales_close_after_end", "sales_window_past"] },
   { label: "A ticket type with tickets left", codes: ["no_ticket_types", "no_stock", "sold_out"] },
-  { label: "A ticket people can buy now", codes: ["payments_unavailable", "members_only_unavailable"] }
+  { label: "A ticket people can buy now", codes: ["payments_unavailable"] },
+  // Shown only while it blocks, since most events are not members-only.
+  { label: "A plan that unlocks members-only events", codes: ["members_only_unavailable"], onlyWhenBlocked: true }
 ];
 
 export function ReadinessChecklist({
@@ -24,10 +26,13 @@ export function ReadinessChecklist({
     <ul className="grid gap-3">
       {checks.map((check) => {
         const blocker = blockers.find((item) => check.codes.includes(item.code));
+        if (!blocker && "onlyWhenBlocked" in check) return null;
         const fix =
           blocker?.code === "payments_unavailable"
             ? { href: "/dashboard/settings", label: "Set up payments" }
-            : blocker && editHref
+            : blocker?.code === "members_only_unavailable"
+              ? { href: "/dashboard/memberships", label: "Go to Memberships" }
+              : blocker && editHref
               ? { href: `${editHref}#${blocker.field}`, label: "Fix on the Edit page" }
               : null;
 

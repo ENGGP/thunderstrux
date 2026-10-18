@@ -1,4 +1,4 @@
-import { memberPricesOnSale } from "@/lib/memberships/offers";
+import { entitlementOnSale } from "@/lib/memberships/offers";
 import { notFound } from "next/navigation";
 import { CreateEventForm } from "@/components/events/create-event-form";
 import { EventWorkspaceHeader } from "@/components/events/event-tabs";
@@ -26,13 +26,15 @@ export default async function EditEventPage({
   let event: Awaited<ReturnType<typeof getDashboardEvent>>;
   let chargesReady: boolean;
   let memberPrices: boolean;
+  let membersOnly: boolean;
 
   try {
-    [initialEvent, event, chargesReady, memberPrices] = await Promise.all([
+    [initialEvent, event, chargesReady, memberPrices, membersOnly] = await Promise.all([
       getOrganisationEventForEditing(organisation.id, eventId),
       getDashboardEvent(organisation.id, eventId),
       readChargeReadiness(organisation.id),
-      memberPricesOnSale(organisation.id)
+      entitlementOnSale(organisation.id, "member_prices"),
+      entitlementOnSale(organisation.id, "members_only_events")
     ]);
   } catch (error) {
     if (error instanceof EventLifecycleNotFoundError) {
@@ -54,6 +56,7 @@ export default async function EditEventPage({
       <CreateEventForm
         chargesReady={chargesReady}
         memberPricesOnSale={memberPrices}
+        membersOnlyOnSale={membersOnly}
         aside={
           event.status === "draft" ? (
             <Card>

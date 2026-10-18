@@ -6,6 +6,8 @@ import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import { OrganisationAccessError } from "@/lib/auth/access";
 import { MembershipPlanError } from "@/lib/memberships/plans";
 import { MembershipRevocationError } from "@/lib/memberships/revocation";
+import { OrderRefundError } from "@/lib/payments/order-refunds";
+import { StripeConfigurationError } from "@/lib/stripe";
 import type { OrganisationPermission } from "@/lib/permissions";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
@@ -62,6 +64,8 @@ export async function planRead(request: Request, orgSlug: string, read: (organis
 
 const endSchema = z.object({
   reason: z.string().trim().min(8, "Give a reason of at least 8 characters").max(500),
+  // A refund also needs the order's short reference typed back.
+  confirmation: z.string().trim().min(1).max(20).optional(),
   mfaCode: z.string().trim().max(20).optional()
 }).strict();
 
@@ -76,10 +80,18 @@ const endRules = [
   routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
   routeErrorRule(MembershipRevocationError, (error) =>
     error.kind === "not_found" ? notFound(error.message) : apiError("CONFLICT", error.message, 409, [{ path: ["grantId"], message: error.message, reason: error.kind }])
+  ),
+  routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),
+  routeErrorRule(OrderRefundError, (error) =>
+    error.kind === "not_found"
+      ? notFound(error.message)
+      : error.kind === "confirmation_mismatch"
+        ? badRequest(error.message, [{ path: ["confirmation"], message: error.message, reason: error.kind }])
+        : apiError("CONFLICT", error.message, 409, [{ path: ["grantId"], message: error.message, reason: error.kind }])
   )
 ];
 
-// POST .../memberships/members/[grantId]/revoke and /cancel (T23b): trusted
+// POST .../memberships/members/[grantId]/revoke, /cancel (T23b) and /refund (T23c): trusted
 // origin, live permission, a reason and, unless staff MFA is off, a fresh
 // authenticator code, as for refunds and free cancellations.
 export async function endMembershipRoute(
@@ -87,7 +99,8 @@ export async function endMembershipRoute(
   orgSlug: string,
   permission: OrganisationPermission,
   operation: string,
-  run: (organisationId: string, actor: { id: string }, reason: string) => Promise<unknown>
+  run: (organisationId: string, actor: { id: string }, body: z.infer<typeof endSchema>) => Promise<unknown>,
+  status: (result: unknown) => number = () => 200
 ) {
   const denied = enforceTrustedMutationRequest(request);
   if (denied) return denied;
@@ -105,7 +118,8 @@ export async function endMembershipRoute(
       if (!digest) throw new MfaRequiredError();
       await verifyStaffMfa(actor.id, body.data.mfaCode, digest);
     }
-    return NextResponse.json(await run(organisationId, { id: actor.id }, body.data.reason), { headers: noStore });
+    const result = await run(organisationId, { id: actor.id }, body.data);
+    return NextResponse.json(result, { status: status(result), headers: noStore });
   } catch (error) {
     return mapRouteError(error, { operation: `memberships.${operation}`, request, rules: endRules });
   }

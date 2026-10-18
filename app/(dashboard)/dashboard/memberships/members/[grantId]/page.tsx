@@ -7,10 +7,10 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { readMembership } from "@/lib/memberships/roster";
 import { readTimeZone } from "@/lib/organisations/profile";
-import { orderReference } from "@/lib/payments/order-refunds";
+import { latestCommerceRefundRequest, orderReference } from "@/lib/payments/order-refunds";
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { zoneCity } from "@/lib/zoned-time";
@@ -31,6 +31,8 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
   const live = membership.state === "active" || membership.state === "upcoming";
   const canRevoke = live && hasOrganisationPermission(organisation.staffRole, "memberships:manage");
   const canCancel = live && !membership.paid && !membership.cancelled && hasOrganisationPermission(organisation.staffRole, "orders:refund");
+  const canRefund = live && membership.paid && !membership.refundStatus && hasOrganisationPermission(organisation.staffRole, "orders:refund");
+  const refund = membership.paid ? await latestCommerceRefundRequest(membership.orderId) : null;
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -42,7 +44,24 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
         ]}
         title={membership.name}
       />
-      {membership.revokedAt ? (
+      {membership.refundStatus === "processing" ? (
+        <Notice role="status" title="Refund processing" tone="info">
+          <p className="mt-0.5">
+            Stripe has the refund for {formatMoney(membership.amount)}. The membership stays active until Stripe confirms it, then ends and {membership.name} is emailed.
+          </p>
+        </Notice>
+      ) : refund?.status === "failed" && !membership.refundStatus ? (
+        <Notice title="The last refund didn't go through" tone="warning">
+          <p className="mt-0.5">Nothing was refunded and the membership is still active. You can try again.</p>
+        </Notice>
+      ) : null}
+      {membership.revokedAt && membership.refundStatus === "refunded" ? (
+        <Notice title="Ended by a refund" tone="info">
+          <p className="mt-0.5">
+            Order {orderReference(membership.orderId)} was refunded on {formatDate(membership.revokedAt, timeZone)}, so this membership ended then: “{membership.revocationReason}”
+          </p>
+        </Notice>
+      ) : membership.revokedAt ? (
         <Notice title={membership.cancelled ? "Free membership cancelled" : "Ended early"} tone="info">
           <p className="mt-0.5">
             {membership.cancelled ? "Cancelled" : "Revoked"} on {formatDate(membership.revokedAt, timeZone)}
@@ -102,13 +121,16 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
             <p className="text-sm text-ink-soft">Joining, membership and staff access are separate. Each changes on its own.</p>
           </div>
         </Card>
-        {canRevoke || canCancel ? (
+        {canRevoke || canCancel || canRefund ? (
           <Card>
             <div className="grid gap-4">
               <h2 className="font-display text-xl font-semibold text-ink">Manage this membership</h2>
               <MembershipActions
+                amount={formatMoney(membership.amount)}
                 canCancel={canCancel}
+                canRefund={canRefund}
                 canRevoke={canRevoke}
+                reference={orderReference(membership.orderId)}
                 grantId={membership.id}
                 member={membership.name}
                 needsCode={mfaEnforcementMode() !== "off"}

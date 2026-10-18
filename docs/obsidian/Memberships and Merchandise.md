@@ -39,7 +39,9 @@ A `MembershipGrant` is one member's membership from one purchased line: unique p
 
 The member page's Manage this membership card holds the two dialogs; Cancel free membership replaces Revoke for a free membership. Commerce order pages arrive with T29, so the cancellation lives on the member page for now.
 
-**T23c (next):** a full refund of a paid membership order through Stripe (the T18a machinery extended to commerce orders: refund request, fence, worker and webhook), which revokes the grant once the refund is confirmed.
+## Refunding a paid membership (T23c)
+
+Refund membership on the member page (`orders:refund`; reason, the order's short reference typed back and the authenticator code) starts a whole-order Stripe refund through the shared refund path (see [[Payment Lifecycle]], Whole-Order Refunds). The membership stays active while Stripe processes it (the page shows Refund processing) and is revoked only when Stripe confirms; the member is emailed once. A failed or refused refund leaves it active. Tickets bought at a member price keep their price. Disputes and refunds made in Stripe's dashboard are not yet projected for commerce orders (PAY-003).
 
 ## Members-only gate (decided for T24b)
 

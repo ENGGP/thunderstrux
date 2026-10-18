@@ -8,17 +8,21 @@ import { TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
-type Action = "revoke" | "cancel";
+type Action = "revoke" | "cancel" | "refund";
 
-// The member page's "Manage this membership" card (T23b): revoke (no refund)
-// and, for a free membership, cancel. Each needs a reason and, when staff MFA
-// is on, an authenticator code.
+// The member page's "Manage this membership" card: refund a paid membership
+// (T23c), revoke without a refund, or cancel a free one (T23b). Each needs a
+// reason and, when staff MFA is on, an authenticator code; a refund also
+// needs the order's short reference typed back.
 export function MembershipActions({
   orgSlug,
   grantId,
   member,
   canRevoke,
   canCancel,
+  canRefund,
+  amount,
+  reference,
   needsCode
 }: {
   orgSlug: string;
@@ -27,11 +31,15 @@ export function MembershipActions({
   canRevoke: boolean;
   // A free membership whose order this staff member may cancel.
   canCancel: boolean;
+  // A paid membership whose order this staff member may refund, with its total and short reference.
+  canRefund: boolean;
+  amount: string;
+  reference: string;
   needsCode: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<Action | null>(null);
-  const [form, setForm] = useState({ reason: "", mfaCode: "" });
+  const [form, setForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,13 +51,17 @@ export function MembershipActions({
       await fetchJson(`/api/orgs/${orgSlug}/memberships/members/${grantId}/${open}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: form.reason, ...(needsCode ? { mfaCode: form.mfaCode } : {}) })
+        body: JSON.stringify({
+          reason: form.reason,
+          ...(open === "refund" ? { confirmation: form.confirmation } : {}),
+          ...(needsCode ? { mfaCode: form.mfaCode } : {})
+        })
       });
       setOpen(null);
       router.refresh();
     } catch (failure) {
       setOpen(null);
-      setError(getClientErrorMessage(failure, "Nothing changed. The membership is still active."));
+      setError(getClientErrorMessage(failure, open === "refund" ? "Nothing was refunded. The membership is still active." : "Nothing changed. The membership is still active."));
     } finally {
       setBusy(false);
     }
@@ -65,6 +77,9 @@ export function MembershipActions({
         rows={3}
         value={form.reason}
       />
+      {open === "refund" ? (
+        <TextInput label={`Type ${reference} to confirm`} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} value={form.confirmation} />
+      ) : null}
       {needsCode ? (
         <TextInput
           autoComplete="one-time-code"
@@ -88,6 +103,11 @@ export function MembershipActions({
         {canCancel ? (
           <Button disabled={busy} onClick={() => setOpen("cancel")} type="button" variant="danger">
             Cancel free membership
+          </Button>
+        ) : null}
+        {canRefund ? (
+          <Button disabled={busy} onClick={() => setOpen("refund")} type="button" variant="danger">
+            Refund membership
           </Button>
         ) : null}
         {canRevoke && !canCancel ? (
@@ -118,6 +138,24 @@ export function MembershipActions({
           <li>No money is returned. Refund the order instead if they should get it back.</li>
           <li>Tickets they already bought stay valid at the price paid.</li>
           <li>{member} is emailed, and this is recorded in the history.</li>
+        </ul>
+        {fields}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        busy={busy}
+        cancelLabel="Keep membership"
+        confirmLabel={`Refund ${amount}`}
+        destructive
+        onCancel={() => setOpen(null)}
+        onConfirm={confirm}
+        open={open === "refund"}
+        title={`Refund ${amount} to ${member}?`}
+      >
+        <ul className="grid list-disc gap-1 pl-5">
+          <li>The membership ends when Stripe confirms the refund, and {member} is emailed.</li>
+          <li>Tickets they already bought stay valid at the price paid.</li>
+          <li>The refund comes out of the society&apos;s Stripe balance, and the Thunderstrux fee is returned too.</li>
         </ul>
         {fields}
       </ConfirmDialog>

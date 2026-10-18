@@ -766,6 +766,8 @@ Staff routes for a society's membership plans (T22). Every route needs a signed-
 
 `POST /api/orgs/[orgSlug]/memberships/members/[grantId]/revoke` (`memberships:manage`) and `.../cancel` (`orders:refund`, free memberships only) end a membership early (T23b). Body (strict): `{reason (8 to 500), mfaCode}`; the code is required unless staff MFA is off. `200 {status: "revoked" | "cancelled", ...}`, or `already_revoked` / `already_cancelled` on a repeat; `409` with `reason` `not_revocable` (already ended) or `not_cancellable` (not a free membership); another society's grant is `404`.
 
+`POST /api/orgs/[orgSlug]/memberships/members/[grantId]/refund` (`orders:refund`, T23c) refunds a paid membership's whole order through Stripe. Body (strict): `{reason (8 to 500), confirmation (the order's short reference), mfaCode}`. `200 {status: "succeeded"}` when Stripe confirms, `202` with `pending` or `uncertain` while it processes or its answer is being checked; `400` for a wrong reference; `409` with `reason` `not_refundable`, `in_progress`, `already_refunded`, `verification_failed` or `provider_refused`; `503` when Stripe is not configured. The membership ends when the refund is confirmed.
+
 See [[Memberships and Merchandise]].
 
 ### `POST /api/payments/checkout/membership` and `POST /api/payments/checkout/merchandise`

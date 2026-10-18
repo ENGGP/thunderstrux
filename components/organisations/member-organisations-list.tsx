@@ -7,6 +7,7 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate } from "@/lib/format";
 
 type MemberOrganisation = {
@@ -14,6 +15,9 @@ type MemberOrganisation = {
   name: string;
   slug: string;
   joinedAt: Date | null;
+  // The end of a running membership, shown as its own badge beside Joined.
+  memberUntil?: Date | null;
+  timeZone?: string | null;
 };
 
 // Free affiliations only. Leaving one never touches paid purchases or staff access.
@@ -82,6 +86,15 @@ export function MemberOrganisationsList({
               <h3 className="font-semibold text-ink [overflow-wrap:anywhere]">
                 {organisation.name}
               </h3>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <StatusBadge status="joined" />
+                {organisation.memberUntil ? (
+                  <StatusBadge
+                    label={`Member until ${formatDate(new Date(new Date(organisation.memberUntil).getTime() - 1), organisation.timeZone ?? undefined)}`}
+                    status="active"
+                  />
+                ) : null}
+              </div>
               {organisation.joinedAt ? (
                 <p className="mt-1 text-sm text-ink-muted">
                   Joined {formatDate(organisation.joinedAt)}
@@ -123,8 +136,9 @@ export function MemberOrganisationsList({
         open={confirming !== null}
         title={`Leave ${confirming?.name ?? "society"}?`}
       >
-        You will stop being listed as joined. Tickets you have bought and any
-        staff access you hold are not affected, and you can join again later.
+        You will stop being listed as joined. Tickets you have bought, any
+        membership you hold and any staff access are not affected, and you can
+        join again later.
       </ConfirmDialog>
     </div>
   );

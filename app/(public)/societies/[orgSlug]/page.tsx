@@ -1,15 +1,10 @@
 import { notFound } from "next/navigation";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
-import {
-  AuthenticationRequiredError,
-  requireAuthenticatedUser,
-} from "@/lib/auth/access";
 import { EventCard } from "@/components/events/event-card";
-import { joinedOrganisationIds } from "@/lib/organisations/join";
-import {
-  SocietyJoin,
-  type JoinState,
-} from "@/components/organisations/society-join";
+import { SocietyHeader } from "@/components/organisations/society-header";
+import { SocietyJoin } from "@/components/organisations/society-join";
+import { membershipOffers } from "@/lib/memberships/offers";
+import { societyViewer } from "./viewer";
 export const dynamic = "force-dynamic";
 export default async function OrganisationDetailsPage({
   params,
@@ -18,79 +13,18 @@ export default async function OrganisationDetailsPage({
 }) {
   const organisation = await publicOrganisation((await params).orgSlug);
   if (!organisation) notFound();
-  let joinState: JoinState = "anonymous";
-  try {
-    const user = await requireAuthenticatedUser();
-    if (user.accountRole === "organisation") joinState = "organisation";
-    else {
-      const joined = (
-        await joinedOrganisationIds(user.id, [organisation.id])
-      ).has(organisation.id);
-      joinState = joined
-        ? "joined"
-        : user.emailVerifiedAt
-          ? "available"
-          : "verify";
-    }
-  } catch (error) {
-    if (!(error instanceof AuthenticationRequiredError)) throw error;
-  }
+  const { joinState, memberId } = await societyViewer(organisation.id);
+  const { offers, memberUntil } = await membershipOffers(organisation.id, memberId);
   return (
     <main className="bg-paper pb-14">
       <div className="mx-auto max-w-page px-4 md:px-8">
-        <header>
-          {organisation.coverAssetId ? (
-            <img
-              alt=""
-              className="aspect-video w-full rounded-b-feature object-cover md:aspect-[3/1]"
-              src={`/api/public/assets/${organisation.coverAssetId}`}
-            />
-          ) : (
-            <div
-              aria-hidden="true"
-              className="h-32 rounded-b-feature bg-brand-tint md:h-48"
-            />
-          )}
-          <div className="-mt-9 flex flex-wrap items-end gap-4 px-2 md:px-6">
-            {organisation.logoAssetId ? (
-              <img
-                alt={`${organisation.name} logo`}
-                className="h-[72px] w-[72px] rounded-card border border-line bg-surface object-contain"
-                height={72}
-                src={`/api/public/assets/${organisation.logoAssetId}`}
-                width={72}
-              />
-            ) : (
-              <div
-                aria-hidden="true"
-                className="flex h-[72px] w-[72px] items-center justify-center rounded-card border border-line bg-surface font-display text-3xl font-semibold text-brand-ink"
-              >
-                {organisation.name.trim().charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0 flex-1 pt-10">
-              <p className="text-sm text-ink-muted">Society</p>
-              <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">
-                {organisation.name}
-              </h1>
-            </div>
-          </div>
-        </header>
-
-        <nav
-          aria-label="Society sections"
-          className="mt-8 flex gap-6 border-b border-line text-sm font-semibold"
-        >
-          <a className="border-b-[3px] border-brand pb-3 text-ink" href="#overview">
-            Overview
-          </a>
-          <a
-            className="border-b-[3px] border-transparent pb-3 text-ink-soft hover:text-brand"
-            href="#events"
-          >
-            Events
-          </a>
-        </nav>
+        <SocietyHeader
+          current="overview"
+          hasMemberships={offers.length > 0}
+          joined={joinState === "joined"}
+          memberUntil={memberUntil}
+          organisation={organisation}
+        />
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <section className="grid content-start gap-5" id="overview">

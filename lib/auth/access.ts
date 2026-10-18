@@ -150,6 +150,8 @@ export async function getAccessibleOrganisationsForCurrentAccount() {
             slug: organisation.slug,
             createdAt: organisation.createdAt,
             joinedAt: null as Date | null,
+            memberUntil: null as Date | null,
+            timeZone: null as string | null,
             role: "org_owner" as OrganisationRole
           }
         ]
@@ -175,15 +177,25 @@ export async function getAccessibleOrganisationsForCurrentAccount() {
           id: true,
           name: true,
           slug: true,
-          createdAt: true
+          createdAt: true,
+          timeZone: true
         }
       }
     }
   });
+  // A running membership is shown beside the join, as its own badge (T24a).
+  const now = new Date();
+  const running = await prisma.membershipGrant.findMany({
+    where: { userId: user.id, revokedAt: null, startsAt: { lte: now }, endsAt: { gt: now }, organisationId: { in: memberships.map((row) => row.organisation.id) } },
+    select: { organisationId: true, endsAt: true }
+  });
+  const memberUntil = (organisationId: string) =>
+    running.filter((grant) => grant.organisationId === organisationId).reduce<Date | null>((latest, grant) => (!latest || grant.endsAt > latest ? grant.endsAt : latest), null);
 
   return memberships.map((membership) => ({
     ...membership.organisation,
     joinedAt: membership.createdAt as Date | null,
+    memberUntil: memberUntil(membership.organisation.id),
     role: membership.role as OrganisationRole
   }));
 }

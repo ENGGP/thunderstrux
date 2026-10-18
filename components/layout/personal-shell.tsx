@@ -24,6 +24,7 @@ export function PersonalShell({
     ...(accountRole === "member"
       ? [
           { label: "My tickets", href: "/tickets", icon: "ticket" as const },
+          { label: "Memberships", href: "/memberships", icon: "badge" as const },
           { label: "Societies", href: "/dashboard/organisations", icon: "users" as const },
           { label: "Purchases", href: "/purchases", icon: "receipt" as const }
         ]

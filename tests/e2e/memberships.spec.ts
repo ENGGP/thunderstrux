@@ -134,3 +134,60 @@ test("a paid membership offers a refund that names the amount and asks for the o
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await prisma.refundRequest.count({ where: { commerceOrderId: order.id } })).toBe(0);
 });
+
+test("a member finds a membership on the society page, gets it free through the review and sees it in My memberships; a join alone is not a membership", async ({ page, data }) => {
+  const plan = await prisma.membershipProduct.create({
+    data: {
+      organisationId: data.organisation.id, name: "Semester 2 open", priceAmount: 0, entitlements: ["members_only_events"], status: "published", publishedAt: new Date(),
+      startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 100 * 86_400_000)
+    }
+  });
+  const memberships = `/societies/${data.organisation.slug}/memberships`;
+
+  // Signed out: the offer asks for a member account.
+  await page.goto(memberships);
+  await expect(page.getByRole("heading", { name: "Semester 2 open" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in to buy membership" })).toBeVisible();
+
+  // A member who has only joined sees Joined, no membership badge, and the offer.
+  await prisma.organisationMember.create({ data: { userId: data.member.id, organisationId: data.organisation.id, role: "member" } });
+  await login(page, data.member.email, memberships);
+  await expect(page.getByText("Joined", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/^Member until/)).toHaveCount(0);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/memberships-offers-${width}.png`, fullPage: true });
+  }
+
+  await page.getByRole("link", { name: "Get free membership" }).click();
+  await expect(page.getByRole("heading", { name: "Confirm your membership", level: 1 })).toBeVisible();
+  await expect(page.getByText("No automatic renewal")).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/memberships-review-${width}.png`, fullPage: true });
+  }
+  await page.getByRole("button", { name: "Confirm free membership" }).click();
+  await expect(page.getByRole("heading", { name: "You're a member", level: 1 })).toBeVisible();
+  await page.screenshot({ path: "test-results/memberships-confirmed-390.png", fullPage: true });
+
+  await page.getByRole("link", { name: "View my memberships" }).click();
+  await expect(page.getByRole("heading", { name: "My memberships", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Semester 2 open" })).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/memberships-mine-${width}.png`, fullPage: true });
+  }
+
+  // The society page now shows both badges, and the offer says it's held.
+  await page.goto(memberships);
+  await expect(page.getByText(/^Member until/)).toBeVisible();
+  await expect(page.getByText(/You're a member until/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Get free membership" })).toHaveCount(0);
+  // Its review page refuses the same dates again without charging.
+  await page.goto(`${memberships}/${plan.id}/checkout`);
+  await expect(page.getByText("You already have a membership for these dates")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirm free membership" })).toHaveCount(0);
+});

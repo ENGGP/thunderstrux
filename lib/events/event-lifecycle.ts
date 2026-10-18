@@ -310,6 +310,7 @@ export async function getOrganisationEventForEditing(
           id: true,
           name: true,
           price: true,
+          memberPrice: true,
           quantity: true,
           _count: { select: { orders: true, tickets: true } }
         },
@@ -339,6 +340,7 @@ export async function getOrganisationEventForEditing(
       id: ticketType.id,
       name: ticketType.name,
       price: ticketType.price,
+      memberPrice: ticketType.memberPrice,
       quantity: ticketType.quantity,
       ordersCount: ticketType._count.orders,
       ticketsCount: ticketType._count.tickets,
@@ -387,6 +389,7 @@ export async function createOrganisationEvent(
         create: input.ticketTypes.map((ticketType) => ({
           name: ticketType.name,
           price: ticketType.price,
+          memberPrice: ticketType.memberPrice ?? null,
           quantity: ticketType.quantity
         }))
       }
@@ -583,6 +586,7 @@ export async function updateOrganisationEvent(
               data: {
                 name: ticketType.name,
                 price: ticketType.price,
+                memberPrice: ticketType.memberPrice ?? null,
                 quantity: quantities[index]
               }
             })
@@ -591,6 +595,7 @@ export async function updateOrganisationEvent(
                 eventId: existingEvent.id,
                 name: ticketType.name,
                 price: ticketType.price,
+                memberPrice: ticketType.memberPrice ?? null,
                 quantity: quantities[index]
               }
             })
@@ -836,6 +841,7 @@ export async function createOrganisationEventTicketType(
         eventId: event.id,
         name: input.name,
         price: input.price,
+        memberPrice: input.memberPrice ?? null,
         quantity: input.quantity
       },
       select: {

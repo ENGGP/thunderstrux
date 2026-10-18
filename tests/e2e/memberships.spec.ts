@@ -191,3 +191,34 @@ test("a member finds a membership on the society page, gets it free through the 
   await expect(page.getByText("You already have a membership for these dates")).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm free membership" })).toHaveCount(0);
 });
+
+test("an event's member price shows to a member with member prices, and everyone else sees what members pay", async ({ page, data }) => {
+  const term = { startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 100 * 86_400_000) };
+  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: "acct_e2e_member_price", stripeChargesEnabled: true } });
+  await prisma.ticketType.update({ where: { id: data.ticket.id }, data: { price: 1500, memberPrice: 1000 } });
+  const plan = await prisma.membershipProduct.create({ data: { organisationId: data.organisation.id, name: "Member price plan", priceAmount: 0, ...term, entitlements: ["member_prices"], status: "published", publishedAt: new Date() } });
+
+  // Not a member yet: the standard price, with what members pay and where to become one.
+  await login(page, data.member.email, `/events/${data.event.id}`);
+  await expect(page.getByText(/Members pay \$10\.00/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "See memberships" })).toBeVisible();
+
+  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: data.organisation.id, kind: "membership", buyer: { userId: data.member.id }, buyerEmail: data.member.email, paymentKind: "free", source: "checkout",
+    lines: [{ quantity: 1, unitAmount: 0, name: plan.name, termStartsAt: term.startsAt, termEndsAt: term.endsAt, membershipProductId: plan.id }]
+  }));
+  const line = await prisma.commerceOrderLine.findFirstOrThrow({ where: { orderId: order.id } });
+  await prisma.membershipGrant.create({ data: { userId: data.member.id, organisationId: data.organisation.id, membershipProductId: plan.id, commerceOrderLineId: line.id, ...term, entitlements: ["member_prices"], entitlementVersion: 1 } });
+
+  await page.reload();
+  await expect(page.getByText(/Member price$/).first()).toBeVisible();
+  await expect(page.getByText("Member price through your Member price plan membership.")).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/member-price-event-${width}.png`, fullPage: true });
+  }
+  await page.goto(`/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=2`);
+  await expect(page.getByText("(member price)")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pay $20.00" })).toBeVisible();
+});

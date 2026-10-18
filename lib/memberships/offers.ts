@@ -1,6 +1,6 @@
 import type { MembershipEntitlement } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { grantState, type GrantState } from "@/lib/memberships/grants";
+import { activeEntitlementGrant, grantState, type GrantState } from "@/lib/memberships/grants";
 
 // What members see of memberships (T24a): a society's offers with the
 // viewer's own standing, and their memberships across societies. Checkout
@@ -160,4 +160,18 @@ export function ownMembershipOrder(userId: string, orderId: string) {
       lines: { take: 1, select: { nameSnapshot: true, membershipGrant: { select: { startsAt: true, endsAt: true, revokedAt: true } } } }
     }
   });
+}
+
+// Whether a member price on this society's tickets can be used now: a
+// published plan still to end unlocks member prices (the builder's warning).
+export async function memberPricesOnSale(organisationId: string, now = new Date()) {
+  return (await prisma.membershipProduct.count({ where: { organisationId, status: "published", endsAt: { gt: now }, entitlements: { has: "member_prices" } } })) > 0;
+}
+
+// The plan whose membership gives this member the society's member prices
+// now, by society slug, or null (the event page and ticket checkout).
+export async function memberPricePlan(organisationSlug: string, userId: string, now = new Date()) {
+  const organisation = await prisma.organisation.findUnique({ where: { slug: organisationSlug }, select: { id: true } });
+  if (!organisation) return null;
+  return (await activeEntitlementGrant(prisma, userId, organisation.id, "member_prices", now))?.product.name ?? null;
 }

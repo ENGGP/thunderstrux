@@ -29,6 +29,7 @@ import {
   type CheckoutAttemptWithOrder
 } from "@/lib/payments/checkout-attempts";
 import { issueFreeOrder } from "@/lib/payments/free-ticket-issuance";
+import { activeEntitlementGrant } from "@/lib/memberships/grants";
 import { appendOrderLifecycleEvent } from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
@@ -124,7 +125,7 @@ function lockedEventSelect(ticketTypeId: string) {
     },
     ticketTypes: {
       where: { id: ticketTypeId },
-      select: { id: true, name: true, price: true, quantity: true },
+      select: { id: true, name: true, price: true, memberPrice: true, quantity: true },
       take: 1
     }
   } satisfies Prisma.EventSelect;
@@ -217,8 +218,17 @@ export async function createEventCheckout({
           ticketType,
           await readEventInventory(tx, event.id, reservationNow)
         );
+        // Member price (T24b): a member account whose running membership in this
+        // society carries member prices pays it. Read under the buyer lock; the
+        // grant and its rights version are recorded on the order, so a normal
+        // expiry during the hold keeps the quote and a revocation sends the
+        // payment to review at fulfilment. Guests always pay the standard price.
+        const grant = userId && ticketType.memberPrice !== null
+          ? await activeEntitlementGrant(tx, userId, event.organisationId, "member_prices", reservationNow)
+          : null;
+        const unitPrice = grant ? (ticketType.memberPrice as number) : ticketType.price;
         const [eligibility] = eventReadiness(
-          { ...event, ticketTypes: [{ ...ticketType, sellable }] },
+          { ...event, ticketTypes: [{ ...ticketType, price: unitPrice, sellable }] },
           { chargesReady: isOrganisationStripeReady(organisation), now: reservationNow }
         ).ticketTypes;
 
@@ -242,12 +252,12 @@ export async function createEventCheckout({
           ]);
         }
 
-        if (ticketType.price !== expectedUnitPrice) {
+        if (unitPrice !== expectedUnitPrice) {
           throw new CheckoutCreationError("quote_changed", "The ticket price has changed", [
             {
               path: ["expectedUnitPrice"],
-              message: `The price is now ${formatMoney(ticketType.price)} per ticket. Review it before buying.`,
-              value: ticketType.price
+              message: `The price is now ${formatMoney(unitPrice)} per ticket. Review it before buying.`,
+              value: unitPrice
             }
           ]);
         }
@@ -268,8 +278,9 @@ export async function createEventCheckout({
 
         // The locked price decides the path: a free registration completes here,
         // without reading Stripe configuration.
-        if (ticketType.price === 0) {
+        if (unitPrice === 0) {
           const free = await issueFreeOrder(tx, {
+            membership: grant ? { grantId: grant.id, entitlementVersion: grant.entitlementVersion } : null,
             userId: userId ?? null,
             guestIdentityId: guest?.guestIdentityId ?? null,
             buyer,
@@ -293,7 +304,7 @@ export async function createEventCheckout({
         // Configuration is read only once the request is valid, and before any write.
         const stripe = getStripe();
         const appUrl = getAppUrl();
-        const totalAmount = ticketType.price * quantity;
+        const totalAmount = unitPrice * quantity;
         const platformFeeAmount = calculatePlatformFee(totalAmount);
 
         const order = await tx.order.create({
@@ -302,7 +313,9 @@ export async function createEventCheckout({
             eventId: event.id,
             ticketTypeId: ticketType.id,
             quantity,
-            unitPrice: ticketType.price,
+            unitPrice,
+            membershipGrantId: grant?.id ?? null,
+            membershipEntitlementVersion: grant?.entitlementVersion ?? null,
             status: "pending",
             totalAmount,
             compensationRefundModeSnapshot: event.compensationRefundMode,
@@ -369,7 +382,8 @@ export async function createEventCheckout({
           appUrl,
           totalAmount,
           platformFeeAmount,
-          unitPrice: ticketType.price,
+          // The quoted price: the member price when a membership applied.
+          unitPrice,
           eventTitle: event.title,
           organisationId: event.organisationId,
           // Payment eligibility above guarantees a connected account.

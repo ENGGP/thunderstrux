@@ -543,7 +543,9 @@ T16a brings the chain to 41 migrations and 25 models, ending in `20261023010000_
 
 T16b brings the chain to 42 migrations (still 25 models), ending in `20261024010000_guest_checkout`: `CheckoutActorKind` gains `guest`, and `GuestAccessGrant.orderId` (restrict) scopes a purchase link to one order, with a check that `checkout` grants have no order and `purchase` grants always do. A guest checkout locks the `GuestIdentity` row in place of the User row, then the Event and TicketType as before. Rollback leaves the value and column unused.
 
-T23c brings the chain to 50 migrations (still 32 models), ending in `20261101010000_commerce_refunds`: `RefundRequest.orderId` becomes optional beside a new `commerceOrderId` (exactly one of them, database check; index on `(commerceOrderId, createdAt)`), `CommerceOrder.refundStatus` (the refund fence, Stripe payments only) and the commerce refund history events (`refund_requested`, `refund_pending`, `refunded`, `refund_failed`).
+T24b1 brings the chain to 51 migrations (still 32 models), ending in `20261102010000_ticket_member_price`: `TicketType.memberPrice` (at most `price`, database check) and `Order.membershipGrantId` with `membershipEntitlementVersion` (both or neither, foreign key to the grant, fixed by the `Order_preserve_member_price` trigger).
+
+T23c brought the chain to 50 migrations (still 32 models), ending in `20261101010000_commerce_refunds`: `RefundRequest.orderId` becomes optional beside a new `commerceOrderId` (exactly one of them, database check; index on `(commerceOrderId, createdAt)`), `CommerceOrder.refundStatus` (the refund fence, Stripe payments only) and the commerce refund history events (`refund_requested`, `refund_pending`, `refunded`, `refund_failed`).
 
 T23b brought the chain to 49 migrations (still 32 models), ending in `20261031010000_membership_revocation`: `CommerceOrder.cancelledAt`, `cancelledByUserId` and `cancellationReason` (a free, paid-status order only, reason 8 to 500 characters; never a refund), the `free_cancelled` commerce history event and a length bound on `MembershipGrant.revocationReason`.
 

@@ -307,6 +307,8 @@ model TicketType {
   eventId   String
   name      String
   price     Int
+  // What a member with the member_prices right pays (T24b); at most price.
+  memberPrice Int?
   quantity  Int
   createdAt DateTime @default(now())
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -351,6 +353,10 @@ model Order {
   // T18a: the financial fence. Set while an ordinary refund is in flight and
   // once it succeeds; compensation refunds never start while it is set.
   refundStatus            OrderRefundStatus?
+  // The membership a member-priced order was quoted with, and its rights version (T24b).
+  membershipGrantId            String?
+  membershipEntitlementVersion Int?
+  membershipGrant              MembershipGrant? @relation(fields: [membershipGrantId], references: [id], onDelete: Restrict)
   stripePaymentIntentId   String?
   // T18b: a verified Stripe dispute fences refunds, resends and compensation.
   // It stays set once lost; once won it clears when staff restore the tickets.
@@ -397,6 +403,7 @@ model Order {
   @@index([userId, status, createdAt, id], map: "Order_userId_status_createdAt_id_idx")
   @@index([guestIdentityId])
   @@index([status, createdAt], map: "Order_status_createdAt_idx")
+  @@index([membershipGrantId])
 }
 
 // One durable record per intended checkout (database spec 6.1). The same actor
@@ -1064,6 +1071,7 @@ model MembershipGrant {
   product      MembershipProduct @relation(fields: [membershipProductId, organisationId], references: [id, organisationId], onDelete: Restrict)
   line         CommerceOrderLine @relation(fields: [commerceOrderLineId, organisationId], references: [id, organisationId], onDelete: Restrict)
   revokedBy    User?             @relation("MembershipGrantRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  memberPricedOrders Order[]
 
   // Same line, pinned to the grant's society (required for the composite relation).
   @@unique([commerceOrderLineId, organisationId])

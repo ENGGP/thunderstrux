@@ -42,7 +42,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
   const count = order.lines.reduce((total, line) => total + line.quantity, 0);
   const what = `${count} ${count === 1 ? "item" : "items"} from ${order.sellerName}`;
   const title = closed ? "No payment taken" : order.requiresCompensationReview ? "We're checking your payment" : waiting ? "Confirming your payment" : paid ? "Order confirmed" : "Your order";
-  const steps = free ? ["Review", "Pickup"] : ["Review", "Pay with Stripe", "Pickup"];
+  const steps = [...(guest ? ["Your email"] : []), "Review", ...(free ? [] : ["Pay with Stripe"]), "Pickup"];
 
   return (
     <CheckoutShell backHref={`/societies/${order.organisation.slug}/merchandise`} backLabel="Back to merchandise" current={paid ? steps.length - 1 : steps.length - 2} society={order.sellerName} steps={steps} title={title}>

@@ -176,6 +176,7 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   await expect(page.getByRole("heading", { name: "We're checking your payment" })).toBeVisible();
 
   // Someone else's order is not found.
+  await page.context().clearCookies();
   await login(page, data.manager.email, `/merchandise/orders/${order.id}`);
   await expect(page.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
 });

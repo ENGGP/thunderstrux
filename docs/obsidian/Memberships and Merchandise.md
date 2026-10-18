@@ -1,9 +1,9 @@
 ---
 status: living
-last-reviewed: 2026-10-17
+last-reviewed: 2026-10-18
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[UI Architecture Rules]]", "[[Society Profiles and Assets]]"]
-sources: [lib/memberships/plans.ts, lib/commerce/orders.ts, lib/commerce/families.ts, prisma/migrations/20261030010000_memberships/migration.sql]
+sources: [lib/memberships/plans.ts, lib/events/public-events.ts, lib/commerce/orders.ts, lib/commerce/families.ts, prisma/migrations/20261030010000_memberships/migration.sql]
 ---
 
 # Memberships and Merchandise
@@ -62,6 +62,12 @@ Refund membership on the member page (`orders:refund`; reason, the order's short
 - **Fulfilment.** The grant is read `FOR SHARE`: a membership revoked or refunded before the payment landed sends the order to compensation review (`member_price_membership_revoked`) and issues no tickets; a membership that simply ended during the 30-minute hold keeps the price. Tickets already issued at a member price are never repriced or voided by a later revocation.
 - **Showing it.** `priceForViewer` prices the event page and ticket checkout per viewer: a member sees the member price with the standard one struck through and "Member price through your {plan} membership"; anyone else sees "Members pay $X", that joining doesn't include it, and a link to the society's memberships.
 
-## Members-only gate (decided for T24b2)
+## Members-only events (T24b2)
 
-Design round B1 replaced the concealed 404 on a members-only event's page with a gate, under a safety contract recorded in the delivery plan: the gate reads only the event's id, status, visibility and society; no other event field reaches the page, its data or its metadata; access is checked live on every request; the page is `noindex` and `private, no-store`; listings and public APIs keep excluding the event; a missing or draft event is still a 404. T24b updates the readiness plan's wording.
+- **Setting it.** The builder's Access card offers Members only beside Public and Link only. Drafts save; publishing needs a published plan still to end that unlocks members-only events (`eventReadiness` with `membersOnlyReady`, from `entitlementOnSale`), shown as an extra checklist row with a Go to Memberships link and as a warning in the builder. An event published while a plan was on sale stays published after the plan ends; its members keep access while their memberships run.
+- **Who can open it.** A verified member account whose running membership of the society (unrevoked, started, not ended) carries `members_only_events`, checked live on every request (`getEventForViewer` in `lib/events/public-events.ts`). A free join, an upcoming, expired or revoked membership, one without that right, another society's membership, guests, staff and society accounts don't count; organisers use the dashboard and Preview.
+- **The gate.** Anyone else who opens `/events/[eventId]` gets "Members-only event" naming only the society (name, slug, logo) and why: sign in, verify your email, no active membership ("Joining for free doesn't count"), a membership without members-only events, or one that starts later (with its first day). Tab title "Members-only event · {society}", `noindex`, and the page is rendered per request with `private, no-store`. Drafts, deleted events and wrong ids are still "Page not found".
+- **Safety contract.** The gate decision reads only the event's id, status, visibility and society; the event's other fields are read only after access is granted, so nothing about the event can reach the gate's HTML, page data or metadata. Tests put sentinel values in the title, description, place and ticket name and assert their absence for every non-entitled viewer, and on the full signed-out response.
+- **Everything else stays hidden.** Explore, home, the society page and its Events list, and `GET /api/public/events/[eventId]` leave members-only events out. Ticket checkout re-checks access under the buyer lock (the lock revocation and refunds also take) and refuses anyone else, guests included, with the same `event_not_found` as a missing event; the checkout page sends them back to the gate. Fulfilment does not re-check: a membership revoked during a valid 30-minute hold still gets the tickets it started buying.
+- **The image.** `GET /api/public/assets/[assetId]` serves a members-only event's image only to a member it is open to, with `private, no-store`; it is never on the public, cached path.
+- **The member's view.** The full page with "Members only. You can see this because your {society} membership includes members-only events." The confirmation page reads the event for the buyer's own order, so a ticket holder keeps it.

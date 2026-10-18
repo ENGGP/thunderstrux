@@ -64,8 +64,9 @@ Flow:
 ```text
 User visits /events/[eventId]
   -> anyone may open it (T15a); the page reads the live session only to choose the ticket box action
-  -> page calls getPublishedEventDetail (lib/events/public-events.ts), the same read service as GET /api/public/events/[eventId]
-  -> the service returns only published, non-members-only events
+  -> page calls getEventForViewer (lib/events/public-events.ts): drafts and wrong ids are not found;
+     public and link-only events read through getPublishedEventDetail, the same service as GET /api/public/events/[eventId];
+     a members-only event opens only for a member whose membership unlocks it, and everyone else gets the gate (T24b2)
   -> the service computes each type's sellable stock (holds and capacity) and readiness reason, and whether sales are open
   -> PublicEventView renders the page; PublicTicketPurchase sends the buyer to /events/[eventId]/checkout
 ```

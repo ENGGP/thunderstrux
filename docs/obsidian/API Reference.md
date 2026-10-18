@@ -320,7 +320,7 @@ Returns public event details.
 Rules:
 
 - No auth required.
-- Event must be `published` and not `members_only`; link-only (`unlisted`) events are readable by link.
+- Event must be `published` and not `members_only` (members-only events are never returned here, even to members); link-only (`unlisted`) events are readable by link.
 - Includes ticket types with raw `quantity` preserved and advisory `availableQuantity`: since T15a the shared sellable stock, `min(quantity - that type's active holds, capacity - valid issued tickets - all active holds)`, never below 0.
 - Each type carries `unavailable`: `sold_out`, `payments_unavailable` (a paid type while the society cannot take payments) or `null`, from the shared readiness rules. The event carries `salesOpen` and `salesCloseAt`, and the society its `supportEmail` and `refundPolicy`. The society's Stripe fields are never included.
 - Only active, unexpired reservations reduce public availability.
@@ -412,7 +412,7 @@ Rules:
 - Ticket prices are integer cents.
 - Ticket quantities must be greater than zero.
 - Always creates a `draft` (T11); a submitted `status` is ignored. Publishing goes through `PATCH /api/events/[eventId]/publish`.
-- Optional `capacity` (positive integer or null), `visibility` (`public` or `unlisted`; `members_only` is refused until memberships exist) and `salesCloseAt` (defaults to `startTime`, must not be after `endTime`).
+- Optional `capacity` (positive integer or null), `visibility` (`public`, `unlisted` or `members_only`; publishing a members-only event needs a published plan that unlocks members-only events) and `salesCloseAt` (defaults to `startTime`, must not be after `endTime`).
 - Optional `heroAssetId` (T11b): a ready, undeleted `event` asset of the same society; anything else returns 400 with `path: ["heroAssetId"]`. Times are ISO instants; the dashboard builder converts the society's wall-clock times before sending.
 - The created event carries `version: 1`.
 

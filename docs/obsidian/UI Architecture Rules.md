@@ -69,9 +69,9 @@ Where data loads after the guards, the page wraps that part in `<Suspense>` with
 
 ### Personal shell
 
-`components/layout/personal-shell.tsx` wraps `/dashboard` in personal context, `/dashboard/organisations`, `/tickets` and `/account/settings`.
+`components/layout/personal-shell.tsx` wraps `/dashboard` in personal context, `/dashboard/organisations`, `/tickets`, `/purchases`, `/memberships` and `/account/settings`.
 
-- Navigation: `Overview`, `My tickets`, `Societies`, `Account`. Organisation accounts see `Overview` and `Account` only.
+- Navigation: `Overview`, `My tickets`, `Memberships` (T24a), `Societies`, `Purchases`, `Account`. Organisation accounts see `Overview` and `Account` only.
 - It shows the context switcher only when the page passes `contexts`; `/dashboard` does. Exactly one switcher is rendered.
 - It must never show society management controls.
 - Under the switcher it says `Switch to a society you staff to manage its events.`

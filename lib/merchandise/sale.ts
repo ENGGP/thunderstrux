@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { CommerceFamilyAdapter, CommerceOrderForHooks } from "@/lib/commerce/families";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatMoney } from "@/lib/format";
+import { mintPurchaseLink } from "@/lib/guest/guest-access";
 import { MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
 
 // Selling merchandise (T27a): the merchandise commerce family, checkout holds
@@ -143,13 +144,28 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
     const items = lines.map((line) => `${line.quantity} × ${line.nameSnapshot}${line.variantSnapshot ? ` (${line.variantSnapshot})` : ""}`).join(", ");
     const total = purchase.totalAmount ? formatMoney(purchase.totalAmount) : "Free";
     const pickup = purchase.organisation.pickupPolicy ? ` Collect it in person: ${purchase.organisation.pickupPolicy}` : " Collect it in person.";
-    await enqueueNotification(tx, {
-      eventKey: `merchandise-receipt/${order.id}`,
-      recipient: purchase.buyerEmailSnapshot,
-      template: "business_notice",
-      organisationId: order.organisationId,
-      payload: { message: `Your order ${orderReference(order.id)} from ${purchase.sellerName} is confirmed: ${items}. Total: ${total}.${pickup} Bring your order reference.` }
-    });
+    const receipt = `Your order ${orderReference(order.id)} from ${purchase.sellerName} is confirmed: ${items}. Total: ${total}.${pickup} Bring your order reference.`;
+    if (order.guestIdentityId && !order.userId) {
+      // A guest's receipt carries the link back to this one order, so it goes
+      // as a guest link email tied to the grant, like Find your purchase.
+      const { grant, link } = await mintPurchaseLink(tx, order.guestIdentityId, { commerceOrderId: order.id }, now);
+      await enqueueNotification(tx, {
+        eventKey: `merchandise-receipt/${order.id}`,
+        recipient: purchase.buyerEmailSnapshot,
+        template: "guest_order_link",
+        guestAccessGrantId: grant.id,
+        expiresAt: grant.expiresAt,
+        payload: { message: `${receipt} Open your order with the link below. It works once and stops working after 24 hours; after that, use Find your purchase.`, link }
+      });
+    } else {
+      await enqueueNotification(tx, {
+        eventKey: `merchandise-receipt/${order.id}`,
+        recipient: purchase.buyerEmailSnapshot,
+        template: "business_notice",
+        organisationId: order.organisationId,
+        payload: { message: receipt }
+      });
+    }
     return { fulfilled: true };
   },
 

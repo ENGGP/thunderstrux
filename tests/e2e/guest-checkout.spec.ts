@@ -42,7 +42,7 @@ test("a guest gets free tickets with a verified email, then finds them again fro
     await page.screenshot({ path: `test-results/guest-order-${width}.png`, fullPage: true });
   }
 
-  // Another browser: the order address alone shows nothing; Find your tickets opens it.
+  // Another browser: the order address alone shows nothing; Find your purchase opens it.
   const other = await browser.newContext({ baseURL: "http://localhost:3100" });
   try {
     const stranger = await other.newPage();
@@ -50,7 +50,7 @@ test("a guest gets free tickets with a verified email, then finds them again fro
     await expect(stranger.getByRole("heading", { name: "Open your order from your email" })).toBeVisible();
     await expect(stranger.getByText("Guest Games Night")).toHaveCount(0);
 
-    await stranger.getByRole("link", { name: "Find your tickets" }).click();
+    await stranger.getByRole("link", { name: "Find your purchase" }).click();
     await stranger.getByLabel("Email").fill(email);
     await stranger.getByRole("button", { name: "Send my links" }).click();
     await expect(stranger.getByRole("status")).toContainText("we've sent a link for each one");

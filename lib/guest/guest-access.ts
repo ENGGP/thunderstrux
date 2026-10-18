@@ -84,7 +84,9 @@ export async function redeemGuestAccess(raw: string, now = new Date()) {
       where: { guestAccessGrantId: grant.id, status: { in: ["pending", "processing"] } },
       data: { status: "cancelled", lastError: "consumed", processingToken: null }
     });
-    const callbackUrl = grant.orderId ? `/guest/orders/${grant.orderId}` : safeReturnPath(grant.callbackPath, "/events");
+    const callbackUrl = grant.orderId ? `/guest/orders/${grant.orderId}`
+      : grant.commerceOrderId ? `/merchandise/orders/${grant.commerceOrderId}`
+      : safeReturnPath(grant.callbackPath, "/events");
     return { sessionId, sessionExpiresAt, callbackUrl };
   });
 }
@@ -100,7 +102,7 @@ export async function readGuestSession(sessionId: string | undefined, now = new 
   if (!grant?.sessionExpiresAt || grant.sessionExpiresAt <= now || grant.revokedAt || !grant.guestIdentity.verifiedAt) return null;
   return {
     grantId: grant.id, guestIdentityId: grant.guestIdentity.id, email: grant.guestIdentity.email, expiresAt: grant.sessionExpiresAt,
-    purpose: grant.purpose, orderId: grant.orderId
+    purpose: grant.purpose, orderId: grant.orderId, commerceOrderId: grant.commerceOrderId
   };
 }
 
@@ -113,10 +115,10 @@ export async function canOpenGuestOrder(session: GuestSession, orderId: string) 
   return Boolean(await prisma.checkoutAttempt.findFirst({ where: { actorKind: "guest", actorId: session.grantId, orderId }, select: { id: true } }));
 }
 
-// The same rule for a merchandise order (T27b): only one bought during this
-// checkout session. A purchase link opens a ticket order, never a commerce one.
+// The same rule for a merchandise order (T27b): the one its purchase link
+// names, or one bought during this checkout session.
 export async function canOpenGuestCommerceOrder(session: GuestSession, commerceOrderId: string) {
-  if (session.purpose !== "checkout") return false;
+  if (session.purpose === "purchase") return session.commerceOrderId === commerceOrderId;
   return Boolean(await prisma.checkoutAttempt.findFirst({ where: { actorKind: "guest", actorId: session.grantId, commerceOrderId }, select: { id: true } }));
 }
 
@@ -126,19 +128,27 @@ function orderLink(raw: string) {
   return link.toString();
 }
 
-// The link in a guest's ticket email, minted on each send attempt: only its
-// digest is stored, and a retry sends a new, equally valid link. No secret is
-// needed, so the email worker can mint it.
-export async function purchaseLinkForEmail(orderId: string, guestIdentityId: string, now = new Date()) {
+type PurchaseTarget = { orderId: string } | { commerceOrderId: string };
+
+// A purchase link opening one ticket or merchandise order for a day. Only its
+// digest is stored.
+export async function mintPurchaseLink(tx: Prisma.TransactionClient, guestIdentityId: string, target: PurchaseTarget, now = new Date()) {
   const raw = newSecret();
-  await prisma.guestAccessGrant.create({ data: {
-    guestIdentityId, purpose: "purchase", orderId, tokenDigest: guestDigest(raw), expiresAt: new Date(now.getTime() + purchaseLinkLifetimeMs)
+  const grant = await tx.guestAccessGrant.create({ data: {
+    guestIdentityId, purpose: "purchase", ...target, tokenDigest: guestDigest(raw), expiresAt: new Date(now.getTime() + purchaseLinkLifetimeMs)
   } });
-  return orderLink(raw);
+  return { grant, link: orderLink(raw) };
 }
 
-// Find your tickets: a fresh link per paid guest purchase, sent to the address
-// only. The caller always gets the same answer.
+// The link in a guest's ticket email, minted on each send attempt: a retry
+// sends a new, equally valid link. No secret is needed, so the email worker
+// can mint it.
+export async function purchaseLinkForEmail(orderId: string, guestIdentityId: string, now = new Date()) {
+  return (await mintPurchaseLink(prisma, guestIdentityId, { orderId }, now)).link;
+}
+
+// Find your purchase: a fresh link per paid guest ticket or merchandise order,
+// sent to the address only. The caller always gets the same answer.
 export async function requestGuestRecovery(email: string, now = new Date()) {
   assertNotificationConfiguration();
   const identity = await prisma.guestIdentity.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true } });
@@ -151,22 +161,28 @@ export async function requestGuestRecovery(email: string, now = new Date()) {
       take: 10,
       select: { id: true, event: { select: { title: true } } }
     });
-    for (const order of orders) {
-      const open = { orderId: order.id, purpose: "purchase", consumedAt: null, revokedAt: null };
+    const merchandise = await tx.commerceOrder.findMany({
+      where: { guestIdentityId: identity.id, userId: null, kind: "merchandise", status: "paid" },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { id: true, sellerName: true }
+    });
+    const purchases: Array<{ target: PurchaseTarget; what: string }> = [
+      ...orders.map((order) => ({ target: { orderId: order.id }, what: `your order for ${order.event.title}` })),
+      ...merchandise.map((order) => ({ target: { commerceOrderId: order.id }, what: `your merchandise order from ${order.sellerName}` }))
+    ];
+    for (const { target, what } of purchases) {
+      const open = { ...target, purpose: "purchase", consumedAt: null, revokedAt: null };
       const older = await tx.guestAccessGrant.findMany({ where: open, select: { id: true } });
       await tx.guestAccessGrant.updateMany({ where: open, data: { revokedAt: now } });
       await tx.notificationOutbox.updateMany({
         where: { guestAccessGrantId: { in: older.map((grant) => grant.id) }, status: { in: ["pending", "processing"] } },
         data: { status: "cancelled", lastError: "superseded", processingToken: null, processingStartedAt: null }
       });
-      const raw = newSecret();
-      const grant = await tx.guestAccessGrant.create({ data: {
-        guestIdentityId: identity.id, purpose: "purchase", orderId: order.id, tokenDigest: guestDigest(raw),
-        expiresAt: new Date(now.getTime() + purchaseLinkLifetimeMs)
-      } });
+      const { grant, link } = await mintPurchaseLink(tx, identity.id, target, now);
       await enqueueNotification(tx, {
         eventKey: `guest/${grant.id}`, guestAccessGrantId: grant.id, recipient: email.trim().toLowerCase(), template: "guest_order_link", expiresAt: grant.expiresAt,
-        payload: { message: `Open your order for ${order.event.title}. This link works once and stops working after 24 hours.`, link: orderLink(raw) }
+        payload: { message: `Open ${what}. This link works once and stops working after 24 hours.`, link }
       });
     }
   });

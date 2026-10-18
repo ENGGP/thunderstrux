@@ -19,8 +19,9 @@ export const metadata: Metadata = { title: "Your merchandise order", robots: { i
 
 // Where a merchandise checkout lands (T27b, design round B2): Stripe's success
 // and cancel pages and a free order all come here. Arriving proves nothing;
-// the page shows the order's real state, only to the member who bought it or
-// the guest checkout session that bought it, and refreshes while Stripe
+// the page shows the order's real state, only to the member who bought it,
+// the guest checkout session that bought it or its emailed purchase link
+// (receipt or Find your purchase), and refreshes while Stripe
 // confirms. Pickup states (Preparing, Ready to collect) arrive with T28.
 export default async function MerchandiseOrderPage({ params, searchParams }: { params: Promise<{ orderId: string }>; searchParams: Promise<{ left?: string }> }) {
   const [{ orderId }, { left }, session, cookieStore] = await Promise.all([params, searchParams, getLiveSession(), cookies()]);
@@ -106,6 +107,15 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
                   <a className="font-semibold text-brand underline" href={`mailto:${order.sellerSupportEmail}`}>
                     {order.sellerSupportEmail}
                   </a>
+                </p>
+              ) : null}
+              {guest ? (
+                <p className="text-sm text-ink-muted">
+                  Lost this page?{" "}
+                  <Link className="text-brand underline underline-offset-4" href="/guest/recover">
+                    Find your purchase
+                  </Link>{" "}
+                  sends a fresh link for each purchase.
                 </p>
               ) : null}
             </>

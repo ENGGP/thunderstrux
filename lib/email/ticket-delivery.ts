@@ -177,7 +177,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
     ticketIdLines || "- Not available",
     "",
     "QR scanning is not required for this MVP. Keep this email or your ticket IDs handy for the event.",
-    ...(guestOrderLink ? ["", `Open your order (works once, for 24 hours; after that use Find your tickets): ${guestOrderLink}`] : [])
+    ...(guestOrderLink ? ["", `Open your order (works once, for 24 hours; after that use Find your purchase): ${guestOrderLink}`] : [])
   ].join("\n");
 
   const html = `
@@ -200,7 +200,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
       <p><strong>Ticket IDs</strong></p>
       <ul>${ticketIdHtml || "<li>Not available</li>"}</ul>
       <p>QR scanning is not required for this MVP. Keep this email or your ticket IDs handy for the event.</p>
-      ${guestOrderLink ? `<p><a href="${escapeHtml(guestOrderLink)}">Open your order</a> (works once, for 24 hours; after that use Find your tickets).</p>` : ""}
+      ${guestOrderLink ? `<p><a href="${escapeHtml(guestOrderLink)}">Open your order</a> (works once, for 24 hours; after that use Find your purchase).</p>` : ""}
     </div>
   `;
 

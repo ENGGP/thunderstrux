@@ -32,7 +32,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
         <Card>
           <div className="grid gap-4">
             <p className="text-ink-soft">Guest orders open only from the link we emailed you. If it has stopped working, we can send a new one.</p>
-            <Link className={buttonClasses({ size: "lg" })} href="/guest/recover">Find your tickets</Link>
+            <Link className={buttonClasses({ size: "lg" })} href="/guest/recover">Find your purchase</Link>
           </div>
         </Card>
       </AuthShell>
@@ -94,7 +94,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
             </dl>
           ) : null}
           <AccountClaim live={live} order={order} guestEmail={session.email} summary={`${event.title}, ${count} ${count === 1 ? "ticket" : "tickets"}`} />
-          <p className="text-sm text-ink-muted">Lost this page? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your tickets</Link> sends a fresh link for each purchase.</p>
+          <p className="text-sm text-ink-muted">Lost this page? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your purchase</Link> sends a fresh link for each purchase.</p>
         </div>
       </Card>
     </CheckoutShell>

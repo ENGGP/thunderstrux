@@ -294,7 +294,7 @@ export function MerchandiseCheckout({
             {buyer.email}
             {buyer.guest ? <span className="ml-2 text-sm font-semibold text-success">Confirmed</span> : null}
           </p>
-          {buyer.guest ? <p className="text-sm text-ink-soft">Buying as a guest. Keep the receipt email: it has your order reference.</p> : null}
+          {buyer.guest ? <p className="text-sm text-ink-soft">Buying as a guest. Your receipt email has your order reference and a link back to this order. Lost it later? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your purchase</Link> with this address.</p> : null}
         </div>
       </Card>
       <Card>

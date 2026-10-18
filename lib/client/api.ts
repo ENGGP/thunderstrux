@@ -110,7 +110,7 @@ export async function fetchWithCsrf(url: string, init?: RequestInit) {
   const method = (init?.method ?? "GET").toUpperCase();
   // These exact endpoints use email/token authority and support anonymous users.
   // Protected mutations still fetch their session-bound CSRF token below.
-  if (!["POST", "PATCH", "DELETE", "PUT"].includes(method) || ["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm", "/api/auth/password/request", "/api/auth/password/confirm", "/api/guest/email/request", "/api/guest/email/confirm", "/api/guest/recover"].includes(url) ||
+  if (!["POST", "PATCH", "DELETE", "PUT"].includes(method) || ["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm", "/api/auth/password/request", "/api/auth/password/confirm", "/api/guest/email/request", "/api/guest/email/confirm", "/api/guest/recover", "/api/merchandise/quote"].includes(url) ||
       // A guest checkout carries its own session CSRF token instead.
       new Headers(init?.headers).has("x-thunderstrux-guest-csrf")) {
     return fetch(url, init);

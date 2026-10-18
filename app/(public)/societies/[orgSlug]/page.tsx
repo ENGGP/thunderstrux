@@ -4,6 +4,7 @@ import { EventCard } from "@/components/events/event-card";
 import { SocietyHeader } from "@/components/organisations/society-header";
 import { SocietyJoin } from "@/components/organisations/society-join";
 import { membershipOffers } from "@/lib/memberships/offers";
+import { hasShop } from "@/lib/merchandise/shop";
 import { societyViewer } from "./viewer";
 export const dynamic = "force-dynamic";
 export default async function OrganisationDetailsPage({
@@ -14,13 +15,14 @@ export default async function OrganisationDetailsPage({
   const organisation = await publicOrganisation((await params).orgSlug);
   if (!organisation) notFound();
   const { joinState, memberId } = await societyViewer(organisation.id);
-  const { offers, memberUntil } = await membershipOffers(organisation.id, memberId);
+  const [{ offers, memberUntil }, hasMerchandise] = await Promise.all([membershipOffers(organisation.id, memberId), hasShop(organisation.id)]);
   return (
     <main className="bg-paper pb-14">
       <div className="mx-auto max-w-page px-4 md:px-8">
         <SocietyHeader
           current="overview"
           hasMemberships={offers.length > 0}
+          hasMerchandise={hasMerchandise}
           joined={joinState === "joined"}
           memberUntil={memberUntil}
           organisation={organisation}

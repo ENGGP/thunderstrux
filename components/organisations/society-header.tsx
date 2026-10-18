@@ -4,18 +4,20 @@ import { tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
 import { formatDate } from "@/lib/format";
 
 // The society's cover, logo, name, the viewer's Joined and membership badges,
-// and the section tabs, shared by its Overview and Memberships pages.
+// and the section tabs, shared by its Overview, Memberships and Merchandise pages.
 // A tab shows only when the society has published content of that kind.
 export function SocietyHeader({
   organisation,
   current,
   hasMemberships,
+  hasMerchandise = false,
   joined,
   memberUntil
 }: {
   organisation: { name: string; slug: string; timeZone: string; coverAssetId: string | null; logoAssetId: string | null };
-  current: "overview" | "memberships";
+  current: "overview" | "memberships" | "merchandise";
   hasMemberships: boolean;
+  hasMerchandise?: boolean;
   joined: boolean;
   memberUntil: Date | null;
 }) {
@@ -67,6 +69,11 @@ export function SocietyHeader({
         {hasMemberships || current === "memberships" ? (
           <Link aria-current={current === "memberships" ? "page" : undefined} className={tabClasses(current === "memberships")} href={`${base}/memberships`}>
             Memberships
+          </Link>
+        ) : null}
+        {hasMerchandise || current === "merchandise" ? (
+          <Link aria-current={current === "merchandise" ? "page" : undefined} className={tabClasses(current === "merchandise")} href={`${base}/merchandise`}>
+            Merchandise
           </Link>
         ) : null}
       </nav>

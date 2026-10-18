@@ -146,7 +146,7 @@ const lineSelect = {
 
 const summarySelect = {
   id: true, kind: true, status: true, paymentKind: true, currency: true, totalAmount: true, sellerName: true,
-  requiresCompensationReview: true, createdAt: true, fulfilledAt: true, cancelledAt: true
+  requiresCompensationReview: true, createdAt: true, fulfilledAt: true, cancelledAt: true, pickupStatus: true
 } satisfies Prisma.CommerceOrderSelect;
 
 // The buyer's own order, a member's or a verified guest's: what they bought,
@@ -156,7 +156,7 @@ export async function getOwnCommerceOrder(owner: { userId: string } | { guestIde
   const order = await prisma.commerceOrder.findFirst({
     where: { id: commerceOrderId, ...owner },
     select: {
-      ...summarySelect, sellerSupportEmail: true, organisation: { select: { slug: true, pickupPolicy: true } },
+      ...summarySelect, sellerSupportEmail: true, organisation: { select: { slug: true, pickupPolicy: true, timeZone: true } },
       lines: { orderBy: { lineNumber: "asc" }, select: lineSelect },
       lifecycleEvents: { orderBy: { sequence: "asc" }, select: { type: true, createdAt: true } }
     }

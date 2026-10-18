@@ -161,7 +161,8 @@ export async function createCommerceCheckout(input: {
   const sessionRequest: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
     payment_method_types: ["card"],
-    line_items: created.lines.map((line) => ({
+    // A free option in a paid basket is on the order, not on the card statement.
+    line_items: created.lines.filter((line) => line.unitAmount > 0).map((line) => ({
       price_data: { currency: order.currency, product_data: { name: line.variant ? `${line.name} (${line.variant})` : line.name }, unit_amount: line.unitAmount },
       quantity: line.quantity
     })),
@@ -172,9 +173,9 @@ export async function createCommerceCheckout(input: {
       metadata
     },
     customer_email: order.buyerEmailSnapshot,
-    // A membership returns to its own order page (T24a); merchandise gets its own in T27.
-    success_url: input.family === "membership" ? `${created.appUrl}/memberships/orders/${order.id}` : `${created.appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: input.family === "membership" ? `${created.appUrl}/memberships/orders/${order.id}?left=1` : `${created.appUrl}/cancel`,
+    // Each family returns to its own order page (memberships T24a, merchandise T27b).
+    success_url: `${created.appUrl}/${input.family === "membership" ? "memberships" : "merchandise"}/orders/${order.id}`,
+    cancel_url: `${created.appUrl}/${input.family === "membership" ? "memberships" : "merchandise"}/orders/${order.id}?left=1`,
     expires_at: expiresAt,
     metadata
   };

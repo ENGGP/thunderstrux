@@ -1001,15 +1001,20 @@ model CommerceOrderLine {
   termEndsAt     DateTime?
   // The plan a membership line bought (T22).
   membershipProductId String?
+  // The option a merchandise line sold (T27a); a pending order's lines hold its stock.
+  merchandiseVariantId String?
   createdAt      DateTime     @default(now())
 
   order             CommerceOrder      @relation(fields: [orderId, organisationId, kind], references: [id, organisationId, kind], onDelete: Restrict)
   membershipProduct MembershipProduct? @relation(fields: [membershipProductId, organisationId], references: [id, organisationId], onDelete: Restrict)
   membershipGrant   MembershipGrant?
+  merchandiseVariant MerchandiseVariant? @relation(fields: [merchandiseVariantId, organisationId], references: [id, organisationId], onDelete: Restrict)
 
   @@unique([orderId, lineNumber])
   @@unique([id, organisationId])
+  @@unique([orderId, merchandiseVariantId])
   @@index([membershipProductId])
+  @@index([merchandiseVariantId])
 }
 
 enum MembershipPlanStatus {
@@ -1167,7 +1172,8 @@ model MerchandiseVariant {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  product MerchandiseProduct @relation(fields: [productId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  product    MerchandiseProduct  @relation(fields: [productId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  orderLines CommerceOrderLine[]
 
   @@unique([organisationId, sku])
   @@unique([id, organisationId])

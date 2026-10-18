@@ -35,6 +35,8 @@ export type CommerceLineInput = {
   termEndsAt?: Date | null;
   // The plan a membership line buys (T22); the database keeps it in the order's society.
   membershipProductId?: string | null;
+  // The option a merchandise line sells (T27a); the database keeps it in the order's society.
+  merchandiseVariantId?: string | null;
 };
 
 export type CreateCommerceOrderInput = {
@@ -128,7 +130,7 @@ export async function createCommerceOrder(tx: Prisma.TransactionClient, input: C
       orderId: order.id, organisationId: input.organisationId, kind: input.kind, lineNumber: index + 1,
       quantity: line.quantity, unitAmount: line.unitAmount, lineAmount: line.lineAmount, currency: order.currency,
       nameSnapshot: line.name.trim(), variantSnapshot: line.variant ?? null, termStartsAt: line.termStartsAt ?? null, termEndsAt: line.termEndsAt ?? null,
-      membershipProductId: line.membershipProductId ?? null
+      membershipProductId: line.membershipProductId ?? null, merchandiseVariantId: line.merchandiseVariantId ?? null
     }))
   });
   await appendCommerceLifecycleEvent(tx, {

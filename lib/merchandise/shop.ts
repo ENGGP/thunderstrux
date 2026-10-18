@@ -1,23 +1,26 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { LOW_STOCK, MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
 import { optionSummary } from "@/lib/merchandise/catalogue";
+import { heldByVariant, quoteVersion } from "@/lib/merchandise/sale";
 
 // What anyone may see of a society's merchandise (T26, design round B2):
 // published products, their photos and the options still on sale. Drafts,
 // archived products and options that stopped selling are never returned.
-// Prices and stock here are advice; checkout (T27) re-quotes under locks.
+// Prices and stock here are advice; checkout re-quotes under locks (lib/merchandise/sale.ts).
 
-// T27 turns checkout on; until then the basket can be filled but not paid.
+// T27b turns checkout on with its pages; until then the basket can be filled but not paid.
 export const MERCHANDISE_CHECKOUT_ENABLED = false;
 
 
 const optionSelect = { id: true, colour: true, size: true, priceAmount: true, remaining: true } as const;
 const liveProduct = (organisationId: string) => ({ organisationId, status: "published" as const });
 
-// shortcut: available is the stock left; T27 subtracts active checkout holds here.
-const available = (option: { remaining: number }) => option.remaining;
+// What buyers can still get: the stock left less other checkouts' holds.
+async function availability(options: Array<{ id: string }>) {
+  const held = await heldByVariant(prisma, options.map((option) => option.id), new Date());
+  return (option: { id: string; remaining: number }) => Math.max(0, option.remaining - (held.get(option.id) ?? 0));
+}
 
 export async function shopProducts(organisationId: string) {
   const products = await prisma.merchandiseProduct.findMany({
@@ -31,6 +34,7 @@ export async function shopProducts(organisationId: string) {
       variants: { where: { archivedAt: null }, select: optionSelect }
     }
   });
+  const available = await availability(products.flatMap((product) => product.variants));
   return products.map((product) => {
     const prices = product.variants.map((option) => option.priceAmount);
     const left = product.variants.reduce((total, option) => total + available(option), 0);
@@ -66,10 +70,11 @@ export async function shopProduct(organisationId: string, productId: string) {
     }
   });
   if (!product) return null;
+  const available = await availability(product.variants);
   return {
     ...product,
     imageAssetIds: product.images.map((image) => image.assetId),
-    variants: product.variants.map(({ remaining, ...option }) => ({ ...option, available: available({ remaining }) }))
+    variants: product.variants.map(({ remaining, ...option }) => ({ ...option, available: available({ ...option, remaining }) }))
   };
 }
 export type ShopProductDetail = NonNullable<Awaited<ReturnType<typeof shopProduct>>>;
@@ -90,7 +95,7 @@ export type QuoteProblem = "unavailable" | "sold_out" | "reduced" | "too_many_li
 // Repeated options merge; quantities above ten or above what's left come
 // back lowered with a reason; lines past ten, options no longer sold and
 // other societies' options come back as problems. The version changes
-// whenever a price, quantity or line changes, so checkout (T27) can refuse
+// whenever a price, quantity or line changes, so checkout can refuse
 // a stale basket.
 export async function quoteBasket(input: QuoteInput) {
   const { society, items } = quoteSchema.parse(input);
@@ -104,6 +109,7 @@ export async function quoteBasket(input: QuoteInput) {
     select: { ...optionSelect, product: { select: { id: true, name: true, images: { where: { position: 0 }, select: { assetId: true } } } } }
   });
   const byId = new Map(options.map((option) => [option.id, option]));
+  const available = await availability(options);
 
   const lines = [];
   const problems: Array<{ variantId: string; problem: QuoteProblem }> = [];
@@ -134,10 +140,7 @@ export async function quoteBasket(input: QuoteInput) {
     });
   }
   const total = lines.reduce((sum, line) => sum + line.lineTotal, 0);
-  const version = createHash("sha256")
-    .update(JSON.stringify(lines.map((line) => [line.variantId, line.unitPrice, line.quantity])))
-    .digest("hex")
-    .slice(0, 16);
+  const version = quoteVersion(lines);
   return {
     society: { name: organisation.name, slug: organisation.slug },
     lines,

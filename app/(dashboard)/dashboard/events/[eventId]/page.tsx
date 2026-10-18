@@ -12,7 +12,7 @@ import {
   getOrganisationEventRevenueSeries
 } from "@/lib/events/event-analytics";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
-import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
+import { formatDateTime, formatMoney, formatPrice, shortMonths } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
 type OrganiserEventPageProps = {
@@ -22,11 +22,11 @@ type OrganiserEventPageProps = {
 };
 
 function formatShortDate(value: string) {
-  return new Intl.DateTimeFormat("en-AU", {
+  return shortMonths(new Intl.DateTimeFormat("en-AU", {
     month: "short",
     day: "numeric",
     timeZone: "UTC"
-  }).format(new Date(`${value}T00:00:00.000Z`));
+  }).format(new Date(`${value}T00:00:00.000Z`)));
 }
 
 export default async function OrganiserEventPage({

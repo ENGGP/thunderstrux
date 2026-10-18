@@ -28,7 +28,7 @@ export function SocietyHeader({
         ) : (
           <div aria-hidden="true" className="h-32 rounded-b-feature bg-brand-tint md:h-48" />
         )}
-        <div className="-mt-9 flex flex-wrap items-end gap-4 px-2 md:px-6">
+        <div className="-mt-9 flex flex-col items-start gap-3 px-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 md:px-6">
           {organisation.logoAssetId ? (
             <img
               alt={`${organisation.name} logo`}
@@ -42,7 +42,7 @@ export function SocietyHeader({
               {organisation.name.trim().charAt(0).toUpperCase()}
             </div>
           )}
-          <div className="min-w-0 flex-1 pt-10">
+          <div className="min-w-0 flex-1 sm:pt-10">
             <p className="text-sm text-ink-muted">Society</p>
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{organisation.name}</h1>
             {joined || memberUntil ? (

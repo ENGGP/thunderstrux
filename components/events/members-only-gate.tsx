@@ -26,24 +26,24 @@ export function MembersOnlyGate({ gate, eventHref }: { gate: Gate; eventHref: st
   const second = first.href === memberships ? { href: "/events", label: "Explore events" } : { href: memberships, label: "See memberships" };
 
   return (
-    <div className="mx-auto grid max-w-xl gap-6 px-4 py-16 md:px-8">
-      <section className="grid justify-items-center gap-4 rounded-card border border-line bg-surface px-6 py-10 text-center">
-        <Link className="flex items-center gap-3 font-semibold text-ink underline-offset-4 hover:underline" href={`/societies/${society.slug}`}>
+    <div className="mx-auto grid max-w-xl px-4 py-10 md:px-8 md:py-16">
+      <section className="grid gap-4 rounded-card border border-line bg-surface p-5 md:p-6">
+        <Link className="flex w-fit items-center gap-3 font-semibold text-ink underline-offset-4 hover:underline" href={`/societies/${society.slug}`}>
           {society.logoAssetId ? (
-            <img alt="" className="size-10 rounded-control border border-line bg-surface object-contain" height={40} src={`/api/public/assets/${society.logoAssetId}`} width={40} />
+            <img alt="" className="size-8 rounded-control border border-line bg-surface object-contain" height={32} src={`/api/public/assets/${society.logoAssetId}`} width={32} />
           ) : (
-            <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-control border border-line bg-brand-tint font-display text-lg font-semibold text-brand-ink">
+            <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-control border border-line bg-surface font-display font-semibold text-brand-ink">
               {society.name.trim().charAt(0).toUpperCase()}
             </span>
           )}
           <span className="[overflow-wrap:anywhere]">{society.name}</span>
         </Link>
-        <Icon className="text-brand" name="badge" size={40} />
+        <Icon className="text-brand" name="lock" size={24} />
         <h1 className="font-display text-3xl font-semibold text-ink">Members-only event</h1>
-        <p className="max-w-prose text-ink-soft [overflow-wrap:anywhere]">{message}</p>
-        <div className="flex flex-wrap justify-center gap-3">
-          <Link className={buttonClasses()} href={first.href}>{first.label}</Link>
-          <Link className={buttonClasses({ variant: "secondary" })} href={second.href}>{second.label}</Link>
+        <p className="text-ink [overflow-wrap:anywhere]">{message}</p>
+        <div className="grid gap-3 sm:flex sm:flex-wrap">
+          <Link className={buttonClasses({ size: "lg" })} href={first.href}>{first.label}</Link>
+          <Link className={buttonClasses({ variant: "secondary", size: "lg" })} href={second.href}>{second.label}</Link>
         </div>
       </section>
     </div>

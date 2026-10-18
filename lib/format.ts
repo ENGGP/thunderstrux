@@ -24,6 +24,12 @@ export function parseMoneyInput(value: string) {
   return match ? Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0")) : null;
 }
 
+// en-AU writes some short months long ("June", "July", "Sept"); the design
+// uses three letters for every month.
+export function shortMonths(text: string) {
+  return text.replace(/\b(June|July|Sept)\b/g, (month) => month.slice(0, 3));
+}
+
 type DateTimeOptions = {
   timeZone?: string;
   dateStyle?: "medium" | "full";
@@ -45,25 +51,46 @@ export function formatDateTime(
     return fallback;
   }
 
-  return new Intl.DateTimeFormat("en-AU", {
+  const text = new Intl.DateTimeFormat("en-AU", {
     dateStyle,
     timeStyle: "short",
     timeZone
   }).format(date);
+  return dateStyle === "medium" ? shortMonths(text) : text;
 }
 
 // "23 Oct 2026, 6:00 pm – 9:00 pm"; the end date repeats only when it differs.
 export function formatDateRange(start: Date, end: Date, timeZone = defaultTimeZone) {
-  return new Intl.DateTimeFormat("en-AU", {
+  return shortMonths(new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone
-  }).formatRange(start, end);
+  }).formatRange(start, end));
+}
+
+// "Semester 2 2026 membership", but "2027 membership" stays as it is.
+export function membershipLabel(planName: string) {
+  return /\bmembership$/i.test(planName.trim()) ? planName.trim() : `${planName.trim()} membership`;
+}
+
+// "Renew for 2027" rather than "Renew for 2027 membership".
+export function renewLabel(planName: string) {
+  return `Renew for ${planName.trim().replace(/\s+membership$/i, "")}`;
+}
+
+// "1 Jul to 31 Dec 2026", or "1 Dec 2026 to 31 Jan 2027" across years.
+export function joinDays(first: string, last: string) {
+  return `${first.slice(-4) === last.slice(-4) ? first.slice(0, -5) : first} to ${last}`;
+}
+
+// A membership term by its first and last day; `endsAt` is exclusive.
+export function formatTerm(startsAt: Date, endsAt: Date, timeZone = defaultTimeZone) {
+  return joinDays(formatDate(startsAt, timeZone), formatDate(new Date(endsAt.getTime() - 1), timeZone));
 }
 
 export function formatDate(value: Date | string, timeZone = defaultTimeZone) {
-  return new Intl.DateTimeFormat("en-AU", {
+  return shortMonths(new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
     timeZone
-  }).format(new Date(value));
+  }).format(new Date(value)));
 }

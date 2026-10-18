@@ -99,7 +99,7 @@ export async function myMemberships(userId: string, view: MyMembershipView, now 
     select: {
       id: true, organisationId: true, startsAt: true, endsAt: true, revokedAt: true, revocationReason: true, entitlements: true,
       product: { select: { name: true } },
-      organisation: { select: { name: true, slug: true, timeZone: true } },
+      organisation: { select: { name: true, slug: true, timeZone: true, logoAssetId: true } },
       line: { select: { order: { select: { id: true, paymentKind: true, totalAmount: true, cancelledAt: true, refundStatus: true } } } }
     }
   });
@@ -109,7 +109,7 @@ export async function myMemberships(userId: string, view: MyMembershipView, now 
 
   // Renewal: the earliest published plan of that society starting at or after
   // this membership ends and overlapping none of the member's memberships there.
-  const renewals = new Map<string, { id: string; name: string; priceAmount: number }>();
+  const renewals = new Map<string, { id: string; name: string; priceAmount: number; startsAt: Date }>();
   if (view === "active" || view === "upcoming") {
     const societies = [...new Set(shown.map((grant) => grant.organisationId))];
     const plans = societies.length
@@ -122,7 +122,7 @@ export async function myMemberships(userId: string, view: MyMembershipView, now 
     for (const grant of shown) {
       const held = grants.filter((other) => other.organisationId === grant.organisationId && !other.revokedAt);
       const next = plans.find((plan) => plan.organisationId === grant.organisationId && plan.startsAt >= grant.endsAt && !held.some((other) => overlaps(other, plan)));
-      if (next) renewals.set(grant.id, { id: next.id, name: next.name, priceAmount: next.priceAmount });
+      if (next) renewals.set(grant.id, { id: next.id, name: next.name, priceAmount: next.priceAmount, startsAt: next.startsAt });
     }
   }
 

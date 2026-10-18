@@ -8,7 +8,7 @@ import { LinkTabs } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, formatTerm, renewLabel } from "@/lib/format";
 import { myMemberships, myMembershipViews, type MyMembershipView } from "@/lib/memberships/offers";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -65,9 +65,15 @@ export default async function MyMembershipsPage({ searchParams }: { searchParams
         <ul className="grid gap-4">
           {memberships.map((membership) => {
             const zone = membership.society.timeZone;
-            const lastDay = formatDate(new Date(membership.endsAt.getTime() - 1), zone);
             return (
-              <li className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start" key={membership.id}>
+              <li className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:grid-cols-[48px_minmax(0,1fr)_auto] sm:items-start" key={membership.id}>
+                {membership.society.logoAssetId ? (
+                  <img alt="" className="hidden size-12 rounded-control border border-line bg-surface object-contain sm:block" height={48} src={`/api/public/assets/${membership.society.logoAssetId}`} width={48} />
+                ) : (
+                  <span aria-hidden="true" className="hidden size-12 items-center justify-center rounded-control border border-line font-display text-xl font-semibold text-brand-ink sm:flex">
+                    {membership.society.name.trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
                 <div className="grid min-w-0 gap-1.5">
                   <Link className="text-sm font-semibold text-ink-soft underline-offset-4 hover:underline [overflow-wrap:anywhere]" href={`/societies/${membership.society.slug}`}>
                     {membership.society.name}
@@ -77,7 +83,7 @@ export default async function MyMembershipsPage({ searchParams }: { searchParams
                     <StatusBadge status={membership.state} />
                   </div>
                   <p className="text-ink">
-                    {formatDate(membership.startsAt, zone)} to {lastDay}, {zoneCity(zone)}
+                    {formatTerm(membership.startsAt, membership.endsAt, zone)}, {zoneCity(zone)}
                   </p>
                   {membership.revokedAt ? (
                     <p className="text-ink [overflow-wrap:anywhere]">
@@ -101,9 +107,11 @@ export default async function MyMembershipsPage({ searchParams }: { searchParams
                       className={buttonClasses()}
                       href={`/societies/${membership.society.slug}/memberships/${membership.renewal.id}/checkout`}
                     >
-                      Renew for {membership.renewal.name}
+                      {renewLabel(membership.renewal.name)}
                     </Link>
-                    <span className="text-sm text-ink-soft">{membership.renewal.priceAmount ? formatMoney(membership.renewal.priceAmount) : "Free"}</span>
+                    <span className="text-sm text-ink-soft">
+                      {membership.renewal.priceAmount ? formatMoney(membership.renewal.priceAmount) : "Free"} · starts {formatDate(membership.renewal.startsAt, zone)}
+                    </span>
                   </div>
                 ) : null}
               </li>

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, membershipLabel } from "@/lib/format";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
 
 type TicketType = {
@@ -247,7 +247,9 @@ export function PublicTicketPurchase({
                     ? " · Member price"
                     : ticketType.memberPrice != null
                       ? ` · Members pay ${formatPrice(ticketType.memberPrice)}`
-                      : ""}
+                      : memberPlan
+                        ? " · No member price"
+                        : ""}
                 </span>
               </span>
               <span className="grid justify-items-end">
@@ -260,7 +262,7 @@ export function PublicTicketPurchase({
       </fieldset>
 
       {memberPlan && ticketTypes.some((ticketType) => ticketType.standardPrice != null) ? (
-        <p className="text-sm text-ink-soft">Member price through your {memberPlan} membership.</p>
+        <p className="text-sm text-ink-soft">Member price through your {membershipLabel(memberPlan)}.</p>
       ) : !memberPlan && societySlug && ticketTypes.some((ticketType) => ticketType.memberPrice != null) ? (
         <p className="text-sm text-ink-soft">
           {society} members pay less. Joining for free doesn&apos;t include member prices.{" "}

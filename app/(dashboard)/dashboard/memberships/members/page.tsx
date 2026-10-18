@@ -11,7 +11,7 @@ import { LinkTabs } from "@/components/ui/link-tabs";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTerm } from "@/lib/format";
 import { listFreeJoins, listRoster, rosterViews, type RosterView } from "@/lib/memberships/roster";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { orderReference } from "@/lib/payments/order-refunds";
@@ -79,7 +79,7 @@ async function Roster({ organisationId, view, query, cursor }: { organisationId:
   const joins = view === "joins" ? await listFreeJoins(organisationId, { query, cursor }) : null;
   const nextCursor = joins ? joins.nextCursor : roster.nextCursor;
   const rows = joins ? joins.joins.length : roster.members.length;
-  const runs = (startsAt: Date, endsAt: Date) => `${formatDate(startsAt, timeZone)} to ${formatDate(new Date(endsAt.getTime() - 1), timeZone)}`;
+  const runs = (startsAt: Date, endsAt: Date) => formatTerm(startsAt, endsAt, timeZone);
   const nameLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
 
   return (

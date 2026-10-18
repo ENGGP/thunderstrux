@@ -14,7 +14,7 @@ import { getEventForViewer, priceForViewer } from "@/lib/events/public-events";
 import { memberPricePlan } from "@/lib/memberships/offers";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney, membershipLabel } from "@/lib/format";
 import { reservationMinutes } from "@/lib/tickets/reservations";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
 import { zoneCity } from "@/lib/zoned-time";
@@ -149,7 +149,7 @@ export default async function CheckoutPage({
           lines={[{ label: memberPlan && ticketType.standardPrice != null ? `${ticketType.name} (member price)` : ticketType.name, quantity, unitPrice: ticketType.price }]}
           note={
             memberPlan && ticketType.standardPrice != null
-              ? `Member price through your ${memberPlan} membership. If it ends while we hold your tickets, you keep this price.`
+              ? `Member price through your ${membershipLabel(memberPlan)}. If it ends while we hold your tickets, you keep this price.`
               : free
                 ? "No payment needed."
                 : "No booking fee. You pay the ticket price shown."

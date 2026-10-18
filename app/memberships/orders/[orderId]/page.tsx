@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { formatDate } from "@/lib/format";
+import { formatDate, membershipLabel } from "@/lib/format";
 import { grantState } from "@/lib/memberships/grants";
 import { ownMembershipOrder } from "@/lib/memberships/offers";
 import { zoneCity } from "@/lib/zoned-time";
@@ -51,7 +51,7 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
           {closed ? (
             <>
               <p className="text-ink">
-                {left === "1" && waiting ? "You left Stripe before paying" : "This checkout didn't complete"}, so you&apos;re not a member of {line?.nameSnapshot ?? "this term"}.
+                {left === "1" && waiting ? "You left Stripe before paying" : "This checkout didn't complete"}, so you don&apos;t have the {line ? membershipLabel(line.nameSnapshot) : "membership"}.
               </p>
               <div>
                 <Link className={buttonClasses({ variant: "secondary", size: "lg" })} href={back}>
@@ -67,10 +67,11 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
                 <StatusBadge status="processing" />
               </div>
               <p className="text-ink" role="status">
-                Stripe is telling us about your payment for {line?.nameSnapshot}. This page updates by itself.
+                Stripe is telling us about your payment for the {line ? membershipLabel(line.nameSnapshot) : "membership"}. This page updates by itself.
               </p>
               <p className="text-sm text-ink-soft">You&apos;re not a member of this term until Stripe confirms. You won&apos;t be charged twice.</p>
               <PaymentStatusPoller orderId={order.id} statusUrl={`/api/commerce/orders/${order.id}`} slowMessage="Stripe hasn't confirmed yet. If you paid, the membership appears in My memberships when it does, and we'll email you." />
+              <Link className="w-fit font-semibold text-brand underline underline-offset-4" href="/purchases">See all purchases</Link>
             </>
           ) : grant && state ? (
             <>
@@ -79,10 +80,10 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
               </div>
               <p className="text-ink">
                 {state === "upcoming"
-                  ? `Confirmed: your ${line?.nameSnapshot} membership with ${order.sellerName} begins on ${formatDate(grant.startsAt, zone)}, ${zoneCity(zone)}.`
+                  ? `Payment confirmed for your ${membershipLabel(line?.nameSnapshot ?? "")} with ${order.sellerName}. Benefits begin on ${formatDate(grant.startsAt, zone)}, ${zoneCity(zone)}.`
                   : state === "active"
-                    ? `Your ${line?.nameSnapshot} membership with ${order.sellerName} runs until ${formatDate(new Date(grant.endsAt.getTime() - 1), zone)}.`
-                    : `This ${line?.nameSnapshot} membership has ${state === "revoked" ? "ended early" : "ended"}.`}{" "}
+                    ? `Your ${membershipLabel(line?.nameSnapshot ?? "")} with ${order.sellerName} runs until ${formatDate(new Date(grant.endsAt.getTime() - 1), zone)}.`
+                    : `This ${membershipLabel(line?.nameSnapshot ?? "")} has ${state === "revoked" ? "ended early" : "ended"}.`}{" "}
                 {state === "upcoming" || state === "active" ? "We've emailed your receipt." : null}
               </p>
               <div>

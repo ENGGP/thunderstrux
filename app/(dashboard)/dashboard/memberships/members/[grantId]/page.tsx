@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatTerm } from "@/lib/format";
 import { readMembership } from "@/lib/memberships/roster";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { latestCommerceRefundRequest, orderReference } from "@/lib/payments/order-refunds";
@@ -33,6 +33,17 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
   const canCancel = live && !membership.paid && !membership.cancelled && hasOrganisationPermission(organisation.staffRole, "orders:refund");
   const canRefund = live && membership.paid && !membership.refundStatus && hasOrganisationPermission(organisation.staffRole, "orders:refund");
   const refund = membership.paid ? await latestCommerceRefundRequest(membership.orderId) : null;
+
+  // Newest first, from the facts this page already holds.
+  const history = [
+    membership.revokedAt
+      ? { label: membership.refundStatus === "refunded" ? "Ended by a refund" : membership.cancelled ? "Free membership cancelled" : "Membership revoked", at: membership.revokedAt, time: true }
+      : null,
+    membership.startsAt <= new Date() ? { label: "Membership started", at: membership.startsAt, time: false } : null,
+    { label: membership.paid ? "Payment confirmed, membership granted" : "Free membership granted", at: membership.grantedAt, time: true }
+  ]
+    .filter((entry): entry is { label: string; at: Date; time: boolean } => entry !== null)
+    .sort((a, b) => b.at.getTime() - a.at.getTime());
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -70,7 +81,7 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
           </p>
         </Notice>
       ) : null}
-      <div className="grid items-start gap-6 lg:grid-cols-2">
+      <div className="grid items-start gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card>
           <div className="grid gap-4">
             <h2 className="font-display text-xl font-semibold text-ink">Membership</h2>
@@ -79,7 +90,7 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
               <dd className="[overflow-wrap:anywhere]">{membership.plan.name}</dd>
               <dt className="text-ink-soft">Runs</dt>
               <dd>
-                {formatDate(membership.startsAt, timeZone)} to {lastDay(membership.endsAt)}, {zoneCity(timeZone)}
+                {formatTerm(membership.startsAt, membership.endsAt, timeZone)}, {zoneCity(timeZone)}
               </dd>
               <dt className="text-ink-soft">Unlocks</dt>
               <dd>{membership.entitlements.map((key) => unlockWords[key]).join(", ") || "Nothing"}</dd>
@@ -140,6 +151,19 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
           </Card>
         ) : null}
       </div>
+      <Card>
+        <div className="grid gap-3">
+          <h2 className="font-display text-xl font-semibold text-ink">What happened</h2>
+          <ul className="grid gap-2 text-[15px]">
+            {history.map((entry) => (
+              <li key={entry.label}>
+                <span className="font-semibold text-ink">{entry.label}</span>{" "}
+                <span className="text-ink-soft">{entry.time ? formatDateTime(entry.at, { timeZone }) : formatDate(entry.at, timeZone)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Card>
     </DashboardShell>
   );
 }

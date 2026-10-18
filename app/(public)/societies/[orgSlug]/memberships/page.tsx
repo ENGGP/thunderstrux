@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatDate, formatPrice } from "@/lib/format";
+import { formatDate, formatPrice, formatTerm, renewLabel } from "@/lib/format";
 import { membershipOffers, type Offer } from "@/lib/memberships/offers";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
 import { zoneCity } from "@/lib/zoned-time";
@@ -16,7 +16,6 @@ import { societyViewer } from "../viewer";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Memberships" };
 
-const unlockWords = { member_prices: "Member prices on tickets", members_only_events: "Booking members-only events" } as const;
 
 // PUB-06 (T24a, design round B1): a society's fixed-term memberships, each
 // with the viewer's own standing. Buying happens on the review page; nothing
@@ -29,6 +28,9 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
   const zone = organisation.timeZone;
   const day = (date: Date) => formatDate(date, zone);
   const lastDay = (endsAt: Date) => formatDate(new Date(endsAt.getTime() - 1), zone);
+  const unlockWords = { member_prices: `Member prices on ${organisation.name} tickets`, members_only_events: "Booking members-only events" } as const;
+  const rights = new Set(offers.flatMap((offer) => offer.entitlements));
+  const perks = [rights.has("member_prices") ? `get member prices on ${organisation.name} tickets` : null, rights.has("members_only_events") ? "can book members-only events" : null].filter(Boolean);
   const reviewHref = (offer: Offer) => `/societies/${organisation.slug}/memberships/${offer.id}/checkout`;
 
   function action(offer: Offer) {
@@ -60,9 +62,16 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
     }
     if (!viewer.verified) return null;
     return (
-      <Link className={buttonClasses({ size: "lg" })} href={reviewHref(offer)}>
-        {state.renew ? `Renew for ${offer.name}` : offer.priceAmount === 0 ? "Get free membership" : "Buy membership"}
-      </Link>
+      <div className="grid gap-2">
+        <Link className={buttonClasses({ size: "lg" })} href={reviewHref(offer)}>
+          {state.renew ? renewLabel(offer.name) : offer.priceAmount === 0 ? "Get free membership" : "Buy membership"}
+        </Link>
+        <p className="text-sm text-ink-soft">
+          {state.renew
+            ? "Starts the day after your current membership ends. No automatic renewal."
+            : "Not the same as joining: a membership has dates and unlocks member benefits."}
+        </p>
+      </div>
     );
   }
 
@@ -77,7 +86,9 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
               <h2 className="font-display text-2xl font-semibold text-ink" id="memberships-heading">
                 Memberships
               </h2>
-              <p className="max-w-[64ch] text-ink-soft">Each membership covers fixed dates and doesn&apos;t renew automatically.</p>
+              <p className="max-w-[64ch] text-ink-soft">
+                Each membership covers fixed dates and doesn&apos;t renew automatically.{perks.length ? ` Members ${perks.join(" and ")}.` : ""}
+              </p>
             </div>
             {viewer.memberId && !viewer.verified && offers.length ? (
               <Notice title="Verify your email to buy a membership">
@@ -95,8 +106,8 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
                 <p className="text-ink-soft">{organisation.name} isn&apos;t selling a membership right now. You can still join for free to follow its events.</p>
               </section>
             ) : (
-              offers.map((offer) => (
-                <article aria-labelledby={`offer-${offer.id}`} className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:p-6" key={offer.id}>
+              offers.map((offer) => {
+                const header = (
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h3 className="font-display text-xl font-semibold text-ink [overflow-wrap:anywhere]" id={`offer-${offer.id}`}>
                       {offer.name}
@@ -107,29 +118,51 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
                       <StatusBadge label={`Starts ${day(offer.startsAt)}`} status="upcoming" />
                     ) : null}
                   </div>
-                  {offer.description ? <p className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{offer.description}</p> : null}
-                  {offer.entitlements.length ? (
-                    <div className="grid gap-2">
-                      <h4 className="text-[15px] font-semibold text-ink">What it unlocks</h4>
-                      <ul className="grid gap-1.5 text-[15px]">
-                        {offer.entitlements.map((key) => (
-                          <li className="flex items-start gap-2" key={key}>
-                            <Icon className="mt-0.5 text-success" name="success" size={18} />
-                            {unlockWords[key]}
-                          </li>
-                        ))}
-                      </ul>
+                );
+                // A plan the viewer holds is a short reminder; anything else is an offer.
+                if (offer.state.kind === "held") {
+                  return (
+                    <article aria-labelledby={`offer-${offer.id}`} className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:p-6" key={offer.id}>
+                      {header}
+                      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-[15px]">
+                        <dt className="text-ink-soft">Runs</dt>
+                        <dd className="font-semibold text-ink">{formatTerm(offer.startsAt, offer.endsAt, zone)}, {zoneCity(zone)}</dd>
+                        <dt className="text-ink-soft">Price</dt>
+                        <dd className="font-semibold tabular-nums text-ink">{formatPrice(offer.priceAmount)}</dd>
+                      </dl>
+                      {action(offer)}
+                    </article>
+                  );
+                }
+                return (
+                  <article aria-labelledby={`offer-${offer.id}`} className="grid gap-5 rounded-card border border-line bg-surface p-5 sm:p-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" key={offer.id}>
+                    <div className="grid content-start gap-4">
+                      {header}
+                      {offer.description ? <p className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{offer.description}</p> : null}
+                      {offer.entitlements.length ? (
+                        <div className="grid gap-2">
+                          <h4 className="text-[15px] font-semibold text-ink">What it unlocks</h4>
+                          <ul className="grid gap-1.5 text-[15px]">
+                            {offer.entitlements.map((key) => (
+                              <li className="flex items-start gap-2" key={key}>
+                                <Icon className="mt-0.5 text-success" name="success" size={18} />
+                                {unlockWords[key]}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                  <div className="flex flex-wrap items-baseline justify-between gap-3">
-                    <p className="text-[15px] text-ink">
-                      {day(offer.startsAt)} to {lastDay(offer.endsAt)}, {zoneCity(zone)}
-                    </p>
-                    <p className="font-display text-2xl font-semibold tabular-nums text-ink">{formatPrice(offer.priceAmount)}</p>
-                  </div>
-                  {action(offer)}
-                </article>
-              ))
+                    <div className="grid content-start gap-3 rounded-control bg-surface-subtle p-5">
+                      <p className="text-[15px] text-ink">
+                        {formatTerm(offer.startsAt, offer.endsAt, zone)}, {zoneCity(zone)}
+                      </p>
+                      <p className="font-display text-3xl font-semibold tabular-nums text-ink">{formatPrice(offer.priceAmount)}</p>
+                      {action(offer)}
+                    </div>
+                  </article>
+                );
+              })
             )}
             {organisation.refundPolicy && offers.length ? (
               <div>
@@ -139,16 +172,28 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
             ) : null}
           </section>
 
-          <aside className="grid content-start gap-4 rounded-card border border-line bg-surface p-5">
-            <SocietyJoin slug={organisation.slug} state={viewer.joinState} />
-            <p className="text-sm text-ink-soft">Joining is free and follows the society&apos;s events. It&apos;s separate from a membership, and leaving doesn&apos;t cancel one.</p>
+          <aside className="grid content-start gap-3.5 self-start rounded-card border border-line bg-surface p-5 sm:p-6">
+            {viewer.joinState === "joined" ? (
+              <>
+                <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">You&apos;ve joined {organisation.name}</h2>
+                <p className="text-[15px] text-ink-soft">Joining is free: you follow the society&apos;s events from your dashboard. It&apos;s separate from a membership, and leaving doesn&apos;t cancel one.</p>
+                <Link className="w-fit text-[15px] font-semibold text-brand underline underline-offset-4" href="/dashboard/organisations">
+                  Manage in My societies
+                </Link>
+              </>
+            ) : (
+              <>
+                <SocietyJoin slug={organisation.slug} state={viewer.joinState} />
+                <p className="text-sm text-ink-soft">Joining is free and follows the society&apos;s events. It&apos;s separate from a membership, and leaving doesn&apos;t cancel one.</p>
+              </>
+            )}
             {organisation.supportEmail ? (
-              <p className="text-sm text-ink-soft">
-                Contact{" "}
-                <a className="text-brand underline [overflow-wrap:anywhere]" href={`mailto:${organisation.supportEmail}`}>
+              <div className="grid gap-1 border-t border-line pt-3.5 text-sm">
+                <span className="font-semibold text-ink">Contact</span>
+                <a className="w-fit text-brand underline underline-offset-4 [overflow-wrap:anywhere]" href={`mailto:${organisation.supportEmail}`}>
                   {organisation.supportEmail}
                 </a>
-              </p>
+              </div>
             ) : null}
           </aside>
         </div>

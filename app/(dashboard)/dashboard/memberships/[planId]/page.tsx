@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, joinDays } from "@/lib/format";
 import { formatDay, readPlan } from "@/lib/memberships/plans";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -81,7 +81,7 @@ export default async function MembershipPlanPage({ params }: { params: Promise<{
             <div className="grid gap-2 rounded-card border border-line bg-surface p-5">
               <p className="font-display text-lg font-semibold text-ink [overflow-wrap:anywhere]">{plan.name}</p>
               <p className="text-[15px] text-ink">
-                {formatDay(plan.firstDay)} to {formatDay(plan.lastDay)}, {zoneCity(timeZone)}
+                {joinDays(formatDay(plan.firstDay), formatDay(plan.lastDay))}, {zoneCity(timeZone)}
               </p>
               {plan.description ? <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">{plan.description}</p> : null}
               <p className="text-sm text-ink-soft">{unlocks.join(" · ") || "No unlocks"}</p>

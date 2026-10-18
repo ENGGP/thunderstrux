@@ -54,7 +54,7 @@ export function StatusBadge({
 
   return (
     <span
-      className={`inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-tag border px-2 text-xs font-semibold ${tones[tone].box}`}
+      className={`inline-flex h-6 w-fit items-center gap-1.5 whitespace-nowrap rounded-tag border px-2 text-xs font-semibold ${tones[tone].box}`}
     >
       <span aria-hidden="true" className={`size-1.5 rounded-full ${tones[tone].dot}`} />
       {label ?? text}

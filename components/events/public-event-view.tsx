@@ -40,14 +40,9 @@ export function PublicEventView({
             </Link>
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{event.title}</h1>
             {event.membersOnly ? (
-              <p className="inline-flex items-start gap-2 text-sm text-ink-soft">
-                <Icon className="mt-0.5 text-brand" name="badge" />
-                <span>
-                  <span className="font-semibold text-ink">Members only.</span>{" "}
-                  {preview
-                    ? "Only members whose membership unlocks members-only events see this page; anyone else with the link sees only that it's a members-only event of your society."
-                    : `You can see this because your ${organisation.name} membership includes members-only events.`}
-                </span>
+              <p className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-ink-soft">
+                <Icon className="text-brand" name="lock" size={16} />
+                Members only
               </p>
             ) : null}
           </header>
@@ -65,6 +60,13 @@ export function PublicEventView({
               {event.location}
             </span>
           </div>
+          {event.membersOnly ? (
+            <p className="max-w-[70ch] text-sm text-ink-soft">
+              {preview
+                ? "Only members whose membership unlocks members-only events see this page. Anyone else with the link sees only that it's a members-only event of your society."
+                : `You can see this because your ${organisation.name} membership includes members-only events.`}
+            </p>
+          ) : null}
 
           <section>
             <h2 className="text-2xl font-semibold text-ink">About</h2>

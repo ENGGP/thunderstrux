@@ -5,7 +5,7 @@ import { CheckoutShell } from "@/components/layout/checkout-shell";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { getPublishedEventDetail } from "@/lib/events/public-events";
+import { getBookedEventDetail } from "@/lib/events/public-events";
 import { formatDateTime } from "@/lib/format";
 import { getMemberTicketOrder } from "@/lib/orders/member-tickets";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
@@ -26,7 +26,7 @@ export default async function CheckoutConfirmedPage({
   if (!session) redirect(`/login?callbackUrl=${encodeURIComponent(`/events/${eventId}`)}`);
 
   const [event, order] = await Promise.all([
-    getPublishedEventDetail(eventId),
+    getBookedEventDetail(eventId),
     orderId ? getMemberTicketOrder(session.user.id, eventId, orderId) : null
   ]);
   if (!event || !order) notFound();

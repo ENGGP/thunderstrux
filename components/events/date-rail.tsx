@@ -1,3 +1,5 @@
+import { shortMonths } from "@/lib/format";
+
 // Day and month of an event in its society's time zone. Decorative: the
 // full date is always written out next to it.
 export function DateRail({
@@ -15,7 +17,7 @@ export function DateRail({
     timeZone
   }).formatToParts(date);
   const part = (type: string) =>
-    parts.find((entry) => entry.type === type)?.value ?? "";
+    shortMonths(parts.find((entry) => entry.type === type)?.value ?? "");
 
   return (
     <div

@@ -1,3 +1,4 @@
+import { membershipLabel } from "@/lib/format";
 import type { Prisma } from "@prisma/client";
 import { appendCommerceLifecycleEvent, lockCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
@@ -51,7 +52,7 @@ export async function revokeMembership(input: { organisationId: string; grantId:
     if (grant.revokedAt) return { status: "already_revoked" as const, revokedAt: grant.revokedAt };
     if (grant.endsAt <= now) throw new MembershipRevocationError("not_revocable", "This membership has already ended");
     await endGrant(tx, grant, input.actor.id, reason, now,
-      `${grant.line.order.sellerName} has ended your ${grant.product.name} membership: "${reason}". No refund was made; contact the society if you have questions.`);
+      `${grant.line.order.sellerName} has ended your ${membershipLabel(grant.product.name)}: "${reason}". No refund was made; contact the society if you have questions.`);
     await tx.auditLog.create({ data: {
       organisationId: input.organisationId, actorUserId: input.actor.id, action: "membership.revoked", targetType: "MembershipGrant", targetId: grant.id,
       metadata: { reason, commerceOrderId: grant.line.order.id }
@@ -80,7 +81,7 @@ export async function cancelFreeMembership(input: { organisationId: string; gran
     // An earlier revoke already ended it; the cancellation is still recorded.
     if (!grant.revokedAt) {
       await endGrant(tx, grant, input.actor.id, reason, now,
-        `${order.sellerName} has cancelled your free ${grant.product.name} membership: "${reason}". Nothing was charged, so there is nothing to refund.`);
+        `${order.sellerName} has cancelled your free ${membershipLabel(grant.product.name)}: "${reason}". Nothing was charged, so there is nothing to refund.`);
     }
     await tx.auditLog.create({ data: {
       organisationId: input.organisationId, actorUserId: input.actor.id, action: "membership.free_cancelled", targetType: "MembershipGrant", targetId: grant.id,

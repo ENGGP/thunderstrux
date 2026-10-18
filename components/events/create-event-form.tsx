@@ -159,7 +159,8 @@ export function CreateEventForm({
   orgSlug,
   timeZone,
   chargesReady,
-  memberPricesOnSale = false
+  memberPricesOnSale = false,
+  membersOnlyOnSale = false
 }: {
   // The readiness panel on the Edit page.
   aside?: ReactNode;
@@ -167,6 +168,8 @@ export function CreateEventForm({
   chargesReady: boolean;
   // Whether a published membership plan unlocks member prices now (T24b).
   memberPricesOnSale?: boolean;
+  // Whether a published membership plan unlocks members-only events now.
+  membersOnlyOnSale?: boolean;
   eventId?: string;
   initialEvent?: EventFormData;
   mode?: "create" | "edit";
@@ -505,7 +508,7 @@ export function CreateEventForm({
                     <MoneyInput error={errorFor(errors, "ticketTypes", String(index), "price")} onChange={(price) => setTicketType(index, { price })} value={ticketType.price} />
                     <MoneyInput
                       error={errorFor(errors, "ticketTypes", String(index), "memberPrice")}
-                      hint="Optional"
+                      hint="Optional. Lower than the price, or 0."
                       label="Member price"
                       onChange={(memberPrice) => setTicketType(index, { memberPrice })}
                       value={ticketType.memberPrice}
@@ -519,13 +522,21 @@ export function CreateEventForm({
                     />
                   </div>
                   <FeeHint chargesReady={chargesReady} price={ticketType.price} />
-                  {ticketType.memberPrice.trim() && !memberPricesOnSale ? (
-                    <p className="text-sm text-warning">
-                      Nobody can buy at the member price until a published membership plan includes member prices.{" "}
-                      <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/memberships">
-                        Go to Memberships
-                      </Link>
+                  {parseMoneyInput(ticketType.memberPrice) !== null && parseMoneyInput(ticketType.price) !== null ? (
+                    <p className="text-sm text-ink-soft">
+                      Members whose membership unlocks member prices pay {formatMoney(parseMoneyInput(ticketType.memberPrice) as number)}. Everyone else, and guests, pay{" "}
+                      {formatMoney(parseMoneyInput(ticketType.price) as number)}.
                     </p>
+                  ) : null}
+                  {ticketType.memberPrice.trim() && !memberPricesOnSale ? (
+                    <Notice title="No plan unlocks member prices" tone="warning">
+                      <p className="mt-0.5">
+                        Nobody can buy at the member price until a published membership plan includes member prices.{" "}
+                        <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/memberships">
+                          Go to Memberships
+                        </Link>
+                      </p>
+                    </Notice>
                   ) : null}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-ink-soft">
@@ -564,14 +575,19 @@ export function CreateEventForm({
           <div className="grid max-w-2xl gap-5">
             <h2 className="text-lg font-semibold text-ink">Access</h2>
             <fieldset className="grid gap-2" id="visibility">
-              <legend className="mb-1 text-sm font-semibold text-ink">Who can find this event</legend>
+              <legend className="mb-1 text-sm font-semibold text-ink">Who can see and book</legend>
               {(
                 [
                   ["public", "Public", "Listed on Explore events and the society page."],
-                  ["unlisted", "Link only", "Not listed. Anyone with the link can view and buy."]
+                  ["unlisted", "Link only", "Not listed. Anyone with the link can view and buy."],
+                  [
+                    "members_only",
+                    "Members only",
+                    "Not listed anywhere. Members whose membership unlocks members-only events see the full page; anyone else with the link sees only that it's a members-only event of your society."
+                  ]
                 ] as const
               ).map(([value, label, hint]) => (
-                <label className="flex min-h-11 items-start gap-3 rounded-control border border-line p-3" key={value}>
+                <label className="flex min-h-11 items-start gap-3 rounded-control border border-line p-3 has-[:checked]:border-brand has-[:checked]:bg-brand-tint" key={value}>
                   <input checked={form.visibility === value} className="mt-1 size-4 accent-brand" name="visibility" onChange={() => setField("visibility", value)} type="radio" />
                   <span className="grid">
                     <span className="font-semibold text-ink">{label}</span>
@@ -579,6 +595,14 @@ export function CreateEventForm({
                   </span>
                 </label>
               ))}
+              {form.visibility === "members_only" && !membersOnlyOnSale ? (
+                <p className="text-sm text-warning">
+                  Publishing a members-only event needs a published plan that unlocks members-only events.{" "}
+                  <Link className="font-semibold text-brand underline underline-offset-4" href="/dashboard/memberships">
+                    Go to Memberships
+                  </Link>
+                </p>
+              ) : null}
             </fieldset>
             <TextInput
               error={errorFor(errors, "capacity")}

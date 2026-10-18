@@ -180,8 +180,15 @@ export async function createEventCheckout({
           ? await tx.event.findUnique({ where: { id: eventId }, select: lockedEventSelect(ticketTypeId) })
           : null;
 
-        // Members-only events are concealed until membership entitlements exist (T24).
-        if (!event || event.visibility === "members_only") {
+        // A members-only event sells only to a member account whose running
+        // membership of the society unlocks it, read under the buyer lock that
+        // revocation and refunds also take; anyone else gets the same answer as
+        // a missing event, with no details (T24b). Guests never qualify.
+        if (
+          !event ||
+          (event.visibility === "members_only" &&
+            !(userId && (await activeEntitlementGrant(tx, userId, event.organisationId, "members_only_events", reservationNow))))
+        ) {
           throw new CheckoutCreationError("event_not_found", "Event was not found");
         }
 

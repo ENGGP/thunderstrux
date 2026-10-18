@@ -19,7 +19,7 @@ Draft events are visible only in the organisation dashboard. Published events ca
 
 Since T11 publication is one of several independent settings on an event:
 
-- `visibility`: `public` events are listed; `unlisted` events open by direct link only; `members_only` is reserved for memberships (T24) and cannot be set yet.
+- `visibility`: `public` events are listed; `unlisted` events open by direct link only; `members_only` events (T24b2) are never listed and open only to members whose membership unlocks them; anyone else gets the members-only gate. Publishing one needs a published plan that unlocks members-only events. See [[Memberships and Merchandise]].
 - Sales: `saleState` (`open` or `closed`) plus `salesCloseAt`, which defaults to the start time. Tickets can be bought only while the event is published, sales are open and the close time is in the future. Closing sales does not unpublish.
 - `capacity`: an optional event-wide ceiling, separate from each ticket type's remaining quantity. It cannot be set below valid issued tickets plus active holds. Existing events have none.
 - `version`: increases on every edit, publication or sales change; a stale editor or action gets `409` instead of overwriting.
@@ -74,7 +74,7 @@ The new and Edit pages share `components/events/create-event-form.tsx`:
 - **Times are society wall-clock times.** The form shows and edits `datetime-local` values in `Organisation.timeZone` and sends ISO instants; the browser's own zone is never used. `lib/zoned-time.ts` converts both ways. A time inside a daylight-saving gap is refused ("clocks go forward"); a time inside an overlap shows a choice of the first or second occurrence, and an edit keeps whichever was saved. The Schedule card names the zone, for example "Sydney time (AEDT, UTC+11)".
 - **Sales close** shows the start time until it is changed and then sends its own value. The server already treats a close time equal to the start as the default that follows it.
 - **Prices are dollars.** The "$" field is parsed to cents without floating point (`parseMoneyInput` in `lib/format.ts`); the API stays in cents. Closes EVT-002.
-- **Access** offers Public and Link only (`unlisted`); members-only waits for T24. Capacity is optional and the hint names the tickets already issued or held.
+- **Access** offers Public, Link only (`unlisted`) and Members only (warning while no published plan unlocks members-only events). Capacity is optional and the hint names the tickets already issued or held.
 - **Event image.** An optional 16:9 image uploads as an `event` asset (`POST /api/orgs/[slug]/assets?kind=event`, needs events:manage) and previews through the private asset route; the event stores it on save. Replace and Remove change it on the next save.
 - Each existing ticket type shows sold (active tickets) and held (live checkout holds); a type with orders or tickets cannot be removed.
 - Saving an edit stays on the page and shows "Event saved"; a stale version shows "This event changed since you opened it" and keeps the edits on screen; changed stock after sales shows "Ticket stock changed while you were editing". Unsaved changes are marked and leaving the page asks first.
@@ -193,7 +193,7 @@ Public APIs:
 
 Rules:
 
-- Return only `published` events. Lists show only `public` events; detail also opens `unlisted` ones; `members_only` events are never returned.
+- Return only `published` events. Lists show only `public` events; detail also opens `unlisted` ones; `members_only` events are never returned by the public API. The event page reads through `getEventForViewer`, which opens a members-only event only for a member it is open to (T24b2).
 - Do not require auth.
 - Do not support dashboard previews.
 - Public event reads are read-only and do not create demo data or run stale pending order cleanup.
@@ -227,7 +227,7 @@ Public route behavior:
 /events/[eventId]
 ```
 
-- Anyone can open a published public or link-only event (T15a); drafts and members-only events are the standard not-found page. Society accounts see the page as buyers do.
+- Anyone can open a published public or link-only event (T15a); drafts and wrong ids are the standard not-found page. A members-only event shows members it is open to the full page and everyone else the members-only gate, which names only the society (T24b2). Society accounts see the page as buyers do.
 - Each ticket type shows its price or Free and its advisory availability from the shared readiness module: N left, Sold out, or "Paid tickets unavailable right now" while the society cannot take payments. Closed sales replace the choices with the close time. The page shows the organiser link and, when set, the society's support email and refund policy.
 - The ticket box action depends on the viewer: "Continue as guest" and "Sign in to buy" for a visitor who is not signed in (T16b; signing in comes straight back to the same checkout), "Verify your email to get tickets", "Society accounts can't buy tickets", or "Buy tickets"/"Get free tickets" for a verified member.
 - `/dashboard/events/[eventId]/preview` (events:manage) renders the same page for a draft under a "Draft preview" banner with buying off; the workspace header shows Preview only for drafts, and a published event redirects to its public page.

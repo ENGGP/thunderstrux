@@ -12,7 +12,7 @@ import {
   getOrganisationEventRevenueSeries
 } from "@/lib/events/event-analytics";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
-import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
+import { formatDateTime, formatMoney, formatPrice, shortMonths } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
 type OrganiserEventPageProps = {
@@ -22,11 +22,11 @@ type OrganiserEventPageProps = {
 };
 
 function formatShortDate(value: string) {
-  return new Intl.DateTimeFormat("en-AU", {
+  return shortMonths(new Intl.DateTimeFormat("en-AU", {
     month: "short",
     day: "numeric",
     timeZone: "UTC"
-  }).format(new Date(`${value}T00:00:00.000Z`));
+  }).format(new Date(`${value}T00:00:00.000Z`)));
 }
 
 export default async function OrganiserEventPage({
@@ -173,7 +173,13 @@ export default async function OrganiserEventPage({
             <SaleBadge event={event} />
           </div>
           <ul className="mt-3 grid list-disc gap-2 pl-5 text-[15px] text-ink">
-            <li>{event.visibility === "unlisted" ? "Published, link only: not listed on Explore events" : "Published and listed publicly"}</li>
+            <li>
+              {event.visibility === "unlisted"
+                ? "Published, link only: not listed on Explore events"
+                : event.visibility === "members_only"
+                  ? "Published, members only: not listed; only members whose membership unlocks members-only events can see it"
+                  : "Published and listed publicly"}
+            </li>
             {event.blockers
               .filter((blocker) => ["payments_unavailable", "sold_out", "no_stock"].includes(blocker.code))
               .map((blocker) => (

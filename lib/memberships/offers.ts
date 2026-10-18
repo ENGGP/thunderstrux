@@ -99,7 +99,7 @@ export async function myMemberships(userId: string, view: MyMembershipView, now 
     select: {
       id: true, organisationId: true, startsAt: true, endsAt: true, revokedAt: true, revocationReason: true, entitlements: true,
       product: { select: { name: true } },
-      organisation: { select: { name: true, slug: true, timeZone: true } },
+      organisation: { select: { name: true, slug: true, timeZone: true, logoAssetId: true } },
       line: { select: { order: { select: { id: true, paymentKind: true, totalAmount: true, cancelledAt: true, refundStatus: true } } } }
     }
   });
@@ -109,7 +109,7 @@ export async function myMemberships(userId: string, view: MyMembershipView, now 
 
   // Renewal: the earliest published plan of that society starting at or after
   // this membership ends and overlapping none of the member's memberships there.
-  const renewals = new Map<string, { id: string; name: string; priceAmount: number }>();
+  const renewals = new Map<string, { id: string; name: string; priceAmount: number; startsAt: Date }>();
   if (view === "active" || view === "upcoming") {
     const societies = [...new Set(shown.map((grant) => grant.organisationId))];
     const plans = societies.length
@@ -122,7 +122,7 @@ export async function myMemberships(userId: string, view: MyMembershipView, now 
     for (const grant of shown) {
       const held = grants.filter((other) => other.organisationId === grant.organisationId && !other.revokedAt);
       const next = plans.find((plan) => plan.organisationId === grant.organisationId && plan.startsAt >= grant.endsAt && !held.some((other) => overlaps(other, plan)));
-      if (next) renewals.set(grant.id, { id: next.id, name: next.name, priceAmount: next.priceAmount });
+      if (next) renewals.set(grant.id, { id: next.id, name: next.name, priceAmount: next.priceAmount, startsAt: next.startsAt });
     }
   }
 
@@ -162,10 +162,10 @@ export function ownMembershipOrder(userId: string, orderId: string) {
   });
 }
 
-// Whether a member price on this society's tickets can be used now: a
-// published plan still to end unlocks member prices (the builder's warning).
-export async function memberPricesOnSale(organisationId: string, now = new Date()) {
-  return (await prisma.membershipProduct.count({ where: { organisationId, status: "published", endsAt: { gt: now }, entitlements: { has: "member_prices" } } })) > 0;
+// Whether a published plan still to end unlocks this right: member prices
+// (the builder's warning) or members-only events (needed to publish one).
+export async function entitlementOnSale(organisationId: string, entitlement: MembershipEntitlement, now = new Date()) {
+  return (await prisma.membershipProduct.count({ where: { organisationId, status: "published", endsAt: { gt: now }, entitlements: { has: entitlement } } })) > 0;
 }
 
 // The plan whose membership gives this member the society's member prices

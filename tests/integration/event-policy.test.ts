@@ -86,7 +86,9 @@ describe("event policy, readiness and explicit transitions", () => {
       endTime: new Date(startTime.getTime() + 3600000).toISOString(),
       visibility: "members_only"
     }));
-    expect(membersOnly.status).toBe(400);
+    // Members-only drafts save; publishing them needs a plan (members-only-events.test.ts).
+    expect(membersOnly.status).toBe(201);
+    expect((await parseJsonResponse(membersOnly)).event).toMatchObject({ status: "draft", visibility: "members_only" });
   });
 
   test("readiness blocks paid-only events without payments, lets free tickets publish, and needs a future sales window", async () => {

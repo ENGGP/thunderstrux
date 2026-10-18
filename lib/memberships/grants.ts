@@ -2,7 +2,7 @@ import type { MembershipEntitlement, MembershipGrant, Prisma } from "@prisma/cli
 import { z } from "zod";
 import type { CommerceFamilyAdapter, CommerceOrderForHooks } from "@/lib/commerce/families";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
-import { formatDate } from "@/lib/format";
+import { formatDate, membershipLabel } from "@/lib/format";
 import { zoneCity } from "@/lib/zoned-time";
 
 // Membership grants (T23, database spec 8.2) and the membership commerce
@@ -135,7 +135,7 @@ export const membershipFamily: CommerceFamilyAdapter<z.infer<typeof selection>> 
       template: "business_notice",
       organisationId: order.organisationId,
       payload: {
-        message: `Your ${line.membershipProduct.name} membership with ${purchase.sellerName} is confirmed. It runs from ${formatDate(term.startsAt, timeZone)} to ${lastDay}, ${zoneCity(timeZone)}.${starts} Memberships don't renew automatically.`
+        message: `Your ${membershipLabel(line.membershipProduct.name)} with ${purchase.sellerName} is confirmed. It runs from ${formatDate(term.startsAt, timeZone)} to ${lastDay}, ${zoneCity(timeZone)}.${starts} Memberships don't renew automatically.`
       }
     });
     return { fulfilled: true };

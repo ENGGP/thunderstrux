@@ -1,4 +1,5 @@
 import { createCommerceOrder } from "@/lib/commerce/orders";
+import { createMembershipGrant } from "@/tests/helpers/test-data";
 import { test, expect, login, prisma, selectStaffContext } from "./fixtures";
 
 // T22: an owner drafts, fixes, publishes and archives a membership plan; staff
@@ -102,7 +103,7 @@ test("a member buys a free membership through checkout and the owner finds them 
   await dialog.getByLabel("Reason").fill("Signed up twice by mistake.");
   await page.screenshot({ path: "test-results/memberships-cancel-dialog-1280.png" });
   await dialog.getByRole("button", { name: "Cancel membership" }).click();
-  await expect(page.getByText("Free membership cancelled")).toBeVisible();
+  await expect(page.getByText("Free membership cancelled").first()).toBeVisible();
   await expect(page.getByText("Revoked", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel free membership" })).toHaveCount(0);
 });
@@ -221,4 +222,54 @@ test("an event's member price shows to a member with member prices, and everyone
   await page.goto(`/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=2`);
   await expect(page.getByText("(member price)")).toBeVisible();
   await expect(page.getByRole("button", { name: "Pay $20.00" })).toBeVisible();
+});
+
+// T24b2: the members-only gate's safety contract, checked on the full response.
+test("a members-only event shows anyone without access a gate with nothing about the event, and members it is open to the full page", async ({ page, request, data }) => {
+  const sentinel = `SENTINEL-${Date.now()}`;
+  await prisma.event.update({ where: { id: data.event.id }, data: { visibility: "members_only", title: `${sentinel}-title`, description: `${sentinel}-description`, location: `${sentinel}-place` } });
+  await prisma.ticketType.update({ where: { id: data.ticket.id }, data: { name: `${sentinel}-ticket` } });
+  const path = `/events/${data.event.id}`;
+
+  const signedOut = await request.get(path);
+  expect(signedOut.status()).toBe(200);
+  const html = await signedOut.text();
+  expect(html).toContain("Members-only event");
+  expect(html).not.toContain(sentinel);
+  expect(signedOut.headers()["cache-control"]).toMatch(/private/);
+  expect(signedOut.headers()["cache-control"]).toMatch(/no-store/);
+  // A wrong id or a draft members-only event is the not-found page, never the
+  // gate. (The page streams after its loading state, so the status stays 200.)
+  const draft = await prisma.event.create({
+    data: { organisationId: data.organisation.id, title: `${sentinel}-draft`, description: "Draft", location: "Hall", startTime: new Date(Date.now() + 86_400_000), endTime: new Date(Date.now() + 90_000_000), salesCloseAt: new Date(Date.now() + 86_400_000), visibility: "members_only" }
+  });
+  for (const id of ["no-such-event", draft.id]) {
+    const missing = await (await request.get(`/events/${id}`)).text();
+    expect(missing).toContain("This page could not be found.");
+    expect(missing).not.toContain("Members-only event");
+    expect(missing).not.toContain(sentinel);
+  }
+
+  // Signed in without a membership: the gate, its reason and no event details.
+  await login(page, data.member.email, path);
+  await expect(page.getByRole("heading", { name: "Members-only event", level: 1 })).toBeVisible();
+  await expect(page.getByText("you don't have an active membership")).toBeVisible();
+  await expect(page).toHaveTitle(`Members-only event · ${data.organisation.name} · Thunderstrux`);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+  expect(await page.content()).not.toContain(sentinel);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/members-only-gate-${width}.png`, fullPage: true });
+  }
+
+  await createMembershipGrant(data.organisation.id, data.member.id, data.member.email, { entitlements: ["members_only_events"] });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: `${sentinel}-title`, level: 1 })).toBeVisible();
+  await expect(page.getByText(`You can see this because your ${data.organisation.name} membership includes members-only events.`)).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/members-only-event-${width}.png`, fullPage: true });
+  }
 });

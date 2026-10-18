@@ -9,7 +9,7 @@ import { LinkTabs } from "@/components/ui/link-tabs";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, joinDays } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { formatDay, listPlans, type StaffPlan } from "@/lib/memberships/plans";
 import { zoneCity } from "@/lib/zoned-time";
@@ -81,7 +81,7 @@ async function Plans({ organisationId }: { organisationId: string }) {
     );
   }
   const titleLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
-  const runs = (plan: Row) => `${formatDay(plan.firstDay)} to ${formatDay(plan.lastDay)}`;
+  const runs = (plan: Row) => joinDays(formatDay(plan.firstDay), formatDay(plan.lastDay));
   const unlocks = (plan: Row) => plan.entitlements.map((key) => unlockWords[key]).join(", ") || "No unlocks";
   const action = (plan: Row) => (
     <Link

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { buttonClasses } from "@/components/ui/button";
+import { shortMonths } from "@/lib/format";
 import { fetchWithCsrf } from "@/lib/client/api";
 import type { OrganisationEventTicket } from "@/lib/tickets/check-in";
 
@@ -27,7 +28,7 @@ async function readTicket(eventId: string, ticketId: string): Promise<ConsoleTic
 
 // What the door should do with this ticket, in words and colour.
 function verdict(ticket: ConsoleTicket, timeZone: string) {
-  const day = (value: Date | string | null) => (value ? new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", timeZone }).format(new Date(value)) : null);
+  const day = (value: Date | string | null) => (value ? shortMonths(new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", timeZone }).format(new Date(value))) : null);
   if (ticket.validity === "refund_review") {
     return { tone: "warning", label: "Under review", detail: "The payment is disputed. Ask an owner or finance manager before admitting." };
   }

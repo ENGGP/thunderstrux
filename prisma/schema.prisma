@@ -121,6 +121,7 @@ model Organisation {
   purchaseDisputes    PurchaseDispute[]
   commerceOrders      CommerceOrder[]
   membershipProducts  MembershipProduct[]
+  merchandiseProducts MerchandiseProduct[]
   membershipGrants    MembershipGrant[]
 
   @@index([accountUserId])
@@ -149,6 +150,7 @@ model Asset {
   logoProfiles     Organisation[] @relation("SocietyLogo")
   coverProfiles    Organisation[] @relation("SocietyCover")
   eventHeroes      Event[]        @relation("EventHero")
+  productImages    MerchandiseProductImage[]
 
   @@unique([id, organisationId])
   @@index([organisationId, status])
@@ -1098,4 +1100,76 @@ model CommerceLifecycleEvent {
   actor         User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@unique([commerceOrderId, sequence])
+}
+
+enum MerchandiseProductStatus {
+  draft
+  published
+  archived
+}
+
+// Something a society sells for pickup (T25). Never deleted: archived
+// products leave the shop and can be restored as drafts.
+model MerchandiseProduct {
+  id               String                   @id @default(cuid())
+  organisationId   String
+  name             String
+  description      String                   @default("")
+  status           MerchandiseProductStatus @default(draft)
+  publishedAt      DateTime?
+  // First publish; never cleared, so options of a product once on sale stop selling instead of being removed.
+  firstPublishedAt DateTime?
+  archivedAt       DateTime?
+  version          Int                      @default(1)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  organisation Organisation              @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+  images       MerchandiseProductImage[]
+  variants     MerchandiseVariant[]
+
+  @@unique([id, organisationId])
+  @@index([organisationId, status, createdAt, id])
+}
+
+// Up to four photos per product, in order, from the same society's images.
+model MerchandiseProductImage {
+  id             String   @id @default(cuid())
+  productId      String
+  organisationId String
+  assetId        String
+  position       Int
+  createdAt      DateTime @default(now())
+
+  product MerchandiseProduct @relation(fields: [productId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  asset   Asset              @relation(fields: [assetId, organisationId], references: [id, organisationId], onDelete: Restrict)
+
+  @@unique([productId, position])
+  @@unique([productId, assetId])
+  @@index([assetId])
+}
+
+// One thing a buyer picks: colour and size (either may be blank), price and
+// stock left. The SKU is unique in the society for good.
+model MerchandiseVariant {
+  id             String    @id @default(cuid())
+  productId      String
+  organisationId String
+  colour         String    @default("")
+  size           String    @default("")
+  sku            String
+  priceAmount    Int
+  currency       String    @default("aud")
+  remaining      Int
+  position       Int       @default(0)
+  version        Int       @default(1)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  product MerchandiseProduct @relation(fields: [productId, organisationId], references: [id, organisationId], onDelete: Restrict)
+
+  @@unique([organisationId, sku])
+  @@unique([id, organisationId])
+  @@index([productId, position, id])
 }

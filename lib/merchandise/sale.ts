@@ -5,7 +5,6 @@ import type { CommerceFamilyAdapter, CommerceOrderForHooks } from "@/lib/commerc
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatMoney } from "@/lib/format";
 import { MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
-import { orderReference } from "@/lib/payments/order-refunds";
 
 // Selling merchandise (T27a): the merchandise commerce family, checkout holds
 // and stock. Loaded by the payments webhook and the stale-order worker through
@@ -29,6 +28,10 @@ export class MerchandiseUnavailableError extends Error {
     this.name = "MerchandiseUnavailableError";
   }
 }
+
+// The short reference buyers and staff quote (lib/payments/order-refunds.ts
+// has the same rule; importing it would loop back through the family registry).
+const orderReference = (orderId: string) => orderId.slice(-6).toUpperCase();
 
 type Db = Pick<Prisma.TransactionClient, "commerceOrderLine">;
 

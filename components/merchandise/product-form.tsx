@@ -227,29 +227,24 @@ export function ProductForm({
           <p className="text-sm text-ink-soft">
             Each option is one thing a buyer picks, like Navy, L. Leave colour and size blank for a one-option product. Stock is what&apos;s left to sell.
           </p>
-          {/* Wide on purpose: on a narrow desktop column the rows scroll sideways rather than clip. */}
-          <div className="md:overflow-x-auto">
-          <div aria-hidden="true" className="hidden gap-3 pb-2 text-[13px] font-semibold text-ink-soft md:grid md:min-w-[680px] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_7.5rem_6rem_6.5rem]">
-            <span>Colour</span><span>Size</span><span>SKU</span><span>Price</span><span>Stock left</span><span />
-          </div>
-          <ul className="grid gap-4 md:min-w-[680px] md:gap-2">
+          <ul className="grid gap-3">
             {form.options.map((option, index) => {
               const label = [option.colour, option.size].filter(Boolean).join(", ") || `option ${index + 1}`;
               const fieldError = (field: string) => errors[`variants.${index}.${field}`];
               const rowErrors = ["colour", "size", "sku", "priceAmount", "remaining"].map(fieldError).filter(Boolean);
               return (
-                <li className="grid gap-2 rounded-control border border-line p-3 md:border-0 md:p-0" key={option.key}>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_7.5rem_6rem_6.5rem] md:items-center">
+                <li className="grid gap-2 rounded-control border border-line p-3" key={option.key}>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:items-end">
                     <label className="grid gap-1 text-sm font-semibold text-ink">
-                      <span className="md:sr-only">Colour</span>
+                      <span>Colour</span>
                       <input aria-invalid={fieldError("colour") ? true : undefined} className={cell} maxLength={40} onChange={(event) => setOption(index, { colour: event.target.value })} value={option.colour} />
                     </label>
                     <label className="grid gap-1 text-sm font-semibold text-ink">
-                      <span className="md:sr-only">Size</span>
+                      <span>Size</span>
                       <input aria-invalid={fieldError("size") ? true : undefined} className={cell} maxLength={40} onChange={(event) => setOption(index, { size: event.target.value })} value={option.size} />
                     </label>
                     <label className="col-span-2 grid gap-1 text-sm font-semibold text-ink md:col-span-1">
-                      <span className="md:sr-only">SKU</span>
+                      <span>SKU</span>
                       <input
                         aria-invalid={fieldError("sku") ? true : undefined}
                         className={`${cell} uppercase`}
@@ -260,7 +255,7 @@ export function ProductForm({
                       />
                     </label>
                     <label className="grid gap-1 text-sm font-semibold text-ink">
-                      <span className="md:sr-only">Price</span>
+                      <span>Price</span>
                       <span className="flex h-11 items-center rounded-control border border-line-strong bg-surface has-[[aria-invalid]]:border-danger has-[:disabled]:bg-surface-subtle">
                         <span aria-hidden="true" className="pl-3 font-normal text-ink-soft">$</span>
                         <input
@@ -274,13 +269,13 @@ export function ProductForm({
                       </span>
                     </label>
                     <label className="grid gap-1 text-sm font-semibold text-ink">
-                      <span className="md:sr-only">Stock left</span>
+                      <span>Stock left</span>
                       <input aria-invalid={fieldError("remaining") ? true : undefined} className={cell} inputMode="numeric" onChange={(event) => setOption(index, { remaining: event.target.value })} value={option.remaining} />
                     </label>
                     {form.options.length > 1 ? (
                       <Button
                         aria-label={`${removeLabel} ${label}`}
-                        className="col-span-2 justify-self-start md:col-span-1"
+                        className="col-span-2 justify-self-start md:col-span-1 md:mb-1"
                         onClick={() => update({ options: form.options.filter((_other, at) => at !== index) })}
                         size="sm"
                         type="button"
@@ -299,7 +294,6 @@ export function ProductForm({
               );
             })}
           </ul>
-          </div>
           {errors.variants ? <p className="text-sm text-danger" role="alert">{errors.variants}</p> : null}
           <p className="text-sm text-ink-soft">
             {product?.everPublished

@@ -7,9 +7,9 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { grantState } from "@/lib/memberships/grants";
+import { ownMembershipOrder } from "@/lib/memberships/offers";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const dynamic = "force-dynamic";
@@ -22,14 +22,7 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
   const [{ orderId }, { left }] = await Promise.all([params, searchParams]);
   const session = await getLiveSession();
   if (!session) redirect(`/login?callbackUrl=${encodeURIComponent(`/memberships/orders/${orderId}`)}`);
-  const order = await prisma.commerceOrder.findFirst({
-    where: { id: orderId, userId: session.user.id, kind: "membership" },
-    select: {
-      id: true, status: true, requiresCompensationReview: true, sellerName: true,
-      organisation: { select: { slug: true, timeZone: true } },
-      lines: { take: 1, select: { nameSnapshot: true, membershipGrant: { select: { startsAt: true, endsAt: true, revokedAt: true } } } }
-    }
-  });
+  const order = await ownMembershipOrder(session.user.id, orderId);
   if (!order) notFound();
   const line = order.lines[0];
   const grant = line?.membershipGrant ?? null;

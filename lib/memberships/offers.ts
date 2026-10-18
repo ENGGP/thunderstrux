@@ -148,3 +148,16 @@ export async function myMemberships(userId: string, view: MyMembershipView, now 
     })
   };
 }
+
+// The member's own membership order, for the page Stripe returns to. Another
+// member's order, or a merchandise order, is null.
+export function ownMembershipOrder(userId: string, orderId: string) {
+  return prisma.commerceOrder.findFirst({
+    where: { id: orderId, userId, kind: "membership" },
+    select: {
+      id: true, status: true, requiresCompensationReview: true, sellerName: true,
+      organisation: { select: { slug: true, timeZone: true } },
+      lines: { take: 1, select: { nameSnapshot: true, membershipGrant: { select: { startsAt: true, endsAt: true, revokedAt: true } } } }
+    }
+  });
+}

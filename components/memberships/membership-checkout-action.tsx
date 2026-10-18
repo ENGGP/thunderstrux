@@ -6,17 +6,10 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { newKey, waitForAttempt, type CommerceCheckoutResponse } from "@/lib/client/checkout";
 import { formatMoney } from "@/lib/format";
 
-type CheckoutResponse = { kind: "stripe"; url: string } | { kind: "fulfilled"; commerceOrderId: string } | { attemptId: string; status: "processing" };
-type AttemptStatus = { status: "processing" } | { status: "ready"; url: string } | { status: "completed"; orderId: string } | { status: "failed" };
-
-const pollIntervalMs = 2000;
-const pollAttempts = 15;
 const linkClass = "inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4";
-
-// Random bytes work outside secure contexts too, unlike crypto.randomUUID.
-const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
 
 // The review page's buy button (T24a). One key per purchase intent, so a
 // double click or a lost answer finds the same checkout. Every refusal says
@@ -46,7 +39,7 @@ export function MembershipCheckoutAction({
     setState("busy");
     key.current ??= newKey();
     try {
-      const data = await fetchJson<CheckoutResponse>("/api/payments/checkout/membership", {
+      const data = await fetchJson<CommerceCheckoutResponse>("/api/payments/checkout/membership", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ organisationId, selection: { planId }, expectedTotal: total, idempotencyKey: key.current })
@@ -68,16 +61,12 @@ export function MembershipCheckoutAction({
   // Stripe's answer was not known when checkout returned: poll the attempt.
   async function waitForCheckout(attemptId: string) {
     setState("confirming");
-    for (let poll = 0; poll < pollAttempts; poll += 1) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      const attempt = await fetchJson<AttemptStatus>(`/api/payments/checkout/attempts/${attemptId}`);
-      if (attempt.status === "ready") {
-        window.location.href = attempt.url;
-        return;
-      }
-      if (attempt.status === "completed") return finished(attempt.orderId);
-      if (attempt.status === "failed") throw new Error("Checkout didn't start. Nothing has been charged.");
+    const outcome = await waitForAttempt(attemptId);
+    if (outcome !== "slow" && "url" in outcome) {
+      window.location.href = outcome.url;
+      return;
     }
+    if (outcome !== "slow") return finished(outcome.orderId);
     setState("idle");
     setRefusal({ title: "Still confirming", body: "Stripe hasn't answered yet. You won't be charged twice; try again in a minute.", link: { href: "/memberships", label: "View my memberships" } });
   }

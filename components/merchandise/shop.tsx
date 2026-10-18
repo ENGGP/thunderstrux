@@ -23,7 +23,7 @@ import {
 import type { Quote, ShopProductDetail } from "@/lib/merchandise/shop";
 
 // The basket as stored on this device, kept current across tabs and pages.
-function useBasket() {
+export function useBasket() {
   const [basket, setBasket] = useState<Basket | null>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -411,13 +411,14 @@ export function BasketView({ society }: { society: string }) {
               <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{quote.pickupPolicy}</span>
             </div>
           ) : null}
-          {quote.checkoutEnabled ? (
-            <Button disabled={soldOut} size="lg">Checkout merchandise</Button>
+          {soldOut ? (
+            <Button disabled size="lg">Checkout merchandise</Button>
           ) : (
-            <Notice title="Checkout isn't open yet" tone="info">
-              <p className="mt-0.5">Your basket is saved on this device until it opens.</p>
-            </Notice>
+            <Link className={buttonClasses({ size: "lg" })} href={`/societies/${society}/merchandise/checkout`}>
+              Checkout merchandise
+            </Link>
           )}
+          <p className="text-sm text-ink-soft">Prices and stock are checked again when you check out. We hold your items for 30 minutes while you pay.</p>
           {quote.refundPolicy ? <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">Refunds: {quote.refundPolicy}</p> : null}
         </aside>
       </div>

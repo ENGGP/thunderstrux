@@ -8,7 +8,9 @@ import {
   requireCurrentOrganisationAccount,
   requireOrganisationPermission
 } from "@/lib/auth/access";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { getOrganisationCommerceOrder, getOwnCommerceOrder } from "@/lib/commerce/orders";
+import { canOpenGuestCommerceOrder, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
 import { MfaRequiredError } from "@/lib/security/staff-mfa";
 
 type RouteContext = { params: Promise<{ orderId: string }> };
@@ -16,12 +18,19 @@ type RouteContext = { params: Promise<{ orderId: string }> };
 // One membership or merchandise order (T20). The buyer sees their own order;
 // staff with orders:read see their current society's order with the buyer
 // snapshot. A ticket order id, another member's order or another society's
-// order is the same 404, so an id alone reveals nothing.
+// order is the same 404, so an id alone reveals nothing. A signed-out guest
+// reads only a merchandise order bought in their checkout session (T27b).
 export async function GET(request: Request, context: RouteContext) {
   try {
-    const user = await requireAuthenticatedUser();
     const { orderId } = await context.params;
-    const own = await getOwnCommerceOrder(user.id, orderId);
+    const guestSessionId = guestSessionIdFrom(request);
+    const guest = guestSessionId && !(await getLiveSession()) ? await readGuestSession(guestSessionId) : null;
+    if (guest) {
+      const order = (await canOpenGuestCommerceOrder(guest, orderId)) ? await getOwnCommerceOrder({ guestIdentityId: guest.guestIdentityId }, orderId) : null;
+      return order ? NextResponse.json({ view: "buyer", order }, { headers: { "Cache-Control": "no-store" } }) : notFound("Order not found");
+    }
+    const user = await requireAuthenticatedUser();
+    const own = await getOwnCommerceOrder({ userId: user.id }, orderId);
     if (own) return NextResponse.json({ view: "buyer", order: own }, { headers: { "Cache-Control": "no-store" } });
 
     if (await getCurrentOrganisationAccount()) {

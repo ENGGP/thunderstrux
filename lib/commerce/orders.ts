@@ -149,13 +149,14 @@ const summarySelect = {
   requiresCompensationReview: true, createdAt: true, fulfilledAt: true, cancelledAt: true
 } satisfies Prisma.CommerceOrderSelect;
 
-// The buyer's own order: what they bought, from whom, and what happened.
-// No buyer contact or provider ids, and history without staff or reasons.
-export async function getOwnCommerceOrder(userId: string, commerceOrderId: string) {
+// The buyer's own order, a member's or a verified guest's: what they bought,
+// from whom, where to collect it, and what happened. No buyer contact or
+// provider ids, and history without staff or reasons.
+export async function getOwnCommerceOrder(owner: { userId: string } | { guestIdentityId: string }, commerceOrderId: string) {
   const order = await prisma.commerceOrder.findFirst({
-    where: { id: commerceOrderId, userId },
+    where: { id: commerceOrderId, ...owner },
     select: {
-      ...summarySelect, sellerSupportEmail: true,
+      ...summarySelect, sellerSupportEmail: true, organisation: { select: { slug: true, pickupPolicy: true } },
       lines: { orderBy: { lineNumber: "asc" }, select: lineSelect },
       lifecycleEvents: { orderBy: { sequence: "asc" }, select: { type: true, createdAt: true } }
     }

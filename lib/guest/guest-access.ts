@@ -113,6 +113,13 @@ export async function canOpenGuestOrder(session: GuestSession, orderId: string) 
   return Boolean(await prisma.checkoutAttempt.findFirst({ where: { actorKind: "guest", actorId: session.grantId, orderId }, select: { id: true } }));
 }
 
+// The same rule for a merchandise order (T27b): only one bought during this
+// checkout session. A purchase link opens a ticket order, never a commerce one.
+export async function canOpenGuestCommerceOrder(session: GuestSession, commerceOrderId: string) {
+  if (session.purpose !== "checkout") return false;
+  return Boolean(await prisma.checkoutAttempt.findFirst({ where: { actorKind: "guest", actorId: session.grantId, commerceOrderId }, select: { id: true } }));
+}
+
 function orderLink(raw: string) {
   const link = new URL("/guest/access", process.env.NEXT_PUBLIC_APP_URL);
   link.hash = new URLSearchParams({ token: raw }).toString();

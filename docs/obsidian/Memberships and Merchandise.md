@@ -54,6 +54,14 @@ Refund membership on the member page (`orders:refund`; reason, the order's short
 - **My memberships** (`/memberships`, personal menu Memberships, `myMemberships`): Active, Upcoming, Expired and Revoked tabs with counts; each card shows the society, plan, dates in the society's zone, unlocks, Paid or Free, what ended it early (a refund, the society's cancellation or revocation with its reason) and Renew for the next published plan that starts after it ends and overlaps none of their memberships there. "Memberships don't renew automatically" stays visible.
 - **My societies**: each joined society shows `Joined` and, while a membership runs, `Member until`; leaving says the membership is not affected.
 
-## Members-only gate (decided for T24b)
+## Member prices (T24b1)
+
+- **Setting it.** Each ticket type has an optional Member price in the builder (`TicketType.memberPrice`, at most the price). The builder warns while no published plan still to end unlocks member prices (`memberPricesOnSale`).
+- **Who pays it.** A member account whose running membership in the event's society (unrevoked, started, not ended) carries `member_prices` (`activeEntitlementGrant`). A free join, an upcoming, expired or revoked membership, one without that right, another society's membership and every guest pay the standard price.
+- **Checkout.** Under the buyer, event and ticket-type locks the quote uses the member price, so a buyer sending the other price gets the 409 quote change with the price that applies. The order records `membershipGrantId` and `membershipEntitlementVersion` (both or neither; fixed by a trigger) and charges the member price; a member price of zero is a free registration with the grant recorded, even when the society can't take payments.
+- **Fulfilment.** The grant is read `FOR SHARE`: a membership revoked or refunded before the payment landed sends the order to compensation review (`member_price_membership_revoked`) and issues no tickets; a membership that simply ended during the 30-minute hold keeps the price. Tickets already issued at a member price are never repriced or voided by a later revocation.
+- **Showing it.** `priceForViewer` prices the event page and ticket checkout per viewer: a member sees the member price with the standard one struck through and "Member price through your {plan} membership"; anyone else sees "Members pay $X", that joining doesn't include it, and a link to the society's memberships.
+
+## Members-only gate (decided for T24b2)
 
 Design round B1 replaced the concealed 404 on a members-only event's page with a gate, under a safety contract recorded in the delivery plan: the gate reads only the event's id, status, visibility and society; no other event field reaches the page, its data or its metadata; access is checked live on every request; the page is `noindex` and `private, no-store`; listings and public APIs keep excluding the event; a missing or draft event is still a 404. T24b updates the readiness plan's wording.

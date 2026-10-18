@@ -92,6 +92,7 @@ Rules:
 
 - `price` is integer cents.
 - `price` must be non-negative.
+- `memberPrice` (T24b) is optional integer cents, at most `price` (validator and database check). A member account whose running membership in the society carries `member_prices` pays it; everyone else, guests included, pays `price`. See [[Memberships and Merchandise]].
 - `quantity` must be greater than zero when creating.
 - `quantity` may be zero when editing because sold-out inventory is represented as `0`.
 - Public checkout validates requested quantity against remaining inventory minus active reservations.

@@ -157,7 +157,7 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   await expect(page.getByText("We hold these items for 30 minutes while you pay.")).toBeVisible();
   await shoot(page, "review");
   await page.getByRole("button", { name: "Pay $45.00" }).click();
-  await expect(page.getByRole("alert")).toContainText("Nothing has been charged.");
+  await expect(page.getByRole("alert").filter({ hasText: "Checkout didn't start" })).toContainText("Nothing has been charged.");
 
   // The order page for a member's paid order: confirming, left Stripe, and held for review.
   const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {

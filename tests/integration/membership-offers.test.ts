@@ -105,7 +105,7 @@ describe("membership offers and My memberships", () => {
     const active = await myMemberships(member.id, "active");
     expect(active.counts).toEqual({ active: 2, upcoming: 1, expired: 0, revoked: 1 });
     expect(Object.fromEntries(active.memberships.map((row) => [row.plan, row.renewal?.name ?? null]))).toEqual({ "Semester 2": "2027 membership", "Club year": null });
-    expect(active.memberships.find((row) => row.plan === "Semester 2")?.renewal).toEqual({ id: next.id, name: "2027 membership", priceAmount: 2500 });
+    expect(active.memberships.find((row) => row.plan === "Semester 2")?.renewal).toEqual({ id: next.id, name: "2027 membership", priceAmount: 2500, startsAt: next.startsAt });
     expect((await myMemberships(member.id, "upcoming")).memberships.map((row) => row.plan)).toEqual(["Club next"]);
     expect((await myMemberships(member.id, "revoked")).memberships).toEqual([expect.objectContaining({ plan: "Old", endedBy: "refund", paidAmount: 900 })]);
     // Another member sees none of these.

@@ -103,7 +103,7 @@ test("a member buys a free membership through checkout and the owner finds them 
   await dialog.getByLabel("Reason").fill("Signed up twice by mistake.");
   await page.screenshot({ path: "test-results/memberships-cancel-dialog-1280.png" });
   await dialog.getByRole("button", { name: "Cancel membership" }).click();
-  await expect(page.getByText("Free membership cancelled")).toBeVisible();
+  await expect(page.getByText("Free membership cancelled").first()).toBeVisible();
   await expect(page.getByText("Revoked", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel free membership" })).toHaveCount(0);
 });

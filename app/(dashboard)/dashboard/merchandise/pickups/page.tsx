@@ -164,7 +164,11 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
               <tbody>
                 {orders.map((order) => (
                   <tr className="border-t border-line align-top" key={order.id}>
-                    <td className="px-5 py-4 font-semibold">{order.reference}</td>
+                    <td className="px-5 py-4 font-semibold">
+                      <Link aria-label={`Open order ${order.reference}`} className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
+                        {order.reference}
+                      </Link>
+                    </td>
                     <td className="px-3 py-4">
                       <span className="[overflow-wrap:anywhere]">{order.buyer}</span>
                       <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
@@ -189,7 +193,10 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
             {orders.map((order) => (
               <li className="grid gap-2.5 rounded-card border border-line bg-surface p-4" key={order.id}>
                 <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">
-                  {order.reference} · {order.buyer}
+                  <Link className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
+                    {order.reference}
+                  </Link>{" "}
+                  · {order.buyer}
                 </h2>
                 <div className="text-[15px] text-ink">{items(order)}</div>
                 <p className={`text-sm ${stage === "review" ? "font-semibold text-warning" : "text-ink-soft"}`}>

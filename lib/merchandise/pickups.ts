@@ -22,8 +22,9 @@ const pageSize = 25;
 // Only a paid order that isn't under review, refunded or cancelled is handed over.
 const handOver = { status: "paid", requiresCompensationReview: false, refundStatus: null, cancelledAt: null } as const;
 const stageStatus = { prepare: "pending", ready: "ready", collected: "collected" } as const;
+// Collected history survives a later refund (T28b); waiting stages drop refunded and cancelled orders.
 const stageWhere = (stage: PickupStage): Prisma.CommerceOrderWhereInput =>
-  stage === "review" ? { requiresCompensationReview: true } : { ...handOver, pickupStatus: stageStatus[stage] };
+  stage === "review" ? { requiresCompensationReview: true } : stage === "collected" ? { status: "paid", pickupStatus: "collected" } : { ...handOver, pickupStatus: stageStatus[stage] };
 const stepEvents = ["pickup_ready", "pickup_collected"] as const;
 
 export const pickupSettings = (organisationId: string) => prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { timeZone: true, pickupPolicy: true } });

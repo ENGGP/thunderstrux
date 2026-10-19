@@ -33,7 +33,7 @@ export async function productMutation<T>(
   operation: string,
   run: (actor: AccountActor, organisationId: string, input: T) => Promise<unknown>,
   status = 200,
-  { permission = "merchandise:manage", key = "product" }: { permission?: "merchandise:manage" | "merchandise:fulfil"; key?: "product" | "pickup" } = {}
+  { permission = "merchandise:manage", key = "product" }: { permission?: "merchandise:manage" | "merchandise:fulfil"; key?: "product" | "pickup" | "return" } = {}
 ) {
   const denied = enforceTrustedMutationRequest(request);
   if (denied) return denied;

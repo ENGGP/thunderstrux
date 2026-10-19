@@ -50,8 +50,11 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
   const paid = order.status === "paid";
   const count = order.lines.reduce((total, line) => total + line.quantity, 0);
   const what = `${count} ${count === 1 ? "item" : "items"} from ${order.sellerName}`;
+  // A refund or a free cancellation ends the pickup unless it was already collected (T28b).
+  const ended = order.refundStatus === "refunded" || order.cancelledAt !== null;
+  const tracked = !ended || order.pickupStatus === "collected";
   const collectedAt = order.lifecycleEvents.findLast((event) => event.type === "pickup_collected")?.createdAt;
-  const title = closed ? "No payment taken" : order.requiresCompensationReview ? "We're checking your payment" : waiting ? "Confirming your payment" : paid ? pickupTitle[order.pickupStatus ?? "pending"] : "Your order";
+  const title = closed ? "No payment taken" : order.requiresCompensationReview ? "We're checking your payment" : waiting ? "Confirming your payment" : paid ? (order.refundStatus === "refunded" ? "Refunded" : order.cancelledAt ? "Cancelled" : pickupTitle[order.pickupStatus ?? "pending"]) : "Your order";
   const steps = [...(guest ? ["Your email"] : []), "Review", ...(free ? [] : ["Pay with Stripe"]), "Pickup"];
 
   return (
@@ -86,14 +89,19 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
               <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-2 text-sm">
                 <dt className="text-ink-soft">Payment</dt>
                 <dd>
-                  <StatusBadge status={free ? "free" : "paid"} />
+                  <StatusBadge status={order.cancelledAt ? "cancelled" : order.refundStatus === "refunded" ? "refunded" : order.refundStatus === "processing" ? "refund-processing" : free ? "free" : "paid"} />
                 </dd>
                 <dt className="text-ink-soft">Pickup</dt>
-                <dd>
-                  <StatusBadge status={pickupBadge[order.pickupStatus ?? "pending"]} />
-                </dd>
+                <dd>{tracked ? <StatusBadge status={pickupBadge[order.pickupStatus ?? "pending"]} /> : "Not collected, nothing to pick up"}</dd>
               </dl>
-              <ol aria-label="Pickup progress" className="grid gap-2.5 text-sm">
+              {order.refundStatus === "refunded" ? (
+                <p className="text-ink">{formatPrice(order.totalAmount)} was refunded to your card. Banks usually take 5 to 10 business days.</p>
+              ) : order.cancelledAt ? (
+                <p className="text-ink">{order.sellerName} cancelled this free order. Nothing was charged.</p>
+              ) : order.refundStatus === "processing" ? (
+                <p className="text-ink">{order.sellerName} is refunding this order. We&apos;ll email you when Stripe confirms it.</p>
+              ) : null}
+              {tracked ? <ol aria-label="Pickup progress" className="grid gap-2.5 text-sm">
                 {pickupSteps.map(([key, label, hint], index) => {
                   const at = pickupSteps.findIndex(([step]) => step === (order.pickupStatus ?? "pending"));
                   return (
@@ -107,7 +115,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
                     </li>
                   );
                 })}
-              </ol>
+              </ol> : null}
               <ul className="grid gap-1.5 border-t border-line pt-3 text-[15px] text-ink">
                 {order.lines.map((line) => (
                   <li className="flex justify-between gap-3" key={line.lineNumber}>
@@ -122,7 +130,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
               <p className="font-semibold text-ink">
                 {free ? "Free" : `Paid ${formatPrice(order.totalAmount)}`} · Order {reference}
               </p>
-              {order.pickupStatus === "collected" ? null : <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-[15px]">
+              {order.pickupStatus === "collected" || ended ? null : <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-[15px]">
                 <strong>Collect it in person</strong>
                 {order.organisation.pickupPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{order.organisation.pickupPolicy}</span> : null}
                 <span className="text-ink-soft">

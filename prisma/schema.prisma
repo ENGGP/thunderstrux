@@ -48,6 +48,7 @@ model User {
   revokedMembershipGrants MembershipGrant[]  @relation("MembershipGrantRevokedBy")
   cancelledCommerceOrders CommerceOrder[]    @relation("CommerceOrderCancelledBy")
   commerceLifecycleEvents CommerceLifecycleEvent[]
+  merchandiseReturns      MerchandiseReturn[]
   reservations            TicketReservation[]
 
   @@index([accountRole])
@@ -932,6 +933,7 @@ enum CommerceLifecycleEventType {
   refund_failed
   pickup_ready
   pickup_collected
+  return_recorded
 }
 
 enum MerchandisePickupStatus {
@@ -987,6 +989,7 @@ model CommerceOrder {
   guestIdentity    GuestIdentity?           @relation(fields: [guestIdentityId], references: [id], onDelete: Restrict)
   lines            CommerceOrderLine[]
   lifecycleEvents  CommerceLifecycleEvent[]
+  merchandiseReturns MerchandiseReturn[]
   checkoutAttempt  CheckoutAttempt?
   refundRequests   RefundRequest[]
   guestAccessGrants GuestAccessGrant[]
@@ -1025,6 +1028,7 @@ model CommerceOrderLine {
   membershipProduct MembershipProduct? @relation(fields: [membershipProductId, organisationId], references: [id, organisationId], onDelete: Restrict)
   membershipGrant   MembershipGrant?
   merchandiseVariant MerchandiseVariant? @relation(fields: [merchandiseVariantId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  returns            MerchandiseReturn[]
 
   @@unique([orderId, lineNumber])
   @@unique([id, organisationId])
@@ -1194,4 +1198,27 @@ model MerchandiseVariant {
   @@unique([organisationId, sku])
   @@unique([id, organisationId])
   @@index([productId, position, id])
+}
+
+// An item handed back after a merchandise sale (T28b). Restocked once, when
+// recorded; never a refund.
+model MerchandiseReturn {
+  id                  String   @id @default(cuid())
+  organisationId      String
+  commerceOrderId     String
+  commerceOrderLineId String
+  quantity            Int
+  restocked           Boolean
+  reason              String
+  actorUserId         String?
+  operationKey        String   @unique
+  createdAt           DateTime @default(now())
+
+  line  CommerceOrderLine @relation(fields: [commerceOrderLineId, organisationId], references: [id, organisationId], onDelete: Restrict)
+  order CommerceOrder     @relation(fields: [commerceOrderId], references: [id], onDelete: Restrict)
+  actor User?             @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([commerceOrderId, createdAt])
+  @@index([commerceOrderLineId])
+  @@index([actorUserId])
 }

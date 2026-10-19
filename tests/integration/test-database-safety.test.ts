@@ -43,7 +43,9 @@ test("reset clears every current model including dependent and unlinked recovery
   await prisma.emailOutbox.create({ data: { orderId: paid.id, mode: "automatic" } });
   await prisma.orderLifecycleEvent.create({ data: { orderId: paid.id, sequence: 1, type: "legacy_baseline", source: "legacy" } });
   await prisma.refundRequest.create({ data: { orderId: paid.id, organisationId: organisation.id, amount: paid.totalAmount, reason: "Synthetic reset fixture", operationKey: unique("reset-refund") } });
-  await prisma.$transaction((tx) => createCommerceOrder(tx, { organisationId: organisation.id, kind: "merchandise", buyer: { userId: member.id }, buyerEmail: member.email, paymentKind: "free", lines: [{ quantity: 1, unitAmount: 0, name: "Synthetic tote" }], source: "checkout" }));
+  const tote = await prisma.$transaction((tx) => createCommerceOrder(tx, { organisationId: organisation.id, kind: "merchandise", buyer: { userId: member.id }, buyerEmail: member.email, paymentKind: "free", lines: [{ quantity: 1, unitAmount: 0, name: "Synthetic tote" }], source: "checkout" }));
+  const toteLine = await prisma.commerceOrderLine.findFirstOrThrow({ where: { orderId: tote.id } });
+  await prisma.merchandiseReturn.create({ data: { organisationId: organisation.id, commerceOrderId: tote.id, commerceOrderLineId: toteLine.id, quantity: 1, restocked: false, reason: "Synthetic reset fixture", operationKey: unique("reset-return") } });
   const term = { startsAt: new Date(Date.now() + 86_400_000), endsAt: new Date(Date.now() + 2 * 86_400_000) };
   const plan = await prisma.membershipProduct.create({ data: { organisationId: organisation.id, name: "Synthetic plan", priceAmount: 0, ...term } });
   const membership = await prisma.$transaction((tx) => createCommerceOrder(tx, { organisationId: organisation.id, kind: "membership", buyer: { userId: member.id }, buyerEmail: member.email, paymentKind: "free", lines: [{ quantity: 1, unitAmount: 0, name: plan.name, termStartsAt: term.startsAt, termEndsAt: term.endsAt, membershipProductId: plan.id }], source: "checkout" }));

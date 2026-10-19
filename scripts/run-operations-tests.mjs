@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { migrationDigest } from "./operations-guards.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const project = `p217-ci-${randomBytes(5).toString("hex")}`;
+const project = `ops-${randomBytes(5).toString("hex")}`;
 const stateDir = resolve(root, "tmp", "operations", project);
 const runtimeFile = join(stateDir, "runtime.env");
 const badRuntimeFile = join(stateDir, "candidate-bad.env");
@@ -157,7 +157,7 @@ const port = await availablePort();
 const origin = `http://127.0.0.1:${port}`;
 const notificationKey = randomBytes(32).toString("base64");
 const runtime = [
-  "DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public",
+  "DATABASE_URL=postgresql://ops:ops-disposable-only@db:5432/ops_app_test?schema=public",
   `AUTH_SECRET=${randomBytes(32).toString("hex")}`,
   "MFA_ENFORCEMENT_MODE=off",
   `NOTIFICATION_ENCRYPTION_KEY=${notificationKey}`,
@@ -170,7 +170,7 @@ const runtime = [
   "PORT=3000",
   "RATE_LIMIT_ENABLED=true",
   "RATE_LIMIT_REDIS_URL=redis://redis:6379",
-  "RATE_LIMIT_KEY_PREFIX=p217",
+  "RATE_LIMIT_KEY_PREFIX=ops",
   "STRIPE_SECRET_KEY=",
   "STRIPE_WEBHOOK_SECRET=",
   "STRIPE_CONNECT_WEBHOOK_SECRET=",
@@ -269,7 +269,7 @@ try {
   await compose(["--profile", "tools", "run", "--rm", "--no-deps", "asset-tools", "node", "scripts/maintain-assets.mjs", "--integrity"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }
   });
-  const unsafeAssets = await compose(["--profile", "tools", "run", "--rm", "--no-deps", "-e", "DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/production",
+  const unsafeAssets = await compose(["--profile", "tools", "run", "--rm", "--no-deps", "-e", "DATABASE_URL=postgresql://ops:ops-disposable-only@db:5432/production",
     "asset-tools", "node", "scripts/rehearse-assets.mjs", "remove", "/recovery/assets.json"], {
       env: { ...process.env, APP_IMAGE: release.candidateImageId }, capture: true, expectFailure: true
     });
@@ -297,7 +297,7 @@ try {
   if (!corruptRestore.includes("quarantined")) throw new Error("Corrupt restore was not quarantined");
   await operation("restore", ["--archive", archive, "--target-database", `${project.replace(/-/g, "_")}_restore_test`]);
   await assetRehearsal("remove");
-  await assetRehearsal("restore", ["-e", `DATABASE_URL=postgresql://p217:p217-disposable-only@db:5432/${project.replace(/-/g, "_")}_restore_test?schema=public`]);
+  await assetRehearsal("restore", ["-e", `DATABASE_URL=postgresql://ops:ops-disposable-only@db:5432/${project.replace(/-/g, "_")}_restore_test?schema=public`]);
 
   await compose(["stop", "db"]);
   await expectStatus(origin, "/api/health", 200);
@@ -336,7 +336,7 @@ try {
   }
   await waitReady(origin);
 
-  await compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "INSERT INTO \"_prisma_migrations\" (id, checksum, migration_name, logs, started_at, applied_steps_count) VALUES ('p217_failed', 'invalid', 'p217_intentional_failure', 'rehearsal', now(), 0)"`]);
+  await compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "INSERT INTO \"_prisma_migrations\" (id, checksum, migration_name, logs, started_at, applied_steps_count) VALUES ('ops_failed', 'invalid', 'ops_intentional_failure', 'rehearsal', now(), 0)"`]);
   const migrationFailure = await operation("deploy", [
     "--url", origin,
     "--release", `${project}-migration-fail`,
@@ -372,6 +372,6 @@ try {
     }
     await rm(stateDir, { recursive: true, force: true });
   } else {
-    console.error(`P2.17 diagnostics retained in ${stateDir}`);
+    console.error(`Operations diagnostics retained in ${stateDir}`);
   }
 }

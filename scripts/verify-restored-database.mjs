@@ -25,22 +25,22 @@ try {
     prisma.accountSecurityEvent.count(),
     prisma.$queryRawUnsafe(`SELECT count(*)::int AS count FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL`)
   ]);
-  const inviteJob = await prisma.notificationOutbox.findUnique({ where: { id: "p217-invite-notification" }, include: { staffInvite: true } });
+  const inviteJob = await prisma.notificationOutbox.findUnique({ where: { id: "ops-invite-notification" }, include: { staffInvite: true } });
   if (!inviteJob || inviteJob.privacy !== "security" || inviteJob.organisationId || inviteJob.staffInviteVersion !== 2 || inviteJob.staffInvite?.version !== 2 || inviteJob.staffInvite.email !== inviteJob.recipient) throw new Error("Restored invitation version/private linkage is missing");
   const rendered = decryptNotification(inviteJob.encryptedPayload, inviteJob.id);
   if (rendered.text !== `http://localhost/staff/invites/accept#token=${Buffer.alloc(32, 5).toString("base64url")}`) throw new Error("Restored invitation payload cannot be decrypted with the recovered notification key");
-  const handover = await prisma.organisation.findUnique({ where: { slug: "p217-handover-restore" }, include: { staff: { include: { user: true } }, auditLogs: true } });
+  const handover = await prisma.organisation.findUnique({ where: { slug: "ops-handover-restore" }, include: { staff: { include: { user: true } }, auditLogs: true } });
   if (!handover || handover.accountUserId !== null || handover.staff.filter(row => row.role === "owner" && row.status === "active").length !== 1 ||
-      !handover.staff.some(row => row.status === "revoked" && row.user.email === "p217-outgoing-owner@example.com") ||
+      !handover.staff.some(row => row.status === "revoked" && row.user.email === "ops-outgoing-owner@example.com") ||
       !handover.auditLogs.some(row => row.action === "staff.ownership.handed_over" && row.metadata?.legacyOwnershipRetired === true)) throw new Error("Restored ownership retirement/staff/audit continuity is missing");
   const migrationCount = Number(migrations[0]?.count ?? 0);
-  const emailChange = await prisma.authToken.findFirst({ where: { purpose: "email_change", newEmail: "p217-change@example.com" } });
+  const emailChange = await prisma.authToken.findFirst({ where: { purpose: "email_change", newEmail: "ops-change@example.com" } });
   if (!emailChange) throw new Error("Restored email-change binding is missing");
-  const closedBuyer = await prisma.order.findFirst({ where: { buyerEmailSnapshot: "p217-retained@example.com", buyerIdentityProvenance: "current_account_at_capture" }, include: { user: true } });
-  const snapshotOrder = await prisma.order.findFirst({ where: { purchasedTicketTypeName: "p217 purchased ticket name" } });
-  if (snapshotOrder?.sellerName !== "p217 seller at purchase" || snapshotOrder.paymentKind !== "stripe" || snapshotOrder.feePolicyVersion !== "platform_fee_10_percent_v1" || snapshotOrder.snapshotVersion !== 1) throw new Error("Restored purchase snapshot is missing");
-  const attempt = await prisma.checkoutAttempt.findUnique({ where: { providerOperationKey: "p217-restore-provider-key" }, include: { order: true } });
-  if (attempt?.state !== "provider_uncertain" || attempt.clientIdempotencyKey !== "p217-restore-attempt" || attempt.order?.purchasedTicketTypeName !== "p217 purchased ticket name" || attempt.providerRequest?.metadata?.restoreCheck !== "p217") throw new Error("Restored checkout attempt is missing");
+  const closedBuyer = await prisma.order.findFirst({ where: { buyerEmailSnapshot: "ops-retained@example.com", buyerIdentityProvenance: "current_account_at_capture" }, include: { user: true } });
+  const snapshotOrder = await prisma.order.findFirst({ where: { purchasedTicketTypeName: "ops purchased ticket name" } });
+  if (snapshotOrder?.sellerName !== "ops seller at purchase" || snapshotOrder.paymentKind !== "stripe" || snapshotOrder.feePolicyVersion !== "platform_fee_10_percent_v1" || snapshotOrder.snapshotVersion !== 1) throw new Error("Restored purchase snapshot is missing");
+  const attempt = await prisma.checkoutAttempt.findUnique({ where: { providerOperationKey: "ops-restore-provider-key" }, include: { order: true } });
+  if (attempt?.state !== "provider_uncertain" || attempt.clientIdempotencyKey !== "ops-restore-attempt" || attempt.order?.purchasedTicketTypeName !== "ops purchased ticket name" || attempt.providerRequest?.metadata?.restoreCheck !== "ops") throw new Error("Restored checkout attempt is missing");
   if (!(await prisma.event.findFirst({ where: { capacity: 217, visibility: "unlisted", saleState: "closed", version: { gte: 2 }, salesCloseAt: { not: undefined } } }))) throw new Error("Restored event policy is missing");
   if (!(await prisma.ticket.findFirst({ where: { issueSequence: { gte: 1 }, validity: "active" } }))) throw new Error("Restored tickets lost their issue sequence or validity");
   if (!closedBuyer?.buyerIdentityCapturedAt || !closedBuyer.user?.closedAt || !closedBuyer.user?.disabledAt || closedBuyer.user.authVersion !== 1 || closedBuyer.buyerFirstNameSnapshot !== "Retained") throw new Error("Restored closure/retained buyer identity is missing");

@@ -56,7 +56,7 @@ Not done, and why: running test files in parallel (one database per worker) woul
 
 Do not run type generation/builds in an active production server container or integration resets in the development stack. Prefer the isolated baseline runner so generated Next/Prisma metadata remains inside its container. Record actual revision/counts/run IDs and cleanup rather than copying historical test totals. Run the runner safety suite with `pnpm test:e2e:guards`; unsafe database and occupied-port regressions require no real database or provider credentials.
 
-Port 3100 conflicts are refused before creating an E2E run. Cleanup uses generated project IDs and ownership checks; repeat `pnpm test:e2e:cleanup -- <run-id>` to verify a completed run. Preserve interrupted payment recovery manifests and their required volumes until recovery succeeds. Never delete unrelated Docker resources or the entire `tmp` tree.
+Port 3100 conflicts are refused before creating an E2E run. Run IDs are `baseline-`, `browser-` or `staging-` followed by 24 hex characters, and operations rehearsals are `ops-` followed by 10 (see [[E2E and Staging Payments]]). Cleanup uses generated project IDs and ownership checks; repeat `pnpm test:e2e:cleanup -- <run-id>` to verify a completed run. Preserve interrupted payment recovery manifests and their required volumes until recovery succeeds. Never delete unrelated Docker resources or the entire `tmp` tree.
 
 Thunderstrux has three Docker Compose contracts: the base production-like runtime, a development override, and a provider-neutral hosted contract.
 

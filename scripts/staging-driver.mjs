@@ -47,7 +47,7 @@ async function openBuyer(email) {
   const page = await browser.newPage();
   await page.goto(`${baseURL}/login`);
   await page.getByLabel('Email', {exact: true}).fill(email);
-  await page.getByLabel('Password', {exact: true}).fill('p216-staging-only-password');
+  await page.getByLabel('Password', {exact: true}).fill('e2e-staging-only-password');
   await page.getByRole('button', {name: 'Sign in', exact: true}).click();
   await page.waitForURL(`${baseURL}/dashboard`);
   return page;
@@ -85,7 +85,7 @@ try {
     const id = ownedOrg(scenario);
     // Persist ownership before any app request can create a Stripe Session.
     await writeFile(statePath(scenario), JSON.stringify({organisationId: id, createdAt: Math.floor(Date.now()/1000)}), {mode: 0o600});
-    const user = await db.user.create({data: {email: `${id}@example.com`, password: await hash('p216-staging-only-password', 12), firstName: 'Staging', lastName: 'Buyer', accountRole: 'member', emailVerifiedAt: new Date(), onboardingCompletedAt: new Date()}});
+    const user = await db.user.create({data: {email: `${id}@example.com`, password: await hash('e2e-staging-only-password', 12), firstName: 'Staging', lastName: 'Buyer', accountRole: 'member', emailVerifiedAt: new Date(), onboardingCompletedAt: new Date()}});
     await db.organisation.create({data: {id, name: id, slug: id, stripeAccountId: process.env.STRIPE_TEST_CONNECTED_ACCOUNT, stripeChargesEnabled: true, stripeDetailsSubmitted: true}});
     const event = await db.event.create({data: {organisationId: id, title: id, description: 'Isolated Stripe acceptance', location: 'Test only', status: 'published', startTime: new Date(Date.now()+86400000), salesCloseAt: new Date(Date.now()+86400000), endTime: new Date(Date.now()+90000000), ticketTypes: {create: {name: 'Test ticket', price: 1200, quantity: 5}}}, include: {ticketTypes: true}});
     const page = await openBuyer(user.email);
@@ -110,7 +110,7 @@ try {
     assert(['success', 'decline', 'cancel'].includes(scenario), 'Unknown scenario');
     const data = JSON.parse(await readFile(statePath(scenario), 'utf8'));
     assert(data.organisationId === ownedOrg(scenario), 'Scenario ownership mismatch');
-    console.log(`P216_PRIVATE:${JSON.stringify({url: data.url})}`);
+    console.log(`E2E_PRIVATE:${JSON.stringify({url: data.url})}`);
   } else if (action === 'verify') {
     const data = JSON.parse(await readFile(statePath(scenario), 'utf8'));
     assert(data.organisationId === ownedOrg(scenario), 'Scenario ownership mismatch');

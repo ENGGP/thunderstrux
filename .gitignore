@@ -77,3 +77,7 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# Claude Code: session worktrees and personal settings stay local; shared skills are committed.
+.claude/worktrees/
+.claude/settings.local.json

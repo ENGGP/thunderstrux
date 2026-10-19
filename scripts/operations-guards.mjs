@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 export function assertOperationsProject(value) {
-  if (!/^p217-[a-z0-9][a-z0-9-]{2,40}$/.test(value ?? "")) {
-    throw new Error("Operations project must match p217-[a-z0-9-]");
+  if (!/^ops-[a-z0-9][a-z0-9-]{2,40}$/.test(value ?? "")) {
+    throw new Error("Operations project must match ops-[a-z0-9-]");
   }
 
   return value;

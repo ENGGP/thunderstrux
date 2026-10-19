@@ -8,7 +8,7 @@ sources: [scripts/run-e2e.mjs, scripts/staging-payments.mjs, docker-compose.e2e.
 
 # E2E and Staging Payments
 
-P2.16 status: implementation and acceptance merged through PR #10 (`59dc563`). Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion. Later payment-path changes must repeat the relevant acceptance campaign.
+Status: the E2E harness (originally task P2.16) and its acceptance merged through PR #10 (`59dc563`). Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion. Later payment-path changes must repeat the relevant acceptance campaign.
 
 ## Automated checks
 
@@ -22,8 +22,11 @@ Commands:
 pnpm test:e2e:guards
 pnpm test:e2e
 node scripts/run-e2e.mjs baseline
-pnpm test:e2e:cleanup -- p216-<24-hex-character-run-id>
+pnpm test:e2e:cleanup -- <run-id>
 ```
+
+**Names.** Each run's ID says what it ran and doubles as its Compose project and evidence folder (`tmp/e2e/<run-id>`): `baseline-<24 hex>`, `browser-<24 hex>` (`pnpm test:e2e`) or `staging-<24 hex>`. Images are `thunderstrux-e2e-app:local` and `thunderstrux-e2e-tests:local`; the test container service is `tests`, and each step runs in a container named after the run and the step (`<run-id>-checks` for baseline, `<run-id>-mfa`, `<run-id>-browser`, `<run-id>-webhooks`) instead of Compose's generated `runner-run-<id>` names. The other containers are `<run-id>-app-1`, `<run-id>-db-1` and so on. Every run removes its containers, network and test database when it ends (images and Docker's build cache stay, so the next build reuses them); `pnpm test:e2e:cleanup -- <run-id>` finishes a run whose cleanup was interrupted.
+
 
 The `baseline` mode runs typecheck, the full integration suite and audit inside the isolated stack. It describes the validation mode, not a claim that the source is unchanged. Integration resets affect only the disposable test database.
 

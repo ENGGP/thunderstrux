@@ -72,8 +72,8 @@ export default async function OrganiserEventPage({
       : []),
     {
       label: "Checked in",
-      value: checkInRate === null ? "Not applicable" : `${checkedIn} of ${valid}`,
-      note: checkInRate === null ? "No valid tickets yet" : `${Math.round(checkInRate * 100)}% of valid tickets`
+      value: checkInRate === null ? 0 : `${checkedIn} of ${valid}`,
+      note: checkInRate === null ? "Rate not applicable: no valid tickets yet" : `${Math.round(checkInRate * 100)}% of valid tickets`
     },
     ...(financial
       ? [{

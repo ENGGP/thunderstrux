@@ -44,8 +44,8 @@ importers:
         specifier: 0.35.5
         version: 0.35.5(@types/node@22.20.5)
       stripe:
-        specifier: 22.0.2
-        version: 22.0.2(@types/node@22.20.5)
+        specifier: 22.6.2
+        version: 22.6.2(@types/node@22.20.5)
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -1218,8 +1218,8 @@ packages:
   std-env@4.2.0:
     resolution: {integrity: sha512-oCUKSupKTHX53EyjDtuZQ64pjLJ6yYCtpmEw0goYxtjG9KpbRe8KAsl2tBUGU9DyMcJ0RwJ8GqJAFzMXcXW1Rw==}
 
-  stripe@22.0.2:
-    resolution: {integrity: sha512-2/BLrQ3oB1zlNfeL/LfHFjTGx6EQn0j+ztrrTJHuDjV5VVIpk92oSDaxyKLUr3pG3dnee2LZqhFUv2Bf0G1/3g==}
+  stripe@22.6.2:
+    resolution: {integrity: sha512-PwRE2scocvXqDKPiskMa5vRJEAEkq46W69XyUYmAwrNSLr675lQnfqLwnsndAWizwgihOWw/irLmoFRo3ez7ew==}
     engines: {node: '>=18'}
     peerDependencies:
       '@types/node': '>=18'
@@ -2379,7 +2379,7 @@ snapshots:
 
   std-env@4.2.0: {}
 
-  stripe@22.0.2(@types/node@22.20.5):
+  stripe@22.6.2(@types/node@22.20.5):
     optionalDependencies:
       '@types/node': 22.20.5
 

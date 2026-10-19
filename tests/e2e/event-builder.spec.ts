@@ -71,10 +71,10 @@ test("moving a ticketed event emails the holder, and a member turns renewal remi
   const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, status: "paid", paidAt: new Date() });
   await prisma.ticket.create({ data: { orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id, issueSequence: 1 } });
   await login(page, data.owner.email, `/dashboard/events/${data.event.id}/edit`);
-  await expect(page.getByText("everyone with a ticket gets an email about it", { exact: false })).toBeVisible();
+  await expect(page.getByText("Ticket holders get an email only if you change the time or place.", { exact: false })).toBeVisible();
   await page.getByLabel("Location", { exact: true }).fill("Great Hall");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await page.waitForURL(`**/dashboard/events/${data.event.id}`);
+  await expect(page.getByRole("status").filter({ hasText: "Event saved" })).toBeVisible();
 
   // Skip the pause that lets a quick correction replace the change.
   const change = await prisma.eventChange.findFirstOrThrow({ where: { eventId: data.event.id } });

@@ -221,13 +221,13 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
   await page.getByRole("dialog").getByRole("button", { name: "Mark ready" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Order ${reference} is on the Ready tab. Sam Lee was emailed.` })).toBeVisible();
   await page.getByRole("link", { name: "Ready to collect · 1" }).click();
-  await expect(page.getByText(/Ready since/).first()).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Ready since" })).toBeVisible();
   await page.getByRole("button", { name: `Mark order ${reference} collected` }).first().click();
   await expect(page.getByRole("dialog")).toContainText("For Sam Lee.");
   await page.getByRole("dialog").getByRole("button", { name: "Mark collected" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Order ${reference} was handed over by` })).toBeVisible();
   await page.getByRole("link", { name: "Collected · 1" }).click();
-  await expect(page.getByText(/Handed over by/).first()).toBeVisible();
+  await expect(page.getByRole("cell", { name: / by / })).toBeVisible();
   await shoot(page, "pickups-collected");
 
   await page.context().clearCookies();

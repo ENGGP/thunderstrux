@@ -14,11 +14,12 @@ import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatDateTime } from "@/lib/format";
-import { listPickups, pickupResult, pickupSettings, pickupStages, type PickupRow, type PickupStage } from "@/lib/merchandise/pickups";
+import { listPickups, pickupResult, pickupSettings, pickupStages, toPrepareCount, type PickupRow, type PickupStage } from "@/lib/merchandise/pickups";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Pickups" };
 
+const dateHeading: Record<PickupStage, string> = { prepare: "Ordered", ready: "Ready since", collected: "Handed over", review: "Note" };
 const stageLabels: Record<PickupStage, string> = { prepare: "To prepare", ready: "Ready to collect", collected: "Collected", review: "Needs review" };
 const emptyText: Record<PickupStage, [string, string]> = {
   prepare: ["Nothing to prepare", "Paid and free orders show here as they come in."],
@@ -44,8 +45,9 @@ export default async function PickupsPage({ searchParams }: { searchParams: Prom
   const stage = pickupStages.find((name) => name === params.stage) ?? "prepare";
   const query = params.q?.trim().slice(0, 100) ?? "";
   const cursor = params.cursor?.slice(0, 500) || undefined;
-  const [{ timeZone, pickupPolicy }, done] = await Promise.all([
+  const [{ timeZone, pickupPolicy }, toPrepare, done] = await Promise.all([
     pickupSettings(organisation.id),
+    toPrepareCount(organisation.id),
     params.done ? pickupResult(organisation.id, params.done.slice(0, 40)) : null
   ]);
 
@@ -56,7 +58,7 @@ export default async function PickupsPage({ searchParams }: { searchParams: Prom
         label="Merchandise sections"
         tabs={[
           ...(hasOrganisationPermission(organisation.staffRole, "merchandise:manage") ? [{ href: "/dashboard/merchandise", label: "Products", active: false }] : []),
-          { href: "/dashboard/merchandise/pickups", label: "Pickups", active: true }
+          { href: "/dashboard/merchandise/pickups", label: toPrepare ? `Pickups · ${toPrepare} to prepare` : "Pickups", active: true }
         ]}
       />
       {done ? (
@@ -108,12 +110,14 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
         : stage === "ready" && order.step
           ? `Ready since ${when(order.step.at)}`
           : `${order.paymentKind === "free" ? "Free" : "Paid"} · ordered ${when(order.createdAt)}`;
+  const dated = (order: PickupRow) =>
+    stage === "review" ? "Don't hand this over yet." : stage !== "prepare" && order.step ? `${when(order.step.at)}${stage === "collected" ? ` by ${order.step.by}` : ""}` : when(order.createdAt);
   const action = (order: PickupRow, wide = false) =>
     working ? (
       <PickupAction order={order} orgSlug={orgSlug} stage={stage} step={stage === "prepare" ? "ready" : "collected"} wide={wide} />
-    ) : (
-      <StatusBadge status={stage === "collected" ? "collected" : "review"} />
-    );
+    ) : stage === "collected" ? (
+      <StatusBadge status="collected" />
+    ) : null;
 
   return (
     <>
@@ -152,7 +156,8 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
                   <th className="px-5 py-3.5 font-semibold" scope="col">Order</th>
                   <th className="px-3 py-3.5 font-semibold" scope="col">Buyer</th>
                   <th className="px-3 py-3.5 font-semibold" scope="col">Items</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">Status</th>
+                  <th className="px-3 py-3.5 font-semibold" scope="col">Payment</th>
+                  <th className="px-3 py-3.5 font-semibold" scope="col">{dateHeading[stage]}</th>
                   <th className="px-5 py-3.5 text-right font-semibold" scope="col">Action</th>
                 </tr>
               </thead>
@@ -168,7 +173,10 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
                       </p>
                     </td>
                     <td className="px-3 py-4">{items(order)}</td>
-                    <td className="px-3 py-4 text-sm text-ink-soft">{status(order)}</td>
+                    <td className="px-3 py-4">
+                      <StatusBadge status={stage === "review" ? "review" : order.paymentKind === "free" ? "free" : "paid"} />
+                    </td>
+                    <td className="px-3 py-4 text-sm text-ink-soft">{dated(order)}</td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end">{action(order)}</div>
                     </td>
@@ -194,6 +202,9 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
           </ul>
         </>
       )}
+      <p className="text-sm text-ink-soft">
+        {stage === "prepare" || stage === "ready" ? "Oldest first, in the order they came in. " : "Newest first. "}Only paid and free orders appear here; checkouts still waiting on Stripe don&apos;t.
+      </p>
       {nextCursor ? (
         <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={href(stage, query, nextCursor)}>
           Next page

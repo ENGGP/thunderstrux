@@ -47,7 +47,7 @@ export async function command(args, capture = false) {
 }
 const compose = (...args) => command([...composeArgs, ...args]);
 const capture = (...args) => command([...composeArgs, ...args], true);
-// One named test container per step (`<run>-checks`, `<run>-browser`, ...), kept with the run until cleanup.
+// One named test container per step (`<run>-checks`, `<run>-browser`, ...), removed with the run.
 const step = (name, ...args) => compose('run', '--name', `${runId}-${name}`, '--no-deps', 'tests', ...args);
 async function save() { await writeFile(manifestFile, JSON.stringify(manifest, null, 2)); }
 async function createRuntime() {
@@ -170,13 +170,8 @@ try {
     await retainRecovery().catch(error => { console.error(`Credential cleanup failed: ${error.message}`); process.exitCode = 1; });
   }
   if (manifest) {
-    if (mode === 'cleanup' || (manifest.staging && (manifest.stripeCleanupComplete || !manifest.stripeResourcesPossible))) {
+    if (!manifest.staging || manifest.stripeCleanupComplete || !manifest.stripeResourcesPossible) {
       await cleanup().catch(async error => { manifest.passed = false; await save(); console.error(`Cleanup pending for ${runId}: ${error.message}`); process.exitCode = 1; });
-    } else if (!manifest.staging) {
-      // Kept until the feature is finished (maintainer's choice): stopped, so the port is free;
-      // `pnpm test:e2e:cleanup-kept` removes every kept run at the end.
-      await compose('--profile', '*', 'stop', '--timeout', '10').catch(error => { console.error(`Stop failed for ${runId}: ${error.message}`); process.exitCode = 1; });
-      console.log(`Run kept (stopped): ${runId}. Remove with pnpm test:e2e:cleanup -- ${runId}`);
     } else console.error(`Staging resources retained for recovery: ${runId}`);
     console.log(`Evidence manifest: tmp/e2e/${runId}/manifest.json`);
   }

@@ -23,12 +23,10 @@ pnpm test:e2e:guards
 pnpm test:e2e
 node scripts/run-e2e.mjs baseline
 pnpm test:e2e:cleanup -- <run-id>
-pnpm test:e2e:cleanup-kept
 ```
 
-**Names.** Each run's ID says what it ran and doubles as its Compose project and evidence folder (`tmp/e2e/<run-id>`): `baseline-<24 hex>`, `browser-<24 hex>` (`pnpm test:e2e`) or `staging-<24 hex>`. Images are `thunderstrux-e2e-app:local` and `thunderstrux-e2e-tests:local`; the test container service is `tests`, and each step runs in a container named after the run and the step (`<run-id>-checks` for baseline, `<run-id>-mfa`, `<run-id>-browser`, `<run-id>-webhooks`) instead of Compose's generated `runner-run-<id>` names. The other containers are `<run-id>-app-1`, `<run-id>-db-1` and so on.
+**Names.** Each run's ID says what it ran and doubles as its Compose project and evidence folder (`tmp/e2e/<run-id>`): `baseline-<24 hex>`, `browser-<24 hex>` (`pnpm test:e2e`) or `staging-<24 hex>`. Images are `thunderstrux-e2e-app:local` and `thunderstrux-e2e-tests:local`; the test container service is `tests`, and each step runs in a container named after the run and the step (`<run-id>-checks` for baseline, `<run-id>-mfa`, `<run-id>-browser`, `<run-id>-webhooks`) instead of Compose's generated `runner-run-<id>` names. The other containers are `<run-id>-app-1`, `<run-id>-db-1` and so on. Every run removes its containers, network and test database when it ends (images and Docker's build cache stay, so the next build reuses them); `pnpm test:e2e:cleanup -- <run-id>` finishes a run whose cleanup was interrupted.
 
-**Kept until the feature is finished.** A finished baseline or browser run stops its containers instead of removing them (the maintainer's choice, 2026-10-19), so the run's containers, network and test database stay until the feature's PR is done; port 3100 is free again once they stop. Run `pnpm test:e2e:cleanup-kept` when the feature is finished to remove every kept run through the owned cleanup, or `pnpm test:e2e:cleanup -- <run-id>` for one. Removing containers never drops images or Docker's build cache. Staging runs keep their own recovery rules below.
 
 The `baseline` mode runs typecheck, the full integration suite and audit inside the isolated stack. It describes the validation mode, not a claim that the source is unchanged. Integration resets affect only the disposable test database.
 

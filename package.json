@@ -20,7 +20,6 @@
     "test:integration": "node scripts/run-integration-tests.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:e2e:cleanup": "node scripts/run-e2e.mjs cleanup",
-    "test:e2e:cleanup-kept": "node scripts/cleanup-kept-runs.mjs",
     "test:payments:staging": "node scripts/run-e2e.mjs staging",
     "test:e2e:guards": "node --test tests/runner/*.test.mjs",
     "notifications:process": "node scripts/process-notifications.mjs",

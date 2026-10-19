@@ -235,6 +235,17 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
   await expect(page.getByRole("heading", { name: "Collected" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Pickup progress" })).toContainText("Collected");
   await shoot(page, "order-collected");
+
+  // T29a: Purchases has a Merchandise tab, with payment and pickup as separate badges, that opens the order.
+  await page.goto("/purchases");
+  await page.getByRole("link", { name: /^Merchandise/ }).click();
+  await expect(page).toHaveURL(/family=merchandise/);
+  const row = page.getByRole("region", { name: "Merchandise purchases" });
+  await expect(row.getByText(`Order ${reference}`).first()).toBeVisible();
+  await expect(row.getByText("Collected").first()).toBeVisible();
+  await shoot(page, "purchases-merchandise");
+  await row.getByRole("link", { name: "2 × Enamel pin" }).first().click();
+  await expect(page.getByRole("heading", { name: "Collected" })).toBeVisible();
 });
 
 // T28b: the owner opens an order from Pickups, records a return that restocks, cancels a free order, and the buyer sees it cancelled.

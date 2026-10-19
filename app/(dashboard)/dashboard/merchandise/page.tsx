@@ -5,17 +5,20 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { LinkTabs } from "@/components/ui/link-tabs";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatPrice } from "@/lib/format";
 import { listProducts, optionSummary } from "@/lib/merchandise/catalogue";
+import { toPrepareCount } from "@/lib/merchandise/pickups";
 
 export const metadata: Metadata = { title: "Merchandise" };
 
-// Products (T25, design round B2). Pickups join as a second tab with T28.
+// Products (T25, design round B2), beside the Pickups tab (T28a).
 export default async function MerchandisePage() {
   const organisation = await requireManagementPage("merchandise:manage", "/dashboard/merchandise");
+  const toPrepare = await toPrepareCount(organisation.id);
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
@@ -26,6 +29,13 @@ export default async function MerchandisePage() {
         }
         description="Things your society sells for pickup. There's no shipping."
         title="Merchandise"
+      />
+      <LinkTabs
+        label="Merchandise sections"
+        tabs={[
+          { href: "/dashboard/merchandise", label: "Products", active: true },
+          { href: "/dashboard/merchandise/pickups", label: toPrepare ? `Pickups · ${toPrepare} to prepare` : "Pickups", active: false }
+        ]}
       />
       <Suspense fallback={<ListSkeleton label="Loading products" />}>
         <Products organisationId={organisation.id} orgSlug={organisation.slug} />

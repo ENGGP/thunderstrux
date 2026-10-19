@@ -136,6 +136,8 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
     for (const line of lines) {
       await tx.merchandiseVariant.update({ where: { id: line.merchandiseVariantId as string }, data: { remaining: { decrement: line.quantity }, version: { increment: 1 } } });
     }
+    // Waits on the Pickups tab until staff mark it ready (T28a).
+    await tx.commerceOrder.update({ where: { id: order.id }, data: { pickupStatus: "pending" } });
 
     const purchase = await tx.commerceOrder.findUniqueOrThrow({
       where: { id: order.id },

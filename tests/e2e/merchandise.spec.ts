@@ -195,3 +195,44 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   await login(page, data.manager.email, `/merchandise/orders/${order.id}`);
   await expect(page.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
 });
+
+// T28a: the owner marks a paid order ready, then collected, and the buyer's order page follows.
+test("an owner marks an order ready and collected on the Pickups tab, and the buyer sees each step", async ({ page, data }) => {
+  const { organisation } = data;
+  await prisma.organisation.update({ where: { id: organisation.id }, data: { pickupPolicy: "EngSoc office, Level 2. Tuesdays 12 to 2 pm." } });
+  const now = new Date();
+  const product = await prisma.merchandiseProduct.create({ data: { organisationId: organisation.id, name: "Enamel pin", status: "published", publishedAt: now, firstPublishedAt: now } });
+  const pin = await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, sku: `E2E-PIN-${Date.now()}`, priceAmount: 600, remaining: 10 } });
+  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: organisation.id, kind: "merchandise", buyer: { userId: data.member.id }, buyerEmail: data.member.email, buyerName: "Sam Lee", paymentKind: "stripe", feeAmount: 120,
+    lines: [{ quantity: 2, unitAmount: 600, name: "Enamel pin", merchandiseVariantId: pin.id }], source: "checkout"
+  }));
+  await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "paid", paidAt: now, fulfilledAt: now, pickupStatus: "pending" } });
+  const reference = order.id.slice(-6).toUpperCase();
+
+  await login(page, data.owner.email, "/dashboard/merchandise");
+  await page.getByRole("link", { name: "Pickups · 1 to prepare" }).click();
+  await expect(page.getByRole("link", { name: "To prepare · 1" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByText("2 × Enamel pin").first()).toBeVisible();
+  await shoot(page, "pickups");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: `Mark order ${reference} ready to collect` }).first().click();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: `Mark order ${reference} ready to collect?` })).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Mark ready" }).click();
+  await expect(page.getByRole("status").filter({ hasText: `Order ${reference} is on the Ready tab. Sam Lee was emailed.` })).toBeVisible();
+  await page.getByRole("link", { name: "Ready to collect · 1" }).click();
+  await expect(page.getByRole("columnheader", { name: "Ready since" })).toBeVisible();
+  await page.getByRole("button", { name: `Mark order ${reference} collected` }).first().click();
+  await expect(page.getByRole("dialog")).toContainText("For Sam Lee.");
+  await page.getByRole("dialog").getByRole("button", { name: "Mark collected" }).click();
+  await expect(page.getByRole("status").filter({ hasText: `Order ${reference} was handed over by` })).toBeVisible();
+  await page.getByRole("link", { name: "Collected · 1" }).click();
+  await expect(page.getByRole("cell", { name: / by / })).toBeVisible();
+  await shoot(page, "pickups-collected");
+
+  await page.context().clearCookies();
+  await login(page, data.member.email, `/merchandise/orders/${order.id}`);
+  await expect(page.getByRole("heading", { name: "Collected" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Pickup progress" })).toContainText("Collected");
+  await shoot(page, "order-collected");
+});

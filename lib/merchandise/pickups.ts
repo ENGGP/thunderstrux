@@ -1,0 +1,162 @@
+import type { Prisma } from "@prisma/client";
+import { z } from "zod";
+import type { AccountActor } from "@/lib/auth/account-lifecycle";
+import { appendCommerceLifecycleEvent, lockCommerceOrder } from "@/lib/commerce/orders";
+import { prisma } from "@/lib/db";
+import { enqueueNotification } from "@/lib/email/notification-outbox";
+import { formatDateTime } from "@/lib/format";
+import { MerchandiseCatalogueError } from "@/lib/merchandise/catalogue";
+import { lockOrganisationActor } from "@/lib/organisations/authority";
+import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
+import { orderReference } from "@/lib/payments/order-refunds";
+
+// Pickups (T28a, design round B2): fulfilled merchandise orders, which staff
+// with merchandise:fulfil mark ready and then collected. Each step holds the
+// User, then Organisation, then order locks, checks the order's version, and
+// commits the step, its history, audit and email together.
+
+export const pickupStages = ["prepare", "ready", "collected", "review"] as const;
+export type PickupStage = (typeof pickupStages)[number];
+const pageSize = 25;
+
+// Only a paid order that isn't under review, refunded or cancelled is handed over.
+const handOver = { status: "paid", requiresCompensationReview: false, refundStatus: null, cancelledAt: null } as const;
+const stageStatus = { prepare: "pending", ready: "ready", collected: "collected" } as const;
+const stageWhere = (stage: PickupStage): Prisma.CommerceOrderWhereInput =>
+  stage === "review" ? { requiresCompensationReview: true } : { ...handOver, pickupStatus: stageStatus[stage] };
+const stepEvents = ["pickup_ready", "pickup_collected"] as const;
+
+export const pickupSettings = (organisationId: string) => prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { timeZone: true, pickupPolicy: true } });
+
+export const toPrepareCount = (organisationId: string) => prisma.commerceOrder.count({ where: { organisationId, kind: "merchandise", ...stageWhere("prepare") } });
+
+function search(query: string): Prisma.CommerceOrderWhereInput | null {
+  if (!query) return null;
+  const contains = { contains: query, mode: "insensitive" as const };
+  return { OR: [{ buyerNameSnapshot: contains }, { buyerEmailSnapshot: contains }, ...(/^[a-z0-9]{6}$/i.test(query) ? [{ id: { endsWith: query.toLowerCase() } }] : [])] };
+}
+
+// An unreadable cursor starts again from the first page.
+function after(cursor: string | undefined, ascending: boolean): Prisma.CommerceOrderWhereInput | null {
+  if (!cursor) return null;
+  try {
+    const at = decodeTimestampCursor("createdAt", cursor);
+    const beyond = ascending ? { gt: at.createdAt } : { lt: at.createdAt };
+    return { OR: [{ createdAt: beyond }, { createdAt: at.createdAt, id: ascending ? { gt: at.id } : { lt: at.id } }] };
+  } catch {
+    return null;
+  }
+}
+
+const personName = (person: { firstName: string | null; lastName: string | null; email: string } | null) =>
+  person ? [person.firstName, person.lastName].filter(Boolean).join(" ") || person.email : "Someone";
+
+// One stage, oldest first while there is work to do (the order they came in)
+// and newest first once collected or under review, with every stage's count.
+export async function listPickups(organisationId: string, { stage, query = "", cursor }: { stage: PickupStage; query?: string; cursor?: string }) {
+  const base = { organisationId, kind: "merchandise" as const };
+  const ascending = stage === "prepare" || stage === "ready";
+  const direction = ascending ? ("asc" as const) : ("desc" as const);
+  const where = [base, stageWhere(stage), search(query), after(cursor, ascending)].filter((part): part is Prisma.CommerceOrderWhereInput => part !== null);
+  const [rows, ...counts] = await Promise.all([
+    prisma.commerceOrder.findMany({
+      where: { AND: where },
+      orderBy: [{ createdAt: direction }, { id: direction }],
+      take: pageSize + 1,
+      select: {
+        id: true, version: true, createdAt: true, paymentKind: true, buyerNameSnapshot: true, buyerEmailSnapshot: true, guestIdentityId: true, reviewReason: true,
+        lines: { orderBy: { lineNumber: "asc" }, select: { quantity: true, nameSnapshot: true, variantSnapshot: true } },
+        lifecycleEvents: {
+          where: { type: { in: [...stepEvents] } },
+          orderBy: { sequence: "desc" },
+          take: 1,
+          select: { createdAt: true, actor: { select: { firstName: true, lastName: true, email: true } } }
+        }
+      }
+    }),
+    ...pickupStages.map((name) => prisma.commerceOrder.count({ where: { ...base, ...stageWhere(name) } }))
+  ]);
+  const page = rows.slice(0, pageSize);
+  const last = page.at(-1);
+  return {
+    orders: page.map(({ lifecycleEvents: [step], ...order }) => ({
+      ...order,
+      reference: orderReference(order.id),
+      buyer: order.buyerNameSnapshot || order.buyerEmailSnapshot,
+      guest: order.guestIdentityId !== null,
+      step: step ? { at: step.createdAt, by: personName(step.actor) } : null
+    })),
+    counts: Object.fromEntries(pickupStages.map((name, index) => [name, counts[index]])) as Record<PickupStage, number>,
+    nextCursor: rows.length > pageSize && last ? encodeTimestampCursor("createdAt", last) : null
+  };
+}
+export type PickupRow = Awaited<ReturnType<typeof listPickups>>["orders"][number];
+
+export const pickupStepSchema = z.object({ step: z.enum(["ready", "collected"]), expectedVersion: z.number().int().min(1).max(2147483646) }).strict();
+
+// Mark ready (pending to ready) or Mark collected (ready to collected). A page
+// opened before someone else's step is a 409 naming who did it and when;
+// nothing changes and nobody is emailed twice.
+export async function markPickup(actor: AccountActor, organisationId: string, orderId: string, input: z.infer<typeof pickupStepSchema>) {
+  const { step, expectedVersion } = pickupStepSchema.parse(input);
+  return prisma.$transaction(async (tx) => {
+    const organisation = await lockOrganisationActor(tx, actor, organisationId, "merchandise:fulfil");
+    await lockCommerceOrder(tx, orderId);
+    const order = await tx.commerceOrder.findFirst({
+      where: { id: orderId, organisationId, kind: "merchandise" },
+      select: { id: true, version: true, status: true, pickupStatus: true, requiresCompensationReview: true, refundStatus: true, cancelledAt: true, buyerEmailSnapshot: true, sellerName: true }
+    });
+    if (!order) throw new MerchandiseCatalogueError(404, "Order not found");
+    const reference = orderReference(order.id);
+    const zone = { timeZone: organisation.timeZone };
+    if (order.status !== "paid" || order.requiresCompensationReview || order.refundStatus || order.cancelledAt || !order.pickupStatus) {
+      throw new MerchandiseCatalogueError(409, `Order ${reference} can't be handed over: ${order.requiresCompensationReview ? "its payment is under review" : "it was refunded, cancelled or never paid"}. Nothing changed.`);
+    }
+    if (order.version !== expectedVersion || order.pickupStatus !== (step === "ready" ? "pending" : "ready")) {
+      const last = await tx.commerceLifecycleEvent.findFirst({
+        where: { commerceOrderId: order.id, type: { in: [...stepEvents] } },
+        orderBy: { sequence: "desc" },
+        select: { type: true, createdAt: true, actor: { select: { firstName: true, lastName: true, email: true } } }
+      });
+      throw new MerchandiseCatalogueError(
+        409,
+        last
+          ? `${personName(last.actor)} marked order ${reference} ${last.type === "pickup_ready" ? "ready to collect" : "collected"} at ${formatDateTime(last.createdAt, zone)}. Nothing changed.`
+          : `Order ${reference} changed since you opened this page. Reload it and check again.`
+      );
+    }
+
+    const done = await tx.commerceOrder.update({ where: { id: order.id }, data: { pickupStatus: step, version: { increment: 1 } }, select: { version: true, updatedAt: true } });
+    await appendCommerceLifecycleEvent(tx, { commerceOrderId: order.id, type: step === "ready" ? "pickup_ready" : "pickup_collected", source: "staff_action", actorUserId: actor.id });
+    await tx.auditLog.create({
+      data: { organisationId, actorUserId: actor.id, action: `merchandise_order.${step}`, targetType: "CommerceOrder", targetId: order.id, metadata: { version: done.version } }
+    });
+    await enqueueNotification(tx, {
+      eventKey: `merchandise-${step}/${order.id}`,
+      recipient: order.buyerEmailSnapshot,
+      template: "business_notice",
+      organisationId,
+      payload: {
+        message:
+          step === "ready"
+            ? `Your order ${reference} from ${order.sellerName} is ready to collect.${organisation.pickupPolicy ? ` Collect it from: ${organisation.pickupPolicy}` : ""} Show order ${reference} when you collect.`
+            : `You collected order ${reference} from ${order.sellerName} on ${formatDateTime(done.updatedAt, zone)}.`
+      }
+    });
+    const staff = await tx.user.findUniqueOrThrow({ where: { id: actor.id }, select: { firstName: true, lastName: true, email: true } });
+    return { id: order.id, reference, pickupStatus: step, version: done.version, at: done.updatedAt, by: personName(staff) };
+  });
+}
+
+// The page's result after a step (?done=): read back from the order, never from the browser.
+export async function pickupResult(organisationId: string, orderId: string) {
+  const order = await prisma.commerceOrder.findFirst({
+    where: { id: orderId, organisationId, kind: "merchandise", pickupStatus: { in: ["ready", "collected"] } },
+    select: {
+      id: true, pickupStatus: true, buyerNameSnapshot: true, buyerEmailSnapshot: true,
+      lifecycleEvents: { where: { type: { in: [...stepEvents] } }, orderBy: { sequence: "desc" }, take: 1, select: { createdAt: true, actor: { select: { firstName: true, lastName: true, email: true } } } }
+    }
+  });
+  const step = order?.lifecycleEvents[0];
+  return order && step ? { reference: orderReference(order.id), collected: order.pickupStatus === "collected", buyer: order.buyerNameSnapshot || order.buyerEmailSnapshot, at: step.createdAt, by: personName(step.actor) } : null;
+}

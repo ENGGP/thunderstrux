@@ -10,11 +10,19 @@ import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { getOwnCommerceOrder } from "@/lib/commerce/orders";
-import { formatPrice } from "@/lib/format";
+import { formatDateTime, formatPrice } from "@/lib/format";
 import { canOpenGuestCommerceOrder, guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { orderReference } from "@/lib/payments/order-refunds";
 
 export const dynamic = "force-dynamic";
+const pickupTitle = { pending: "Order confirmed", ready: "Ready to collect", collected: "Collected" } as const;
+const pickupBadge = { pending: "preparing", ready: "ready-to-collect", collected: "collected" } as const;
+const pickupSteps = [
+  ["pending", "Preparing", "The society is getting your items ready. We'll email you when it's ready to collect."],
+  ["ready", "Ready to collect", "Collect it in person with your order reference."],
+  ["collected", "Collected", ""]
+] as const;
+
 export const metadata: Metadata = { title: "Your merchandise order", robots: { index: false, follow: false } };
 
 // Where a merchandise checkout lands (T27b, design round B2): Stripe's success
@@ -42,7 +50,8 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
   const paid = order.status === "paid";
   const count = order.lines.reduce((total, line) => total + line.quantity, 0);
   const what = `${count} ${count === 1 ? "item" : "items"} from ${order.sellerName}`;
-  const title = closed ? "No payment taken" : order.requiresCompensationReview ? "We're checking your payment" : waiting ? "Confirming your payment" : paid ? "Order confirmed" : "Your order";
+  const collectedAt = order.lifecycleEvents.findLast((event) => event.type === "pickup_collected")?.createdAt;
+  const title = closed ? "No payment taken" : order.requiresCompensationReview ? "We're checking your payment" : waiting ? "Confirming your payment" : paid ? pickupTitle[order.pickupStatus ?? "pending"] : "Your order";
   const steps = [...(guest ? ["Your email"] : []), "Review", ...(free ? [] : ["Pay with Stripe"]), "Pickup"];
 
   return (
@@ -79,7 +88,26 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
                 <dd>
                   <StatusBadge status={free ? "free" : "paid"} />
                 </dd>
+                <dt className="text-ink-soft">Pickup</dt>
+                <dd>
+                  <StatusBadge status={pickupBadge[order.pickupStatus ?? "pending"]} />
+                </dd>
               </dl>
+              <ol aria-label="Pickup progress" className="grid gap-2.5 text-sm">
+                {pickupSteps.map(([key, label, hint], index) => {
+                  const at = pickupSteps.findIndex(([step]) => step === (order.pickupStatus ?? "pending"));
+                  return (
+                    <li className="flex items-start gap-2.5" key={key}>
+                      <span aria-hidden="true" className={`mt-1 size-3 shrink-0 rounded-full border-2 ${index < at || (index === at && key === "collected") ? "border-brand bg-brand" : index === at ? "border-brand" : "border-line"}`} />
+                      <span className={index === at ? "text-ink" : "text-ink-soft"}>
+                        {index === at ? <strong>{label}</strong> : label}
+                        {index === at && hint ? <span className="block text-ink-soft">{hint}</span> : null}
+                        {index === at && key === "collected" && collectedAt ? <span className="block text-ink-soft">On {formatDateTime(collectedAt, { timeZone: order.organisation.timeZone })}</span> : null}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
               <ul className="grid gap-1.5 border-t border-line pt-3 text-[15px] text-ink">
                 {order.lines.map((line) => (
                   <li className="flex justify-between gap-3" key={line.lineNumber}>
@@ -94,13 +122,13 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
               <p className="font-semibold text-ink">
                 {free ? "Free" : `Paid ${formatPrice(order.totalAmount)}`} · Order {reference}
               </p>
-              <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-[15px]">
+              {order.pickupStatus === "collected" ? null : <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-[15px]">
                 <strong>Collect it in person</strong>
                 {order.organisation.pickupPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{order.organisation.pickupPolicy}</span> : null}
                 <span className="text-ink-soft">
                   Show order <strong className="text-ink">{reference}</strong> when you collect. We&apos;ve emailed your receipt.
                 </span>
-              </div>
+              </div>}
               {order.sellerSupportEmail ? (
                 <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
                   Questions?{" "}

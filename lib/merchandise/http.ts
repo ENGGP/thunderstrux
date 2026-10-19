@@ -24,22 +24,24 @@ const rules = [
 const noStore = { "Cache-Control": "private, no-store" };
 
 // POST/PATCH /api/orgs/[orgSlug]/merchandise/...: trusted origin, live
-// merchandise:manage (rechecked under lock by the service), a strict body.
+// merchandise:manage (or merchandise:fulfil for pickups, T28a; rechecked
+// under lock by the service), a strict body.
 export async function productMutation<T>(
   request: Request,
   orgSlug: string,
   schema: ZodType<T>,
   operation: string,
   run: (actor: AccountActor, organisationId: string, input: T) => Promise<unknown>,
-  status = 200
+  status = 200,
+  { permission = "merchandise:manage", key = "product" }: { permission?: "merchandise:manage" | "merchandise:fulfil"; key?: "product" | "pickup" } = {}
 ) {
   const denied = enforceTrustedMutationRequest(request);
   if (denied) return denied;
   try {
-    const { actor, organisationId } = await organisationActor(orgSlug, "merchandise:manage");
+    const { actor, organisationId } = await organisationActor(orgSlug, permission);
     const body = await validateJson(request, schema);
     if (!body.success) return validationError(body.details);
-    return NextResponse.json({ product: await run(actor, organisationId, body.data) }, { status, headers: noStore });
+    return NextResponse.json({ [key]: await run(actor, organisationId, body.data) }, { status, headers: noStore });
   } catch (error) {
     return mapRouteError(error, { operation: `merchandise.${operation}`, request, rules });
   }

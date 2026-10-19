@@ -26,6 +26,8 @@ const stageWhere = (stage: PickupStage): Prisma.CommerceOrderWhereInput =>
   stage === "review" ? { requiresCompensationReview: true } : { ...handOver, pickupStatus: stageStatus[stage] };
 const stepEvents = ["pickup_ready", "pickup_collected"] as const;
 
+export const pickupSettings = (organisationId: string) => prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { timeZone: true, pickupPolicy: true } });
+
 export const toPrepareCount = (organisationId: string) => prisma.commerceOrder.count({ where: { organisationId, kind: "merchandise", ...stageWhere("prepare") } });
 
 function search(query: string): Prisma.CommerceOrderWhereInput | null {

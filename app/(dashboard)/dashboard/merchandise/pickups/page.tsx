@@ -13,9 +13,8 @@ import { Notice } from "@/components/ui/notice";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { prisma } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
-import { listPickups, pickupResult, pickupStages, type PickupRow, type PickupStage } from "@/lib/merchandise/pickups";
+import { listPickups, pickupResult, pickupSettings, pickupStages, type PickupRow, type PickupStage } from "@/lib/merchandise/pickups";
 import { hasOrganisationPermission } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Pickups" };
@@ -46,7 +45,7 @@ export default async function PickupsPage({ searchParams }: { searchParams: Prom
   const query = params.q?.trim().slice(0, 100) ?? "";
   const cursor = params.cursor?.slice(0, 500) || undefined;
   const [{ timeZone, pickupPolicy }, done] = await Promise.all([
-    prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id }, select: { timeZone: true, pickupPolicy: true } }),
+    pickupSettings(organisation.id),
     params.done ? pickupResult(organisation.id, params.done.slice(0, 40)) : null
   ]);
 

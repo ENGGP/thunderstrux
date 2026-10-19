@@ -157,7 +157,14 @@ export async function CommerceOrders({
           )}
           columns={[
             { header: "Buyer", cell: (order) => <>{buyer(order)}<p className="text-sm text-ink-soft">{reference(order)}</p></> },
-            { header: merchandise ? "Items" : "Plan", cell: (order) => <>{items(order)}{merchandise ? null : <p className="text-sm text-ink-soft">{term(order)}</p>}</> },
+            {
+              header: merchandise ? "Items" : "Plan",
+              cell: (order) => {
+                const count = order.lines.reduce((total, line) => total + line.quantity, 0);
+                const sub = merchandise ? (order.lines.length > 1 ? `${count} items` : "") : term(order);
+                return <>{items(order)}{sub ? <p className="text-sm text-ink-soft">{sub}</p> : null}</>;
+              }
+            },
             { header: "Total", align: "right", cell: (order) => formatPrice(order.totalAmount) },
             { header: "Payment", cell: payment },
             ...(merchandise ? [{ header: "Pickup", cell: pickup }] : []),

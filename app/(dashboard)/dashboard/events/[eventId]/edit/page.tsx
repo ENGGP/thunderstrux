@@ -50,7 +50,8 @@ export default async function EditEventPage({
       {event.status === "published" ? (
         <Notice>
           This event is published. Changes show on the public page as soon as
-          you save. Buyers are not emailed about them.
+          you save. Ticket holders get an email only if you change the time or
+          place.
         </Notice>
       ) : null}
       <CreateEventForm

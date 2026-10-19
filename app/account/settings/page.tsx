@@ -9,6 +9,7 @@ import { ChangePasswordForm } from "@/components/account/change-password-form";
 import { CloseAccountForm } from "@/components/account/close-account-form";
 import { readAccountClosureEligibility } from "@/lib/auth/account-closure";
 import { ChangeEmailForm } from "@/components/account/change-email-form";
+import { NotificationPreferencesForm } from "@/components/account/notification-preferences-form";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -53,6 +54,7 @@ export default async function AccountSettingsPage() {
     ...(isMember ? [{ id: "profile", label: "Profile" }] : []),
     { id: "security", label: "Password and security" },
     { id: "email", label: "Email address" },
+    ...(isMember ? [{ id: "notifications", label: "Notifications" }] : []),
     { id: "close", label: "Close account" }
   ];
   const heading = "text-xl font-semibold text-ink";
@@ -164,6 +166,20 @@ export default async function AccountSettingsPage() {
           <ChangeEmailForm mfaRequired={mfaRequired} pending={account.pendingEmailChange} />
         </div>
       </Card>
+
+      {isMember && (
+        <Card>
+          <div className="grid scroll-mt-24 gap-4" id="notifications">
+            <div className="grid gap-0.5">
+              <h2 className={heading}>Notifications</h2>
+              <p className="text-sm text-ink-soft">
+                Receipts, refunds, changes to events you have tickets for and security emails always arrive. This is the one you can turn off.
+              </p>
+            </div>
+            <NotificationPreferencesForm renewalReminders={account.user.renewalReminders} />
+          </div>
+        </Card>
+      )}
 
       <div className="grid scroll-mt-24 gap-4 rounded-card border border-danger-border bg-surface p-5 sm:p-6" id="close">
         <h2 className={heading}>Close account</h2>

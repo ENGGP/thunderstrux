@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { isTransactionConflict } from "@/lib/transaction-conflict";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
 import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
+import { queueTicketReviewNotice } from "@/lib/payments/compensation-notices";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import {
@@ -510,6 +511,7 @@ export async function reconcileCompletedCheckoutSession(
           eventId: localOrder.eventId,
           reason
         };
+        await queueTicketReviewNotice(tx, localOrder.id, localOrder.compensationRefundModeSnapshot === "automatic_full");
       }
 
       if (releaseActiveReservation) {

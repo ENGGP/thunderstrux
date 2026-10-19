@@ -26,6 +26,9 @@ describe("general notification outbox", () => {
   const input = () => ({ eventKey: "token/synthetic", recipient: "Buyer@Example.com", template: "verify_account" as const,
     payload: { message: "Verify <script>alert(1)</script>", link: "http://localhost:3000/verify-email#token=synthetic-token" } });
   async function queue() { return prisma.$transaction(tx => enqueueNotification(tx, input())); }
+  // Every move to failed alerts operators with the job and reason, never the recipient (T30).
+  const exhausted = (spy: { mock: { calls: unknown[][] } }, reason: string) => spy.mock.calls.map(([line]) => String(line))
+    .filter((line) => line.includes('"event":"notification_outbox_retry_exhausted"') && line.includes(`"reason":"${reason}"`) && !line.includes("buyer@example.com")).length;
   function provider(status = 200) {
     const fetch = vi.fn(async () => new Response(JSON.stringify(status === 200 ? { id: "synthetic-message" } : { token: "DO_NOT_STORE", email: "private@example.com" }), { status }));
     vi.stubGlobal("fetch", fetch); return fetch;
@@ -42,6 +45,11 @@ describe("general notification outbox", () => {
     expect(job.encryptedPayload).not.toContain("synthetic-token");
     expect(JSON.stringify(decryptNotification(job.encryptedPayload, job.id))).toContain("synthetic-token");
     expect(() => decryptNotification(job.encryptedPayload, "different-job")).toThrow();
+  });
+  test("a society notice may name its own subject; other templates and line breaks may not", () => {
+    expect(renderNotification("business_notice", { message: "Moved", subject: "Change to Trivia night" }).subject).toBe("Change to Trivia night");
+    expect(renderNotification("verify_account", { message: "Verify", subject: "Spoofed" }).subject).toBe("Verify your Thunderstrux email");
+    expect(() => renderNotification("business_notice", { message: "Moved", subject: "Change\nBcc: someone" })).toThrow();
   });
   test("templates escape injection and reject foreign/credential links", () => {
     expect(renderNotification("verify_account", input().payload).html).not.toContain("<script>");
@@ -86,6 +94,7 @@ describe("general notification outbox", () => {
     expect(calls[0][1].body).toBe(calls[1][1].body);
   });
   test("bounded failures do not store provider bodies or claim exhausted jobs", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await queue(); provider(500);
     for (let attempt = 0; attempt < 5; attempt++) {
       await prisma.notificationOutbox.updateMany({ data: { nextAttemptAt: new Date(0) } });
@@ -95,12 +104,15 @@ describe("general notification outbox", () => {
     expect(job).toMatchObject({ status: "failed", attempts: 5, lastError: "provider_unavailable" });
     expect(JSON.stringify(job)).not.toContain("DO_NOT_STORE");
     expect(await claimNotificationJobs()).toHaveLength(0);
+    expect(exhausted(error, "provider_unavailable")).toBe(1);
   });
   test("expired jobs never reach provider and uncertain old sends require review", async () => {
     await prisma.$transaction(tx => enqueueNotification(tx, { ...input(), expiresAt: new Date(0) }));
     const fetch = provider(); expect((await processNotificationBatch()).cancelled).toBe(1); expect(fetch).not.toHaveBeenCalled();
     await prisma.notificationOutbox.updateMany({ data: { status: "pending", expiresAt: null, firstAttemptAt: new Date(Date.now() - 24 * 3600000) } });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect((await processNotificationBatch()).failed).toBe(1); expect(fetch).not.toHaveBeenCalled();
+    expect(exhausted(error, "provider_review_required")).toBe(1);
   });
   test("business view conceals security and foreign jobs; requeue is scoped and audited", async () => {
     const owner = await createOrganisationAccount(); const foreign = await createOrganisationAccount();
@@ -133,6 +145,8 @@ describe("general notification outbox", () => {
   test("payload tampering fails before provider I/O", async () => {
     await queue(); const fetch = provider();
     await prisma.notificationOutbox.updateMany({ data: { encryptedPayload: "invalid" } });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect((await processNotificationBatch()).failed).toBe(1); expect(fetch).not.toHaveBeenCalled();
+    expect(exhausted(error, "invalid_payload")).toBe(1);
   });
 });

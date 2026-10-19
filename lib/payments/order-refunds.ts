@@ -5,7 +5,7 @@ import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, orderReference } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { isDefiniteProviderFailure } from "@/lib/payments/checkout-attempts";
@@ -46,8 +46,7 @@ class RefundVerificationError extends Error {
   constructor(readonly code: string) { super(code); }
 }
 
-// The short order reference staff type to confirm, as shown in the dashboard.
-export const orderReference = (orderId: string) => orderId.slice(-6).toUpperCase();
+export { orderReference };
 
 type Actor = { id: string };
 type RefundSource = "staff_action" | "refund_worker" | "stripe_webhook";

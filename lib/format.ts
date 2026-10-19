@@ -1,5 +1,8 @@
 export const defaultTimeZone = "Australia/Brisbane";
 
+// The short order reference buyers and staff quote, as shown in the dashboard.
+export const orderReference = (orderId: string) => orderId.slice(-6).toUpperCase();
+
 export function formatMoney(cents: number) {
   return new Intl.NumberFormat("en-AU", {
     style: "currency",

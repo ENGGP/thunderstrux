@@ -80,6 +80,12 @@ export async function claimNotificationJobs(now = new Date(), limit = 25): Promi
   `;
 }
 
+// Every move to failed alerts operators (T30): the job, its template and why,
+// never the recipient or message. Society jobs then show on Email delivery.
+function exhaustedAlert(job: { id: string; template: string; privacy: string }, reason: string) {
+  emitOperationalAlert("notification_outbox_retry_exhausted", { jobId: job.id, template: job.template, privacy: job.privacy, reason });
+}
+
 export async function processNotificationClaim(claim: Claim, now = new Date()): Promise<NotificationOutcome> {
   const fence = { id: claim.id, status: "processing", processingToken: claim.processingToken };
   const job = await prisma.notificationOutbox.findFirst({ where: fence });
@@ -129,13 +135,15 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
     return "cancelled";
   }
   if (job.attempts >= 5 || (job.firstAttemptAt && now.getTime() - job.firstAttemptAt.getTime() >= safeRetryWindowMs)) {
-    await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "failed", lastError: "provider_review_required", processingToken: null } });
+    const updated = await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "failed", lastError: "provider_review_required", processingToken: null } });
+    if (updated.count) exhaustedAlert(job, "provider_review_required");
     return "failed";
   }
   let email: z.infer<typeof renderedNotificationSchema>;
   try { email = renderedNotificationSchema.parse(decryptNotification(job.encryptedPayload, job.id)); }
   catch {
-    await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "failed", lastError: "invalid_payload", processingToken: null } });
+    const updated = await prisma.notificationOutbox.updateMany({ where: fence, data: { status: "failed", lastError: "invalid_payload", processingToken: null } });
+    if (updated.count) exhaustedAlert(job, "invalid_payload");
     return "failed";
   }
   const started = await prisma.notificationOutbox.updateMany({ where: fence, data: {
@@ -152,7 +160,7 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
       nextAttemptAt: new Date(now.getTime() + retrySeconds[Math.min(job.attempts, 4)] * 1000),
       processingToken: null, processingStartedAt: null
     } });
-    if (exhausted && updated.count) emitOperationalAlert("notification_outbox_retry_exhausted", { jobId: job.id });
+    if (exhausted && updated.count) exhaustedAlert(job, "provider_unavailable");
     return updated.count ? (exhausted ? "failed" : "retried") : "skipped";
   }
   // A failed local finalization leaves a reclaimable lease; retry the immutable

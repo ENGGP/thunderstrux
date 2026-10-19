@@ -1112,6 +1112,7 @@ GET `/api/notifications?cursor=...` returns a private 25-job page of failed busi
 | POST `/api/auth/password/confirm` | Trusted origin, required IP/token-digest limits; explicit token/newPassword; 200 `{reset:true,callbackUrl}` or generic invalid/expired 400; no login. |
 | GET `/api/me/account` | Active matching-version session; private no-store selected profile/MFA/security-events DTO; 401 for stale sessions. |
 | PATCH `/api/me/profile` | Existing member contract plus locked session-version recheck; profile fields only. |
+| PATCH `/api/me/notification-preferences` | Trusted origin, signed-in matching-version session; strict `{renewalReminders: boolean}` (other keys are 400); 200 `{preferences:{renewalReminders}}`. Optional mail only (T30). |
 | POST `/api/me/account/password` | Trusted origin/session CSRF, live matching-version session, required five/hour account limit, current password and enrolled MFA; 200 `{changed:true,signInRequired:true}`. |
 
 Reset/signup/verification anonymous exceptions are exact paths and never authorize protected mutations. New password validation rejects more than 72 UTF-8 bytes. Security ledgers/notifications are private to the account and are never included in tenant notification or audit listings.

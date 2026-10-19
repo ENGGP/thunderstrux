@@ -7,7 +7,9 @@ export const notificationTemplateSchema = z.enum([
 export type NotificationTemplate = z.infer<typeof notificationTemplateSchema>;
 export const notificationPayloadSchema = z.object({
   message: z.string().min(1).max(2000),
-  link: z.string().url().max(2000).optional()
+  link: z.string().url().max(2000).optional(),
+  // A society notice can name its own subject (T30), such as the event that changed.
+  subject: z.string().trim().min(1).max(200).regex(/^[^\r\n]*$/).optional()
 }).strict();
 export const renderedNotificationSchema = z.object({
   subject: z.string().max(200), text: z.string().max(10000), html: z.string().max(15000),
@@ -39,7 +41,7 @@ export function renderNotification(template: NotificationTemplate, input: unknow
     }
   }
   return {
-    subject: subjects[template],
+    subject: (template === "business_notice" && payload.subject) || subjects[template],
     text: `${payload.message}${payload.link ? `\n\n${payload.link}` : ""}`,
     html: `<p>${escapeEmailHtml(payload.message)}</p>${payload.link ? `<p><a href="${escapeEmailHtml(payload.link)}">Continue</a></p>` : ""}`
   };

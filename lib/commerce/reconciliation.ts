@@ -5,6 +5,7 @@ import { failPendingCommerceOrder, lockCommerceOrderForFamily } from "@/lib/comm
 import { commerceFamilies, type CommerceOrderForHooks } from "@/lib/commerce/families";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { queueCommerceReviewNotice } from "@/lib/payments/compensation-notices";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { getStripe } from "@/lib/stripe";
 
@@ -79,6 +80,7 @@ async function requireCompensation(
   await appendCommerceLifecycleEvent(tx, {
     commerceOrderId: order.id, type: "compensation_required", source: "stripe_webhook", stripeEventId: facts.stripeEventId, reason, fromStatus: facts.fromStatus, toStatus: "failed"
   });
+  await queueCommerceReviewNotice(tx, order.id);
 }
 
 export async function reconcileCommerceCheckoutSession(

@@ -150,7 +150,7 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 `/dashboard/events/[eventId]` (Summary), `/dashboard/events/[eventId]/tickets` (Attendees), `/dashboard/events/[eventId]/edit` (Edit) and `/dashboard/orders?eventId=` (Orders)
 
 - Share `EventWorkspaceHeader`: dates in the society time zone, the sales close time, and Published with a selling badge (Sales open, Sold out, Sales closed). Summary shows tickets sold, tickets left, capacity when set and, with `orders:read`, revenue; the ticket table (price, sold, held, left); revenue by day; and a draft's readiness checklist (`components/events/readiness-checklist.tsx`) or a published event's selling status. More offers Close sales or Reopen sales.
-- Edit is titled `Edit event` with the event as a breadcrumb; a published event shows a notice that changes go live on save and buyers are not emailed. `/dashboard/events/new` has its own `New event` header.
+- Edit is titled `Edit event` with the event as a breadcrumb; a published event shows a notice that changes go live on save and ticket holders are emailed only about a new time or place (T30). `/dashboard/events/new` has its own `New event` header.
 - The event form (T11b) has five cards: Details with the optional 16:9 event image, Schedule (times in the society's zone, named in the card; sales close shows the start until changed), Tickets (a `$` price, quantity, sold and held per type), Access (Public or Link only, optional capacity) and If tickets cannot be issued. A sticky save bar says when there are unsaved changes; leaving asks first. A draft's Edit page shows the readiness checklist beside the form. A version conflict keeps the edits and offers a reload.
 
 `/dashboard/orders`

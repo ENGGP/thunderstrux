@@ -272,6 +272,8 @@ describe("compensation refunds", () => {
     await expect(prisma.compensationRefundJob.findUniqueOrThrow({
       where: { id: fixture.job.id }
     })).resolves.toMatchObject({ state: "refunded" });
+    // Stripe's confirmation, delivered twice, emails the buyer once (T30).
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: `compensation-refund/${fixture.job.id}` } })).toBe(1);
   });
 
   test("polls a pending refund after a missed webhook without creating another refund", async () => {

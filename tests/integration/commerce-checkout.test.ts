@@ -183,6 +183,8 @@ describe("commerce checkout", () => {
     expect(family.fulfilled).toEqual([]);
     expect(family.released).toHaveLength(4);
     expect(alerts(error, "paid_but_unfulfilled_compensation_required")).toBe(4);
+    // Each buyer hears once that the payment is in review (T30).
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: "payment-review/" } } })).toBe(4);
   });
 
   test("a free total completes in the checkout itself, with no Stripe", async () => {

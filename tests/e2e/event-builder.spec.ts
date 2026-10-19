@@ -93,5 +93,6 @@ test("moving a ticketed event emails the holder, and a member turns renewal remi
   await reminders.uncheck();
   await page.getByRole("button", { name: "Save preferences", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Preferences saved." })).toBeVisible();
+  await page.locator("#notifications").screenshot({ path: "test-results/account-notifications.png" });
   expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).renewalReminders).toBe(false);
 });

@@ -185,13 +185,17 @@ export async function getOrganisationCommerceOrder(organisationId: string, comme
 }
 
 // The member's commerce orders, newest first, for the unified Purchases (T29).
-export async function getOwnCommerceOrders(userId: string, { limit, cursor, direction }: ParsedPaginationOptions) {
+export async function getOwnCommerceOrders(userId: string, { limit, cursor, direction }: ParsedPaginationOptions, kind?: CommerceKind) {
   const decoded = cursor ? decodeTimestampCursor("createdAt", cursor) : null;
   const orders = await prisma.commerceOrder.findMany({
-    where: { userId, ...(decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}) },
+    where: { userId, ...(kind ? { kind } : {}), ...(decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}) },
     orderBy: orderByForDirection("createdAt", direction, "desc"),
     take: limit + 1,
-    select: summarySelect
+    select: {
+      ...summarySelect,
+      organisation: { select: { name: true, timeZone: true } },
+      lines: { orderBy: { lineNumber: "asc" }, select: { nameSnapshot: true, quantity: true, termStartsAt: true, termEndsAt: true } }
+    }
   });
   const page = pageInfoForPage({ items: orders, limit, direction, cursor, timestampField: "createdAt" });
   return { items: page.items.map((order) => ({ family: order.kind, ...order })), pageInfo: page.pageInfo };

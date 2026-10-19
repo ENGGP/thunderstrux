@@ -6,12 +6,13 @@ import { PageHeader } from "@/components/layout/page-header";
 import { MerchandiseMoneyActions, RecordReturn } from "@/components/merchandise/order-actions";
 import { PickupAction } from "@/components/merchandise/pickup-action";
 import { Notice } from "@/components/ui/notice";
-import { StatusBadge, type Status } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
 import { staffMerchandiseOrder, type StaffMerchandiseOrder } from "@/lib/merchandise/after-sale";
 import { pickupSettings } from "@/lib/merchandise/pickups";
 import { hasOrganisationPermission } from "@/lib/permissions";
+import { ticketOrderProjection } from "@/lib/purchases/projection";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 
 export const metadata: Metadata = { title: "Merchandise order" };
@@ -35,15 +36,6 @@ const happened: Partial<Record<string, string>> = {
 const pickupBadge = { pending: "preparing", ready: "ready-to-collect", collected: "collected" } as const;
 const name = (person: { firstName: string | null; lastName: string | null; email: string } | null) =>
   person ? [person.firstName, person.lastName].filter(Boolean).join(" ") || person.email : null;
-
-function paymentBadge(order: StaffMerchandiseOrder): Status {
-  if (order.requiresCompensationReview) return "review";
-  if (order.cancelledAt) return "cancelled";
-  if (order.refundStatus === "refunded") return "refunded";
-  if (order.refundStatus === "processing") return "refund-processing";
-  if (order.status === "pending") return "processing";
-  return order.status === "paid" ? (order.paymentKind === "free" ? "free" : "paid") : order.status === "expired" ? "expired" : "failed";
-}
 
 function Card({ title, id, action, children }: { title: string; id: string; action?: ReactNode; children: ReactNode }) {
   return (
@@ -84,7 +76,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
         <PageHeader
           badge={
             <span className="flex flex-wrap gap-2">
-              <StatusBadge status={paymentBadge(order)} />
+              <StatusBadge status={ticketOrderProjection(order)} />
               {order.pickupStatus && !order.refundStatus && !order.cancelledAt ? <StatusBadge status={pickupBadge[order.pickupStatus]} /> : order.pickupStatus === "collected" ? <StatusBadge status="collected" /> : null}
             </span>
           }

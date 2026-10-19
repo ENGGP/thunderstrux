@@ -5,7 +5,8 @@ export const PURCHASE_SNAPSHOT_VERSION = 1;
 
 export type TicketOrderProjection = "processing" | "paid" | "free" | "review" | "failed" | "expired" | "refunded" | "refund-processing" | "disputed" | "cancelled";
 
-// The one status shown for a ticket order. `paid` on a free order is a storage
+// The one status shown for a ticket order, and for a membership or merchandise
+// order (T29a), which carries the same facts. `paid` on a free order is a storage
 // compatibility detail, so the kind decides whether it reads Paid or Free, and a
 // charged order that could not be fulfilled reads Payment review, not Failed.
 export function ticketOrderProjection(order: {

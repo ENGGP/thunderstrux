@@ -160,3 +160,13 @@ export async function getWalletTickets(userId: string, view: WalletView, now = n
     counts: Object.fromEntries(walletViews.map((item, index) => [item, counts[index]])) as Record<WalletView, number>
   };
 }
+
+// How many purchases of each family the member has, for the Purchases tabs (T29a).
+export async function ownPurchaseCounts(userId: string) {
+  const [tickets, commerce] = await Promise.all([
+    prisma.order.count({ where: { userId } }),
+    prisma.commerceOrder.groupBy({ by: ["kind"], where: { userId }, _count: { _all: true } })
+  ]);
+  const of = (kind: string) => commerce.find((row) => row.kind === kind)?._count._all ?? 0;
+  return { tickets, memberships: of("membership"), merchandise: of("merchandise") };
+}

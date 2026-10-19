@@ -28,20 +28,16 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { listDashboardEvents } from "@/lib/events/event-lifecycle";
 import { formatDate, formatDateTime, formatMoney, formatPrice } from "@/lib/format";
 import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
+import { analyticsAccess, societySales } from "@/lib/analytics/metrics";
+import { analyticsRange, localToday } from "@/lib/analytics/range";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
+import { readTimeZone } from "@/lib/organisations/profile";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import {
   hasOrganisationPermission,
   type OrganisationPermission,
   type OrganisationStaffRole
 } from "@/lib/permissions";
-
-function monthStart() {
-  const date = new Date();
-  date.setDate(1);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
 
 async function OrganisationDashboard(contexts: ContextChoices) {
   // The account and permission checks finish before anything streams.
@@ -88,26 +84,23 @@ async function OrganisationOverview({
 }) {
   const can = (permission: OrganisationPermission) =>
     hasOrganisationPermission(organisation.staffRole, permission);
-  const startOfMonth = monthStart();
   const canViewOrders = can("orders:read");
   const showSales = can("analytics:read");
-  const [{ profileComplete, chargesReady, recentOrders, monthlyPaidOrders }, upcoming] =
+  // This month in the society's zone, all families (T31); money needs both permissions.
+  const timeZone = await readTimeZone(organisation.id);
+  const today = localToday(timeZone);
+  const thisMonth = analyticsRange({ from: `${today.slice(0, 8)}01`, to: today }, timeZone);
+  const [{ profileComplete, chargesReady, recentOrders }, upcoming, sales] =
     await Promise.all([
-      getOrganisationOverview(organisation.id, {
-        includeOrders: canViewOrders,
-        paidSince: startOfMonth
-      }),
+      getOrganisationOverview(organisation.id, { includeOrders: canViewOrders }),
       listDashboardEvents(organisation.id, {
         view: "upcoming",
         publishedOnly: organisation.staffRole === "check_in_staff",
         includeSales: showSales,
         take: 5
-      })
+      }),
+      societySales(organisation.id, thisMonth, analyticsAccess(organisation.staffRole))
     ]);
-  const monthlyRevenue = monthlyPaidOrders.reduce(
-    (total, order) => total + order.totalAmount,
-    0
-  );
   const next = upcoming.events[0];
   // Only tasks the caller is allowed to act on. Amber only where sales are blocked.
   const tasks = [
@@ -177,14 +170,14 @@ async function OrganisationOverview({
             {next ? `Next: ${next.title}, ${formatDate(next.startTime)}` : "Nothing scheduled"}
           </p>
         </Card>
-        {canViewOrders ? (
+        {sales ? (
           <Card>
             <p className="text-sm font-semibold text-ink-soft">Revenue this month</p>
             <p className="mt-1.5 text-[28px] font-semibold leading-tight tabular-nums text-ink">
-              {formatMoney(monthlyRevenue)}
+              {formatMoney(sales.total)}
             </p>
             <p className="mt-1 text-sm text-ink-muted">
-              Paid orders since {formatDate(startOfMonth)}
+              Gross paid sales since {formatDate(`${thisMonth.from}T12:00:00Z`, timeZone)}: tickets, memberships and merchandise, before fees and refunds
             </p>
           </Card>
         ) : null}

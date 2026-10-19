@@ -145,6 +145,7 @@ function toDashboardEvent(
   return {
     id: event.id,
     title: event.title,
+    description: event.description,
     location: event.location,
     startTime: event.startTime,
     endTime: event.endTime,

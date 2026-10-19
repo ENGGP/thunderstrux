@@ -5,10 +5,10 @@ import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 // canonical Event owner and are skipped when the caller lacks orders:read.
 export async function getOrganisationOverview(
   organisationId: string,
-  { includeOrders, paidSince }: { includeOrders: boolean; paidSince: Date }
+  { includeOrders }: { includeOrders: boolean }
 ) {
   const ownedOrder = { event: { is: { organisationId } } };
-  const [setup, recentOrders, monthlyPaidOrders] = await Promise.all([
+  const [setup, recentOrders] = await Promise.all([
     prisma.organisation.findUnique({
       where: { id: organisationId },
       select: {
@@ -39,19 +39,12 @@ export async function getOrganisationOverview(
             event: { select: { title: true } }
           }
         })
-      : Promise.resolve([]),
-    includeOrders
-      ? prisma.order.findMany({
-          where: { ...ownedOrder, status: "paid", paymentKind: "stripe", paidAt: { gte: paidSince } },
-          select: { totalAmount: true, paidAt: true }
-        })
       : Promise.resolve([])
   ]);
 
   return {
     profileComplete: !!setup?.onboardingCompletedAt,
     chargesReady: !!setup && isOrganisationStripeReady(setup),
-    recentOrders,
-    monthlyPaidOrders
+    recentOrders
   };
 }

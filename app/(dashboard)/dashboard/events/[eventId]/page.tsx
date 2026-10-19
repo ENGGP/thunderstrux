@@ -6,14 +6,12 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import {
-  EventAnalyticsAccessError,
-  getOrganisationEventAnalytics,
-  getOrganisationEventRevenueSeries
-} from "@/lib/events/event-analytics";
+import { analyticsAccess, eventSalesDays, eventTicketTypeMetrics, ticketAttendance, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
+import { addDays, maxRangeDays } from "@/lib/analytics/range";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
 import { formatDateTime, formatMoney, formatPrice, shortMonths } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
+import { zoneCity } from "@/lib/zoned-time";
 
 type OrganiserEventPageProps = {
   params: Promise<{
@@ -34,41 +32,55 @@ export default async function OrganiserEventPage({
 }: OrganiserEventPageProps) {
   const { eventId } = await params;
   const organisation = await requireManagementPage("analytics:read", `/dashboard/events/${eventId}`);
-  const financial = hasOrganisationPermission(organisation.staffRole, "orders:read");
+  const access = analyticsAccess(organisation.staffRole);
+  const financial = access.financial;
   const canManage = hasOrganisationPermission(organisation.staffRole, "events:manage");
-  let analytics: Awaited<ReturnType<typeof getOrganisationEventAnalytics>>;
   let event: Awaited<ReturnType<typeof getDashboardEvent>>;
 
-  // Both reads decide the 404, so they finish before anything streams.
+  // The event read decides the 404 before anything streams; the metrics are
+  // scoped to the same society.
   try {
-    [analytics, event] = await Promise.all([
-      getOrganisationEventAnalytics(organisation.id, eventId),
-      getDashboardEvent(organisation.id, eventId)
-    ]);
+    event = await getDashboardEvent(organisation.id, eventId);
   } catch (error) {
-    if (error instanceof EventAnalyticsAccessError || error instanceof EventLifecycleNotFoundError) {
-      notFound();
-    }
-
+    if (error instanceof EventLifecycleNotFoundError) notFound();
     throw error;
   }
+  const [ticketTypes, attendance] = await Promise.all([
+    eventTicketTypeMetrics(organisation.id, event.id, access),
+    ticketAttendance(organisation.id, { eventId: event.id })
+  ]);
+  const total = (key: "issued" | "valid" | "free" | "remaining") => ticketTypes.reduce((sum, type) => sum + type[key], 0);
+  const money = (key: "gross" | "refunded" | "net") => ticketTypes.reduce((sum, type) => sum + (type[key] ?? 0), 0);
+  const issued = total("issued");
+  const free = total("free");
+  const noLongerValid = issued - total("valid");
+  const { checkedIn, checkInRate, valid } = attendance;
 
   const tiles = [
     {
       label: "Tickets sold",
-      value: analytics.totals.sold,
-      note: analytics.totals.free > 0 ? `${analytics.totals.sold - analytics.totals.free} paid, ${analytics.totals.free} free` : "From paid orders"
+      value: issued,
+      note: [free > 0 ? `${issued - free} paid, ${free} free` : "Issued on completed orders", noLongerValid > 0 ? `${noLongerValid} no longer valid` : ""].filter(Boolean).join(" · ")
     },
     {
       label: "Tickets left",
-      value: analytics.totals.remaining,
-      note: `Across ${analytics.ticketTypes.length} ticket ${analytics.ticketTypes.length === 1 ? "type" : "types"}`
+      value: total("remaining"),
+      note: `Across ${ticketTypes.length} ticket ${ticketTypes.length === 1 ? "type" : "types"}`
     },
     ...(event.capacity !== null
       ? [{ label: "Capacity", value: `${event.occupancy} of ${event.capacity}`, note: "Issued tickets plus live checkout holds" }]
       : []),
+    {
+      label: "Checked in",
+      value: checkInRate === null ? "Not applicable" : `${checkedIn} of ${valid}`,
+      note: checkInRate === null ? "No valid tickets yet" : `${Math.round(checkInRate * 100)}% of valid tickets`
+    },
     ...(financial
-      ? [{ label: "Revenue", value: formatMoney(analytics.totals.revenue ?? 0), note: "Gross, before fees and refunds" }]
+      ? [{
+          label: "Net sales",
+          value: formatMoney(money("net")),
+          note: money("refunded") > 0 ? `${formatMoney(money("gross"))} gross, ${formatMoney(money("refunded"))} refunded, before fees` : "Gross, before fees"
+        }]
       : [])
   ];
 
@@ -89,7 +101,7 @@ export default async function OrganiserEventPage({
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
         <Card>
           <h2 className="text-lg font-semibold text-ink">Ticket performance</h2>
-          {analytics.ticketTypes.length === 0 ? (
+          {ticketTypes.length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">No ticket types yet.</p>
           ) : (
             <div className="mt-3 overflow-x-auto">
@@ -110,23 +122,20 @@ export default async function OrganiserEventPage({
                   </tr>
                 </thead>
                 <tbody className="tabular-nums">
-                  {analytics.ticketTypes.map((ticketType) => (
+                  {ticketTypes.map((ticketType) => (
                     <tr className="border-t border-line" key={ticketType.id}>
                       <th className="py-3.5 text-left font-semibold text-ink [overflow-wrap:anywhere]" scope="row">
                         {ticketType.name}
                       </th>
                       <td className="px-2 py-3.5 text-right">{formatPrice(ticketType.price)}</td>
-                      <td className="px-2 py-3.5 text-right">{ticketType.sold}</td>
+                      <td className="px-2 py-3.5 text-right">{ticketType.issued}</td>
                       <td className="px-2 py-3.5 text-right">{event.heldByType[ticketType.id] ?? 0}</td>
                       <td className="px-2 py-3.5 text-right">{ticketType.remaining}</td>
                       {financial ? (
                         <>
-                          <td className="px-2 py-3.5 text-right">{formatMoney(ticketType.revenue ?? 0)}</td>
+                          <td className="px-2 py-3.5 text-right">{formatMoney(ticketType.gross ?? 0)}</td>
                           <td className="py-3.5 pl-2 text-right">
-                            {(analytics.totals.revenue ?? 0) > 0
-                              ? Math.round(((ticketType.revenue ?? 0) / (analytics.totals.revenue ?? 1)) * 100)
-                              : 0}
-                            %
+                            {money("gross") > 0 ? Math.round(((ticketType.gross ?? 0) / money("gross")) * 100) : 0}%
                           </td>
                         </>
                       ) : null}
@@ -140,17 +149,17 @@ export default async function OrganiserEventPage({
 
         {financial ? (
           <Card>
-            <h2 className="text-lg font-semibold text-ink">Revenue by day</h2>
-            <p className="text-sm text-ink-muted">Paid orders, with days counted in UTC</p>
+            <h2 className="text-lg font-semibold text-ink">Sales over time</h2>
+            <p className="text-sm text-ink-muted">Gross paid sales by the day they completed, in {zoneCity(event.timeZone)} time</p>
             <Suspense
               fallback={
                 <div className="mt-4">
-                  <p className="sr-only">Loading revenue by day</p>
+                  <p className="sr-only">Loading sales over time</p>
                   <Skeleton className="h-48" />
                 </div>
               }
             >
-              <RevenueByDay eventId={analytics.event.id} organisationId={organisation.id} />
+              <SalesOverTime access={access} eventId={event.id} organisationId={organisation.id} timeZone={event.timeZone} />
             </Suspense>
           </Card>
         ) : null}
@@ -199,37 +208,40 @@ export default async function OrganiserEventPage({
       <Card>
         <h2 className="text-lg font-semibold text-ink">About this event</h2>
         <p className="mt-2 max-w-3xl whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
-          {analytics.event.description}
+          {event.description}
         </p>
       </Card>
     </DashboardShell>
   );
 }
 
-async function RevenueByDay({ organisationId, eventId }: { organisationId: string; eventId: string }) {
-  const series = await getOrganisationEventRevenueSeries(organisationId, eventId);
-  const max = Math.max(...series.map((bucket) => bucket.revenue), 1);
-
-  if (series.length === 0) {
-    return <p className="mt-4 text-sm text-ink-soft">No revenue yet.</p>;
-  }
+// Zero-filled from the first paid sale to the last: by day, or by week past
+// two months, over at most the last 366 days.
+async function SalesOverTime({ access, organisationId, eventId, timeZone }: { access: AnalyticsAccess; organisationId: string; eventId: string; timeZone: string }) {
+  const days = await eventSalesDays(organisationId, eventId, timeZone);
+  if (!days) return <p className="mt-4 text-sm text-ink-soft">No paid sales yet.</p>;
+  const earliest = addDays(days.last, 1 - maxRangeDays);
+  const from = days.first > earliest ? days.first : earliest;
+  const weekly = from < addDays(days.last, -62);
+  const { series } = await ticketMetrics(organisationId, { from, to: days.last, bucket: weekly ? "week" : "day", timeZone }, access, eventId);
+  const max = Math.max(...series.map((bucket) => bucket.gross ?? 0), 1);
 
   return (
     <div
-      aria-label={`Revenue by day: ${series
-        .map((bucket) => `${formatShortDate(bucket.date)} ${formatMoney(bucket.revenue)}`)
+      aria-label={`Gross sales by ${weekly ? "week starting" : "day"}: ${series
+        .map((bucket) => `${formatShortDate(bucket.start)} ${formatMoney(bucket.gross ?? 0)}`)
         .join(", ")}`}
       className="mt-4 flex h-52 items-end gap-3 overflow-x-auto pb-1"
       role="img"
     >
       {series.map((bucket) => (
-        <div className="flex min-w-12 max-w-24 flex-1 flex-col items-center gap-1.5" key={bucket.date}>
-          <span className="text-[13px] tabular-nums text-ink-soft">{formatMoney(bucket.revenue)}</span>
+        <div className="flex min-w-12 max-w-24 flex-1 flex-col items-center gap-1.5" key={bucket.start}>
+          <span className="text-[13px] tabular-nums text-ink-soft">{formatMoney(bucket.gross ?? 0)}</span>
           <div
             className="w-full rounded-t-md bg-brand"
-            style={{ height: `${Math.max(4, (bucket.revenue / max) * 140)}px` }}
+            style={{ height: `${Math.max(4, ((bucket.gross ?? 0) / max) * 140)}px` }}
           />
-          <span className="text-[13px] text-ink-soft">{formatShortDate(bucket.date)}</span>
+          <span className="text-[13px] text-ink-soft">{formatShortDate(bucket.start)}</span>
         </div>
       ))}
     </div>

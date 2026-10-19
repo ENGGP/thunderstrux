@@ -284,16 +284,12 @@ describe("dashboard read services", () => {
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const orders = vi.spyOn(prisma.order, "findMany");
 
-    const overview = await getOrganisationOverview(organisation.id, {
-      includeOrders: false,
-      paidSince: new Date(0)
-    });
+    const overview = await getOrganisationOverview(organisation.id, { includeOrders: false });
 
     expect(overview).toMatchObject({
       profileComplete: false,
       chargesReady: true,
-      recentOrders: [],
-      monthlyPaidOrders: []
+      recentOrders: []
     });
     expect(orders).not.toHaveBeenCalled();
   });

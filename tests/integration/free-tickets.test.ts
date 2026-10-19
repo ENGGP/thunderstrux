@@ -2,9 +2,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { POST as checkoutRoute } from "@/app/api/payments/checkout/event/route";
 import { prisma } from "@/lib/db";
 import { setAutomaticOutboxEnqueueTestFailure } from "@/lib/email/ticket-email-outbox";
-import { getOrganisationEventAnalytics } from "@/lib/events/event-analytics";
+import { eventTicketTypeMetrics, societySales } from "@/lib/analytics/metrics";
+import { analyticsRange } from "@/lib/analytics/range";
 import { markOrganisationOrderManuallyRefunded } from "@/lib/orders/order-detail";
-import { getOrganisationOverview } from "@/lib/organisations/overview";
 import { CheckoutCreationError, createEventCheckout } from "@/lib/payments/checkout-creation";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
@@ -111,19 +111,21 @@ describe("free ticket registration", () => {
   test("free registrations count as sold but never as revenue, and cannot be marked refunded", async () => {
     const fixture = await freeEvent({ stripeReady: true });
     const paidType = await prisma.ticketType.create({ data: { eventId: fixture.event.id, name: "Supporter", price: 2000, quantity: 5 } });
-    await createOrder({
+    const paid = await createOrder({
       organisationId: fixture.owner.organisation.id, eventId: fixture.event.id, ticketTypeId: paidType.id,
       status: "paid", paidAt: new Date(), quantity: 1, unitPrice: 2000
     });
+    await prisma.ticket.create({ data: { orderId: paid.id, eventId: fixture.event.id, ticketTypeId: paidType.id, organisationId: fixture.owner.organisation.id, issueSequence: 1 } });
     const member = await createMember();
     const free = await register(member.id, fixture, 3);
     setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
 
-    const analytics = await getOrganisationEventAnalytics(fixture.owner.organisation.id, fixture.event.id);
-    expect(analytics.totals).toMatchObject({ sold: 4, free: 3, revenue: 2000 });
-    const overview = await getOrganisationOverview(fixture.owner.organisation.id, { includeOrders: true, paidSince: new Date(Date.now() - 3600000) });
-    expect(overview.monthlyPaidOrders.reduce((total, order) => total + order.totalAmount, 0)).toBe(2000);
-    expect(overview.monthlyPaidOrders).toHaveLength(1);
+    const types = await eventTicketTypeMetrics(fixture.owner.organisation.id, fixture.event.id, { financial: true });
+    expect(types.reduce((total, type) => total + type.issued, 0)).toBe(4);
+    expect(types.reduce((total, type) => total + type.free, 0)).toBe(3);
+    expect(types.reduce((total, type) => total + (type.gross ?? 0), 0)).toBe(2000);
+    const today = analyticsRange({}, "Australia/Brisbane");
+    expect(await societySales(fixture.owner.organisation.id, today, { financial: true })).toMatchObject({ tickets: 2000, total: 2000 });
 
     if (free.status !== "fulfilled") throw new Error("expected a free registration");
     await expect(markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, free.orderId)).rejects.toThrow("no payment to refund");

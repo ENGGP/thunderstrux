@@ -794,6 +794,8 @@ Persist unresolved provider/compensation/refund status across restarts. Recover 
 
 # 13. OpenClaw typed actions, authorisation and durable confirmations [PLAN T35-T37]
 
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+
 ## 13.1 AI is never direct database authority
 
 The model may *propose* a known action, but only the normal application service mutates PostgreSQL. Any OpenClaw argument (tenant, event ID, amount, role, product) is **untrusted input**. The proposed registry of allowed actions is:

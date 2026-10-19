@@ -76,7 +76,7 @@ The requirement-level matrix in section 8 supplies finer classification. This ta
 | Email/notifications | PARTIAL | Fenced ticket outbox and T02–T06 encrypted account/security/invitation notifications exist; membership/merch/refund/event-change notices and real provider acceptance remain. |
 | Dashboards/calendar | PARTIAL / MISSING | Basic member and society summaries exist; full navigation/purchases/settings/commerce/AI missing; calendar absent. |
 | Analytics | PARTIAL | Paid ticket group aggregates and UTC series exist; some series/monthly dashboard load orders in memory. Refund/free/attendance/member/merch metrics absent. |
-| OpenClaw | MISSING | No action registry, assistant, model adapter, confirmation or execution receipt. |
+| OpenClaw | DEFERRED | Deferred by the maintainer on 19 Oct 2026; nothing is built until it is scheduled. |
 | Audit/history | PARTIAL | Append-only OrderLifecycleEvent and sensitive audits exist; AUD-001 incomplete; historical names/terms/catalogue facts absent. |
 | Accessibility/mobile/usability | NEEDS VERIFICATION | Mobile/overflow tests exist; full keyboard, forms, screen-reader, contrast and new journeys unverified. |
 | Local Docker/testing | COMPLETE | Isolated runners, _test guards, schema checks, Docker dev and five CI jobs exist. Extend fixtures/cleanup for new features. |
@@ -157,7 +157,7 @@ Every T task is required before claiming the candidate feature-complete. Credent
 | 8. Membership commerce | T20–T24 | Commerce foundation/dispatcher → membership products → fulfilment/UI |
 | 9. Merchandise | T25–T28 | Catalogue → basket → holds and sale → pickup/returns |
 | 10. Integrated member/operator experience | T29–T34 | Unified orders/email → analytics → calendar/dashboards |
-| 11. Controlled OpenClaw actions | T35–T37 | Action registry → confirmation receipts → AI interface |
+| 11. Controlled OpenClaw actions (deferred 19 Oct 2026) | T35–T37 | Action registry → confirmation receipts → AI interface, when scheduled |
 | 12. Security and reliability | T38–T42 | Audit → security → accessibility → integrity/recovery/workers |
 | 13. Release qualification | T43–T44 | Ordered substeps below |
 | 14. Provider acceptance and final audit | T45–T46 | Real provider verification → final PRD audit |
@@ -584,6 +584,8 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 
 ### OpenClaw controlled product actions
 
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+
 #### T35 — Typed action registry shared with normal services
 - [ ] Complete. **Dependencies:** T05, T11, T24, T28, T31, T34.
 - **Code:** lib/actions registry strict schemas/permissions/tenant resolver/read-or-mutate/preview/execute. Actions: find_society_information, list_events, summarize_event_sales, summarize_orders, explain_readiness, create_event_draft, update_event_draft, publish_event, mark_merchandise_ready.
@@ -609,19 +611,19 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 ### Audit and pre-production qualification
 
 #### T38 — Sensitive-action audit survey and handover history
-- [ ] Complete. **Dependencies:** T06, T18, T29, T30, T36.
+- [ ] Complete. **Dependencies:** T06, T18, T29, T30 (T36 dropped: OpenClaw deferred).
 - **Code/UI:** Route/action-to-audit matrix, scoped /dashboard/history. Complete AUD-001 for bootstrap/profile/assets/events/types/settings/stock/membership/collection/refunds/staff/MFA/AI. Safe actor/target/version/reason/before-after facts in business transaction.
 - **Rules:** Preserve order journals and explicit incomplete legacy baseline; history cursors, no raw payload/token/email HTML. Archive/reference controls preserve business records.
 - **Tests/done:** Every sensitive mutation audit accounted, rollback no audit/replay no duplicate business transition, foreign/PII denial and committee handover view pass.
 
 #### T39 — Security, errors and abuse contract closure
-- [ ] Complete. **Dependencies:** T04, T16, T29, T37, T38.
+- [ ] Complete. **Dependencies:** T04, T16, T29, T38 (T37 dropped: OpenClaw deferred).
 - **Code:** Complete API-001 via central safe mapper; inventory each route/action for guard ordering/authority/tenant/body bounds/audit/rate policy. New reset/guest/upload/AI issuance fails closed; don't change legacy fail-open policies without review.
 - **Rules:** Integer multiplication overflow/total/quantity bounds; secure cookies/CSP/security headers tested with Stripe/images. Reject live keys in pilot/local campaign; no credentials/tokens/raw payloads logged. Token cleanup bounded; private data no-store.
 - **Tests/done:** Real Redis outage/spoofed IP chain/origin null or missing/CSRF refresh, enumeration/XSS/SSRF/asset limits, stale sessions, role/foreign matrix and dependency audit pass without unaccepted high/critical issues.
 
 #### T40 — Responsive and accessible journey remediation
-- [ ] Complete. **Dependencies:** T19, T24, T29, T32, T33, T34, T37.
+- [ ] Complete. **Dependencies:** T19, T24, T29, T32, T33, T34 (T37 dropped: OpenClaw deferred).
 - **UI:** WCAG 2.2 AA engineering target: labels/errors/focus/dialogs/landmarks/contrast/touch/reduced-motion/live status/table alternatives. Fix duplicate heading/active nav/overflow.
 - **Tests/done:** Automated scans in Docker browser runner plus manual keyboard/screen-reader spot checks at 390/768/1280 and 200% zoom; all discovery/auth/cart/checkout/wallet/terms/calendar/check-in/AI confirmation flows reviewed. Record findings; scans alone don't prove real-user usability.
 
@@ -648,13 +650,13 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
   - [ ] **T43c (after T43a):** CI artifact build-once, scan, SBOM/provenance and immutable publication. Done when a supplied registry accepts the manifest-linked image pair and CI consumes the same digests; absent registry credentials block publication evidence only.
 
 #### T44 — Complete production-mode journey qualification
-- [ ] Complete. **Dependencies:** T37, T40, T41, T42, T43.
+- [ ] Complete. **Dependencies:** T40, T41, T42, T43 (T37 dropped: OpenClaw deferred).
 - **Tests:** Implement every section 7 row in tests/e2e/integration with synthetic accounts, signed webhooks, captured mail/object-store/AI; production release images, enforced MFA/legacy deny; separate real Redis safety tests. Extend fixtures and run cleanup.
 - **Done:** Risk-appropriate local qualification covers changed executable content: one complete applicable E2E run, no critical skips or success fallback, relevant integration/operations evidence and confirmed run-owned cleanup. Repeat only for failures, changed inputs or a documented reliability concern; GitHub checks are optional.
 - **Ordered PR-sized substeps (parent requires all):**
   - [ ] **T44a:** Add guest/member authentication, public discovery, free/paid tickets and membership journey fixtures/assertions. Done when their section 7 happy paths and denials pass against the release images.
   - [ ] **T44b (after T44a):** Add merchandise/collection, organisation/bootstrap/handover, calendar and permission-matrix journey coverage. Done when their section 7 scenarios pass with two tenants and enforced MFA.
-  - [ ] **T44c (after T44b):** Add finance/refund/recovery and OpenClaw confirmation journeys; provider outage/replay and restored-job fencing. Done when their section 7 scenarios pass without duplicate business or external effects.
+  - [ ] **T44c (after T44b):** Add finance/refund/recovery journeys (OpenClaw confirmation journeys are deferred with OpenClaw); provider outage/replay and restored-job fencing. Done when their section 7 scenarios pass without duplicate business or external effects.
   - [ ] **T44d (after T44c):** Run one complete combined local qualification and cleanup. Done when the retained evidence ties every required scenario to the exact image/schema pair and applicable local checks pass; repeat only for changed inputs, failures or documented reliability concerns.
 
 #### T45 — Observed provider acceptance before hosting
@@ -733,7 +735,7 @@ T44 implements this matrix; T45 adds actual provider observations. Use two socie
 | Membership operator | Products/current-next terms/roster/renew/revoke/refund/history; cannot invent paid status. |
 | Merchandise operator | Images/variants/stock/publish/holds/orders/ready/collect/return/refund; exactly-once stock effects. |
 | Finance operator | Connect/charge-payout distinction/fees/refunds/net/compensation/email requeue/reconcile; nonfinance DTO denial. |
-| OpenClaw user | Authorized source-linked summary, draft/edit/publish/ready preview/confirm/cancel/receipt; injection/foreign/revoked/stale preview denied. |
+| OpenClaw user (deferred) | Authorized source-linked summary, draft/edit/publish/ready preview/confirm/cancel/receipt; injection/foreign/revoked/stale preview denied. |
 | Operations recovery | Stop jobs/writers, separate restore, schema/inventory/grants/history audit, provider reconciliation then fenced restart; no duplicate external effects. |
 
 ## 8. PRD traceability matrix
@@ -866,7 +868,7 @@ DEP-001 genuine advisory PR/failure-notification receipt cannot be manufactured;
 
 ### PRD feature completeness
 - [ ] T01–T46 complete with evidence; each section 8 row maps to usable verified code, not placeholder models/routes.
-- [ ] Profiles/branding/accounts/staff/onboarding/events/discovery/free+paid+guest tickets/memberships/merch/calendar/dashboards/analytics/email/OpenClaw work end to end.
+- [ ] Profiles/branding/accounts/staff/onboarding/events/discovery/free+paid+guest tickets/memberships/merch/calendar/dashboards/analytics/email work end to end (OpenClaw is deferred).
 - [ ] AUD/fixed-term/pickup/full-refund/capacity/AI defaults documented; no previous ticketing-only exclusions silently retained.
 
 ### Data integrity

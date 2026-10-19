@@ -107,7 +107,7 @@ As in the October redesign, new screens are designed on the "Thunderstrux redesi
 | --- | --- | --- |
 | A (whole) | T11b onward | Event builder with readiness panel, money and society-zone time fields, visibility and capacity; event Summary readiness and sale state; events list with visibility and sale columns; public event detail in each PUB-03 variant (paid open, free only, mixed with payments unavailable, sold out, sales closed, unlisted, draft preview); Explore events with filters and empty state; checkout page (member paid review, free confirmation, guest email step, price-changed 409, "We couldn't confirm" state); purchase status in every projection; guest recovery; Purchases list and ticket order detail; My tickets with ticket faces; Payments page with charges versus payouts and the fee example; refund and free-cancellation dialogs and order states; phone check-in console with valid, already checked in, void, under review and unknown results |
 | B: memberships and merchandise | T22 UI | Society profile tabs; membership offer cards, review, status and My memberships; membership plans editor and roster; public shop, product with variant pickers, basket, review and pickup status; organiser products, variants and stock; pickup queue and return; unified Orders with family tabs |
-| C: operator experience | T32 | Analytics tabs with tiles, bars and tables; calendar month, week and agenda; completed society and personal overviews; History timeline; OpenClaw workspace, action preview and receipt |
+| C: operator experience | T32 | Analytics tabs with tiles, bars and tables; calendar month, week and agenda; completed society and personal overviews (C1, pass 1 approved 19 Oct 2026); History timeline (C2, before T38). OpenClaw is deferred and has no artboards |
 
 #### Round A, split by when each screen is needed
 
@@ -151,7 +151,7 @@ Each is introduced by the first PR that needs it and extends an existing file wh
 | `MerchProductCard`, `VariantPicker`, basket panel | `components/merchandise/` | T26 | catalogue, product, basket | Labelled radio groups; "Pickup only" visible before payment |
 | `MetricTile`, `BarChart` with matching table | `components/analytics/` | T32 | event Summary, T34 | CSS/SVG bars; every chart has the same data as a table |
 | `CalendarGrid`, `Agenda` | `components/calendar/` | T33 | — | Agenda is the phone default and the accessible equivalent |
-| `ActionPreview` | `components/openclaw/` | T37a | — | Built on ConfirmDialog; before and after, society, actor, expiry |
+| `ActionPreview` | `components/openclaw/` | Deferred with OpenClaw | — | Not built until OpenClaw is scheduled |
 | Icons | `components/ui/icon.tsx` | as needed | — | Add only what a screen uses (for example store, badge, chart, history, clock, sparkle) |
 
 A shared responsive table component is extracted only in T29, when three proven tables (orders, roster, pickups) show its real shape.
@@ -162,7 +162,7 @@ Items appear only when their destination exists ([UI Architecture Rules](obsidia
 
 | Shell | End state | Arrives with |
 | --- | --- | --- |
-| Society sidebar | Overview, Events, Calendar, Orders; **Community:** Memberships (tabs Plans and Members), Merchandise (tabs Products and Pickups); **Insights:** Analytics, History, OpenClaw; **Settings:** Society profile, Staff, Payments, Email delivery | Calendar T33, Memberships T22, Merchandise T25, Analytics T32, History T38, OpenClaw T37a |
+| Society sidebar | Overview, Events, Calendar, Orders; **Community:** Memberships (tabs Plans and Members), Merchandise (tabs Products and Pickups); **Insights:** Analytics, History; **Settings:** Society profile, Staff, Payments, Email delivery | Calendar T33, Memberships T22, Merchandise T25, Analytics T32, History T38 (OpenClaw deferred) |
 | Personal shell | Overview, My tickets, Memberships, Societies, Purchases, Account | Purchases T19a, Memberships T24a |
 | Header | Explore events moves from `/` to `/events` | T15b |
 | Public society profile | Link tabs Overview, Events, Memberships, Merchandise; a tab shows only when the society has published content of that kind | T24a (first second tab), T26 |
@@ -191,7 +191,7 @@ A wave is a batch of work, never one PR. Inside a wave every task is its own PR,
 | 5. Merchandise | T25, T26, T27, T28 | Wave 4 (T25 may start after T20) | |
 | 6a. Unified orders and email | T29, T30 | Wave 5 | |
 | 6b. Analytics, calendar, dashboards | T31, T32, T33, T34 | Wave 6a and design round C | |
-| 7. OpenClaw | T35, T36, T37a, T37b | Wave 6b and the provider decision | |
+| 7. OpenClaw | T35, T36, T37a, T37b | Deferred by the maintainer (19 Oct 2026) | Not scheduled; later waves don't wait for it |
 | 8. Hardening | T38, T39, T40, T41, T42 | Wave 7 | |
 | 9. Release qualification | T43a–c, T44a–d, T45, T46 | Wave 8, hosting and provider credentials | |
 
@@ -377,6 +377,8 @@ The task blocks below keep their original wave headings; the table above decides
 
 ### Wave 7: OpenClaw (Package 11)
 
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+
 - **T35: action registry.** `lib/actions` holds the nine actions with strict schemas, permissions, tenant resolution, preview and execution through the same services as the UI; reads minimise personal data and respect finance permission. Validate (High): baseline.
 - **T36: proposals and receipts.** Migration `action_proposals`: `ActionProposal` and `ActionExecution`; preview, confirm and cancel APIs with origin, CSRF, MFA and limits; ten-minute expiry; mutation, audit and receipt commit together; a replay returns the stored receipt. Validate (High): baseline, `pnpm ops:test`.
 - **T37a: workspace and deterministic adapter.** `/dashboard/openclaw` with starters, guided actions, ActionPreview, Confirm or Cancel, and the receipt; fully usable with no model configured. Validate: baseline, E2E, visual check.
@@ -421,7 +423,7 @@ All migrations are additive. Each schema PR audits existing data first, backfill
 | 49 | `merchandise_sale` (planned as `merchandise_reservations`) | T27a | `CommerceOrderLine.merchandiseVariantId`; holds derived from pending orders |
 | 50 | `merchandise_fulfilment` | T28 | Pickup state and history, returns and stock movements |
 | 51 | `event_changes_and_preferences` | T30 | EventChange with fanout cursor, notification preferences |
-| 52 | `action_proposals` | T36 | ActionProposal, ActionExecution |
+| 52 | `action_proposals` | T36 (deferred) | ActionProposal, ActionExecution; not created while OpenClaw is deferred |
 | — | reviewed constraints | T41 | Only after the legacy audit |
 
 ## 7. Validation
@@ -452,7 +454,7 @@ New browser specs grow with the waves and become T44's journeys: `events-builder
 - Always: the readiness plan task and evidence, [Project Handover](obsidian/Project%20Handover.md) current state and next action, the [issue register](obsidian/Non-Blocking%20Issue%20Register.md) for items absorbed or found, API Reference for new routes, Database and Multi Tenancy for schema.
 - UI PRs: [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md), [visual design](THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) section 16 and [UX specification](THUNDERSTRUX_UX_USER_FLOW_SPEC.md) section 24.
 - By subsystem: Event Lifecycle (T11, T12, T15), Payment Lifecycle and Stripe Payments and Connect (T13, T14, T17, T18, T21), Ticket Check-in Implementation (T19b), Email Delivery Implementation (T16, T30 and every task adding a template), Society Profiles and Assets (T24a, T26), Production Operations (T14b, T42, T43).
-- New living notes, added to the Documentation Index when created: Guest Access (T16), Memberships and Merchandise (T20–T28), Analytics and Calendar (T31–T33), OpenClaw (T35–T37).
+- New living notes, added to the Documentation Index when created: Guest Access (T16), Memberships and Merchandise (T20–T28), Analytics and Calendar (T31–T33), OpenClaw (T35–T37, when it is scheduled).
 
 ## 9. Decisions for the maintainer
 
@@ -466,7 +468,7 @@ Settled 18 October 2026 unless marked otherwise.
 6. **Event hero images: in scope for T11b** (the maintainer chose them over the recommendation). Additive `Event.heroAssetId` with a same-tenant composite reference to an `event` Asset (the asset pipeline already has that kind, guarded by `events:manage`), reference-gated delivery and cleanup like society images, shown on the public event page and event cards.
 7. **Explore events at `/events`** (T15b); the home page keeps a short upcoming list.
 8. **Legacy unknowns stay null.** Shipped in T10.
-9. **OpenClaw provider** (T37b): default Anthropic Claude through the official SDK; record model, retention and cost limits at T37b.
+9. **OpenClaw** (T35 to T37b): deferred on 19 Oct 2026 by the maintainer, who will decide when to build it. Nothing of it is built meanwhile. The earlier provider default (Anthropic Claude through the official SDK) is revisited then.
 10. **Hosting, registry and real provider credentials** (T43b, T43c, T45): still open; needed by Wave 9.
 
 ## 10. Risks

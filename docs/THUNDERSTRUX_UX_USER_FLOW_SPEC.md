@@ -430,6 +430,8 @@ Never present a raw invitation token in management UI. Prevent removal of the la
 
 ### 4.15 J15 - OpenClaw assists without bypassing normal controls
 
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+
 `Authorised staff -> OpenClaw -> guided prompt/action -> citations/preview of proposed changes -> Confirm or Cancel -> reauthorise -> service action -> durable receipt.`
 
 The assistant may summarise allowed data, explain readiness, draft/edit/publish events or mark merchandise ready using the action registry. A refund, Stripe disconnect, staff authority change, deletion or settlement alteration opens a conventional privileged UI workflow instead of being executed autonomously. Provider error -> guided deterministic UI remains usable. Every mutation shows **what will change**, **who is acting**, **which society**, **expiration of preview**, and a second **Confirm** step.
@@ -970,6 +972,8 @@ Preview uses an authorised read path plus **DRAFT PREVIEW** watermark and disabl
 - **Empty:** no recorded actions yet is honest; do not promise 100% historic coverage for pre-migration data.
 
 ### ORG-18 - OpenClaw workspace
+
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
 
 - **Layout:** scoped society banner; short examples, e.g. "List events next month", "Explain why our event cannot publish", "Summarise attendance", "Create an event draft". Conversation view + source/action panel.
 - **Answer state:** loading, cited scoped information with data as-of, insufficient permission, provider unavailable, unsupported action.

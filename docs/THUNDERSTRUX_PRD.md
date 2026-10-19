@@ -336,6 +336,8 @@ Analytics should be practical rather than overwhelming. The goal is to help soci
 
 ## 6.12 AI Agent Assistance: OpenClaw
 
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+
 Thunderstrux should include an AI assistant concept, OpenClaw, that helps users navigate and operate the platform.
 
 ### Requirements
@@ -505,7 +507,7 @@ When making changes, Codex should preserve the following product intent:
 - Public pages must never expose invalid or private states.
 - Organisation management actions must be permission-checked server-side.
 - Historical financial and ticketing records must remain accurate.
-- AI assistance should work through safe, auditable product actions.
+- AI assistance should work through safe, auditable product actions (OpenClaw is deferred; see 6.12).
 - User experience should remain simple, clear, and suitable for student societies.
 - The platform should be extensible without creating disconnected feature silos.
 

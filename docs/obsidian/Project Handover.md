@@ -45,6 +45,7 @@ Repository pins: Node 22.23.3, pnpm 10.34.6, Next.js 16.3.8 and Prisma client/CL
 - A wave is a batch of tasks, never one PR: each task is its own PR, fully validated and merged before the next. The original nine waves were split into twelve of two to five PRs: 1a (T10, T11a, T12, T14a, T14b), 1b (T11b, T13, after design round A), 2a, 2b, 3, 4, 5, 6a, 6b, 7, 8, 9.
 - T10 shipped as one PR (writes and reads together); T14a runs before T13 so free checkout reuses checkout attempts; F1 (AUTHZ-001) lands before T18; T17 before T15.
 - Section 9 decisions, settled 2026-10-18: design rounds on the canvas before each UI block, reviewed in two passes; a 10-ticket cap per order (shipped in T12); one checkout page at `/events/[eventId]/checkout` for every ticket purchase; Explore events at `/events` with a short list kept on the home page; legacy unknowns stay null (shipped in T10); **event hero images are in scope for T11b** (the maintainer chose them over the recommendation to leave them out). Still on defaults until they matter: one Memberships nav item (T22), Anthropic Claude for OpenClaw (T37b), hosting and provider credentials (T43, T45).
+- **OpenClaw is deferred (2026-10-19, maintainer decision).** Build no part of it (code, schema, routes, navigation, design, copy) until the maintainer schedules it; treat it as absent in plans, design rounds and audits. Wave 7 (T35 to T37b) is unscheduled and nothing waits for it. The `openclaw:use` permission string is an unused placeholder.
 
 **Delivery ledger.**
 

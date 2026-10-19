@@ -236,3 +236,47 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
   await expect(page.getByRole("list", { name: "Pickup progress" })).toContainText("Collected");
   await shoot(page, "order-collected");
 });
+
+// T28b: the owner opens an order from Pickups, records a return that restocks, cancels a free order, and the buyer sees it cancelled.
+test("an owner records a return and cancels a free order from the order page, and the buyer sees the cancellation", async ({ page, data }) => {
+  const { organisation } = data;
+  await prisma.organisation.update({ where: { id: organisation.id }, data: { pickupPolicy: "EngSoc office, Level 2.", stripeAccountId: "acct_e2e_after_sale", stripeChargesEnabled: true } });
+  const now = new Date();
+  const product = await prisma.merchandiseProduct.create({ data: { organisationId: organisation.id, name: "Lanyard", status: "published", publishedAt: now, firstPublishedAt: now } });
+  const lanyard = await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, sku: `E2E-LAN-${Date.now()}`, priceAmount: 500, remaining: 4 } });
+  const seed = async (free: boolean, pickupStatus: "pending" | "collected") => {
+    const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+      organisationId: organisation.id, kind: "merchandise", buyer: { userId: data.member.id }, buyerEmail: data.member.email, buyerName: "Sam Lee", paymentKind: free ? "free" : "stripe", feeAmount: free ? 0 : 50,
+      lines: [{ quantity: 1, unitAmount: free ? 0 : 500, name: "Lanyard", merchandiseVariantId: lanyard.id }], source: "checkout"
+    }));
+    await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "paid", paidAt: now, fulfilledAt: now, pickupStatus, ...(free ? {} : { stripeSessionId: `cs_e2e_${order.id}` }) } });
+    return { id: order.id, reference: order.id.slice(-6).toUpperCase() };
+  };
+  const collected = await seed(false, "collected");
+  const free = await seed(true, "pending");
+
+  await login(page, data.owner.email, "/dashboard/merchandise/pickups?stage=collected");
+  await page.getByRole("link", { name: `Open order ${collected.reference}` }).click();
+  await expect(page.getByRole("heading", { name: `Order ${collected.reference}`, level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refund whole order" })).toBeVisible();
+  await page.getByRole("button", { name: "Record a return" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: `Record a return for order ${collected.reference}` })).toBeVisible();
+  await dialog.getByLabel("Reason").fill("Clip broken, swapped for a new one.");
+  await dialog.getByLabel(/Put it back in stock/).check();
+  await dialog.getByRole("button", { name: "Record return" }).click();
+  await expect(page.getByText(/came back on .* Restocked/)).toBeVisible();
+  expect((await prisma.merchandiseVariant.findUniqueOrThrow({ where: { id: lanyard.id } })).remaining).toBe(5);
+  await shoot(page, "staff-order");
+
+  await page.goto(`/dashboard/merchandise/orders/${free.id}`);
+  await page.getByRole("button", { name: "Cancel free order" }).click();
+  await page.getByRole("dialog").getByLabel("Reason").fill("Ordered twice by mistake.");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel order" }).click();
+  await expect(page.getByText("This free order was cancelled")).toBeVisible();
+
+  await page.context().clearCookies();
+  await login(page, data.member.email, `/merchandise/orders/${free.id}`);
+  await expect(page.getByRole("heading", { name: "Cancelled" })).toBeVisible();
+  await expect(page.getByText("Not collected, nothing to pick up")).toBeVisible();
+});

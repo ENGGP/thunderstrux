@@ -12,7 +12,7 @@ type Order = { id: string; reference: string; buyer: string; version: number; li
 // Mark ready or Mark collected for one pickup (T28a), confirmed first. The
 // result is shown by the page from the server (?done=); a step someone else
 // took first is a warning here and nothing changes.
-export function PickupAction({ orgSlug, order, step, stage, wide = false }: { orgSlug: string; order: Order; step: "ready" | "collected"; stage: string; wide?: boolean }) {
+export function PickupAction({ orgSlug, order, step, stage, wide = false, after }: { orgSlug: string; order: Order; step: "ready" | "collected"; stage: string; wide?: boolean; after?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -29,7 +29,7 @@ export function PickupAction({ orgSlug, order, step, stage, wide = false }: { or
         body: JSON.stringify({ step, expectedVersion: order.version })
       });
       setOpen(false);
-      router.replace(`/dashboard/merchandise/pickups?stage=${stage}&done=${order.id}`);
+      router.replace(after ?? `/dashboard/merchandise/pickups?stage=${stage}&done=${order.id}`);
       router.refresh();
     } catch (failure) {
       setOpen(false);

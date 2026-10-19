@@ -4,6 +4,7 @@ import { apiError, badRequest, forbidden, mapRouteError, notFound, routeErrorRul
 import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import { OrganisationAccessError } from "@/lib/auth/access";
+import { MerchandiseCatalogueError } from "@/lib/merchandise/catalogue";
 import { MembershipPlanError } from "@/lib/memberships/plans";
 import { MembershipRevocationError } from "@/lib/memberships/revocation";
 import { OrderRefundError } from "@/lib/payments/order-refunds";
@@ -81,6 +82,9 @@ const endRules = [
   routeErrorRule(MembershipRevocationError, (error) =>
     error.kind === "not_found" ? notFound(error.message) : apiError("CONFLICT", error.message, 409, [{ path: ["grantId"], message: error.message, reason: error.kind }])
   ),
+  routeErrorRule(MerchandiseCatalogueError, (error) =>
+    apiError(error.status === 404 ? "NOT_FOUND" : error.status === 409 ? "CONFLICT" : "BAD_REQUEST", error.message, error.status, error.details)
+  ),
   routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),
   routeErrorRule(OrderRefundError, (error) =>
     error.kind === "not_found"
@@ -91,10 +95,11 @@ const endRules = [
   )
 ];
 
-// POST .../memberships/members/[grantId]/revoke, /cancel (T23b) and /refund (T23c): trusted
-// origin, live permission, a reason and, unless staff MFA is off, a fresh
-// authenticator code, as for refunds and free cancellations.
-export async function endMembershipRoute(
+// Staff actions that end or undo a purchase: membership revoke, cancel (T23b)
+// and refund (T23c), and merchandise refund and free cancellation (T28b).
+// Trusted origin, live permission, a reason and, unless staff MFA is off, a
+// fresh authenticator code, as for ticket refunds and free cancellations.
+export async function staffEndRoute(
   request: Request,
   orgSlug: string,
   permission: OrganisationPermission,
@@ -113,7 +118,7 @@ export async function endMembershipRoute(
       if (limited) return limited;
     }
     if (mfaEnforcementMode() !== "off") {
-      if (!body.data.mfaCode) throw new MfaInputError("Enter your authenticator code to end this membership");
+      if (!body.data.mfaCode) throw new MfaInputError("Enter your authenticator code to continue");
       const digest = mfaGrantDigest(actor.mfaSessionId);
       if (!digest) throw new MfaRequiredError();
       await verifyStaffMfa(actor.id, body.data.mfaCode, digest);

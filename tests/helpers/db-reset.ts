@@ -80,6 +80,7 @@ export async function resetTestDatabase() {
       "TicketReservation",
       "CheckoutAttempt",
       "MembershipGrant",
+      "MerchandiseReturn",
       "CommerceLifecycleEvent",
       "CommerceOrderLine",
       "CommerceOrder",

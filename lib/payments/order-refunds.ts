@@ -256,7 +256,7 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
     }
     if (isDefiniteProviderFailure(error)) {
       await fail(request.id, token, "provider_refused", source);
-      throw new OrderRefundError("provider_refused", request.commerceOrderId ? "Stripe refused the refund. The membership is still active." : "Stripe refused the refund. The tickets are still valid.");
+      throw new OrderRefundError("provider_refused", request.commerceOrderId ? "Stripe refused the refund. Nothing was refunded and the order is unchanged." : "Stripe refused the refund. The tickets are still valid.");
     }
     // No answer: the refund may exist. Look it up before anything is sent again.
     logError("order_refund.provider_uncertain", { refundRequestId: request.id, orderId: request.orderId, commerceOrderId: request.commerceOrderId, error });
@@ -308,8 +308,9 @@ async function refundTickets(tx: Prisma.TransactionClient, request: { id: string
   }
 }
 
-// A confirmed commerce refund ends the memberships it bought (T23c) and
-// emails the buyer. Merchandise refunds arrive with T28.
+// A confirmed commerce refund ends the memberships it bought (T23c), takes a
+// merchandise order not yet collected off the Pickups tab (the refund status
+// does that; T28b), and emails the buyer. Stock comes back only through a return.
 async function refundCommerce(
   tx: Prisma.TransactionClient,
   request: { id: string; commerceOrderId: string; organisationId: string; amount: number; reason: string; actorUserId: string | null },
@@ -318,7 +319,7 @@ async function refundCommerce(
   const order = await tx.commerceOrder.update({
     where: { id: request.commerceOrderId },
     data: { refundStatus: "refunded" },
-    select: { buyerEmailSnapshot: true, sellerName: true, lines: { select: { nameSnapshot: true }, orderBy: { lineNumber: "asc" } } }
+    select: { kind: true, pickupStatus: true, buyerEmailSnapshot: true, sellerName: true, lines: { select: { nameSnapshot: true }, orderBy: { lineNumber: "asc" } } }
   });
   const ended = await tx.membershipGrant.updateMany({
     where: { line: { orderId: request.commerceOrderId }, revokedAt: null },
@@ -328,7 +329,7 @@ async function refundCommerce(
   await enqueueNotification(tx, {
     eventKey: `refund/${request.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: request.organisationId,
     payload: {
-      message: `Your ${items} from ${order.sellerName} has been refunded: ${formatMoney(request.amount)} is on its way back to your card. Banks usually take 5 to 10 business days.${ended.count ? " Your membership has ended." : ""}`
+      message: `Your ${items} from ${order.sellerName} has been refunded: ${formatMoney(request.amount)} is on its way back to your card. Banks usually take 5 to 10 business days.${ended.count ? " Your membership has ended." : ""}${order.kind === "merchandise" && order.pickupStatus !== "collected" ? " The pickup is cancelled, so there's nothing to collect." : ""}`
     }
   });
   return ended.count;

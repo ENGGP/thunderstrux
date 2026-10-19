@@ -286,6 +286,17 @@ test("an owner records a return and cancels a free order from the order page, an
   await page.getByRole("dialog").getByRole("button", { name: "Cancel order" }).click();
   await expect(page.getByText("This free order was cancelled")).toBeVisible();
 
+  // T29b: Orders has a Merchandise tab with payment and pickup, opening the staff order page.
+  await page.goto("/dashboard/orders");
+  await page.getByRole("navigation", { name: "Order types" }).getByRole("link", { name: "Merchandise" }).click();
+  await expect(page).toHaveURL(/family=merchandise/);
+  const orders = page.getByRole("table", { name: "Merchandise orders" });
+  await expect(orders.getByText(`Order ${collected.reference}`)).toBeVisible();
+  await expect(orders.getByText("Cancelled")).toBeVisible();
+  await shoot(page, "orders-merchandise");
+  await page.getByRole("link", { name: "Payment review" }).click();
+  await expect(page.getByText("No payment review merchandise orders")).toBeVisible();
+
   await page.context().clearCookies();
   await login(page, data.member.email, `/merchandise/orders/${free.id}`);
   await expect(page.getByRole("heading", { name: "Cancelled" })).toBeVisible();

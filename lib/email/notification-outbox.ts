@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
 import { encryptNotification, decryptNotification } from "./notification-crypto";
 import { notificationTemplateSchema, renderNotification, renderedNotificationSchema, type NotificationTemplate } from "./templates";
 import { sendWithResend } from "./ticket-delivery";
@@ -18,13 +19,10 @@ type NotificationOutcome = "skipped" | "cancelled" | "failed" | "sent" | "retrie
 
 export class NotificationCursorError extends Error {}
 export async function listFailedBusinessNotifications(organisationId: string, cursor?: string) {
+  // The shared timestamp cursor (PAG-001); a bad one keeps this list's own error.
   let after: { createdAt: Date; id: string } | undefined;
   if (cursor) {
-    try {
-      const parsed = z.object({ time: z.string().datetime(), id: z.string().min(1).max(100) }).strict()
-        .parse(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")));
-      after = { createdAt: new Date(parsed.time), id: parsed.id };
-    } catch { throw new NotificationCursorError("Invalid notification cursor"); }
+    try { after = decodeTimestampCursor("createdAt", cursor); } catch { throw new NotificationCursorError("Invalid notification cursor"); }
   }
   const jobs = await prisma.notificationOutbox.findMany({
     where: { organisationId, privacy: "business", status: "failed", ...(after ? { OR: [
@@ -35,7 +33,7 @@ export async function listFailedBusinessNotifications(organisationId: string, cu
   });
   const page = jobs.slice(0, 25); const last = page.at(-1);
   return { jobs: page, nextCursor: jobs.length > 25 && last
-    ? Buffer.from(JSON.stringify({ time: last.createdAt.toISOString(), id: last.id })).toString("base64url") : null };
+    ? encodeTimestampCursor("createdAt", last) : null };
 }
 
 export async function businessNotificationExists(jobId: string, organisationId: string) {

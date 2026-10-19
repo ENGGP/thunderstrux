@@ -11,13 +11,15 @@ import { contextChoices, readAccountContext } from "@/lib/auth/context";
 import { organisationIdBySlug } from "@/lib/organisations/authority";
 import type { OrganisationPermission } from "@/lib/permissions";
 
+// One permission, or any of several (a page staff reach from different places, T29b).
 export async function requireManagementPage(
-  permission: OrganisationPermission,
+  permission: OrganisationPermission | OrganisationPermission[],
   callbackPath: string
 ) {
   try {
     const organisation = await requireCurrentOrganisationAccount();
-    await requireOrganisationPermission(organisation.id, permission);
+    if (Array.isArray(permission)) await requireAnyOrganisationPermission(organisation.id, permission);
+    else await requireOrganisationPermission(organisation.id, permission);
     // Read after both guards pass: the shell's switcher lists live authority only.
     return {
       ...organisation,

@@ -3,10 +3,13 @@ import { Suspense } from "react";
 import { EventWorkspaceHeader, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { CommerceOrders } from "./commerce-orders";
 import { buttonClasses } from "@/components/ui/button";
+import { LinkTabs } from "@/components/ui/link-tabs";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -44,6 +47,8 @@ export default async function OrganisationOrdersPage({
   searchParams
 }: {
   searchParams: Promise<{
+    family?: string;
+    productId?: string;
     status?: string;
     eventId?: string;
     includeSystem?: string;
@@ -55,6 +60,8 @@ export default async function OrganisationOrdersPage({
     direction?: string;
   }>;
 }) {
+  const params = await searchParams;
+  const family = params.family === "memberships" || params.family === "merchandise" ? params.family : "tickets";
   const {
     status: statusParam,
     eventId: eventIdParam,
@@ -65,7 +72,7 @@ export default async function OrganisationOrdersPage({
     limit: limitParam,
     cursor: cursorParam,
     direction: directionParam
-  } = await searchParams;
+  } = params;
   const organisation = await requireManagementPage("orders:read", "/dashboard/orders");
   const includeSystemOrders = includeSystemParam === "true";
   const activeFilter = parseOrderStatusFilter(statusParam ?? null, {
@@ -144,11 +151,25 @@ export default async function OrganisationOrdersPage({
       {event ? (
         <EventWorkspaceHeader active="orders" event={event} staffRole={organisation.staffRole} />
       ) : (
-        <PageHeader
-          description={`Review ticket purchases and payment reconciliation for ${organisation.name}.`}
-          title="Orders"
-        />
+        <>
+          <PageHeader description={`Review purchases and payment reconciliation for ${organisation.name}.`} title="Orders" />
+          {/* Family tabs (T29b); an event's orders stay on its Tickets view. */}
+          <LinkTabs
+            label="Order types"
+            tabs={(["tickets", "memberships", "merchandise"] as const).map((name) => ({
+              href: name === "tickets" ? "/dashboard/orders" : `/dashboard/orders?family=${name}`,
+              label: { tickets: "Tickets", memberships: "Memberships", merchandise: "Merchandise" }[name],
+              active: name === family
+            }))}
+          />
+        </>
       )}
+      {family !== "tickets" && !event ? (
+        <Suspense fallback={<ListSkeleton label="Loading orders" rows={6} />}>
+          <CommerceOrders organisationId={organisation.id} pagination={pagination} params={{ ...params, family }} />
+        </Suspense>
+      ) : (
+      <>
 
       <nav aria-label="Order status" className={`max-w-full ${tabBarClasses}`}>
         {visibleStatusFilters.map((status) => (
@@ -209,6 +230,8 @@ export default async function OrganisationOrdersPage({
           systemToggleHref={ordersHref({ status: undefined, includeSystem: includeSystemOrders ? undefined : "true" })}
         />
       </Suspense>
+      </>
+      )}
     </DashboardShell>
   );
 }
@@ -325,6 +348,23 @@ async function OrderResults({
   }
 
   const pageLink = buttonClasses({ variant: "secondary", size: "sm" });
+  type Row = (typeof orders)[number];
+  // Order detail serves settled orders only, so a pending one is not a link.
+  const buyer = (order: Row) =>
+    order.status === "pending" ? (
+      <span className="text-ink [overflow-wrap:anywhere]">{order.buyerEmail ?? "Unknown buyer"}</span>
+    ) : (
+      <Link className="font-semibold text-brand underline underline-offset-4 [overflow-wrap:anywhere]" href={`/dashboard/orders/${order.id}`}>
+        {order.buyerEmail ?? "Unknown buyer"}
+      </Link>
+    );
+  const status = (order: Row) => (
+    <div className="grid gap-1">
+      <StatusBadge label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined} status={order.projection} />
+      {order.isManuallyRefunded && order.status !== "paid" ? <p className="text-sm text-ink-soft">Refunded manually</p> : null}
+      {order.requiresCompensationReview ? <p className="max-w-56 text-sm font-medium text-warning">Payment received; fulfilment review required</p> : null}
+    </div>
+  );
 
   return (
     <>
@@ -341,24 +381,12 @@ async function OrderResults({
             : `No ${activeFilter === "all" ? "" : `${activeFilter} `}orders yet.`}
         </div>
       ) : (
-        <>
-        <ul className="grid gap-3 md:hidden">
-          {orders.map((order) => (
-            <li className="grid gap-1.5 rounded-card border border-line bg-surface p-4" key={order.id}>
+        <ResponsiveTable
+          card={(order) => (
+            <>
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  {order.status === "pending" ? (
-                    <p className="text-ink [overflow-wrap:anywhere]">{order.buyerEmail ?? "Unknown buyer"}</p>
-                  ) : (
-                    <Link className="font-semibold text-brand underline underline-offset-4 [overflow-wrap:anywhere]" href={`/dashboard/orders/${order.id}`}>
-                      {order.buyerEmail ?? "Unknown buyer"}
-                    </Link>
-                  )}
-                </div>
-                <StatusBadge
-                  label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined}
-                  status={order.projection}
-                />
+                <div className="min-w-0">{buyer(order)}</div>
+                {status(order)}
               </div>
               <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
                 {order.eventTitle} · {order.ticketType}
@@ -366,72 +394,20 @@ async function OrderResults({
               <p className="text-sm tabular-nums text-ink">
                 {order.quantity} {order.quantity === 1 ? "ticket" : "tickets"} · {formatPrice(order.totalAmount)} · {formatDateTime(order.createdAt)}
               </p>
-              {order.isManuallyRefunded && order.status !== "paid" ? (
-                <p className="text-sm text-ink-soft">Refunded manually</p>
-              ) : null}
-              {order.requiresCompensationReview ? (
-                <p className="text-sm font-medium text-warning">Payment received; fulfilment review required</p>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-          <table className="w-full min-w-[820px] border-collapse text-left text-[15px]">
-            <thead>
-              <tr className="text-[13px] text-ink-soft">
-                <th className="px-5 py-3.5 font-semibold" scope="col">Buyer</th>
-                <th className="px-3 py-3.5 font-semibold" scope="col">Event and ticket</th>
-                <th className="px-3 py-3.5 text-right font-semibold" scope="col">Qty</th>
-                <th className="px-3 py-3.5 text-right font-semibold" scope="col">Total</th>
-                <th className="px-3 py-3.5 font-semibold" scope="col">Status</th>
-                <th className="px-5 py-3.5 font-semibold" scope="col">Ordered</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr className="border-t border-line align-top" key={order.id}>
-                  <td className="px-5 py-3.5">
-                    {/* Order detail serves settled orders only, so a pending one is not a link. */}
-                    {order.status === "pending" ? (
-                      <span className="text-ink">{order.buyerEmail ?? "Unknown buyer"}</span>
-                    ) : (
-                      <Link className="font-semibold text-brand underline underline-offset-4" href={`/dashboard/orders/${order.id}`}>
-                        {order.buyerEmail ?? "Unknown buyer"}
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-3 py-3.5">
-                    <p className="text-ink [overflow-wrap:anywhere]">{order.eventTitle}</p>
-                    <p className="text-sm text-ink-soft">{order.ticketType}</p>
-                  </td>
-                  <td className="px-3 py-3.5 text-right tabular-nums">{order.quantity}</td>
-                  <td className="px-3 py-3.5 text-right tabular-nums">{formatPrice(order.totalAmount)}</td>
-                  <td className="px-3 py-3.5">
-                    <StatusBadge
-                      label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined}
-                      status={order.projection}
-                    />
-                    {order.isManuallyRefunded && order.status !== "paid" ? (
-                      <p className="mt-1 text-sm text-ink-soft">Refunded manually</p>
-                    ) : null}
-                    {order.requiresCompensationReview ? (
-                      <p className="mt-1 max-w-56 text-sm font-medium text-warning">
-                        Payment received; fulfilment review required
-                      </p>
-                    ) : null}
-                    {order.failureReason ? (
-                      <p className="mt-1 max-w-56 text-sm text-ink-soft">{order.failureReason}</p>
-                    ) : null}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3.5 text-ink-soft">
-                    {formatDateTime(order.createdAt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </>
+            </>
+          )}
+          columns={[
+            { header: "Buyer", cell: buyer },
+            { header: "Event and ticket", cell: (order) => <><p className="text-ink [overflow-wrap:anywhere]">{order.eventTitle}</p><p className="text-sm text-ink-soft">{order.ticketType}</p></> },
+            { header: "Qty", align: "right", cell: (order) => order.quantity },
+            { header: "Total", align: "right", cell: (order) => formatPrice(order.totalAmount) },
+            { header: "Status", cell: (order) => <>{status(order)}{order.failureReason ? <p className="mt-1 max-w-56 text-sm text-ink-soft">{order.failureReason}</p> : null}</> },
+            { header: "Ordered", className: "whitespace-nowrap text-ink-soft", cell: (order) => formatDateTime(order.createdAt) }
+          ]}
+          label="Ticket orders"
+          rowKey={(order) => order.id}
+          rows={orders}
+        />
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">

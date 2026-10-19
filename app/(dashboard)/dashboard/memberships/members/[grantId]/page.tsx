@@ -21,7 +21,7 @@ const unlockWords = { member_prices: "Member prices", members_only_events: "Memb
 
 export default async function MemberPage({ params }: { params: Promise<{ grantId: string }> }) {
   const { grantId } = await params;
-  const organisation = await requireManagementPage("members:read", `/dashboard/memberships/members/${encodeURIComponent(grantId)}`);
+  const organisation = await requireManagementPage(["members:read", "orders:read"], `/dashboard/memberships/members/${encodeURIComponent(grantId)}`);
   const membership = await readMembership(organisation.id, grantId);
   if (!membership) notFound();
   const timeZone = await readTimeZone(organisation.id);
@@ -49,10 +49,12 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
         badge={<StatusBadge status={membership.state} />}
-        breadcrumbs={[
-          { label: "Memberships", href: "/dashboard/memberships" },
-          { label: "Members", href: "/dashboard/memberships/members" }
-        ]}
+        breadcrumbs={
+          // Finance staff arrive from Orders (T29b) and can't open the roster.
+          hasOrganisationPermission(organisation.staffRole, "members:read")
+            ? [{ label: "Memberships", href: "/dashboard/memberships" }, { label: "Members", href: "/dashboard/memberships/members" }]
+            : [{ label: "Orders", href: "/dashboard/orders?family=memberships" }]
+        }
         title={membership.name}
       />
       {membership.refundStatus === "processing" ? (

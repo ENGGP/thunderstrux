@@ -200,3 +200,53 @@ export async function getOwnCommerceOrders(userId: string, { limit, cursor, dire
   const page = pageInfoForPage({ items: orders, limit, direction, cursor, timestampField: "createdAt" });
   return { items: page.items.map((order) => ({ family: order.kind, ...order })), pageInfo: page.pageInfo };
 }
+
+// The organiser's Orders tabs for memberships and merchandise (T29b). Always
+// scoped to the society in the query; checkouts still waiting on Stripe are
+// left out, as on the Tickets tab. Newest first by the shared cursor.
+export const commerceOrderFilters = ["all", "paid", "free", "refunded", "review", "expired"] as const;
+export type CommerceOrderFilter = (typeof commerceOrderFilters)[number];
+
+const filterWhere: Record<CommerceOrderFilter, Prisma.CommerceOrderWhereInput> = {
+  all: { status: { not: "pending" } },
+  paid: { status: "paid", paymentKind: "stripe", refundStatus: null, requiresCompensationReview: false },
+  free: { status: "paid", paymentKind: "free", cancelledAt: null },
+  refunded: { refundStatus: { not: null } },
+  review: { requiresCompensationReview: true },
+  expired: { status: { in: ["expired", "failed"] }, requiresCompensationReview: false }
+};
+
+export async function listOrganisationCommerceOrders(
+  organisationId: string,
+  kind: CommerceKind,
+  { filter = "all", search, productId, startDate, endDate }: { filter?: CommerceOrderFilter; search?: string; productId?: string; startDate?: Date; endDate?: Date },
+  { limit, cursor, direction }: ParsedPaginationOptions
+) {
+  const decoded = cursor ? decodeTimestampCursor("createdAt", cursor) : null;
+  const orders = await prisma.commerceOrder.findMany({
+    where: {
+      AND: [
+        { organisationId, kind },
+        filterWhere[filter],
+        search ? { buyerEmailSnapshot: { contains: search, mode: "insensitive" } } : {},
+        productId ? { lines: { some: kind === "membership" ? { membershipProductId: productId } : { merchandiseVariant: { productId } } } } : {},
+        startDate || endDate ? { createdAt: { ...(startDate ? { gte: startDate } : {}), ...(endDate ? { lte: endDate } : {}) } } : {},
+        decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}
+      ]
+    },
+    orderBy: orderByForDirection("createdAt", direction, "desc"),
+    take: limit + 1,
+    select: {
+      ...summarySelect, refundStatus: true, buyerNameSnapshot: true, buyerEmailSnapshot: true, guestIdentityId: true,
+      lines: { orderBy: { lineNumber: "asc" }, select: { nameSnapshot: true, variantSnapshot: true, quantity: true, termStartsAt: true, termEndsAt: true, membershipGrant: { select: { id: true } } } }
+    }
+  });
+  return pageInfoForPage({ items: orders, limit, direction, cursor, timestampField: "createdAt" });
+}
+
+// The plans or products a society's commerce orders can be filtered by.
+export function commerceProductOptions(organisationId: string, kind: CommerceKind) {
+  return kind === "membership"
+    ? prisma.membershipProduct.findMany({ where: { organisationId }, orderBy: { startsAt: "desc" }, select: { id: true, name: true } })
+    : prisma.merchandiseProduct.findMany({ where: { organisationId }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+}

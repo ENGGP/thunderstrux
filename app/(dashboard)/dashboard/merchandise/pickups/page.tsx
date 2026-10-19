@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/input";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
+import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
@@ -148,66 +149,54 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
           {query ? "Check the reference or spelling, or clear the search." : emptyText[stage][1]}
         </EmptyState>
       ) : (
-        <>
-          <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-            <table className="w-full min-w-[820px] border-collapse text-left text-[15px]">
-              <thead>
-                <tr className="text-[13px] text-ink-soft">
-                  <th className="px-5 py-3.5 font-semibold" scope="col">Order</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">Buyer</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">Items</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">Payment</th>
-                  <th className="px-3 py-3.5 font-semibold" scope="col">{dateHeading[stage]}</th>
-                  <th className="px-5 py-3.5 text-right font-semibold" scope="col">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((order) => (
-                  <tr className="border-t border-line align-top" key={order.id}>
-                    <td className="px-5 py-4 font-semibold">
-                      <Link aria-label={`Open order ${order.reference}`} className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
-                        {order.reference}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-4">
-                      <span className="[overflow-wrap:anywhere]">{order.buyer}</span>
-                      <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
-                        {order.guest ? "Guest · " : ""}
-                        {order.buyerEmailSnapshot}
-                      </p>
-                    </td>
-                    <td className="px-3 py-4">{items(order)}</td>
-                    <td className="px-3 py-4">
-                      <StatusBadge status={stage === "review" ? "review" : order.paymentKind === "free" ? "free" : "paid"} />
-                    </td>
-                    <td className="px-3 py-4 text-sm text-ink-soft">{dated(order)}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end">{action(order)}</div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="grid gap-3 md:hidden">
-            {orders.map((order) => (
-              <li className="grid gap-2.5 rounded-card border border-line bg-surface p-4" key={order.id}>
-                <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">
-                  <Link className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
-                    {order.reference}
-                  </Link>{" "}
-                  · {order.buyer}
-                </h2>
-                <div className="text-[15px] text-ink">{items(order)}</div>
-                <p className={`text-sm ${stage === "review" ? "font-semibold text-warning" : "text-ink-soft"}`}>
-                  {order.guest ? "Guest · " : ""}
-                  {status(order)}
-                </p>
-                {working ? action(order, true) : null}
-              </li>
-            ))}
-          </ul>
-        </>
+        <ResponsiveTable
+          card={(order) => (
+            <div className="grid gap-2.5">
+              <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">
+                <Link className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
+                  {order.reference}
+                </Link>{" "}
+                · {order.buyer}
+              </h2>
+              <div className="text-[15px] text-ink">{items(order)}</div>
+              <p className={`text-sm ${stage === "review" ? "font-semibold text-warning" : "text-ink-soft"}`}>
+                {order.guest ? "Guest · " : ""}
+                {status(order)}
+              </p>
+              {working ? action(order, true) : null}
+            </div>
+          )}
+          columns={[
+            {
+              header: "Order",
+              className: "font-semibold",
+              cell: (order) => (
+                <Link aria-label={`Open order ${order.reference}`} className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
+                  {order.reference}
+                </Link>
+              )
+            },
+            {
+              header: "Buyer",
+              cell: (order) => (
+                <>
+                  <span className="[overflow-wrap:anywhere]">{order.buyer}</span>
+                  <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
+                    {order.guest ? "Guest · " : ""}
+                    {order.buyerEmailSnapshot}
+                  </p>
+                </>
+              )
+            },
+            { header: "Items", cell: items },
+            { header: "Payment", cell: (order) => <StatusBadge status={stage === "review" ? "review" : order.paymentKind === "free" ? "free" : "paid"} /> },
+            { header: dateHeading[stage], className: "text-sm text-ink-soft", cell: dated },
+            { header: "Action", cell: (order) => <div className="flex justify-end">{action(order)}</div> }
+          ]}
+          label={`${stageLabels[stage]} orders`}
+          rowKey={(order) => order.id}
+          rows={orders}
+        />
       )}
       <p className="text-sm text-ink-soft">
         {stage === "prepare" || stage === "ready" ? "Oldest first, in the order they came in. " : "Newest first. "}Only paid and free orders appear here; checkouts still waiting on Stripe don&apos;t.

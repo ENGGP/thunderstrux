@@ -51,13 +51,14 @@ function Card({ title, id, action, children }: { title: string; id: string; acti
   );
 }
 
-// One merchandise order for staff (T28b, design round B2, MerchOrderB2):
+// One merchandise order for staff (T28b, design round B2, MerchOrderB2), from
+// Pickups (merchandise:fulfil) or Orders (orders:read, T29b):
 // items, pickup, history, buyer, money and returns. Pickup steps and returns
 // need merchandise:fulfil; refunds and free cancellation need orders:refund;
 // the fee needs orders:read. Unified Orders (T29) will link here too.
 export default async function MerchandiseOrderPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
-  const organisation = await requireManagementPage("merchandise:fulfil", `/dashboard/merchandise/orders/${orderId}`);
+  const organisation = await requireManagementPage(["merchandise:fulfil", "orders:read"], `/dashboard/merchandise/orders/${orderId}`);
   const [order, { timeZone }] = await Promise.all([staffMerchandiseOrder(organisation.id, orderId), pickupSettings(organisation.id)]);
   if (!order) notFound();
   const when = (date: Date) => formatDateTime(date, { timeZone });
@@ -80,7 +81,11 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
               {order.pickupStatus && !order.refundStatus && !order.cancelledAt ? <StatusBadge status={pickupBadge[order.pickupStatus]} /> : order.pickupStatus === "collected" ? <StatusBadge status="collected" /> : null}
             </span>
           }
-          breadcrumbs={[{ label: "Merchandise", href: "/dashboard/merchandise" }, { label: "Pickups", href: "/dashboard/merchandise/pickups" }]}
+          breadcrumbs={
+            can("merchandise:fulfil")
+              ? [{ label: "Merchandise", href: "/dashboard/merchandise" }, { label: "Pickups", href: "/dashboard/merchandise/pickups" }]
+              : [{ label: "Orders", href: "/dashboard/orders?family=merchandise" }]
+          }
           title={`Order ${order.reference}`}
         />
 

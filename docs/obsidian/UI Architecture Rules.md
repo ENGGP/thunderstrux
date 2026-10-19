@@ -157,6 +157,8 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 - Renders canonical tenant-scoped order review for callers with live finance capability, regardless of account role.
 - Status views (All, Paid, Expired, Failed) are link tabs; buyer email, an Event list of the society's events and a date range filter through the URL. One table lists the page newest first: buyer, event and ticket, quantity, total, status and time. Results stream behind a skeleton.
+- Family tabs (T29b): Tickets (the default, everything above), Memberships and Merchandise (`?family=`). The commerce tabs have status pills (All, Paid, Free, Refunded, Payment review, Expired), buyer email, plan or product and date filters, and the same table: buyer and order reference, items or plan and term, total, payment, pickup (merchandise) and time. Rows open the staff merchandise order page or the member's page; both open for `orders:read` as well as their own permission, so finance managers see money actions there but not pickup steps or the roster. An event's Orders view stays on tickets.
+- Lists use `ResponsiveTable` (`components/ui/responsive-table.tsx`, T29b): a bordered table from 768px and the caller's cards below, used by ticket orders, commerce orders and Pickups.
 - Normal filters hide internal pending orders. `Show system orders` may expose pending orders for debugging, but pending must not be presented as a normal product status, and a pending row is not linked because order detail serves settled orders only.
 
 `/dashboard/orders/[orderId]`

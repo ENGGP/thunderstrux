@@ -50,6 +50,9 @@ model User {
   commerceLifecycleEvents CommerceLifecycleEvent[]
   merchandiseReturns      MerchandiseReturn[]
   reservations            TicketReservation[]
+  eventChanges            EventChange[]
+  // Optional mail (T30): the seven-day membership renewal reminder.
+  renewalReminders        Boolean              @default(true)
 
   @@index([accountRole])
 }
@@ -114,6 +117,7 @@ model Organisation {
   staffInvites        OrganisationStaffInvite[]
   auditLogs           AuditLog[]
   events              Event[]
+  eventChanges        EventChange[]
   orders              Order[]
   tickets             Ticket[]
   reservations        TicketReservation[]
@@ -298,6 +302,7 @@ model Event {
   tickets        Ticket[]
   orders         Order[]
   reservations   TicketReservation[]
+  changes        EventChange[]
 
   @@index([organisationId])
   @@index([organisationId, status])
@@ -1104,6 +1109,7 @@ model MembershipGrant {
   @@unique([commerceOrderLineId, organisationId])
 @@index([userId, organisationId, startsAt])
   @@index([organisationId, startsAt, id])
+  @@index([endsAt])
   @@index([membershipProductId])
 }
 
@@ -1220,5 +1226,36 @@ model MerchandiseReturn {
 
   @@index([commerceOrderId, createdAt])
   @@index([commerceOrderLineId])
+  @@index([actorUserId])
+}
+
+// T30: a material schedule or place change to an event that has issued
+// tickets. The worker emails each valid holder once, in order id pages after
+// `cursor`; `outcome` is sent, or superseded when a newer edit replaced it
+// before any email went.
+model EventChange {
+  id                String    @id @default(cuid())
+  eventId           String
+  organisationId    String
+  eventVersion      Int
+  previousStartTime DateTime
+  previousEndTime   DateTime
+  previousLocation  String
+  startTime         DateTime
+  endTime           DateTime
+  location          String
+  actorUserId       String?
+  cursor            String?
+  notifiedCount     Int       @default(0)
+  completedAt       DateTime?
+  outcome           String?
+  createdAt         DateTime  @default(now())
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  organisation      Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  actor             User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([eventId, eventVersion])
+  @@index([completedAt, createdAt])
+  @@index([organisationId])
   @@index([actorUserId])
 }

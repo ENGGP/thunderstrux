@@ -474,7 +474,12 @@ export function CreateEventForm({
           <div className="grid max-w-2xl gap-5">
             <div>
               <h2 className="text-lg font-semibold text-ink">Schedule</h2>
-              <p className="mt-1 text-sm text-ink-soft">Times are in {zoneLabel(timeZone, referenceDate)}, the society&apos;s time zone.</p>
+              <p className="mt-1 text-sm text-ink-soft">
+                Times are in {zoneLabel(timeZone, referenceDate)}, the society&apos;s time zone.
+                {initialEvent?.ticketTypes.some((ticketType) => ticketType.sold > 0)
+                  ? " If you change the time or place, everyone with a ticket gets an email about it a few minutes after you save."
+                  : ""}
+              </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               {timeInput("startTime")}

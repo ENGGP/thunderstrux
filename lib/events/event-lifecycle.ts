@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import type { z } from "zod";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { prisma } from "@/lib/db";
+import { recordEventChange } from "@/lib/events/event-changes";
 import { scopedByOrganisation } from "@/lib/db/organisation-scope";
 import { eventReadiness, salesOpen } from "@/lib/events/event-readiness";
 import { assetReferenced } from "@/lib/assets/references";
@@ -491,6 +492,9 @@ export async function updateOrganisationEvent(
       select: {
         version: true,
         heroAssetId: true,
+        startTime: true,
+        endTime: true,
+        location: true,
         ticketTypes: {
           select: { id: true, quantity: true, _count: { select: { orders: true, tickets: true } } }
         }
@@ -599,6 +603,16 @@ export async function updateOrganisationEvent(
     if (input.heroAssetId !== undefined && input.heroAssetId !== locked.heroAssetId) {
       await refreshAssetReferences(transaction, [locked.heroAssetId, input.heroAssetId]);
     }
+
+    // A new time or place emails ticket holders (T30).
+    await recordEventChange(transaction, {
+      eventId: existingEvent.id,
+      organisationId,
+      eventVersion: input.version + 1,
+      actorUserId,
+      before: locked,
+      after: { startTime: input.startTime, endTime: input.endTime, location: input.location }
+    });
 
     await transaction.auditLog.create({
       data: {

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { memberProfileSchema } from "@/lib/validators/auth";
@@ -5,7 +6,7 @@ import { AccountSecurityError, lockAccount, type AccountActor } from "./account-
 export async function readAccountSettings(actor: AccountActor, now = new Date()) {
   const user = await prisma.user.findUnique({ where: { id: actor.id }, select: {
     id: true, email: true, accountRole: true, authVersion: true, disabledAt: true, emailVerifiedAt: true,
-    firstName: true, lastName: true, displayName: true, phone: true, studentNumber: true, onboardingCompletedAt: true,
+    firstName: true, lastName: true, displayName: true, phone: true, studentNumber: true, onboardingCompletedAt: true, renewalReminders: true,
     mfa: { select: { enabledAt: true } }, securityEvents: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 10, select: { type: true, createdAt: true } }
   } });
   if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AccountSecurityError("stale_session", "Sign in again to continue");
@@ -15,7 +16,7 @@ export async function readAccountSettings(actor: AccountActor, now = new Date())
   const grant = user.mfa?.enabledAt && digest ? await prisma.mfaGrant.findFirst({ where: { userId: user.id, sessionDigest: digest, expiresAt: { gt: now }, verifiedAt: { lte: now } }, select: { sessionDigest: true } }) : null;
   return { user: { id: user.id, email: user.email, accountRole: user.accountRole, emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
     firstName: user.firstName, lastName: user.lastName, displayName: user.displayName, phone: user.phone, studentNumber: user.studentNumber,
-    onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null },
+    onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null, renewalReminders: user.renewalReminders },
     mfa: { enabled: Boolean(user.mfa?.enabledAt), verified: Boolean(grant) },
     pendingEmailChange: pendingEmail?.newEmail ? { email: pendingEmail.newEmail, expiresAt: pendingEmail.expiresAt.toISOString() } : null,
     securityEvents: user.securityEvents.map(event => ({ type: event.type, createdAt: event.createdAt.toISOString() })) };
@@ -29,6 +30,17 @@ export async function updateAccountProfile(actor: AccountActor, input: unknown) 
     return tx.user.update({ where: { id: user.id }, data: { firstName: profile.firstName, lastName: profile.lastName, displayName: profile.displayName || null,
       phone: profile.phone || null, studentNumber: profile.studentNumber || null, onboardingCompletedAt: new Date() },
       select: { id: true, email: true, accountRole: true, firstName: true, lastName: true, displayName: true, phone: true, studentNumber: true, onboardingCompletedAt: true } });
+  });
+}
+// Optional mail only (T30). Receipts, refunds, event changes and security
+// mail have no switch.
+export const notificationPreferencesSchema = z.object({ renewalReminders: z.boolean() }).strict();
+export async function updateNotificationPreferences(actor: AccountActor, input: unknown) {
+  const preferences = notificationPreferencesSchema.parse(input);
+  return prisma.$transaction(async tx => {
+    const user = await lockAccount(tx, actor.id);
+    if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AccountSecurityError("stale_session", "Sign in again to continue");
+    return tx.user.update({ where: { id: user.id }, data: preferences, select: { renewalReminders: true } });
   });
 }
 export async function readMemberProfile(userId: string) {

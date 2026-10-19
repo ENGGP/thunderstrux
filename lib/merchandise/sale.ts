@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { CommerceFamilyAdapter, CommerceOrderForHooks } from "@/lib/commerce/families";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, orderReference } from "@/lib/format";
 import { mintPurchaseLink } from "@/lib/guest/guest-access";
 import { MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
 
@@ -29,10 +29,6 @@ export class MerchandiseUnavailableError extends Error {
     this.name = "MerchandiseUnavailableError";
   }
 }
-
-// The short reference buyers and staff quote (lib/payments/order-refunds.ts
-// has the same rule; importing it would loop back through the family registry).
-const orderReference = (orderId: string) => orderId.slice(-6).toUpperCase();
 
 type Db = Pick<Prisma.TransactionClient, "commerceOrderLine">;
 

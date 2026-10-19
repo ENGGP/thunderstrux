@@ -1,6 +1,8 @@
+import { execFileSync } from "node:child_process";
 import sharp from "sharp";
 import { test, expect, prisma, login } from "./fixtures";
 import { toZonedInput, zonedCandidates } from "@/lib/zoned-time";
+import { createOrder } from "@/tests/helpers/test-data";
 
 test("organisers build an event in the society's time zone with a dollar price and an image, then close sales", async ({ page, data }) => {
   await prisma.organisation.update({ where: { id: data.organisation.id }, data: { timeZone: "Australia/Sydney" } });
@@ -60,4 +62,36 @@ test("organisers build an event in the society's time zone with a dollar price a
   await expect(page.getByText("Sales closed. The event stays published.")).toBeVisible();
   await expect(page.getByText("Sales closed", { exact: true }).first()).toBeVisible();
   expect(await prisma.event.findUniqueOrThrow({ where: { id: data.event.id } })).toMatchObject({ status: "published", saleState: "closed" });
+});
+
+// T30: a new place for an event with a sold ticket reaches the holder once,
+// through the worker and Docker mail capture; the member can turn the one
+// optional email off in Account settings.
+test("moving a ticketed event emails the holder, and a member turns renewal reminders off", async ({ page, data }) => {
+  const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, status: "paid", paidAt: new Date() });
+  await prisma.ticket.create({ data: { orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id, issueSequence: 1 } });
+  await login(page, data.owner.email, `/dashboard/events/${data.event.id}/edit`);
+  await expect(page.getByText("everyone with a ticket gets an email about it", { exact: false })).toBeVisible();
+  await page.getByLabel("Location", { exact: true }).fill("Great Hall");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await page.waitForURL(`**/dashboard/events/${data.event.id}`);
+
+  // Skip the pause that lets a quick correction replace the change.
+  const change = await prisma.eventChange.findFirstOrThrow({ where: { eventId: data.event.id } });
+  await prisma.eventChange.update({ where: { id: change.id }, data: { createdAt: new Date(Date.now() - 10 * 60_000) } });
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });
+  const messages = await (await page.request.get("http://mail-capture:8025/messages")).json();
+  const sent = messages.filter((message: { data: { to: string; subject: string } }) => message.data.to === data.member.email && message.data.subject === `Change to ${data.event.title}`);
+  expect(sent).toHaveLength(1);
+  expect(sent[0].data.text).toContain("Where: now Great Hall. It was Integration Room.");
+
+  await page.context().clearCookies();
+  await login(page, data.member.email, "/account/settings#notifications");
+  const reminders = page.getByRole("checkbox", { name: /Membership renewal reminders/ });
+  await expect(reminders).toBeChecked();
+  await reminders.uncheck();
+  await page.getByRole("button", { name: "Save preferences", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Preferences saved." })).toBeVisible();
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: data.member.id } })).renewalReminders).toBe(false);
 });

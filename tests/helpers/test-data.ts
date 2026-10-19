@@ -149,8 +149,9 @@ export async function createMembershipGrant(
   {
     startsAt = new Date(Date.now() - 86_400_000),
     endsAt = new Date(Date.now() + 100 * 86_400_000),
-    entitlements = ["member_prices"]
-  }: { startsAt?: Date; endsAt?: Date; entitlements?: Array<"member_prices" | "members_only_events"> } = {}
+    entitlements = ["member_prices"],
+    grantedAt
+  }: { startsAt?: Date; endsAt?: Date; entitlements?: Array<"member_prices" | "members_only_events">; grantedAt?: Date } = {}
 ) {
   const plan = await prisma.membershipProduct.create({ data: { organisationId, name: unique("Plan"), priceAmount: 0, startsAt, endsAt, entitlements, status: "published", publishedAt: new Date() } });
   const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
@@ -158,7 +159,7 @@ export async function createMembershipGrant(
     lines: [{ quantity: 1, unitAmount: 0, name: plan.name, termStartsAt: startsAt, termEndsAt: endsAt, membershipProductId: plan.id }]
   }));
   const line = await prisma.commerceOrderLine.findFirstOrThrow({ where: { orderId: order.id } });
-  return prisma.membershipGrant.create({ data: { userId, organisationId, membershipProductId: plan.id, commerceOrderLineId: line.id, startsAt, endsAt, entitlements, entitlementVersion: 3 } });
+  return prisma.membershipGrant.create({ data: { userId, organisationId, membershipProductId: plan.id, commerceOrderLineId: line.id, startsAt, endsAt, entitlements, entitlementVersion: 3, grantedAt } });
 }
 
 export async function createEvent({

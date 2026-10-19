@@ -818,6 +818,9 @@ describe("webhook reconciliation", () => {
     await expect(
       prisma.emailOutbox.count({ where: { orderId: order.id } })
     ).resolves.toBe(0);
+    // The buyer hears once that the payment is in review, with no ticket promise (T30).
+    await expect(prisma.notificationOutbox.findMany({ where: { eventKey: `payment-review/${order.id}` } }))
+      .resolves.toEqual([expect.objectContaining({ recipient: member.email, organisationId: organisation.id })]);
     expect(fetchMock).not.toHaveBeenCalled();
     const alertCalls = operationalAlertCalls(error);
     expect(alertCalls).toHaveLength(1);

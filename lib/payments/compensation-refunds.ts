@@ -3,6 +3,7 @@ import { Prisma, type CompensationRefundState } from "@prisma/client";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
+import { queueCompensationRefundNotice } from "@/lib/payments/compensation-notices";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -271,6 +272,7 @@ async function persistRefund(job: ClaimedRefund, refund: Stripe.Refund) {
         where: { id: job.orderId },
         data: { requiresCompensationReview: false, isManuallyRefunded: true }
       });
+      await queueCompensationRefundNotice(tx, job);
     }
     await appendOrderLifecycleEvent(tx, {
       orderId: job.orderId,
@@ -491,6 +493,7 @@ export async function reconcileRefundEvent(event: Stripe.Event) {
         where: { id: job.orderId },
         data: { requiresCompensationReview: false, isManuallyRefunded: true }
       });
+      await queueCompensationRefundNotice(tx, job);
     }
     await appendOrderLifecycleEvent(tx, {
       orderId: job.orderId,
@@ -591,6 +594,7 @@ export async function confirmCompensationRefund(
       where: { id: orderId },
       data: { requiresCompensationReview: false, isManuallyRefunded: true }
     });
+    await queueCompensationRefundNotice(tx, existing);
     await appendOrderLifecycleEvent(tx, {
       orderId,
       type: "compensation_refunded",

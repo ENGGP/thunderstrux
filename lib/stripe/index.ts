@@ -24,7 +24,9 @@ export function getStripe() {
   }
 
   return new Stripe(secretKey, {
-    apiVersion: "2026-03-25.dahlia"
+    // Pinned to the version real Stripe acceptance verified. Newer SDKs type only
+    // their own latest version; moving needs a fresh test-mode campaign.
+    apiVersion: "2026-03-25.dahlia" as Stripe.StripeConfig["apiVersion"]
   });
 }
 

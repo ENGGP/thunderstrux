@@ -172,6 +172,7 @@ Important rules:
 - Existing tickets remain linked to the same `ticketTypeId`.
 - Sold-out ticket types with `quantity = 0` can be edited back to a positive quantity to reopen future availability.
 - The edit form only disables removal for sold/issued ticket rows. Event fields and ticket name/price/quantity stay editable.
+- A new start, end or location on an event with active tickets records an `EventChange` in the same transaction (T30); the notification worker emails each valid holder once after a five-minute pause, so a quick correction or undo sends one email or none. Title, description, price and stock edits email nobody. The published-event notice on the edit page says so. See [[Email Delivery Implementation]].
 
 ### Inventory locks (T12)
 

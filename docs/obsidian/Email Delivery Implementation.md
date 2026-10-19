@@ -3,7 +3,7 @@ status: living
 last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Production Operations]]"]
-sources: [lib/email/ticket-email-outbox.ts, lib/email/notification-outbox.ts, scripts/process-notifications.mjs]
+sources: [lib/email/ticket-email-outbox.ts, lib/email/notification-outbox.ts, lib/events/event-changes.ts, lib/memberships/reminders.ts, lib/payments/compensation-notices.ts, scripts/process-notifications.mjs]
 ---
 
 # Email Delivery Implementation
@@ -170,3 +170,43 @@ Ticket delivery resolves an immutable Order buyer capture before the live User r
 ## Staff invitation delivery
 
 `staff_invite` is a private security notification, encrypted with the notification key and excluded from business notification listing/recovery. The outbox links `staffInviteId` and `staffInviteVersion`; each issuance version has an immutable event key. Raw tokens exist only in the encrypted payload and synthetic test decryption helpers, never API responses, audit or logs. Before sending, the worker checks the live version, recipient, expiry, accepted/revoked state and verified non-disabled issuer with owner/admin authority (owner for owner grants). Resend/revoke, acceptance, verified-address email change and issuer/recipient closure cancel obsolete queued/claimed messages. A provider call already in flight cannot be recalled; any delivered obsolete link still fails acceptance. Reliable worker scheduling and real inbox/provider qualification remain activation gates.
+
+## Email completion (T30)
+
+`scripts/process-notifications.mjs` now does three things each run, in order: fans out due event changes (at most five pages of 100 holders), queues due membership reminders and expiry notices (at most 100), then sends one bounded batch. A failed queueing step is logged (`notification_outbox.event_changes.failed`, `notification_outbox.membership_notices.failed`) and retried next run; it never blocks sending. The schedule is unchanged: every minute.
+
+- **Material event changes.** An edit that changes an event's start, end or location while it has active tickets records an `EventChange` in the edit's own transaction (old and new values, the new event version). After a five-minute pause the worker emails every paid, fulfilled order with an active ticket, in order id pages after the change's `cursor`; the page's emails and the cursor commit together, so a stopped run resumes and a replayed page queues nothing (key `event-change/{eventId}/{version}/{orderId}`, one per purchase and recipient). The recipient is the order's buyer capture, so a later account email change does not redirect it. A newer edit replaces a change nobody has been emailed about yet and keeps its original "was"; changing it back sends nothing; a change the worker has started always finishes. Members' copies link to My tickets; a guest's copy has no link. Only valid holders are emailed: refunded, void, pending and unrelated people never are. The edit page's published-event notice tells organisers.
+- **Renewal reminder (optional).** Seven days before a membership ends, if the member held it then, still wants reminders and has no later membership with that society. Key `membership-renewal/{grantId}`, so the minute-by-minute catch-up sends it once and never extends a term. It names the society's next plan on sale, if any, and links to My memberships.
+- **Expiry notice.** Once a membership has ended (within the past week), unless it was revoked (that sent its own notice) or a later membership follows. Key `membership-expired/{grantId}`. The message states the actual last day in the society's zone, whenever the worker runs.
+- **Payment review.** When a ticket or commerce order first goes to payment review (paid but not honoured), the buyer is told no tickets or items are theirs yet and what happens next (an automatic full refund, or the society's review). Key `payment-review/{orderId}`; no provider detail.
+- **Compensation refund.** When Stripe confirms a ticket order's compensation refund (worker poll, webhook or a verified staff confirmation), the buyer gets the amount. Key `compensation-refund/{jobId}`.
+- **Exhausted jobs.** Every move of a notification job to `failed` (provider unavailable after five attempts, past the safe retry window, or an unreadable payload) emits `notification_outbox_retry_exhausted` with the job id, template, privacy and reason, never the recipient or message. Society jobs then show on Email delivery for requeue; account-security jobs stay operator-only.
+- **Subjects.** A society notice may carry its own subject (`Change to <event>`, `Your <plan> membership ends soon`); line breaks are refused and other templates keep their fixed subjects.
+- **Preferences.** Account settings › Notifications (members) has one switch, Membership renewal reminders, on by default (`User.renewalReminders`, `PATCH /api/me/notification-preferences`). Receipts, refunds, cancellations, pickups, event changes, expiry and security mail have no switch. There is no engagement or marketing mail to switch.
+
+### Notification matrix (readiness plan §5)
+
+Each row has a test where its owning service is tested; T30 added the rows marked new.
+
+| Trigger | Key | Test |
+| --- | --- | --- |
+| Signup/verification resend | `auth/{tokenId}` | `account-verification.test.ts`, `notification-outbox.test.ts` |
+| Password reset request | `auth/{tokenId}` | `password-recovery.test.ts` |
+| Password/security change | `account-security/{eventId}` | `password-recovery.test.ts`, `email-change.test.ts`, `account-closure.test.ts` |
+| Staff invite/resend | `staff-invite/{inviteId}/{version}` | `staff-invites.test.ts` |
+| Paid/free ticket fulfilment | `EmailOutbox` automatic per order | `email-outbox.test.ts`, `free-tickets.test.ts`, `webhook-reconciliation.test.ts` |
+| Manual ticket resend | `EmailOutbox` manual job | `email-outbox.test.ts`, `orders-api.test.ts` |
+| Paid/free membership fulfilment | `membership-receipt/{grantId}` | `membership-grants.test.ts` |
+| Membership nearing expiry (new) | `membership-renewal/{grantId}` | `notification-matrix.test.ts` |
+| Membership expiry (new) / revocation | `membership-expired/{grantId}`, `membership-ended/{grantId}` | `notification-matrix.test.ts`, `membership-revocation.test.ts` |
+| Merchandise fulfilment | `merchandise-receipt/{orderId}` | `merchandise-sale.test.ts` |
+| Ready/collected merchandise | `merchandise-{ready,collected}/{orderId}` | `merchandise-pickups.test.ts` |
+| Confirmed refund | `refund/{requestId}`, `compensation-refund/{jobId}` (new) | `order-refunds.test.ts`, `membership-refunds.test.ts`, `merchandise-after-sale.test.ts`, `compensation-refunds.test.ts` |
+| Free purchase cancelled | `cancellation/{orderId}`, `membership-ended/{grantId}` | `free-cancellation.test.ts`, `membership-revocation.test.ts`, `merchandise-after-sale.test.ts` |
+| Paid-but-unfulfilled (new buyer notice) | `payment-review/{orderId}` plus `paid_but_unfulfilled_compensation_required` | `webhook-reconciliation.test.ts`, `commerce-checkout.test.ts` |
+| Material event schedule/location change (new) | `event-change/{eventId}/{version}/{orderId}` | `notification-matrix.test.ts`, browser `event-builder.spec.ts` |
+| Exhausted job | `notification_outbox_retry_exhausted`, `email_outbox_retry_exhausted` | `notification-outbox.test.ts`, `email-outbox.test.ts` |
+
+Evidence boundary: integration tests prove the queued intent and its text; the browser campaign proves a change email reaches Docker mail capture with its subject. Neither is provider acceptance or inbox delivery (H03).
+
+Rollout: the additive migration (`event_changes_and_preferences`) runs before the app and worker. Edits made by older app code record no change, so nobody is emailed for them; that is the only gap. Rolling the app back leaves the table and column unused; an older worker ignores pending changes, which the new worker sends when it returns (after the pause, so late rather than lost).

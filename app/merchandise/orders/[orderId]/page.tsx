@@ -98,7 +98,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
                   const at = pickupSteps.findIndex(([step]) => step === (order.pickupStatus ?? "pending"));
                   return (
                     <li className="flex items-start gap-2.5" key={key}>
-                      <span aria-hidden="true" className={`mt-1 size-3 shrink-0 rounded-full border-2 ${index < at ? "border-brand bg-brand" : index === at ? "border-brand" : "border-line"}`} />
+                      <span aria-hidden="true" className={`mt-1 size-3 shrink-0 rounded-full border-2 ${index < at || (index === at && key === "collected") ? "border-brand bg-brand" : index === at ? "border-brand" : "border-line"}`} />
                       <span className={index === at ? "text-ink" : "text-ink-soft"}>
                         {index === at ? <strong>{label}</strong> : label}
                         {index === at && hint ? <span className="block text-ink-soft">{hint}</span> : null}
@@ -122,13 +122,13 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
               <p className="font-semibold text-ink">
                 {free ? "Free" : `Paid ${formatPrice(order.totalAmount)}`} · Order {reference}
               </p>
-              <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-[15px]">
+              {order.pickupStatus === "collected" ? null : <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-[15px]">
                 <strong>Collect it in person</strong>
                 {order.organisation.pickupPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{order.organisation.pickupPolicy}</span> : null}
                 <span className="text-ink-soft">
                   Show order <strong className="text-ink">{reference}</strong> when you collect. We&apos;ve emailed your receipt.
                 </span>
-              </div>
+              </div>}
               {order.sellerSupportEmail ? (
                 <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
                   Questions?{" "}

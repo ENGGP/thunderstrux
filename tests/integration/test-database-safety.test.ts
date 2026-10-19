@@ -45,6 +45,7 @@ test("reset clears every current model including dependent and unlinked recovery
   await prisma.refundRequest.create({ data: { orderId: paid.id, organisationId: organisation.id, amount: paid.totalAmount, reason: "Synthetic reset fixture", operationKey: unique("reset-refund") } });
   const tote = await prisma.$transaction((tx) => createCommerceOrder(tx, { organisationId: organisation.id, kind: "merchandise", buyer: { userId: member.id }, buyerEmail: member.email, paymentKind: "free", lines: [{ quantity: 1, unitAmount: 0, name: "Synthetic tote" }], source: "checkout" }));
   const toteLine = await prisma.commerceOrderLine.findFirstOrThrow({ where: { orderId: tote.id } });
+  await prisma.eventChange.create({ data: { eventId: event.id, organisationId: organisation.id, eventVersion: 2 + (await prisma.eventChange.count()), previousStartTime: event.startTime, previousEndTime: event.endTime, previousLocation: event.location, startTime: event.startTime, endTime: event.endTime, location: "Moved" } });
   await prisma.merchandiseReturn.create({ data: { organisationId: organisation.id, commerceOrderId: tote.id, commerceOrderLineId: toteLine.id, quantity: 1, restocked: false, reason: "Synthetic reset fixture", operationKey: unique("reset-return") } });
   const term = { startsAt: new Date(Date.now() + 86_400_000), endsAt: new Date(Date.now() + 2 * 86_400_000) };
   const plan = await prisma.membershipProduct.create({ data: { organisationId: organisation.id, name: "Synthetic plan", priceAmount: 0, ...term } });

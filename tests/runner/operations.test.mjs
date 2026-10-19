@@ -13,9 +13,9 @@ import {
 } from "../../scripts/operations-guards.mjs";
 
 test("operations identifiers are narrowly scoped", () => {
-  assert.equal(assertOperationsProject("p217-local-rehearsal"), "p217-local-rehearsal");
+  assert.equal(assertOperationsProject("ops-local-rehearsal"), "ops-local-rehearsal");
   assert.throws(() => assertOperationsProject("thunderstrux"));
-  assert.equal(assertRestoreDatabase("p217_restore_test"), "p217_restore_test");
+  assert.equal(assertRestoreDatabase("ops_restore_test"), "ops_restore_test");
   assert.throws(() => assertRestoreDatabase("thunderstrux"));
 });
 
@@ -43,7 +43,7 @@ test("migration digest is stable and content-sensitive", () => {
 });
 
 test("rollback declaration must be reviewed and match the actual release", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "p217-compat-"));
+  const directory = await mkdtemp(join(tmpdir(), "ops-compat-"));
   const path = join(directory, "compatibility.json");
   const expected = {
     candidateImageId: "sha256:candidate",

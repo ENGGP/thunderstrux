@@ -284,9 +284,9 @@ async function deploy(ctx) {
     .catch(() => null);
   try {
     if (has("--skip-build")) {
-      console.error("P2.17 deploy: using prebuilt candidate");
+      console.error("Operations deploy: using prebuilt candidate");
     } else {
-      console.error("P2.17 deploy: building candidate");
+      console.error("Operations deploy: building candidate");
       await compose(ctx, ["build", "app"], { env: deploymentEnv });
     }
     const candidateImageId = await run("docker", ["image", "inspect", "--format", "{{.Id}}", image], { capture: true });
@@ -301,17 +301,17 @@ async function deploy(ctx) {
     previousImageId = previousContainer
       ? await run("docker", ["inspect", "--format", "{{.Image}}", previousContainer], { capture: true })
       : null;
-    console.error(`P2.17 deploy: previous release ${previousImageId ? "found" : "not found"}`);
+    console.error(`Operations deploy: previous release ${previousImageId ? "found" : "not found"}`);
     if (previousContainer) await compose(ctx, ["stop", "-t", "30", "app"]);
-    console.error("P2.17 deploy: creating pre-migration backup");
+    console.error("Operations deploy: creating pre-migration backup");
     const backupResult = await backup(ctx);
     migrationStarted = true;
-    console.error("P2.17 deploy: running migrations");
+    console.error("Operations deploy: running migrations");
     await compose(ctx, ["run", "--rm", "migration"], { env: deploymentEnv });
-    console.error("P2.17 deploy: starting candidate");
+    console.error("Operations deploy: starting candidate");
     await compose(ctx, ["up", "-d", "--no-build", "--force-recreate", "app"], { env: deploymentEnv });
     try {
-      console.error("P2.17 deploy: waiting for readiness");
+      console.error("Operations deploy: waiting for readiness");
       await waitReady(url, readinessAttempts);
     } catch (error) {
       await compose(ctx, ["stop", "-t", "30", "app"]).catch(() => {});
@@ -359,7 +359,7 @@ async function deploy(ctx) {
     await stat(pendingEnv);
     await rename(pendingEnv, activeEnvFile);
     await writeFile(releaseManifestFile, JSON.stringify(manifest, null, 2), { mode: 0o600 });
-    console.error("P2.17 deploy: release recorded");
+    console.error("Operations deploy: release recorded");
     console.log(JSON.stringify({ status: "deployed", release, candidateImageId }));
   } catch (error) {
     if (migrationStarted && !writersRestored) {
@@ -396,7 +396,7 @@ async function restore(ctx) {
       { input: archive }
     );
     const sourceDatabaseUrl = ctx.rehearsal
-      ? "postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public"
+      ? "postgresql://ops:ops-disposable-only@db:5432/ops_app_test?schema=public"
       : parseEnv(await readFile(ctx.envFile, "utf8")).DATABASE_URL;
     if (!sourceDatabaseUrl) throw new Error("DATABASE_URL is missing from the explicit environment file");
     const restoredUrl = databaseUrlForRestore(sourceDatabaseUrl, target);

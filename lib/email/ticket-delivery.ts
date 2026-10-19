@@ -242,7 +242,7 @@ export async function sendWithResend({
 
   let endpoint = "https://api.resend.com/emails";
   if (notification && process.env.THUNDERSTRUX_MAIL_CAPTURE_URL) {
-    if (!/^p216-[a-f0-9]{24}$/.test(process.env.E2E_RUN_ID ?? "") ||
+    if (!/^(baseline|browser|staging)-[a-f0-9]{24}$/.test(process.env.E2E_RUN_ID ?? "") ||
         process.env.THUNDERSTRUX_MAIL_CAPTURE_URL !== "http://mail-capture:8025/emails") {
       throw new TicketEmailConfigurationError("Mail capture requires an isolated E2E run");
     }

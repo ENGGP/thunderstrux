@@ -75,7 +75,7 @@ Integration tests may reset only a run-owned disposable database whose simple na
 
 After applicable local validation and review are complete and the PR is ready to merge:
 
-1. Complete repository-provided cleanup for every local E2E, staging-payment, or operations run. For E2E runs, use `pnpm test:e2e:cleanup -- <run-id>` and confirm the run-owned containers, network, and disposable database volume were removed.
+1. Complete repository-provided cleanup for every local E2E, staging-payment, or operations run. Baseline and browser runs are kept (stopped) until the feature is finished; then run `pnpm test:e2e:cleanup-kept`, or `pnpm test:e2e:cleanup -- <run-id>` for one run, and confirm the run-owned containers, network, and disposable database volume were removed.
 2. Remove only task-owned temporary files, test output, and generated caches that are no longer in use. Verify exact paths before removal. A local `.next` or `.next-build` cache may be cleared after its server/build process has stopped.
 3. Never blanket-delete `tmp/`, Docker volumes, or shared caches. Preserve backup archives, operations evidence needed for the PR, failed-run recovery manifests until recovery succeeds, development database/Redis volumes, dependency caches, user files, and resources not owned by the run.
 4. Confirm `git status` contains only intended tracked changes and no generated artifacts. Record cleanup success or retained recovery resources in the PR.

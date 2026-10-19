@@ -4,7 +4,7 @@ import { createOrder, createReservation } from '@/tests/helpers/test-data';
 import { createCommerceOrder } from '@/lib/commerce/orders';
 
 const stripe = new Stripe('sk_test_synthetic');
-const secret = 'whsec_p216_synthetic';
+const secret = 'whsec_e2e_synthetic';
 
 async function pending(data: Awaited<ReturnType<typeof import('./fixtures').seed>>) {
   const order = await createOrder({organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, quantity: 2});
@@ -89,11 +89,11 @@ test('Connect verifies its own secret and updates only a matching account', asyn
   const send = (text: string, signature: string) => request.post('/api/stripe/connect/webhook', {data: text, headers: {'stripe-signature': signature}});
   for (const signature of ['invalid', stripe.webhooks.generateTestHeaderString({payload: body, secret})]) expect((await send(body, signature)).status()).toBe(400);
   expect((await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}})).stripeChargesEnabled).toBe(false);
-  expect((await send(body, stripe.webhooks.generateTestHeaderString({payload: body, secret: 'whsec_p216_connect'}))).status()).toBe(200);
+  expect((await send(body, stripe.webhooks.generateTestHeaderString({payload: body, secret: 'whsec_e2e_connect'}))).status()).toBe(200);
   const ready = await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}});
   expect(ready.stripeChargesEnabled).toBe(true);
   const unknown = payload({...account, id: 'acct_unknown'}, 'account.updated');
-  expect((await send(unknown, stripe.webhooks.generateTestHeaderString({payload: unknown, secret: 'whsec_p216_connect'}))).status()).toBe(200);
+  expect((await send(unknown, stripe.webhooks.generateTestHeaderString({payload: unknown, secret: 'whsec_e2e_connect'}))).status()).toBe(200);
   expect(await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}})).toEqual(ready);
 });
 

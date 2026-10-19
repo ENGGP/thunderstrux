@@ -1,5 +1,9 @@
+// A run's ID names what it ran (baseline checks, the browser campaign or
+// staging payments); it is also its Compose project and evidence folder.
+export const runIdPattern = /^(baseline|browser|staging)-[a-f0-9]{24}$/;
+
 export function assertRunId(value) {
-  if (!/^p216-[a-f0-9]{24}$/.test(value ?? '')) throw new Error('Invalid P2.16 run ID');
+  if (!runIdPattern.test(value ?? '')) throw new Error('Invalid E2E run ID');
   return value;
 }
 
@@ -8,7 +12,7 @@ export function assertTestDatabase(value) {
   if (url.protocol !== 'postgresql:' || url.hostname !== 'db' ||
       url.pathname !== '/thunderstrux_e2e_test' || url.port !== '5432' ||
       url.username !== 'e2e' || url.search) {
-    throw new Error('Refusing database outside the isolated P2.16 stack');
+    throw new Error('Refusing database outside the isolated E2E stack');
   }
 }
 

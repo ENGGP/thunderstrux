@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
 
 test('cleanup accepts only generated project identifiers', () => {
-  for (const value of ['main', '../thunderstrux', 'thunderstrux', 'p216-', '']) {
+  for (const value of ['main', '../thunderstrux', 'thunderstrux', 'browser-', 'run-aaaaaaaaaaaaaaaaaaaaaaaa', '']) {
     assert.throws(() => assertRunId(value));
   }
-  const id = `p216-${'a'.repeat(24)}`;
+  const id = `browser-${'a'.repeat(24)}`;
   assert.equal(assertRunId(id), id);
   assert.throws(() => assertOwnedManifest({version: 1, runId: id, project: 'thunderstrux'}, id));
 });

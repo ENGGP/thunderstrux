@@ -18,14 +18,14 @@ test('cancelled staging refuses to read credentials or start Docker work', async
 });
 
 async function recoveryFixture(check) {
-  const directory = await mkdtemp(join(tmpdir(), 'p216-recovery-test-'));
+  const directory = await mkdtemp(join(tmpdir(), 'e2e-recovery-test-'));
   const original = process.cwd();
   try {
     await writeFile(join(directory, '.env.staging.local'), 'STRIPE_TEST_SECRET_KEY=sk_test_fixture\nSTRIPE_TEST_CONNECTED_ACCOUNT=acct_fixture\n');
     const runtimeFile = join(directory, 'runtime.env');
     await writeFile(runtimeFile, 'STRIPE_SECRET_KEY=\n');
     process.chdir(directory);
-    await check({directory, runtimeFile, manifest: {}, save: async () => {}, recovery: true, runId: `p216-${'a'.repeat(24)}`});
+    await check({directory, runtimeFile, manifest: {}, save: async () => {}, recovery: true, runId: `staging-${'a'.repeat(24)}`});
   } finally {
     process.chdir(original);
     await rm(directory, {recursive: true, force: true});

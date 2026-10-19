@@ -1,10 +1,11 @@
 import { readdir, readFile, appendFile } from 'node:fs/promises';
+import { runIdPattern } from './e2e-guards.mjs';
 
 let runs;
 try { runs = await readdir('tmp/e2e'); } catch (error) { if (error.code !== 'ENOENT') throw error; runs = []; }
 const lines = ['## Browser E2E results', ''];
 for (const run of runs) {
-  if (!/^p216-[a-f0-9]{24}$/.test(run)) continue;
+  if (!runIdPattern.test(run)) continue;
   const reports = await readdir(`tmp/e2e/${run}/reports`);
   for (const file of reports.filter(name => /^summary-\d+\.json$/.test(name))) {
     const data = JSON.parse(await readFile(`tmp/e2e/${run}/reports/${file}`, 'utf8'));

@@ -21,7 +21,7 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
   let input;
   const run = (...args) => {
     if (args[0] !== 'cleanup') signal.throwIfAborted();
-    return capture('run', '--rm', '--no-deps', 'runner', 'node', 'scripts/staging-driver.mjs', ...args);
+    return capture('run', '--rm', '--no-deps', 'tests', 'node', 'scripts/staging-driver.mjs', ...args);
   };
   try {
     if (recovery) {
@@ -56,7 +56,7 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
         await run('prepare', scenario);
         // Read private state inside its owning container (root-owned 0600 on Linux).
         const handoff = await run('handoff', scenario);
-        const privateState = JSON.parse(handoff.split('\n').find(line => line.startsWith('P216_PRIVATE:')).slice('P216_PRIVATE:'.length));
+        const privateState = JSON.parse(handoff.split('\n').find(line => line.startsWith('E2E_PRIVATE:')).slice('E2E_PRIVATE:'.length));
         console.log(`\n${scenario.toUpperCase()}: open this test Checkout URL privately:\n${privateState.url}`);
         console.log(scenario === 'success' ? 'Pay using Stripe test card 4242 4242 4242 4242, future expiry, any CVC.' : scenario === 'decline' ? 'Attempt payment using Stripe decline card 4000 0000 0000 0002; confirm the decline is displayed.' : 'Use the Checkout back/cancel link and confirm the app cancel page appears.');
         const answer = await input.question('Type confirmed after completing this step: ', {signal: AbortSignal.any([signal, AbortSignal.timeout(15 * 60_000)])});

@@ -10,7 +10,7 @@ import { assertRunId, assertOwnedManifest } from './e2e-guards.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2).filter(arg => arg !== '--');
 const mode = args[0] ?? 'test';
-const runId = assertRunId(mode === 'cleanup' ? args[1] : `p216-${randomBytes(12).toString('hex')}`);
+const runId = assertRunId(mode === 'cleanup' ? args[1] : `${mode === 'test' ? 'browser' : mode}-${randomBytes(12).toString('hex')}`);
 const directory = resolve(root, 'tmp', 'e2e', runId);
 const runtimeFile = resolve(directory, 'runtime.env');
 const reportDir = resolve(directory, 'reports');
@@ -47,9 +47,11 @@ export async function command(args, capture = false) {
 }
 const compose = (...args) => command([...composeArgs, ...args]);
 const capture = (...args) => command([...composeArgs, ...args], true);
+// One named test container per step (`<run>-checks`, `<run>-browser`, ...), kept with the run until cleanup.
+const step = (name, ...args) => compose('run', '--name', `${runId}-${name}`, '--no-deps', 'tests', ...args);
 async function save() { await writeFile(manifestFile, JSON.stringify(manifest, null, 2)); }
 async function createRuntime() {
-  await writeFile(runtimeFile, `AUTH_SECRET=${randomBytes(32).toString('hex')}\nNOTIFICATION_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nMFA_ENFORCEMENT_MODE=${mode === 'test' ? 'enforce' : 'off'}\nMFA_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nLEGACY_ORGANISATION_ACCESS_MODE=deny\nSTRIPE_SECRET_KEY=\nSTRIPE_WEBHOOK_SECRET=whsec_p216_synthetic\nSTRIPE_CONNECT_WEBHOOK_SECRET=whsec_p216_connect\nE2E_RUN_ID=${runId}\n`, {mode: 0o600});
+  await writeFile(runtimeFile, `AUTH_SECRET=${randomBytes(32).toString('hex')}\nNOTIFICATION_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nMFA_ENFORCEMENT_MODE=${mode === 'test' ? 'enforce' : 'off'}\nMFA_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nLEGACY_ORGANISATION_ACCESS_MODE=deny\nSTRIPE_SECRET_KEY=\nSTRIPE_WEBHOOK_SECRET=whsec_e2e_synthetic\nSTRIPE_CONNECT_WEBHOOK_SECRET=whsec_e2e_connect\nE2E_RUN_ID=${runId}\n`, {mode: 0o600});
 }
 async function retainRecovery() {
   assertOwnedManifest(manifest, runId);
@@ -129,8 +131,8 @@ try {
     manifest = { version: 1, runId, project: runId, staging: mode === 'staging', createdAt: new Date().toISOString() };
     await save();
     await createRuntime();
-    console.log(`P2.16 run: ${runId}`);
-    await compose('build', 'app', 'runner');
+    console.log(`E2E run: ${runId}`);
+    await compose('build', 'app', 'tests');
     if (interrupted) throw new Error('Run interrupted');
     if (mode === 'staging') {
       const { runStaging } = await import('./staging-payments.mjs');
@@ -139,21 +141,21 @@ try {
       await compose('up', '-d', 'app');
       await ready();
       if (mode === 'baseline') {
-        await compose('run', '--rm', '--no-deps', 'runner', 'sh', '-c', 'pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit');
+        await step('checks', 'sh', '-c', 'pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit');
       } else {
-        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'mfa-enforced.spec.ts', '--project=desktop');
+        await step('mfa', 'pnpm', 'exec', 'playwright', 'test', 'mfa-enforced.spec.ts', '--project=desktop');
         await compose('stop', 'app');
         const afterMfa = await readFile(runtimeFile, 'utf8');
         await writeFile(runtimeFile, afterMfa.replace('MFA_ENFORCEMENT_MODE=enforce\n', 'MFA_ENFORCEMENT_MODE=off\n'));
         await compose('up', '-d', '--force-recreate', 'app');
         await ready();
-        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'browser.spec.ts', 'mobile.spec.ts', 'account-lifecycle.spec.ts', 'society-profiles.spec.ts', 'society-discovery.spec.ts', 'event-builder.spec.ts', 'free-tickets.spec.ts', 'payments-page.spec.ts', 'checkout-states.spec.ts', 'public-event-pages.spec.ts', 'explore-events.spec.ts', 'guest-access.spec.ts', 'guest-checkout.spec.ts', 'guest-claim.spec.ts', 'order-refunds.spec.ts', 'purchases.spec.ts', 'check-in.spec.ts', 'memberships.spec.ts', 'merchandise.spec.ts');
+        await step('browser', 'pnpm', 'exec', 'playwright', 'test', 'browser.spec.ts', 'mobile.spec.ts', 'account-lifecycle.spec.ts', 'society-profiles.spec.ts', 'society-discovery.spec.ts', 'event-builder.spec.ts', 'free-tickets.spec.ts', 'payments-page.spec.ts', 'checkout-states.spec.ts', 'public-event-pages.spec.ts', 'explore-events.spec.ts', 'guest-access.spec.ts', 'guest-checkout.spec.ts', 'guest-claim.spec.ts', 'order-refunds.spec.ts', 'purchases.spec.ts', 'check-in.spec.ts', 'memberships.spec.ts', 'merchandise.spec.ts');
         await compose('stop', 'app');
         const runtime = await readFile(runtimeFile, 'utf8');
         await writeFile(runtimeFile, runtime.replace('STRIPE_SECRET_KEY=\n', 'STRIPE_SECRET_KEY=sk_test_synthetic\n'));
         await compose('up', '-d', '--force-recreate', 'app');
         await ready();
-        await compose('run', '--rm', '--no-deps', 'runner', 'pnpm', 'exec', 'playwright', 'test', 'webhooks.spec.ts', 'notifications.spec.ts', '--project=desktop');
+        await step('webhooks', 'pnpm', 'exec', 'playwright', 'test', 'webhooks.spec.ts', 'notifications.spec.ts', '--project=desktop');
       }
     }
     cancellation.signal.throwIfAborted();
@@ -168,8 +170,13 @@ try {
     await retainRecovery().catch(error => { console.error(`Credential cleanup failed: ${error.message}`); process.exitCode = 1; });
   }
   if (manifest) {
-    if (!manifest.staging || manifest.stripeCleanupComplete || !manifest.stripeResourcesPossible) {
+    if (mode === 'cleanup' || (manifest.staging && (manifest.stripeCleanupComplete || !manifest.stripeResourcesPossible))) {
       await cleanup().catch(async error => { manifest.passed = false; await save(); console.error(`Cleanup pending for ${runId}: ${error.message}`); process.exitCode = 1; });
+    } else if (!manifest.staging) {
+      // Kept until the feature is finished (maintainer's choice): stopped, so the port is free;
+      // `pnpm test:e2e:cleanup-kept` removes every kept run at the end.
+      await compose('--profile', '*', 'stop', '--timeout', '10').catch(error => { console.error(`Stop failed for ${runId}: ${error.message}`); process.exitCode = 1; });
+      console.log(`Run kept (stopped): ${runId}. Remove with pnpm test:e2e:cleanup -- ${runId}`);
     } else console.error(`Staging resources retained for recovery: ${runId}`);
     console.log(`Evidence manifest: tmp/e2e/${runId}/manifest.json`);
   }

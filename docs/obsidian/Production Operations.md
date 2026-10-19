@@ -10,7 +10,7 @@ sources: [scripts/operations.mjs, docker-compose.hosted.yml, scripts/run-operati
 
 ## Current Status
 
-P2.17 repository-side operations are implemented and locally rehearsed. The repository provides local Docker validation, optional manual GitHub workflows, liveness/readiness endpoints, non-root production containers, a single migration job, guarded deployment, PostgreSQL backup/restore, and compatibility-gated application rollback.
+Repository-side operations (originally task P2.17) are implemented and locally rehearsed. The repository provides local Docker validation, optional manual GitHub workflows, liveness/readiness endpoints, non-root production containers, a single migration job, guarded deployment, PostgreSQL backup/restore, and compatibility-gated application rollback.
 
 The hardened repository contract is `docker-compose.hosted.yml`. It consumes a prebuilt immutable `APP_IMAGE`, external PostgreSQL and Redis URLs, and file-backed secrets; it contains no database, Redis, source bind mount, or image build. The application, migration, and workers run non-root with a read-only root filesystem, dropped capabilities, no-new-privileges, bounded PIDs, explicit CPU/memory limits, and reviewed writable `tmpfs` paths. Validate a deployment environment with `pnpm docker:hosted:check -- --env-file <path>` before rollout.
 
@@ -33,7 +33,7 @@ The `pnpm ops:*` commands below are the existing single-host and recovery-rehear
 Use a unique immutable release name and an explicit environment file:
 
 ```powershell
-pnpm ops:deploy -- --project p217-thunderstrux --env-file .env.production --url http://127.0.0.1:3000 --release <git-sha>
+pnpm ops:deploy -- --project ops-thunderstrux --env-file .env.production --url http://127.0.0.1:3000 --release <git-sha>
 ```
 
 The runner acquires a target lock, builds one image, identifies any current app, stops writers, creates a pre-migration backup, runs `prisma migrate deploy` once, starts the candidate, and performs read-only smoke checks. It records image IDs and migration checksums under ignored, access-restricted `tmp/operations/<project>/` state. Ordinary app restarts never run migrations.
@@ -61,7 +61,7 @@ The runner restores the previous unique image reference and its protected enviro
 Create a custom-format PostgreSQL backup:
 
 ```powershell
-pnpm ops:backup -- --project p217-thunderstrux --env-file .env.production
+pnpm ops:backup -- --project ops-thunderstrux --env-file .env.production
 ```
 
 Archives and metadata are written atomically under `tmp/operations/<project>/`, include a SHA-256 checksum and migration digest, and retain the latest seven successful backups. Move production backups to encrypted off-machine storage; local archives are not disaster protection.
@@ -69,7 +69,7 @@ Archives and metadata are written atomically under `tmp/operations/<project>/`, 
 Restore only into a new database ending in `_restore_test`:
 
 ```powershell
-pnpm ops:restore -- --project p217-thunderstrux --env-file .env.production --archive <archive.dump> --target-database recovery_restore_test
+pnpm ops:restore -- --project ops-thunderstrux --env-file .env.production --archive <archive.dump> --target-database recovery_restore_test
 ```
 
 Restore verifies metadata ownership, checksum, archive completion, grants through application credentials, migration history, and representative domain reads. Failed targets remain quarantined and are never promoted.
@@ -78,7 +78,7 @@ For disaster recovery, stop app writers and workers, restore into a new database
 
 ## Validation
 
-`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all four bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. The GitHub `operations-tests` job runs the same rehearsal without production credentials.
+`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all four bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. Each rehearsal is a Compose project named `ops-<10 hex>` with an `ops` database user and `ops_app_test` database, and it removes everything it created at the end (that removal is part of what it tests). The GitHub `operations-tests` job runs the same rehearsal without production credentials.
 
 For dependency/container changes, local validation follows [[Engineering Delivery Workflow]]: review affected Compose contracts, lint changed Dockerfiles, build the production target and scan fixable high/critical vulnerabilities when that boundary changes. The optional manual static-validation workflow provides the same checks; it is not a merge requirement. Temporary vulnerability exceptions are prohibited unless they identify the CVE, reason, owner, and expiry in the issue register and workflow configuration.
 

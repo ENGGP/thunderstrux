@@ -21,7 +21,7 @@ services:
     image: ${APP_IMAGE:-thunderstrux-app:local}
     profiles: ["tools"]
     environment:
-      DATABASE_URL: postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public
+      DATABASE_URL: postgresql://ops:ops-disposable-only@db:5432/ops_app_test?schema=public
       ASSET_STORAGE_ENDPOINT: http://object-store:8333
       ASSET_STORAGE_BUCKET: operations-assets
       ASSET_STORAGE_PATH_STYLE: "true"
@@ -30,17 +30,17 @@ services:
     command: ["node", "scripts/rehearse-assets.mjs"]
   app:
     environment:
-      DATABASE_URL: postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public
+      DATABASE_URL: postgresql://ops:ops-disposable-only@db:5432/ops_app_test?schema=public
     ports:
       - "127.0.0.1:${APP_PORT:-3200}:${PORT:-3000}"
   migration:
     environment:
-      DATABASE_URL: postgresql://p217:p217-disposable-only@db:5432/p217_app_test?schema=public
+      DATABASE_URL: postgresql://ops:ops-disposable-only@db:5432/ops_app_test?schema=public
   db:
     env_file: !reset []
     environment:
-      POSTGRES_USER: p217
-      POSTGRES_PASSWORD: p217-disposable-only
-      POSTGRES_DB: p217_app_test
+      POSTGRES_USER: ops
+      POSTGRES_PASSWORD: ops-disposable-only
+      POSTGRES_DB: ops_app_test
 volumes:
   operations_assets:

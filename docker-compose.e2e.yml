@@ -13,7 +13,7 @@ services:
       timeout: 3s
       retries: 30
   app:
-    image: thunderstrux-p216-app:local
+    image: thunderstrux-e2e-app:local
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -71,7 +71,7 @@ services:
     cap_drop: ["ALL"]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000"]
   mail-capture:
-    image: thunderstrux-p216-app:local
+    image: thunderstrux-e2e-app:local
     command: [node, scripts/mail-capture.mjs]
     restart: "no"
   redis:
@@ -82,7 +82,7 @@ services:
       timeout: 3s
       retries: 30
   migration:
-    image: thunderstrux-p216-app:local
+    image: thunderstrux-e2e-app:local
     env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:e2e}
     environment:
       NODE_ENV: production
@@ -91,8 +91,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-  runner:
-    image: thunderstrux-p216-runner:local
+  tests:
+    image: thunderstrux-e2e-tests:local
     build:
       context: .
       dockerfile: docker/Dockerfile.e2e

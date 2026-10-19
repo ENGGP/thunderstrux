@@ -45,12 +45,15 @@ function paymentBadge(order: StaffMerchandiseOrder): Status {
   return order.status === "paid" ? (order.paymentKind === "free" ? "free" : "paid") : order.status === "expired" ? "expired" : "failed";
 }
 
-function Card({ title, id, children }: { title: string; id: string; children: ReactNode }) {
+function Card({ title, id, action, children }: { title: string; id: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className="grid content-start gap-3.5 rounded-card border border-line bg-surface p-5 sm:p-6">
-      <h2 className="font-display text-xl font-semibold text-ink" id={id}>
-        {title}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-xl font-semibold text-ink" id={id}>
+          {title}
+        </h2>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -149,7 +152,11 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
               )}
             </Card>
 
-            <Card id="pickup-heading" title="Pickup">
+            <Card
+              action={open && step && can("merchandise:fulfil") ? <PickupAction after={here} order={{ ...order, buyer }} orgSlug={organisation.slug} stage={step === "ready" ? "prepare" : "ready"} step={step} /> : null}
+              id="pickup-heading"
+              title="Pickup"
+            >
               {order.pickupStatus ? (
                 <ol className="flex flex-wrap gap-x-7 gap-y-2 text-[15px]">
                   {(["pending", "ready", "collected"] as const).map((state, index) => (
@@ -160,10 +167,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
                 </ol>
               ) : null}
               {open && step && can("merchandise:fulfil") ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-ink-soft">{step === "ready" ? `Mark ready emails ${buyer} that it's ready, with your pickup details.` : "Mark collected records who handed it over, and when."}</p>
-                  <PickupAction after={here} order={{ ...order, buyer }} orgSlug={organisation.slug} stage={step === "ready" ? "prepare" : "ready"} step={step} />
-                </div>
+                <p className="text-sm text-ink-soft">{step === "ready" ? `Mark ready emails ${buyer} that it's ready, with your pickup details.` : "Mark collected records who handed it over, and when."}</p>
               ) : (
                 <p className="text-sm text-ink-soft">
                   {order.pickupStatus === "collected" ? "Handed over. Record a return below if anything comes back." : open ? "Nothing to do." : "Not for pickup: this order isn't being handed over."}

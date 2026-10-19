@@ -58,7 +58,7 @@ export function MerchandiseMoneyActions({
   return (
     <div className="grid gap-3">
       <div>
-        <Button disabled={busy} onClick={() => setOpen(true)} type="button" variant="danger">
+        <Button className="w-full" disabled={busy} onClick={() => setOpen(true)} type="button" variant="danger">
           {refund ? "Refund whole order" : "Cancel free order"}
         </Button>
       </div>
@@ -155,7 +155,7 @@ export function RecordReturn({ orgSlug, orderId, reference, lines }: { orgSlug: 
   return (
     <div className="grid gap-3">
       <div>
-        <Button onClick={() => setShow(true)} type="button" variant="secondary">
+        <Button className="w-full" onClick={() => setShow(true)} type="button" variant="secondary">
           Record a return
         </Button>
       </div>

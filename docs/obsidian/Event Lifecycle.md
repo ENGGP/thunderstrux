@@ -214,8 +214,7 @@ Rules:
 - The event must belong to the caller's server-resolved canonical organisation.
 - Users without analytics:read are denied/redirected by the management-page helper; foreign events are concealed. Check-in staff use published event/attendance views rather than analytics.
 - Draft and published events can be viewed by management users with live access to the owning organisation.
-- The route shows event details and remaining/sold counts. Financial DTO fields and revenue-series queries/rendering require orders:read; event managers receive nonfinancial analytics.
-- Sold and revenue values are derived from paid orders.
+- The route shows event details, units and check-ins from `lib/analytics` (T31): tickets sold are issued units on fulfilled orders, checked in is valid checked-in over valid issued. Money (net sales, gross per type, Sales over time) needs `orders:read` as well as `analytics:read`; event managers get the same page without money, decided on the server. Sales over time buckets by day in the society's zone. See [[Analytics and Calendar]].
 - The header shows dates in the society time zone, the sales close time and, for a published event, a selling badge: Sales open, Sold out (no remaining stock) or Sales closed.
 - The ticket table shows price, sold, held (live checkout holds) and left. When the event has a capacity, a Capacity tile shows issued tickets plus live holds against it.
 - A draft shows the readiness checklist ("Ready to publish?"): the five publish checks, each with the shared readiness message and a link to the Edit page field, or to payment setup. A published event shows its selling status instead.

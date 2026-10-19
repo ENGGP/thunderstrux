@@ -6,7 +6,7 @@ import { POST } from "@/app/api/me/context/route";
 import { setMockSession, selectMockContext } from "@/tests/helpers/auth";
 import { createMember, createOrganisationAccount, createOrganisationStaff, createEvent } from "@/tests/helpers/test-data";
 import { jsonRequest } from "@/tests/helpers/http";
-import { getOrganisationEventAnalytics, getOrganisationEventRevenueSeries } from "@/lib/events/event-analytics";
+import { analyticsAccess, eventTicketTypeMetrics } from "@/lib/analytics/metrics";
 import { getOrganisationEventTickets } from "@/lib/tickets/check-in";
 import { updateOrganisationStaff } from "@/lib/staff/management";
 
@@ -60,10 +60,11 @@ describe("explicit staff context and capabilities", () => {
     const staff = await createOrganisationStaff({ organisationId: organisation.id, userId: member.id });
     const event = await createEvent({ organisationId: organisation.id, status: "draft" });
     setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
-    const analytics = await getOrganisationEventAnalytics(organisation.id, event.id);
-    expect(analytics.totals.revenue).toBeNull();
-    expect(analytics.ticketTypes.every(row => row.revenue === null)).toBe(true);
-    await expect(getOrganisationEventRevenueSeries(organisation.id, event.id)).rejects.toThrow("Insufficient staff permissions");
+    // Event managers read analytics but not orders, so money is left out server-side.
+    const access = analyticsAccess(staff.role);
+    expect(access.financial).toBe(false);
+    expect((await eventTicketTypeMetrics(organisation.id, event.id, access)).every(row => row.gross === null && row.refunded === null)).toBe(true);
+    expect(analyticsAccess("finance_manager").financial).toBe(true);
     await prisma.organisationStaff.update({ where: { id: staff.id }, data: { role: "check_in_staff" } });
     await expect(getOrganisationEventTickets(organisation.id, event.id)).rejects.toThrow("Event not found");
     await prisma.event.update({ where: { id: event.id }, data: { status: "published" } });

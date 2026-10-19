@@ -19,9 +19,9 @@ import {
 import { PATCH as publishEventRoute } from "@/app/api/events/[eventId]/publish/route";
 import { POST as createTicketTypeRoute } from "@/app/api/events/[eventId]/ticket-types/route";
 import {
-  getOrganisationEventAnalytics,
-  getOrganisationEventRevenueSeries
-} from "@/lib/events/event-analytics";
+  eventTicketTypeMetrics,
+  ticketMetrics
+} from "@/lib/analytics/metrics";
 
 function eventPayload(organisationId: string, overrides: Record<string, unknown> = {}) {
   const startTime = futureDate(20, 10).toISOString();
@@ -484,22 +484,16 @@ describe("event lifecycle", () => {
       paidAt: new Date("2026-05-01T10:00:00.000Z")
     });
 
-    const analytics = await getOrganisationEventAnalytics(organisation.id, event.id);
-    expect(analytics.totals).toMatchObject({
-      sold: 2,
-      revenue: ticketType.price * 2
-    });
-
-    const revenueSeries = await getOrganisationEventRevenueSeries(
-      organisation.id,
-      event.id
-    );
-    expect(revenueSeries).toEqual([
-      {
-        date: "2026-05-01",
-        revenue: ticketType.price * 2
-      }
+    const full = { financial: true };
+    expect(await eventTicketTypeMetrics(organisation.id, event.id, full)).toEqual([
+      expect.objectContaining({ id: ticketType.id, gross: ticketType.price * 2 })
     ]);
+    const range = { from: "2026-05-01", to: "2026-05-01", bucket: "day" as const, timeZone: "Australia/Brisbane" };
+    expect((await ticketMetrics(organisation.id, range, full, event.id)).series).toEqual([
+      expect.objectContaining({ start: "2026-05-01", gross: ticketType.price * 2 })
+    ]);
+    // The order's own society field is not authority: the other society sees nothing.
+    expect((await ticketMetrics(other.organisation.id, range, full)).totals.gross).toBe(0);
   });
 
   test("event analytics do not mutate stale pending orders or reservations", async () => {
@@ -525,8 +519,8 @@ describe("event lifecycle", () => {
     });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    await getOrganisationEventAnalytics(organisation.id, event.id);
-    await getOrganisationEventRevenueSeries(organisation.id, event.id);
+    await eventTicketTypeMetrics(organisation.id, event.id, { financial: true });
+    await ticketMetrics(organisation.id, { from: "2026-05-01", to: "2026-05-31", bucket: "day", timeZone: "Australia/Brisbane" }, { financial: true }, event.id);
 
     const persisted = await prisma.order.findUniqueOrThrow({
       where: { id: pending.id },

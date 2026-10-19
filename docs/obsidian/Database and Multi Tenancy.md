@@ -216,6 +216,10 @@ Current statuses:
 - `draft`
 - `published`
 
+### Analytics indexes (T31)
+
+Migration `analytics_indexes` adds `Order(eventId, fulfilledAt)` and `CommerceOrder(organisationId, kind, fulfilledAt)` for sales by fulfilment time, chosen from `EXPLAIN ANALYZE` on synthetic `_test` data ([[Analytics and Calendar]]). They are plain `CREATE INDEX`, which briefly blocks writes to those tables while it builds; at current volumes that is seconds.
+
 ### Event changes (T30)
 
 `EventChange` (migration `event_changes_and_preferences`) records a material time or place change to an event with active tickets: old and new start, end and location, the new event version (unique per event), the actor, the fanout `cursor` (last order id queued), `notifiedCount`, and `completedAt` with `outcome` (`sent` or `superseded`; both null or both set). It cascades with its event and society. The same migration adds `User.renewalReminders` (default true) and a `MembershipGrant(endsAt)` index for the reminder scan.

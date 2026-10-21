@@ -24,6 +24,7 @@ test("an owner reads the calendar by month, week and agenda and starts an event 
 
   await page.getByRole("navigation", { name: "Calendar view" }).getByRole("link", { name: "Month" }).click();
   await expect(page).not.toHaveURL(/view=/);
+  await expect(page.getByRole("link", { name: /^Engineering Mixer, / }).first()).toContainText("6:00 pm Engineering Mixer");
   await page.screenshot({ path: "test-results/calendar-month-1280.png", fullPage: true });
   await page.getByRole("link", { name: `New event on ${formatDay(today, true)}` }).focus();
   await page.keyboard.press("Enter");

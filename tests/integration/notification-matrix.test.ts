@@ -94,6 +94,8 @@ describe("notification matrix (T30)", () => {
     expect(guest.text).toContain("changed the time and place");
     expect(guest.text).toContain("Where: now Main Hall. It was Integration Room.");
     expect(guest.text).toContain("Your tickets are still valid.");
+    expect(guest.text).toContain("(Brisbane time)");
+    expect(guest.text).not.toContain("time time");
     expect(guest.text).not.toContain("http");
     // A member's copy links to their tickets.
     expect(read(jobs.find((job) => job.recipient === member.email)!).text).toContain("http://localhost:3000/tickets");
@@ -156,6 +158,7 @@ describe("notification matrix (T30)", () => {
     ]);
     const reminder = read(jobs[1]);
     expect(reminder.text).toContain("Memberships don't renew automatically.");
+    expect(reminder.text).not.toContain("time time");
     expect(reminder.text).toContain("turn off renewal reminders in Account settings");
     expect(reminder.text).toContain("http://localhost:3000/memberships");
     expect(read(jobs[0]).text).toContain("its member benefits have stopped");

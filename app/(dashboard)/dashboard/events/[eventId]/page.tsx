@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { EventWorkspaceHeader, SaleBadge } from "@/components/events/event-tabs";
 import { ReadinessChecklist } from "@/components/events/readiness-checklist";
+import { BarChart } from "@/components/analytics/bar-chart";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -150,7 +151,7 @@ export default async function OrganiserEventPage({
         {financial ? (
           <Card>
             <h2 className="text-lg font-semibold text-ink">Sales over time</h2>
-            <p className="text-sm text-ink-muted">Gross paid sales by the day they completed, in {zoneCity(event.timeZone)} time</p>
+            <p className="text-sm text-ink-muted">Gross paid sales by the day they completed, in {zoneCity(event.timeZone)}</p>
             <Suspense
               fallback={
                 <div className="mt-4">
@@ -224,26 +225,12 @@ async function SalesOverTime({ access, organisationId, eventId, timeZone }: { ac
   const from = days.first > earliest ? days.first : earliest;
   const weekly = from < addDays(days.last, -62);
   const { series } = await ticketMetrics(organisationId, { from, to: days.last, bucket: weekly ? "week" : "day", timeZone }, access, eventId);
-  const max = Math.max(...series.map((bucket) => bucket.gross ?? 0), 1);
-
   return (
-    <div
-      aria-label={`Gross sales by ${weekly ? "week starting" : "day"}: ${series
-        .map((bucket) => `${formatShortDate(bucket.start)} ${formatMoney(bucket.gross ?? 0)}`)
-        .join(", ")}`}
-      className="mt-4 flex h-52 items-end gap-3 overflow-x-auto pb-1"
-      role="img"
-    >
-      {series.map((bucket) => (
-        <div className="flex min-w-12 max-w-24 flex-1 flex-col items-center gap-1.5" key={bucket.start}>
-          <span className="text-[13px] tabular-nums text-ink-soft">{formatMoney(bucket.gross ?? 0)}</span>
-          <div
-            className="w-full rounded-t-md bg-brand"
-            style={{ height: `${Math.max(4, ((bucket.gross ?? 0) / max) * 140)}px` }}
-          />
-          <span className="text-[13px] text-ink-soft">{formatShortDate(bucket.start)}</span>
-        </div>
-      ))}
+    <div className="mt-4">
+      <BarChart
+        bars={series.map((bucket) => ({ key: bucket.start, label: formatShortDate(bucket.start), primary: bucket.gross ?? 0, value: formatMoney(bucket.gross ?? 0) }))}
+        label={`Gross sales by ${weekly ? "week starting" : "day"}`}
+      />
     </div>
   );
 }

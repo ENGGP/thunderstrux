@@ -53,7 +53,7 @@ export async function recordEventChange(
 
 function changeMessage(change: Schedule & { previousStartTime: Date; previousEndTime: Date; previousLocation: string }, title: string, seller: string, timeZone: string) {
   const was = { startTime: change.previousStartTime, endTime: change.previousEndTime, location: change.previousLocation };
-  const when = (schedule: Schedule) => `${formatDateRange(schedule.startTime, schedule.endTime, timeZone)} (${zoneCity(timeZone)} time)`;
+  const when = (schedule: Schedule) => `${formatDateRange(schedule.startTime, schedule.endTime, timeZone)} (${zoneCity(timeZone)})`;
   return [
     `${seller} changed ${sameTime(was, change) ? "the place" : samePlace(was, change) ? "the time" : "the time and place"} of ${title}.`,
     sameTime(was, change) ? `When: ${when(change)}, unchanged.` : `When: now ${when(change)}. It was ${when(was)}.`,

@@ -64,7 +64,7 @@ export async function queueMembershipNotices(now = new Date(), limit = 100) {
       });
       const { name: society, timeZone } = grant.organisation;
       const label = membershipLabel(grant.product.name);
-      const lastDay = `${formatDate(new Date(grant.endsAt.getTime() - 1), timeZone)} (${zoneCity(timeZone)} time)`;
+      const lastDay = `${formatDate(new Date(grant.endsAt.getTime() - 1), timeZone)} (${zoneCity(timeZone)})`;
       const offer = next ? ` ${society} has ${membershipLabel(next.name)} on sale now; get it from My memberships.` : "";
       const { enqueued } = await enqueueNotification(tx, {
         eventKey: `membership-${due.kind}/${grant.id}`, recipient: grant.user.email, userId: grant.userId, template: "business_notice", organisationId: grant.organisationId,

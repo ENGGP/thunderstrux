@@ -33,6 +33,10 @@ const navGroups: Array<{ label?: string; items: NavItem[] }> = [
     ]
   },
   {
+    label: "Insights",
+    items: [{ label: "Analytics", href: "/dashboard/analytics", icon: "chart", permission: "analytics:read" }]
+  },
+  {
     label: "Settings",
     items: [
       { label: "Society profile", href: "/dashboard/settings/profile", icon: "profile", permission: "organisation:settings" },

@@ -7,7 +7,7 @@ import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { engagementMetrics, membershipMetrics, merchandiseMetrics, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
 import type { AnalyticsRange } from "@/lib/analytics/range";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, shortMonths } from "@/lib/format";
 
 // The four Analytics tabs (T32, design round C1). Each shows at most three
 // tiles, a chart and a table with the same numbers, all from lib/analytics.
@@ -15,11 +15,12 @@ import { formatDate, formatMoney } from "@/lib/format";
 // otherwise, and the Memberships and Merchandise tabs aren't offered.
 
 const day = (start: string, options: Intl.DateTimeFormatOptions) =>
-  new Intl.DateTimeFormat("en-AU", { ...options, timeZone: "UTC" }).format(new Date(`${start}T00:00:00Z`)).replace("Sept", "Sep");
+  shortMonths(new Intl.DateTimeFormat("en-AU", { ...options, timeZone: "UTC" }).format(new Date(`${start}T00:00:00Z`)));
 export const bucketLabel = (start: string, range: AnalyticsRange) =>
   range.bucket === "month" ? day(start, { month: "short", year: range.from.slice(0, 4) === range.to.slice(0, 4) ? undefined : "2-digit" }) : day(start, { day: "numeric", month: "short" });
 const dollars = (cents: number) => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(cents / 100);
 const money = (cents: number | null) => formatMoney(cents ?? 0);
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 const firstColumn = { week: "Week starting", day: "Day", month: "Month" } as const;
 const span = (range: AnalyticsRange) => `${formatDate(`${range.from}T12:00:00Z`, "UTC")} to ${formatDate(`${range.to}T12:00:00Z`, "UTC")}`;
 
@@ -86,7 +87,7 @@ export async function TicketsTab({ organisationId, range, access, eventId }: { o
   const noLongerValid = t.ticketsIssued - t.ticketsValid;
   const tiles = access.financial
     ? [
-        { label: "Gross sales", value: money(t.gross), note: `${t.fulfilledOrders - t.freeOrders} paid orders` },
+        { label: "Gross sales", value: money(t.gross), note: plural(t.fulfilledOrders - t.freeOrders, "paid order") },
         { label: "Refunded", value: money(t.refunded), note: `${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"} confirmed by Stripe` },
         { label: "Net sales", value: money(t.net), note: "Before Stripe's fees. Not a payout." }
       ]
@@ -241,7 +242,7 @@ export async function MerchandiseTab({ organisationId, range, access, canFulfil 
     <>
       <Tiles
         tiles={[
-          { label: "Gross sales", value: money(t.gross), note: `${t.fulfilledOrders - t.freeOrders} paid orders, ${t.itemsSold} items` },
+          { label: "Gross sales", value: money(t.gross), note: `${plural(t.fulfilledOrders - t.freeOrders, "paid order")}, ${plural(t.itemsSold, "item")}` },
           { label: "Refunded", value: money(t.refunded), note: `${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"} confirmed by Stripe` },
           { label: "Net sales", value: money(t.net), note: "Before Stripe's fees. Not a payout." }
         ]}

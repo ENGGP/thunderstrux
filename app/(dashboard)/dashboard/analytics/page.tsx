@@ -63,7 +63,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
-        description={`${day(range.from)} to ${day(range.to)}, by ${range.bucket}, in ${zoneCity(timeZone)} time. Updated ${formatDateTime(new Date(), { timeZone })}.`}
+        description={`${day(range.from)} to ${day(range.to)}, by ${range.bucket}, in ${zoneCity(timeZone)}. Updated ${formatDateTime(new Date(), { timeZone })}.`}
         title="Analytics"
       />
       <LinkTabs
@@ -86,7 +86,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             );
           })}
         </nav>
-        <FilterBar action="/dashboard/analytics" className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]" label="Choose a range">
+        <FilterBar action="/dashboard/analytics" key={href({})} className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]" label="Choose a range">
           {tab !== "tickets" ? <input name="tab" type="hidden" value={tab} /> : null}
           <TextInput defaultValue={range.from} label="From" name="from" type="date" />
           <TextInput defaultValue={range.to} label="To" name="to" type="date" />

@@ -17,6 +17,9 @@ test("an owner reads ticket sales on Analytics and switches range and tab", asyn
   await page.getByRole("link", { name: "Last 12 months" }).click();
   await expect(page).toHaveURL(/bucket=month/);
   await expect(page.getByRole("link", { name: "Last 12 months" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("table", { name: "Sales by month, in numbers" })).toBeVisible();
+  // The form follows the URL after a quick range, not the inputs it had before.
+  await expect(page.getByLabel("Group by")).toHaveValue("month");
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

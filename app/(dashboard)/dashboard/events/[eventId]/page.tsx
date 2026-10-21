@@ -151,7 +151,7 @@ export default async function OrganiserEventPage({
         {financial ? (
           <Card>
             <h2 className="text-lg font-semibold text-ink">Sales over time</h2>
-            <p className="text-sm text-ink-muted">Gross paid sales by the day they completed, in {zoneCity(event.timeZone)} time</p>
+            <p className="text-sm text-ink-muted">Gross paid sales by the day they completed, in {zoneCity(event.timeZone)}</p>
             <Suspense
               fallback={
                 <div className="mt-4">

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-22
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Troubleshooting]]"]
 sources: [package.json, pnpm-lock.yaml, .github/workflows/security-audit.yml]
@@ -15,6 +15,10 @@ T07 adds explicit Sharp 0.35.5 and AWS S3 SDK 3.1149.0 pins. The checksum-pinned
 ## Current dependency remediation
 
 Package 3 adds the asset dependency/image boundary above. Its dated baseline is `15a1e4b` / `p216-e62123415fe7e1788a49219e` (354 tests/42 files, build/typecheck and clean audit); final UI `5931086` also passes its production browser build and 30 checks. Local app dependencies and persistent image storage were activated on 2026-10-12 after backup; hosted activation remains unverified. [[Project Handover]] owns the latest overall validation and rollout state. The dependency campaigns below are dated evidence, not the latest overall campaign.
+
+### Vite and Vitest advisories (2026-10-22)
+
+On 2026-10-22 the baseline audit began failing on `main` with eight development-only advisories published after 19 October: six in Vite 8.3.2 and two in `@vitest/mocker` below 4.1.12 (manual mock code injection; Windows backslash path traversal). Renovate security [PR #126](https://github.com/ENGGP/thunderstrux/pull/126) moved Vite to 8.3.3 (`dd93c81`). Vitest is pinned to 4.1.12, which moves every `@vitest/*` package to 4.1.12 and needs no other change; 4.1.12 is the latest 4.x release. Neither package ships in the app image; the integration runner is the only consumer. Local baseline `baseline-1ea53cc6a75a20ab0196acdd` on `dd93c81` plus this pin passed frozen installation, the production build, 30/30 runner guard tests, typecheck, all 595 integration tests in 84 files and the audit with no known vulnerabilities; its manifest records `passed` and `cleanupComplete`.
 
 ### Redis client update qualification
 

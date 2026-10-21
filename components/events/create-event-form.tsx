@@ -82,7 +82,7 @@ const timeLabels: Record<TimeField, string> = {
   salesCloseAt: "Ticket sales close"
 };
 
-function initialState(event: EventFormData | undefined, timeZone: string) {
+function initialState(event: EventFormData | undefined, timeZone: string, startDate?: string) {
   const local = (value: string) => toZonedInput(new Date(value), timeZone);
   const form: FormState = event
     ? {
@@ -101,8 +101,9 @@ function initialState(event: EventFormData | undefined, timeZone: string) {
         title: "",
         description: "",
         location: "",
-        startTime: "",
-        endTime: "",
+        // From the calendar: that day, 6 to 8 pm, ready to change.
+        startTime: startDate ? `${startDate}T18:00` : "",
+        endTime: startDate ? `${startDate}T20:00` : "",
         salesCloseAt: "",
         capacity: "",
         visibility: "public",
@@ -160,7 +161,8 @@ export function CreateEventForm({
   timeZone,
   chargesReady,
   memberPricesOnSale = false,
-  membersOnlyOnSale = false
+  membersOnlyOnSale = false,
+  startDate
 }: {
   // The readiness panel on the Edit page.
   aside?: ReactNode;
@@ -175,11 +177,13 @@ export function CreateEventForm({
   mode?: "create" | "edit";
   organisationId: string;
   orgSlug: string;
+  // A local day (YYYY-MM-DD) to start a new event on.
+  startDate?: string;
   timeZone: string;
 }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [state, setState] = useState(() => initialState(initialEvent, timeZone));
+  const [state, setState] = useState(() => initialState(initialEvent, timeZone, startDate));
   const [errors, setErrors] = useState<ErrorDetail[]>([]);
   const [notice, setNotice] = useState<{ tone: "success" | "warning" | "danger"; title: string; text: string; reload?: string } | null>(null);
   const [dirty, setDirty] = useState(false);

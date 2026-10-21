@@ -25,7 +25,8 @@ export function toZonedInput(date: Date, timeZone: string) {
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
-function offsetAt(date: Date, timeZone: string) {
+// Milliseconds the zone is ahead of UTC at that instant.
+export function offsetAt(date: Date, timeZone: string) {
   return Date.parse(`${toZonedInput(date, timeZone)}:00Z`) - Math.floor(date.getTime() / 60_000) * 60_000;
 }
 

@@ -45,6 +45,19 @@ Society metrics (T31), the analytics pages that show them (T32) and the society 
 
 T32 builds `/dashboard/analytics` on these reads.
 
+## Analytics page (T32)
+
+`/dashboard/analytics` (sidebar group Insights, `analytics:read`) follows design round C1 (passes 1 and 2 approved 19 to 22 Oct 2026). The range, grouping, tab and event filter live in the URL (`?tab=&from=&to=&bucket=&eventId=`), so a view can be shared and Back works. Quick ranges are Last 7 days, Last 30 days (the default), This month and Last 12 months (by month). A range over 366 days, an end before its start or a date that doesn't exist shows "Pick a shorter range" and falls back to the last 30 days. The header names the range, grouping, the society's zone and when it was read; the numbers stream in behind a skeleton.
+
+- **Tickets** (default): for finance roles, Gross sales, Refunded and Net sales tiles; tickets issued, still valid, checked in, orders started and platform fees; a chart of gross with refunded under it; and the same numbers in a table. For event managers, Tickets issued, Checked in and Attendance rate tiles and a chart of tickets issued, with no money anywhere in the page. The event filter lists only the society's events; any other id is ignored.
+- **Memberships** (finance roles): Members now, New memberships (new and renewals), Net sales; a chart of new members and renewals; table; free memberships, refunds and platform fees.
+- **Merchandise** (finance roles): Gross, Refunded, Net; a chart of gross; pickups and stock now, with a link to Pickups for staff who hand orders out; table.
+- **Engagement** (`analytics:read`): Joined now, New joins, People who bought; a chart of joins; who took part (bought something, checked in) with how many joined or hold a membership.
+
+Tabs a role can't use aren't offered, and asking for one by URL shows Tickets. A range with nothing in it shows an empty state instead of a chart. Each tab explains how it counts in "How these numbers are counted".
+
+`components/analytics/bar-chart.tsx` (`BarChart`) draws vertical bars from 768px and a horizontal list on phones; its accessible name lists every value, and the analytics tabs also show the numbers in a `ResponsiveTable`. The event Summary's Sales over time uses the same chart.
+
 **Indexes** (migration `20261109010000_analytics_indexes`). These were chosen from `EXPLAIN ANALYZE` on synthetic `_test` data:
 - The data: one society with 40 events and 160,000 ticket orders (360,000 orders, 648,000 tickets, 88,000 commerce orders, 6,466 refunds and 20,011 joins across 11 societies).
 - `Order(eventId, fulfilledAt)` took a 30-day ticket sales read from 88.6 ms to 16.5 ms.

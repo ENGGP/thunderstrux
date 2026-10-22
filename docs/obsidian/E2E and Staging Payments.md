@@ -12,7 +12,7 @@ Status: the E2E harness (originally task P2.16) and its acceptance merged throug
 
 ## Automated checks
 
-Run `pnpm test:e2e` from the repository root with Docker Desktop running. No host Playwright installation or browser download is required. The command builds a production-mode app and a Node 22.23.3 Chromium runner; the application also runs Node 22.23.3. The exact Playwright package determines the browser version.
+Run `pnpm test:e2e` from the repository root with Docker Desktop running. No host Playwright installation or browser download is required. The command builds a production-mode app and a Node 22.23.4 Chromium runner; the application also runs Node 22.23.3. The exact Playwright package determines the browser version.
 
 The standalone Compose project publishes `127.0.0.1:3100`, creates its own database and volume, and never mounts the development source or dependency volumes. Port conflicts fail without reusing another app. The runner shares the app network namespace so Auth.js, server-side event fetches and browser navigation use the same origin. Production builds receive that origin through the non-secret `APP_ORIGIN` build argument.
 

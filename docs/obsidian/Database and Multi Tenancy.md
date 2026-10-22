@@ -411,7 +411,7 @@ Run:
 pnpm db:integrity:audit
 ```
 
-The audit remains read-only and exits non-zero if any violations are found. Each check reports a class, violation count, and up to 10 sample ids.
+The audit remains read-only. Each check reports a class, violation count, and up to 10 sample ids. Since T41 it exits non-zero only for unexplained violations: a check may carry a `legacy` explanation for rows from before its feature existed, which are printed with that explanation but don't fail the run. The checks live in `lib/ops/integrity-audit.ts`, so the restore verifier and the integration tests run the same ones.
 
 Audit classes:
 
@@ -461,6 +461,20 @@ Current operational follow-up:
 - Run `pnpm db:integrity:audit` and the ownership-drift tool against representative production data before rollout.
 - Run dry-run `pnpm db:organisation-drift:repair`; apply only with an approved backup and maintenance procedure.
 - Keep canonical relation paths as authorization authority even after repairing denormalized organisation IDs.
+
+### T41 checks, the paid-total constraint and the upgrade rehearsal
+
+T41 brings the audit to 40 checks. The new ones cover free orders (no charge, no Stripe Session), paid ticket totals, a buyer on every order, purchase snapshots, no valid tickets on a refunded or cancelled order, every ticket issued for a fulfilled order, confirmed refunds within the order total, commerce line and order arithmetic and fees, a grant for every fulfilled membership, positive and non-overlapping terms, revoked grants on refunded memberships, non-negative merchandise stock, day-old ticket holds and commerce checkouts the workers should have closed, outbox jobs processing for over an hour, and sent notices without a provider acceptance. Two checks carry legacy explanations: orders fulfilled before purchase snapshots (T10) have none, and orders created before account closure (5 Oct 2026) may have neither a user nor a guest identity; orders since then are checked strictly.
+
+`tests/integration/integrity-audit.test.ts` builds a clean society that passes every check, then breaks each invariant directly in the database: the write is either refused by a constraint (free charge, paid total, commerce line, total and fee, grant term, revoke on refund, negative stock) or the matching check's count rises. Nothing repairs history.
+
+Migration `20261111010000_order_paid_total_check` adds `Order_paid_total_matches_units_chk` (a paid order's total is its unit price times its quantity), after the audit found no exceptions in any development dump. Rollback: older code never writes a different total, so it runs unchanged against this schema. Grant overlap stays audit-only: an exclusion constraint needs `btree_gist`, which waits for the chosen host (H-series).
+
+`node scripts/rehearse-upgrade.mjs <archive.dump> [...]` restores each archive into a throwaway Postgres 16 container as `upgrade_rehearsal_test`, applies this checkout's migrations, runs the audit and compares row counts, then removes the container; it never touches the dev or production volumes. Archives written by a newer `pg_dump` (format 1.16) are skipped with a reason. The operations rehearsal also audits the seeded release and the restored copy (`scripts/verify-restored-database.mjs`), failing on anything unexplained.
+
+Upgrade rehearsal, 23 Oct 2026: 12 development dumps from 21 Sep to 22 Oct (22 to 58 migrations each) all upgraded to 59 migrations with no rows lost and no unexplained violations. Each reports the same 13 explained legacy rows (one order from April with no buyer, 12 orders fulfilled before snapshots). One dump from 27 Sep was skipped: a newer `pg_dump` wrote it.
+
+Representative plans, 23 Oct 2026 (`EXPLAIN ANALYZE` on a synthetic `scale_plans_test` database, one society with 400,000 audit rows over three years, 85% of them check-ins, among 1,000,000 rows in 11 societies, and 13,000 events): History's first page reads 52 rows backwards along `AuditLog(organisationId, createdAt)` in 0.4 ms; one person's actions use `(organisationId, actorUserId, createdAt)` in 0.2 ms; a month of staff actions takes 0.9 ms; the rarest filter (payments setup, one row in 1,000) skips 52,000 rows in 13.4 ms. A calendar month reads one society's 3,000 events through `Event(organisationId, status)` in 1.0 ms (0.6 ms for published only). No index was added.
 
 ## Multi-Tenant Access Pattern
 

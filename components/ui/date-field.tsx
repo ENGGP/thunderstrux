@@ -90,7 +90,7 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
                 const form = event.currentTarget.form;
                 if (name && form) setTimeout(() => form.requestSubmit(), 0);
               }}
-              placeholder="22 Oct 2026"
+              placeholder="DD Mon YYYY"
               required={required}
               value={text}
             />

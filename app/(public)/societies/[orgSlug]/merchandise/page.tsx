@@ -22,7 +22,7 @@ export default async function SocietyMerchandisePage({ params }: { params: Promi
   const [{ offers, memberUntil }, products] = await Promise.all([membershipOffers(organisation.id, viewer.memberId), shopProducts(organisation.id)]);
 
   return (
-    <main className="bg-paper pb-14">
+    <main id="main" tabIndex={-1} className="bg-paper pb-14">
       <div className="mx-auto max-w-page px-4 md:px-8">
         <SocietyHeader current="merchandise" hasMemberships={offers.length > 0} hasMerchandise joined={viewer.joinState === "joined"} memberUntil={memberUntil} organisation={organisation} />
 

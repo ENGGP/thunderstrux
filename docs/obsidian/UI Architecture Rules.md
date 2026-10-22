@@ -19,6 +19,7 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 - New UI uses these names. Do not add raw palette classes such as `bg-neutral-900` or `text-purple-600`, and do not add hex colours in components.
 - Bare `border` utilities draw the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
 - The keyboard focus ring is a 2px `--ts-focus` outline defined outside any layer, so `outline-none` cannot remove it.
+- The first Tab on any page reaches Skip to content, which moves focus to the page's `<main id="main" tabIndex={-1}>`; every page's main keeps that id (T40). A container that scrolls sideways is a focusable region named after its content (`role="region"`, `tabIndex={0}`, `aria-label`), as `ResponsiveTable` does, and a page grid uses `grid-cols-1` so wide content scrolls inside its card instead of widening the page. [[Accessibility Review]] lists what is scanned.
 - `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through next/font. They are downloaded at build time and served by the app.
 - There is no dark mode and no icon library: `components/ui/icon.tsx` holds the few outline icons the UI uses, always decorative beside text. `prefers-reduced-motion` shortens every transition.
 

@@ -48,6 +48,10 @@ export default async function RootLayout({
         />
       </head>
       <body>
+        {/* Keyboard users jump past the header and menus to the page (T40). */}
+        <a className="sr-only z-[60] rounded-control bg-surface px-4 py-3 font-semibold text-brand-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-3" href="#main">
+          Skip to content
+        </a>
         <AuthSessionProvider session={session}>
           <Navbar />
           <div className="pt-[60px] md:pt-[72px]">

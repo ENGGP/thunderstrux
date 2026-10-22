@@ -70,7 +70,7 @@ export function PersonalShell({
             </div>
           ) : null}
         </aside>
-        <main className="grid min-w-0 content-start gap-6">{children}</main>
+        <main id="main" tabIndex={-1} className="grid min-w-0 content-start gap-6">{children}</main>
       </div>
     </div>
   );

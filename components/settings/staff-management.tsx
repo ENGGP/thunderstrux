@@ -161,7 +161,7 @@ export function StaffManagement({
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       {error ? (
         <Notice role="alert" tone="danger">
           {error}
@@ -211,7 +211,7 @@ export function StaffManagement({
 
       <Card>
         <h2 className="text-lg font-semibold text-ink">Current staff</h2>
-        <div className="mt-3 overflow-x-auto">
+        <div aria-label="Current staff" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
           <table className="w-full min-w-[560px] border-collapse text-left text-[15px]">
             <thead>
               <tr className="text-[13px] text-ink-soft">
@@ -306,7 +306,7 @@ export function StaffManagement({
       {pastInvites.length > 0 ? (
         <Card>
           <h2 className="text-lg font-semibold text-ink">Past invitations</h2>
-          <div className="mt-3 overflow-x-auto">
+          <div aria-label="Past invitations" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
             <table className="w-full min-w-[520px] border-collapse text-left text-[15px]">
               <thead>
                 <tr className="text-[13px] text-ink-soft">

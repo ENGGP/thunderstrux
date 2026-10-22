@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default function Home() {
   return (
     <>
-      <main className="bg-paper">
+      <main id="main" tabIndex={-1} className="bg-paper">
         <section className="bg-brand-ink text-white">
           <div className="mx-auto grid max-w-page gap-6 px-4 py-14 md:px-8 md:py-20">
             <h1 className="max-w-3xl font-display text-4xl font-semibold leading-tight md:text-6xl">

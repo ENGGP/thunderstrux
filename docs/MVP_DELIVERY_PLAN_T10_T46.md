@@ -51,7 +51,7 @@ Facts from the code that shape the plan:
 | Live staff authority | one database-only helper | F1 | all routes and workers | Replaces the six copies listed in AUTHZ-001. |
 | Notifications | `enqueueNotification` / ticket outbox | each owning task | T30 | The task that creates the business fact inserts its intent in the same transaction. T30 adds change fanout, preferences, reminders and the matrix test. |
 | Audit | `AuditLog` in the business transaction | each owning task | T38 | Safe actor, target, version, reason and before/after facts from day one. |
-| API errors | `mapRouteError` | every new route | T39 | Legacy route families migrate in their owning tasks. |
+| API errors | `mapRouteError` | every new route | T39 | Every route since T39; `route-contract.test.ts` fails a route that skips it. |
 | Pagination | `lib/pagination/cursor.ts` (exists; used by member tickets, public events and grouped orders) | every new list | T19b, T29 | The three older copies (check-in, order lifecycle history, notification outbox) are folded in when their list changes (PAG-001). |
 | Test and recovery fixtures | `tests/helpers/test-data.ts`, `db-reset.ts`, schema contract, `prisma/seed.mjs`, `scripts/verify-restored-database.mjs`, `scripts/seed-operations-verification.mjs` | every schema PR | T41, T44 | A model is not done until reset, seed and restore verification know about it. |
 

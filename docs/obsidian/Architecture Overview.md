@@ -230,6 +230,15 @@ Failure policy:
 
 Stripe webhook routes are deliberately excluded from both protections because they verify Stripe signatures against the raw request body.
 
+Since T39:
+
+- **Errors.** Every route maps failures through `mapRouteError` (`lib/api/errors.ts`), directly or through its family's `http` helper. Known errors keep their documented answers. Anything else is a generic 500 that logs only the operation and the error's class.
+- **Contract test.** `tests/integration/route-contract.test.ts` fails a route that skips the mapper, logs a raw error, or changes data without the origin check. Auth.js, the webhooks, health, readiness, CSRF and the read-only merchandise quote are named exceptions.
+- **Headers.** `next.config.ts` adds a Content-Security-Policy (self-only sources; framing, plugins and outside form posts blocked; `'unsafe-inline'` scripts kept for Next's bootstrap), `nosniff`, `X-Frame-Options: DENY`, a strict referrer and permissions policy, and HSTS in production. It also makes every `/api` answer except `/api/public/*` and health `private, no-store`.
+- **Token cleanup.** `lib/security/token-cleanup.ts` deletes auth tokens, guest access grants and MFA grants 30 days past expiry, 500 per table per run, from the notification worker.
+
+[[Route Security Inventory]] records each route family's checks.
+
 ## Operational Logging
 
 Thunderstrux has a small structured operations foundation in `lib/ops/logger.ts`, `lib/ops/metrics.ts`, and `lib/ops/alerts.ts`.

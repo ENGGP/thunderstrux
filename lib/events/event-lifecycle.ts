@@ -400,11 +400,46 @@ export async function createOrganisationEvent(
         actorUserId: actorUserId ?? null,
         action: "event.created",
         targetType: "Event",
-        targetId: event.id
+        targetId: event.id,
+        metadata: { title: event.title }
       }
     });
     return event;
   });
+}
+
+type EventFacts = {
+  title: string; description: string; startTime: Date; endTime: Date; location: string; capacity: number | null;
+  salesCloseAt: Date; visibility: string; heroAssetId: string | null;
+};
+
+// What an edit changed, for History (T38): before and after for each field,
+// "changed" for the description, and ticket types added, removed or edited.
+function eventChanges(
+  before: EventFacts & { ticketTypes: Array<{ id: string; name: string; price: number; quantity: number }> },
+  after: EventFacts & { ticketTypes: Array<{ id?: string; name: string; price: number; quantity: number }>; removedTicketTypeIds: string[] }
+): Prisma.InputJsonArray {
+  const value = (fact: unknown) => (fact instanceof Date ? fact.toISOString() : (fact as string | number | null));
+  const fields = ["title", "startTime", "endTime", "location", "capacity", "salesCloseAt", "visibility"] as const;
+  const changes: Prisma.InputJsonObject[] = fields
+    .filter((field) => value(before[field]) !== value(after[field]))
+    .map((field) => ({ field, before: value(before[field]), after: value(after[field]) }));
+  if (before.description !== after.description) changes.push({ field: "description" });
+  if (before.heroAssetId !== after.heroAssetId) changes.push({ field: "heroAssetId", after: Boolean(after.heroAssetId) });
+  const existing = new Map(before.ticketTypes.map((ticketType) => [ticketType.id, ticketType]));
+  const added = after.ticketTypes.filter((ticketType) => !ticketType.id).map((ticketType) => ticketType.name);
+  const removed = after.removedTicketTypeIds.map((id) => existing.get(id)?.name ?? "A ticket type");
+  const changed = after.ticketTypes.flatMap((ticketType) => {
+    const was = ticketType.id ? existing.get(ticketType.id) : undefined;
+    if (!was) return [];
+    const edit: Record<string, string | number[]> = { name: ticketType.name };
+    if (was.name !== ticketType.name) edit.renamedFrom = was.name;
+    if (was.price !== ticketType.price) edit.price = [was.price, ticketType.price];
+    if (was.quantity !== ticketType.quantity) edit.quantity = [was.quantity, ticketType.quantity];
+    return Object.keys(edit).length > 1 ? [edit] : [];
+  });
+  if (added.length || removed.length || changed.length) changes.push({ field: "ticketTypes", added, removed, changed });
+  return changes;
 }
 
 export async function updateOrganisationEvent(
@@ -493,11 +528,16 @@ export async function updateOrganisationEvent(
       select: {
         version: true,
         heroAssetId: true,
+        title: true,
+        description: true,
         startTime: true,
         endTime: true,
         location: true,
+        capacity: true,
+        salesCloseAt: true,
+        visibility: true,
         ticketTypes: {
-          select: { id: true, quantity: true, _count: { select: { orders: true, tickets: true } } }
+          select: { id: true, name: true, price: true, quantity: true, _count: { select: { orders: true, tickets: true } } }
         }
       }
     });
@@ -621,7 +661,23 @@ export async function updateOrganisationEvent(
         actorUserId: actorUserId ?? null,
         action: "event.updated",
         targetType: "Event",
-        targetId: existingEvent.id
+        targetId: existingEvent.id,
+        metadata: {
+          version: input.version + 1,
+          changes: eventChanges(locked, {
+            title: input.title,
+            description: input.description,
+            startTime: input.startTime,
+            endTime: input.endTime,
+            location: input.location,
+            capacity,
+            salesCloseAt,
+            visibility: input.visibility ?? locked.visibility,
+            heroAssetId: input.heroAssetId === undefined ? locked.heroAssetId : input.heroAssetId,
+            ticketTypes: input.ticketTypes.map((ticketType, index) => ({ id: ticketType.id, name: ticketType.name, price: ticketType.price, quantity: quantities[index] })),
+            removedTicketTypeIds
+          })
+        }
       }
     });
 
@@ -808,7 +864,7 @@ export async function deleteOrganisationEvent(
     await lockEventInventory(transaction, event.id, []);
     const locked = await transaction.event.findUniqueOrThrow({
       where: { id: event.id },
-      select: { heroAssetId: true, _count: { select: { orders: true, tickets: true } } }
+      select: { heroAssetId: true, title: true, _count: { select: { orders: true, tickets: true } } }
     });
 
     if (locked._count.orders > 0 || locked._count.tickets > 0) {
@@ -825,7 +881,8 @@ export async function deleteOrganisationEvent(
         actorUserId: actorUserId ?? null,
         action: "event.deleted",
         targetType: "Event",
-        targetId: event.id
+        targetId: event.id,
+        metadata: { title: locked.title }
       }
     });
   });

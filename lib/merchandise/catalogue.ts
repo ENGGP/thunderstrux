@@ -234,6 +234,11 @@ async function saveOptions(tx: Prisma.TransactionClient, product: MerchandisePro
       await tx.merchandiseVariant.update({ where: { id: option.id }, data: { ...data, version: { increment: 1 } } });
     }
   }
+  // Stock before and after per option, for History (T38).
+  return inputs.flatMap((input) => {
+    const before = input.id ? byId.get(input.id)?.remaining ?? null : null;
+    return before === input.remaining ? [] : [{ option: optionLabel(input), before, after: input.remaining }];
+  });
 }
 
 async function organisationReadiness(tx: Prisma.TransactionClient, organisation: { stripeAccountId: string | null; stripeChargesEnabled: boolean; pickupPolicy: string }, productId: string) {
@@ -286,12 +291,12 @@ export async function updateProduct(actor: AccountActor, organisationId: string,
         data: { name: fields.name, description: fields.description, version: { increment: 1 } }
       });
       await savePhotos(tx, updated, fields.imageAssetIds);
-      await saveOptions(tx, updated, fields.name, fields.variants);
+      const stock = await saveOptions(tx, updated, fields.name, fields.variants);
       if (updated.status === "published") {
         const blockers = (await organisationReadiness(tx, organisation, updated.id)).filter(keepsOnSale);
         if (blockers.length) throw refusal(blockers);
       }
-      await audit(tx, actor, updated, "updated", { photos: fields.imageAssetIds.length, options: fields.variants.length });
+      await audit(tx, actor, updated, "updated", { photos: fields.imageAssetIds.length, options: fields.variants.length, stock });
       return updated;
     })
   );

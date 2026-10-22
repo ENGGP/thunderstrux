@@ -3,6 +3,8 @@
 const paths = {
   home: "M3 10.5 12 3l9 7.5M5 9.5V20h14V9.5",
   chart: "M4 20V10M10 20V4M16 20v-7M2 20h20",
+  clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2",
+  zap: "M13 3 4 14h7l-1 7 9-11h-7z",
   calendar: "M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M8 3v4M16 3v4",
   receipt: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6",
   profile: "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM7 9h5M7 13h10M7 16h6",

@@ -35,7 +35,10 @@ const navGroups: Array<{ label?: string; items: NavItem[] }> = [
   },
   {
     label: "Insights",
-    items: [{ label: "Analytics", href: "/dashboard/analytics", icon: "chart", permission: "analytics:read" }]
+    items: [
+      { label: "Analytics", href: "/dashboard/analytics", icon: "chart", permission: "analytics:read" },
+      { label: "History", href: "/dashboard/history", icon: "clock", permission: "audit:read" }
+    ]
   },
   {
     label: "Settings",

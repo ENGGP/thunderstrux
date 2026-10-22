@@ -230,6 +230,8 @@ model AuditLog {
   id             String       @id @default(cuid())
   organisationId String
   actorUserId    String?
+  // The actor's staff role when the row was written, set by a trigger (T38).
+  actorRole      String?
   action         String
   targetType     String
   targetId       String?
@@ -240,6 +242,7 @@ model AuditLog {
 
   @@index([organisationId, createdAt])
   @@index([actorUserId, createdAt])
+  @@index([organisationId, actorUserId, createdAt])
   @@index([action])
 }
 

@@ -193,7 +193,7 @@ These rows represent member-account joins. They are not staff invite records and
 
 `OrganisationStaff` is the normal management authority. It records organisation, named user, role and status; capabilities are derived from rolePermissions in lib/permissions/index.ts, not a stored arbitrary permission array. Every protected request resolves live database state so revocation and role changes take effect immediately. `OrganisationStaffInvite` holds expiring hashed tokens, intended role and issuance version.
 
-`UserMfa`, `MfaRecoveryCode`, and `MfaGrant` implement encrypted TOTP enrollment, one-time recovery codes, and login-bound verification grants. Grants expire after 12 hours. `AuditLog` records actor-attributed sensitive management actions. See [[Authentication and Dashboard Access]].
+`UserMfa`, `MfaRecoveryCode`, and `MfaGrant` implement encrypted TOTP enrollment, one-time recovery codes, and login-bound verification grants. Grants expire after 12 hours. `AuditLog` records actor-attributed sensitive management actions. See [[Authentication and Dashboard Access]]. Since T38 (migration `20261110010000_audit_actor_role`) a `BEFORE INSERT` trigger copies the actor's active staff role into `AuditLog.actorRole`, and `AuditLog(organisationId, actorUserId, createdAt)` serves the History page's Who filter; [[Audit Coverage]] lists what each action records.
 
 ## Compensation Refunds
 

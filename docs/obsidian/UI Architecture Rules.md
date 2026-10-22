@@ -95,6 +95,7 @@ Where data loads after the guards, the page wraps that part in `<Suspense>` with
 | Community | Memberships | `/dashboard/memberships` | `memberships:manage` |
 | Community | Merchandise | `/dashboard/merchandise` | `merchandise:manage` |
 | Insights | Analytics | `/dashboard/analytics` | `analytics:read` |
+| Insights | History | `/dashboard/history` | `audit:read` |
 | Settings | Society profile | `/dashboard/settings/profile` | `organisation:settings` |
 | Settings | Staff | `/dashboard/settings/staff` | `staff:manage` |
 | Settings | Payments | `/dashboard/settings` | `stripe:manage` |
@@ -108,7 +109,7 @@ The staff authenticator (`/mfa`) is not organisation navigation: it is reached f
 - From `lg` the navigation is a 244px deep-plum column whose contents stick below the fixed header, so the verify-email banner pushes it down instead of sitting under it. Below `lg` the same column holds `Current organisation`, the society name and the `Organisation menu` disclosure.
 - Each page renders its own title as the only `h1` through `components/layout/page-header.tsx` (or an `h1` of its own); section headings are `h2`. The society name is plain text in the sidebar.
 - The workspace switcher is labelled `Workspace`.
-- A navigation item is added only when its destination exists. History is absent until T38 delivers it; Analytics arrived with T32 and Calendar with T33. OpenClaw is deferred (19 Oct 2026) and gets no item or page until the maintainer schedules it. Memberships arrived with T22; its Plans and Members tabs (T23a) show only to staff with `memberships:manage` and `members:read` respectively.
+- A navigation item is added only when its destination exists. Analytics arrived with T32, Calendar with T33 and History with T38. OpenClaw is deferred (19 Oct 2026) and gets no item or page until the maintainer schedules it. Memberships arrived with T22; its Plans and Members tabs (T23a) show only to staff with `memberships:manage` and `members:read` respectively.
 
 ### Context switcher
 
@@ -166,6 +167,14 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
   - Upcoming events with date rails and Open calendar, then Recent orders across tickets, memberships and merchandise (`orders:read`). A pending ticket order and a membership not yet granted are listed without a link.
   - On phones the attention card comes first, then upcoming events, then the tiles.
   - Check-in staff land on **Today at the door** instead: today's published events in the society's zone with valid and checked-in tickets and Open check-in, then the rest of the week. There is no money, no orders, no drafts and no members.
+
+`/dashboard/history` (T38, design round C2)
+
+- Owners and admins (`audit:read`); for anyone else the address is Page not found.
+- Filters in the URL: What (a category; Check-ins only under their own, never in All activity), Who (people in this society's History, Stripe or Thunderstrux), From and To (society-zone days with the house `DateField`). `?cursor=` pages 50 at a time; a stale cursor starts again from the newest with a notice.
+- Day headings, then a rail of entries: time, the actor's initials (Stripe dark, Thunderstrux outlined, a former staff member dashed), the sentence with links to the event, order, member, plan or product, and a box of facts with before → after. The category tag sits in a fixed right-hand column so tags and fact boxes line up.
+- Sentences and facts come only from `lib/audit/history.ts`, which names the fields each action may show; nothing else in `metadata` reaches the page. An edit recorded before T38 says "Historical detail unavailable".
+- States: Nothing recorded yet, No matches with Clear filters, the start of the history, loading skeleton. See [[Audit Coverage]].
 
 `/dashboard/events`
 

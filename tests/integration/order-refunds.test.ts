@@ -117,6 +117,8 @@ describe("whole-order refunds", () => {
     await reconcileOrderRefundEvent(succeeded);
     expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
     expect(await prisma.orderLifecycleEvent.count({ where: { orderId: fixture.order.id, type: "refunded" } })).toBe(1);
+    // The replayed event adds no second History row (T38).
+    expect(await prisma.auditLog.count({ where: { targetId: fixture.order.id, action: "order.refund_succeeded" } })).toBe(1);
   });
 
   test("a lost Stripe response is looked up before the same key is sent again", async () => {

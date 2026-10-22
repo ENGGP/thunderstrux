@@ -89,7 +89,11 @@ test("moving a ticketed event emails the holder, and a member turns renewal remi
   await prisma.ticket.create({ data: { orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id, issueSequence: 1 } });
   await login(page, data.owner.email, `/dashboard/events/${data.event.id}/edit`);
   await expect(page.getByText("Ticket holders get an email only if you change the time or place.", { exact: false })).toBeVisible();
-  await page.getByLabel("Location", { exact: true }).fill("Great Hall");
+  // Typing before the form is interactive is lost, so wait until it counts as a change.
+  await expect(async () => {
+    await page.getByLabel("Location", { exact: true }).fill("Great Hall");
+    await expect(page.getByRole("status").filter({ hasText: "You have unsaved changes." })).toBeVisible({ timeout: 1000 });
+  }).toPass();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Event saved" })).toBeVisible();
 

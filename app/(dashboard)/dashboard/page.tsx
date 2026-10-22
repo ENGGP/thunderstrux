@@ -1,47 +1,46 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { formatDay } from "@/components/calendar/layout";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
-import { DateRail } from "@/components/events/date-rail";
-import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
+import { PersonalShell } from "@/components/layout/personal-shell";
+import { buttonClasses } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { localToday } from "@/lib/analytics/range";
 import {
   OrganisationAccessError,
   StaffMfaRequiredError,
-  getAccessibleOrganisationsForCurrentAccount,
   requireAuthenticatedUser,
   requireCurrentOrganisationAccount
 } from "@/lib/auth/access";
-import { readMemberProfile } from "@/lib/auth/account-settings";
-import {
-  bootstrapOrganisationId,
-  contextChoices,
-  readAccountContext,
-  type ContextChoices
-} from "@/lib/auth/context";
-import { PersonalShell } from "@/components/layout/personal-shell";
-import { buttonClasses } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Notice } from "@/components/ui/notice";
-import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { listDashboardEvents } from "@/lib/events/event-lifecycle";
-import { formatDate, formatDateTime, formatMoney, formatPrice } from "@/lib/format";
-import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
-import { analyticsAccess, societySales } from "@/lib/analytics/metrics";
-import { analyticsRange, localToday } from "@/lib/analytics/range";
-import { getOrganisationOverview } from "@/lib/organisations/overview";
+import { bootstrapOrganisationId, contextChoices, readAccountContext, type ContextChoices } from "@/lib/auth/context";
 import { readTimeZone } from "@/lib/organisations/profile";
-import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
-import {
-  hasOrganisationPermission,
-  type OrganisationPermission,
-  type OrganisationStaffRole
-} from "@/lib/permissions";
+import { hasOrganisationPermission } from "@/lib/permissions";
+import { zoneCity } from "@/lib/zoned-time";
+import { PersonalOverview } from "./personal-overview";
+import { DoorOverview, SocietyOverview } from "./society-overview";
+
+function OverviewSkeleton({ label }: { label: string }) {
+  return (
+    <div className="grid gap-6">
+      <p className="sr-only">{label}</p>
+      <Skeleton className="h-32 rounded-card" />
+      <div className="grid gap-6 sm:grid-cols-3">
+        <Skeleton className="h-24 rounded-card" />
+        <Skeleton className="h-24 rounded-card" />
+        <Skeleton className="h-24 rounded-card" />
+      </div>
+    </div>
+  );
+}
 
 async function OrganisationDashboard(contexts: ContextChoices) {
   // The account and permission checks finish before anything streams.
   const organisation = await requireCurrentOrganisationAccount();
+  const timeZone = await readTimeZone(organisation.id);
+  // Check-in staff land on today's door (design round C1).
+  const door = organisation.staffRole === "check_in_staff";
 
   return (
     <DashboardShell contexts={contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -53,312 +52,13 @@ async function OrganisationDashboard(contexts: ContextChoices) {
             </Link>
           ) : null
         }
-        title="Overview"
+        description={`${organisation.name} · ${zoneCity(timeZone)} · ${formatDay(localToday(timeZone))}`}
+        title={door ? "Today at the door" : "Overview"}
       />
-      <Suspense fallback={<OverviewSkeleton />}>
-        <OrganisationOverview organisation={organisation} />
+      <Suspense fallback={<OverviewSkeleton label="Loading overview" />}>
+        {door ? <DoorOverview organisation={organisation} timeZone={timeZone} /> : <SocietyOverview organisation={organisation} timeZone={timeZone} />}
       </Suspense>
     </DashboardShell>
-  );
-}
-
-function OverviewSkeleton() {
-  return (
-    <>
-      <div className="grid gap-6 sm:grid-cols-2">
-        <Skeleton className="h-32 rounded-card" />
-        <Skeleton className="h-32 rounded-card" />
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ListSkeleton label="Loading upcoming events" />
-        <ListSkeleton label="Loading recent orders" />
-      </div>
-    </>
-  );
-}
-
-async function OrganisationOverview({
-  organisation
-}: {
-  organisation: { id: string; name: string; staffRole: OrganisationStaffRole };
-}) {
-  const can = (permission: OrganisationPermission) =>
-    hasOrganisationPermission(organisation.staffRole, permission);
-  const canViewOrders = can("orders:read");
-  const showSales = can("analytics:read");
-  // This month in the society's zone, all families (T31); money needs both permissions.
-  const timeZone = await readTimeZone(organisation.id);
-  const today = localToday(timeZone);
-  const thisMonth = analyticsRange({ from: `${today.slice(0, 8)}01`, to: today }, timeZone);
-  const [{ profileComplete, chargesReady, recentOrders }, upcoming, sales] =
-    await Promise.all([
-      getOrganisationOverview(organisation.id, { includeOrders: canViewOrders }),
-      listDashboardEvents(organisation.id, {
-        view: "upcoming",
-        publishedOnly: organisation.staffRole === "check_in_staff",
-        includeSales: showSales,
-        take: 5
-      }),
-      societySales(organisation.id, thisMonth, analyticsAccess(organisation.staffRole))
-    ]);
-  const next = upcoming.events[0];
-  // Only tasks the caller is allowed to act on. Amber only where sales are blocked.
-  const tasks = [
-    !chargesReady && can("stripe:manage")
-      ? {
-          tone: "warning" as const,
-          title: "Finish payment setup",
-          text: "Paid tickets cannot be sold until your Stripe account is connected.",
-          href: "/dashboard/settings",
-          link: "Set up payments"
-        }
-      : null,
-    !profileComplete && can("organisation:settings")
-      ? {
-          tone: "info" as const,
-          title: "Finish your public society profile",
-          text: "Add a description and a contact email so students know who you are.",
-          href: "/dashboard/settings/profile",
-          link: "Edit society profile"
-        }
-      : null,
-    upcoming.counts.upcoming === 0 && can("events:manage")
-      ? {
-          tone: "info" as const,
-          title: "Schedule an event",
-          text: "Nothing is coming up. Create an event and publish it when tickets are ready.",
-          href: "/dashboard/events/new",
-          link: "Create an event"
-        }
-      : null
-  ].filter((task) => task !== null);
-  const linkClass = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
-  const moreLink = "text-sm font-semibold text-brand underline underline-offset-4";
-
-  return (
-    <>
-      {tasks.length > 0 ? (
-        <Card>
-          <h2 className="text-xl font-semibold text-ink">Finish setting up</h2>
-          <ul className="mt-4 grid gap-3">
-            {tasks.map((task) => (
-              <li key={task.href}>
-                <Notice
-                  action={
-                    <Link className={moreLink} href={task.href}>
-                      {task.link}
-                    </Link>
-                  }
-                  title={task.title}
-                  tone={task.tone}
-                >
-                  {task.text}
-                </Notice>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
-      <div className="grid gap-6 sm:grid-cols-2">
-        <Card>
-          <p className="text-sm font-semibold text-ink-soft">Upcoming events</p>
-          <p className="mt-1.5 text-[28px] font-semibold leading-tight tabular-nums text-ink">
-            {upcoming.counts.upcoming}
-          </p>
-          <p className="mt-1 text-sm text-ink-muted [overflow-wrap:anywhere]">
-            {next ? `Next: ${next.title}, ${formatDate(next.startTime)}` : "Nothing scheduled"}
-          </p>
-        </Card>
-        {sales ? (
-          <Card>
-            <p className="text-sm font-semibold text-ink-soft">Revenue this month</p>
-            <p className="mt-1.5 text-[28px] font-semibold leading-tight tabular-nums text-ink">
-              {formatMoney(sales.total)}
-            </p>
-            <p className="mt-1 text-sm text-ink-muted">
-              Gross paid sales since {formatDate(`${thisMonth.from}T12:00:00Z`, timeZone)}: tickets, memberships and merchandise, before fees and refunds
-            </p>
-          </Card>
-        ) : null}
-      </div>
-
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-        <Card>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-ink">Upcoming events</h2>
-            <Link className={moreLink} href="/dashboard/events">
-              View all events
-            </Link>
-          </div>
-          {upcoming.events.length === 0 ? (
-            <p className="text-sm text-ink-soft">No upcoming events.</p>
-          ) : (
-            <ul className="grid">
-              {upcoming.events.map((event) => (
-                <li
-                  className="flex items-center justify-between gap-3 border-t border-line py-3 first:border-0"
-                  key={event.id}
-                >
-                  <div className="grid min-w-0 gap-0.5">
-                    <Link
-                      className={linkClass}
-                      href={showSales ? `/dashboard/events/${event.id}` : `/dashboard/events/${event.id}/tickets`}
-                    >
-                      {event.title}
-                    </Link>
-                    <span className="text-sm text-ink-soft">
-                      {formatDateTime(event.startTime)}
-                      {event.status === "draft"
-                        ? " · not on sale yet"
-                        : event.sold !== null
-                          ? ` · ${event.sold} sold · ${event.remaining} left`
-                          : ""}
-                    </span>
-                  </div>
-                  <StatusBadge status={event.status} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        {canViewOrders ? (
-          <Card>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-ink">Recent orders</h2>
-              <Link className={moreLink} href="/dashboard/orders">
-                View all orders
-              </Link>
-            </div>
-            {recentOrders.length === 0 ? (
-              <p className="text-sm text-ink-soft">No orders yet.</p>
-            ) : (
-              <ul className="grid">
-                {recentOrders.map((order) => (
-                  <li
-                    className="flex items-center justify-between gap-3 border-t border-line py-3 first:border-0"
-                    key={order.id}
-                  >
-                    <div className="grid min-w-0 gap-0.5">
-                      {/* Order detail serves settled orders only, so a pending one is not a link. */}
-                      {order.status === "pending" ? (
-                        <span className="font-semibold text-ink [overflow-wrap:anywhere]">{order.event.title}</span>
-                      ) : (
-                        <Link className={linkClass} href={`/dashboard/orders/${order.id}`}>
-                          {order.event.title}
-                        </Link>
-                      )}
-                      <span className="text-sm text-ink-soft">
-                        {order.quantity} ticket{order.quantity === 1 ? "" : "s"} ·{" "}
-                        {formatDateTime(order.createdAt)}
-                      </span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="text-sm font-semibold tabular-nums text-ink">
-                        {formatPrice(order.totalAmount)}
-                      </span>
-                      <StatusBadge status={ticketOrderProjection(order)} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        ) : null}
-      </div>
-    </>
-  );
-}
-
-async function MemberDashboard(userId: string, contexts: ContextChoices) {
-  const [user, upcoming, organisations] = await Promise.all([
-    readMemberProfile(userId),
-    getUpcomingTicketOrders(userId),
-    getAccessibleOrganisationsForCurrentAccount()
-  ]);
-  const moreLink = "text-sm font-semibold text-brand underline underline-offset-4";
-
-  return (
-    <PersonalShell contexts={contexts}>
-      <h1 className="text-3xl font-semibold text-ink">Overview</h1>
-
-      {!user?.onboardingCompletedAt ? (
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-            <div className="grid min-w-0 gap-1">
-              <h2 className="text-xl font-semibold text-ink">Complete your profile</h2>
-              <p className="text-sm text-ink-soft">
-                Add your first and last name. Societies see them on the tickets you buy.
-              </p>
-            </div>
-            <Link className={`inline-flex min-h-11 items-center ${moreLink}`} href="/account/settings#profile">
-              Finish profile
-            </Link>
-          </div>
-        </Card>
-      ) : null}
-
-      <div className="grid grid-cols-1 items-start gap-6">
-        <Card>
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <h2 className="text-xl font-semibold text-ink">Upcoming tickets</h2>
-            <Link className={moreLink} href="/tickets">
-              All my tickets
-            </Link>
-          </div>
-          {upcoming.length === 0 ? (
-            <p className="mt-3 text-sm text-ink-soft">
-              You have no upcoming tickets.{" "}
-              <Link className="font-semibold text-brand underline underline-offset-4" href="/">
-                Browse events
-              </Link>
-            </p>
-          ) : (
-            <ul className="mt-3 grid">
-              {upcoming.map((order) => (
-                <li className="flex items-center gap-4 border-t border-line py-3.5 first:border-0" key={order.id}>
-                  <DateRail date={order.event.startTime} size="md" timeZone={order.event.organisation.timeZone} />
-                  <div className="grid min-w-0 gap-0.5">
-                    <Link
-                      className="font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]"
-                      href={`/events/${order.event.id}`}
-                    >
-                      {order.event.title}
-                    </Link>
-                    <span className="text-sm text-ink-soft">
-                      {formatDateTime(order.event.startTime, {
-                        timeZone: order.event.organisation.timeZone
-                      })}{" "}
-                      · {order.event.organisation.name}
-                    </span>
-                    <span className="text-sm text-ink-soft">
-                      {order.quantity} × {purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name)}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card>
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-ink">Your societies</h2>
-              <p className="mt-1 text-sm text-ink-soft">
-                Societies you have joined for free.
-              </p>
-            </div>
-            <Link className={moreLink} href="/dashboard/organisations">
-              Find societies
-            </Link>
-          </div>
-
-          <MemberOrganisationsList organisations={organisations} />
-        </Card>
-      </div>
-    </PersonalShell>
   );
 }
 
@@ -387,5 +87,12 @@ export default async function DashboardPage() {
       </PersonalShell>
     );
   }
-  return MemberDashboard(user.id, contextChoices(context));
+  return (
+    <PersonalShell contexts={contextChoices(context)}>
+      <h1 className="text-3xl font-semibold text-ink">Overview</h1>
+      <Suspense fallback={<OverviewSkeleton label="Loading your overview" />}>
+        <PersonalOverview userId={user.id} />
+      </Suspense>
+    </PersonalShell>
+  );
 }

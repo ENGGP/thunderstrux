@@ -149,7 +149,7 @@ export async function getWalletTickets(userId: string, view: WalletView, now = n
         id: true, issueSequence: true, validity: true, validityReason: true, checkedInAt: true, orderId: true,
         order: { select: { quantity: true, paymentKind: true, purchasedTicketTypeName: true } },
         ticketType: { select: { name: true } },
-        event: { select: { id: true, title: true, startTime: true, location: true, organisation: { select: { name: true, timeZone: true } } } }
+        event: { select: { id: true, title: true, startTime: true, endTime: true, location: true, heroAssetId: true, organisation: { select: { name: true, timeZone: true } } } }
       }
     }),
     Promise.all(walletViews.map((item) => prisma.ticket.count({ where: walletWhere(userId, item, now) })))

@@ -284,13 +284,21 @@ describe("dashboard read services", () => {
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const orders = vi.spyOn(prisma.order, "findMany");
 
-    const overview = await getOrganisationOverview(organisation.id, { includeOrders: false });
+    const commerce = vi.spyOn(prisma.commerceOrder, "findMany");
+
+    const overview = await getOrganisationOverview(organisation.id, "event_manager");
 
     expect(overview).toMatchObject({
       profileComplete: false,
       chargesReady: true,
-      recentOrders: []
+      recentOrders: [],
+      reviews: null,
+      pickups: null,
+      ending: null,
+      failedEmails: null,
+      membersNow: null
     });
     expect(orders).not.toHaveBeenCalled();
+    expect(commerce).not.toHaveBeenCalled();
   });
 });

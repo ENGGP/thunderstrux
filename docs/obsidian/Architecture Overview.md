@@ -21,7 +21,7 @@ sources: [package.json, prisma/schema.prisma, docker-compose.yml]
 - Zod validation
 - Tailwind CSS v4
 - Docker Compose
-- Node 22.23.3 and pnpm 10.34.6
+- Node 22.23.4 and pnpm 10.34.7
 - Sharp 0.35.5 for safe static WebP processing; AWS S3 SDK 3.1149.0 for bounded object storage. Local development uses patched SeaweedFS 4.48; hosted storage is separately configured.
 
 Security updates, scoped Prisma override, removal conditions, and verification: [[Dependency Automation]].

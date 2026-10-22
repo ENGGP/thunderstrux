@@ -1,4 +1,4 @@
-FROM node:22.23.3-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS base
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS base
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ ENV PATH=$PNPM_HOME:$PATH
 # security repository, including vulnerable PCRE and Perl inherited from the base.
 # hadolint ignore=DL3008
 RUN corepack enable \
-  && corepack prepare pnpm@10.34.5 --activate \
+  && corepack prepare pnpm@10.34.7 --activate \
   && apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base \
   && rm -rf /var/lib/apt/lists/*

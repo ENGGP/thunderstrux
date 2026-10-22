@@ -130,6 +130,8 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
   );
 }
 
+// Below 640px the month is a sheet pinned to the bottom of the screen, so a
+// field in a right-hand column never opens it off the edge.
 function MonthPicker({ label, value, min, max, onPick, onClose }: { label: string; value: string; min?: string; max?: string; onPick: (day: string) => void; onClose: () => void }) {
   const today = localTodayInBrowser();
   const [focused, setFocused] = useState(value || today);
@@ -165,7 +167,7 @@ function MonthPicker({ label, value, min, max, onPick, onClose }: { label: strin
   return (
     <div
       aria-labelledby={titleId}
-      className="absolute left-0 top-full z-30 mt-2 w-[19.5rem] max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)]"
+      className="fixed inset-x-4 bottom-4 z-30 rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-[19.5rem]"
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}

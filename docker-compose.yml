@@ -39,6 +39,7 @@ services:
       ASSET_STORAGE_SECRET_KEY: ${ASSET_STORAGE_SECRET_KEY:-}
       ASSET_STORAGE_ACCESS_KEY_FILE: ${ASSET_STORAGE_ACCESS_KEY_FILE:-}
       ASSET_STORAGE_SECRET_KEY_FILE: ${ASSET_STORAGE_SECRET_KEY_FILE:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       PORT: ${PORT:-3000}
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:${PORT:-3000}"
@@ -78,6 +79,8 @@ services:
       EMAIL_OUTBOX_MAX_ATTEMPTS: ${EMAIL_OUTBOX_MAX_ATTEMPTS:-5}
       EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS: ${EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS:-600}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
     depends_on:
       db:
         condition: service_healthy
@@ -94,6 +97,8 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
     depends_on:
       db:
         condition: service_healthy
@@ -106,6 +111,8 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
     depends_on:
       db:
         condition: service_healthy
@@ -119,6 +126,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
     depends_on:
       db:
         condition: service_healthy
@@ -132,10 +141,27 @@ services:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
     depends_on:
       db:
         condition: service_healthy
     command: ["node", "scripts/process-checkout-attempts.mjs"]
+
+  # T42: queue backlog, oldest-age and stale-job alerts. Database only.
+  monitor-worker:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    restart: "no"
+    profiles: ["workers"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "scripts/process-operations-monitor.mjs"]
 
   db:
     image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54

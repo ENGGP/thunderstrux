@@ -1,0 +1,30 @@
+# T42: run every worker each minute on hosts without their own scheduler.
+#   docker compose -f docker-compose.hosted.yml -f docker-compose.schedules.yml --profile workers up -d
+# Each service loops its one bounded command (scripts/every-minute.mjs), keeping
+# its own secrets. Runs never overlap: the loop waits for each run, and the
+# job's database lease guards against a second host. A host with cron or a
+# platform scheduler can instead run the one-shot services each minute.
+# Pause with `pnpm ops:workers -- pause all --reason=...`; stopping these
+# services also stops the schedule.
+x-every-minute: &every-minute
+  restart: unless-stopped
+
+services:
+  email-worker:
+    <<: *every-minute
+    command: ["node", "scripts/every-minute.mjs", "scripts/process-email-outbox.mjs"]
+  notification-worker:
+    <<: *every-minute
+    command: ["node", "scripts/every-minute.mjs", "scripts/process-notifications.mjs"]
+  stale-order-worker:
+    <<: *every-minute
+    command: ["node", "scripts/every-minute.mjs", "scripts/process-stale-orders.mjs"]
+  compensation-worker:
+    <<: *every-minute
+    command: ["node", "scripts/every-minute.mjs", "scripts/process-compensation-refunds.mjs"]
+  checkout-recovery-worker:
+    <<: *every-minute
+    command: ["node", "scripts/every-minute.mjs", "scripts/process-checkout-attempts.mjs"]
+  monitor-worker:
+    <<: *every-minute
+    command: ["node", "scripts/every-minute.mjs", "scripts/process-operations-monitor.mjs"]

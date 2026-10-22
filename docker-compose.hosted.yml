@@ -8,6 +8,13 @@ x-runtime-security: &runtime-security
     - /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
     - /home/node/.cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
 
+x-alert-secret: &alert-secret
+  source: alert_webhook_url
+  target: alert_webhook_url
+  uid: "1000"
+  gid: "1000"
+  mode: 0400
+
 x-database-secret: &database-secret
   source: database_url
   target: database_url
@@ -28,6 +35,7 @@ services:
       NODE_ENV: production
       THUNDERSTRUX_RUNTIME_CONTAINER: "true"
       DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
       AUTH_SECRET_FILE: /run/secrets/auth_secret
       MFA_ENFORCEMENT_MODE: ${MFA_ENFORCEMENT_MODE:?MFA_ENFORCEMENT_MODE is required}
       NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
@@ -50,6 +58,7 @@ services:
     expose: ["${PORT:-3000}"]
     secrets:
       - *database-secret
+      - *alert-secret
       - auth_secret
       - mfa_encryption_key
       - notification_encryption_key
@@ -82,8 +91,10 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
     secrets:
       - *database-secret
+      - *alert-secret
     command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
   email-worker:
@@ -98,11 +109,13 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
       RESEND_API_KEY_FILE: /run/secrets/resend_api_key
       EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     secrets:
       - *database-secret
+      - *alert-secret
       - resend_api_key
     command: ["node", "scripts/process-email-outbox.mjs"]
 
@@ -118,12 +131,14 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
       RESEND_API_KEY_FILE: /run/secrets/resend_api_key
       NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
       EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
     secrets:
       - *database-secret
+      - *alert-secret
       - resend_api_key
       - notification_encryption_key
     command: ["node", "scripts/process-notifications.mjs"]
@@ -140,8 +155,10 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
     secrets:
       - *database-secret
+      - *alert-secret
     command: ["node", "scripts/process-stale-orders.mjs"]
 
   compensation-worker:
@@ -156,9 +173,11 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
       STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
     secrets:
       - *database-secret
+      - *alert-secret
       - stripe_secret_key
     command: ["node", "scripts/process-compensation-refunds.mjs"]
 
@@ -174,11 +193,32 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
       STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
     secrets:
       - *database-secret
+      - *alert-secret
       - stripe_secret_key
     command: ["node", "scripts/process-checkout-attempts.mjs"]
+
+  # T42: queue backlog, oldest-age and stale-job alerts. Database only.
+  monitor-worker:
+    <<: *runtime-security
+    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    restart: "no"
+    user: "1000:1000"
+    profiles: ["workers"]
+    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+    cpus: ${OPS_CPUS:?OPS_CPUS is required}
+    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
+    secrets:
+      - *database-secret
+      - *alert-secret
+    command: ["node", "scripts/process-operations-monitor.mjs"]
 
 secrets:
   database_url:
@@ -208,3 +248,6 @@ secrets:
   notification_encryption_key:
     external: true
     name: ${NOTIFICATION_ENCRYPTION_KEY_SECRET_NAME:-thunderstrux_notification_encryption_key}
+  alert_webhook_url:
+    external: true
+    name: ${ALERT_WEBHOOK_URL_SECRET_NAME:-thunderstrux_alert_webhook_url}

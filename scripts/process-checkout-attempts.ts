@@ -1,6 +1,5 @@
-import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
-import { logError, logInfo } from "@/lib/ops/logger";
+import { runWorker } from "@/lib/ops/worker";
 import { processCheckoutAttemptRecoveryBatch } from "@/lib/payments/checkout-attempt-recovery";
 
 function batchLimit() {
@@ -13,17 +12,12 @@ function batchLimit() {
   return parsed;
 }
 
-async function main() {
-  const result = await processCheckoutAttemptRecoveryBatch({ limit: batchLimit() });
-  logInfo("checkout_attempt_recovery.worker.completed", result);
-}
-
-main()
-  .catch((error) => {
-    logError("checkout_attempt_recovery.worker.failed", { error });
+// T42: one run at a time, pausable, with a timeout and an alert on failure.
+void runWorker("checkout-recovery", async () => {
+  try {
+    return { ...(await processCheckoutAttemptRecoveryBatch({ limit: batchLimit() })) };
+  } catch (error) {
     emitOperationalAlert("checkout_attempt_recovery_failed", { error });
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+    throw error;
+  }
+});

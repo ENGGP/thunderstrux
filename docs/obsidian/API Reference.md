@@ -77,6 +77,14 @@ The endpoint does not expose secrets, tenant data, database rows, or runtime con
 
 Returns the same public-safe shape with `status: "ready"` only when the application-table query, required migration, MFA and legacy-access configuration, and enabled Redis dependency are ready. Returns `503` with `status: "unavailable"` on any failure and never exposes the internal reason.
 
+## Errors, Caching And Security Headers (T39)
+
+- **Errors.** Every route answers errors in the shared envelope through `mapRouteError`. A failure the route doesn't name returns `500` with a generic message, and the log holds only the operation and the error's class, never the error, the body or provider data.
+- **Contract test.** `route-contract.test.ts` fails a new route that skips the mapper or, when it changes data, the origin check.
+- **Caching.** Every `/api` response except `/api/public/*` and `/api/health*` carries `Cache-Control: private, no-store` unless the route sets its own. Public reads use short public caching.
+- **Headers.** Every response carries the security headers listed in [[Route Security Inventory]].
+- **Stripe misconfiguration.** Ticket checkout answers `503` "Payments are unavailable right now. Try again later." when Stripe isn't configured, without naming the server's settings.
+
 ## Operational Logs, Metrics, And Alerts
 
 Thunderstrux emits MVP operational telemetry as structured JSON lines through `console.info`, `console.warn`, and `console.error`.

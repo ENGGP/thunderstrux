@@ -57,7 +57,7 @@ The requirement-level matrix in section 8 supplies finer classification. This ta
 | Member onboarding | COMPLETE | Editable private profile, derived completion/refresh and live verification gating exist; T03–T04 and T09 cover identity/privacy and explicit joins. Integrated commerce dashboard remains T34. |
 | Organisation onboarding | PARTIAL | T08 resumable identity/branding/public-policy setup, atomic owner bootstrap and second-primary fencing are complete; Connect safety/readiness refinement remains T17. |
 | Named staff, MFA, revocation | COMPLETE | T05–T06 explicit context, capabilities, private invite UI/version/race protection and atomic owner handover are locally qualified. Real staff enrollment and independent production review remain activation gates. |
-| Tenant/origin/CSRF/rate controls | COMPLETE | Event.organisationId authority, session CSRF, trusted-origin, Redis and denial tests exist. Extend them to all new surfaces; AUD-001/API-001 remain open. |
+| Tenant/origin/CSRF/rate controls | COMPLETE | Event.organisationId authority, session CSRF, trusted-origin, Redis and denial tests exist. Extend them to all new surfaces. AUD-001 (T38) and API-001 (T39) are resolved; `route-contract.test.ts` keeps every route on the shared error mapper and origin check ([[Route Security Inventory]]). |
 | Public society identity and private settings | COMPLETE | T07–T08 safe assets, public DTO/branding/contact/policies/timezone and settings/MFA-protected optimistic editing are qualified. Paid tabs and wider visual rollout remain later tasks. |
 | Organisation discovery/join/leave | COMPLETE | T09 anonymous bounded literal/cursor discovery, dynamic caller-only verified joins, idempotent leave and fresh client state are qualified. Free affiliation grants neither paid benefits nor staff authority. |
 | Event lifecycle | PARTIAL | T11a added capacity, visibility, sales close/state, version, always-draft create and readiness-checked explicit publish and sales routes; T12 locked capacity and made sold edits safe. T11b adds the builder with dollar prices, society-zone times, access, capacity and an event image, the Summary readiness checklist and Close/Reopen sales. |
@@ -639,7 +639,7 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 
 #### T42 — Worker/alert/recovery contracts
 - [ ] Complete. **Dependencies:** T30, T38, T41.
-- **Code:** Bounded commands/Compose for notifications, token cleanup, membership reminders, commerce expiry/uncertain Session and ordinary refunds; reuse existing workers where safe. One-minute schedules/nonoverlap/leases/timeouts/backlog and oldest-age metrics. Alert transport with local capture receiver.
+- **Code:** Bounded commands/Compose for notifications, token cleanup (already a bounded step of the notification worker since T39), membership reminders, commerce expiry/uncertain Session and ordinary refunds; reuse existing workers where safe. One-minute schedules/nonoverlap/leases/timeouts/backlog and oldest-age metrics. Alert transport with local capture receiver.
 - **Recovery:** Pause writers/jobs, separate restore without provider writes, reconcile Stripe/refunds/outbox before resume; backup MFA/storage/provider identity secrets. Readiness includes current schema/enabled dependencies, liveness remains minimal.
 - **Tests/done:** Worker pause/crash/reclaim/outage/restore/exhaustion, missed webhook/reconciliation and alert receipt rehearsal pass. Runbooks state thresholds/response owner; startup never migrates implicitly.
 

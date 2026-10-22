@@ -266,6 +266,10 @@ try {
     env: { ...process.env, APP_IMAGE: release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey }
   });
   await assetRehearsal("seed");
+  // T41: the seeded release passes every integrity check (explained legacy rows excepted).
+  await compose(["run", "--rm", "migration", "node", "scripts/audit-db-integrity.mjs"], {
+    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+  });
   await compose(["--profile", "tools", "run", "--rm", "--no-deps", "asset-tools", "node", "scripts/maintain-assets.mjs", "--integrity"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }
   });

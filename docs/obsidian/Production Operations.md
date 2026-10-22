@@ -72,7 +72,9 @@ Restore only into a new database ending in `_restore_test`:
 pnpm ops:restore -- --project ops-thunderstrux --env-file .env.production --archive <archive.dump> --target-database recovery_restore_test
 ```
 
-Restore verifies metadata ownership, checksum, archive completion, grants through application credentials, migration history, and representative domain reads. Failed targets remain quarantined and are never promoted.
+Restore verifies metadata ownership, checksum, archive completion, grants through application credentials, migration history, representative domain reads and, since T41, the integrity audit with no unexplained violations. Failed targets remain quarantined and are never promoted.
+
+Before a release with migrations, rehearse the upgrade on a copy of the data: `node scripts/rehearse-upgrade.mjs <archive.dump>` restores each archive into a throwaway `_test` database, applies the release's migrations, runs the integrity audit and checks no rows were lost, then removes the container. It needs the e2e test image (`thunderstrux-e2e-tests:local`). Investigate any unexplained violation before the migration job runs; a new constraint stops the migration on legacy rows that break it ([[Database and Multi Tenancy]]).
 
 For disaster recovery, stop app writers and workers, restore into a new database, verify without Stripe/Resend credentials, reconcile Stripe payments, refunds and webhook delivery, inspect email-outbox and compensation-refund jobs, switch the application deliberately, and then resume workers. A database restore cannot reverse external charges, refunds, transfers, or email sends.
 

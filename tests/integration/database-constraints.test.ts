@@ -153,6 +153,15 @@ describe("database numeric integrity constraints", () => {
     ).rejects.toThrow();
   });
 
+  test("rejects a paid order whose total isn't its unit price times its quantity (T41)", async () => {
+    const { order } = await createConstraintFixture();
+    await expect(
+      prisma.order.update({ where: { id: order.id }, data: { status: "paid", paidAt: new Date(), totalAmount: order.totalAmount + 1 } })
+    ).rejects.toThrow(/Order_paid_total_matches_units_chk/);
+    // A pending order is checked only once it is paid.
+    await expect(prisma.order.update({ where: { id: order.id }, data: { status: "paid", paidAt: new Date() } })).resolves.toMatchObject({ status: "paid" });
+  });
+
   test("rejects paid orders without paidAt and expired orders with paidAt at the database layer", async () => {
     const { order } = await createConstraintFixture();
 

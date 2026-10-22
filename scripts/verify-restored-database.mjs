@@ -2,8 +2,10 @@ import { createJiti } from "jiti";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-const jiti = createJiti(import.meta.url);
+// The audit library imports through the "@/" path alias.
+const jiti = createJiti(import.meta.url, { alias: { "@/": `${process.cwd().replace(/\\/g, "/")}/` } });
 const { decryptNotification } = await jiti.import("../lib/email/notification-crypto.ts");
+const { runDatabaseIntegrityAudit } = await jiti.import("../lib/ops/integrity-audit.ts");
 
 try {
   const [users, organisations, staff, orders, tickets, reservations, outbox, lifecycleEvents, auditLogs, refundJobs, refundWebhookEvents, notifications, authTokens, securityEvents, migrations] = await Promise.all([
@@ -53,8 +55,14 @@ try {
     })}`);
   }
 
+  // T41: the restored copy passes the integrity audit, apart from explained legacy rows.
+  const audit = await runDatabaseIntegrityAudit();
+  const unexplained = audit.filter((result) => !result.legacy && result.count > 0).map((result) => `${result.name}=${result.count}`);
+  if (unexplained.length) throw new Error(`Restored database fails the integrity audit: ${unexplained.join(", ")}`);
+
   console.log(JSON.stringify({
     status: "verified",
+    integrityChecks: audit.length,
     invitationVersionAndDecryption: true,
     ownershipHandoverContinuity: true,
     users,

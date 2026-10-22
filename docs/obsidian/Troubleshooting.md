@@ -28,6 +28,14 @@ If a signed-in dashboard, account or event URL alternates between itself and `/l
 
 After changing the proxy, restart only the app with `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart app`; the development server may retain the old guard. Refresh the affected URL after restart. Existing valid HTTPS sessions work; revoked, expired or invalid sessions still require fresh login. Do not disable secure cookies, live identity checks or CSRF to work around a redirect loop.
 
+## Sign In Does Nothing In Local Docker
+
+Symptom: on `http://127.0.0.1:3080/login` (or any page) buttons do nothing, and the sign-in form reloads as `GET /login?` with no sign-in request. The page's JavaScript loaded but never took over.
+
+Cause: Next 16 blocks its dev resources, including the HMR socket, for any host not in `allowedDevOrigins`, and the page then never hydrates. The app log says `Blocked cross-origin request to Next.js dev resource /_next/hmr from "127.0.0.1"`.
+
+Fix: `next.config.ts` allows `127.0.0.1` and `localhost` beside the tunnel host (22 Oct 2026). If you open the dev app at another name, add it there; Next restarts itself when the file changes. Production builds ignore this setting.
+
 ## UI Change Not Visible
 
 For Package 3 society pages, check `/societies`, `/societies/[orgSlug]` and `/dashboard/settings/profile`. Member staff start personal; select the permitted society before management. The shared header uses fixed h-16 height and mobile account Menu; the organisation menu is separate. Joined lists/search badges refresh after mutations and obsolete search responses are ignored. A stale Joined badge should not be worked around by editing staff or purchase rows.

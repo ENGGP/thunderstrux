@@ -29,8 +29,9 @@ export type ViewProps = {
 };
 
 const termHref = "/dashboard/memberships/members";
-const chipBase = "my-px block h-6 min-w-0 truncate border-y px-2 text-[13px] leading-[22px] no-underline";
-// Colours only; each caller sets which borders and corners it draws.
+const chipBase = "relative my-px block h-6 min-w-0 truncate border-y px-2 text-[13px] leading-[22px] no-underline";
+// Colours only; each caller sets which borders and corners it draws. Chips and
+// day numbers are positioned so they paint above the (positioned) day cells.
 const tone = (item: CalendarItem) =>
   item.kind === "clock"
     ? "border-warning-border bg-warning-bg text-xs font-semibold text-warning"
@@ -104,7 +105,7 @@ export function MonthGrid({ days, month, ...props }: ViewProps & { days: string[
               );
             })}
             {week.map((day, column) => (
-              <span className={`px-2.5 pt-2 text-[13px] font-semibold ${day.slice(0, 7) !== month ? "text-ink-muted" : "text-ink"}`} key={day} style={{ gridColumn: column + 1, gridRow: 1 }}>
+              <span className={`relative px-2.5 pt-2 text-[13px] font-semibold ${day.slice(0, 7) !== month ? "text-ink-muted" : "text-ink"}`} key={day} style={{ gridColumn: column + 1, gridRow: 1 }}>
                 {day === props.today ? (
                   <span aria-label={`${formatDay(day, true)}, today`} className="-ml-1 -mt-1 inline-flex size-[26px] items-center justify-center rounded-full bg-brand text-white">{Number(day.slice(8))}</span>
                 ) : day.endsWith("-01") ? formatDay(day).split(" ").slice(1).join(" ") : Number(day.slice(8))}
@@ -115,7 +116,7 @@ export function MonthGrid({ days, month, ...props }: ViewProps & { days: string[
             ))}
             {hidden.map((count, column) =>
               count ? (
-                <Link className="mx-1.5 self-start text-[13px] font-semibold text-brand underline-offset-4 hover:underline" href={`?view=agenda&date=${week[column]}#day-${week[column]}`} key={week[column]} style={{ gridColumn: column + 1, gridRow: 5 }}>
+                <Link className="relative mx-1.5 self-start text-[13px] font-semibold text-brand underline-offset-4 hover:underline" href={`?view=agenda&date=${week[column]}#day-${week[column]}`} key={week[column]} style={{ gridColumn: column + 1, gridRow: 5 }}>
                   +{count} more
                 </Link>
               ) : null

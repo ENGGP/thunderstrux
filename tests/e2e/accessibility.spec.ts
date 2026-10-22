@@ -88,3 +88,23 @@ test.describe("accessibility scans", () => {
     ]);
   });
 });
+
+test("keyboard users skip to the page, and a confirmation takes focus and closes on Escape without acting", async ({ page, data }) => {
+  await page.goto("/");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe("main");
+
+  await login(page, data.owner.email, "/dashboard/events");
+  await page.getByRole("button", { name: `More actions for ${data.event.title}` }).first().focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Unpublish" }).first().focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  expect((await prisma.event.findUniqueOrThrow({ where: { id: data.event.id } })).status).toBe("published");
+});

@@ -15,7 +15,7 @@ export default async function EventPreviewPage({ params }: { params: Promise<{ e
   if (event.status === "published") redirect(`/events/${eventId}`);
 
   return (
-    <main className="bg-paper">
+    <main id="main" tabIndex={-1} className="bg-paper">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 bg-brand-ink px-4 py-3.5 text-white md:px-8" role="region" aria-label="Draft preview">
         <div className="grid min-w-0 flex-1 basis-80">
           <strong className="text-base">Draft preview</strong>

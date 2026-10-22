@@ -13,7 +13,7 @@ export function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <main className="bg-paper px-4 py-10 sm:py-16">
+    <main id="main" tabIndex={-1} className="bg-paper px-4 py-10 sm:py-16">
       <div className={`mx-auto grid gap-5 ${wide ? "max-w-read" : "max-w-auth"}`}>
         <header className="grid gap-1.5">
           <h1 className="text-3xl font-semibold text-ink">{title}</h1>

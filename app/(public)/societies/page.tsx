@@ -34,7 +34,7 @@ export default async function SocietiesPage({
     cursor: page.pageInfo.nextCursor ?? "",
   });
   return (
-    <main className="bg-paper">
+    <main id="main" tabIndex={-1} className="bg-paper">
       <div className="mx-auto grid max-w-page gap-8 px-4 py-10 md:px-8 md:py-14">
         <header className="grid gap-2">
           <p className="text-sm font-semibold text-brand">Campus communities</p>

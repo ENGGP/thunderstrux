@@ -40,7 +40,7 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
   }
   if (access.kind === "gated") {
     return (
-      <main className="bg-paper">
+      <main id="main" tabIndex={-1} className="bg-paper">
         <MembersOnlyGate eventHref={`/events/${eventId}`} gate={access.gate} />
       </main>
     );
@@ -61,7 +61,7 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
     : null;
 
   return (
-    <main className="bg-paper">
+    <main id="main" tabIndex={-1} className="bg-paper">
       <PublicEventView event={{ ...event, ticketTypes: priceForViewer(event.ticketTypes, memberPlan !== null) }} memberPlan={memberPlan} viewer={viewer} />
     </main>
   );

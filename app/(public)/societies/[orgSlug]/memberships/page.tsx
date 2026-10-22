@@ -77,7 +77,7 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
   }
 
   return (
-    <main className="bg-paper pb-14">
+    <main id="main" tabIndex={-1} className="bg-paper pb-14">
       <div className="mx-auto max-w-page px-4 md:px-8">
         <SocietyHeader current="memberships" hasMemberships={offers.length > 0} hasMerchandise={hasMerchandise} joined={viewer.joinState === "joined"} memberUntil={memberUntil} organisation={organisation} />
 

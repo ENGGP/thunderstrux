@@ -17,7 +17,7 @@ export default async function OrganisationDetailsPage({
   const { joinState, memberId } = await societyViewer(organisation.id);
   const [{ offers, memberUntil }, hasMerchandise] = await Promise.all([membershipOffers(organisation.id, memberId), hasShop(organisation.id)]);
   return (
-    <main className="bg-paper pb-14">
+    <main id="main" tabIndex={-1} className="bg-paper pb-14">
       <div className="mx-auto max-w-page px-4 md:px-8">
         <SocietyHeader
           current="overview"

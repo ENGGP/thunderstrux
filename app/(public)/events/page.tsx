@@ -31,7 +31,7 @@ export default async function ExploreEventsPage({ searchParams }: { searchParams
   const valid = Object.keys(errors).length === 0;
 
   return (
-    <main className="bg-paper">
+    <main id="main" tabIndex={-1} className="bg-paper">
       <div className="mx-auto grid max-w-page gap-6 px-4 py-10 md:px-8 md:py-14">
         <header className="grid gap-2">
           <h1 className="font-display text-4xl font-semibold text-brand-ink">Explore events</h1>

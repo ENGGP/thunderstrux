@@ -29,7 +29,7 @@ export default async function ProductPage({ params }: Props) {
   const { organisation, product } = found;
 
   return (
-    <main className="bg-paper pb-14">
+    <main id="main" tabIndex={-1} className="bg-paper pb-14">
       <div className="mx-auto grid max-w-page gap-6 px-4 py-7 md:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Breadcrumb" className="text-sm">

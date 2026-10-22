@@ -29,7 +29,8 @@ export function ResponsiveTable<Row>({
   const edge = (index: number) => (index === 0 ? "pl-5 pr-3" : index === columns.length - 1 ? "pl-3 pr-5" : "px-3");
   return (
     <>
-      <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
+      {/* Focusable so keyboard users can scroll a wide table sideways (T40). */}
+      <div aria-label={label} className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block" role="region" tabIndex={0}>
         <table aria-label={label} className="w-full border-collapse text-left text-[15px]" style={{ minWidth }}>
           <thead>
             <tr className="text-[13px] text-ink-soft">

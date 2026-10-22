@@ -105,7 +105,7 @@ export default async function OrganiserEventPage({
           {ticketTypes.length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">No ticket types yet.</p>
           ) : (
-            <div className="mt-3 overflow-x-auto">
+            <div aria-label="Ticket performance" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
               <table className="w-full min-w-[420px] border-collapse text-[15px]">
                 <thead>
                   <tr className="text-left text-[13px] text-ink-soft">

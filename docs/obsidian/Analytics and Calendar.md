@@ -1,9 +1,9 @@
 ---
 status: living
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-22
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Memberships and Merchandise]]", "[[Event Lifecycle]]", "[[Database and Multi Tenancy]]"]
-sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dashboard/events/[eventId]/page.tsx, app/(dashboard)/dashboard/page.tsx, prisma/migrations/20261109010000_analytics_indexes/migration.sql]
+sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dashboard/events/[eventId]/page.tsx, app/(dashboard)/dashboard/page.tsx, lib/events/calendar.ts, components/calendar/layout.ts, components/calendar/calendar-views.tsx, app/(dashboard)/dashboard/calendar/page.tsx, app/api/orgs/[orgSlug]/calendar/route.ts, prisma/migrations/20261109010000_analytics_indexes/migration.sql]
 ---
 
 # Analytics and Calendar
@@ -65,3 +65,27 @@ Tabs a role can't use aren't offered, and asking for one by URL shows Tickets. A
 - Year-long reads keep their scans, which is right at that selectivity. The slowest was counting tickets for a year: 1,042 ms with a count per order, 311 ms after rewriting it as one grouped join.
 
 This is local plan evidence for PERF-001. Index usage and write overhead in a hosted database are still unobserved (H05).
+
+## Calendar (T33)
+
+`/dashboard/calendar` (sidebar, under Events, `events:read`) follows design round C1 (passes 1 and 2 approved 19 to 22 Oct 2026). It is a projection of `Event` rows: nothing is copied into a calendar table, there are no recurring series, and nothing syncs to Google or Apple calendars or publishes a feed.
+
+**Source** (`lib/events/calendar.ts`). `readCalendar` takes whole local days in the society's zone, at most 93 (`calendarRange` refuses more, a day that doesn't exist or an end before its start). It returns every event that overlaps them (`startTime` before the range's end and `endTime` after its start), so a camp from Friday to Monday shows in both months. The bounds come from SQL `AT TIME ZONE`, as for analytics. At most 500 events come back; more sets `truncated` and the page says so.
+- Drafts need `events:manage`. Check-in staff and finance managers see published events only.
+- Membership end dates need `members:read`: per plan and last day, the number of members whose unrevoked term ends then. The last day is the day before `endsAt`, which is exclusive.
+- `GET /api/orgs/[orgSlug]/calendar?from=&to=` serves the same read. It needs a live staff role with `events:read` and MFA where enforced. Another society's slug is a 404, and a bad range is a 400. Responses are `private, no-store`.
+
+**Page.** `?view=month|week|agenda&date=YYYY-MM-DD` (month and today by default; a date that isn't a real day falls back to today with a notice).
+- **Month** shows whole Monday-to-Sunday weeks with up to three entries a day and "+N more" linking to that day in the agenda.
+- **Week** has an all-day row for membership endings and events of 24 hours or more, then hours from 8 am (earlier when an event starts earlier) to midnight. It shows a line for now, and overlapping events sit side by side.
+- **Agenda** lists days with entries. Earlier days of the current month fold into "Earlier this month", and a next-period link sits at the end.
+- Phones (below 768px) get the agenda only, and the view switch is hidden.
+- Entries open the event's Summary, or its Attendees for check-in staff. Membership endings open Members. No money or booking shows on the calendar.
+- Managers get "New event" in the header and on each day from today (on hover or keyboard focus). The builder then opens with that day, 6 to 8 pm (`/dashboard/events/new?date=`).
+
+**Time** (`components/calendar/layout.ts`). Every day and time is the society's zone, read with `Intl`, never the server's or browser's.
+- An event shorter than 24 hours, even past midnight, sits on the day it starts with its end day named ("10:00 pm to 2:00 am Sun"). Longer events span each day they touch, splitting at week edges with "continues" and "until".
+- A day when the clocks change carries a marker ("Clocks go forward at 2 am"). A time inside the hour that happens twice carries its abbreviation ("2:30 am AEDT", then "2:30 am AEST").
+- The builder still rejects or asks about local times that don't exist or happen twice (EVT-001).
+
+No index was added. The read uses the existing `Event(organisationId)` and `MembershipGrant(endsAt)` indexes over at most 93 days; a measured index waits for evidence, as the database spec §14 asks.

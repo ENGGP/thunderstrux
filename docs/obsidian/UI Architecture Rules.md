@@ -84,6 +84,7 @@ Where data loads after the guards, the page wraps that part in `<Suspense>` with
 | --- | --- | --- | --- |
 | (none) | Overview | `/dashboard` | none |
 | (none) | Events | `/dashboard/events` | `events:read` |
+| (none) | Calendar | `/dashboard/calendar` | `events:read` |
 | (none) | Orders | `/dashboard/orders` | `orders:read` |
 | Community | Memberships | `/dashboard/memberships` | `memberships:manage` |
 | Community | Merchandise | `/dashboard/merchandise` | `merchandise:manage` |
@@ -101,7 +102,7 @@ The staff authenticator (`/mfa`) is not organisation navigation: it is reached f
 - From `lg` the navigation is a 244px deep-plum column whose contents stick below the fixed header, so the verify-email banner pushes it down instead of sitting under it. Below `lg` the same column holds `Current organisation`, the society name and the `Organisation menu` disclosure.
 - Each page renders its own title as the only `h1` through `components/layout/page-header.tsx` (or an `h1` of its own); section headings are `h2`. The society name is plain text in the sidebar.
 - The workspace switcher is labelled `Workspace`.
-- A navigation item is added only when its destination exists. Calendar and History are absent until their tasks deliver them; Analytics arrived with T32. OpenClaw is deferred (19 Oct 2026) and gets no item or page until the maintainer schedules it. Memberships arrived with T22; its Plans and Members tabs (T23a) show only to staff with `memberships:manage` and `members:read` respectively.
+- A navigation item is added only when its destination exists. History is absent until T38 delivers it; Analytics arrived with T32 and Calendar with T33. OpenClaw is deferred (19 Oct 2026) and gets no item or page until the maintainer schedules it. Memberships arrived with T22; its Plans and Members tabs (T23a) show only to staff with `memberships:manage` and `members:read` respectively.
 
 ### Context switcher
 

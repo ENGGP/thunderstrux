@@ -9,8 +9,8 @@ export async function organisationActor(orgSlug: string, permission: Organisatio
   const actor = await requireAuthenticatedUser();
   const organisationId = await organisationIdBySlug(orgSlug);
   if (!organisationId) throw new OrganisationAccessError("Organisation not found or access denied");
-  await requireOrganisationPermission(organisationId, permission);
-  return { actor, organisationId };
+  const { staffRole } = await requireOrganisationPermission(organisationId, permission);
+  return { actor, organisationId, staffRole };
 }
 export function organisationError(error: unknown) {
   if (error instanceof AuthenticationRequiredError) return unauthorized();

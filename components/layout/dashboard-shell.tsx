@@ -22,6 +22,7 @@ const navGroups: Array<{ label?: string; items: NavItem[] }> = [
     items: [
       { label: "Overview", href: "/dashboard", icon: "home" },
       { label: "Events", href: "/dashboard/events", icon: "calendar", permission: "events:read" },
+      { label: "Calendar", href: "/dashboard/calendar", icon: "calendarDays", permission: "events:read" },
       { label: "Orders", href: "/dashboard/orders", icon: "receipt", permission: "orders:read" }
     ]
   },

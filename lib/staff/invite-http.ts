@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { AuthenticationRequiredError, OrganisationAccessError, requireVerifiedUser, requireOrganisationPermission } from "@/lib/auth/access";
-import { badRequest, conflict, forbidden, internalError, notFound, unauthorized, validationError } from "@/lib/api/errors";
+import { OrganisationAccessError, requireVerifiedUser, requireOrganisationPermission } from "@/lib/auth/access";
+import { badRequest, conflict, forbidden, mapRouteError, notFound, routeErrorRule, unauthorized, validationError } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
 import { organisationIdBySlug } from "@/lib/organisations/authority";
 import { StaffInviteError, manageOrganisationStaffInvite } from "./invites";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -10,16 +11,16 @@ import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { validateJson } from "@/lib/validators";
 
 export function staffInviteFailure(error: unknown) {
-  if (error instanceof AuthenticationRequiredError) return unauthorized();
-  if (error instanceof OrganisationAccessError) return forbidden(error.message);
-  if (error instanceof StaffInviteError) {
-    if (error.kind === "stale_session") return unauthorized();
-    if (error.kind === "authority") return forbidden(error.message);
-    if (error.kind === "conflict") return conflict(error.message);
-    return badRequest(error.message);
-  }
-  console.error("Staff invitation operation failed");
-  return internalError();
+  return mapRouteError(error, {
+    operation: "staff.invites",
+    rules: [
+      authenticationRule,
+      routeErrorRule(OrganisationAccessError, (denied) => forbidden(denied.message)),
+      routeErrorRule(StaffInviteError, (failed) =>
+        failed.kind === "stale_session" ? unauthorized() : failed.kind === "authority" ? forbidden(failed.message) : failed.kind === "conflict" ? conflict(failed.message) : badRequest(failed.message)
+      )
+    ]
+  });
 }
 export async function invitationIssuanceLimits(request: Request, actorId: string, organisationId: string, email: string) {
   return await enforceRateLimit({ policy: "staff_invite_actor", request, keyParts: [actorId, organisationId], required: true }) ??

@@ -26,23 +26,27 @@ const eventFieldsSchema = z
   });
 
 // What a member with the member_prices right pays (T24b): optional, never above the price.
-const memberPrice = z.number().int().min(0).nullable().optional();
+// Prices stop at $999,999.99, Stripe's largest charge, and stock at a million,
+// so totals stay inside a 32-bit integer (T39).
+const maxPrice = 99_999_999;
+const maxQuantity = 1_000_000;
+const memberPrice = z.number().int().min(0).max(maxPrice).nullable().optional();
 const withinPrice = (ticketType: { price: number; memberPrice?: number | null }) => ticketType.memberPrice == null || ticketType.memberPrice <= ticketType.price;
 const withinPriceError = { message: "The member price can't be more than the price", path: ["memberPrice"] };
 
 const createTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  price: z.number().int().min(0),
+  price: z.number().int().min(0).max(maxPrice),
   memberPrice,
-  quantity: z.number().int().min(1)
+  quantity: z.number().int().min(1).max(maxQuantity)
 });
 export const createTicketTypeSchema = createTicketTypeFieldsSchema.refine(withinPrice, withinPriceError);
 
 const updateTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  price: z.number().int().min(0),
+  price: z.number().int().min(0).max(maxPrice),
   memberPrice,
-  quantity: z.number().int().min(0)
+  quantity: z.number().int().min(0).max(maxQuantity)
 });
 
 // Events are always created as drafts; publishing is a separate, checked transition.

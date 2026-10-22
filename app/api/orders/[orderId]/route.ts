@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireCurrentOrganisationAccount,
-  requireOrganisationFinanceAccess
-} from "@/lib/auth/access";
+import { forbidden, mapRouteError, notFound, routeErrorRule } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import { OrganisationAccessError, requireCurrentOrganisationAccount, requireOrganisationFinanceAccess } from "@/lib/auth/access";
 import {
   OrganisationOrderAccessError,
   getOrganisationOrderDetail
@@ -32,19 +23,13 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({ order });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationOrderAccessError) {
-      return notFound(error.message);
-    }
-
-    console.error("Failed to fetch order detail", { orderId, error });
-    return internalError();
+    return mapRouteError(error, {
+      operation: "orders.read",
+      rules: [
+        authenticationRule,
+        routeErrorRule(OrganisationAccessError, (error) => forbidden(error.message)),
+        routeErrorRule(OrganisationOrderAccessError, (error) => notFound(error.message))
+      ]
+    });
   }
 }

@@ -41,7 +41,7 @@ test("a price changed while reviewing shows the new total and continues at it", 
   // Continuing sends the new price: the request passes the quote check and only
   // stops at the Stripe key this campaign leaves unset.
   await screen.getByRole("button", { name: "Continue at $34.00" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Stripe is not configured" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Payments are unavailable right now" })).toBeVisible();
   await expect(page.getByText("The price changed")).toHaveCount(0);
 });
 

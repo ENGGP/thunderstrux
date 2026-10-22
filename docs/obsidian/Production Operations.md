@@ -45,7 +45,7 @@ every minute: node scripts/process-email-outbox.mjs
 every minute: node scripts/process-stale-orders.mjs   # also expires stale commerce orders (T21)
 every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a)
 every minute: node scripts/process-checkout-attempts.mjs   # ticket and commerce attempts (T21)
-every minute: node scripts/process-notifications.mjs   # also fans out event changes and queues membership reminders (T30)
+every minute: node scripts/process-notifications.mjs   # also fans out event changes and queues membership reminders (T30), and deletes tokens 30 days past expiry, 500 a run (T39)
 ```
 
 A backup failure occurs before migrations and allows the unchanged release to restart. Once migration begins, a failure leaves writers stopped for inspection. Never use `prisma migrate reset` or automatically mark a failed migration resolved.

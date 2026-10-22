@@ -1,18 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  conflict,
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAuthenticatedUser,
-  requireCurrentOrganisationAccount,
-  requireOrganisationPermission
-} from "@/lib/auth/access";
+import { conflict, forbidden, mapRouteError, notFound, routeErrorRule } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import {
   OrganisationOrderAccessError,
   OrganisationOrderOperationError,
@@ -47,23 +36,15 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return NextResponse.json({ order });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationOrderAccessError) {
-      return notFound(error.message);
-    }
-
-    if (error instanceof OrganisationOrderOperationError) {
-      return conflict(error.message);
-    }
-
-    console.error("Failed to mark order as manually refunded", { orderId, error });
-    return internalError();
+    return mapRouteError(error, {
+      operation: "orders.refund_manual",
+      request,
+      rules: [
+        authenticationRule,
+        routeErrorRule(OrganisationAccessError, (error) => forbidden(error.message)),
+        routeErrorRule(OrganisationOrderAccessError, (error) => notFound(error.message)),
+        routeErrorRule(OrganisationOrderOperationError, (error) => conflict(error.message))
+      ]
+    });
   }
 }

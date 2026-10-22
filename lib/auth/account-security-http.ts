@@ -1,12 +1,13 @@
 import { z } from "zod";
-import { AuthenticationRequiredError, requireAuthenticatedUser } from "./access";
+import { requireAuthenticatedUser } from "./access";
 import { AccountSecurityError, AccountTokenError, type AccountActor } from "./account-lifecycle";
 import { EmailChangeError } from "./email-change";
 import { lifecycleRedemptionLimit } from "./lifecycle-http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { validateJson } from "@/lib/validators";
-import { badRequest, forbidden, unauthorized, validationError, internalError } from "@/lib/api/errors";
+import { badRequest, forbidden, mapRouteError, routeErrorRule, validationError } from "@/lib/api/errors";
+import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 export const currentPasswordSchema = z.string().min(1).max(200);
 export async function accountSecurityMutation<T>(request: Request, schema: z.ZodType<T>, perform: (actor: AccountActor, body: T) => Promise<Response>, rawToken?: (body: T) => string) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
@@ -17,9 +18,16 @@ export async function accountSecurityMutation<T>(request: Request, schema: z.Zod
     if (rawToken) { const redemption = await lifecycleRedemptionLimit(request, rawToken(body.data)); if (redemption) return redemption; }
     return await perform(actor, body.data);
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError || (error instanceof AccountSecurityError && error.kind === "stale_session")) return unauthorized();
-    if (error instanceof AccountSecurityError) return forbidden(error.message);
-    if (error instanceof AccountTokenError || error instanceof EmailChangeError) return badRequest(error.message);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "account.security_change",
+      request,
+      rules: [
+        authenticationRule,
+        staleSessionRule,
+        routeErrorRule(AccountSecurityError, (denied) => forbidden(denied.message)),
+        routeErrorRule(AccountTokenError, (invalid) => badRequest(invalid.message)),
+        routeErrorRule(EmailChangeError, (invalid) => badRequest(invalid.message))
+      ]
+    });
   }
 }

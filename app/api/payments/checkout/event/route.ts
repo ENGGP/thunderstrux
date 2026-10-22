@@ -1,20 +1,8 @@
 import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import { NextResponse } from "next/server";
-import {
-  apiError,
-  badRequest,
-  forbidden,
-  internalError,
-  notFound,
-  serviceUnavailable,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireVerifiedUser
-} from "@/lib/auth/access";
+import { apiError, badRequest, forbidden, mapRouteError, notFound, routeErrorRule, serviceUnavailable, unauthorized, validationError } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import { OrganisationAccessError, requireVerifiedUser } from "@/lib/auth/access";
 import {
   CheckoutCreationError,
   createEventCheckout
@@ -81,35 +69,25 @@ export async function POST(request: Request) {
       idempotencyKey: validation.data.idempotencyKey
     }));
   } catch (error) {
-    if (error instanceof GuestAccessError) return unauthorized(error.message);
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError || error instanceof AccountVerificationError) return forbidden(error.message);
-
-    if (error instanceof CheckoutCreationError) {
-      if (
-        error.kind === "event_not_found" ||
-        error.kind === "ticket_type_not_found"
-      ) {
-        return notFound(error.message);
-      }
-
-      if (error.kind === "quote_changed" || error.kind === "idempotency_conflict") {
-        return apiError("CONFLICT", error.message, 409, error.details);
-      }
-
-      return badRequest(error.message, error.details);
-    }
-
-    if (error instanceof StripeConfigurationError) {
-      return serviceUnavailable(
-        "Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment."
-      );
-    }
-
-    return internalError();
+    return mapRouteError(error, {
+      operation: "payments.checkout_event",
+      request,
+      rules: [
+        routeErrorRule(GuestAccessError, (denied) => unauthorized(denied.message)),
+        authenticationRule,
+        routeErrorRule(OrganisationAccessError, (denied) => forbidden(denied.message)),
+        routeErrorRule(AccountVerificationError, (denied) => forbidden(denied.message)),
+        routeErrorRule(CheckoutCreationError, (refused) =>
+          refused.kind === "event_not_found" || refused.kind === "ticket_type_not_found"
+            ? notFound(refused.message)
+            : refused.kind === "quote_changed" || refused.kind === "idempotency_conflict"
+              ? apiError("CONFLICT", refused.message, 409, refused.details)
+              : badRequest(refused.message, refused.details)
+        ),
+        // Buyers learn only that payments are unavailable, not how the server is set up.
+        routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Payments are unavailable right now. Try again later."))
+      ]
+    });
   }
 }
 

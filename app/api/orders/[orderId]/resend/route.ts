@@ -1,18 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  badRequest,
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAuthenticatedUser,
-  requireCurrentOrganisationAccount,
-  requireOrganisationPermission
-} from "@/lib/auth/access";
+import { badRequest, forbidden, mapRouteError, notFound, routeErrorRule } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import {
   OrganisationOrderAccessError,
   OrganisationOrderOperationError,
@@ -63,23 +52,15 @@ export async function POST(request: Request, context: RouteContext) {
 
     return NextResponse.json({ queued: true });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationOrderAccessError) {
-      return notFound(error.message);
-    }
-
-    if (error instanceof OrganisationOrderOperationError) {
-      return badRequest(error.message);
-    }
-
-    console.error("Failed to resend tickets", { orderId, error });
-    return internalError();
+    return mapRouteError(error, {
+      operation: "orders.resend",
+      request,
+      rules: [
+        authenticationRule,
+        routeErrorRule(OrganisationAccessError, (error) => forbidden(error.message)),
+        routeErrorRule(OrganisationOrderAccessError, (error) => notFound(error.message)),
+        routeErrorRule(OrganisationOrderOperationError, (error) => badRequest(error.message))
+      ]
+    });
   }
 }

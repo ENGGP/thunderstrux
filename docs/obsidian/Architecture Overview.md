@@ -53,7 +53,7 @@ Security-sensitive routes are transport adapters. They retain request parsing, t
 - `lib/stripe/connect.ts`: Connect lifecycle operations and Stripe/provider composition.
 - `lib/auth/account-*`, `lib/auth/context.ts` and `lib/staff`: account lifecycle/version fencing, login-bound personal/staff selection, private invitations and atomic owner handover.
 - `lib/assets`: sanitisation, quota reservation, verified S3 bytes, reference-gated reads and recoverable deletion/maintenance.
-- `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery, caller-only join transactions and the dashboard overview reads.
+- `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery, caller-only join transactions and the dashboard overview reads (permission-gated tasks, recent orders across families, today's door for check-in staff).
 - `lib/orders/member-tickets.ts`: the caller's upcoming orders for the personal overview, the checkout confirmation and the guest order page.
 - `lib/memberships/plans.ts`, `http.ts` (T22): membership plans (society-zone terms, publish check, sold-plan lock, one-way archive, public list) and the shared route handler for `/api/orgs/[orgSlug]/memberships`. See [[Memberships and Merchandise]].
 - `lib/commerce/families.ts`, `checkout.ts`, `binding.ts`, `reconciliation.ts`, `http.ts` (T21): the family adapter registry (empty until T23 and T27), commerce checkout, the worker-safe fail and bind steps (no auth imports), family-routed webhook reconciliation and the stale-order expiry, and the shared checkout route handler.
@@ -141,7 +141,7 @@ app/
 
 - Renders the deep-plum sidebar column from `lg` (its contents stick below the global header) and, below `lg`, the same column with an `Organisation menu` disclosure.
 - Shows `Current organisation` and the society name in that column; each page renders its own `h1` title.
-- Owns shared organisation dashboard nav, capability-filtered: Overview, Events, Orders, then a Settings group (Society profile, Staff, Payments, Email delivery).
+- Owns shared organisation dashboard nav, capability-filtered: Overview, Events, Calendar, Orders; Community (Memberships, Merchandise); Insights (Analytics); then a Settings group (Society profile, Staff, Payments, Email delivery).
 - Receives the context switcher's choices from the server; see [[UI Architecture Rules]].
 - Uses slugless `/dashboard/*` paths for current organisation management routes.
 

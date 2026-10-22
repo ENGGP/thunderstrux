@@ -130,7 +130,14 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard`
 
-- Member: a profile prompt that links to Account settings (the form lives there only), upcoming tickets with date rails, joined societies with a Find societies entry point.
+- Member (T34, design round C1):
+  - A profile prompt that links to Account settings (the form lives there only).
+  - **Your next plans**: the next event the member holds a valid ticket for (paid order, `active` ticket, not yet ended), with its image and View tickets. A checkout still confirming or in payment review is a purchase, never a ticket here.
+  - Also coming up (the next three events with tickets).
+  - Recent purchases: the three newest across tickets, memberships and merchandise, with the buyer's badge, or the pickup state for a paid merchandise order waiting to be collected.
+  - Your memberships: active and upcoming, noting that a membership ending within 14 days doesn't renew automatically.
+  - Societies you've joined, with how many public events are coming up. Leaving stays on the Societies page.
+  - The two columns stack independently, so a short card never leaves a gap beside a tall one.
 
 `/tickets` (My tickets)
 
@@ -141,7 +148,18 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 - `On this page` links to Profile (members), Password and security, Email address and Close account. A `Signed in as` summary shows the email, account type and verification state.
 - The authenticator row appears only for people who could use it, decided by the same eligibility check `/mfa` uses (active staff, legacy owner, or already enrolled). Everyone else sees password, security activity, email and closure only.
 - Closure lists its blockers in a warning notice; the confirmation fields stay disabled until they are resolved.
-- Organisation: a `Finish setting up` card lists only tasks the caller may act on: payment setup in the warning tone (it blocks paid sales), and the society profile and scheduling an event in the information tone. Then the upcoming count with the next event, month-to-date gross sales across tickets, memberships and merchandise in the society's zone with `orders:read` and `analytics:read` (labelled with its period; no chart; T31), linked upcoming events (sold and left with `analytics:read`) and recent orders. A pending order is listed without a link, because order detail serves settled orders only.
+- Organisation (T34, design round C1): the header names the society, its zone and today.
+  - **Needs your attention** lists only tasks the viewer can act on (`lib/organisations/overview.ts` reads each one only for a role that holds its permission). It is headed `Get {society} ready` while only setup steps remain, and shows `All caught up` when nothing is left, so the card keeps its place.
+    - Setup: payments (`stripe:manage`, warning tone), the society profile (`organisation:settings`) and a first event (`events:manage`).
+    - Open payment reviews in either family (`orders:read`, warning tone).
+    - Merchandise orders to prepare, with the oldest paid date and how many are ready (`merchandise:fulfil`).
+    - Memberships ending in the next 7 days, and whether a next plan is on sale (`members:read`; the link plans one with `memberships:manage`).
+    - Business emails that failed (`orders:email_resend`).
+    - Drafts starting within 7 days (`events:manage`).
+  - Tiles: Upcoming events with the next one; Sales this month (gross since the 1st in the society's zone, all three families) for finance roles, or Tickets issued this month for event managers; Members now with `members:read`.
+  - Upcoming events with date rails and Open calendar, then Recent orders across tickets, memberships and merchandise (`orders:read`). A pending ticket order and a membership not yet granted are listed without a link.
+  - On phones the attention card comes first, then upcoming events, then the tiles.
+  - Check-in staff land on **Today at the door** instead: today's published events in the society's zone with valid and checked-in tickets and Open check-in, then the rest of the week. There is no money, no orders, no drafts and no members.
 
 `/dashboard/events`
 

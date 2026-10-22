@@ -40,7 +40,7 @@ Society metrics (T31), the analytics pages that show them (T32) and the society 
 
 **Where it is used.**
 - The event **Summary** shows tickets sold (issued, with paid and free and how many are no longer valid), tickets left, capacity, checked in (count, valid and rate) and, with money access, **net sales** (gross and refunded in the note). It also shows the ticket table (sold is issued units; revenue is gross) and **Sales over time**: gross by the day sales completed in the society's zone, zero-filled from the first paid sale to the last, by week past two months, over at most the last 366 days. It used to bucket by UTC day.
-- The **Overview** "Revenue this month" is gross across all three families since the 1st of the month in the society's zone (`societySales`). It used to sum ticket orders since the server clock's month start, and now needs `analytics:read` as well as `orders:read`.
+- The **Overview** "Sales this month" (T34; "Revenue this month" before it) is gross across all three families since the 1st of the month in the society's zone (`societySales`). It needs `analytics:read` and `orders:read`. Event managers see "Tickets issued this month" (`ticketMetrics`) instead.
 - The events list's `N sold` stays a per-page database sum of paid order quantities, the same count as issued units.
 
 T32 builds `/dashboard/analytics` on these reads.

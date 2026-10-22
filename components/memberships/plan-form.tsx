@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DateField } from "@/components/ui/date-field";
 import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -183,21 +184,19 @@ export function PlanForm({
             </div>
           )}
           <div className="grid gap-4 sm:grid-cols-2" id="firstDay">
-            <TextInput
+            <DateField
               error={errors.firstDay}
               label="First day"
-              onChange={(event) => update({ firstDay: event.target.value, preset: "custom" })}
+              onChange={(day) => update({ firstDay: day, preset: "custom" })}
               required
-              type="date"
               value={form.firstDay}
             />
-            <TextInput
+            <DateField
               error={errors.lastDay}
               id="lastDay"
               label="Last day"
-              onChange={(event) => update({ lastDay: event.target.value, preset: "custom" })}
+              onChange={(day) => update({ lastDay: day, preset: "custom" })}
               required
-              type="date"
               value={form.lastDay}
             />
           </div>

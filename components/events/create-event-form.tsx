@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DateTimeField } from "@/components/ui/date-field";
 import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -365,17 +366,16 @@ export function CreateEventForm({
 
     return (
       <div className="grid gap-2">
-        <TextInput
+        <DateTimeField
           error={errorFor(errors, field)}
           hint={hint}
           id={field}
           label={timeLabels[field]}
-          onChange={(event) =>
+          onChange={(next) =>
             field === "salesCloseAt"
-              ? change({ form: { ...form, salesCloseAt: event.target.value }, closeFollowsStart: false })
-              : setField(field, event.target.value)
+              ? change({ form: { ...form, salesCloseAt: next }, closeFollowsStart: false })
+              : setField(field, next)
           }
-          type="datetime-local"
           value={value}
         />
         {candidates.length === 2 ? (

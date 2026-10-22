@@ -15,8 +15,8 @@ test("an owner drafts a plan, sees the publish check, publishes it free and arch
   const year = String(new Date().getFullYear() + 1);
   await page.getByLabel("Year", { exact: true }).selectOption(year);
   await page.getByRole("radio", { name: "Semester 1" }).check();
-  await expect(page.getByLabel("First day")).toHaveValue(`${year}-01-01`);
-  await expect(page.getByLabel("Last day")).toHaveValue(`${year}-06-30`);
+  await expect(page.getByLabel("First day", { exact: true })).toHaveValue(`1 Jan ${year}`);
+  await expect(page.getByLabel("Last day", { exact: true })).toHaveValue(`30 Jun ${year}`);
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(`Semester 1 ${year}`);
   await page.getByLabel("Price", { exact: true }).fill("25");
   await expect(page.getByText("your society receives $22.50")).toBeVisible();

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Select, TextInput } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
+import { Select } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { whenOptions, type ExploreErrors, type ExploreFilters } from "@/lib/events/explore-filters";
 
@@ -53,8 +54,8 @@ export function ExploreFilterFields({
         </Select>
         {when === "custom" ? (
           <>
-            <TextInput defaultValue={filters.from} error={errors.from} label="From" name="from" type="date" />
-            <TextInput defaultValue={filters.to} error={errors.to} label="To" name="to" type="date" />
+            <DateField defaultValue={filters.from} error={errors.from} label="From" name="from" />
+            <DateField defaultValue={filters.to} error={errors.to} label="To" name="to" />
           </>
         ) : null}
       </div>

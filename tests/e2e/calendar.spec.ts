@@ -1,6 +1,7 @@
 import { test, expect, prisma, login } from "./fixtures";
 import { formatDay } from "@/components/calendar/layout";
 import { localToday } from "@/lib/analytics/range";
+import { formatDayInput } from "@/lib/date-input";
 
 // T33: the owner opens Calendar from the sidebar, finds today's event in the
 // month and the week, starts a new event on a day, and gets the agenda on a phone.
@@ -29,7 +30,9 @@ test("an owner reads the calendar by month, week and agenda and starts an event 
   await page.getByRole("link", { name: `New event on ${formatDay(today, true)}` }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/dashboard/events/new\\?date=${today}`));
-  await expect(page.getByLabel("Starts", { exact: false }).first()).toHaveValue(`${today}T18:00`);
+  const starts = page.getByRole("group", { name: "Starts", exact: true });
+  await expect(starts.getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(today));
+  await expect(starts.getByLabel("Time")).toHaveValue("18:00");
 
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto("/dashboard/calendar");

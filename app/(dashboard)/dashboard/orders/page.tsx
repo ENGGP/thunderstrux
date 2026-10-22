@@ -7,6 +7,7 @@ import { CommerceOrders } from "./commerce-orders";
 import { buttonClasses } from "@/components/ui/button";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { FilterBar } from "@/components/ui/filter-bar";
+import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
@@ -213,8 +214,8 @@ export default async function OrganisationOrdersPage({
             </option>
           ))}
         </Select>
-        <TextInput defaultValue={startDateParam ?? ""} label="From" name="startDate" type="date" />
-        <TextInput defaultValue={endDateParam ?? ""} label="To" name="endDate" type="date" />
+        <DateField defaultValue={startDateParam ?? ""} label="From" name="startDate" />
+        <DateField defaultValue={endDateParam ?? ""} label="To" name="endDate" />
       </FilterBar>
 
       <Suspense fallback={<ListSkeleton label="Loading orders" rows={6} />}>

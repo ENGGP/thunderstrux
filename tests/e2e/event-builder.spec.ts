@@ -23,6 +23,7 @@ test("organisers build an event in the society's time zone with a dollar price a
   await when("Ends").getByLabel("Date", { exact: true }).press("Enter");
   await when("Ends").getByRole("button", { name: "Choose date from a calendar" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  await page.screenshot({ path: "test-results/date-picker-open.png" });
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("Enter");

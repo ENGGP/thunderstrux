@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-23
 owner: engineering
 related: ["[[Development Workflow]]", "[[Non-Blocking Issue Register]]"]
 sources: [AGENTS.md, package.json]
@@ -79,7 +79,13 @@ After applicable local validation and review are complete and the PR is ready to
 2. Remove only task-owned temporary files, test output, and generated caches that are no longer in use. Verify exact paths before removal. A local `.next` or `.next-build` cache may be cleared after its server/build process has stopped.
 3. Never blanket-delete `tmp/`, Docker volumes, or shared caches. Preserve backup archives, operations evidence needed for the PR, failed-run recovery manifests until recovery succeeds, development database/Redis volumes, dependency caches, user files, and resources not owned by the run.
 4. Confirm `git status` contains only intended tracked changes and no generated artifacts. Record cleanup success or retained recovery resources in the PR.
-5. Merge only the reviewed head covered by the recorded local evidence. Switch to local `main`, fetch `origin`, and fast-forward with `git merge --ff-only origin/main`. Verify the merge is contained in local `main` before deleting the completed feature branch.
+5. Merge only the reviewed head covered by the recorded local evidence. Switch to local `main`, fetch `origin`, and fast-forward with `git merge --ff-only origin/main`. Then remove the completed branch as step 6 describes.
+6. **Branch and worktree hygiene.** PRs are squash-merged, so a merged branch's commits are never ancestors of `main`, and `git branch --merged` can't tell merged work from unmerged work.
+   - Delete a local branch only when `gh pr view <number> --json state,headRefOid` shows `MERGED` and the PR's head equals the branch tip. Check it in the same command as the delete, so a PR that is still open is never closed by removing its branch. A branch with no PR, or whose tip moved after the PR, is unmerged work: keep it, or ask its owner.
+   - GitHub deletes a PR's branch when it merges; after `git fetch --prune`, delete a remaining remote branch only under the same check. Leave bot branches (Renovate) with open PRs alone.
+   - Never delete a branch that is checked out, and never switch another session's checkout or the folder the dev app serves from. Switching the dev folder to newer code can load features ahead of their migrations.
+   - Remove a worktree you made with `git worktree remove` once it is clean, never with `--force` over changes. Leave worktrees the desktop app made for sessions to the app's own cleanup.
+   - When several sessions share a clone, each works in its own worktree (`git worktree add ../<name> -b codex/<task> origin/main`) and checks `git worktree list` first, so no session commits on another's checked-out branch.
 
 Update [[Project Handover]] only when the work changes behavior, operations, release state, material risk/evidence, or the next safe action. A routine documentation or low-risk UI PR does not need handover churn when the PR itself is sufficient. Update the relevant living reference and issue register whenever their current claims or risk status change.
 

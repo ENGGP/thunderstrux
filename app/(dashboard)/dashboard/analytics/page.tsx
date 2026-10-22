@@ -3,7 +3,8 @@ import { Suspense } from "react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { Select, TextInput } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
+import { Select } from "@/components/ui/input";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,8 +89,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         </nav>
         <FilterBar action="/dashboard/analytics" key={href({})} className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]" label="Choose a range">
           {tab !== "tickets" ? <input name="tab" type="hidden" value={tab} /> : null}
-          <TextInput defaultValue={range.from} label="From" name="from" type="date" />
-          <TextInput defaultValue={range.to} label="To" name="to" type="date" />
+          <DateField defaultValue={range.from} label="From" name="from" />
+          <DateField defaultValue={range.to} label="To" name="to" />
           <Select defaultValue={range.bucket} label="Group by" name="bucket">
             {analyticsBuckets.map((bucket) => <option key={bucket} value={bucket}>{bucket.charAt(0).toUpperCase() + bucket.slice(1)}</option>)}
           </Select>

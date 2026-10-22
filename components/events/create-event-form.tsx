@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DateTimeField } from "@/components/ui/date-field";
 import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
@@ -192,9 +193,14 @@ export function CreateEventForm({
   const { form, choices, ticketTypes, closeFollowsStart } = state;
   const salesCloseValue = closeFollowsStart ? form.startTime : form.salesCloseAt;
 
-  // A save refreshes the page with the new version: show what was saved.
+  // A save refreshes the page with the new version: show what was saved. Any
+  // other refresh while someone is editing leaves their edits alone.
+  const editing = useRef(false);
+  const shownEvent = useRef(initialEvent);
   useEffect(() => {
-    if (initialEvent) setState(initialState(initialEvent, timeZone));
+    if (!initialEvent || initialEvent === shownEvent.current || editing.current) return;
+    shownEvent.current = initialEvent;
+    setState(initialState(initialEvent, timeZone));
   }, [initialEvent, timeZone]);
 
   useEffect(() => {
@@ -204,17 +210,19 @@ export function CreateEventForm({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  function change(update: Partial<typeof state>) {
-    setState((current) => ({ ...current, ...update }));
+  // Updates read the latest state, so two changes in one tick never undo each other.
+  function change(update: Partial<typeof state> | ((current: typeof state) => Partial<typeof state>)) {
+    editing.current = true;
+    setState((current) => ({ ...current, ...(typeof update === "function" ? update(current) : update) }));
     setDirty(true);
   }
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    change({ form: { ...form, [key]: value } });
+    change((current) => ({ form: { ...current.form, [key]: value } }));
   }
 
   function setTicketType(index: number, update: Partial<TicketTypeFormState>) {
-    change({ ticketTypes: ticketTypes.map((item, itemIndex) => (itemIndex === index ? { ...item, ...update } : item)) });
+    change((current) => ({ ticketTypes: current.ticketTypes.map((item, itemIndex) => (itemIndex === index ? { ...item, ...update } : item)) }));
   }
 
   function resolveTime(field: TimeField) {
@@ -328,6 +336,7 @@ export function CreateEventForm({
       });
 
       setDirty(false);
+      editing.current = false;
       if (mode === "create") {
         router.push(`/dashboard/events/${response.event.id}`);
         return;
@@ -365,17 +374,16 @@ export function CreateEventForm({
 
     return (
       <div className="grid gap-2">
-        <TextInput
+        <DateTimeField
           error={errorFor(errors, field)}
           hint={hint}
           id={field}
           label={timeLabels[field]}
-          onChange={(event) =>
+          onChange={(next) =>
             field === "salesCloseAt"
-              ? change({ form: { ...form, salesCloseAt: event.target.value }, closeFollowsStart: false })
-              : setField(field, event.target.value)
+              ? change((current) => ({ form: { ...current.form, salesCloseAt: next }, closeFollowsStart: false }))
+              : setField(field, next)
           }
-          type="datetime-local"
           value={value}
         />
         {candidates.length === 2 ? (
@@ -387,7 +395,7 @@ export function CreateEventForm({
                   checked={choices[field] === index}
                   className="size-4 accent-brand"
                   name={`${field}-overlap`}
-                  onChange={() => change({ choices: { ...choices, [field]: index } })}
+                  onChange={() => change((current) => ({ choices: { ...current.choices, [field]: index } }))}
                   type="radio"
                 />
                 The {index === 0 ? "first" : "second"} {time} ({zoneAbbreviation(timeZone, candidate)})

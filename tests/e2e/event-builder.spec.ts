@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
 import { test, expect, prisma, login } from "./fixtures";
+import { formatDayInput } from "@/lib/date-input";
 import { toZonedInput, zonedCandidates } from "@/lib/zoned-time";
 import { createOrder } from "@/tests/helpers/test-data";
 
@@ -13,10 +14,25 @@ test("organisers build an event in the society's time zone with a dollar price a
   await page.getByLabel("Title", { exact: true }).fill("Builder Night");
   await page.getByLabel("Description", { exact: true }).fill("Made in the builder");
   await page.getByLabel("Location", { exact: true }).fill("Great Hall");
-  await page.getByLabel("Starts", { exact: true }).fill(`${day}T18:00`);
-  await page.getByLabel("Ends", { exact: true }).fill(`${day}T21:00`);
+  const when = (label: string) => page.getByRole("group", { name: label, exact: true });
+  // Typed into the house date picker, then picked from its calendar by keyboard.
+  await when("Starts").getByLabel("Date", { exact: true }).fill(day);
+  await when("Starts").getByLabel("Date", { exact: true }).press("Enter");
+  await when("Starts").getByLabel("Time").selectOption("18:00");
+  await when("Ends").getByLabel("Date", { exact: true }).fill(day);
+  await when("Ends").getByLabel("Date", { exact: true }).press("Enter");
+  await when("Ends").getByRole("button", { name: "Choose date from a calendar" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.screenshot({ path: "test-results/date-picker-open.png" });
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await when("Ends").getByLabel("Time").selectOption("21:00");
+  await expect(when("Ends").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
   // The close time follows the start until it is changed.
-  await expect(page.getByLabel("Ticket sales close", { exact: true })).toHaveValue(`${day}T18:00`);
+  await expect(when("Ticket sales close").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
+  await expect(when("Ticket sales close").getByLabel("Time")).toHaveValue("18:00");
   await page.getByLabel("Name", { exact: true }).fill("General");
   await page.getByLabel("Price", { exact: true }).fill("15.5");
   await page.getByLabel("Quantity", { exact: true }).fill("40");
@@ -52,7 +68,8 @@ test("organisers build an event in the society's time zone with a dollar price a
 
   await page.goto(`/dashboard/events/${event.id}/edit`);
   await expect(page.getByLabel("Price", { exact: true })).toHaveValue("15.50");
-  await expect(page.getByLabel("Starts", { exact: true })).toHaveValue(`${day}T18:00`);
+  await expect(when("Starts").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
+  await expect(when("Starts").getByLabel("Time")).toHaveValue("18:00");
   await expect(page.getByText("No sales yet")).toBeVisible();
 
   // A published event closes sales from More and keeps its public page.
@@ -72,7 +89,11 @@ test("moving a ticketed event emails the holder, and a member turns renewal remi
   await prisma.ticket.create({ data: { orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id, issueSequence: 1 } });
   await login(page, data.owner.email, `/dashboard/events/${data.event.id}/edit`);
   await expect(page.getByText("Ticket holders get an email only if you change the time or place.", { exact: false })).toBeVisible();
-  await page.getByLabel("Location", { exact: true }).fill("Great Hall");
+  // Typing before the form is interactive is lost, so wait until it counts as a change.
+  await expect(async () => {
+    await page.getByLabel("Location", { exact: true }).fill("Great Hall");
+    await expect(page.getByRole("status").filter({ hasText: "You have unsaved changes." })).toBeVisible({ timeout: 1000 });
+  }).toPass();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Event saved" })).toBeVisible();
 

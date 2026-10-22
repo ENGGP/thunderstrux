@@ -3,6 +3,7 @@ import type { CommerceKind } from "@prisma/client";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
+import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
@@ -130,8 +131,8 @@ export async function CommerceOrders({
             </option>
           ))}
         </Select>
-        <TextInput defaultValue={params.startDate ?? ""} label="From" name="startDate" type="date" />
-        <TextInput defaultValue={params.endDate ?? ""} label="To" name="endDate" type="date" />
+        <DateField defaultValue={params.startDate ?? ""} label="From" name="startDate" />
+        <DateField defaultValue={params.endDate ?? ""} label="To" name="endDate" />
       </FilterBar>
       {pagination.invalid ? <Notice tone="warning">Invalid pagination parameters were ignored. Showing the first page.</Notice> : null}
       {orders.length === 0 ? (

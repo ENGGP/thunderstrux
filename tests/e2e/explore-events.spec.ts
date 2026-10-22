@@ -20,8 +20,8 @@ test("visitors explore events by title, society and dates, on desktop and phone"
 
   // A range longer than 366 days is refused at the field, and no list shows.
   await filters.getByLabel("When").selectOption("custom");
-  await filters.getByLabel("From").fill("2026-01-01");
-  await filters.getByLabel("To").fill("2027-06-01");
+  await filters.getByLabel("From", { exact: true }).fill("1/1/2026");
+  await filters.getByLabel("To", { exact: true }).fill("1 Jun 2027");
   await filters.getByRole("button", { name: "Show events" }).click();
   await expect(page.getByText("Choose a range of 366 days or less.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Explore Mixer Night" })).toHaveCount(0);

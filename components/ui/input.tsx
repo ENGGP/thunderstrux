@@ -12,12 +12,12 @@ type FieldProps = {
   error?: string;
 };
 
-const control =
+export const control =
   "w-full rounded-control border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-ink-muted disabled:cursor-not-allowed disabled:bg-surface-subtle aria-invalid:border-danger";
 
 // The <label> holds only the label text so its accessible name stays exact;
 // hint and error are tied to the control through aria-describedby.
-function Field({
+export function Field({
   id,
   label,
   hint,

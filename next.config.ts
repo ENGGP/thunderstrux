@@ -5,7 +5,9 @@ import type { NextConfig } from "next";
 const root = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["thunderstrux.mistayu.com"],
+  // Next 16 blocks dev resources (HMR) for unlisted hosts, which stops pages
+  // hydrating; the local Docker app is opened at 127.0.0.1:3080 or localhost.
+  allowedDevOrigins: ["thunderstrux.mistayu.com", "127.0.0.1", "localhost"],
   distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next",
   turbopack: {
     root

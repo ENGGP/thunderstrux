@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { badRequest, internalError, validationError } from "@/lib/api/errors";
+import { badRequest, mapRouteError, routeErrorRule, validationError } from "@/lib/api/errors";
 import { GuestAccessError, guestCookieName, guestCookieOptions, guestDigest, redeemGuestAccess } from "@/lib/guest/guest-access";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -19,5 +19,5 @@ export async function POST(request: Request) {
     const response = NextResponse.json({ callbackUrl: session.callbackUrl }, { headers: { "Cache-Control": "no-store" } });
     response.cookies.set(guestCookieName, session.sessionId, guestCookieOptions(session.sessionExpiresAt));
     return response;
-  } catch (error) { return error instanceof GuestAccessError ? badRequest(error.message) : internalError(); }
+  } catch (error) { return mapRouteError(error, { operation: "guest.email_confirm", request, rules: [routeErrorRule(GuestAccessError, (invalid) => badRequest(invalid.message))] }); }
 }

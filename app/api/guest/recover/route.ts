@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { internalError, validationError } from "@/lib/api/errors";
+import { mapRouteError, validationError } from "@/lib/api/errors";
 import { requestGuestRecovery } from "@/lib/guest/guest-access";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -20,5 +20,5 @@ export async function POST(request: Request) {
   try {
     await requestGuestRecovery(body.data.email);
     return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } });
-  } catch { return internalError(); }
+  } catch (error) { return mapRouteError(error, { operation: "guest.recover", request }); }
 }

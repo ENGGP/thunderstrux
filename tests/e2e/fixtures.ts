@@ -35,6 +35,8 @@ export const test = base.extend<{ data: Awaited<ReturnType<typeof seed>>; appErr
   appErrors: [async ({ page }, use) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
+    // A resource the security policy blocks (T39) fails the test that loaded it.
+    page.on('console', message => { if (message.type() === 'error' && /Content Security Policy|Refused to (load|execute|connect|frame|apply)/.test(message.text())) errors.push(message.text()); });
     await use();
     expect(errors, 'Unexpected browser exceptions').toEqual([]);
   }, { auto: true }]

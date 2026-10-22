@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
-import { badRequest, conflict, forbidden, internalError, notFound, unauthorized } from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAuthenticatedUser,
-  requireCurrentOrganisationAccount,
-  requireOrganisationPermission
-} from "@/lib/auth/access";
+import { badRequest, conflict, forbidden, mapRouteError, notFound, routeErrorRule } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import { EmailRequeueError, requeueFailedTicketEmail, ticketEmailJobExists } from "@/lib/email/ticket-email-outbox";
 import { OrganisationOrderAccessError, OrganisationOrderOperationError, getOrganisationOrderResendTarget } from "@/lib/orders/order-detail";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
@@ -33,12 +28,16 @@ export async function POST(request: Request, context: RouteContext) {
     await requeueFailedTicketEmail({ jobId, actorUserId: actor.id, reason: body.reason });
     return NextResponse.json({ queued: true });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) return unauthorized();
-    if (error instanceof OrganisationAccessError) return forbidden(error.message);
-    if (error instanceof OrganisationOrderAccessError) return notFound(error.message);
-    if (error instanceof OrganisationOrderOperationError) return conflict(error.message);
-    if (error instanceof EmailRequeueError) return conflict(error.message);
-    console.error("Failed to requeue ticket email", { orderId, jobId, error });
-    return internalError();
+    return mapRouteError(error, {
+      operation: "orders.email_requeue",
+      request,
+      rules: [
+        authenticationRule,
+        routeErrorRule(OrganisationAccessError, (error) => forbidden(error.message)),
+        routeErrorRule(OrganisationOrderAccessError, (error) => notFound(error.message)),
+        routeErrorRule(OrganisationOrderOperationError, (error) => conflict(error.message)),
+        routeErrorRule(EmailRequeueError, (error) => conflict(error.message))
+      ]
+    });
   }
 }

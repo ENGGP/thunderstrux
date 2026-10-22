@@ -1,18 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  badRequest,
-  forbidden,
-  internalError,
-  notFound,
-  unauthorized,
-  validationError
-} from "@/lib/api/errors";
-import {
-  AuthenticationRequiredError,
-  OrganisationAccessError,
-  requireAuthenticatedUser,
-  requireOrganisationEventManagementAccess
-} from "@/lib/auth/access";
+import { badRequest, forbidden, mapRouteError, notFound, routeErrorRule, validationError } from "@/lib/api/errors";
+import { authenticationRule } from "@/lib/api/route-rules";
+import { OrganisationAccessError, requireAuthenticatedUser, requireOrganisationEventManagementAccess } from "@/lib/auth/access";
 import {
   OrganisationMismatchError,
   OrganisationScopeError,
@@ -59,34 +48,23 @@ export async function POST(request: Request, context: RouteContext) {
 
     return NextResponse.json({ ticketType }, { status: 201 });
   } catch (error) {
-    if (error instanceof AuthenticationRequiredError) {
-      return unauthorized();
-    }
-
-    if (error instanceof OrganisationAccessError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationMismatchError) {
-      return forbidden(error.message);
-    }
-
-    if (error instanceof OrganisationScopeError) {
-      if (error.message === "organisationId is required for this operation") {
-        return badRequest(error.message, [
-          { path: ["organisationId"], message: error.message },
-          { path: ["x-org-id"], message: error.message }
-        ]);
-      }
-
-      return notFound(error.message);
-    }
-
-    if (error instanceof EventLifecycleNotFoundError) {
-      return notFound(error.message);
-    }
-
-    console.error(error);
-    return internalError();
+    return mapRouteError(error, {
+      operation: "events.ticket_type_create",
+      request,
+      rules: [
+        authenticationRule,
+        routeErrorRule(OrganisationAccessError, (denied) => forbidden(denied.message)),
+        routeErrorRule(OrganisationMismatchError, (denied) => forbidden(denied.message)),
+        routeErrorRule(OrganisationScopeError, (scope) =>
+          scope.message === "organisationId is required for this operation"
+            ? badRequest(scope.message, [
+                { path: ["organisationId"], message: scope.message },
+                { path: ["x-org-id"], message: scope.message }
+              ])
+            : notFound(scope.message)
+        ),
+        routeErrorRule(EventLifecycleNotFoundError, (missing) => notFound(missing.message))
+      ]
+    });
   }
 }

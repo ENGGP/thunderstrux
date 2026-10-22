@@ -5,8 +5,8 @@ import { createOrder } from "@/tests/helpers/test-data";
 const fits = async (page: import("@playwright/test").Page) => expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
 test("owner, event manager and check-in staff each get their own society overview", async ({ page, data }) => {
-  // The fixture event starts in an hour, so it is today's door too.
-  const start = new Date(Date.now() + 3600_000);
+  // The fixture event is running now, so it is on today's door at any hour.
+  const start = new Date(Date.now() - 30 * 60_000);
   await prisma.event.update({ where: { id: data.event.id }, data: { title: "Engineering Mixer", startTime: start, endTime: new Date(start.getTime() + 2 * 3600_000), salesCloseAt: start } });
 
   await login(page, data.owner.email, "/dashboard");

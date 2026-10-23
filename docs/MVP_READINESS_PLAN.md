@@ -708,7 +708,20 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **Tests:** Implement every section 7 row in tests/e2e/integration with synthetic accounts, signed webhooks, captured mail/object-store/AI; production release images, enforced MFA/legacy deny; separate real Redis safety tests. Extend fixtures and run cleanup.
 - **Done:** Risk-appropriate local qualification covers changed executable content: one complete applicable E2E run, no critical skips or success fallback, relevant integration/operations evidence and confirmed run-owned cleanup. Repeat only for failures, changed inputs or a documented reliability concern; GitHub checks are optional.
 - **Ordered PR-sized substeps (parent requires all):**
-  - [ ] **T44a:** Add guest/member authentication, public discovery, free/paid tickets and membership journey fixtures/assertions. Done when their section 7 happy paths and denials pass against the release images.
+  - [x] **T44a:** Add guest/member authentication, public discovery, free/paid tickets and membership journey fixtures/assertions. Done when their section 7 happy paths and denials pass against the release images.
+    - [x] **Implemented 2026-10-23** on `codex/t44a-journeys`.
+      - **Traceability:** [[Journey Qualification]] maps every requirement of the Anonymous visitor, Guest attendee, Member onboarding and security, Member attendance, Membership relationship and Buyer purchase history rows to the e2e or integration test that proves it.
+      - **New journeys:** `tests/e2e/journeys.spec.ts` adds two connected journeys against the release images.
+        - **Guest:** a guest verifies, pays through Stripe's signed webhook, and is shut out from another browser until Find your purchase opens the order. They are admitted once; a signed refund, sent twice, voids both tickets once; the guest page says refunded, and the door turns the second ticket away.
+        - **Member:** a free join gives no member price, a paid membership does and survives leaving the society, and a signed refund revokes it.
+      - **Defect found and fixed:** a guest's order page still said "You're going" after a refund. It now shares the member page's status notices (`components/purchases/ticket-order-notice.tsx`).
+
+      Validation:
+      - **Baseline** `baseline-64d6ac7aa34cae24012f4526` on `560a9ae`: the production build, 39/39 runner guard tests, typecheck and all 632 integration tests in 94 files passed, and the dependency audit found no known vulnerabilities. New in `guest-checkout.test.ts`: a refunded or disputed guest order says so, shows no door tickets and offers no account claim.
+      - **Browser campaign** `browser-eac803a2e8204e1f1d79da28` on `560a9ae`: 3 enforced-MFA, 65 desktop/mobile and 10 webhook-step checks passed. The webhook step includes the two new journeys.
+      - **Earlier run** `browser-f1a9773d6ea4fe308d9d5d9a`: passed every existing check but failed both new journeys on test setup (no payment-ready society; the journeys ran in a step without a Stripe key). Both are fixed.
+      - **Screenshots:** the refunded guest page at 390 and 1280px fits without sideways scroll. The first screenshots showed the stepper at Review and an account-claim offer on a refunded order; both are fixed.
+      - Every run cleaned up after itself.
   - [ ] **T44b (after T44a):** Add merchandise/collection, organisation/bootstrap/handover, calendar and permission-matrix journey coverage. Done when their section 7 scenarios pass with two tenants and enforced MFA.
   - [ ] **T44c (after T44b):** Add finance/refund/recovery journeys (OpenClaw confirmation journeys are deferred with OpenClaw); provider outage/replay and restored-job fencing. Done when their section 7 scenarios pass without duplicate business or external effects.
   - [ ] **T44d (after T44c):** Run one complete combined local qualification and cleanup. Done when the retained evidence ties every required scenario to the exact image/schema pair and applicable local checks pass; repeat only for changed inputs, failures or documented reliability concerns.

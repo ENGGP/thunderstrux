@@ -33,12 +33,16 @@ export function assertStripeIdentity(saved, current) {
   }
 }
 
+// T45: every staging scenario, in run order. `free` needs no card; the rest
+// stop for someone to act on a real Stripe Checkout page.
+export const allStagingScenarios = ['free', 'success', 'decline', 'cancel', 'member', 'guest', 'membership', 'merchandise', 'compensation'];
+export const cardScenarios = allStagingScenarios.filter(name => name !== 'free');
+
 export function stagingScenarios(args) {
-  const all = ['success', 'decline', 'cancel'];
   const selected = args.filter(value => value.startsWith('--scenario'));
-  if (selected.length === 0) return all;
-  if (selected.length !== 1 || !selected[0].startsWith('--scenario=') || !all.includes(selected[0].slice('--scenario='.length))) {
-    throw new Error('Use exactly one --scenario=success, --scenario=decline or --scenario=cancel');
+  if (selected.length === 0) return allStagingScenarios;
+  if (selected.length !== 1 || !selected[0].startsWith('--scenario=') || !allStagingScenarios.includes(selected[0].slice('--scenario='.length))) {
+    throw new Error(`Use exactly one --scenario= of ${allStagingScenarios.join(', ')}`);
   }
   return [selected[0].slice('--scenario='.length)];
 }

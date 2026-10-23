@@ -132,7 +132,7 @@ try {
     await save();
     await createRuntime();
     console.log(`E2E run: ${runId}`);
-    await compose('build', 'app', 'tests');
+    await compose('build', 'app', 'migration', 'tests');
     if (interrupted) throw new Error('Run interrupted');
     if (mode === 'staging') {
       const { runStaging } = await import('./staging-payments.mjs');

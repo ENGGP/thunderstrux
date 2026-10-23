@@ -4,6 +4,7 @@ import { assertImmutableImageRef, validateHostedConfig } from "../../scripts/con
 
 const digest = "a".repeat(64);
 const image = `ghcr.io/enggp/thunderstrux@sha256:${digest}`;
+const opsImage = `ghcr.io/enggp/thunderstrux-ops@sha256:${"b".repeat(64)}`;
 
 function hardenedService(extra = {}) {
   return {
@@ -45,13 +46,13 @@ test("hosted contract requires external services, file secrets, and runtime hard
   const config = {
     services: {
       app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true" }, healthcheck: { test: ["CMD", "node"] } }),
-      migration: hardenedService({ profiles: ["tools"] }),
-      "notification-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
-      "email-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
-      "stale-order-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
-      "compensation-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
-      "checkout-recovery-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
-      "monitor-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment })
+      migration: hardenedService({ image: opsImage, profiles: ["tools"] }),
+      "notification-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "email-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "stale-order-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "compensation-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "checkout-recovery-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "monitor-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment })
     }
   };
   assert.equal(validateHostedConfig(config), config);
@@ -66,6 +67,14 @@ test("hosted contract requires external services, file secrets, and runtime hard
   }));
   assert.throws(() => validateHostedConfig({
     ...config,
-    services: { ...config.services, "monitor-worker": hardenedService({ profiles: ["workers"] }) }
+    services: { ...config.services, "monitor-worker": hardenedService({ image: opsImage, profiles: ["workers"] }) }
   }), /ALERT_WEBHOOK_URL_FILE/);
+  assert.throws(() => validateHostedConfig({
+    ...config,
+    services: { ...config.services, "email-worker": { ...config.services["email-worker"], image } }
+  }), /share one ops image/);
+  assert.throws(() => validateHostedConfig({
+    ...config,
+    services: { ...config.services, app: { ...config.services.app, image: opsImage } }
+  }), /web image/);
 });

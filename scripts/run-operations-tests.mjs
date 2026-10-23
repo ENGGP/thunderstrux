@@ -5,6 +5,7 @@ import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrationDigest } from "./operations-guards.mjs";
+import { validateReleaseManifest } from "./release-pair.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const project = `ops-${randomBytes(5).toString("hex")}`;
@@ -63,7 +64,7 @@ function compose(args, options = {}) {
 // T42: pause, overlap, a reclaimed lease, a failure alert and the monitor's
 // stale-job alert, against the release image, with alerts received locally.
 async function rehearseWorkerContract(image) {
-  const env = { ...process.env, APP_IMAGE: image };
+  const env = { ...process.env, OPS_IMAGE: image };
   const run = (args, options = {}) => compose(["run", "--rm", ...args], { env, capture: true, ...options });
   // Dollar-quoted literals keep the statement inside one shell-quoted argument.
   const sql = (statement) => compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -tAc '${statement}'`], { capture: true });
@@ -218,16 +219,19 @@ await writeFile(runtimeFile, runtime, { mode: 0o600 });
 try {
   await operation("deploy", ["--url", origin, "--release", `${project}-one`]);
   const release = JSON.parse(await readFile(join(stateDir, "current-release.json"), "utf8"));
+  // T43: the deployed release is a recorded web and ops pair within its size budgets.
+  validateReleaseManifest(release.pair);
+  if (release.pair.web.id !== release.candidateImageId || release.pair.ops.id !== release.opsImageId) throw new Error("Release manifest does not match the deployed images");
   await compose(["up", "-d", "object-store"]);
   const assetRehearsal = (mode, extra = []) => compose(["--profile", "tools", "run", "--rm", "--no-deps", "-v", `${stateDir}:/recovery`, ...extra,
-    "asset-tools", "node", "scripts/rehearse-assets.mjs", mode, "/recovery/assets.json"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+    "asset-tools", "node", "scripts/rehearse-assets.mjs", mode, "/recovery/assets.json"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
   const appContainer = await compose(["ps", "-q", "app"], { capture: true });
   await assertContainerHardening(appContainer.trim(), "Production app");
   await compose(["exec", "-T", "app", "sh", "-c", "touch /tmp/thunderstrux-hardening-check && rm /tmp/thunderstrux-hardening-check"]);
 
-  await compose(["up", "-d", "--no-deps", "alert-capture"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+  await compose(["up", "-d", "--no-deps", "alert-capture"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
   await compose(["--profile", "workers", "create", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"], {
-    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+    env: { ...process.env, OPS_IMAGE: release.opsImageId }
   });
   for (const service of ["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"]) {
     const container = await compose(["--profile", "workers", "ps", "-a", "-q", service], { capture: true });
@@ -288,30 +292,30 @@ try {
   if (!signalLogs.includes("sigterm-forwarded")) throw new Error("Entrypoint did not forward SIGTERM to Node");
   await docker(["rm", signalContainer]);
 
-  await compose(["run", "--rm", "email-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
-  await compose(["run", "--rm", "notification-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
-  await compose(["run", "--rm", "stale-order-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
-  await compose(["run", "--rm", "compensation-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
-  await compose(["run", "--rm", "checkout-recovery-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
-  await rehearseWorkerContract(release.candidateImageId);
+  await compose(["run", "--rm", "email-worker"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
+  await compose(["run", "--rm", "notification-worker"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
+  await compose(["run", "--rm", "stale-order-worker"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
+  await compose(["run", "--rm", "compensation-worker"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
+  await compose(["run", "--rm", "checkout-recovery-worker"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
+  await rehearseWorkerContract(release.opsImageId);
 
   await compose(["run", "--rm", "migration", "node", "prisma/seed.mjs"], {
-    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+    env: { ...process.env, OPS_IMAGE: release.opsImageId }
   });
   await compose(["run", "--rm", "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/seed-operations-verification.mjs"], {
-    env: { ...process.env, APP_IMAGE: release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey }
+    env: { ...process.env, OPS_IMAGE: release.opsImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey }
   });
   await assetRehearsal("seed");
   // T41: the seeded release passes every integrity check (explained legacy rows excepted).
   await compose(["run", "--rm", "migration", "node", "scripts/audit-db-integrity.mjs"], {
-    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+    env: { ...process.env, OPS_IMAGE: release.opsImageId }
   });
   await compose(["--profile", "tools", "run", "--rm", "--no-deps", "asset-tools", "node", "scripts/maintain-assets.mjs", "--integrity"], {
-    env: { ...process.env, APP_IMAGE: release.candidateImageId }
+    env: { ...process.env, OPS_IMAGE: release.opsImageId }
   });
   const unsafeAssets = await compose(["--profile", "tools", "run", "--rm", "--no-deps", "-e", "DATABASE_URL=postgresql://ops:ops-disposable-only@db:5432/production",
     "asset-tools", "node", "scripts/rehearse-assets.mjs", "remove", "/recovery/assets.json"], {
-      env: { ...process.env, APP_IMAGE: release.candidateImageId }, capture: true, expectFailure: true
+      env: { ...process.env, OPS_IMAGE: release.opsImageId }, capture: true, expectFailure: true
     });
   if (!unsafeAssets.includes("Refusing integration database access")) throw new Error("Asset rehearsal database refusal missing");
   await compose(["restart", "object-store"]);
@@ -356,7 +360,7 @@ try {
   const candidateTag = `thunderstrux-app:${project}-bad`;
   const badComposeFiles = [...composeFiles];
   badComposeFiles[badComposeFiles.indexOf(runtimeFile)] = badRuntimeFile;
-  await docker([...badComposeFiles, "build", "app"], { env: { ...process.env, APP_IMAGE: candidateTag } });
+  await docker([...badComposeFiles, "build", "app", "migration"], { env: { ...process.env, APP_IMAGE: candidateTag, OPS_IMAGE: `thunderstrux-ops:${project}-bad` } });
   const candidateImageId = await docker(["image", "inspect", "--format", "{{.Id}}", candidateTag], { capture: true });
   const previousImageId = await docker(["inspect", "--format", "{{.Image}}", appContainer.trim()], { capture: true });
   await writeFile(compatibilityFile, JSON.stringify({

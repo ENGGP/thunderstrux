@@ -12,13 +12,40 @@ sources: [scripts/operations.mjs, docker-compose.hosted.yml, scripts/run-operati
 
 Repository-side operations (originally task P2.17) are implemented and locally rehearsed. The repository provides local Docker validation, optional manual GitHub workflows, liveness/readiness endpoints, non-root production containers, a single migration job, guarded deployment, PostgreSQL backup/restore, and compatibility-gated application rollback.
 
-The hardened repository contract is `docker-compose.hosted.yml`. It consumes a prebuilt immutable `APP_IMAGE`, external PostgreSQL and Redis URLs, and file-backed secrets; it contains no database, Redis, source bind mount, or image build. The application, migration, and workers run non-root with a read-only root filesystem, dropped capabilities, no-new-privileges, bounded PIDs, explicit CPU/memory limits, and reviewed writable `tmpfs` paths. Validate a deployment environment with `pnpm docker:hosted:check -- --env-file <path>` before rollout.
+The hardened repository contract is `docker-compose.hosted.yml`. It consumes a prebuilt immutable release pair: `APP_IMAGE` (web) for the app and `OPS_IMAGE` for migration and every worker (see Release images). It also takes external PostgreSQL and Redis URLs and file-backed secrets; it contains no database, Redis, source bind mount, or image build. The application, migration, and workers run non-root with a read-only root filesystem, dropped capabilities, no-new-privileges, bounded PIDs, explicit CPU/memory limits, and reviewed writable `tmpfs` paths. Validate a deployment environment with `pnpm docker:hosted:check -- --env-file <path>` before rollout.
 
 This is not evidence of a live production deployment. Since T42 the repository provides the per-minute worker schedule, overlap prevention, pause, timeouts, backlog monitoring and an alert webhook (see Workers, schedules and alerts). Hosting, choosing the alert receiver, external uptime monitoring, off-machine encrypted backups and recovery objectives remain deployment-time work.
 
 Packages 1–3 are locally qualified and Package 4 is in progress; local development carries every migration, each applied after a verified dump. [[Project Handover]] owns the dated activations. Hosted activation still requires independent security/migration review and provider acceptance. T07/T08 add asset metadata and profile references: apply the full 34-migration chain, retain the additive fields on code rollback and preserve image bytes.
 
 Hosted assets additionally require `docker-compose.assets.hosted.yml`, a configured S3-compatible bucket/endpoint/region/path style and server-only access/secret file mounts. The PostgreSQL `ops:backup` command below does not back up object bytes. Pair it with a coordinated object backup and integrity check, pause uploads/maintenance during recovery, restore metadata and objects together, and keep unfamiliar bucket objects. [[Society Profiles and Assets]] owns quotas, reference checks and bounded dry-run/integrity/object inspection. Scheduling maintenance and off-machine byte recovery remain hosted gates.
+
+## Release images
+
+Since T43a every release is two images built from one revision by `docker/Dockerfile`:
+
+- **`web`** is Next's standalone server (`output: "standalone"`): the traced server files, static assets and the dependencies they need, including the Prisma engine and sharp. It runs `node server.js` with the readiness healthcheck. It can't migrate or run workers.
+- **`ops`** holds production dependencies (the Prisma CLI is one), `lib`, `scripts`, `prisma` and `config`. Migrations, every worker, seeds, the integrity audit, restore verification and asset tools run from it. It has no healthcheck and serves nothing.
+- **`development`** is unchanged: the full dependency tree for `docker-compose.dev.yml`.
+
+Neither release image carries pnpm or Corepack. Both run as `node` through the same entrypoint and secret-file loader.
+
+**Budgets.** Uncompressed, summed over layers (`docker history`):
+- web at most 600 MiB (387 MiB on 23 Oct 2026);
+- ops at most 1 GiB (939 MiB);
+- the single image this replaced was 1,190 MiB.
+
+Raise a budget only with a measured reason and an owner recorded here; don't delete code the images need.
+
+**Release manifest.** `node scripts/release-pair.mjs --web <image> --ops <image> [--out file]` records:
+- the full git revision;
+- each image's immutable id and size;
+- the required migration;
+- the migration chain digest.
+
+It refuses a pair over budget, the same image twice, or one without a revision or chain. `pnpm ops:deploy` builds the pair (`thunderstrux-app:<release>` and `thunderstrux-ops:<release>`) and checks the manifest before any writer stops. It runs the migration from the ops image and records the manifest (`pair`, `opsImageId`, `opsImageRef`) in `current-release.json`. Rollback restores the previous web image as before.
+
+**Still to do.** Registry digests, SBOM and provenance arrive with CI publication (T43c). Provider adapters wait on a hosting choice (T43b).
 
 ## Health
 

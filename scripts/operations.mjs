@@ -25,6 +25,7 @@ import {
   databaseUrlForRestore,
   migrationDigest
 } from "./operations-guards.mjs";
+import { describeReleasePair, gitRevision } from "./release-pair.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baseCompose = resolve(root, "docker-compose.yml");
@@ -266,8 +267,10 @@ async function deploy(ctx) {
   const url = assertHttpLoopbackUrl(required("--url"));
   const release = option("--release", `local-${Date.now()}`);
   if (!/^[a-zA-Z0-9._-]{3,80}$/.test(release)) throw new Error("Invalid release identifier");
+  // T43: each release is a web image and an ops image (migration, workers) built from one revision.
   const image = `thunderstrux-app:${release}`;
-  const deploymentEnv = { ...process.env, APP_IMAGE: image };
+  const opsImage = `thunderstrux-ops:${release}`;
+  const deploymentEnv = { ...process.env, APP_IMAGE: image, OPS_IMAGE: opsImage };
   const readinessAttempts = Number(option("--readiness-attempts", "60"));
   if (!Number.isInteger(readinessAttempts) || readinessAttempts < 1 || readinessAttempts > 120) {
     throw new Error("--readiness-attempts must be an integer from 1 to 120");
@@ -287,9 +290,11 @@ async function deploy(ctx) {
       console.error("Operations deploy: using prebuilt candidate");
     } else {
       console.error("Operations deploy: building candidate");
-      await compose(ctx, ["build", "app"], { env: deploymentEnv });
+      await compose(ctx, ["build", "app", "migration"], { env: deploymentEnv });
     }
     const candidateImageId = await run("docker", ["image", "inspect", "--format", "{{.Id}}", image], { capture: true });
+    // Refuses a pair over its size budgets before any writer stops.
+    const pair = await describeReleasePair({ web: image, ops: opsImage, revision: gitRevision() });
     const previousContainer = await run("docker", [
       "ps",
       "-q",
@@ -349,6 +354,9 @@ async function deploy(ctx) {
       deployedAt: new Date().toISOString(),
       candidateImageId,
       imageRef: image,
+      opsImageId: pair.ops.id,
+      opsImageRef: opsImage,
+      pair,
       previousImageId,
       migrationDigest: await currentMigrationDigest(),
       backup: backupResult.record
@@ -360,7 +368,7 @@ async function deploy(ctx) {
     await rename(pendingEnv, activeEnvFile);
     await writeFile(releaseManifestFile, JSON.stringify(manifest, null, 2), { mode: 0o600 });
     console.error("Operations deploy: release recorded");
-    console.log(JSON.stringify({ status: "deployed", release, candidateImageId }));
+    console.log(JSON.stringify({ status: "deployed", release, candidateImageId, opsImageId: pair.ops.id }));
   } catch (error) {
     if (migrationStarted && !writersRestored) {
       console.error("Migration began; writers remain stopped until the database state is inspected.");
@@ -405,7 +413,7 @@ async function restore(ctx) {
     // migration jobs continue without notification/auth/provider secrets.
     const notificationKey = parseEnv(await readFile(ctx.envFile, "utf8")).NOTIFICATION_ENCRYPTION_KEY;
     await compose(ctx, ["run", "--rm", "-e", `DATABASE_URL=${restoredUrl}`, "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/verify-restored-database.mjs"], {
-      env: { ...process.env, APP_IMAGE: release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
+      env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
     });
     console.log(JSON.stringify({ status: "restored-and-verified", target }));
   } catch (error) {

@@ -77,11 +77,11 @@ services:
       timeout: 3s
       start_period: 20s
       retries: 5
-    command: ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0"]
+    command: ["node", "server.js"]
 
   migration:
     <<: *runtime-security
-    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
     restart: "no"
     user: "1000:1000"
     profiles: ["tools"]
@@ -99,7 +99,7 @@ services:
 
   email-worker:
     <<: *runtime-security
-    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
     restart: "no"
     user: "1000:1000"
     profiles: ["workers"]
@@ -121,7 +121,7 @@ services:
 
   notification-worker:
     <<: *runtime-security
-    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
     restart: "no"
     user: "1000:1000"
     profiles: ["workers"]
@@ -145,7 +145,7 @@ services:
 
   stale-order-worker:
     <<: *runtime-security
-    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
     restart: "no"
     user: "1000:1000"
     profiles: ["workers"]
@@ -163,7 +163,7 @@ services:
 
   compensation-worker:
     <<: *runtime-security
-    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
     restart: "no"
     user: "1000:1000"
     profiles: ["workers"]
@@ -183,7 +183,7 @@ services:
 
   checkout-recovery-worker:
     <<: *runtime-security
-    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
     restart: "no"
     user: "1000:1000"
     profiles: ["workers"]
@@ -204,7 +204,7 @@ services:
   # T42: queue backlog, oldest-age and stale-job alerts. Database only.
   monitor-worker:
     <<: *runtime-security
-    image: ${APP_IMAGE:?APP_IMAGE must be an immutable release image}
+    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
     restart: "no"
     user: "1000:1000"
     profiles: ["workers"]

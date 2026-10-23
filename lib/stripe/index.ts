@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { appUrl } from "@/lib/app-url";
 
 export class StripeConfigurationError extends Error {
   constructor(message: string) {
@@ -53,5 +54,5 @@ export function getStripeConnectWebhookSecret() {
 }
 
 export function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return appUrl() ?? "http://localhost:3000";
 }

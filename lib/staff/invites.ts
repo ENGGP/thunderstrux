@@ -6,6 +6,7 @@ import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { invitationIssuerRole } from "./invite-authority";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { mfaGrantDigest } from "@/lib/security/csrf";
+import { appUrl } from "@/lib/app-url";
 
 export class StaffInviteError extends Error {
   constructor(message = "Invitation is unavailable", readonly kind: "invalid" | "authority" | "stale_session" | "conflict" = "invalid") { super(message); }
@@ -49,7 +50,7 @@ async function cancelMessages(tx: Prisma.TransactionClient, inviteId: string) {
   } });
 }
 async function enqueueInvite(tx: Prisma.TransactionClient, invite: { id: string; email: string; role: OrganisationStaffRole; version: number; expiresAt: Date }, organisationName: string, token: string) {
-  const link = new URL("/staff/invites/accept", process.env.NEXT_PUBLIC_APP_URL);
+  const link = new URL("/staff/invites/accept", appUrl());
   link.hash = new URLSearchParams({ token }).toString();
   await enqueueNotification(tx, { eventKey: `staff-invite/${invite.id}/${invite.version}`, recipient: invite.email, template: "staff_invite",
     staffInviteId: invite.id, staffInviteVersion: invite.version, expiresAt: invite.expiresAt,

@@ -9,6 +9,7 @@ import { safeReturnPath } from "@/lib/security/safe-return-path";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { newPasswordSchema } from "@/lib/validators/auth";
 import { lockAccount } from "./account-lock";
+import { appUrl } from "@/lib/app-url";
 export { lockAccount } from "./account-lock";
 
 export class AccountTokenError extends Error {
@@ -17,7 +18,7 @@ export class AccountTokenError extends Error {
 function assertIssuanceConfiguration() {
   // Fail uniformly before looking up addresses, including during misconfiguration.
   assertNotificationConfiguration();
-  const link = new URL("/verify-email", process.env.NEXT_PUBLIC_APP_URL).toString();
+  const link = new URL("/verify-email", appUrl()).toString();
   renderedNotificationSchema.parse({ ...renderNotification("verify_account", { message: "Configuration check", link }), from: process.env.EMAIL_FROM });
 }
 export function accountTokenDigest(raw: string) { return createHash("sha256").update(raw).digest("hex"); }
@@ -41,7 +42,7 @@ async function issueAccountToken(tx: Prisma.TransactionClient, user: User, purpo
   const raw = randomBytes(32).toString("base64url");
   const token = await tx.authToken.create({ data: { userId: user.id, tokenHash: accountTokenDigest(raw), purpose,
     email: user.email, authVersion: user.authVersion, expiresAt: new Date(now.getTime() + (purpose === "verify_account" ? 86400000 : 1800000)), callbackPath: safeReturnPath(callbackUrl) } });
-  const link = new URL(purpose === "verify_account" ? "/verify-email" : "/reset-password", process.env.NEXT_PUBLIC_APP_URL);
+  const link = new URL(purpose === "verify_account" ? "/verify-email" : "/reset-password", appUrl());
   link.hash = new URLSearchParams({ token: raw }).toString();
   await enqueueNotification(tx, { eventKey: `auth/${token.id}`, authTokenId: token.id, userId: user.id, recipient: user.email,
     template: purpose, expiresAt: token.expiresAt, payload: { message: purpose === "verify_account" ? "Confirm your email address to use Thunderstrux purchases and society features." : "Reset your Thunderstrux password. This link expires in 30 minutes.", link: link.toString() } });
@@ -112,7 +113,7 @@ export async function requireSecurityActor(tx: Prisma.TransactionClient, actor: 
 async function passwordSecurityNotice(tx: Prisma.TransactionClient, user: User, type: "password_reset" | "password_changed", now: Date) {
   const event = await tx.accountSecurityEvent.create({ data: { userId: user.id, type, authVersion: user.authVersion, createdAt: now } });
   await enqueueNotification(tx, { eventKey: `account-security/${event.id}`, userId: user.id, recipient: user.email, template: "password_changed",
-    payload: { message: "Your Thunderstrux password changed. All sessions have been signed out. If this was not you, reset your password.", link: new URL("/forgot-password", process.env.NEXT_PUBLIC_APP_URL).toString() } });
+    payload: { message: "Your Thunderstrux password changed. All sessions have been signed out. If this was not you, reset your password.", link: new URL("/forgot-password", appUrl()).toString() } });
 }
 export async function requestPasswordReset(email: string, callbackUrl?: string) {
   assertIssuanceConfiguration();

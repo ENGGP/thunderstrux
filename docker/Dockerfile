@@ -29,8 +29,8 @@ FROM deps AS builder
 
 COPY . .
 
-ARG APP_ORIGIN=http://localhost:3000
-ENV NEXT_PUBLIC_APP_URL=$APP_ORIGIN
+# No origin is built in (T44d): the server reads NEXT_PUBLIC_APP_URL at run
+# time (lib/app-url.ts), so one image serves any domain.
 
 # These values are non-secret build placeholders scoped to this command. The
 # runtime image does not retain them and validates its real configuration.

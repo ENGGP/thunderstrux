@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
 import { userInfo } from 'node:os';
 import { assertRunId, assertOwnedManifest } from './e2e-guards.mjs';
+import { describeReleasePair, gitRevision } from './release-pair.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2).filter(arg => arg !== '--');
@@ -133,6 +134,11 @@ try {
     await createRuntime();
     console.log(`E2E run: ${runId}`);
     await compose('build', 'app', 'migration', 'tests');
+    // T44d: the evidence names exactly what ran: the revision, whether the tree
+    // matched it, both release images within budget, and the migration chain.
+    const treeMatchesRevision = await new Promise((done) => spawn('git', ['diff', '--quiet', 'HEAD'], { cwd: root, stdio: 'ignore' }).on('close', (code) => done(code === 0)));
+    manifest.release = { ...await describeReleasePair({ web: 'thunderstrux-e2e-app:local', ops: 'thunderstrux-e2e-ops:local', revision: gitRevision() }), treeMatchesRevision };
+    await save();
     if (interrupted) throw new Error('Run interrupted');
     if (mode === 'staging') {
       const { runStaging } = await import('./staging-payments.mjs');

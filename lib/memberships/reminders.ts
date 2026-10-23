@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatDate, membershipLabel } from "@/lib/format";
 import { zoneCity } from "@/lib/zoned-time";
+import { appUrl } from "@/lib/app-url";
 
 // Membership renewal reminders and expiry notices (T30, readiness plan §5).
 // The notification worker runs this every minute, so a late or missed run
@@ -72,12 +73,12 @@ export async function queueMembershipNotices(now = new Date(), limit = 100) {
           ? {
               subject: `Your ${label} ends soon`.slice(0, 200),
               message: `Your ${label} with ${society} ends after ${lastDay}. Memberships don't renew automatically.${offer || ` ${society} hasn't put its next membership on sale yet.`} You can turn off renewal reminders in Account settings.`,
-              link: new URL("/memberships", process.env.NEXT_PUBLIC_APP_URL).toString()
+              link: new URL("/memberships", appUrl()).toString()
             }
           : {
               subject: `Your ${label} has ended`.slice(0, 200),
               message: `Your ${label} with ${society} ended after ${lastDay}, so its member benefits have stopped.${offer}`,
-              link: new URL("/memberships", process.env.NEXT_PUBLIC_APP_URL).toString()
+              link: new URL("/memberships", appUrl()).toString()
             }
       });
       if (enqueued) queued += 1;

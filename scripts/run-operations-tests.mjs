@@ -222,6 +222,7 @@ try {
   // T43: the deployed release is a recorded web and ops pair within its size budgets.
   validateReleaseManifest(release.pair);
   if (release.pair.web.id !== release.candidateImageId || release.pair.ops.id !== release.opsImageId) throw new Error("Release manifest does not match the deployed images");
+  console.log(JSON.stringify({ releasePair: { revision: release.pair.revision, web: release.pair.web.id, ops: release.pair.ops.id, requiredMigration: release.pair.requiredMigration, migrationDigest: release.pair.migrationDigest } }));
   await compose(["up", "-d", "object-store"]);
   const assetRehearsal = (mode, extra = []) => compose(["--profile", "tools", "run", "--rm", "--no-deps", "-v", `${stateDir}:/recovery`, ...extra,
     "asset-tools", "node", "scripts/rehearse-assets.mjs", mode, "/recovery/assets.json"], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });

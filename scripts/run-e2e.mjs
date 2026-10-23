@@ -155,7 +155,7 @@ try {
         await writeFile(runtimeFile, runtime.replace('STRIPE_SECRET_KEY=\n', 'STRIPE_SECRET_KEY=sk_test_synthetic\n'));
         await compose('up', '-d', '--force-recreate', 'app');
         await ready();
-        await step('webhooks', 'pnpm', 'exec', 'playwright', 'test', 'webhooks.spec.ts', 'notifications.spec.ts', '--project=desktop');
+        await step('webhooks', 'pnpm', 'exec', 'playwright', 'test', 'webhooks.spec.ts', 'notifications.spec.ts', 'journeys.spec.ts', '--project=desktop');
       }
     }
     cancellation.signal.throwIfAborted();

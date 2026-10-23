@@ -8,11 +8,12 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { GuestClaim } from "@/components/guest/guest-claim";
+import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { canOpenGuestOrder, guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { formatDateRange, formatMoney } from "@/lib/format";
 import { getGuestOrder } from "@/lib/orders/member-tickets";
-import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
+import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const dynamic = "force-dynamic";
@@ -42,29 +43,24 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
   const { event } = order;
   const { organisation } = event;
   const count = order.tickets.length;
-  // A cancelled free registration keeps status paid; it is no longer a ticket to show at the door.
-  const going = order.status === "paid" && !order.cancelledAt;
+  // Only an order whose tickets still admit someone shows them: a refunded,
+  // disputed or cancelled one (all still status paid) says why instead (T44a).
+  const projection = ticketOrderProjection(order);
+  const going = projection === "paid" || projection === "free" || (projection === "review" && !order.requiresCompensationReview);
+  // A refunded, disputed or cancelled order went through checkout; only an unpaid one is still at review.
+  const unfinished = projection === "processing" || projection === "failed" || projection === "expired";
   const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
 
   return (
-    <CheckoutShell current={going ? 2 : 1} society={organisation.name} steps={["Your email", "Review", "Tickets"]} title={going ? `You're going to ${event.title}` : "Your order"}>
+    <CheckoutShell current={unfinished ? 1 : 2} society={organisation.name} steps={["Your email", "Review", "Tickets"]} title={going ? `You're going to ${event.title}` : "Your order"}>
       <Card>
         <div className="grid gap-4">
-          {going ? (
-            <StatusBadge status={order.paymentKind === "free" ? "free" : "paid"} />
-          ) : order.cancelledAt ? (
-            <Notice title="Registration cancelled">
-              <p>The society cancelled this free registration. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p>
-            </Notice>
-          ) : order.status === "pending" ? (
+          {going ? <StatusBadge status={order.paymentKind === "free" ? "free" : "paid"} /> : null}
+          <TicketOrderNotice order={order} processing={
             <Notice role="status" title="Confirming your payment">
               <p>This usually takes under a minute. <Link className="font-semibold text-brand underline underline-offset-4" href={`/guest/orders/${order.id}`}>Refresh</Link> to check again.</p>
             </Notice>
-          ) : (
-            <Notice title="This checkout didn't complete">
-              <p>Nothing was charged. <Link className="font-semibold text-brand underline underline-offset-4" href={`/events/${event.id}`}>Back to the event</Link></p>
-            </Notice>
-          )}
+          } />
           <p className="text-ink-soft [overflow-wrap:anywhere]">
             {formatDateRange(event.startTime, event.endTime, organisation.timeZone)}, {zoneCity(organisation.timeZone)} · {event.location}
           </p>
@@ -93,7 +89,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
               {organisation.refundPolicy ? <><dt className="text-ink-soft">Refunds</dt><dd className="text-ink-soft">{organisation.refundPolicy}</dd></> : null}
             </dl>
           ) : null}
-          <AccountClaim live={live} order={order} guestEmail={session.email} summary={`${event.title}, ${count} ${count === 1 ? "ticket" : "tickets"}`} />
+          {going ? <AccountClaim live={live} order={order} guestEmail={session.email} summary={`${event.title}, ${count} ${count === 1 ? "ticket" : "tickets"}`} /> : null}
           <p className="text-sm text-ink-muted">Lost this page? <Link className="text-brand underline underline-offset-4" href="/guest/recover">Find your purchase</Link> sends a fresh link for each purchase.</p>
         </div>
       </Card>

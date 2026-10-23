@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { PersonalShell } from "@/components/layout/personal-shell";
 import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
+import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
 import { ticketReference, ticketState } from "@/components/tickets/ticket-face";
 import { AuditTimeline } from "@/components/ui/audit-timeline";
 import { Card } from "@/components/ui/card";
@@ -15,46 +16,6 @@ import { getOwnTicketPurchase } from "@/lib/purchases/ticket-purchases";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const metadata: Metadata = { title: "Purchase", robots: { index: false, follow: false } };
-
-type Purchase = NonNullable<Awaited<ReturnType<typeof getOwnTicketPurchase>>>;
-
-// What the buyer needs to know about where this order stands.
-function StatusNotice({ order }: { order: Purchase }) {
-  const projection = ticketOrderProjection(order);
-  const society = order.event.organisation.name;
-  const refund = order.refundRequests[0];
-  if (projection === "processing") {
-    return (
-      <Notice role="status" title="Confirming your payment">
-        <p>Stripe is telling us about your payment. This usually takes under a minute; this page updates by itself.</p>
-        <PaymentStatusPoller orderId={order.id} />
-      </Notice>
-    );
-  }
-  if (projection === "failed" || projection === "expired") {
-    return <Notice title="This checkout didn't complete"><p>Nothing was charged. <Link className="font-semibold text-brand underline underline-offset-4" href={`/events/${order.event.id}`}>Back to the event</Link></p></Notice>;
-  }
-  if (projection === "refunded") {
-    return (
-      <Notice title="Refunded">
-        <p>
-          {refund ? `${formatMoney(refund.amount)} was refunded to your card${refund.resolvedAt ? ` on ${formatDate(refund.resolvedAt)}` : ""}.` : "This order was refunded in full."} Banks usually take 5 to 10 business days. The tickets are no longer valid.
-        </p>
-      </Notice>
-    );
-  }
-  if (projection === "refund-processing") return <Notice role="status" title="Refund processing"><p>{society} has started a refund. Banks usually take 5 to 10 business days once it goes through.</p></Notice>;
-  if (projection === "cancelled") return <Notice title="Cancelled by the society"><p>{society} cancelled this free registration. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p></Notice>;
-  if (projection === "disputed") return <Notice title="Payment disputed" tone="warning"><p>Your bank has disputed this payment, so the tickets are under review. Contact {society} before the event.</p></Notice>;
-  if (projection === "review") {
-    return order.requiresCompensationReview ? (
-      <Notice title="Payment received, tickets not issued" tone="warning"><p>We couldn&apos;t issue your tickets after your payment went through. {society} will sort it out; contact them if you haven&apos;t heard back.</p></Notice>
-    ) : (
-      <Notice title="Partly refunded"><p>{formatMoney(order.externalRefundedAmount)} of {formatMoney(order.totalAmount)} was refunded to your card. Your tickets are still valid.</p></Notice>
-    );
-  }
-  return null;
-}
 
 export default async function PurchasePage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
@@ -88,7 +49,12 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
           {formatDateRange(event.startTime, event.endTime, organisation.timeZone)}, {zoneCity(organisation.timeZone)} · {event.location}
         </p>
       </div>
-      <StatusNotice order={order} />
+      <TicketOrderNotice order={order} processing={
+        <Notice role="status" title="Confirming your payment">
+          <p>Stripe is telling us about your payment. This usually takes under a minute; this page updates by itself.</p>
+          <PaymentStatusPoller orderId={order.id} />
+        </Notice>
+      } />
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="text-lg font-semibold text-ink">Your tickets</h2>

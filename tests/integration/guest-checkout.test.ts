@@ -163,6 +163,34 @@ describe("guest order access", () => {
     expect(anonymous).not.toContain(fixture.event.title);
   });
 
+  test("a refunded or disputed guest order says so and shows no tickets for the door (T44a)", async () => {
+    const fixture = await eventWith(1500);
+    const buyer = await guestSession();
+    const order = await prisma.order.create({ data: {
+      organisationId: fixture.organisation.id, eventId: fixture.event.id, ticketTypeId: fixture.ticketType.id, quantity: 2, unitPrice: 1500, totalAmount: 3000,
+      status: "paid", paidAt: new Date(), fulfilledAt: new Date(), stripeSessionId: unique("cs_test"), guestIdentityId: buyer.guest.guestIdentityId, paymentKind: "stripe",
+      purchasedTicketTypeName: "General", buyerEmailSnapshot: buyer.email, buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "verified_guest"
+    } });
+    await prisma.ticket.createMany({ data: [1, 2].map((issueSequence) => ({ issueSequence, orderId: order.id, eventId: fixture.event.id, ticketTypeId: fixture.ticketType.id, organisationId: fixture.organisation.id })) });
+    const { sessionId } = await redeemGuestAccess((await purchaseLinkForEmail(order.id, buyer.guest.guestIdentityId)).split("token=")[1]);
+    globalThis.__THUNDERSTRUX_TEST_GUEST__ = sessionId;
+    const page = async () => renderPage(await GuestOrderPage({ params: Promise.resolve({ orderId: order.id }) }));
+    expect(await page()).toContain("Your tickets");
+
+    await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });
+    await prisma.ticket.updateMany({ where: { orderId: order.id }, data: { validity: "void", validityReason: "refunded", validityChangedAt: new Date() } });
+    await prisma.refundRequest.create({ data: { orderId: order.id, organisationId: fixture.organisation.id, amount: 3000, reason: "Buyer asked for a refund.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
+    const refunded = await page();
+    expect(refunded).toContain("$30.00 was refunded to your card");
+    expect(refunded).not.toContain("Your tickets");
+    expect(refunded).not.toContain("You&#x27;re going to");
+    expect(refunded).not.toContain("Keep your tickets in one place");
+
+    await prisma.order.update({ where: { id: order.id }, data: { refundStatus: null, disputeStatus: "open" } });
+    expect(await page()).toContain("Payment disputed");
+    globalThis.__THUNDERSTRUX_TEST_GUEST__ = undefined;
+  });
+
   test("the ticket email carries a fresh purchase link on each send that opens just that order", async () => {
     const fixture = await eventWith(0);
     const buyer = await guestSession();

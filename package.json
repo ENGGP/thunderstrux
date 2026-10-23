@@ -34,6 +34,8 @@
     "ops:restore": "node scripts/operations.mjs restore",
     "ops:smoke": "node scripts/operations.mjs smoke",
     "ops:workers": "node scripts/workers.mjs",
+    "ops:droplet": "node scripts/droplet.mjs",
+    "ops:droplet:rehearse": "node scripts/rehearse-droplet.mjs",
     "ops:test": "node --test tests/runner/operations.test.mjs && node scripts/run-operations-tests.mjs",
     "seed": "prisma db seed",
     "prisma:migrate": "prisma migrate dev",

@@ -68,6 +68,12 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.hardened.yml config --quiet
           node scripts/check-hosted-compose.mjs --env-file hosted-validation.env
+          # T43b: the pilot Droplet stack (hosted, assets, schedules and the Droplet overlay).
+          APP_IMAGE="ghcr.io/enggp/thunderstrux@sha256:$(printf 'a%.0s' $(seq 64))" \
+          OPS_IMAGE="ghcr.io/enggp/thunderstrux-ops@sha256:$(printf 'b%.0s' $(seq 64))" \
+          docker compose --env-file deploy/droplet/config.env.example --project-directory deploy/droplet \
+            -f docker-compose.hosted.yml -f docker-compose.assets.hosted.yml -f docker-compose.schedules.yml \
+            -f deploy/droplet/docker-compose.droplet.yml --profile tools --profile workers config --quiet
       # T43: a release is a web and ops image pair; both are built, budgeted and scanned.
       - name: Build production image pair
         run: |

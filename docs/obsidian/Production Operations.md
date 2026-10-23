@@ -47,6 +47,100 @@ It refuses a pair over budget, the same image twice, or one without a revision o
 
 **Still to do.** Registry digests, SBOM and provenance arrive with CI publication (T43c). Provider adapters wait on a hosting choice (T43b).
 
+## Pilot host
+
+Chosen 23 Oct 2026 (T43b): one **DigitalOcean Droplet in Sydney (syd1)** runs the release pair with Docker Compose. These managed services sit in the same region:
+- **PostgreSQL 16:** daily backups and point-in-time recovery;
+- **Valkey:** Redis-compatible, for rate limiting;
+- **Spaces:** S3-compatible storage for society assets.
+
+Data stays in Australia, the database is managed, and the hosted Compose contract runs unchanged. Nothing has been bought yet; H01 does that.
+
+**Expected cost:** about USD 55–60 a month (check current prices before buying):
+
+| Item | Plan | Cost a month |
+| --- | --- | --- |
+| Droplet | 2 vCPU / 4 GiB | $24 |
+| Managed PostgreSQL | 1 GiB | $15 |
+| Managed Valkey | 1 GiB | $15 |
+| Spaces | — | $5 |
+| Domain | — | not included |
+
+**On the Droplet** (all versioned in `deploy/droplet/`):
+- **`cloud-init.yml`:** first-boot setup.
+  - Ubuntu 24.04 LTS and Docker Engine with the Compose plugin.
+  - A `deploy` user with uid 1000 (the containers' user); SSH keys only, root login off.
+  - ufw allowing only SSH, 80 and 443.
+  - Automatic security updates without automatic reboots, and Docker log rotation.
+  - The `/opt/thunderstrux`, `/etc/thunderstrux/secrets` and `/var/lib/thunderstrux/backups` folders.
+- **`docker-compose.droplet.yml`:** applied over `docker-compose.hosted.yml`, `docker-compose.assets.hosted.yml` and `docker-compose.schedules.yml`.
+  - **Caddy** is the only public service: automatic Let's Encrypt HTTPS, a 6 MB request limit and compression.
+  - It sets `X-Thunderstrux-Client-IP` from the connection on every request, and the app trusts only that header for rate limiting (SEC-002). Incoming `X-Forwarded-For` is dropped.
+  - **Secrets:** each one is a file in `/etc/thunderstrux/secrets`, owned by uid 1000 with mode 0400, because plain Compose can't read Swarm's external secrets.
+  - **Backups:** a `backup` tool (PostgreSQL 16 client) writes a checked `pg_dump` before every migration.
+- **`Caddyfile`** and **`config.env.example`:** the non-secret settings, which become `/opt/thunderstrux/config.env`.
+
+**Deploying** (from a laptop or CI, over SSH as `deploy`):
+
+```bash
+node scripts/release-pair.mjs --web <web ref@sha256> --ops <ops ref@sha256> --out release.json
+pnpm ops:droplet -- deploy --host deploy@<droplet-ip> --manifest release.json --smoke-url https://<domain>
+pnpm ops:droplet -- status --host deploy@<droplet-ip>
+pnpm ops:droplet -- rollback --host deploy@<droplet-ip> --compatibility-file rollback.json --smoke-url https://<domain>
+```
+
+A deploy always runs in this order:
+1. Validate the manifest (registry digests only).
+2. Upload the release's Compose bundle to `/opt/thunderstrux/releases/<name>`.
+3. Pull both images by digest.
+4. Check the merged config against the hosted contract.
+5. Stop the workers.
+6. Back up the database.
+7. Migrate once from the ops image.
+8. Start the new web release and wait for its healthcheck.
+9. Start Caddy, then the workers on the new ops image.
+10. Check readiness through HTTPS.
+11. Record `current` and `previous`.
+
+If the web release never becomes ready after migrating, the deploy stops the app and leaves writers stopped for inspection, as the single-host runner does.
+
+**Rollback** switches the web image and the workers back to the previous release. It needs a reviewed declaration (`candidateImageId`, `previousImageId`, `migrationDigest`, `reviewed: true`) saying the older code was tested against the current schema; without one it refuses.
+
+**Rehearsal.** `pnpm ops:droplet:rehearse` runs the real commands with `--local`: this machine stands in for the Droplet, and throwaway containers stand in for the managed PostgreSQL (a `_test` database) and Valkey. It:
+- deploys a release through Caddy's HTTPS and checks the step order, the backup, every container's image and the scheduled monitor;
+- upgrades to a second release;
+- shows rollback refused without a declaration, then accepted with one;
+- shows a release that can't become ready (Valkey down) leaving the app and workers stopped and the recorded release unchanged.
+
+It removes every container, volume, network, image and folder it made.
+
+**H01 checklist** (once the pilot is approved and paid for):
+1. **Domain:** choose it, and set an A record for it to a DigitalOcean reserved IP.
+2. **Databases** in syd1:
+   - PostgreSQL 16, 1 GiB, a database `thunderstrux` with its own user, TLS required (`sslmode=require` in the URL);
+   - Valkey, 1 GiB;
+   - for both, add only the Droplet as a trusted source.
+3. **Spaces:** create a syd1 bucket and an access key limited to it.
+4. **Droplet:** Ubuntu 24.04, 2 vCPU / 4 GiB, in syd1 and on the databases' VPC. Use `cloud-init.yml` with the deploy key, then assign the reserved IP.
+5. **Config:** write `/opt/thunderstrux/config.env` from `config.env.example`.
+6. **Secrets:** write each secret file in `/etc/thunderstrux/secrets`, then `chown 1000:1000` and `chmod 0400` them.
+   - Back up `MFA_ENCRYPTION_KEY`, `NOTIFICATION_ENCRYPTION_KEY` and `AUTH_SECRET` separately; see the Recovery runbook.
+   - The alert webhook goes to the chosen receiver (OPS-002).
+7. **Deploy:** publish the release pair (T43c), then run the first deploy with `--smoke-url`.
+8. **Stripe and Resend:** point the Stripe webhooks (including `refund.*` and `charge.dispute.*`) and the Resend domain at the new URL.
+
+**Rebuilding a lost Droplet.** No data lives on it, so:
+1. Create a new one from `cloud-init.yml`.
+2. Restore `config.env` and the secret files from their backups.
+3. Deploy the recorded `current` release's manifest.
+4. Move the reserved IP to it.
+
+The pre-migration dumps on the old Droplet are lost with it; DigitalOcean's own backups remain.
+
+**Restoring the database** uses DigitalOcean's point-in-time restore into a new cluster. Follow the Recovery runbook (pause workers, verify, reconcile) before pointing `database_url` at it.
+
+**Docker and ufw.** Ports published by Docker bypass ufw; only Caddy publishes any.
+
 ## Health
 
 - `GET /api/health` is liveness only and preserves the public `{status: "ok", service: "thunderstrux"}` contract.

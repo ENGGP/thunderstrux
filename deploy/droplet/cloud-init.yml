@@ -1,0 +1,72 @@
+#cloud-config
+# T43b: first-boot setup of the pilot Droplet (Ubuntu 24.04 LTS, syd1).
+# Paste as "user data" when creating the Droplet; then follow the H01
+# checklist in Production Operations to add secrets and config.env and
+# run the first deploy. Replace the SSH key below before use.
+users:
+  - name: deploy
+    # uid 1000 matches the containers' "node" user, so it can own the secret files.
+    uid: "1000"
+    groups: [docker]
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:/usr/bin/systemctl restart docker"]
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-ed25519 REPLACE-WITH-THE-DEPLOY-PUBLIC-KEY deploy@thunderstrux
+
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - ufw
+  - unattended-upgrades
+  - chrony
+
+write_files:
+  # Containers log through json-file with rotation; the overlay sets the same per service.
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "5" },
+        "live-restore": true
+      }
+  # Security updates install themselves; a reboot is a scheduled, announced task.
+  - path: /etc/apt/apt.conf.d/52thunderstrux-unattended
+    permissions: "0644"
+    content: |
+      Unattended-Upgrade::Allowed-Origins { "${distro_id}:${distro_codename}-security"; };
+      Unattended-Upgrade::Automatic-Reboot "false";
+  - path: /etc/ssh/sshd_config.d/60-thunderstrux.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+      KbdInteractiveAuthentication no
+
+runcmd:
+  # Docker Engine and the Compose plugin from Docker's own repository.
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - sh -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list'
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  - usermod -aG docker deploy
+  - systemctl enable --now docker chrony unattended-upgrades
+  - systemctl restart ssh
+  # Only SSH and the web are reachable; the managed database and Valkey
+  # accept the Droplet through DigitalOcean's trusted sources instead.
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+  - ufw --force enable
+  # Layout used by scripts/droplet.mjs. Secrets: one file each, readable by uid 1000 only.
+  - install -d -o deploy -g deploy -m 0750 /opt/thunderstrux /opt/thunderstrux/releases
+  - install -d -o deploy -g deploy -m 0700 /etc/thunderstrux/secrets
+  - install -d -o root -g root -m 0700 /var/lib/thunderstrux/backups

@@ -459,7 +459,7 @@ export async function continueOrganisationStripeOnboarding(orgId: string) {
 // (balance, payouts, bank details), made when a staff member asks for it. The
 // platform's view of the account (dashboard.stripe.com/connect/accounts/...)
 // only opens for the platform owner, never for the society.
-export async function createOrganisationDashboardLink(orgId: string) {
+export async function createOrganisationDashboardLink(orgId: string, actorUserId: string) {
   const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true } });
   if (!organisation) throw new OrganisationStripeConnectNotFoundError();
   if (!organisation.stripeAccountId || !organisation.stripeDetailsSubmitted) {
@@ -468,6 +468,10 @@ export async function createOrganisationDashboardLink(orgId: string) {
     ]);
   }
   const link = await getStripe().accounts.createLoginLink(organisation.stripeAccountId);
+  // The Express Dashboard can change where payouts go, so History records who opened it.
+  await prisma.auditLog.create({
+    data: { organisationId: orgId, actorUserId, action: "stripe_connect.dashboard_opened", targetType: "Organisation", targetId: orgId, metadata: { stripeAccountId: organisation.stripeAccountId } }
+  });
   return link.url;
 }
 

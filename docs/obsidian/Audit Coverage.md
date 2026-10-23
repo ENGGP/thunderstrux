@@ -55,7 +55,7 @@ Which mutations write an `AuditLog` row, what each row holds, and how the societ
 | `POST /api/orgs/[orgSlug]/staff/handover` | `lib/staff/handover.ts` | `staff.ownership.handed_over` | — |
 | `POST …/staff/invites`, `resend`, `revoke`; `POST /api/staff/invites/accept` | `lib/staff/invites.ts` | `staff.invite.{created,resent,revoked,accepted}` | Role |
 | `POST /api/me/mfa/confirm`, `verify` | `lib/security/staff-mfa.ts` | `staff_mfa.{enabled,verified,recovery_used}` in each society the person staffs | — |
-| `POST /api/stripe/connect/onboard`, `disconnect` | `lib/stripe/connect.ts` | `stripe_connect.account_created`, `stripe_connect.disconnected` | — |
+| `POST /api/stripe/connect/onboard`, `disconnect`, `dashboard` | `lib/stripe/connect.ts` | `stripe_connect.account_created`, `stripe_connect.disconnected`, `stripe_connect.dashboard_opened` (who opened the society's Express Dashboard, where payout details can change) | — |
 | `POST /api/guest/orders/[orderId]/claim` | `lib/guest/guest-claim.ts` | `order.guest_claimed` | — |
 
 ## Not in society History, and why
@@ -66,7 +66,6 @@ Which mutations write an `AuditLog` row, what each row holds, and how the societ
 | `me/context` | A session preference with no business change. |
 | `orgs/[orgSlug]/join`, `leave` | A member's free join; the roster shows it and engagement counts it. |
 | `stripe/connect/continue` | Opens Stripe's hosted onboarding; nothing changes until Stripe reports back. |
-| `stripe/connect/dashboard` | Signs a society's payments staff in to its own Stripe Express Dashboard with a single-use link; nothing changes in Thunderstrux. |
 | `payments/checkout/*`, `merchandise/quote`, `guest/email/*`, `guest/recover`, `guest/session` | Buyer checkouts and guest access; orders hold their own lifecycle journals. |
 | `payments/webhook`, `stripe/connect/webhook` | Stripe's events change orders through the services above, which write their own rows; the webhook tables keep idempotency. |
 

@@ -143,7 +143,7 @@ try {
       if (mode === 'baseline') {
         await step('checks', 'sh', '-c', 'pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit');
       } else {
-        await step('mfa', 'pnpm', 'exec', 'playwright', 'test', 'mfa-enforced.spec.ts', '--project=desktop');
+        await step('mfa', 'pnpm', 'exec', 'playwright', 'test', 'mfa-enforced.spec.ts', 'permission-matrix.spec.ts', '--project=desktop');
         await compose('stop', 'app');
         const afterMfa = await readFile(runtimeFile, 'utf8');
         await writeFile(runtimeFile, afterMfa.replace('MFA_ENFORCEMENT_MODE=enforce\n', 'MFA_ENFORCEMENT_MODE=off\n'));

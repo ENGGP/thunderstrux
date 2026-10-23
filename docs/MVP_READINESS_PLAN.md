@@ -722,7 +722,19 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
       - **Earlier run** `browser-f1a9773d6ea4fe308d9d5d9a`: passed every existing check but failed both new journeys on test setup (no payment-ready society; the journeys ran in a step without a Stripe key). Both are fixed.
       - **Screenshots:** the refunded guest page at 390 and 1280px fits without sideways scroll. The first screenshots showed the stepper at Review and an account-claim offer on a refunded order; both are fixed.
       - Every run cleaned up after itself.
-  - [ ] **T44b (after T44a):** Add merchandise/collection, organisation/bootstrap/handover, calendar and permission-matrix journey coverage. Done when their section 7 scenarios pass with two tenants and enforced MFA.
+  - [x] **T44b (after T44a):** Add merchandise/collection, organisation/bootstrap/handover, calendar and permission-matrix journey coverage. Done when their section 7 scenarios pass with two tenants and enforced MFA.
+    - [x] **Implemented 2026-10-23** on `codex/t44b-operator-journeys`.
+      - **Traceability:** [[Journey Qualification]] maps the Guest merchandise, Society bootstrap, Committee handover, Event, Membership and Merchandise operator, and Calendar rows to the tests that prove them.
+      - **New matrix:** `tests/e2e/permission-matrix.spec.ts` runs in the enforced-MFA step. Owner, admin, event manager, finance manager and check-in staff each set up an authenticator, then open all 25 dashboard pages. Each page answers 200 exactly when `lib/permissions` grants the role its permission, and a concealed 404 otherwise.
+      - **Second society:** its MFA-verified owner gets 404 for every record page, is refused the context and the events API, and sees none of the first society's orders.
+      - **Result:** no defect found.
+
+      Validation:
+      - **Browser campaign** `browser-a1fa5aad83f499b9a99c17e6` passed 9 MFA-step checks (3 existing and the 6 matrix tests), 65 desktop/mobile and 10 webhook-step checks.
+      - **Earlier run** `browser-5d6a6efd346594cd7f6ffee5`: all five role tests passed, but the outsider test wrongly expected `/api/orders?orgId=<other society>` to be refused. That route always answers for the caller's own society. The test now checks that none of the other society's orders are listed.
+      - **Runner guards:** 39 tests (38 passed; the Linux-only schedule test skipped on Windows).
+      - **Not run:** a baseline campaign, because no application or integration code changed.
+      - Every run cleaned up after itself.
   - [ ] **T44c (after T44b):** Add finance/refund/recovery journeys (OpenClaw confirmation journeys are deferred with OpenClaw); provider outage/replay and restored-job fencing. Done when their section 7 scenarios pass without duplicate business or external effects.
   - [ ] **T44d (after T44c):** Run one complete combined local qualification and cleanup. Done when the retained evidence ties every required scenario to the exact image/schema pair and applicable local checks pass; repeat only for changed inputs, failures or documented reliability concerns.
 

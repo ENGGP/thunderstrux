@@ -60,6 +60,9 @@ This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into
 | `membership` | A paid membership: the commerce order is fulfilled and the grant is made. |
 | `merchandise` | Two lines paid together: stock for each option drops, then finance refunds the order through the app. |
 | `compensation` | The order expires locally while its Session stays open; paying it issues no tickets, and the compensation worker refunds it in full (`automatic_full`). |
+| `commerce-dispute` | PAY-003: a paid membership with Stripe's dispute card (4000 0000 0000 0259); the order records the open dispute, the run submits Stripe's losing evidence, and the lost dispute ends the membership. |
+| `commerce-outside-refund` | PAY-003: $15.00 of a merchandise order is refunded outside Thunderstrux; the order records it, staff mark it reviewed, and the app refunds only the remaining $40.00. |
+| `commerce-compensation` | PAY-003: a merchandise order expires locally, is paid anyway, fulfils nothing and changes no stock, and the refund worker returns it in full. |
 
 To repeat one, append exactly one `--scenario=<name>`. A passing focused run is not full acceptance on its own. Evidence from different runs can be combined only when the application and the assertions for those scenarios are unchanged between them.
 

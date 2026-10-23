@@ -43,6 +43,8 @@ The member page's Manage this membership card holds the two dialogs; Cancel free
 
 Refund membership on the member page (`orders:refund`; reason, the order's short reference typed back and the authenticator code) starts a whole-order Stripe refund through the shared refund path (see [[Payment Lifecycle]], Whole-Order Refunds). The membership stays active while Stripe processes it (the page shows Refund processing) and is revoked only when Stripe confirms; the member is emailed once. A failed or refused refund leaves it active. Tickets bought at a member price keep their price. Disputes and refunds made in Stripe's dashboard are not yet projected for commerce orders (PAY-003).
 
+**Disputes and refunds made in Stripe (PAY-003).** The member page and the merchandise order page show what Stripe reported that Thunderstrux didn't do, in the ticket order page's words. An open dispute pauses refunds (and hand-over: the order waits on the Pickups Review tab); a lost one ends the membership or leaves nothing to collect; a won one says the society kept the payment. A full refund made in the Stripe dashboard ends the membership or cancels the pickup; a partial one is flagged with Mark reviewed, and Refund then takes only the rest. Orders' Payment review filter includes disputed and unreviewed partly refunded orders. A paid order that couldn't be filled is refunded in full automatically, and the buyer is told so at once. See [[Payment Lifecycle]].
+
 ## Offers, buying and My memberships (T24a)
 
 `lib/memberships/offers.ts` decides what members see; checkout re-checks everything under locks.

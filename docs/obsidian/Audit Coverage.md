@@ -40,6 +40,7 @@ Which mutations write an `AuditLog` row, what each row holds, and how the societ
 | `POST /api/orders/[orderId]/refunds` | `lib/payments/order-refunds.ts` | `order.refund_requested`; webhook `order.refund_{succeeded,pending,failed,canceled}`, `order.refund_failed` | Amount, reason |
 | `PATCH /api/orders/[orderId]/refund-manual` | `lib/orders/order-detail.ts` | `order.manual_refund_marked` | — |
 | `POST /api/orders/[orderId]/review` | `lib/payments/purchase-disputes.ts` | `order.external_refund_reviewed`, `order.dispute_resolved`; webhook `order.external_refund_recorded`, `order.dispute_*` | Refunded amount, reason, tickets restored |
+| Commerce disputes, outside refunds and compensation (PAY-003) | `lib/commerce/payment-recovery.ts` | webhook `commerce_order.dispute_*`, `commerce_order.external_refund_recorded`, `commerce_order.compensation_refund_queued`; staff `commerce_order.external_refund_reviewed` | Amount, refunded amount; no actor for Stripe's or the system's entries |
 | `POST /api/orders/[orderId]/cancel` | `lib/payments/free-cancellation.ts` | `order.free_cancelled` | Reason, tickets voided |
 | `POST /api/orders/[orderId]/compensation-refund/confirm` | `lib/payments/compensation-refunds.ts` | `order.compensation_refund_confirmed`; automatic `order.compensation_refund_{queued,review_required,started}`, webhook `order.compensation_*` | Why it is in review |
 | `POST /api/orders/[orderId]/resend` | `lib/email/ticket-email-outbox.ts` | `order.ticket_email_queued` | — |

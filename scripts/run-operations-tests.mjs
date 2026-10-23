@@ -340,6 +340,9 @@ try {
   ], { capture: true, expectFailure: true });
   if (!corruptRestore.includes("quarantined")) throw new Error("Corrupt restore was not quarantined");
   await operation("restore", ["--archive", archive, "--target-database", `${project.replace(/-/g, "_")}_restore_test`]);
+  // T44c: the restored copy is fenced: every worker paused until providers are reconciled.
+  const fence = await compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "${project.replace(/-/g, "_")}_restore_test" -tAc 'SELECT "pauseReason" FROM "WorkerLease" WHERE "name" = $$all$$ AND "pausedAt" IS NOT NULL'`], { capture: true });
+  if (!fence.includes("reconcile Stripe")) throw new Error(`Restored copy is not fenced: ${fence.slice(-500)}`);
   await assetRehearsal("remove");
   await assetRehearsal("restore", ["-e", `DATABASE_URL=postgresql://ops:ops-disposable-only@db:5432/${project.replace(/-/g, "_")}_restore_test?schema=public`]);
 

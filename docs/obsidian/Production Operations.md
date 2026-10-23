@@ -45,7 +45,25 @@ Raise a budget only with a measured reason and an owner recorded here; don't del
 
 It refuses a pair over budget, the same image twice, or one without a revision or chain. `pnpm ops:deploy` builds the pair (`thunderstrux-app:<release>` and `thunderstrux-ops:<release>`) and checks the manifest before any writer stops. It runs the migration from the ops image and records the manifest (`pair`, `opsImageId`, `opsImageRef`) in `current-release.json`. Rollback restores the previous web image as before.
 
-**Still to do.** Registry digests, SBOM and provenance arrive with CI publication (T43c). Provider adapters wait on a hosting choice (T43b).
+**Publication (T43c).** `.github/workflows/release.yml` runs on every merge to `main`:
+1. Build the pair once.
+2. Check the budgets.
+3. Scan both images with Trivy. Fixable high or critical findings stop the run, as in the dependency workflow.
+4. Record SPDX SBOMs.
+5. Push the same images, never rebuilt, to `ghcr.io/enggp/thunderstrux` and `ghcr.io/enggp/thunderstrux-ops`, tagged `sha-<revision>`.
+6. Attach signed GitHub build-provenance and SBOM attestations to each digest.
+7. Upload `release-<revision>`: the release manifest, with registry digests (`release.json`), and the SBOMs, kept 90 days.
+
+A second job pulls both digests on a fresh runner and checks they match the manifest's image ids and revision. It verifies both attestations with `gh attestation verify` and smoke-tests the images. Pull requests that change the images run the build, budget, scan and SBOM steps without publishing.
+
+To deploy a release, download its manifest and run the T43b command:
+
+```bash
+gh run download --repo ENGGP/thunderstrux --name release-<revision>
+gh attestation verify oci://<web ref@sha256> --repo ENGGP/thunderstrux
+```
+
+Then deploy with `--manifest release.json` (Pilot host below). The registry's default package visibility applies. If the packages are private, the Droplet needs a read-only `read:packages` token for `docker login ghcr.io` (H01).
 
 ## Pilot host
 
@@ -126,7 +144,7 @@ It removes every container, volume, network, image and folder it made.
 6. **Secrets:** write each secret file in `/etc/thunderstrux/secrets`, then `chown 1000:1000` and `chmod 0400` them.
    - Back up `MFA_ENCRYPTION_KEY`, `NOTIFICATION_ENCRYPTION_KEY` and `AUTH_SECRET` separately; see the Recovery runbook.
    - The alert webhook goes to the chosen receiver (OPS-002).
-7. **Deploy:** publish the release pair (T43c), then run the first deploy with `--smoke-url`.
+7. **Deploy:** take `release.json` from the release workflow's artifact for the chosen `main` commit (T43c). If the GHCR packages are private, log the Droplet in to `ghcr.io` with a read-only `read:packages` token. Then run the first deploy with `--smoke-url`.
 8. **Stripe and Resend:** point the Stripe webhooks (including `refund.*` and `charge.dispute.*`) and the Resend domain at the new URL.
 
 **Rebuilding a lost Droplet.** No data lives on it, so:

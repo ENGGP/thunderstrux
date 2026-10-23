@@ -1,0 +1,191 @@
+name: Release Images
+
+# T43c: every merge to main builds the web and ops pair once, checks its size
+# budgets, scans it, records SPDX SBOMs, then publishes those exact images to
+# GitHub's container registry with signed build-provenance and SBOM
+# attestations. A second job pulls the pair back by digest and verifies it.
+# Pull requests that touch the images build, budget and scan without publishing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - docker/**
+      - package.json
+      - pnpm-lock.yaml
+      - next.config.ts
+      - scripts/release-pair.mjs
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  WEB_REPOSITORY: ghcr.io/enggp/thunderstrux
+  OPS_REPOSITORY: ghcr.io/enggp/thunderstrux-ops
+  TRIVY_IMAGE: aquasec/trivy:0.68.2@sha256:05d0126976bdedcd0782a0336f77832dbea1c81b9cc5e4b3a5ea5d2ec863aca7
+
+jobs:
+  release-pair:
+    name: release-pair
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      web-ref: ${{ steps.publish.outputs.web-ref }}
+      ops-ref: ${{ steps.publish.outputs.ops-ref }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.23.4'
+      - name: Build the pair once
+        run: |
+          for target in web ops; do
+            repository=$([ "$target" = web ] && echo "$WEB_REPOSITORY" || echo "$OPS_REPOSITORY")
+            docker build --target "$target" \
+              --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              --tag "${repository}:sha-${GITHUB_SHA}" --file docker/Dockerfile .
+          done
+      - name: Check size budgets
+        run: node scripts/release-pair.mjs --web "${WEB_REPOSITORY}:sha-${GITHUB_SHA}" --ops "${OPS_REPOSITORY}:sha-${GITHUB_SHA}"
+      - name: Scan fixable high and critical vulnerabilities, and record SBOMs
+        run: |
+          mkdir -p release
+          for name in web ops; do
+            repository=$([ "$name" = web ] && echo "$WEB_REPOSITORY" || echo "$OPS_REPOSITORY")
+            image="${repository}:sha-${GITHUB_SHA}"
+            if ! docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ -v "${RUNNER_TEMP}:/scan" "$TRIVY_IMAGE" \
+                image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL --scanners vuln \
+                --skip-version-check --quiet --format json --output "/scan/${name}-trivy.json" "$image"; then
+              jq -r '.Results[] | .Target as $target | (.Vulnerabilities // [])[] | [$target, .VulnerabilityID, .PkgName, .InstalledVersion, .FixedVersion, .Severity] | @tsv' "${RUNNER_TEMP}/${name}-trivy.json"
+              exit 1
+            fi
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ -v "${PWD}/release:/out" "$TRIVY_IMAGE" \
+              image --skip-version-check --quiet --format spdx-json --output "/out/${name}.spdx.json" "$image"
+          done
+      # Publishes the scanned images themselves: no rebuild between scan and push.
+      - name: Publish by digest
+        id: publish
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push --quiet "${WEB_REPOSITORY}:sha-${GITHUB_SHA}"
+          docker push --quiet "${OPS_REPOSITORY}:sha-${GITHUB_SHA}"
+          web_ref=$(docker image inspect --format '{{index .RepoDigests 0}}' "${WEB_REPOSITORY}:sha-${GITHUB_SHA}")
+          ops_ref=$(docker image inspect --format '{{index .RepoDigests 0}}' "${OPS_REPOSITORY}:sha-${GITHUB_SHA}")
+          node scripts/release-pair.mjs --web "${WEB_REPOSITORY}:sha-${GITHUB_SHA}" --ops "${OPS_REPOSITORY}:sha-${GITHUB_SHA}" \
+            --web-ref "$web_ref" --ops-ref "$ops_ref" --out release/release.json
+          {
+            echo "web-ref=$web_ref"
+            echo "ops-ref=$ops_ref"
+            echo "web-digest=${web_ref#*@}"
+            echo "ops-digest=${ops_ref#*@}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Attest web build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.WEB_REPOSITORY }}
+          subject-digest: ${{ steps.publish.outputs.web-digest }}
+          push-to-registry: true
+      - name: Attest ops build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.OPS_REPOSITORY }}
+          subject-digest: ${{ steps.publish.outputs.ops-digest }}
+          push-to-registry: true
+      - name: Attest web SBOM
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.WEB_REPOSITORY }}
+          subject-digest: ${{ steps.publish.outputs.web-digest }}
+          sbom-path: release/web.spdx.json
+          push-to-registry: true
+      - name: Attest ops SBOM
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.OPS_REPOSITORY }}
+          subject-digest: ${{ steps.publish.outputs.ops-digest }}
+          sbom-path: release/ops.spdx.json
+          push-to-registry: true
+      # The manifest a deploy consumes (scripts/droplet.mjs --manifest), with the SBOMs.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ github.sha }}
+          path: release/
+          retention-days: 90
+          if-no-files-found: error
+
+  verify-published:
+    name: verify-published
+    needs: release-pair
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-${{ github.sha }}
+          path: release
+      # A fresh runner pulls the published digests: the same images CI built and scanned.
+      - name: Pull the pair by digest and match the manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WEB_REF: ${{ needs.release-pair.outputs.web-ref }}
+          OPS_REF: ${{ needs.release-pair.outputs.ops-ref }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker pull --quiet "$WEB_REF"
+          docker pull --quiet "$OPS_REF"
+          test "$(jq -r .web.ref release/release.json)" = "$WEB_REF"
+          test "$(jq -r .ops.ref release/release.json)" = "$OPS_REF"
+          test "$(docker image inspect --format '{{.Id}}' "$WEB_REF")" = "$(jq -r .web.id release/release.json)"
+          test "$(docker image inspect --format '{{.Id}}' "$OPS_REF")" = "$(jq -r .ops.id release/release.json)"
+          test "$(jq -r .revision release/release.json)" = "$GITHUB_SHA"
+      - name: Verify provenance and SBOM attestations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WEB_REF: ${{ needs.release-pair.outputs.web-ref }}
+          OPS_REF: ${{ needs.release-pair.outputs.ops-ref }}
+        run: |
+          for ref in "$WEB_REF" "$OPS_REF"; do
+            gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY"
+            gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" --predicate-type https://spdx.dev/Document/v2.3
+          done
+      - name: Smoke the published images
+        env:
+          WEB_REF: ${{ needs.release-pair.outputs.web-ref }}
+          OPS_REF: ${{ needs.release-pair.outputs.ops-ref }}
+        run: |
+          docker run -d --name web-smoke -p 127.0.0.1:3000:3000 \
+            -e AUTH_SECRET=release-smoke-only-0123456789abcdef \
+            -e DATABASE_URL=postgresql://smoke:smoke@127.0.0.1:1/smoke_test "$WEB_REF"
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3000/api/health && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/api/health | grep -q '"status":"ok"'
+          docker rm -f web-smoke
+          docker run --rm --entrypoint node "$OPS_REF" -e "require('@prisma/client'); require('jiti'); console.log('ops image loads its runtime')"

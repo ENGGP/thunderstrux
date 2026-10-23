@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { imageBudgets, validateReleaseManifest } from "../../scripts/release-pair.mjs";
+import { imageBudgets, validateReleaseManifest, withPublishedRefs } from "../../scripts/release-pair.mjs";
 
 // T43: a release manifest ties one revision to a web and an ops image within
 // their size budgets and to the migration chain they were built with.
@@ -36,4 +36,15 @@ test("a pair over budget, sharing one image, or missing its revision or migratio
     change(candidate);
     assert.throws(() => validateReleaseManifest(candidate), error);
   }
+});
+
+test("published refs must be registry digests in two repositories", () => {
+  const webRef = `ghcr.io/enggp/thunderstrux@sha256:${"a".repeat(64)}`;
+  const opsRef = `ghcr.io/enggp/thunderstrux-ops@sha256:${"b".repeat(64)}`;
+  const published = withPublishedRefs(manifest(), { webRef, opsRef });
+  assert.equal(published.web.ref, webRef);
+  assert.equal(published.ops.ref, opsRef);
+  assert.equal(published.web.id, manifest().web.id);
+  assert.throws(() => withPublishedRefs(manifest(), { webRef: "ghcr.io/enggp/thunderstrux:latest", opsRef }), /@sha256/);
+  assert.throws(() => withPublishedRefs(manifest(), { webRef, opsRef: `ghcr.io/enggp/thunderstrux@sha256:${"b".repeat(64)}` }), /different repositories/);
 });

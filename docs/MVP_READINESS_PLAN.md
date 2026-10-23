@@ -684,7 +684,14 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
         - **Runner guards:** 38 tests (37 passed; the Linux-only schedule test skipped on Windows), including the new `droplet.test.mjs`: step order, digest-only real deploys, quoting, the edge header and a file for every hosted secret.
         - **Configs:** the Droplet Compose stack and the hosted contract validate.
         - **Not run:** baseline and browser campaigns, because no application or runtime code changed.
-  - [ ] **T43c (after T43a):** CI artifact build-once, scan, SBOM/provenance and immutable publication. Done when a supplied registry accepts the manifest-linked image pair and CI consumes the same digests; absent registry credentials block publication evidence only.
+  - [x] **T43c (after T43a):** CI artifact build-once, scan, SBOM/provenance and immutable publication. Done when a supplied registry accepts the manifest-linked image pair and CI consumes the same digests; absent registry credentials block publication evidence only.
+    - [x] **Implemented 2026-10-23** on `codex/t43c-release-publication`. `.github/workflows/release.yml` runs on each merge to `main`:
+      - it builds the pair once, checks the budgets, scans with Trivy and records SPDX SBOMs;
+      - it pushes the scanned images to `ghcr.io/enggp/thunderstrux` and `thunderstrux-ops` with the Actions token;
+      - it attaches signed build-provenance and SBOM attestations to each digest and uploads the release manifest with its registry digests (`scripts/release-pair.mjs --web-ref/--ops-ref`).
+
+      A second job pulls the digests on a fresh runner, matches them to the manifest, verifies both attestations and smoke-tests the images. The T43b deploy consumes that manifest.
+    - **Validation:** actionlint is clean on every workflow, and `release-pair.test.mjs` covers published refs. The pinned Trivy produced an SPDX 2.3 SBOM locally. This PR's run of the workflow builds, budgets, scans and records SBOMs. Publication evidence is the first run on `main` after merge, recorded in the handover.
 
 #### T44 — Complete production-mode journey qualification
 - [ ] Complete. **Dependencies:** T40, T41, T42, T43 (T37 dropped: OpenClaw deferred).

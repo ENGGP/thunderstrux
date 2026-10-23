@@ -63,7 +63,7 @@ gh run download --repo ENGGP/thunderstrux --name release-<revision>
 gh attestation verify oci://<web ref@sha256> --repo ENGGP/thunderstrux
 ```
 
-Then deploy with `--manifest release.json` (Pilot host below). The registry's default package visibility applies. If the packages are private, the Droplet needs a read-only `read:packages` token for `docker login ghcr.io` (H01).
+Then deploy with `--manifest release.json` (Pilot host below). Both packages are public, like the repository: a host pulls them by digest with no registry login. The images hold no secrets. The first publication was run 39887918318 on `9788d6d`, 23 Oct 2026.
 
 ## Pilot host
 
@@ -144,7 +144,7 @@ It removes every container, volume, network, image and folder it made.
 6. **Secrets:** write each secret file in `/etc/thunderstrux/secrets`, then `chown 1000:1000` and `chmod 0400` them.
    - Back up `MFA_ENCRYPTION_KEY`, `NOTIFICATION_ENCRYPTION_KEY` and `AUTH_SECRET` separately; see the Recovery runbook.
    - The alert webhook goes to the chosen receiver (OPS-002).
-7. **Deploy:** take `release.json` from the release workflow's artifact for the chosen `main` commit (T43c). If the GHCR packages are private, log the Droplet in to `ghcr.io` with a read-only `read:packages` token. Then run the first deploy with `--smoke-url`.
+7. **Deploy:** take `release.json` from the release workflow's artifact for the chosen `main` commit (T43c), check it with `gh attestation verify`, then run the first deploy with `--smoke-url`. The packages are public, so the Droplet needs no registry login.
 8. **Stripe and Resend:** point the Stripe webhooks (including `refund.*` and `charge.dispute.*`) and the Resend domain at the new URL.
 
 **Rebuilding a lost Droplet.** No data lives on it, so:

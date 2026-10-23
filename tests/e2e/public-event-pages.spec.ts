@@ -56,7 +56,7 @@ test("a visitor finds Fees, Help and Privacy in the footer, with the fee worked 
   await expect(page.getByText("3.75% plus $0.89 for each ticket, membership or merchandise order", { exact: false })).toBeVisible();
   const examples = page.getByRole("table");
   for (const [order, receives] of [["One $5.00 ticket", "$3.92"], ["Two $12.00 tickets", "$21.32"], ["A $25.00 membership", "$23.17"], ["Merchandise order of $55.00", "$52.05"]]) {
-    await expect(examples.getByRole("row", { name: new RegExp(order.replaceAll("$", "\$")) })).toContainText(receives);
+    await expect(examples.getByRole("row", { name: order })).toContainText(receives);
   }
   for (const [name, heading] of [["Fees", "What buyers pay"], ["Help", "Refunds"], ["Privacy", "Who can see it"]]) {
     await page.goto("/societies");

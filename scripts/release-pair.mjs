@@ -4,10 +4,13 @@
 // both images from growing unnoticed.
 //
 //   node scripts/release-pair.mjs --web <image> --ops <image> [--out manifest.json]
+//     [--web-ref <registry>@sha256:<digest> --ops-ref <registry>@sha256:<digest>]
+// The refs (T43c) are where CI published the same images; deploys pull by them.
 import { spawnSync } from "node:child_process";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertImmutableImageRef } from "./container-config.mjs";
 import { migrationDigest } from "./operations-guards.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -73,12 +76,20 @@ export async function describeReleasePair({ web, ops, revision }) {
   return validateReleaseManifest(manifest);
 }
 
+// Records the registry digests the pair was published under (T43c).
+export function withPublishedRefs(manifest, { webRef, opsRef }) {
+  const published = { ...manifest, web: { ...manifest.web, ref: assertImmutableImageRef(webRef) }, ops: { ...manifest.ops, ref: assertImmutableImageRef(opsRef) } };
+  if (webRef.split("@")[0] === opsRef.split("@")[0]) throw new Error("web and ops must be published to different repositories");
+  return validateReleaseManifest(published);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const option = (name) => { const index = process.argv.indexOf(name); return index === -1 ? undefined : process.argv[index + 1]; };
   const web = option("--web");
   const ops = option("--ops");
   if (!web || !ops) throw new Error("Usage: release-pair.mjs --web <image> --ops <image> [--out manifest.json]");
-  const manifest = await describeReleasePair({ web, ops, revision: gitRevision() });
+  let manifest = await describeReleasePair({ web, ops, revision: gitRevision() });
+  if (option("--web-ref") || option("--ops-ref")) manifest = withPublishedRefs(manifest, { webRef: option("--web-ref"), opsRef: option("--ops-ref") });
   const out = option("--out");
   if (out) await writeFile(out, JSON.stringify(manifest, null, 2) + "\n", { mode: 0o600 });
   console.log(JSON.stringify(manifest, null, 2));

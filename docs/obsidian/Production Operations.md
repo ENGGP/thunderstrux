@@ -193,7 +193,7 @@ every minute: node scripts/process-operations-monitor.mjs   # queue backlog, old
 Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
 
 - **One run at a time.** Each job has a row in `WorkerLease`: email-outbox, notifications, stale-orders, refunds, checkout-recovery and monitor. A run takes that row's lease. A second run while the lease is held exits at once (`worker.skipped_running`), on any host. The lease lasts the timeout plus 30 seconds, so the next run reclaims a crashed run's lease (`worker.lease_reclaimed`). Item-level leases inside each queue still requeue the items a lost run had claimed.
-- **Pause.** Use `pnpm ops:workers -- pause <job|all> --reason="..."` and `resume <job|all>`. A paused job's runs exit without doing work (`worker.paused`). Pausing doesn't stop a run in progress: before a restore, check that `pnpm ops:workers -- status` shows nothing `running`. The pause lives in the database, so a restored copy stays paused until someone resumes it.
+- **Pause.** Use `pnpm ops:workers -- pause <job|all> --reason="..."` and `resume <job|all>`. A paused job's runs exit without doing work (`worker.paused`). Pausing doesn't stop a run in progress: before a restore, check that `pnpm ops:workers -- status` shows nothing `running`. The pause lives in the database. A backup taken before the pause doesn't carry it, so `pnpm ops:restore` pauses every worker in each restored copy itself (T44c).
 - **Timeout.** `WORKER_TIMEOUT_SECONDS`, default 300. A run past it is stopped and alerted (`worker_timed_out`), and its process exits.
 - **Outcome.** Every run logs `worker.succeeded` or `worker.failed` with its duration and emits the `worker.run` and `worker.duration_ms` metrics. A failure alerts `worker_failed`.
 - **Schedule.** `docker compose -f docker-compose.hosted.yml -f docker-compose.schedules.yml --profile workers up -d` runs each worker service in a loop (`scripts/every-minute.mjs`).
@@ -224,8 +224,8 @@ Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
 
 ## Recovery runbook
 
-1. **Stop writes.** Stop the app (or put the platform into maintenance) and run `pnpm ops:workers -- pause all --reason="Recovery <date>"`. Wait until `status` shows no job running. Stopping the scheduled services also stops them, but only the database pause carries over to a restored copy.
-2. **Restore separately.** Restore into a new `_restore_test` database (see Backup And Restore below) with no Stripe or Resend credentials, so nothing restored can charge, refund or email. Restore verification runs the integrity audit (T41).
+1. **Stop writes.** Stop the app (or put the platform into maintenance) and run `pnpm ops:workers -- pause all --reason="Recovery <date>"`. Wait until `status` shows no job running. Stopping the scheduled services also stops them.
+2. **Restore separately.** Restore into a new `_restore_test` database (see Backup And Restore below) with no Stripe or Resend credentials, so nothing restored can charge, refund or email. Restore verification runs the integrity audit (T41), then the restore pauses every worker in the copy (T44c).
 3. **Reconcile before resuming.** Point the restored database at the real credentials, keep the workers paused, and compare it with Stripe:
    - **Paid Sessions after the backup that the database lacks:** replay their webhooks from the Stripe dashboard (fulfilment is idempotent), or let the stale-orders job reconcile the pending orders.
    - **Refunds and disputes after the backup:** replay the `refund.*` and `charge.dispute.*` events.
@@ -264,7 +264,16 @@ Restore only into a new database ending in `_restore_test`:
 pnpm ops:restore -- --project ops-thunderstrux --env-file .env.production --archive <archive.dump> --target-database recovery_restore_test
 ```
 
-Restore verifies metadata ownership, checksum, archive completion, grants through application credentials, migration history, representative domain reads and, since T41, the integrity audit with no unexplained violations. Failed targets remain quarantined and are never promoted.
+Restore verifies metadata ownership, checksum, archive completion, grants through application credentials, migration history, representative domain reads and, since T41, the integrity audit with no unexplained violations.
+
+**Fencing (T44c).** A verified copy then has every worker paused in it, with a reason naming the archive. The copy can hold refunds, emails or checkouts the old database already sent to a provider without hearing back. Nothing runs until someone reconciles the providers and runs `pnpm ops:workers -- resume all` against it.
+
+On resume, each job checks the provider before acting:
+- the refund worker looks for its own refund at Stripe first, and otherwise creates one under the request's fixed idempotency key;
+- checkout recovery replays the same Stripe key;
+- outbox jobs send with their own provider keys.
+
+`recovery-fencing.test.ts` proves no second refund results. A copy that can't be fenced (for example, one restored from a schema older than worker leases) is quarantined like a failed one. Failed targets remain quarantined and are never promoted.
 
 Before a release with migrations, rehearse the upgrade on a copy of the data: `node scripts/rehearse-upgrade.mjs <archive.dump>` restores each archive into a throwaway `_test` database, applies the release's migrations, runs the integrity audit and checks no rows were lost, then removes the container. It needs the e2e test image (`thunderstrux-e2e-tests:local`). Investigate any unexplained violation before the migration job runs; a new constraint stops the migration on legacy rows that break it ([[Database and Multi Tenancy]]).
 

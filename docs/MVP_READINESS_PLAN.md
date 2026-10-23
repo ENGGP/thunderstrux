@@ -735,7 +735,16 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
       - **Runner guards:** 39 tests (38 passed; the Linux-only schedule test skipped on Windows).
       - **Not run:** a baseline campaign, because no application or integration code changed.
       - Every run cleaned up after itself.
-  - [ ] **T44c (after T44b):** Add finance/refund/recovery journeys (OpenClaw confirmation journeys are deferred with OpenClaw); provider outage/replay and restored-job fencing. Done when their section 7 scenarios pass without duplicate business or external effects.
+  - [x] **T44c (after T44b):** Add finance/refund/recovery journeys (OpenClaw confirmation journeys are deferred with OpenClaw); provider outage/replay and restored-job fencing. Done when their section 7 scenarios pass without duplicate business or external effects.
+    - [x] **Implemented 2026-10-23** on `codex/t44c-finance-recovery`.
+      - **Traceability:** [[Journey Qualification]] maps the Finance operator and Operations recovery rows to the tests that prove them.
+      - **Defect found and fixed:** the recovery runbook relied on a restored copy inheriting a worker pause, which a backup taken before the pause doesn't carry. A restored copy could restart its workers and act again on refunds or emails the old database had already sent. `pnpm ops:restore` now pauses every worker in each verified copy (quarantining a copy it can't fence), and the runbook is corrected.
+
+      Validation:
+      - **Baseline** `baseline-9a17bc7d9655679c072fb5b6` on `a412293`: the production build, 39/39 runner guard tests, typecheck and all 634 integration tests in 95 files passed, and the dependency audit found no known vulnerabilities. New `recovery-fencing.test.ts`: a fenced restored refund stays still, then settles from Stripe's own refund with no second refund, one notice and one history entry; a refund Stripe never received is sent once under its fixed key.
+      - **Operations tests** `ops-76db262d33`: passed. The restore reported `workersPaused: true`, and the rehearsal confirmed the pause in the restored database.
+      - **Not run:** the browser campaign, because no application or UI code changed.
+      - Every run cleaned up after itself.
   - [ ] **T44d (after T44c):** Run one complete combined local qualification and cleanup. Done when the retained evidence ties every required scenario to the exact image/schema pair and applicable local checks pass; repeat only for changed inputs, failures or documented reliability concerns.
 
 #### T45 — Observed provider acceptance before hosting

@@ -94,6 +94,25 @@ This note maps each requirement to the test that proves it. A requirement is onl
 | Calendar | Owner reads by month, week, agenda | e2e `calendar`; integration `calendar` (never another society's) |
 | Permission matrix | Every staff role against every dashboard page, two societies, enforced MFA | **e2e `permission-matrix`**: owner, admin, event manager, finance manager and check-in staff each set up MFA. Each then opens all 25 dashboard pages: 200 exactly when the role holds the page's permission, a concealed 404 otherwise. Another society's owner gets 404 for every record page and is refused the context and its API reads. The role map is `lib/permissions`. |
 
-## Later rows
+## T44c rows
 
-T44c covers finance, refunds and operations recovery. OpenClaw is deferred and isn't qualified. T44d runs one combined qualification and ties every row to the exact image and schema pair.
+| Journey | Requirement | Covered by |
+| --- | --- | --- |
+| Finance operator | Connect | e2e `payments-page` (connecting, fees, what free tickets need); integration `stripe-connect-service` (readiness without Stripe I/O; account creation audited), `connect-safety` |
+| | Charge and payout distinction, fees, net | e2e `payments-page`, `analytics` (sales on Analytics); integration `analytics-metrics` (money left out without finance access), `purchase-snapshots` (fee recorded at purchase) |
+| | Refunds | e2e `order-refunds` (confirmation, wrong reference refunds nothing, refunded order says so), `journeys` (signed refund voids once); integration `order-refunds`, `purchase-disputes` (partial refunds flagged; disputes pause refunds) |
+| | Compensation | integration `compensation-refunds` (one automatic refund per fenced job; polls a pending one after a missed webhook without creating another) |
+| | Email requeue | integration `email-outbox`, `notification-outbox` (bounded, fenced requeue), `organiser-orders` (failed-notifications list) |
+| | Reconcile | integration `webhook-reconciliation` (idempotent fulfilment; mismatches go to compensation), `checkout-attempt-recovery` (the same Stripe key replayed), `purchase-disputes` |
+| | Non-finance staff see no money | **e2e `permission-matrix`** (orders, notifications and member records 404 for event managers and check-in staff); integration `analytics-metrics`, `orders-api` (member denial; another society's order 404), `organiser-orders` (a finance manager opens a merchandise order but can't hand it over) |
+| Operations recovery | Stop jobs and writers | integration `worker-contract` (pause all or one); operations rehearsal (pause, overlap, reclaimed lease) |
+| | Separate restore | operations rehearsal (backup, a corrupt archive quarantined, restore into a new `_restore_test` database) |
+| | Schema, inventory, grants and history audit | operations rehearsal (`verify-restored-database`: migration history, domain records, invitation decryption, ownership continuity and the integrity audit with no unexplained violations) |
+| | Provider reconciliation, then a fenced restart | **`ops:restore` pauses every worker in the restored copy**, and the operations rehearsal checks it. **Integration `recovery-fencing`**: a restored refund stays still while fenced; after resuming it settles from Stripe's own refund, with no second refund, one buyer notice and one history entry. A refund Stripe never received is sent once under its fixed idempotency key |
+| | No duplicate external effects | integration `recovery-fencing`, `compensation-refunds` (polls after a missed webhook without another refund), `checkout-attempt-recovery` (same key, never a second Session), `email-outbox` and `notification-outbox` (provider keys); e2e `webhooks` (concurrent replay fulfils once), `journeys` (a refund event sent twice voids once) |
+
+**Found and fixed by T44c.** The recovery runbook relied on a restored copy inheriting a pause from the database it replaced. That only works if the backup was taken while workers were paused, and a disaster backup usually wasn't. So a restored copy could start its workers and act again on refunds or emails the old database had already sent. `pnpm ops:restore` now pauses every worker in each verified copy itself, and a copy that can't be fenced is quarantined.
+
+## Still to come
+
+T44d runs one combined qualification and ties every row to the exact image and schema pair. OpenClaw is deferred and isn't qualified.

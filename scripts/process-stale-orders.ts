@@ -1,5 +1,4 @@
-import { prisma } from "@/lib/db";
-import { logError, logInfo } from "@/lib/ops/logger";
+import { runWorker } from "@/lib/ops/worker";
 import { deleteExpiredMfaGrants } from "@/lib/security/staff-mfa";
 import { expireStaleCommerceOrders } from "@/lib/commerce/reconciliation";
 import {
@@ -14,14 +13,8 @@ async function main() {
   // Membership and merchandise orders whose Stripe Session has expired (T21).
   const commerce = options.dryRun ? { expired: 0, considered: 0 } : await expireStaleCommerceOrders();
 
-  logInfo("stale_orders.worker.completed", { ...result, expiredMfaGrantsDeleted, commerceOrdersExpired: commerce.expired });
+  return { ...result, expiredMfaGrantsDeleted, commerceOrdersExpired: commerce.expired };
 }
 
-main()
-  .catch((error) => {
-    logError("stale_orders.worker.failed", { error });
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// T42: one run at a time, pausable, with a timeout and an alert on failure.
+void runWorker("stale-orders", main);

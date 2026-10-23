@@ -14,7 +14,7 @@ Repository-side operations (originally task P2.17) are implemented and locally r
 
 The hardened repository contract is `docker-compose.hosted.yml`. It consumes a prebuilt immutable `APP_IMAGE`, external PostgreSQL and Redis URLs, and file-backed secrets; it contains no database, Redis, source bind mount, or image build. The application, migration, and workers run non-root with a read-only root filesystem, dropped capabilities, no-new-privileges, bounded PIDs, explicit CPU/memory limits, and reviewed writable `tmpfs` paths. Validate a deployment environment with `pnpm docker:hosted:check -- --env-file <path>` before rollout.
 
-This is not evidence of a live production deployment. Hosting, external health monitoring and alert delivery, off-machine encrypted backups, recovery objectives, and the platform scheduler remain deployment-time work.
+This is not evidence of a live production deployment. Since T42 the repository provides the per-minute worker schedule, overlap prevention, pause, timeouts, backlog monitoring and an alert webhook (see Workers, schedules and alerts). Hosting, choosing the alert receiver, external uptime monitoring, off-machine encrypted backups and recovery objectives remain deployment-time work.
 
 Packages 1–3 are locally qualified and Package 4 is in progress; local development carries every migration, each applied after a verified dump. [[Project Handover]] owns the dated activations. Hosted activation still requires independent security/migration review and provider acceptance. T07/T08 add asset metadata and profile references: apply the full 34-migration chain, retain the additive fields on code rollback and preserve image bytes.
 
@@ -38,7 +38,7 @@ pnpm ops:deploy -- --project ops-thunderstrux --env-file .env.production --url h
 
 The runner acquires a target lock, builds one image, identifies any current app, stops writers, creates a pre-migration backup, runs `prisma migrate deploy` once, starts the candidate, and performs read-only smoke checks. It records image IDs and migration checksums under ignored, access-restricted `tmp/operations/<project>/` state. Ordinary app restarts never run migrations.
 
-Pause the platform schedules before deployment. Resume them only after readiness succeeds. Compose exposes the same bounded jobs through the `workers` profile, while a hosted scheduler should invoke the corresponding service every minute with overlap prevention, timeout, alerts, and backlog monitoring:
+Pause the workers before deployment (`pnpm ops:workers -- pause all --reason=...`) and resume them only after readiness succeeds. Compose exposes the bounded jobs through the `workers` profile; run them every minute with `docker-compose.schedules.yml` or a platform scheduler. Each command enforces its own lease, pause and timeout (see Workers, schedules and alerts):
 
 ```text
 every minute: node scripts/process-email-outbox.mjs
@@ -46,7 +46,60 @@ every minute: node scripts/process-stale-orders.mjs   # also expires stale comme
 every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a)
 every minute: node scripts/process-checkout-attempts.mjs   # ticket and commerce attempts (T21)
 every minute: node scripts/process-notifications.mjs   # also fans out event changes and queues membership reminders (T30), and deletes tokens 30 days past expiry, 500 a run (T39)
+every minute: node scripts/process-operations-monitor.mjs   # queue backlog, oldest age, stuck items and stale jobs (T42)
 ```
+
+## Workers, schedules and alerts
+
+Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
+
+- **One run at a time.** Each job has a row in `WorkerLease`: email-outbox, notifications, stale-orders, refunds, checkout-recovery and monitor. A run takes that row's lease. A second run while the lease is held exits at once (`worker.skipped_running`), on any host. The lease lasts the timeout plus 30 seconds, so the next run reclaims a crashed run's lease (`worker.lease_reclaimed`). Item-level leases inside each queue still requeue the items a lost run had claimed.
+- **Pause.** Use `pnpm ops:workers -- pause <job|all> --reason="..."` and `resume <job|all>`. A paused job's runs exit without doing work (`worker.paused`). Pausing doesn't stop a run in progress: before a restore, check that `pnpm ops:workers -- status` shows nothing `running`. The pause lives in the database, so a restored copy stays paused until someone resumes it.
+- **Timeout.** `WORKER_TIMEOUT_SECONDS`, default 300. A run past it is stopped and alerted (`worker_timed_out`), and its process exits.
+- **Outcome.** Every run logs `worker.succeeded` or `worker.failed` with its duration and emits the `worker.run` and `worker.duration_ms` metrics. A failure alerts `worker_failed`.
+- **Schedule.** `docker compose -f docker-compose.hosted.yml -f docker-compose.schedules.yml --profile workers up -d` runs each worker service in a loop (`scripts/every-minute.mjs`).
+  - A run starts a minute after the previous one started, or as soon as it ends if it took longer. It never overlaps itself.
+  - Stopping a service lets the current run finish within the 30-second stop grace.
+  - Each service keeps only its own secrets.
+  - A host with cron or a platform scheduler can run the one-shot services instead; the lease still prevents overlap.
+- **Monitor.** `process-operations-monitor.mjs` emits `queue.backlog`, `queue.oldest_age_seconds` and `queue.stuck` for each queue, and `worker.seconds_since_success` for each job. It alerts when a threshold below is crossed. A firing alert repeats every 30 minutes; a cleared one alerts again at once if it comes back.
+- **Alert transport.** With `ALERT_WEBHOOK_URL` set, each operational alert is also POSTed as JSON `{event, environment, timestamp, dedupeKey, details}`, redacted like the logs, with a 3-second timeout.
+  - Hosted, it comes from `ALERT_WEBHOOK_URL_FILE`, a required secret for the app and every worker.
+  - A failing receiver is logged (`ops.alert.delivery_failed`) and never fails the caller.
+  - Point it at a receiver that groups alerts by `dedupeKey`.
+  - Locally, `scripts/mail-capture.mjs` also receives alerts (`POST /alerts`, `GET /alerts`), and the operations rehearsal checks that they arrive.
+- **What the monitor can't see.** If the monitor itself stops, nothing alerts. The hosted uptime check must also watch for missing `worker.seconds_since_success` metrics, or for a missed heartbeat ping (H-series).
+
+**Thresholds and response.** The engineering on-call for the deployment owns the response to every alert. Refund and dispute alerts also go to whoever handles society support.
+
+| Alert | Fires when | First response |
+| --- | --- | --- |
+| `worker_failed`, `worker_timed_out` | a run fails or runs past `WORKER_TIMEOUT_SECONDS` | Read the run's logs; a provider outage clears on a later run. If it keeps failing: pause the job, fix it, resume. |
+| `worker_stale` | a job hasn't succeeded for 10 minutes and isn't paused | Check that its schedule is running (`status`, service logs). |
+| `queue_backlog_high` email or notifications | the oldest pending message is over 15 minutes old | Check Resend acceptance and the `email_outbox_retry_exhausted` and `notification_outbox_retry_exhausted` alerts. |
+| `queue_backlog_high` checkout attempts | an uncertain Stripe Session is over 30 minutes old | Check the checkout-recovery job and compare with the Stripe dashboard. |
+| `queue_backlog_high` compensation or order refunds | a queued or uncertain refund is over an hour old | Check the refunds job and Stripe. Never refund by hand while a refund is uncertain: it may go through twice. |
+| `queue_backlog_high` ticket holds | an expired hold is still active 10 minutes later | Check the stale-orders job; the held stock stays unavailable until it runs. |
+| `queue_backlog_high` commerce checkouts | a pending commerce checkout is 30 minutes past its expiry | Check the stale-orders job. |
+| `queue_processing_stuck` | an item has been processing for over 15 minutes | Lease recovery should requeue it; if it doesn't, inspect the item before requeueing. |
+
+## Recovery runbook
+
+1. **Stop writes.** Stop the app (or put the platform into maintenance) and run `pnpm ops:workers -- pause all --reason="Recovery <date>"`. Wait until `status` shows no job running. Stopping the scheduled services also stops them, but only the database pause carries over to a restored copy.
+2. **Restore separately.** Restore into a new `_restore_test` database (see Backup And Restore below) with no Stripe or Resend credentials, so nothing restored can charge, refund or email. Restore verification runs the integrity audit (T41).
+3. **Reconcile before resuming.** Point the restored database at the real credentials, keep the workers paused, and compare it with Stripe:
+   - **Paid Sessions after the backup that the database lacks:** replay their webhooks from the Stripe dashboard (fulfilment is idempotent), or let the stale-orders job reconcile the pending orders.
+   - **Refunds and disputes after the backup:** replay the `refund.*` and `charge.dispute.*` events.
+   - **The outbox:** messages still marked pending may have been sent before the failure. Accept a possible duplicate, or cancel the ones the provider's log shows were delivered.
+4. **Resume.** Switch the app to the recovered database, check readiness, then run `pnpm ops:workers -- resume all`. Watch for backlog and stale-job alerts for the next 15 minutes.
+5. **Back up these secrets with the database:**
+   - `MFA_ENCRYPTION_KEY`, which encrypts staff MFA secrets;
+   - `NOTIFICATION_ENCRYPTION_KEY`, which encrypts queued notices;
+   - the asset storage keys and bucket;
+   - the Stripe account and webhook signing secrets, the provider identity the orders refer to;
+   - `AUTH_SECRET` and `ALERT_WEBHOOK_URL`.
+
+   Without its encryption keys, a restored database can't decrypt MFA secrets or pending notices.
 
 A backup failure occurs before migrations and allows the unchanged release to restart. Once migration begins, a failure leaves writers stopped for inspection. Never use `prisma migrate reset` or automatically mark a failed migration resolved.
 
@@ -76,11 +129,11 @@ Restore verifies metadata ownership, checksum, archive completion, grants throug
 
 Before a release with migrations, rehearse the upgrade on a copy of the data: `node scripts/rehearse-upgrade.mjs <archive.dump>` restores each archive into a throwaway `_test` database, applies the release's migrations, runs the integrity audit and checks no rows were lost, then removes the container. It needs the e2e test image (`thunderstrux-e2e-tests:local`). Investigate any unexplained violation before the migration job runs; a new constraint stops the migration on legacy rows that break it ([[Database and Multi Tenancy]]).
 
-For disaster recovery, stop app writers and workers, restore into a new database, verify without Stripe/Resend credentials, reconcile Stripe payments, refunds and webhook delivery, inspect email-outbox and compensation-refund jobs, switch the application deliberately, and then resume workers. A database restore cannot reverse external charges, refunds, transfers, or email sends.
+For disaster recovery, follow the Recovery runbook above. A database restore cannot reverse external charges, refunds, transfers, or email sends.
 
 ## Validation
 
-`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all four bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. Each rehearsal is a Compose project named `ops-<10 hex>` with an `ops` database user and `ops_app_test` database, and it removes everything it created at the end (that removal is part of what it tests). The GitHub `operations-tests` job runs the same rehearsal without production credentials.
+`pnpm ops:test` runs guard tests and a disposable Docker rehearsal. It verifies non-root execution, read-only filesystem behavior, writable temporary paths, dropped capabilities, no-new-privileges, resource limits, file-backed secret loading and conflict rejection, all four bounded workers, migration blocking, database/Redis health failures, custom-format backup, corrupt-archive quarantine, restored domain records, explicit rollback compatibility, and resource ownership cleanup. Since T42 it also rehearses the worker contract against the release image: a paused run, an overlapping run skipped, a crashed run's lease reclaimed, a failing run's alert and the monitor's stale-job alert received once by the local alert receiver. Each rehearsal is a Compose project named `ops-<10 hex>` with an `ops` database user and `ops_app_test` database, and it removes everything it created at the end (that removal is part of what it tests). The GitHub `operations-tests` job runs the same rehearsal without production credentials.
 
 For dependency/container changes, local validation follows [[Engineering Delivery Workflow]]: review affected Compose contracts, lint changed Dockerfiles, build the production target and scan fixable high/critical vulnerabilities when that boundary changes. The optional manual static-validation workflow provides the same checks; it is not a merge requirement. Temporary vulnerability exceptions are prohibited unless they identify the CVE, reason, owner, and expiry in the issue register and workflow configuration.
 

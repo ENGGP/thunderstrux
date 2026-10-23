@@ -28,6 +28,11 @@ services:
       ASSET_STORAGE_ACCESS_KEY: operations-assets
       ASSET_STORAGE_SECRET_KEY: disposable-operations-storage-only
     command: ["node", "scripts/rehearse-assets.mjs"]
+  # T42: the local alert receiver; ALERT_WEBHOOK_URL points every service here.
+  alert-capture:
+    image: ${APP_IMAGE:-thunderstrux-app:local}
+    command: ["node", "scripts/mail-capture.mjs"]
+    restart: "no"
   app:
     environment:
       DATABASE_URL: postgresql://ops:ops-disposable-only@db:5432/ops_app_test?schema=public

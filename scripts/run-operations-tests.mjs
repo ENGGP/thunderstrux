@@ -60,6 +60,39 @@ function compose(args, options = {}) {
   return docker([...composeFiles, ...args], options);
 }
 
+// T42: pause, overlap, a reclaimed lease, a failure alert and the monitor's
+// stale-job alert, against the release image, with alerts received locally.
+async function rehearseWorkerContract(image) {
+  const env = { ...process.env, APP_IMAGE: image };
+  const run = (args, options = {}) => compose(["run", "--rm", ...args], { env, capture: true, ...options });
+  // Dollar-quoted literals keep the statement inside one shell-quoted argument.
+  const sql = (statement) => compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -tAc '${statement}'`], { capture: true });
+  const expectLog = (output, event, step) => { if (!output.includes(`"event":"${event}"`)) throw new Error(`${step}: expected ${event}
+${output.slice(-2000)}`); };
+
+  await run(["migration", "node", "scripts/workers.mjs", "pause", "all", "--reason=Operations rehearsal"]);
+  expectLog(await run(["email-worker"]), "worker.paused", "Paused worker");
+  await run(["migration", "node", "scripts/workers.mjs", "resume", "all"]);
+
+  await sql(`UPDATE "WorkerLease" SET "holder" = $$other-host$$, "leasedUntil" = now() + interval $$5 minutes$$ WHERE "name" = $$stale-orders$$`);
+  expectLog(await run(["stale-order-worker"]), "worker.skipped_running", "Overlapping run");
+  await sql(`UPDATE "WorkerLease" SET "leasedUntil" = now() - interval $$1 minute$$ WHERE "name" = $$stale-orders$$`);
+  const reclaimed = await run(["stale-order-worker"]);
+  expectLog(reclaimed, "worker.lease_reclaimed", "Crashed run's lease");
+  expectLog(reclaimed, "worker.succeeded", "Reclaimed run");
+
+  expectLog(await run(["checkout-recovery-worker", "node", "scripts/process-checkout-attempts.mjs", "--limit=0"], { expectFailure: true }), "worker.failed", "Failing worker");
+  await sql(`UPDATE "WorkerLease" SET "lastSucceededAt" = now() - interval $$1 hour$$ WHERE "name" = $$email-outbox$$`);
+  await run(["monitor-worker"]);
+  await run(["monitor-worker"]);
+
+  const alerts = JSON.parse(await compose(["exec", "-T", "alert-capture", "node", "-e", "fetch(`http://127.0.0.1:8025/alerts`).then((r) => r.text()).then((t) => process.stdout.write(t))"], { capture: true }));
+  if (!alerts.some((alert) => alert.event === "worker_failed" && alert.details?.worker === "checkout-recovery")) throw new Error("Failure alert was not received");
+  const stale = alerts.filter((alert) => alert.dedupeKey === "worker_stale:email-outbox");
+  if (stale.length !== 1) throw new Error(`Expected one stale-job alert, received ${stale.length}`);
+  console.log(JSON.stringify({ workerContract: "passed", alertsReceived: alerts.length }));
+}
+
 function operation(name, extra = [], options = {}) {
   return command(
     process.execPath,
@@ -175,7 +208,8 @@ const runtime = [
   "STRIPE_WEBHOOK_SECRET=",
   "STRIPE_CONNECT_WEBHOOK_SECRET=",
   "RESEND_API_KEY=",
-  "EMAIL_FROM="
+  "EMAIL_FROM=",
+  "ALERT_WEBHOOK_URL=http://alert-capture:8025/alerts"
 ].join("\n") + "\n";
 
 await mkdir(stateDir, { recursive: true, mode: 0o700 });
@@ -191,10 +225,11 @@ try {
   await assertContainerHardening(appContainer.trim(), "Production app");
   await compose(["exec", "-T", "app", "sh", "-c", "touch /tmp/thunderstrux-hardening-check && rm /tmp/thunderstrux-hardening-check"]);
 
-  await compose(["--profile", "workers", "create", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker"], {
+  await compose(["up", "-d", "--no-deps", "alert-capture"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+  await compose(["--profile", "workers", "create", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }
   });
-  for (const service of ["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker"]) {
+  for (const service of ["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"]) {
     const container = await compose(["--profile", "workers", "ps", "-a", "-q", service], { capture: true });
     await assertContainerHardening(container.trim(), service);
   }
@@ -258,6 +293,7 @@ try {
   await compose(["run", "--rm", "stale-order-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
   await compose(["run", "--rm", "compensation-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
   await compose(["run", "--rm", "checkout-recovery-worker"], { env: { ...process.env, APP_IMAGE: release.candidateImageId } });
+  await rehearseWorkerContract(release.candidateImageId);
 
   await compose(["run", "--rm", "migration", "node", "prisma/seed.mjs"], {
     env: { ...process.env, APP_IMAGE: release.candidateImageId }

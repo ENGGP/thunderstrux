@@ -51,7 +51,8 @@ for variable_name in \
   STRIPE_CONNECT_WEBHOOK_SECRET \
   RESEND_API_KEY \
   ASSET_STORAGE_ACCESS_KEY \
-  ASSET_STORAGE_SECRET_KEY
+  ASSET_STORAGE_SECRET_KEY \
+  ALERT_WEBHOOK_URL
 do
   load_secret_file "$variable_name"
 done

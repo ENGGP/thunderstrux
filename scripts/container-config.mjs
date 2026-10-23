@@ -18,7 +18,7 @@ export function validateHostedConfig(config) {
     throw new Error("Hosted Compose must not bundle PostgreSQL or Redis");
   }
 
-  const serviceNames = ["app", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker"];
+  const serviceNames = ["app", "migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"];
   for (const name of serviceNames) {
     const service = requireService(config, name);
     assertImmutableImageRef(service.image);
@@ -56,7 +56,8 @@ export function validateHostedConfig(config) {
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "STRIPE_CONNECT_WEBHOOK_SECRET",
-    "RESEND_API_KEY"
+    "RESEND_API_KEY",
+    "ALERT_WEBHOOK_URL"
   ];
   for (const variable of secretVariables) {
     if (Object.hasOwn(app.environment ?? {}, variable)) {
@@ -67,9 +68,11 @@ export function validateHostedConfig(config) {
     }
   }
 
-  for (const worker of ["email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker"]) {
-    const profiles = requireService(config, worker).profiles ?? [];
-    if (!profiles.includes("workers")) throw new Error(`${worker} must remain an explicitly scheduled one-shot service`);
+  for (const worker of ["email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"]) {
+    const service = requireService(config, worker);
+    if (!(service.profiles ?? []).includes("workers")) throw new Error(`${worker} must remain an explicitly scheduled one-shot service`);
+    // T42: a worker that fails must be able to page someone.
+    if (!service.environment?.ALERT_WEBHOOK_URL_FILE) throw new Error(`${worker} is missing ALERT_WEBHOOK_URL_FILE`);
   }
   if (!requireService(config, "migration").profiles?.includes("tools")) {
     throw new Error("migration must remain an explicitly invoked one-shot tool");

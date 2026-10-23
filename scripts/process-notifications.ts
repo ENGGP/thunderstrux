@@ -1,8 +1,8 @@
-import { prisma } from "@/lib/db";
 import { processNotificationBatch } from "@/lib/email/notification-outbox";
 import { fanOutEventChanges } from "@/lib/events/event-changes";
 import { queueMembershipNotices } from "@/lib/memberships/reminders";
 import { logError, logInfo } from "@/lib/ops/logger";
+import { runWorker } from "@/lib/ops/worker";
 import { cleanUpExpiredTokens } from "@/lib/security/token-cleanup";
 
 // Each run first queues what is due (event change fanout, membership
@@ -19,10 +19,9 @@ async function run() {
   // Housekeeping (T39): expired tokens, a bounded batch per run.
   try { logInfo("security.tokens.cleaned", await cleanUpExpiredTokens()); }
   catch { logError("security.tokens.cleanup_failed", { reason: "cleanup_failed" }); process.exitCode = 1; }
-  await processNotificationBatch();
+  // Its errors can carry notice content, so only a generic failure leaves this process.
+  await processNotificationBatch().catch(() => { throw new Error("Notification batch failed"); });
 }
 
-run().catch(() => {
-  logError("notification_outbox.worker.failed", { reason: "batch_failed" });
-  process.exitCode = 1;
-}).finally(() => prisma.$disconnect());
+// T42: one run at a time, pausable, with a timeout and an alert on failure.
+void runWorker("notifications", run);

@@ -1,18 +1,5 @@
-import { prisma } from "@/lib/db";
 import { processTicketEmailOutboxBatch } from "@/lib/email/ticket-email-outbox";
-import { logError, logInfo } from "@/lib/ops/logger";
+import { runWorker } from "@/lib/ops/worker";
 
-async function main() {
-  const result = await processTicketEmailOutboxBatch();
-
-  logInfo("email_outbox.worker.completed", result);
-}
-
-main()
-  .catch((error) => {
-    logError("email_outbox.worker.failed", { error });
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// T42: one run at a time, pausable, with a timeout and an alert on failure.
+void runWorker("email-outbox", async () => ({ ...(await processTicketEmailOutboxBatch()) }));

@@ -38,17 +38,20 @@ test("hosted contract requires external services, file secrets, and runtime hard
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "STRIPE_CONNECT_WEBHOOK_SECRET",
-    "RESEND_API_KEY"
+    "RESEND_API_KEY",
+    "ALERT_WEBHOOK_URL"
   ].map((name) => [`${name}_FILE`, `/run/secrets/${name.toLowerCase()}`]));
+  const workerEnvironment = { ALERT_WEBHOOK_URL_FILE: "/run/secrets/alert_webhook_url" };
   const config = {
     services: {
       app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true" }, healthcheck: { test: ["CMD", "node"] } }),
       migration: hardenedService({ profiles: ["tools"] }),
-      "notification-worker": hardenedService({ profiles: ["workers"] }),
-      "email-worker": hardenedService({ profiles: ["workers"] }),
-      "stale-order-worker": hardenedService({ profiles: ["workers"] }),
-      "compensation-worker": hardenedService({ profiles: ["workers"] }),
-      "checkout-recovery-worker": hardenedService({ profiles: ["workers"] })
+      "notification-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
+      "email-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
+      "stale-order-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
+      "compensation-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
+      "checkout-recovery-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment }),
+      "monitor-worker": hardenedService({ profiles: ["workers"], environment: workerEnvironment })
     }
   };
   assert.equal(validateHostedConfig(config), config);
@@ -61,4 +64,8 @@ test("hosted contract requires external services, file secrets, and runtime hard
     ...config,
     services: { ...config.services, migration: { ...config.services.migration, user: "0:0" } }
   }));
+  assert.throws(() => validateHostedConfig({
+    ...config,
+    services: { ...config.services, "monitor-worker": hardenedService({ profiles: ["workers"] }) }
+  }), /ALERT_WEBHOOK_URL_FILE/);
 });

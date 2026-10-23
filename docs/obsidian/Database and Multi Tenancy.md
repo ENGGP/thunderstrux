@@ -603,6 +603,16 @@ T18a brought the chain to 43 migrations and 26 models, ending in `20261025010000
 
 T16c needs no migration. A member claim locks User, then GuestIdentity, then Order, sets `Order.userId` and writes an `AuditLog` row (`order.guest_claimed`, the society's tenant, actor the member, metadata the guest identity). The buyer capture columns are unchanged, as their trigger requires.
 
+## Worker leases
+
+T42 adds `WorkerLease` (migration `20261112010000_worker_leases`, additive, no foreign keys). It has one row per scheduled job (email-outbox, notifications, stale-orders, refunds, checkout-recovery, monitor) plus `all` for a global pause:
+- the running holder and `leasedUntil`;
+- `pausedAt` and `pauseReason`;
+- the last start, success and failure, with duration and a short error;
+- the monitor's `alertState`: when each firing alert was last sent.
+
+Rows are created on a job's first run or first pause. Being operational state, they're backed up and restored with everything else: a restored copy keeps a pause until someone resumes it. Rollback: older releases ignore the table. [[Production Operations]] owns the behaviour.
+
 ## Ownership retirement
 
 Handover atomically promotes incoming owner, changes outgoing access, checks an active owner remains, clears Organisation.accountUserId and writes staff.ownership.handed_over with actor/incoming/outgoing/retired-pointer identities and roles. No new migration is needed beyond the existing Package 2 chain. Event.organisationId and all business/payment/Stripe records retain their ownership. User -> Organisation locking includes any separate legacy account pointer so closure cannot race retirement. Backup/restore qualification includes active incoming owner, revoked outgoing owner, null pointer and retirement audit.

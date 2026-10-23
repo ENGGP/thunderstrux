@@ -1264,3 +1264,22 @@ model EventChange {
   @@index([organisationId])
   @@index([actorUserId])
 }
+
+// One row per scheduled job, plus "all" for a global pause (T42). A run holds
+// the lease until it finishes or leasedUntil passes; see lib/ops/worker.ts.
+model WorkerLease {
+  name            String    @id
+  holder          String?
+  leasedUntil     DateTime?
+  pausedAt        DateTime?
+  pauseReason     String?
+  lastStartedAt   DateTime?
+  lastSucceededAt DateTime?
+  lastFailedAt    DateTime?
+  lastDurationMs  Int?
+  lastError       String?
+  // The monitor's last alert per key, so a firing alert repeats every 30 minutes, not every run.
+  alertState      Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}

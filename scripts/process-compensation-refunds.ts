@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/db";
-import { logError, logInfo } from "@/lib/ops/logger";
+import { logInfo } from "@/lib/ops/logger";
+import { runWorker } from "@/lib/ops/worker";
 import { processCompensationRefundBatch } from "@/lib/payments/compensation-refunds";
 import { processOrderRefundBatch } from "@/lib/payments/order-refunds";
 
@@ -13,18 +13,10 @@ function batchLimit() {
   return parsed;
 }
 
-async function main() {
+// T42: one run at a time, pausable, with a timeout and an alert on failure.
+void runWorker("refunds", async () => {
   const result = await processCompensationRefundBatch(batchLimit());
   logInfo("compensation_refund.worker.completed", result);
   const ordinary = await processOrderRefundBatch(batchLimit());
   logInfo("order_refund.worker.completed", ordinary);
-}
-
-main()
-  .catch((error) => {
-    logError("compensation_refund.worker.failed", { error });
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+});

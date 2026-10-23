@@ -59,6 +59,41 @@ This note maps each requirement to the test that proves it. A requirement is onl
 
 **Found and fixed by T44a.** A guest's order page kept saying "You're going" after a refund, with an empty ticket list and the amount paid. The tickets had been voided, so the door was right to refuse them, but the page was wrong. The guest page now shows the same states as a member's purchase page through one shared component (`components/purchases/ticket-order-notice.tsx`): refunded, refund processing, disputed, payment review, cancelled. It shows door tickets only while they're valid. A refunded, disputed or cancelled order no longer shows the checkout stepper at Review or offers to keep its tickets in an account.
 
+## T44b rows
+
+| Journey | Requirement | Covered by |
+| --- | --- | --- |
+| Guest merchandise | Verified basket, checkout, receipt | e2e `merchandise` (a guest checks out free merchandise; the order page shows each state); integration `merchandise-sale` (free basket for a verified guest, receipt naming the pickup) |
+| | Stripe | integration `commerce-checkout` (one Session per order and key; the signed webhook fulfils once) |
+| | Ready and collection | e2e `merchandise` (marked ready and collected on Pickups; the buyer sees each step) |
+| | Refund | integration `merchandise-after-sale` (a refund cancels an uncollected pickup and never restocks) |
+| | Cross-society or membership purchase denied | integration `merchandise-sale` (other societies' options refused), `commerce-orders` (a membership is never a guest's), `commerce-checkout` (only members may buy) |
+| Society bootstrap | Verified organisation creates one tenant | e2e `society-profiles` (new organisation bootstrap); integration `society-profiles` (bootstrap is atomic and handles slug races) |
+| | Profile, branding, contact | e2e `society-profiles` (branding saves; conflicting edits kept); integration `society-profiles` |
+| | Named owner and MFA | e2e `mfa-enforced`, **`permission-matrix`** (every role sets up MFA before any page) |
+| | Connect | e2e `payments-page`; integration `connect-safety` |
+| | Second tenant denied | **e2e `permission-matrix`** (another society's owner gets 404 for every record and can't take the context); integration `organisation-tenancy` |
+| Committee handover | Verified invite, accept, roles | e2e `browser` (private invitation: acceptance, resend, revocation) |
+| | Transfer, revoke, live session | e2e `mfa-enforced` (handover with enforced MFA removes the outgoing live session), `browser` (live-session revocation) |
+| | Final owner kept under concurrent changes | integration `staff-handover` (parallel handover commits once; racing closure never strands owners), `account-closure` (concurrent owner demotions keep one active owner) |
+| | Joining gives no management | e2e `browser` (joined members, even with staff-looking roles, can't manage) |
+| Event operator | Draft, details, types, visibility, capacity | e2e `event-builder`; integration `event-policy` |
+| | Publish blockers | integration `event-policy` (paid-only events without payments; future sales window), `event-lifecycle` |
+| | Close, edit, calendar | e2e `event-builder` (moving an event emails holders), `calendar` (month, week, agenda); integration `event-policy` (closing sales) |
+| | Public preview | e2e `public-event-pages` (draft preview exactly as buyers see it, buying off) |
+| | Attendance and history | e2e `check-in`, `history` |
+| | Sold deletion and unpublish denied | integration `event-lifecycle` (unpublish blocked after orders; sold ticket types not deleted); e2e `browser` (confirm before unpublishing) |
+| Membership operator | Products, terms, roster | e2e `memberships` (draft, publish check, publish, archive; Members tab); integration `membership-grants` (roster states) |
+| | Current and next terms, renew | integration `membership-grants` (the next term follows, never overlaps), `membership-offers` |
+| | Revoke and refund, history | e2e `memberships` (refund names the amount); integration `membership-revocation`, `membership-refunds` |
+| | Cannot invent paid status | integration `membership-grants` (a paid plan grants only from the verified webhook) |
+| Merchandise operator | Images, options, stock, publish | e2e `merchandise` (photo and options, publish, archive) |
+| | Holds and orders | integration `merchandise-sale` (stock edits can't go below holds) |
+| | Ready, collect, return, refund | e2e `merchandise` (Pickups; return and cancellation); integration `merchandise-after-sale` |
+| | Exactly-once stock effects | integration `merchandise-sale` (two buyers race for the last unit; the webhook takes stock once), `merchandise-after-sale` (a return restocks once) |
+| Calendar | Owner reads by month, week, agenda | e2e `calendar`; integration `calendar` (never another society's) |
+| Permission matrix | Every staff role against every dashboard page, two societies, enforced MFA | **e2e `permission-matrix`**: owner, admin, event manager, finance manager and check-in staff each set up MFA. Each then opens all 25 dashboard pages: 200 exactly when the role holds the page's permission, a concealed 404 otherwise. Another society's owner gets 404 for every record page and is refused the context and its API reads. The role map is `lib/permissions`. |
+
 ## Later rows
 
-T44b covers merchandise and collection, society bootstrap, committee handover, the event and membership operators, and the calendar and permission matrix with two tenants and enforced MFA. T44c covers finance, refunds and operations recovery. OpenClaw is deferred and isn't qualified. T44d runs one combined qualification and ties every row to the exact image and schema pair.
+T44c covers finance, refunds and operations recovery. OpenClaw is deferred and isn't qualified. T44d runs one combined qualification and ties every row to the exact image and schema pair.

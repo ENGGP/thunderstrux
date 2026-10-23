@@ -1,19 +1,24 @@
-FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS base
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS os
 
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
 
 # Keep the digest-pinned base, but refresh required Debian packages from its
 # security repository, including vulnerable PCRE and Perl inherited from the base.
 # hadolint ignore=DL3008
-RUN corepack enable \
-  && corepack prepare pnpm@10.34.7 --activate \
-  && apt-get update \
+RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates libpcre2-8-0 openssl perl-base \
   && rm -rf /var/lib/apt/lists/*
+
+# Build stages add pnpm; the release images (runtime below) never carry it.
+FROM os AS base
+
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+
+RUN corepack enable \
+  && corepack prepare pnpm@10.34.7 --activate
 
 FROM base AS deps
 
@@ -37,36 +42,51 @@ RUN DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public" \
 
 FROM deps AS development
 
-FROM base AS runner
+# T43: production dependencies only. The Prisma CLI is a production dependency
+# because the ops image runs migrations with it.
+FROM base AS ops-deps
+
+COPY package.json pnpm-lock.yaml ./
+COPY prisma ./prisma
+RUN pnpm install --frozen-lockfile --prod \
+  && pnpm exec prisma generate
+
+# Package managers are build tools. Runtime commands invoke Node entrypoints
+# directly, so remove Corepack and its dependency tree from both release images.
+FROM os AS runtime
 
 ENV NODE_ENV=production
 
-COPY --chown=node:node --from=builder /app/package.json ./package.json
-COPY --chown=node:node --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
-COPY --chown=node:node --from=builder /app/.next-build ./.next-build
-COPY --chown=node:node --from=builder /app/app ./app
-COPY --chown=node:node --from=builder /app/components ./components
-COPY --chown=node:node --from=builder /app/lib ./lib
-COPY --chown=node:node --from=builder /app/prisma ./prisma
-COPY --chown=node:node --from=builder /app/scripts ./scripts
-COPY --chown=node:node --from=builder /app/auth.ts ./auth.ts
-COPY --chown=node:node --from=builder /app/next-auth.d.ts ./next-auth.d.ts
-COPY --chown=node:node --from=builder /app/next-env.d.ts ./next-env.d.ts
-COPY --chown=node:node --from=builder /app/next.config.ts ./next.config.ts
-COPY --chown=node:node --from=builder /app/postcss.config.mjs ./postcss.config.mjs
-COPY --chown=node:node --from=builder /app/proxy.ts ./proxy.ts
-COPY --chown=node:node --from=builder /app/tailwind.config.js ./tailwind.config.js
-COPY --chown=node:node --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --chown=node:node docker/entrypoint.sh ./docker/entrypoint.sh
-
-# Package managers are build tools. Runtime commands invoke Node entrypoints
-# directly, so remove Corepack and its dependency tree from the final image.
-RUN chmod +x ./docker/entrypoint.sh \
-  && rm -rf /usr/local/lib/node_modules/corepack \
+RUN rm -rf /usr/local/lib/node_modules/corepack \
   && rm -rf /usr/local/lib/node_modules/npm \
   && rm -rf /root/.cache/node/corepack \
   && rm -f /usr/local/bin/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/pnpm /usr/local/bin/pnpx
+
+COPY --chown=node:node --chmod=755 docker/entrypoint.sh ./docker/entrypoint.sh
+
+# The operations image (T43): migrations, every worker, seeds and maintenance
+# commands. It never serves traffic.
+FROM runtime AS ops
+
+COPY --chown=node:node --from=ops-deps /app/node_modules ./node_modules
+COPY --chown=node:node package.json pnpm-lock.yaml tsconfig.json auth.ts ./
+COPY --chown=node:node prisma ./prisma
+COPY --chown=node:node config ./config
+COPY --chown=node:node lib ./lib
+COPY --chown=node:node scripts ./scripts
+
+USER node
+
+ENTRYPOINT ["./docker/entrypoint.sh"]
+CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+
+# The web image (T43): Next's standalone server and its static assets only.
+FROM runtime AS web
+
+ENV HOSTNAME=0.0.0.0
+
+COPY --chown=node:node --from=builder /app/.next-build/standalone ./
+COPY --chown=node:node --from=builder /app/.next-build/static ./.next-build/static
 
 USER node
 
@@ -76,4 +96,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||'3000')+'/api/health/ready',{signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["./docker/entrypoint.sh"]
-CMD ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0"]
+CMD ["node", "server.js"]

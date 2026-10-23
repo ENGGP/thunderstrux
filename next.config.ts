@@ -37,6 +37,9 @@ const nextConfig: NextConfig = {
   // hydrating; the local Docker app is opened at 127.0.0.1:3080 or localhost.
   allowedDevOrigins: ["thunderstrux.mistayu.com", "127.0.0.1", "localhost"],
   distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next",
+  // T43: production builds trace only what the server needs into
+  // .next-build/standalone, the web image. Workers and migrations use the ops image.
+  ...(development ? {} : { output: "standalone" as const, outputFileTracingRoot: root }),
   turbopack: {
     root
   },

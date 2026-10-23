@@ -18,7 +18,7 @@ services:
     cap_drop: ["ALL"]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000"]
   asset-tools:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     profiles: ["tools"]
     environment:
       DATABASE_URL: postgresql://ops:ops-disposable-only@db:5432/ops_app_test?schema=public
@@ -30,7 +30,7 @@ services:
     command: ["node", "scripts/rehearse-assets.mjs"]
   # T42: the local alert receiver; ALERT_WEBHOOK_URL points every service here.
   alert-capture:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     command: ["node", "scripts/mail-capture.mjs"]
     restart: "no"
   app:

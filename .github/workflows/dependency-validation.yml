@@ -68,10 +68,15 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.hardened.yml config --quiet
           node scripts/check-hosted-compose.mjs --env-file hosted-validation.env
-      - name: Build production image
-        run: docker build --target runner --tag thunderstrux-container-scan:${{ github.sha }} --file docker/Dockerfile .
+      # T43: a release is a web and ops image pair; both are built, budgeted and scanned.
+      - name: Build production image pair
+        run: |
+          docker build --target web --tag thunderstrux-container-scan:${{ github.sha }} --file docker/Dockerfile .
+          docker build --target ops --tag thunderstrux-container-scan-ops:${{ github.sha }} --file docker/Dockerfile .
+          node scripts/release-pair.mjs --web thunderstrux-container-scan:${{ github.sha }} --ops thunderstrux-container-scan-ops:${{ github.sha }}
       - name: Scan fixable high and critical vulnerabilities
         run: |
+          for image in thunderstrux-container-scan thunderstrux-container-scan-ops; do
           if ! docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v trivy-cache:/root/.cache/ \
@@ -79,10 +84,11 @@ jobs:
               aquasec/trivy:0.68.2@sha256:05d0126976bdedcd0782a0336f77832dbea1c81b9cc5e4b3a5ea5d2ec863aca7 \
               image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL --scanners vuln \
               --skip-version-check --quiet --format json --output /scan/trivy.json \
-              thunderstrux-container-scan:${{ github.sha }}; then
+              "${image}:${{ github.sha }}"; then
             jq -r '.Results[] | .Target as $target | (.Vulnerabilities // [])[] | [$target, .VulnerabilityID, .PkgName, .InstalledVersion, .FixedVersion, .Severity] | @tsv' "${RUNNER_TEMP}/trivy.json"
             exit 1
           fi
+          done
 
   integration-tests:
     name: integration-tests

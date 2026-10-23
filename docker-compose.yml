@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      # T43: the web image serves traffic; migration and workers use the ops image.
+      target: web
       args:
         APP_ORIGIN: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     restart: unless-stopped
@@ -48,15 +50,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0"]
+    # T43: the web image is Next's standalone server.
+    command: ["node", "server.js"]
 
   migration:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     build:
       context: .
       dockerfile: docker/Dockerfile
-      args:
-        APP_ORIGIN: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+      target: ops
     restart: "no"
     environment:
       NODE_ENV: production
@@ -67,7 +69,7 @@ services:
     command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
   email-worker:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     restart: "no"
     profiles: ["workers"]
     environment:
@@ -87,7 +89,7 @@ services:
     command: ["node", "scripts/process-email-outbox.mjs"]
 
   notification-worker:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     restart: "no"
     profiles: ["workers"]
     environment:
@@ -105,7 +107,7 @@ services:
     command: ["node", "scripts/process-notifications.mjs"]
 
   stale-order-worker:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     restart: "no"
     profiles: ["workers"]
     environment:
@@ -119,7 +121,7 @@ services:
     command: ["node", "scripts/process-stale-orders.mjs"]
 
   compensation-worker:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     restart: "no"
     profiles: ["workers"]
     environment:
@@ -134,7 +136,7 @@ services:
     command: ["node", "scripts/process-compensation-refunds.mjs"]
 
   checkout-recovery-worker:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     restart: "no"
     profiles: ["workers"]
     environment:
@@ -150,7 +152,7 @@ services:
 
   # T42: queue backlog, oldest-age and stale-job alerts. Database only.
   monitor-worker:
-    image: ${APP_IMAGE:-thunderstrux-app:local}
+    image: ${OPS_IMAGE:-thunderstrux-ops:local}
     restart: "no"
     profiles: ["workers"]
     environment:

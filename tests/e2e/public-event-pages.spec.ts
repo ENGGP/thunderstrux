@@ -51,6 +51,7 @@ test("organisers preview a draft exactly as buyers will see it, with buying off"
 test("a visitor finds Fees, Help and Privacy in the footer, with the fee worked out for them", async ({ page }) => {
   await page.goto("/societies");
   const footer = page.getByRole("navigation", { name: "Footer" });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await footer.getByRole("link", { name: "Fees" }).click();
   await expect(page.getByRole("heading", { name: "Fees", level: 1 })).toBeVisible();
   await expect(page.getByText("3.75% plus $0.89 for each ticket, membership or merchandise order", { exact: false })).toBeVisible();
@@ -58,6 +59,10 @@ test("a visitor finds Fees, Help and Privacy in the footer, with the fee worked 
   for (const [order, receives] of [["One $5.00 ticket", "$3.92"], ["Two $12.00 tickets", "$21.32"], ["A $25.00 membership", "$23.17"], ["Merchandise order of $55.00", "$52.05"]]) {
     await expect(examples.getByRole("row", { name: order })).toContainText(receives);
   }
+  // On a phone each example is a card, so what the society receives is never scrolled out of view.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(page.getByRole("listitem").filter({ hasText: "One $5.00 ticket" })).toContainText("Society receives$3.92");
+  await expect(page.getByRole("table")).toBeHidden();
   for (const [name, heading] of [["Fees", "What buyers pay"], ["Help", "Refunds"], ["Privacy", "Who can see it"]]) {
     await page.goto("/societies");
     await footer.getByRole("link", { name }).click();

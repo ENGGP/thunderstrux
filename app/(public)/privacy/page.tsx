@@ -45,8 +45,7 @@ export default function PrivacyPage() {
       </PolicySection>
       <PolicySection title="Questions">
         <p>
-          {support ? <>Email <a className="font-semibold text-brand underline underline-offset-4" href={`mailto:${support}`}>{support}</a>. </> : null}
-          For something you bought, the society that sold it can also help.
+          {support ? <>Email <a className="font-semibold text-brand underline underline-offset-4" href={`mailto:${support}`}>{support}</a>. For something you bought, the society that sold it can also help.</> : "For something you bought, ask the society that sold it: its contact email is on every event and shop page."}
         </p>
       </PolicySection>
     </PolicyPage>

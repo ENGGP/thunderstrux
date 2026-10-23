@@ -61,6 +61,13 @@ export function getGuestOrder(orderId: string) {
       buyerEmailSnapshot: true,
       userId: true,
       cancelledAt: true,
+      // What the order page needs to say a refund, dispute or review apart from a valid order (T44a).
+      refundStatus: true,
+      disputeStatus: true,
+      requiresCompensationReview: true,
+      externalRefundedAmount: true,
+      externalRefundReviewedAt: true,
+      refundRequests: { where: { status: "succeeded" }, orderBy: { createdAt: "desc" }, take: 1, select: { amount: true, resolvedAt: true } },
       ticketType: { select: { name: true } },
       tickets: { where: { validity: "active" }, select: { id: true }, orderBy: { issueSequence: "asc" } },
       event: {

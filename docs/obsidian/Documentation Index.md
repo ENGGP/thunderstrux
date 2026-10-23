@@ -34,6 +34,7 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 | Which actions are audited, and what does the society History show? | [[Audit Coverage]] |
 | What does every API route check, and which security headers and limits apply? | [[Route Security Inventory]] |
 | How is accessibility checked, and what still needs a person? | [[Accessibility Review]] |
+| Which test proves each section 7 user journey? | [[Journey Qualification]] |
 | What creates seed data and why is it missing? | [[Seeding and Data]], [[Troubleshooting]] |
 | What is payment truth and how do I recover an order? | [[Stripe Payments and Connect]], [[Payment Lifecycle]], [[E2E and Staging Payments]] |
 | How do ticket emails and encrypted account notices work? | [[Email Delivery Implementation]], [[Production Operations]] |

@@ -245,8 +245,8 @@ export function PlanForm({
           {cents !== null && cents > 0 ? (
             <p className="text-sm text-ink-soft">
               For one {formatMoney(cents)} membership: the buyer pays {formatMoney(cents)}; Thunderstrux keeps{" "}
-              {formatMoney(calculatePlatformFee(cents))}; your society receives {formatMoney(cents - calculatePlatformFee(cents))} before
-              Stripe&apos;s own fees.
+              {formatMoney(calculatePlatformFee(cents))}; your society receives {formatMoney(cents - calculatePlatformFee(cents))}. The fee includes
+              card processing.
             </p>
           ) : null}
         </div>

@@ -483,7 +483,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
               <dd className="border-t border-line pt-1.5 text-right font-semibold">{formatMoney(2000 - exampleFee)}</dd>
             </dl>
             <p className="text-[13px] text-ink-muted">
-              Before Stripe&apos;s own processing fees, which Stripe charges your account and shows in your Stripe dashboard.
+              Card processing is included: Stripe charges its processing fee to Thunderstrux, not to your society.
             </p>
           </div>
           <p className="text-sm text-ink-soft">Each order keeps the fee it was sold under, so a later change never alters past sales.</p>

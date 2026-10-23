@@ -14,7 +14,7 @@ T46's record of what would go to hosting, what proves it works locally, and what
 
 - **Code:** `main` after the T46 merge. CI publishes its web and ops image pair, and the `release-<revision>` artifact from the Release Images run on that merge is what a deploy uses (see [[Production Operations]]).
 - **Schema:** 62 migrations; the required one is `20261113010000_commerce_payment_recovery` (PAY-003). All are additive. Migrations run as a one-shot job from the ops image before the web image rolls out.
-- **Migration digest:** DIGEST (from T46's runs below).
+- **Migration digest:** `64da2e06fe107086935feb7fa2e0826733594682b368c7c8d621515a8bc4a411` (T46's runs below).
 
 ## Settings
 
@@ -41,7 +41,7 @@ Six bounded jobs run every minute under the T42 worker contract (leases, pause, 
 | Combined local qualification (T44d) | baseline `baseline-b2ff8cf634def9f550fa6665`, browser `browser-7d05b953af18e5356cfdd5dc`, operations `ops-17701f7891`, Droplet `droplet-707dfb0351` on `3ccada0` |
 | Provider acceptance (T45) | Stripe test mode, nine scenarios (`staging-741aec2c…`, `staging-20ffc6bc…`, `staging-02b236b7…`); Resend accepted ticket receipts; storage blocked (OPS-005) |
 | Commerce recovery (PAY-003) | baseline `baseline-9734427260591184e71e8334`, browser `browser-f884013075b6ac47e03097d7`, operations `ops-b747a83484`, staging `staging-a828d3d0…`, `staging-f5d4c10a…`, `staging-d1981708…` |
-| T46 (fee, public pages, audit) | RUNS_T46 |
+| T46 (fee, public pages, audit) | baseline `baseline-c0ff0efd8c4250c005ff024e` on `3e4bb68` (41/41 guards, 642 integration tests in 98 files, typecheck, clean audit); browser `browser-598296fd5c1112147bf994eb` on `78cc794` (9 MFA, 68 desktop/mobile with the Fees, Help and Privacy screenshots, 10 webhook checks). The commits after `3e4bb68` change only the public pages' layout and copy and their browser test. |
 
 [[Journey Qualification]] maps every section 7 journey to its tests. The readiness plan's section 8 carries T46's verdict for every PRD row.
 

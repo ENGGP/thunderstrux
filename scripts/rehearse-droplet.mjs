@@ -53,7 +53,7 @@ async function buildRelease(name) {
   const web = `thunderstrux-app:${run}-${name}`;
   const ops = `thunderstrux-ops:${run}-${name}`;
   for (const [target, tag] of [["web", web], ["ops", ops]]) {
-    await docker(["build", "-q", "--target", target, "--label", `thunderstrux.rehearsal=${run}-${name}`, "--build-arg", "APP_ORIGIN=https://localhost", "-t", tag, "-f", "docker/Dockerfile", "."]);
+    await docker(["build", "-q", "--target", target, "--label", `thunderstrux.rehearsal=${run}-${name}`, "-t", tag, "-f", "docker/Dockerfile", "."]);
   }
   const manifest = await describeReleasePair({ web, ops, revision: gitRevision() });
   await writeFile(join(dir, `${name}.json`), JSON.stringify(manifest, null, 2));

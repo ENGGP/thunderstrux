@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { AccountSecurityError, invalidateAccountTokens, lockAccount, requireSecurityActor, type AccountActor } from "./account-lifecycle";
+import { appUrl } from "@/lib/app-url";
 
 export const closureAcknowledgement = "CLOSE MY ACCOUNT";
 export class AccountClosureError extends Error {
@@ -53,6 +54,6 @@ export async function closeAccount(actor: AccountActor, currentPassword: string,
     } });
     const event = await tx.accountSecurityEvent.create({ data: { userId: user.id, type: "account_closed", authVersion: closed.authVersion, createdAt: now } });
     await enqueueNotification(tx, { eventKey: `account-security/${event.id}`, userId: user.id, recipient: user.email, template: "account_closed",
-      payload: { message: "Your Thunderstrux account is permanently closed and all devices are signed out. Your editable profile and login credentials have been anonymised. Purchases, tickets, attendance, buyer contact details needed for those records, and audit/security records are retained. A new signup does not regain access to these records.", link: new URL("/login", process.env.NEXT_PUBLIC_APP_URL).toString() } });
+      payload: { message: "Your Thunderstrux account is permanently closed and all devices are signed out. Your editable profile and login credentials have been anonymised. Purchases, tickets, attendance, buyer contact details needed for those records, and audit/security records are retained. A new signup does not regain access to these records.", link: new URL("/login", appUrl()).toString() } });
   }, { timeout: 15000 });
 }

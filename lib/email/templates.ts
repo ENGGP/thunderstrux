@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { appUrl } from "@/lib/app-url";
 
 export const notificationTemplateSchema = z.enum([
   "verify_account", "reset_password", "password_changed", "email_change_requested",
@@ -34,7 +35,7 @@ export function renderNotification(template: NotificationTemplate, input: unknow
   const payload = notificationPayloadSchema.parse(input);
   if (payload.link) {
     const link = new URL(payload.link);
-    const origin = new URL(process.env.NEXT_PUBLIC_APP_URL ?? "");
+    const origin = new URL(appUrl() ?? "");
     if (link.origin !== origin.origin || link.username || link.password ||
         (link.protocol !== "https:" && !(link.protocol === "http:" && ["localhost", "127.0.0.1"].includes(link.hostname)))) {
       throw new Error("Notification link must use the configured first-party origin");

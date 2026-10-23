@@ -8,8 +8,6 @@ services:
       dockerfile: docker/Dockerfile
       # T43: the web image serves traffic; migration and workers use the ops image.
       target: web
-      args:
-        APP_ORIGIN: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     restart: unless-stopped
     environment:
       NODE_ENV: production

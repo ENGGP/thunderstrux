@@ -1,6 +1,7 @@
 import { forbidden } from "@/lib/api/errors";
 import { logWarn } from "@/lib/ops/logger";
 import { hasAuthSessionCookie, verifyCsrfTokenForRequest } from "@/lib/security/csrf";
+import { appUrl } from "@/lib/app-url";
 
 const TRUSTED_ORIGIN_ERROR = "Untrusted request origin";
 type RejectReason =
@@ -28,7 +29,7 @@ function parseOriginHeader(value: string): string | null {
 function configuredTrustedOrigins(): Set<string> {
   const trusted = new Set<string>();
   const candidates = [
-    process.env.NEXT_PUBLIC_APP_URL,
+    appUrl(),
     ...(process.env.TRUSTED_APP_ORIGINS ?? "")
       .split(",")
       .map((value) => value.trim())

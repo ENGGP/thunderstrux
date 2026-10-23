@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { assertNotificationConfiguration } from "@/lib/email/notification-crypto";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
+import { appUrl } from "@/lib/app-url";
 
 // Verified guest access (T16a). An emailed link proves the address; redeeming
 // it by POST starts a short browser session. Raw link tokens and session ids
@@ -52,7 +53,7 @@ export async function requestGuestAccess(email: string, callbackUrl?: string, no
       guestIdentityId: identity.id, purpose: "checkout", tokenDigest: guestDigest(raw),
       callbackPath: safeReturnPath(callbackUrl, "/events"), expiresAt: new Date(now.getTime() + linkLifetimeMs)
     } });
-    const link = new URL("/guest/access", process.env.NEXT_PUBLIC_APP_URL);
+    const link = new URL("/guest/access", appUrl());
     link.hash = new URLSearchParams({ token: raw }).toString();
     await enqueueNotification(tx, {
       eventKey: `guest/${grant.id}`, guestAccessGrantId: grant.id, recipient: address, template: "guest_access", expiresAt: grant.expiresAt,
@@ -123,7 +124,7 @@ export async function canOpenGuestCommerceOrder(session: GuestSession, commerceO
 }
 
 function orderLink(raw: string) {
-  const link = new URL("/guest/access", process.env.NEXT_PUBLIC_APP_URL);
+  const link = new URL("/guest/access", appUrl());
   link.hash = new URLSearchParams({ token: raw }).toString();
   return link.toString();
 }

@@ -4,6 +4,7 @@ import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatDateRange } from "@/lib/format";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { zoneCity } from "@/lib/zoned-time";
+import { appUrl } from "@/lib/app-url";
 
 // Material event changes (T30, readiness plan §5): a new time or place for an
 // event with issued tickets emails each valid holder once. The edit records
@@ -95,7 +96,7 @@ async function fanOutPage(now: Date) {
         payload: {
           subject: `Change to ${title}`.slice(0, 200),
           message: changeMessage(change, title, seller, organisation.timeZone),
-          ...(order.user ? { link: new URL("/tickets", process.env.NEXT_PUBLIC_APP_URL).toString() } : {})
+          ...(order.user ? { link: new URL("/tickets", appUrl()).toString() } : {})
         }
       });
       if (enqueued) queued += 1;

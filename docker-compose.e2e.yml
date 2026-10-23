@@ -111,8 +111,9 @@ services:
       ASSET_STORAGE_PATH_STYLE: "true"
       ASSET_STORAGE_ACCESS_KEY: test-assets
       ASSET_STORAGE_SECRET_KEY: disposable-test-storage-only
-      RESEND_API_KEY: re_capture_only
-      EMAIL_FROM: synthetic@example.com
+      # Staging (T45) sends ticket emails through Resend's test sink; other runs keep the capture-only key.
+      RESEND_API_KEY: ${E2E_RESEND_API_KEY:-re_capture_only}
+      EMAIL_FROM: ${E2E_EMAIL_FROM:-synthetic@example.com}
       NEXT_PUBLIC_APP_URL: http://localhost:3100
       THUNDERSTRUX_MAIL_CAPTURE_URL: http://mail-capture:8025/emails
       E2E_BASE_URL: http://localhost:3100

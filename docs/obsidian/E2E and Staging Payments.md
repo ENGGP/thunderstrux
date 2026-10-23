@@ -1,14 +1,14 @@
 ---
 status: living
-last-reviewed: 2026-10-16
+last-reviewed: 2026-10-24
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Stripe Payments and Connect]]"]
-sources: [scripts/run-e2e.mjs, scripts/staging-payments.mjs, docker-compose.e2e.yml]
+sources: [scripts/run-e2e.mjs, scripts/staging-payments.mjs, scripts/staging-driver.mjs, docker-compose.e2e.yml]
 ---
 
 # E2E and Staging Payments
 
-Status: the E2E harness (originally task P2.16) and its acceptance merged through PR #10 (`59dc563`). Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion. Later payment-path changes must repeat the relevant acceptance campaign.
+Status: the E2E harness (originally task P2.16) and its acceptance merged through PR #10 (`59dc563`); T45 extended staging acceptance to every purchase family, refunds, Resend and storage. Automated browser/webhook checks and real Stripe acceptance are separate gates; synthetic webhook tests alone do not establish completion. Later payment-path changes must repeat the relevant acceptance campaign.
 
 ## Automated checks
 
@@ -47,11 +47,29 @@ pnpm test:payments:staging -- --use-local-test-key
 
 This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into Compose. Stripe CLI obtains a new signing secret from the exact active listener. Existing webhook secrets are not reused. The listener API version must match `2026-03-25.dahlia`; a mismatch blocks acceptance.
 
-To repeat a missing scenario, append exactly one of `--scenario=success`, `--scenario=decline` or `--scenario=cancel`. The manifest records the selected scenarios. A passing focused run is not full payment acceptance: all three scenarios still require evidence, including successful resource cleanup. Previously verified payment evidence can be combined only when the relevant application and assertion code is unchanged.
+**Scenarios (T45).** Each scenario gets its own run-owned society with a finance manager. They run in this order:
 
-The command drives the app's real `Buy tickets` flow as a verified buyer, then presents a private Stripe URL. Complete the success, decline and cancel prompts using Stripe test cards. Each prompt permits 15 minutes, followed by up to 120 seconds for webhook reconciliation. Successful payment verifies destination charge configuration, real event identity, listener HTTP 200, app receipt, database fulfilment and buyer ticket visibility. Decline requires provider error evidence. Cancel navigation is explicitly recorded as manual attestation; pending/unfulfilled state and subsequent real Session expiry are verified automatically.
+| Scenario | What it proves |
+| --- | --- |
+| `free` | A member's free ticket through the checkout page, no Stripe; Resend accepts the receipt. Needs no card or terminal. |
+| `success` | The real `Buy tickets` flow: destination charge, fee, fulfilment, inventory, buyer's Tickets page, Resend acceptance; then finance refunds the whole order through the app, the transfer is reversed, the fee is returned and the tickets are void. |
+| `decline` | Provider decline evidence, then forced expiry: no tickets, stock restored. |
+| `cancel` | Manually attested return to the app's cancel page, then forced expiry. |
+| `member` | A free membership, then a ticket at the member price ($9.00 instead of $15.00), linked to the membership. |
+| `guest` | A guest confirms their email from the captured link and pays; the order belongs to the verified guest and Resend accepts their receipt. |
+| `membership` | A paid membership: the commerce order is fulfilled and the grant is made. |
+| `merchandise` | Two lines paid together: stock for each option drops, then finance refunds the order through the app. |
+| `compensation` | The order expires locally while its Session stays open; paying it issues no tickets, and the compensation worker refunds it in full (`automatic_full`). |
 
-The isolated stack uses enabled Redis rate limiting and a private mail-capture service. Automated account-lifecycle/notification scenarios process captured messages with synthetic credentials; they do not establish real provider or inbox delivery. Guided Stripe acceptance verifies ticket outbox state separately from real email acceptance.
+To repeat one, append exactly one `--scenario=<name>`. A passing focused run is not full acceptance on its own. Evidence from different runs can be combined only when the application and the assertions for those scenarios are unchanged between them.
+
+Every card scenario presents a private Stripe URL and the action to take on it. Each prompt permits 15 minutes, followed by up to 120 seconds for webhook reconciliation. Every Stripe event a scenario relies on, including refund events, must show listener HTTP 200 and appear in the app log. The terminal is required only when a selected scenario needs a card.
+
+**Email and storage.** `.env.staging.local` may also hold `RESEND_TEST_API_KEY` and `RESEND_TEST_FROM`, and `SPACES_TEST_ENDPOINT`, `SPACES_TEST_BUCKET`, `SPACES_TEST_ACCESS_KEY` and `SPACES_TEST_SECRET_KEY`. A missing provider is recorded under `blocked` in the manifest; it doesn't fail the run. Run-owned users get `delivered+<run>-<scenario>-<role>@resend.dev` addresses, so Resend accepts mail without a verified domain and no real inbox receives it. The app's email worker sends ticket receipts to Resend. Account and guest notifications stay in the private mail capture, which the guest scenario reads its link from. The storage smoke puts, reads, checks and deletes one object under `t45/<run>/` through the product's storage adapter.
+
+The three kinds of email evidence are kept apart. Captured mail proves what the app would send. Resend acceptance proves the provider took it. Inbox delivery is not observed here; it needs a verified sending domain (an H gate).
+
+The isolated stack uses enabled Redis rate limiting and a private mail-capture service. Automated account-lifecycle/notification scenarios process captured messages with synthetic credentials; they do not establish real provider or inbox delivery.
 
 ## Recovery and evidence
 
@@ -67,10 +85,37 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 - Select local regression and E2E coverage using [[Engineering Delivery Workflow]]. One complete successful applicable run with cleanup is sufficient; repeat only for changed inputs, failures or a documented reliability concern. Cancelled, skipped or partial required scenarios do not qualify.
 - GitHub E2E and operations workflows are manual-only and are not merge requirements. Documentation-only evidence updates run docs/diff checks and claim review, without functionality tests or a new provider campaign.
 - Preserve tested-revision evidence and explain its applicability to the reviewed diff. Historical repeated local/CI campaigns below remain evidence of past delivery, not current repetition requirements.
-- Require observed real Stripe success, decline, manual cancel attestation and verified forced expiry with automatic reconciliation. The test explicitly expires unpaid Sessions through Stripe; it does not claim to observe natural timeout. Missing or skipped scenarios remain outstanding.
+- Require observed real Stripe evidence for every scenario in the table above (T45), including manual cancel attestation, forced expiry with automatic reconciliation, and refund events. The test explicitly expires unpaid Sessions through Stripe; it does not claim to observe natural timeout. Missing or skipped scenarios remain outstanding.
 - See [[Project Handover]] and the evidence ledger in [[../MVP_READINESS_PLAN]] for current evidence.
 
 ## Validation evidence
+
+**T45 provider acceptance (2026-10-24).** Every scenario passed on Stripe API version `2026-03-25.dahlia`, with the migration digest `589d805fc690…` and each run's tree matching its revision. Stripe and local cleanup completed after every run.
+
+- Run `staging-741aec2c432e45ed9ee6bf49` on `355b76d` covered seven scenarios:
+
+  | Scenario | Evidence |
+  | --- | --- |
+  | free | Resend `01a16958-…` |
+  | success | Event `evt_1UTkJnRuN9MD4SvF3yh66fcQ`, fee 120, Resend `01a1695c-…`. Refund `re_3UTkJmRuN9MD4SvF0G9LjmMX` returned 1200 and the 120 fee (event `evt_3UTkJmRuN9MD4SvF0W0PmgKE`). |
+  | decline | Event `evt_1UTkOxRuN9MD4SvFjimCwpgc` |
+  | cancel | Manually attested; event `evt_1UTkT5RuN9MD4SvFoXk94vfY` |
+  | member | Unit price 900, fee 90; event `evt_1UTkV0RuN9MD4SvF7KlaxZES`; Resend `01a16967-…` |
+  | guest | Fee 150; event `evt_1UTkbeRuN9MD4SvFdfRu285x`; Resend `01a1696f-…` |
+  | membership | Fee 250; event `evt_1UTkeRRuN9MD4SvF0fMDzLhe` |
+
+  Its merchandise step then failed on a driver fixture. The SKU wasn't in the catalogue's uppercase format, so the run stopped before any merchandise Session existed.
+- Focused runs on `5a7ed97`. Only that fixture changed.
+  - `staging-20ffc6bc0f22bbf4d4f25976`, merchandise: 2 lines, 5500 with fee 550, event `evt_1UTkjdRuN9MD4SvF44ZrJEhW`. Refund `re_3UTkjcRuN9MD4SvF00h3eSOv` returned 5500 and the 550 fee.
+  - `staging-02b236b72c5db5284aa91a66`, compensation: paid after local expiry, event `evt_1UTkm4RuN9MD4SvF4yEikz8C`. Automatic refund `re_3UTkm3RuN9MD4SvF1uoFI2yo` returned 1200 and the 120 fee.
+- An earlier attempt, `staging-3eec1e4c7496a494368a9d92`, paid and refunded `success` correctly but failed the driver's fee check. That check looked for the fee on the platform charge, while a destination charge's fee belongs to the society's payment. The fix was `355b76d`, and the attempt cleaned up.
+- **Storage:** blocked. `SPACES_TEST_BUCKET`, `SPACES_TEST_ACCESS_KEY` and `SPACES_TEST_SECRET_KEY` are not set (OPS-005).
+- **Not claimed:**
+  - inbox delivery;
+  - natural Session timeout;
+  - manual compensation confirmation against Stripe;
+  - commerce compensation (PAY-003);
+  - hosted webhooks.
 
 P3.19 repeat acceptance (2026-09-21): campaign `p216-20010cf603f4e0763ec530c1` passed all three guided scenarios and cleanup after the lifecycle-model changes. The staging driver now verifies exact lifecycle event ordering and Stripe event/session correlation as well as the existing payment invariants. Success event: `evt_1UHz3tRuN9MD4SvFpGbf8zTn`; decline/forced-expiry event: `evt_1UHz62RuN9MD4SvFMJeKqd9x`; manually attested cancellation/forced-expiry event: `evt_1UHz8uRuN9MD4SvFZRbGqV1c`. API version remained `2026-03-25.dahlia`; listener HTTP 200 and application receipt were verified. Email delivery and natural timeout are not claimed. See [[Payment Lifecycle]] for P3.19 regression evidence.
 

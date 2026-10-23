@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-24
 owner: engineering
 related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]"]
 ---
@@ -34,9 +34,10 @@ Cloudflare preview verification (2026-10-13) passes local loopback port 3080, pu
 | OPS-003 | Critical | Recovery | external-gate | 2026-10-04 | Enable encrypted off-machine backups and complete a hosted restore drill with an agreed recovery objective. T02's notification key must be backed up separately; database row restore alone does not prove encrypted payload recovery. | Operations owner uses [[Production Operations]] and proves notification payload decryption using the separately recovered key. |
 | SEC-001 | Critical | Staff MFA | external-gate | 2026-09-29 | Enroll all active staff, enforce MFA, and deny legacy shared access. | Security/operations follows [[Production Readiness Verification 2026-09-22]]. |
 | SEC-002 | High | Edge security | external-gate | 2026-10-23 | Enable Redis rate limiting and configure an edge-overwritten trusted client-IP header and exact trusted origins. T43b's Droplet edge (Caddy) sets `X-Thunderstrux-Client-IP` from the connection on every request and the app trusts only that header; Valkey backs rate limiting ([[Production Operations]], Pilot host). | Security/operations verifies release-image readiness, the header and hosted mutations on the real Droplet (H01). |
-| PAY-002 | Critical | Stripe refunds | external-gate | 2026-10-17 | Subscribe refund and dispute webhooks (T18b adds `charge.dispute.*`) and pass real Stripe test-mode automatic and manual compensation campaigns. | Payments/operations follows [[E2E and Staging Payments]] before `automatic_full`. |
+| PAY-002 | Critical | Stripe refunds | external-gate | 2026-10-24 | Subscribe refund and dispute webhooks (T18b adds `charge.dispute.*`) and pass real Stripe test-mode automatic and manual compensation campaigns. T45 (2026-10-24) passed the automatic campaign locally through the CLI listener (`staging-02b236b72c5db5284aa91a66`: paid after local expiry, refunded with the transfer reversed and the fee returned) and full ticket and merchandise refunds. Manual compensation confirmation and the hosted webhook subscription remain. | Payments/operations follows [[E2E and Staging Payments]] before `automatic_full`. |
 | DEP-001 | Medium | Dependency operations | external-gate | 2026-09-29 | Capture a genuine eligible security-update PR and maintainer receipt of a real Security Audit failure notification. | Engineering/operations must not manufacture vulnerabilities or registry failures. |
 | OPS-004 | High | Hosted platform | external-gate | 2026-09-30 | Select and configure a managed container platform, managed PostgreSQL/Redis, secret-file injection, HTTPS ingress, and the documented resource limits before using the hosted Compose contract. | Hosting owner validates `docker-compose.hosted.yml`, performs a restore drill, and records provider evidence. |
+| OPS-005 | High | Object storage | external-gate | 2026-10-24 | T45's Spaces smoke is blocked: `SPACES_TEST_BUCKET`, `SPACES_TEST_ACCESS_KEY` and `SPACES_TEST_SECRET_KEY` are not set, so the product's storage adapter has only run against the local S3-compatible store. | Founder creates a test bucket and fills those values in `.env.staging.local`; engineering runs `pnpm test:payments:staging -- --scenario=free` and records the storage result in [[E2E and Staging Payments]]. |
 
 ## Resolved Defect History
 

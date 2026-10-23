@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-24
 owner: engineering
 related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]", "[[Production Operations]]", "[[Accessibility Review]]"]
 sources: [docs/MVP_READINESS_PLAN.md, tests/e2e/journeys.spec.ts, scripts/run-e2e.mjs]
@@ -14,7 +14,7 @@ T44 qualifies every journey in section 7 of the MVP readiness plan against the r
 
 This note maps each requirement to the test that proves it. A requirement is only marked covered when a test shows both its happy path and its denial.
 
-**How the evidence is produced.** The browser campaign (`node scripts/run-e2e.mjs`) builds the release pair locally, migrates from the ops image and runs Playwright against the web image. It uses synthetic accounts, signed Stripe webhooks, and captured email and object storage. The connected journeys (`tests/e2e/journeys.spec.ts`) run in its webhook step, which has a synthetic Stripe test key. The baseline (`node scripts/run-e2e.mjs baseline`) runs the integration suite. Real providers (Stripe test mode, Resend, Spaces) come in T45.
+**How the evidence is produced.** The browser campaign (`node scripts/run-e2e.mjs`) builds the release pair locally, migrates from the ops image and runs Playwright against the web image. It uses synthetic accounts, signed Stripe webhooks, and captured email and object storage. The connected journeys (`tests/e2e/journeys.spec.ts`) run in its webhook step, which has a synthetic Stripe test key. The baseline (`node scripts/run-e2e.mjs baseline`) runs the integration suite. Real providers are T45's: Stripe test mode and Resend acceptance are observed in [[E2E and Staging Payments]], and Spaces is blocked until its values are set.
 
 **What the browser campaign can't reach.** It has no Stripe account. A paid checkout's Session is seeded as the app would create it, and Stripe's answers arrive as signed webhooks (`checkout.session.completed`, `refund.updated`). Ticket emails go straight to the email provider, so they are checked as queued jobs. Links a guest opens come from the captured notification emails (email confirmation, Find your purchase).
 
@@ -137,4 +137,4 @@ Every run cleaned up after itself. Each e2e run's `manifest.json` records its pa
 - **DEF-025:** a restored copy didn't inherit the worker pause, so it could act again on refunds or emails the old database had already sent (T44c).
 - **DEF-026:** the web image built the app's origin into its server code, so one image served only the domain it was built for (T44d).
 
-**Not covered here.** OpenClaw is deferred. Real providers (Stripe test mode, Resend, Spaces) come in T45, and real users in H06.
+**Not covered here.** OpenClaw is deferred. Real providers are covered by T45 ([[E2E and Staging Payments]]; Spaces blocked), and real users come in H06.

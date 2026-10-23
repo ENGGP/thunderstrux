@@ -66,6 +66,7 @@ Which mutations write an `AuditLog` row, what each row holds, and how the societ
 | `me/context` | A session preference with no business change. |
 | `orgs/[orgSlug]/join`, `leave` | A member's free join; the roster shows it and engagement counts it. |
 | `stripe/connect/continue` | Opens Stripe's hosted onboarding; nothing changes until Stripe reports back. |
+| `stripe/connect/dashboard` | Signs a society's payments staff in to its own Stripe Express Dashboard with a single-use link; nothing changes in Thunderstrux. |
 | `payments/checkout/*`, `merchandise/quote`, `guest/email/*`, `guest/recover`, `guest/session` | Buyer checkouts and guest access; orders hold their own lifecycle journals. |
 | `payments/webhook`, `stripe/connect/webhook` | Stripe's events change orders through the services above, which write their own rows; the webhook tables keep idempotency. |
 

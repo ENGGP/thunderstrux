@@ -96,7 +96,7 @@ vi.mock("@/lib/stripe/connect", () => {
       currently_due: [],
       eventually_due: [],
       disabled_reason: null,
-      dashboard_url: null
+      dashboard_available: false
     })
   };
 });

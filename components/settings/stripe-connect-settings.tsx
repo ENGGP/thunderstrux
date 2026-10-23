@@ -37,7 +37,7 @@ type ConnectStatus = {
   currently_due: string[];
   eventually_due: string[];
   disabled_reason: string | null;
-  dashboard_url: string | null;
+  dashboard_available: boolean;
   actionUrl?: string;
   actionRequired?: string;
   error?: string;
@@ -102,6 +102,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingOnboarding, setIsStartingOnboarding] = useState(false);
   const [isContinuingOnboarding, setIsContinuingOnboarding] = useState(false);
+  const [isOpeningDashboard, setIsOpeningDashboard] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [needsCode, setNeedsCode] = useState(false);
@@ -232,7 +233,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           currently_due: [],
           eventually_due: [],
           disabled_reason: null,
-          dashboard_url: null,
+          dashboard_available: false,
           actionUrl: error.payload.actionUrl,
           actionRequired: error.payload.actionRequired,
           error: error.payload.message
@@ -262,6 +263,22 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         text: error instanceof ClientApiError ? error.message : "Unable to continue Stripe onboarding."
       });
       setIsContinuingOnboarding(false);
+    }
+  }
+
+  // Stripe signs the society in to its own Express Dashboard with a single-use link made now.
+  async function openDashboard() {
+    setIsOpeningDashboard(true);
+    setMessage(null);
+
+    try {
+      await redirectToOnboarding("/api/stripe/connect/dashboard");
+    } catch (error) {
+      setMessage({
+        ok: false,
+        text: error instanceof ClientApiError ? error.message : "Unable to open the Stripe dashboard."
+      });
+      setIsOpeningDashboard(false);
     }
   }
 
@@ -328,7 +345,6 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const isConnected = Boolean(status?.connected);
   const isPlatformNotReady = status?.state === "PLATFORM_NOT_READY";
   const openObligations = status?.openObligations ?? 0;
-  const link = "inline-flex min-h-11 items-center px-1.5 text-sm font-semibold text-brand underline underline-offset-4";
   const exampleFee = calculatePlatformFee(2000);
   const rows = [
     {
@@ -438,10 +454,10 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
               </Button>
             ) : null}
 
-            {status?.dashboard_url ? (
-              <a className={link} href={status.dashboard_url} rel="noreferrer" target="_blank">
-                Open Stripe dashboard
-              </a>
+            {status?.dashboard_available ? (
+              <Button disabled={isOpeningDashboard} onClick={openDashboard} type="button" variant="secondary">
+                {isOpeningDashboard ? "Opening Stripe..." : "Open Stripe dashboard"}
+              </Button>
             ) : null}
           </div>
         </div>

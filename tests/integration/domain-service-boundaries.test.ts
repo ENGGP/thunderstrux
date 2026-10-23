@@ -17,6 +17,7 @@ const routeFiles = [
   "app/api/stripe/connect/status/route.ts",
   "app/api/stripe/connect/onboard/route.ts",
   "app/api/stripe/connect/continue/route.ts",
+  "app/api/stripe/connect/dashboard/route.ts",
   "app/api/stripe/connect/disconnect/route.ts",
   "app/api/stripe/connect/webhook/route.ts"
 ] as const;

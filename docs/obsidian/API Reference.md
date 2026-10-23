@@ -1067,6 +1067,19 @@ Rules:
 - Organisation account ownership required.
 - Organisation must already have `stripeAccountId`.
 
+### `POST /api/stripe/connect/dashboard`
+
+Returns a single-use link that signs the caller in to the society's own Stripe Express Dashboard: its balance, payouts and bank details.
+
+Request: `{ "organisationId": "..." }`. Response: `{ "url": "https://connect.stripe.com/express/..." }`.
+
+Rules:
+
+- Auth, a trusted origin and live `stripe:manage` for that society, then the Connect rate limit.
+- The society must have finished Stripe setup (details submitted); otherwise `400` with `path: ["organisationId"]`.
+- Staff without `stripe:manage`, and other societies, get the same concealed answer as the other Connect routes, and Stripe is never called.
+- Links expire quickly and work once, so the page asks for one per click; nothing changes in Thunderstrux. The status response says whether a dashboard is available (`dashboard_available`) and carries no link.
+
 ### `POST /api/stripe/connect/disconnect`
 
 Disconnects the Stripe account locally.

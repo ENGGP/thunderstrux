@@ -60,7 +60,7 @@ vi.mock("@/lib/stripe/connect", () => {
       currently_due: [],
       eventually_due: [],
       disabled_reason: null,
-      dashboard_url: null
+      dashboard_available: false
     }),
     platformNotReadyStatus: () => ({
       accountId: null,
@@ -73,7 +73,7 @@ vi.mock("@/lib/stripe/connect", () => {
       currently_due: [],
       eventually_due: [],
       disabled_reason: null,
-      dashboard_url: null,
+      dashboard_available: false,
       actionUrl: "https://dashboard.stripe.com/settings/connect/platform-profile",
       actionRequired: "Complete Stripe Connect platform profile",
       error: "Stripe platform setup incomplete"
@@ -454,7 +454,7 @@ describe("organisation and Stripe Connect disclosure", () => {
         currently_due: [],
         eventually_due: [],
         disabled_reason: null,
-        dashboard_url: null
+        dashboard_available: false
       })
       .mockResolvedValueOnce({
         accountId: null,
@@ -467,7 +467,7 @@ describe("organisation and Stripe Connect disclosure", () => {
         currently_due: [],
         eventually_due: [],
         disabled_reason: null,
-        dashboard_url: null,
+        dashboard_available: false,
         actionUrl:
           "https://dashboard.stripe.com/settings/connect/platform-profile",
         actionRequired: "Complete Stripe Connect platform profile",
@@ -484,7 +484,7 @@ describe("organisation and Stripe Connect disclosure", () => {
         currently_due: [],
         eventually_due: [],
         disabled_reason: null,
-        dashboard_url: "https://dashboard.stripe.test/connect/accounts/acct_test"
+        dashboard_available: true
       });
 
     setMockSession({
@@ -514,7 +514,7 @@ describe("organisation and Stripe Connect disclosure", () => {
       currently_due: [],
       eventually_due: [],
       disabled_reason: null,
-      dashboard_url: null
+      dashboard_available: false
     });
 
     setMockSession({
@@ -533,7 +533,7 @@ describe("organisation and Stripe Connect disclosure", () => {
       connected: false,
       state: "PLATFORM_NOT_READY",
       ready: false,
-      dashboard_url: null
+      dashboard_available: false
     });
 
     setMockSession({
@@ -558,7 +558,7 @@ describe("organisation and Stripe Connect disclosure", () => {
       currently_due: [],
       eventually_due: [],
       disabled_reason: null,
-      dashboard_url: "https://dashboard.stripe.test/connect/accounts/acct_test"
+      dashboard_available: true
     });
   });
 
@@ -776,7 +776,7 @@ describe("organisation and Stripe Connect disclosure", () => {
           currently_due: [],
           eventually_due: [],
           disabled_reason: null,
-          dashboard_url: null
+          dashboard_available: false
         }
       });
     });

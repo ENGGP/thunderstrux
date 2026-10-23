@@ -203,9 +203,10 @@ async function providerRefund(intentId, amount) {
     return refunds.data[0]?.status === 'succeeded' ? refunds.data[0] : null;
   }, 'Stripe refund');
   assert(refund.amount === amount && refund.transfer_reversal, 'Refund amount or transfer reversal mismatch');
-  const intent = await stripe.paymentIntents.retrieve(intentId, {expand: ['latest_charge']});
-  const [fee] = (await stripe.applicationFees.list({charge: intent.latest_charge.id, limit: 1})).data;
-  assert(fee && fee.amount_refunded === fee.amount, 'Platform fee was not refunded');
+  // A destination charge's fee hangs off the society's payment, so read it from the charge.
+  const intent = await stripe.paymentIntents.retrieve(intentId, {expand: ['latest_charge.application_fee']});
+  const fee = intent.latest_charge.application_fee;
+  assert(fee && fee.amount > 0 && fee.amount_refunded === fee.amount, 'Platform fee was not refunded');
   const event = await eventFor(refund.id, ['refund.created', 'refund.updated']);
   return {refundId: refund.id, eventId: event.id, amount, feeRefunded: fee.amount_refunded};
 }

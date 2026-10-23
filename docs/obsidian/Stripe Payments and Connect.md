@@ -240,7 +240,7 @@ Settings page
 
 Control buttons:
 
-The Payments page (T17, design round A2) shows the account as two rows, **Can take payments** (charges enabled) and **Can receive payouts** (payouts enabled), each with its next action, so a society that can sell but has no bank account keeps selling under an amber `Payouts not set up` badge. A Fees card works the 10% fee through a $20.00 example (the buyer pays $20.00, Thunderstrux keeps $2.00, the society receives $18.00; card processing is included, because Stripe charges its processing fee to the platform on destination charges, as T45 observed) from `calculatePlatformFee`.
+The Payments page (T17, design round A2) shows the account as two rows, **Can take payments** (charges enabled) and **Can receive payouts** (payouts enabled), each with its next action, so a society that can sell but has no bank account keeps selling under an amber `Payouts not set up` badge. A Fees card works the fee through a $20.00 example. Since T46 the fee is 3.75% plus $0.89 per ticket, membership or merchandise order: the buyer pays $20.00, Thunderstrux keeps $1.64 and the society receives $18.36 (it was 10% before T46; card processing is included, because Stripe charges its processing fee to the platform on destination charges, as T45 observed) from `calculatePlatformFee`.
 
 - `Connect Stripe`: shown for `NOT_CONNECTED`.
 - `Open Stripe Platform Settings` and `Retry after completion`: shown for `PLATFORM_NOT_READY`.

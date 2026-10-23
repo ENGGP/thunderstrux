@@ -24,6 +24,7 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 | Question | Living references |
 | --- | --- |
 | What is implemented and where is the code? | [[Project Handover]], [[Thunderstrux Codebase Map]], [[Architecture Overview]] |
+| What would go to hosting, and what is still outstanding? | [[Pre-hosting Candidate]] |
 | How do I implement and validate a change locally? | [[Engineering Delivery Workflow]], [[Development Workflow]] |
 | How do login, verification, recovery, staff authority and closure work? | [[Authentication and Dashboard Access]], [[API Reference]], [[Database and Multi Tenancy]] |
 | How do pages, navigation and requests fit together? | [[Frontend and Backend Flow]], [[UI Architecture Rules]] |

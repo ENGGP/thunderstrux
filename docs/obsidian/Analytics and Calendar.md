@@ -84,7 +84,7 @@ This is local plan evidence for PERF-001. Index usage and write overhead in a ho
 - Managers get "New event" in the header and on each day from today (on hover or keyboard focus). The builder then opens with that day, 6 to 8 pm (`/dashboard/events/new?date=`).
 
 **Time** (`components/calendar/layout.ts`). Every day and time is the society's zone, read with `Intl`, never the server's or browser's.
-- An event shorter than 24 hours, even past midnight, sits on the day it starts with its end day named ("10:00 pm to 2:00 am Sun"). Longer events span each day they touch, splitting at week edges with "continues" and "until".
+- An event shorter than 24 hours, even past midnight, sits on the day it starts with its end day named ("10:00 pm to 2:00 am Sun"). Longer events span each day they touch, splitting at week edges with "continues" and "until". The small hours belong to the night before: a day it reaches only by 6:00 am doesn't count, so a workshop from Wednesday 1:00 am to Thursday 3:00 am sits on Wednesday alone, in the month and in Wednesday's time grid from 1 am (fixed 23 Oct 2026; before, it spanned both days and sat in the week's All day row). Spanning events still use the All day row in the week. Every month chip carries its full name and times as a tooltip.
 - A day when the clocks change carries a marker ("Clocks go forward at 2 am"). A time inside the hour that happens twice carries its abbreviation ("2:30 am AEDT", then "2:30 am AEST").
 - The builder still rejects or asks about local times that don't exist or happen twice (EVT-001).
 

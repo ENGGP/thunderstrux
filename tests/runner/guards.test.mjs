@@ -28,7 +28,7 @@ test('recovery refuses a different platform, connected account or run', () => {
 });
 
 test('focused staging selection is explicit and rejects unknown or duplicate scenarios', () => {
-  assert.deepEqual(stagingScenarios([]), ['free', 'success', 'decline', 'cancel', 'member', 'guest', 'membership', 'merchandise', 'compensation']);
+  assert.deepEqual(stagingScenarios([]), ['free', 'success', 'decline', 'cancel', 'member', 'guest', 'membership', 'merchandise', 'compensation', 'commerce-dispute', 'commerce-outside-refund', 'commerce-compensation']);
   for (const scenario of stagingScenarios([])) assert.deepEqual(stagingScenarios([`--scenario=${scenario}`]), [scenario]);
   for (const args of [['--scenario'], ['--scenario='], ['--scenario=unknown'], ['--scenario=cancel', '--scenario=success']]) {
     assert.throws(() => stagingScenarios(args));

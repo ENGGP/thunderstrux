@@ -35,7 +35,7 @@ export function assertStripeIdentity(saved, current) {
 
 // T45: every staging scenario, in run order. `free` needs no card; the rest
 // stop for someone to act on a real Stripe Checkout page.
-export const allStagingScenarios = ['free', 'success', 'decline', 'cancel', 'member', 'guest', 'membership', 'merchandise', 'compensation'];
+export const allStagingScenarios = ['free', 'success', 'decline', 'cancel', 'member', 'guest', 'membership', 'merchandise', 'compensation', 'commerce-dispute', 'commerce-outside-refund', 'commerce-compensation'];
 export const cardScenarios = allStagingScenarios.filter(name => name !== 'free');
 
 export function stagingScenarios(args) {

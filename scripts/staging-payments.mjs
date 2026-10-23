@@ -14,7 +14,10 @@ const instructions = {
   guest: `${card} This is a verified guest's ticket.`,
   membership: `${card} This is a paid membership.`,
   merchandise: `${card} This is a two-line merchandise order; the app then refunds it in full.`,
-  compensation: `${card} The order has already expired locally, so the app refunds it automatically.`
+  compensation: `${card} The order has already expired locally, so the app refunds it automatically.`,
+  'commerce-dispute': 'Pay using Stripe dispute test card 4000 0000 0000 0259, any future expiry, any CVC. Stripe opens a dispute; the run then loses it.',
+  'commerce-outside-refund': `${card} The run then refunds part of it from outside Thunderstrux, and the app refunds the rest.`,
+  'commerce-compensation': `${card} This merchandise order has already expired locally, so the app refunds it automatically.`
 };
 
 export async function runStaging({ compose, capture, ready, runtimeFile, directory, runId, manifest, save, signal = new AbortController().signal, recovery = false }) {

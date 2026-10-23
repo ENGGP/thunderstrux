@@ -324,6 +324,7 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   else if (a === "staff_mfa.recovery_used") sentence = ["signed in with a recovery code"];
   else if (a === "stripe_connect.account_created") sentence = ["started connecting a Stripe account"];
   else if (a === "stripe_connect.disconnected") sentence = ["disconnected the Stripe account"];
+  else if (a === "stripe_connect.dashboard_opened") sentence = ["opened the Stripe dashboard"];
   else if (a === "organisation.created") sentence = ["set up the society"];
   else if (a === "organisation.profile_updated") {
     sentence = ["updated the society profile"];

@@ -32,19 +32,24 @@ async function asStaff(organisationId: string, role: "owner" | "admin" | "event_
   await createOrganisationStaff({ organisationId, userId: person.id, role });
   setMockSession({ userId: person.id, email: person.email, accountRole: "member" });
   selectMockContext({ mode: "staff", organisationId });
+  return person;
 }
 
 describe("Stripe Express dashboard link", () => {
   test("staff who manage payments get a fresh sign-in link to their society's own account, one per click", async () => {
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const openers: string[] = [];
     for (const role of ["owner", "admin"] as const) {
-      await asStaff(organisation.id, role);
+      openers.push((await asStaff(organisation.id, role)).id);
       const response = await ask(organisation.id);
       expect(response.status).toBe(200);
       expect(await parseJsonResponse(response)).toEqual({ url: `https://connect.stripe.com/express/${organisation.stripeAccountId}/session` });
     }
     expect(stripe.createLoginLink).toHaveBeenCalledTimes(2);
     expect(stripe.createLoginLink).toHaveBeenCalledWith(organisation.stripeAccountId);
+    // Each opening names who opened it in History.
+    const opened = await prisma.auditLog.findMany({ where: { organisationId: organisation.id, action: "stripe_connect.dashboard_opened" }, orderBy: { createdAt: "asc" } });
+    expect(opened.map((row) => [row.actorUserId, row.targetId])).toEqual(openers.map((id) => [id, organisation.id]));
     // The page is told a dashboard exists, never handed a platform dashboard address.
     const status = await getOrganisationStripeConnectStatus(organisation.id);
     expect(status).toMatchObject({ dashboard_available: true });
@@ -72,5 +77,6 @@ describe("Stripe Express dashboard link", () => {
     expect((await ask(organisation.id, { origin: "https://evil.example" })).status).toBe(403);
 
     expect(stripe.createLoginLink).not.toHaveBeenCalled();
+    expect(await prisma.auditLog.count({ where: { action: "stripe_connect.dashboard_opened" } })).toBe(0);
   });
 });

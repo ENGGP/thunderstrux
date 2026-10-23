@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await requireStripeConnectCapability();
+    const user = await requireStripeConnectCapability();
     const validation = await validateJson(request, organisationConnectSchema);
 
     if (!validation.success) {
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const url = await createOrganisationDashboardLink(organisationId);
+    const url = await createOrganisationDashboardLink(organisationId, user.id);
 
     return NextResponse.json({ url });
   } catch (error) {

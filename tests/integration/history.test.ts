@@ -67,6 +67,7 @@ describe("History (T38)", () => {
     const base = { organisationId: organisation.id, actorUserId: user.id };
     await prisma.auditLog.createMany({ data: [
       { ...base, action: "stripe_connect.account_created", targetType: "Organisation", targetId: organisation.id, metadata: { stripeAccountId: secret }, createdAt: new Date(Date.now() - 5000) },
+      { ...base, action: "stripe_connect.dashboard_opened", targetType: "Organisation", targetId: organisation.id, metadata: { stripeAccountId: secret }, createdAt: new Date(Date.now() - 4500) },
       { ...base, action: "order.refund_requested", targetType: "Order", targetId: "cmorder1234ABCDEF", metadata: { amount: 1500, reason: "Can't attend", refundRequestId: "rr_SENTINEL" }, createdAt: new Date(Date.now() - 4000) },
       { ...base, action: "ticket.checked_in", targetType: "Ticket", targetId: "cmticket1", createdAt: new Date(Date.now() - 3000) },
       { organisationId: organisation.id, action: "order.compensation_refund_review_required", targetType: "Order", targetId: "cmorder9", metadata: { reason: "sold_out" }, createdAt: new Date(Date.now() - 2000) },
@@ -76,7 +77,7 @@ describe("History (T38)", () => {
     ] });
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const html = await page();
-    for (const text of ["History", "started connecting a Stripe account", "refunded", "order ABCDEF", "$15.00", "“Can&#x27;t attend”", "Thunderstrux", "in payment review", "Paid after the last ticket sold", "Historical detail unavailable", "That&#x27;s the start of the society&#x27;s history"]) expect(html).toContain(text);
+    for (const text of ["History", "started connecting a Stripe account", "opened the Stripe dashboard", "refunded", "order ABCDEF", "$15.00", "“Can&#x27;t attend”", "Thunderstrux", "in payment review", "Paid after the last ticket sold", "Historical detail unavailable", "That&#x27;s the start of the society&#x27;s history"]) expect(html).toContain(text);
     for (const hidden of [secret, "rr_SENTINEL", "checked in a ticket", "Another society"]) expect(html).not.toContain(hidden);
 
     const checkins = await page({ category: "checkins" });

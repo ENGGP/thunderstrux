@@ -1078,7 +1078,7 @@ Rules:
 - Auth, a trusted origin and live `stripe:manage` for that society, then the Connect rate limit.
 - The society must have finished Stripe setup (details submitted); otherwise `400` with `path: ["organisationId"]`.
 - Staff without `stripe:manage`, and other societies, get the same concealed answer as the other Connect routes, and Stripe is never called.
-- Links expire quickly and work once, so the page asks for one per click; nothing changes in Thunderstrux. The status response says whether a dashboard is available (`dashboard_available`) and carries no link.
+- Links expire quickly and work once, so the page asks for one per click. Each link records `stripe_connect.dashboard_opened` in the society's History, naming who opened it, because payout details can change in that dashboard. No record is made when the request is refused. The status response says whether a dashboard is available (`dashboard_available`) and carries no link.
 
 ### `POST /api/stripe/connect/disconnect`
 

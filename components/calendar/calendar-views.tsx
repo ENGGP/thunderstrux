@@ -68,7 +68,7 @@ function Chip({ segment, timeZone, eventHref, style }: { segment: Segment; timeZ
   const className = `${chipBase} ${tone(item)} ${before ? "ml-0" : "ml-1.5 rounded-l-md border-l"} ${after ? "mr-0" : "mr-1.5 rounded-r-md border-r"}`;
   if (item.kind === "clock") return <span className={className} style={style}>{item.label}</span>;
   return (
-    <Link aria-label={itemLabel(item, timeZone)} className={className} href={item.kind === "term" ? termHref : eventHref(item.event.id)} style={style}>
+    <Link aria-label={itemLabel(item, timeZone)} className={className} href={item.kind === "term" ? termHref : eventHref(item.event.id)} style={style} title={itemLabel(item, timeZone)}>
       {chipText(segment, timeZone)}
     </Link>
   );

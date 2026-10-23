@@ -36,15 +36,27 @@ export type CalendarItem =
   | { kind: "term"; key: string; end: MembershipEnd; firstDay: string; lastDay: string; multiDay: false }
   | { kind: "clock"; key: string; label: string; firstDay: string; lastDay: string; multiDay: false };
 
-// Events of a day or more span every day they touch; shorter ones, even past
-// midnight, sit on the day they start (as Google Calendar and Outlook do).
+// The small hours belong to the night before: an event ending by 6 am doesn't
+// reach that day (design round C1: "an event past midnight shows where it starts").
+const nightEndsMinutes = 6 * 60;
+
+// The last day an event really covers. Shorter than a day, even past midnight,
+// it sits on the day it starts (as Google Calendar and Outlook do); longer, it
+// spans every day it reaches beyond the small hours.
+function lastDayOf(event: CalendarEvent, firstDay: string, timeZone: string) {
+  if (event.endTime.getTime() - event.startTime.getTime() < 24 * hourMs) return firstDay;
+  const endDay = localDay(new Date(event.endTime.getTime() - 1), timeZone);
+  const lastDay = localMinutes(event.endTime, timeZone) <= nightEndsMinutes && localDay(event.endTime, timeZone) === endDay ? addDays(endDay, -1) : endDay;
+  return lastDay < firstDay ? firstDay : lastDay;
+}
+
 export function calendarItems(events: CalendarEvent[], ends: MembershipEnd[], timeZone: string, clocks = new Map<string, string>()): CalendarItem[] {
   return [
     ...[...clocks].map(([day, label]) => ({ kind: "clock" as const, key: `clock/${day}`, label, firstDay: day, lastDay: day, multiDay: false as const })),
     ...events.map((event) => {
-      const multiDay = event.endTime.getTime() - event.startTime.getTime() >= 24 * hourMs;
       const firstDay = localDay(event.startTime, timeZone);
-      return { kind: "event" as const, key: event.id, event, firstDay, lastDay: multiDay ? localDay(new Date(event.endTime.getTime() - 1), timeZone) : firstDay, multiDay };
+      const lastDay = lastDayOf(event, firstDay, timeZone);
+      return { kind: "event" as const, key: event.id, event, firstDay, lastDay, multiDay: lastDay !== firstDay };
     }),
     ...ends.map((end) => ({ kind: "term" as const, key: `${end.planId}/${end.lastDay}`, end, firstDay: end.lastDay, lastDay: end.lastDay, multiDay: false as const }))
   ];

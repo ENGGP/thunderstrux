@@ -101,6 +101,21 @@ describe("society calendar (T33)", () => {
     expect(items.map((item) => [item.key, item.firstDay, item.lastDay])).toEqual([
       ["camp", "2026-10-30", "2026-11-02"], ["late", "2026-10-25", "2026-10-25"], ["night", "2026-10-24", "2026-10-24"]
     ]);
+    // A day or more that ends in the small hours stays on the day it started:
+    // Wed 1:00 am to Thu 3:00 am Brisbane fills Wednesday's grid from 1 am,
+    // never Thursday. Ending later in the morning, it reaches the next day.
+    const brisbane = "Australia/Brisbane";
+    const overnight = calendarItems([
+      event("workshop", "2026-12-08T15:00:00Z", "2026-12-09T17:00:00Z"),
+      event("six", "2026-12-08T15:00:00Z", "2026-12-09T20:00:00Z"),
+      event("hackathon", "2026-12-11T23:00:00Z", "2026-12-13T07:00:00Z")
+    ], [], brisbane);
+    expect(overnight.map((item) => [item.key, item.firstDay, item.lastDay, item.multiDay])).toEqual([
+      ["workshop", "2026-12-09", "2026-12-09", false], ["six", "2026-12-09", "2026-12-09", false], ["hackathon", "2026-12-12", "2026-12-13", true]
+    ]);
+    expect(laneSegments(days("2026-12-07", 7), overnight)[0]).toMatchObject({ start: 2, end: 2, before: false, after: false });
+    expect(placeDay([overnight[0].kind === "event" ? overnight[0].event : (null as never)], brisbane)[0]).toMatchObject({ top: 60, bottom: 24 * 60, clipped: true });
+    expect(calendarItems([event("late-morning", "2026-12-08T15:00:00Z", "2026-12-09T21:00:00Z")], [], brisbane)[0]).toMatchObject({ firstDay: "2026-12-09", lastDay: "2026-12-10", multiDay: true });
     // The camp splits across two weeks and is flagged on each side.
     const [first] = laneSegments(days("2026-10-26", 7), items);
     expect(first).toMatchObject({ start: 4, end: 6, before: false, after: true, lane: 0 });

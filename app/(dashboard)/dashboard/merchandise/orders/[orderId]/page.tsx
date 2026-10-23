@@ -209,7 +209,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
                 <dt className="text-ink-soft">Paid</dt>
                 <dd>{free ? "Nothing, it was free" : `${formatMoney(order.totalAmount)} by card, through Stripe`}</dd>
                 <dt className="text-ink-soft">Refunded</dt>
-                <dd>{order.refundStatus === "refunded" ? formatMoney(order.totalAmount) : order.refundStatus === "processing" ? "Processing" : "Nothing"}</dd>
+                <dd>{order.refundStatus === "refunded" ? formatMoney(order.totalAmount) : order.refundStatus === "processing" ? "Processing" : order.externalRefundedAmount ? `${formatMoney(order.externalRefundedAmount)} in Stripe` : "Nothing"}</dd>
               </dl>
               {can("orders:refund") && open && !free ? (
                 <MerchandiseMoneyActions action="refund" amount={formatMoney(order.totalAmount - order.externalRefundedAmount)} buyer={buyer} needsCode={mfaEnforcementMode() !== "off"} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />

@@ -280,6 +280,7 @@ test("a disputed order can't be handed over, and a partial refund made in Stripe
   await page.goto(`/dashboard/merchandise/orders/${partly.id}`);
   await expect(page.getByText("Partly refunded in Stripe: needs review")).toBeVisible();
   await shoot(page, "order-partly-refunded");
+  await expect(page.getByText("$10.00 in Stripe")).toBeVisible();
   await page.getByRole("button", { name: "Mark as reviewed" }).click();
   await expect(page.getByText("Partly refunded in Stripe", { exact: true })).toBeVisible();
   expect((await prisma.commerceOrder.findUniqueOrThrow({ where: { id: partly.id } })).externalRefundReviewedAt).not.toBeNull();

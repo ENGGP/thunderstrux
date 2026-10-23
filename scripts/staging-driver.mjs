@@ -289,7 +289,7 @@ const prepare = {
     const organisationId = await society(name);
     const now = new Date();
     const product = await db.merchandiseProduct.create({data: {organisationId, name: 'Staging hoodie', status: 'published', publishedAt: now, firstPublishedAt: now}});
-    const variant = (size, priceAmount, position) => db.merchandiseVariant.create({data: {productId: product.id, organisationId, size, sku: `${ownedOrg(name)}-${size}`, priceAmount, remaining: 5, position}});
+    const variant = (size, priceAmount, position) => db.merchandiseVariant.create({data: {productId: product.id, organisationId, size, sku: `T45-${runId.slice(-24).toUpperCase()}-${size.toUpperCase()}`, priceAmount, remaining: 5, position}});
     const large = await variant('Large', 2000, 0);
     const small = await variant('Small', 1500, 1);
     const items = [{variantId: large.id, quantity: 2}, {variantId: small.id, quantity: 1}];

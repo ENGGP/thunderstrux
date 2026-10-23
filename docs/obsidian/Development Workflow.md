@@ -149,7 +149,7 @@ Validate the hosted contract with secret-safe fixture files:
 pnpm docker:hosted:check -- --env-file <hosted-validation.env>
 ```
 
-The hosted contract requires an immutable `APP_IMAGE` reference containing `@sha256:`, external database and Redis endpoints, explicit resource inputs, and file-backed secret names. It deliberately defines no database or Redis service.
+The hosted contract requires immutable `APP_IMAGE` (web) and `OPS_IMAGE` (migration and workers) references containing `@sha256:`. Migration and every worker must share the one ops image, and the app must not run it (T43a, [[Production Operations]]). It also requires external database and Redis endpoints, explicit resource inputs, and file-backed secret names. It deliberately defines no database or Redis service.
 
 Database data lives in the named volume:
 

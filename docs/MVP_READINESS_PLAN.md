@@ -661,7 +661,18 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **Deployment code before hosting:** Record the selected pilot hosting provider and implement its versioned deployment/configuration adapters, one-shot migration order, worker scheduling, ingress/secret/storage contracts and rollback commands in this task. Validate configuration and rehearse the rollout locally or with provider dry-run facilities. If provider selection/credentials are unavailable, record the precise blocked adapter or publication subtask; H01 only provisions and executes the prepared deployment, rather than authoring missing rollout logic.
 - **Tests/done:** Exact images migrate/web/workers/readiness/shutdown/rollback locally; registry publication needs supplied credentials but can happen before hosting and stays blocked explicitly if missing.
 - **Ordered PR-sized substeps (parent requires all):**
-  - [ ] **T43a:** Web/ops/development image split and digest/schema manifest. Done when the exact locally built pair passes migration, runtime, every worker and shutdown/rollback smoke tests.
+  - [x] **T43a:** Web/ops/development image split and digest/schema manifest. Done when the exact locally built pair passes migration, runtime, every worker and shutdown/rollback smoke tests.
+    - [x] **Implemented 2026-10-23** on `codex/t43-release-artifacts`. `docker/Dockerfile` now builds three images:
+      - `web`: Next's standalone server, 387 MiB;
+      - `ops`: production dependencies including the Prisma CLI, plus lib, scripts, prisma and config, 939 MiB;
+      - `development`, unchanged.
+
+      The single image they replace was 1,190 MiB, measured uncompressed over layers. Neither release image carries pnpm or Corepack.
+    - **Manifest and budgets:** `scripts/release-pair.mjs` writes the manifest (revision, both image ids and sizes, required migration, migration digest) and enforces the budgets (web 600 MiB, ops 1 GiB).
+    - **Deploy:** `pnpm ops:deploy` builds and records the pair and migrates from the ops image.
+    - **Compose:** the hosted contract takes `APP_IMAGE` (web) and `OPS_IMAGE` (migration and workers); the base, e2e and operations Compose files follow the same split.
+    - **CI:** the optional dependency-validation workflow builds, budgets and scans both images.
+    - Validation: baseline `baseline-bf5e1f011e0511711d9efae7` on `b7b40e1` passed the production build, 34/34 runner guard tests (new: `release-pair.test.mjs`, plus the hosted contract requiring one shared ops image distinct from the web image), typecheck, all 631 integration tests in 94 files and the dependency audit with no known vulnerabilities. The operations tests (`ops-3cb1c3c66b`) deployed the exact locally built pair: web `sha256:32e5cde9…` and ops `sha256:0357fdbf…`, with the manifest validated against the deployed ids. They ran the migration, seeds, integrity audit, every worker and the worker contract from the ops image. Backup and restore verification passed, the bad-candidate deploy rolled back to the previous web image, and a failed migration left writers stopped. Browser campaign `browser-b43e726f3ffca91268575b6f` on `b7b40e1` passed 3 enforced-MFA, 65 desktop/mobile and 8 signed-webhook/notification checks against the standalone web image, with migrations and mail capture from the ops image. Every run cleaned up after itself.
   - [ ] **T43b (after T43a):** Selected-provider configuration/deployment adapters and documented migration/worker/rollback contracts. Done when configuration validation and a dry-run/rehearsal demonstrate deployment ordering; absent provider selection is an explicit blocker.
   - [ ] **T43c (after T43a):** CI artifact build-once, scan, SBOM/provenance and immutable publication. Done when a supplied registry accepts the manifest-linked image pair and CI consumes the same digests; absent registry credentials block publication evidence only.
 

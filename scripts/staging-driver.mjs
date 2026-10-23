@@ -308,6 +308,17 @@ const prepare = {
     worker('process-stale-orders');
     assert((await orderState(data.orderId)).status === 'expired', 'The order did not expire locally');
     return data;
+  },
+  // PAY-003: the same membership and merchandise checkouts, then what Stripe does to them.
+  async 'commerce-dispute'(name) { return prepare.membership(name); },
+  async 'commerce-outside-refund'(name) { return prepare.merchandise(name); },
+  async 'commerce-compensation'(name) {
+    const data = await prepare.merchandise(name);
+    // Past the stale worker's grace locally, while the Session stays payable.
+    await db.commerceOrder.update({where: {id: data.commerceOrderId}, data: {expiresAt: new Date(Date.now() - 10 * 60_000)}});
+    worker('process-stale-orders');
+    assert((await commerceState(data.commerceOrderId)).status === 'expired', 'The order did not expire locally');
+    return data;
   }
 };
 
@@ -370,6 +381,49 @@ const verify = {
     worker('process-compensation-refunds');
     await poll(async () => (await orderState(order.id)).compensationRefundJob.state === 'refunded', 'Compensation refund');
     return {eventId: event.id, fee: intent.application_fee_amount, refund: await providerRefund(intent.id, data.amount)};
+  },
+  // A dispute Stripe opens on a paid membership, then loses: the membership ends.
+  async 'commerce-dispute'(data) {
+    const { order, intent, event } = await paidCommerce(data);
+    const dispute = await poll(async () => (await commerceState(order.id)).disputeStatus === 'open' && (await stripe.disputes.list({payment_intent: intent.id, limit: 1})).data[0], 'Dispute reconciliation');
+    const opened = await eventFor(dispute.id, ['charge.dispute.created']);
+    // Stripe test mode closes a dispute as lost when given this evidence.
+    await stripe.disputes.update(dispute.id, {evidence: {uncategorized_text: 'losing_evidence'}});
+    await poll(async () => (await commerceState(order.id)).disputeStatus === 'lost', 'Lost dispute reconciliation');
+    const grant = await db.membershipGrant.findFirstOrThrow({where: {commerceOrderLineId: order.lines[0].id}});
+    assert(grant.revokedAt, 'A lost dispute left the membership active');
+    const closed = await eventFor(dispute.id, ['charge.dispute.closed']);
+    return {eventId: event.id, fee: intent.application_fee_amount, disputeId: dispute.id, moreEventIds: [opened.id, closed.id]};
+  },
+  // Part refunded outside Thunderstrux: flagged, reviewed by staff, and the app refunds only the rest.
+  async 'commerce-outside-refund'(data) {
+    const { order, intent, event } = await paidCommerce(data);
+    const outside = await stripe.refunds.create({payment_intent: intent.id, amount: 1500, reverse_transfer: true, refund_application_fee: true});
+    await poll(async () => (await commerceState(order.id)).externalRefundedAmount === 1500, 'Outside refund reconciliation');
+    const outsideEvent = await eventFor(outside.id, ['refund.created', 'refund.updated']);
+    const staff = await asStaff(data.organisationId, scenario);
+    assert((await post(staff, `/api/orders/${order.id}/review`, {action: 'mark_reviewed'})).ok(), 'Review refused');
+    assert((await commerceState(order.id)).externalRefundReviewedAt, 'Review not recorded');
+    const refunded = await post(staff, `/api/orgs/${data.organisationId}/merchandise/orders/${order.id}/refund`, {reason: 'T45 refund of the rest', confirmation: order.id.slice(-6).toUpperCase()});
+    assert([200, 202].includes(refunded.status()), `Refund request refused (${refunded.status()})`);
+    await poll(async () => (await commerceState(order.id)).refundStatus === 'refunded', 'Refund reconciliation');
+    const refunds = (await stripe.refunds.list({payment_intent: intent.id, limit: 10})).data.filter(item => item.status === 'succeeded');
+    const own = refunds.find(item => item.metadata?.refundRequestId);
+    assert(refunds.length === 2 && own?.amount === data.amount - 1500 && own.transfer_reversal, 'Refund of the rest mismatch');
+    const ownEvent = await eventFor(own.id, ['refund.created', 'refund.updated']);
+    return {eventId: event.id, fee: intent.application_fee_amount, outsideRefund: {refundId: outside.id, amount: 1500}, refund: {refundId: own.id, eventId: ownEvent.id, amount: own.amount}, moreEventIds: [outsideEvent.id]};
+  },
+  // Paid after the order expired locally: nothing fulfilled, and the refund worker returns it all.
+  async 'commerce-compensation'(data) {
+    const order = await poll(async () => { const item = await commerceState(data.commerceOrderId); return item.requiresCompensationReview || item.refundStatus ? item : null; });
+    assert(!order.fulfilledAt && order.status === 'failed', 'A paid-after-expiry order was fulfilled');
+    const intent = await destinationCharge(data.sessionId, data.amount, order.feeAmount);
+    const event = await eventFor(data.sessionId, ['checkout.session.completed']);
+    worker('process-compensation-refunds');
+    await poll(async () => (await commerceState(order.id)).refundStatus === 'refunded', 'Compensation refund');
+    const stock = await db.merchandiseVariant.findMany({where: {id: {in: data.variants}}});
+    assert(stock.every(item => item.remaining === 5), 'An unfilled order changed stock');
+    return {eventId: event.id, fee: intent.application_fee_amount, refund: await providerRefund(intent.id, data.amount)};
   }
 };
 function assertLifecycleTypes(order, types) {
@@ -419,7 +473,7 @@ try {
     const data = await readState(scenario);
     assert(data.organisationId === ownedOrg(scenario), 'Scenario ownership mismatch');
     const evidence = await verify[scenario](data);
-    const eventIds = [evidence.eventId, evidence.refund?.eventId].filter(Boolean);
+    const eventIds = [evidence.eventId, evidence.refund?.eventId, ...(evidence.moreEventIds ?? [])].filter(Boolean);
     await writeFile(`/app/test-results/payment-${scenario}.json`, JSON.stringify({scenario, sessionId: data.sessionId ?? null, ...evidence, eventIds, verifiedAt: new Date().toISOString(), passed: true}));
   } else if (action === 'cleanup') {
     for (const name of allStagingScenarios) {

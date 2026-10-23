@@ -249,6 +249,43 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
 });
 
 // T28b: the owner opens an order from Pickups, records a return that restocks, cancels a free order, and the buyer sees it cancelled.
+// PAY-003: what Stripe reported that Thunderstrux didn't do, on the staff order page.
+test("a disputed order can't be handed over, and a partial refund made in Stripe is marked reviewed", async ({ page, data }) => {
+  const { organisation } = data;
+  const now = new Date();
+  const product = await prisma.merchandiseProduct.create({ data: { organisationId: organisation.id, name: "Club scarf", status: "published", publishedAt: now, firstPublishedAt: now } });
+  const scarf = await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, sku: `E2E-SCARF-${Date.now()}`, priceAmount: 2500, remaining: 10 } });
+  const paidOrder = async () => {
+    const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+      organisationId: organisation.id, kind: "merchandise", buyer: { userId: data.member.id }, buyerEmail: data.member.email, buyerName: "Sam Lee", paymentKind: "stripe", feeAmount: 250,
+      lines: [{ quantity: 1, unitAmount: 2500, name: "Club scarf", merchandiseVariantId: scarf.id }], source: "checkout"
+    }));
+    return prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "paid", paidAt: now, fulfilledAt: now, pickupStatus: "pending" } });
+  };
+  const disputed = await paidOrder();
+  await prisma.commerceOrder.update({ where: { id: disputed.id }, data: { disputeStatus: "open" } });
+  await prisma.purchaseDispute.create({ data: { commerceOrderId: disputed.id, organisationId: organisation.id, stripeDisputeId: `dp_e2e_${disputed.id}`, stripeChargeId: `ch_e2e_${disputed.id}`, amount: 2500, currency: "aud", providerStatus: "needs_response", evidenceDueBy: new Date(Date.now() + 7 * 86_400_000) } });
+  const partly = await paidOrder();
+  await prisma.commerceOrder.update({ where: { id: partly.id }, data: { externalRefundedAmount: 1000 } });
+
+  await login(page, data.owner.email, `/dashboard/merchandise/orders/${disputed.id}`);
+  await expect(page.getByText("The buyer has disputed this payment")).toBeVisible();
+  await expect(page.getByText("refunds are paused and the order can't be handed over")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open the dispute in Stripe" })).toHaveAttribute("href", `https://dashboard.stripe.com/test/disputes/dp_e2e_${disputed.id}`);
+  await expect(page.getByRole("button", { name: /Mark .* ready/ })).toHaveCount(0);
+  await shoot(page, "order-disputed");
+  await page.goto("/dashboard/merchandise/pickups?stage=review");
+  await expect(page.getByText("1 × Club scarf").first()).toBeVisible();
+
+  await page.goto(`/dashboard/merchandise/orders/${partly.id}`);
+  await expect(page.getByText("Partly refunded in Stripe: needs review")).toBeVisible();
+  await shoot(page, "order-partly-refunded");
+  await expect(page.getByText("$10.00 in Stripe")).toBeVisible();
+  await page.getByRole("button", { name: "Mark as reviewed" }).click();
+  await expect(page.getByText("Partly refunded in Stripe", { exact: true })).toBeVisible();
+  expect((await prisma.commerceOrder.findUniqueOrThrow({ where: { id: partly.id } })).externalRefundReviewedAt).not.toBeNull();
+});
+
 test("an owner records a return and cancels a free order from the order page, and the buyer sees the cancellation", async ({ page, data }) => {
   const { organisation } = data;
   await prisma.organisation.update({ where: { id: organisation.id }, data: { pickupPolicy: "EngSoc office, Level 2.", stripeAccountId: "acct_e2e_after_sale", stripeChargesEnabled: true } });

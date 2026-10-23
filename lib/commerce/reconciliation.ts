@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { failPendingCommerceOrder, lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { commerceFamilies, type CommerceOrderForHooks } from "@/lib/commerce/families";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
+import { queueCommerceCompensationRefund } from "@/lib/commerce/payment-recovery";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { queueCommerceReviewNotice } from "@/lib/payments/compensation-notices";
 import { logInfo, logWarn } from "@/lib/ops/logger";
@@ -81,6 +82,8 @@ async function requireCompensation(
     commerceOrderId: order.id, type: "compensation_required", source: "stripe_webhook", stripeEventId: facts.stripeEventId, reason, fromStatus: facts.fromStatus, toStatus: "failed"
   });
   await queueCommerceReviewNotice(tx, order.id);
+  // PAY-003: refunded in full automatically, as a ticketing platform does with an order it can't complete.
+  await queueCommerceCompensationRefund(tx, order.id, reason);
 }
 
 export async function reconcileCommerceCheckoutSession(

@@ -20,11 +20,11 @@ export type PickupStage = (typeof pickupStages)[number];
 const pageSize = 25;
 
 // Only a paid order that isn't under review, refunded or cancelled is handed over.
-const handOver = { status: "paid", requiresCompensationReview: false, refundStatus: null, cancelledAt: null } as const;
+const handOver = { status: "paid", requiresCompensationReview: false, refundStatus: null, disputeStatus: null, cancelledAt: null } as const;
 const stageStatus = { prepare: "pending", ready: "ready", collected: "collected" } as const;
 // Collected history survives a later refund (T28b); waiting stages drop refunded and cancelled orders.
 const stageWhere = (stage: PickupStage): Prisma.CommerceOrderWhereInput =>
-  stage === "review" ? { requiresCompensationReview: true } : stage === "collected" ? { status: "paid", pickupStatus: "collected" } : { ...handOver, pickupStatus: stageStatus[stage] };
+  stage === "review" ? { OR: [{ requiresCompensationReview: true }, { disputeStatus: { not: null }, pickupStatus: { not: "collected" } }] } : stage === "collected" ? { status: "paid", pickupStatus: "collected" } : { ...handOver, pickupStatus: stageStatus[stage] };
 const stepEvents = ["pickup_ready", "pickup_collected"] as const;
 
 export const pickupSettings = (organisationId: string) => prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { timeZone: true, pickupPolicy: true } });
@@ -105,13 +105,13 @@ export async function markPickup(actor: AccountActor, organisationId: string, or
     await lockCommerceOrder(tx, orderId);
     const order = await tx.commerceOrder.findFirst({
       where: { id: orderId, organisationId, kind: "merchandise" },
-      select: { id: true, version: true, status: true, pickupStatus: true, requiresCompensationReview: true, refundStatus: true, cancelledAt: true, buyerEmailSnapshot: true, sellerName: true }
+      select: { id: true, version: true, status: true, pickupStatus: true, requiresCompensationReview: true, refundStatus: true, disputeStatus: true, cancelledAt: true, buyerEmailSnapshot: true, sellerName: true }
     });
     if (!order) throw new MerchandiseCatalogueError(404, "Order not found");
     const reference = orderReference(order.id);
     const zone = { timeZone: organisation.timeZone };
-    if (order.status !== "paid" || order.requiresCompensationReview || order.refundStatus || order.cancelledAt || !order.pickupStatus) {
-      throw new MerchandiseCatalogueError(409, `Order ${reference} can't be handed over: ${order.requiresCompensationReview ? "its payment is under review" : "it was refunded, cancelled or never paid"}. Nothing changed.`);
+    if (order.status !== "paid" || order.requiresCompensationReview || order.refundStatus || order.disputeStatus || order.cancelledAt || !order.pickupStatus) {
+      throw new MerchandiseCatalogueError(409, `Order ${reference} can't be handed over: ${order.requiresCompensationReview ? "its payment is under review" : order.disputeStatus ? "the buyer has disputed the payment" : "it was refunded, cancelled or never paid"}. Nothing changed.`);
     }
     if (order.version !== expectedVersion || order.pickupStatus !== (step === "ready" ? "pending" : "ready")) {
       const last = await tx.commerceLifecycleEvent.findFirst({

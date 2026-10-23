@@ -146,7 +146,8 @@ const lineSelect = {
 
 const summarySelect = {
   id: true, kind: true, status: true, paymentKind: true, currency: true, totalAmount: true, sellerName: true,
-  requiresCompensationReview: true, createdAt: true, fulfilledAt: true, cancelledAt: true, pickupStatus: true, refundStatus: true
+  requiresCompensationReview: true, createdAt: true, fulfilledAt: true, cancelledAt: true, pickupStatus: true, refundStatus: true,
+  disputeStatus: true, externalRefundedAmount: true, externalRefundReviewedAt: true
 } satisfies Prisma.CommerceOrderSelect;
 
 // The buyer's own order, a member's or a verified guest's: what they bought,
@@ -209,10 +210,11 @@ export type CommerceOrderFilter = (typeof commerceOrderFilters)[number];
 
 const filterWhere: Record<CommerceOrderFilter, Prisma.CommerceOrderWhereInput> = {
   all: { status: { not: "pending" } },
-  paid: { status: "paid", paymentKind: "stripe", refundStatus: null, requiresCompensationReview: false },
+  paid: { status: "paid", paymentKind: "stripe", refundStatus: null, requiresCompensationReview: false, disputeStatus: null },
   free: { status: "paid", paymentKind: "free", cancelledAt: null },
   refunded: { refundStatus: { not: null } },
-  review: { requiresCompensationReview: true },
+  // Payment review, a dispute, or a partial refund made in Stripe nobody has reviewed (PAY-003).
+  review: { OR: [{ requiresCompensationReview: true }, { disputeStatus: { not: null } }, { externalRefundedAmount: { gt: 0 }, externalRefundReviewedAt: null, refundStatus: null }] },
   expired: { status: { in: ["expired", "failed"] }, requiresCompensationReview: false }
 };
 

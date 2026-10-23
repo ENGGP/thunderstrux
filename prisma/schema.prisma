@@ -578,7 +578,9 @@ model RefundRequest {
 // dispute voids them; a won one needs staff to restore them with a reason.
 model PurchaseDispute {
   id               String       @id @default(cuid())
-  orderId          String
+  // A ticket order's or a commerce order's dispute, never both.
+  orderId          String?
+  commerceOrderId  String?
   organisationId   String
   stripeDisputeId  String       @unique
   stripeChargeId   String
@@ -593,11 +595,13 @@ model PurchaseDispute {
   resolutionReason String?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
-  order            Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  order            Order?       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  commerceOrder    CommerceOrder? @relation(fields: [commerceOrderId], references: [id], onDelete: Restrict)
   organisation     Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   resolvedBy       User?        @relation(fields: [resolvedByUserId], references: [id], onDelete: SetNull)
 
   @@index([orderId, createdAt])
+  @@index([commerceOrderId, createdAt])
 }
 
 model Ticket {
@@ -943,6 +947,10 @@ enum CommerceLifecycleEventType {
   pickup_ready
   pickup_collected
   return_recorded
+  dispute_opened
+  dispute_closed
+  external_refund_recorded
+  external_refund_reviewed
 }
 
 enum MerchandisePickupStatus {
@@ -991,6 +999,10 @@ model CommerceOrder {
   refundStatus               OrderRefundStatus?
   // A fulfilled merchandise order's pickup (T28a); staff steps bump `version`.
   pickupStatus               MerchandisePickupStatus?
+  // Stripe-reported facts Thunderstrux didn't cause (PAY-003), as on ticket orders.
+  disputeStatus              OrderDisputeStatus?
+  externalRefundedAmount     Int           @default(0)
+  externalRefundReviewedAt   DateTime?
 
   organisation     Organisation             @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   cancelledBy      User?                    @relation("CommerceOrderCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
@@ -1002,6 +1014,7 @@ model CommerceOrder {
   checkoutAttempt  CheckoutAttempt?
   refundRequests   RefundRequest[]
   guestAccessGrants GuestAccessGrant[]
+  disputes         PurchaseDispute[]
 
   @@unique([id, organisationId, kind], map: "CommerceOrder_id_organisation_kind_key")
   @@index([organisationId, createdAt, id])

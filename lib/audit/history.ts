@@ -262,17 +262,17 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
     const state = a.split("refund_")[1];
     sentence = [state === "succeeded" ? "confirmed the refund of " : state === "pending" ? "is still processing the refund of " : state === "canceled" ? "cancelled the refund of " : "couldn't complete the refund of ", ...anyOrder()];
   } else if (a === "order.manual_refund_marked") sentence = ["marked ", ...order(), " as refunded outside Thunderstrux"];
-  else if (a === "order.external_refund_recorded") {
-    sentence = ["reported a refund made in the Stripe dashboard for ", ...order()];
+  else if (a === "order.external_refund_recorded" || a === "commerce_order.external_refund_recorded") {
+    sentence = ["reported a refund made in the Stripe dashboard for ", ...anyOrder()];
     if (num(m.refundedOutside) !== null) facts = [{ label: "Refunded", value: formatMoney(m.refundedOutside as number), was: num(m.totalAmount) !== null ? `${formatMoney(m.totalAmount as number)} paid` : undefined }];
-  } else if (a === "order.external_refund_reviewed") sentence = ["reviewed the refund made in Stripe for ", ...order()];
-  else if (a === "order.dispute_opened") {
-    sentence = ["opened a dispute on ", ...order()];
+  } else if (a === "order.external_refund_reviewed" || a === "commerce_order.external_refund_reviewed") sentence = ["reviewed the refund made in Stripe for ", ...anyOrder()];
+  else if (a === "order.dispute_opened" || a === "commerce_order.dispute_opened") {
+    sentence = ["opened a dispute on ", ...anyOrder()];
     facts = amount();
   } else if (a === "order.dispute_resolved") {
     sentence = ["restored the tickets on ", ...order(), " after its dispute"];
     facts = [...reason(), ...(num(m.ticketCount) !== null ? [{ label: "Tickets", value: `${m.ticketCount} valid again` }] : [])];
-  } else if (a.startsWith("order.dispute_")) sentence = [`closed the dispute on `, ...order(), `: ${a.slice(14).replaceAll("_", " ")}`];
+  } else if (/^(order|commerce_order)\.dispute_/.test(a)) sentence = [`closed the dispute on `, ...anyOrder(), `: ${a.split(".dispute_")[1].replaceAll("_", " ")}`];
   else if (a === "order.free_cancelled" || a === "merchandise_order.free_cancelled") {
     sentence = ["cancelled the free ", ...anyOrder()];
     facts = [...reason(), ...(num(m.ticketCount) !== null ? [{ label: "Tickets", value: `${m.ticketCount} no longer valid` }] : [])];
@@ -282,7 +282,7 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
     sentence = ["retried the tickets email for ", ...(typeof m.orderId === "string" ? [{ text: `order ${orderReference(m.orderId)}`, href: `/dashboard/orders/${m.orderId}` }] : ["an order"])];
     facts = reason();
   } else if (a === "notification.requeued") sentence = ["retried an email notice"];
-  else if (a === "order.compensation_refund_queued") sentence = ["queued an automatic refund for ", ...order()];
+  else if (a === "order.compensation_refund_queued" || a === "commerce_order.compensation_refund_queued") sentence = ["queued an automatic refund for ", ...anyOrder()];
   else if (a === "order.compensation_refund_review_required") {
     sentence = ["put ", ...order(), " in payment review"];
     facts = [{ label: "Why", value: `${reviewReasons[text(m.reason) ?? ""] ?? "Paid, but what they bought couldn't be issued."} Decide on it in Orders.` }];

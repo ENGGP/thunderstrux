@@ -105,7 +105,7 @@ export async function readMembership(organisationId: string, grantId: string, no
       id: true, userId: true, startsAt: true, endsAt: true, revokedAt: true, revocationReason: true, grantedAt: true, entitlements: true,
       user: { select: { firstName: true, lastName: true, email: true } },
       product: { select: { id: true, name: true } },
-      line: { select: { order: { select: { id: true, paymentKind: true, cancelledAt: true, totalAmount: true, refundStatus: true } } } },
+      line: { select: { order: { select: { id: true, paymentKind: true, cancelledAt: true, totalAmount: true, refundStatus: true, disputeStatus: true, externalRefundedAmount: true, externalRefundReviewedAt: true, disputes: { orderBy: { createdAt: "desc" }, take: 1, select: { stripeDisputeId: true, amount: true, providerStatus: true, evidenceDueBy: true, createdAt: true, closedAt: true } } } } } },
       revokedBy: { select: { firstName: true, lastName: true, email: true } }
     }
   });
@@ -138,6 +138,8 @@ export async function readMembership(organisationId: string, grantId: string, no
     cancelled: grant.line.order.cancelledAt !== null,
     amount: grant.line.order.totalAmount,
     refundStatus: grant.line.order.refundStatus,
+    // What Stripe reported that Thunderstrux didn't do (PAY-003).
+    stripeReview: { disputeStatus: grant.line.order.disputeStatus, externalRefundedAmount: grant.line.order.externalRefundedAmount, externalRefundReviewedAt: grant.line.order.externalRefundReviewedAt, totalAmount: grant.line.order.totalAmount, refundStatus: grant.line.order.refundStatus, dispute: grant.line.order.disputes[0] ?? null },
     joinedAt: join?.createdAt ?? null,
     staff: !!staff,
     others: others.map((other) => ({ id: other.id, plan: other.product.name, startsAt: other.startsAt, endsAt: other.endsAt, state: grantState(other, now) as GrantState }))

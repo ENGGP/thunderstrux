@@ -150,8 +150,8 @@ export async function requestOrderRefund(input: {
 }
 
 // The same whole-order refund for a membership or merchandise order (T23c).
-// A commerce order has no disputes or outside refunds projected yet, so it is
-// refunded only while Stripe shows no other refund of the payment.
+// Since PAY-003 a dispute pauses it, and after a partial refund made in
+// Stripe it refunds the rest.
 export async function requestCommerceRefund(input: {
   organisationId: string;
   commerceOrderId: string;
@@ -173,26 +173,28 @@ export async function requestCommerceRefund(input: {
     }
     if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
     if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
+    if (order.disputeStatus) throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
+    const amount = order.totalAmount - order.externalRefundedAmount;
     if (
       order.paymentKind !== "stripe" || order.status !== "paid" || !order.fulfilledAt || order.requiresCompensationReview ||
-      !order.stripeSessionId || !order.sellerStripeAccountId || order.totalAmount <= 0
+      !order.stripeSessionId || !order.sellerStripeAccountId || amount <= 0
     ) {
       throw new OrderRefundError("not_refundable", "This order can't be refunded here");
     }
     await tx.commerceOrder.update({ where: { id: order.id }, data: { refundStatus: "processing" } });
     const created = await tx.refundRequest.create({
       data: {
-        commerceOrderId: order.id, organisationId: input.organisationId, amount: order.totalAmount, currency: order.currency, reason,
+        commerceOrderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
         actorUserId: input.actor.id, operationKey: `commerce-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
         attempts: 1, processingToken: token, processingStartedAt: now
       }
     });
     await appendCommerceLifecycleEvent(tx, {
-      commerceOrderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount: order.totalAmount }
+      commerceOrderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount }
     });
     await tx.auditLog.create({ data: {
       organisationId: input.organisationId, actorUserId: input.actor.id, action: "commerce_order.refund_requested", targetType: "CommerceOrder", targetId: order.id,
-      metadata: { refundRequestId: created.id, amount: order.totalAmount, reason }
+      metadata: { refundRequestId: created.id, amount, reason }
     } });
     return created;
   });
@@ -317,7 +319,8 @@ async function refundCommerce(
 ) {
   const order = await tx.commerceOrder.update({
     where: { id: request.commerceOrderId },
-    data: { refundStatus: "refunded" },
+    // A payment refunded because it couldn't be filled leaves review once Stripe confirms (PAY-003).
+    data: { refundStatus: "refunded", requiresCompensationReview: false },
     select: { kind: true, pickupStatus: true, buyerEmailSnapshot: true, sellerName: true, lines: { select: { nameSnapshot: true }, orderBy: { lineNumber: "asc" } } }
   });
   const ended = await tx.membershipGrant.updateMany({
@@ -328,7 +331,7 @@ async function refundCommerce(
   await enqueueNotification(tx, {
     eventKey: `refund/${request.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: request.organisationId,
     payload: {
-      message: `Your ${items} from ${order.sellerName} has been refunded: ${formatMoney(request.amount)} is on its way back to your card. Banks usually take 5 to 10 business days.${ended.count ? " Your membership has ended." : ""}${order.kind === "merchandise" && order.pickupStatus !== "collected" ? " The pickup is cancelled, so there's nothing to collect." : ""}`
+      message: `Your ${items} from ${order.sellerName} has been refunded: ${formatMoney(request.amount)} is on its way back to your card. Banks usually take 5 to 10 business days.${ended.count ? " Your membership has ended." : ""}${order.kind === "merchandise" && order.pickupStatus && order.pickupStatus !== "collected" ? " The pickup is cancelled, so there's nothing to collect." : ""}`
     }
   });
   return ended.count;

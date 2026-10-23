@@ -821,7 +821,7 @@ Cancels a confirmed free registration (T18c). Body `{reason, mfaCode?}`: a reaso
 
 ### `POST /api/orders/[orderId]/review`
 
-Staff decisions after Stripe reports a dispute or a refund made outside Thunderstrux (T18b). Neither moves money. Requires the current society's `orders:refund` and a trusted origin with the CSRF token. Body `{action: "restore_tickets", reason}` (8 to 500 characters) restores the tickets of a dispute Stripe closed in the society's favour; `{action: "mark_reviewed"}` records that a partial outside refund was reviewed (repeating it is a no-op). Answers `200 {ok: true}`; `400` for a short reason; `404` for another society's or a missing order; `409` with detail `reason` `not_allowed` when there is no won dispute or partial refund to act on.
+Staff decisions after Stripe reports a dispute or a refund made outside Thunderstrux (T18b). Neither moves money. Requires the current society's `orders:refund` and a trusted origin with the CSRF token. Body `{action: "restore_tickets", reason}` (8 to 500 characters) restores the tickets of a dispute Stripe closed in the society's favour; `{action: "mark_reviewed"}` records that a partial outside refund was reviewed (repeating it is a no-op); since PAY-003 the id may also be a membership or merchandise order of the society. Answers `200 {ok: true}`; `400` for a short reason; `404` for another society's or a missing order; `409` with detail `reason` `not_allowed` when there is no won dispute or partial refund to act on.
 
 ### `PATCH /api/orders/[orderId]/refund-manual`
 

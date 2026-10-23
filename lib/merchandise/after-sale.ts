@@ -21,6 +21,8 @@ export async function staffMerchandiseOrder(organisationId: string, orderId: str
       id: true, status: true, paymentKind: true, totalAmount: true, feeAmount: true, version: true, createdAt: true, paidAt: true,
       buyerNameSnapshot: true, buyerEmailSnapshot: true, guestIdentityId: true, userId: true,
       pickupStatus: true, refundStatus: true, cancelledAt: true, cancellationReason: true, requiresCompensationReview: true, reviewReason: true,
+      disputeStatus: true, externalRefundedAmount: true, externalRefundReviewedAt: true,
+      disputes: { orderBy: { createdAt: "desc" }, take: 1, select: { stripeDisputeId: true, amount: true, providerStatus: true, evidenceDueBy: true, createdAt: true, closedAt: true } },
       lines: {
         orderBy: { lineNumber: "asc" },
         select: {

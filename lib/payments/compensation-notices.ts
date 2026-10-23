@@ -44,7 +44,7 @@ export async function queueCommerceReviewNotice(tx: Prisma.TransactionClient, co
     eventKey: `payment-review/${order.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: order.organisationId,
     payload: {
       subject: `We're checking your payment to ${order.sellerName}`.slice(0, 200),
-      message: `We received your payment of ${formatMoney(order.totalAmount)} for order ${orderReference(order.id)}, but we couldn't confirm ${what}, so nothing from this order is yours yet. ${order.sellerName} will review it and either complete the order or refund you. Contact ${order.sellerName} if you have questions.`
+      message: `We received your payment of ${formatMoney(order.totalAmount)} for order ${orderReference(order.id)}, but we couldn't confirm ${what}, so we're refunding the full amount to your card. We'll email you when the refund is done. Contact ${order.sellerName} if you have questions.`
     }
   });
 }

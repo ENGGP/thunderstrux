@@ -60,6 +60,9 @@ This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into
 | `membership` | A paid membership: the commerce order is fulfilled and the grant is made. |
 | `merchandise` | Two lines paid together: stock for each option drops, then finance refunds the order through the app. |
 | `compensation` | The order expires locally while its Session stays open; paying it issues no tickets, and the compensation worker refunds it in full (`automatic_full`). |
+| `commerce-dispute` | PAY-003: a paid membership with Stripe's dispute card (4000 0000 0000 0259); the order records the open dispute, the run submits Stripe's losing evidence, and the lost dispute ends the membership. |
+| `commerce-outside-refund` | PAY-003: $15.00 of a merchandise order is refunded outside Thunderstrux; the order records it, staff mark it reviewed, and the app refunds only the remaining $40.00. |
+| `commerce-compensation` | PAY-003: a merchandise order expires locally, is paid anyway, fulfils nothing and changes no stock, and the refund worker returns it in full. |
 
 To repeat one, append exactly one `--scenario=<name>`. A passing focused run is not full acceptance on its own. Evidence from different runs can be combined only when the application and the assertions for those scenarios are unchanged between them.
 
@@ -89,6 +92,8 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 - See [[Project Handover]] and the evidence ledger in [[../MVP_READINESS_PLAN]] for current evidence.
 
 ## Validation evidence
+
+**PAY-003 commerce recovery (2026-10-24).** Baseline `baseline-9734427260591184e71e8334` (41/41 guards, 641 integration tests in 97 files, typecheck, clean audit), browser `browser-f884013075b6ac47e03097d7` on `6e8924e` (9 MFA, 67 desktop/mobile with the new disputed and partly refunded order screenshots, 10 webhook checks), operations `ops-b747a83484` (migration through upgrade and fenced restore), and staging on real Stripe test mode on `6e8924e`: `staging-a828d3d0d1942113a84e7e78` (commerce-dispute: dispute `du_1UTmCrRuN9MD4SvFGMdIjpRW` opened, lost, membership ended), `staging-f5d4c10aa92914683c6ecbf3` (commerce-outside-refund: $15.00 refunded outside, reviewed, the remaining $40.00 refunded here as `re_3UTmGIRuN9MD4SvF1VZCVqHc`) and `staging-d1981708891bb40ac0ac9600` (commerce-compensation: $55.00 refunded automatically with the $5.50 fee returned, stock unchanged). Every Stripe event listed was delivered (listener HTTP 200) and received by the app; every run cleaned up.
 
 **T45 provider acceptance (2026-10-24).** Every scenario passed on Stripe API version `2026-03-25.dahlia`, with the migration digest `589d805fc690…` and each run's tree matching its revision. Stripe and local cleanup completed after every run.
 

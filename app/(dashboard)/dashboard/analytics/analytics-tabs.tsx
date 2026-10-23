@@ -163,7 +163,7 @@ export async function TicketsTab({ organisationId, range, access, eventId }: { o
           ? [
               "Gross sales: paid ticket orders, on the day the tickets were issued. Free tickets, unpaid checkouts and payments still in review aren't sales.",
               "Refunded: refunds Stripe has confirmed, on the day it confirmed them. A refund lowers the period it happens in, so a period can show more refunded than sold.",
-              "Net sales: gross less refunded. Stripe's processing fees and your payout dates come from Stripe, so this isn't profit or money in your bank.",
+              "Net sales: gross less refunded, before the Thunderstrux fee (which includes card processing). Payout dates come from Stripe, so this isn't money in your bank yet.",
               "Refunds made in the Stripe dashboard show on the order, not here."
             ]
           : [

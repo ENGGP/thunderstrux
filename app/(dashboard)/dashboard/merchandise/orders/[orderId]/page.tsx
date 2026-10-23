@@ -144,7 +144,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
               </p>
               {can("orders:read") && !free ? (
                 <p className="text-sm text-ink-soft">
-                  Thunderstrux fee {formatMoney(order.feeAmount)}. Your society receives {formatMoney(order.totalAmount - order.feeAmount)} before Stripe&apos;s own fees. Names and prices are as bought.
+                  Thunderstrux fee {formatMoney(order.feeAmount)}. Your society receives {formatMoney(order.totalAmount - order.feeAmount)}; the fee includes card processing. Names and prices are as bought.
                 </p>
               ) : (
                 <p className="text-sm text-ink-soft">Names and prices are as bought.</p>

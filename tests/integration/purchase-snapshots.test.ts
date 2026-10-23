@@ -76,7 +76,8 @@ describe("purchase snapshots and ticket validity", () => {
       sellerStripeAccountId: owner.organisation.stripeAccountId,
       currency: "aud",
       totalAmount: 3998,
-      feeAmount: 400,
+      // Two tickets: 3.75% of $39.98 rounded once, plus $0.89 each.
+      feeAmount: 328,
       feePolicyVersion: PLATFORM_FEE_POLICY_VERSION,
       snapshotVersion: 1,
       buyerEmailSnapshot: member.email,
@@ -84,7 +85,7 @@ describe("purchase snapshots and ticket validity", () => {
       buyerIdentityProvenance: "purchase",
       fulfilledAt: null
     });
-    expect(order.feeAmount).toBe(calculatePlatformFee(3998));
+    expect(order.feeAmount).toBe(calculatePlatformFee(3998, 2));
     expect(stripeMocks.createSession.mock.calls.at(-1)?.[0].payment_intent_data.application_fee_amount).toBe(order.feeAmount);
 
     await expect(reconcileCompletedCheckoutSession(session, { stripeEventId: "evt_snap" })).resolves.toEqual({

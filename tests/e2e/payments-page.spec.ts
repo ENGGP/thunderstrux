@@ -11,8 +11,8 @@ test("the Payments page explains connecting, fees and what free tickets need", a
   await expect(page.getByText("Free tickets already work without it.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect Stripe", exact: true })).toBeVisible();
   const fees = page.locator("section").filter({ has: page.getByRole("heading", { name: "Fees" }) });
-  await expect(fees.getByText("$18.00")).toBeVisible();
-  await expect(fees.getByText("$2.00")).toBeVisible();
+  await expect(fees.getByText("$18.36")).toBeVisible();
+  await expect(fees.getByText("$1.64")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Disconnect Stripe" })).toHaveCount(0);
 
   for (const width of [390, 1280]) {

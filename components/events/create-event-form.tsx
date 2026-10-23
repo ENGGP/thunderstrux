@@ -672,7 +672,7 @@ function FeeHint({ price, chargesReady }: { price: string; chargesReady: boolean
   return (
     <p className="text-sm text-ink-muted">
       For one ticket you receive <strong className="font-semibold text-ink">{formatMoney(cents - calculatePlatformFee(cents))}</strong> after
-      the 10% Thunderstrux fee, before Stripe&apos;s own fees.
+      the Thunderstrux fee (3.75% plus $0.89 a ticket), which includes card processing.
       {chargesReady ? null : (
         <>
           {" "}Paid tickets go on sale once you{" "}

@@ -104,7 +104,7 @@ describe("membership grants", () => {
     const started = await buy(organisation.id, paid.id, 2500);
     expect(started.body).toEqual({ kind: "stripe", url: "https://checkout.stripe.test/pay" });
     const order = await prisma.commerceOrder.findFirstOrThrow({ where: { userId: buyer.id } });
-    expect(order).toMatchObject({ kind: "membership", status: "pending", totalAmount: 2500, feeAmount: 250 });
+    expect(order).toMatchObject({ kind: "membership", status: "pending", totalAmount: 2500, feeAmount: 183 });
     expect(stripe.create.mock.calls[0][0]).toMatchObject({
       metadata: { family: "membership", commerceOrderId: order.id }, line_items: [{ quantity: 1, price_data: { unit_amount: 2500, product_data: { name: paid.name } } }],
       // Stripe returns the member to the order's own page, which shows its real state (T24a).

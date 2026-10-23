@@ -312,7 +312,7 @@ export async function createEventCheckout({
         const stripe = getStripe();
         const appUrl = getAppUrl();
         const totalAmount = unitPrice * quantity;
-        const platformFeeAmount = calculatePlatformFee(totalAmount);
+        const platformFeeAmount = calculatePlatformFee(totalAmount, quantity);
 
         const order = await tx.order.create({
           data: {

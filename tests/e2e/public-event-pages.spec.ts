@@ -46,3 +46,36 @@ test("organisers preview a draft exactly as buyers will see it, with buying off"
   await page.goto(`/dashboard/events/${data.event.id}`);
   await expect(page.getByRole("navigation", { name: "Event sections" }).getByRole("link", { name: "Preview" })).toHaveCount(0);
 });
+
+// T46 (design round D1): the public Fees, Help and Privacy pages, linked from every footer.
+test("a visitor finds Fees, Help and Privacy in the footer, with the fee worked out for them", async ({ page }) => {
+  await page.goto("/societies");
+  const footer = page.getByRole("navigation", { name: "Footer" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await footer.getByRole("link", { name: "Fees" }).click();
+  await expect(page.getByRole("heading", { name: "Fees", level: 1 })).toBeVisible();
+  await expect(page.getByText("3.75% plus $0.89 for each ticket, membership or merchandise order", { exact: false })).toBeVisible();
+  const examples = page.getByRole("table");
+  for (const [order, receives] of [["One $5.00 ticket", "$3.92"], ["Two $12.00 tickets", "$21.32"], ["A $25.00 membership", "$23.17"], ["Merchandise order of $55.00", "$52.05"]]) {
+    await expect(examples.getByRole("row", { name: order })).toContainText(receives);
+  }
+  // On a phone each example is a card, so what the society receives is never scrolled out of view.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(page.getByRole("listitem").filter({ hasText: "One $5.00 ticket" })).toContainText("Society receives$3.92");
+  await expect(page.getByRole("table")).toBeHidden();
+  for (const [name, heading] of [["Fees", "What buyers pay"], ["Help", "Refunds"], ["Privacy", "Who can see it"]]) {
+    await page.goto("/societies");
+    await footer.getByRole("link", { name }).click();
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: `test-results/policy-${name.toLowerCase()}-${width}.png`, fullPage: true });
+    }
+  }
+  // No support address is configured here, so no placeholder is shown.
+  await expect(page.getByText("@", { exact: false })).toHaveCount(0);
+  await page.goto("/help");
+  await expect(page.getByRole("link", { name: "Find your purchase" })).toHaveAttribute("href", "/guest/recover");
+  await expect(page.getByText("Never send card details", { exact: false })).toBeVisible();
+});

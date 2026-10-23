@@ -494,7 +494,7 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **Tests/done:** Exact start/end, future/expired/revoked, double checkout/webhook, next-term renewal, refund/revoke race and atomic grant/receipt pass; member/organiser can inspect bounded status roster.
 
 #### T24 — Membership UI and ticket entitlements
-- [ ] Complete. **Dependencies:** T12, T15, T19, T23.
+- [x] Complete. **Dependencies:** T12, T15, T19, T23. Every sub-step was done by 2026-10-18; the T46 audit ticked this parent box, which had been missed.
 - **Schema/UI:** TicketType.memberPrice optional cents; reservation/order quote stores grant/policy/price. Society offers, member purchase/renew/status, organiser product/roster; complete members_only access and public member pricing.
 - **Rules:** Free join is not entitlement; guest denied. Check live grant when hold starts; normal expiry during valid 30-minute hold preserves quote. Refunded/revoked grant before fulfilment uses reviewed failure/compensation policy, not unauthorized issue. Never reprice issued history.
 - **Tests/done:** Join-only/guest/future/expired denial, price edits, refund/expiry/checkout race, member-only read and fee parity pass with desktop/mobile flows.
@@ -764,7 +764,13 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 - **Done:** Observed Stripe success/decline/cancel attestation/forced expiry/destination/fees/refund/recovery projections match images, event/listener HTTP/app correlation retained. Campaigns run locally via CLI forwarding; missing credentials blocked, not automatically hosted-only. Captured mail != provider acceptance != inbox delivery. Cleanup sessions/assets or preserve failed recovery manifests.
 
 #### T46 — Final PRD audit and pre-hosting candidate packet
-- [ ] Complete. **Dependencies:** T01–T45.
+- [x] Complete. **Dependencies:** T01–T45.
+  - [x] **Implemented 2026-10-24** on `codex/t46-prd-audit`.
+    - **Audit:** every section 8 row now carries a T46 verdict (see the note above the matrix).
+    - **Gaps found and closed:** PAY-003 (#154), DEF-028 fee copy, the missing public Fees, Help and Privacy pages (design round D1), and T24's unticked box.
+    - **Founder fee decision:** 3.75% + $0.89 per ticket, membership or merchandise order, just under Humanitix Standard. The flat 10% lost money on small orders and refunds.
+    - **Candidate:** the record is [[Pre-hosting Candidate]]: release pair, schema, settings, jobs, evidence, support owner, rollback, disclosures and H gates.
+    - **Not delivered:** the assistant (T35–T37), deferred by the founder.
 - **Deliverable:** Reconcile section 8 against current code; update docs/issue states/Project Handover, honest public feature/privacy/support/refund copy. Candidate records artifact pair, schema digest, flags/jobs, tests/provider evidence, support owner, rollback and H gates.
 - **Done:** No locally implementable PRD feature omitted/placeholder/deferred. Disclose AUD/fee/term/pickup/AI policies, no live payout/hosting/certified accessibility claim. Founder fee/value review uses sample buyer/seller amounts; competitive market pricing not asserted without actual evidence.
 
@@ -839,105 +845,114 @@ T44 implements this matrix; T45 adds actual provider observations. Use two socie
 
 ## 8. PRD traceability matrix
 
+**T46 audit (2026-10-24).** Each row was checked against its tasks' completion records, the section 7 journeys in [[Journey Qualification]] (run on the release images in T44d and repeated by later campaigns), the T45 and PAY-003 provider campaigns, and a review of the money and public-copy code. The audit found and fixed:
+- PAY-003: commerce disputes, outside refunds and compensation refunds, merged in #154;
+- DEF-028: fee copy that wrongly said societies pay Stripe's fees;
+- the missing public Fees, Help and Privacy pages;
+- a flat 10% fee that lost money on small orders (the founder chose 3.75% + $0.89 per item);
+- T24's unticked parent box.
+
+Only the assistant (T35–T37) is not delivered: the founder deferred it. The candidate record is [[Pre-hosting Candidate]].
+
 Current status is baseline, not future qualification. COMPLETE capabilities map to verification/extension rather than reconstruction. Expected status is pre-hosting implementation/acceptance; hosted/user evidence explicitly separate.
 
-| PRD requirement | Current status | Implementation task | Verification method | Expected final status |
-| --- | --- | --- | --- | --- |
-| 1–2 integrated society operating platform | PARTIAL | T08–T09, T20–T37, T46 | Connected section 7 journeys | COMPLETE |
-| 3.1 organiser profile/events/settings | PARTIAL | T08, T11–T12, T17, T34 | Society operator E2E | COMPLETE |
-| 3.1 sales/orders/check-in/analytics/AI | PARTIAL | T19, T29, T31–T37 | Role-specific integrated E2E | COMPLETE |
-| 3.2 member identity/discovery/purchase/services | PARTIAL | T03–T04, T09, T15, T19, T24, T29 | Member journeys | COMPLETE |
-| 3.3 guest browse/details/organiser identity | PARTIAL | T08, T15 | Anonymous HTML/API | COMPLETE |
-| 3.3 guest purchase when supported | MISSING | T16, T26–T29 | Guest free/paid/merch E2E | COMPLETE |
-| 4 society-first/simple/integrated positioning | NEEDS VERIFICATION | T34, T40, T46 | Content/task review | COMPLETE locally; H06 fit |
-| 5.1 volunteer/committee-friendly design | NEEDS VERIFICATION | T06, T34, T40 | Handover/local UX; H06 | COMPLETE locally; H06 users |
-| 5.2 member/society separation | COMPLETE | T05, T34, T44 | Role/mode/denial matrix | COMPLETE |
-| 5.3 trustworthy event/sale states | PARTIAL | T11, T15, T17, T19 | State matrix | COMPLETE |
-| 5.4 money integrity/audit/trust | PARTIAL | T12–T14, T18, T38, T45 | Race/provider/history | COMPLETE locally; H03 activation |
-| 5.5 handover-friendly continuity | PARTIAL | T06, T38, T42 | Committee/restore drill | COMPLETE |
-| 5.6 extensible coherent architecture | PARTIAL | T20–T21, T35 | Service/DTO regressions | COMPLETE |
-| 5.7 AI assistant/user control | MISSING | T35–T37 | Preview/confirmation/revoke | COMPLETE |
-| 6.1 secure signup/signin | COMPLETE | T03–T04, T39, T44 | Auth.js/browser/token tests | COMPLETE |
-| 6.1 account type/dashboard experience | COMPLETE | T05, T34 | Personal/staff/org nav | COMPLETE |
-| 6.1 individual member/society account identity | COMPLETE | T04–T06, T08 | Profile/bootstrap schema tests | COMPLETE |
-| 6.1 one primary organisation | COMPLETE | T08 | Concurrent second-bootstrap and post-retirement active-staff denial | COMPLETE |
-| 6.1 member profile onboarding | COMPLETE | T03–T04, T09 | Completion/edit/privacy | COMPLETE |
-| 6.1 organisation information onboarding | PARTIAL | T08, T17 | Wizard/readiness | COMPLETE |
-| 6.1 role-aware nav/access | PARTIAL | T05, T34 | Mobile/revoked/role tests | COMPLETE |
-| 6.2 name/description/branding/public profile | COMPLETE | T07–T08 | Safe assets/profile DTO/E2E | COMPLETE |
-| 6.2 display public events | COMPLETE | T08, T15 | Visibility/date filter | COMPLETE |
-| 6.2 private admin settings | PARTIAL | T05, T08, T17 | Field separation/denial | COMPLETE |
-| 6.2 society identity/events/membership home base | PARTIAL | T09, T24, T26, T34 | Profile tab journeys | COMPLETE |
-| 6.3 create/edit/date/time/location/description | COMPLETE | T11–T12, T33 | Existing lifecycle plus lock/time tests | COMPLETE |
-| 6.3 draft/publish/unpublish when appropriate | PARTIAL | T11–T12 | Create bypass/replay/order restrictions | COMPLETE |
-| 6.3 capacity | MISSING | T11–T12 | Independent seat contention | COMPLETE |
-| 6.3 visibility/restricted access | MISSING | T11, T15, T24 | Public/unlisted/member-only | COMPLETE |
-| 6.3 types/prices/quantities | COMPLETE | T10–T12 | Sold edits/snapshot/race | COMPLETE |
-| 6.3 public page/attendee information | PARTIAL | T15, T30 | Public preview/change notices | COMPLETE |
-| 6.3 readiness blockers and invalid states | PARTIAL | T11, T15, T17 | Common readiness matrix | COMPLETE |
-| 6.4 public browse/cards/full details | PARTIAL | T08, T15 | Anonymous/filter/mobile | COMPLETE |
-| 6.4 purchase options/draft-invalid concealment | PARTIAL | T11–T16 | Draft/closed/free/mixed/sold-out | COMPLETE |
-| 6.5 multiple types/safe stock | COMPLETE | T12–T14 | Locks/holds/capacity | COMPLETE |
-| 6.5 purchase orders/issued units | COMPLETE | T13–T16 | Free/paid/guest fulfilment | COMPLETE |
-| 6.5 sales/check-in/attendee access | PARTIAL | T19, T31–T32 | Finance/attendance/private wallet | COMPLETE |
-| 6.5 historical names/prices | PARTIAL | T10 | Rename/reprice/legacy labels | COMPLETE |
-| 6.5 charge without tickets recovery | PARTIAL | T18, T42, T45 | Compensation/refund campaign | COMPLETE locally; H03 activation |
-| 6.6 checkout clarity/explicit statuses | PARTIAL | T13–T19, T21, T29 | All state journeys | COMPLETE |
-| 6.6 unpaid/failed/expired no tickets | COMPLETE | T12, T21, T44 | Signed transport/negative states | COMPLETE |
-| 6.6 duplicate avoidance/idempotency | COMPLETE | T14, T18, T21, T27 | Replay/concurrency/crash | COMPLETE |
-| 6.6 organiser review/purchase history | PARTIAL | T10, T19, T29, T38 | Tenant/history/snapshot | COMPLETE |
-| 6.7 connect payment account | COMPLETE | T17, T45 | Connect regression/local provider | COMPLETE |
-| 6.7 readiness/failures clearly shown | PARTIAL | T11, T15, T17 | Charge/payout distinctions | COMPLETE |
-| 6.7 only eligible paid checkout | COMPLETE | T12, T17, T21 | Locked provider/quote readiness | COMPLETE |
-| 6.7 transparent fees | PARTIAL | T10, T17, T26, T31 | Cents/Session/UI parity | COMPLETE |
-| 6.7 actual society payouts | REQUIRES HOSTED/STAGING ENVIRONMENT | H03, H06 | Actual provider approval/settlement | REQUIRES HOSTED/STAGING ENVIRONMENT |
-| 6.8 issued list/check-in/status | COMPLETE | T19 | Cursor/conditional attendance | COMPLETE |
-| 6.8 useful audit/event-day speed/reliability | PARTIAL | T19, T38, T40, H06 | Actor/network/race and real event | COMPLETE locally; H06 usability |
-| 6.9 membership offer/purchase | MISSING | T22–T24 | Product/term/payment E2E | COMPLETE |
-| 6.9 free join | COMPLETE | T09 | Idempotence/no authority | COMPLETE |
-| 6.9 member and organiser status | MISSING | T23–T24 | Roster/term boundaries | COMPLETE |
-| 6.9 society access/pricing/engagement | MISSING | T23–T24, T31 | Grants vs joins/price policies | COMPLETE |
-| 6.9 semester/year/team continuity | PARTIAL | T06, T22–T24, T38 | Renewal/handover/history | COMPLETE |
-| 6.10 name/description/price/images/availability | MISSING | T07, T25–T27 | Catalogue/assets/variant/stock | COMPLETE |
-| 6.10 member and guest merchandise sales | MISSING | T21, T26–T27 | Cart/identity/payment | COMPLETE |
-| 6.10 tracked merchandise orders | MISSING | T27–T29 | Pickup/refund/return/history | COMPLETE |
-| 6.10 natural society/payment integration | MISSING | T26, T29, T34 | Profile/cart/dashboard | COMPLETE |
-| 6.11 event revenue/ticket sales | PARTIAL | T31–T32 | Defined source reconciliation | COMPLETE |
-| 6.11 attendance/check-in rates | PARTIAL | T19, T31–T32 | Valid denominator/refund fixtures | COMPLETE |
-| 6.11 order trends | MISSING | T31–T32 | Range/state/domain aggregation | COMPLETE |
-| 6.11 engagement/society performance | PARTIAL | T23, T28, T31–T32 | Observed member/commerce metrics | COMPLETE |
-| 6.11 practical analytics | NEEDS VERIFICATION | T32, T40, H06 | Definitions/tables/operator review | COMPLETE locally; H06 validation |
-| 6.12 find information/summarize events/orders | MISSING | T35, T37 | Authorized source-linked tools | COMPLETE |
-| 6.12 actions/guidance/navigation | MISSING | T35, T37 | Guided/readiness tasks | COMPLETE |
-| 6.12 approved admin actions | MISSING | T35–T36 | Shared service/confirm receipts | COMPLETE |
-| 6.12 permission/payment/audit control | MISSING | T35–T39 | Injection/foreign/revoke/replay | COMPLETE |
-| 7 member tickets/joins/memberships/events | PARTIAL | T19, T24, T34 | Complete personal journey | COMPLETE |
-| 7 member purchases/settings | PARTIAL | T04, T29, T34 | Private settings/history | COMPLETE |
-| 7 org events/orders/payments/analytics | PARTIAL | T17, T29, T32–T34 | Management role journeys | COMPLETE |
-| 7 org membership/merch/settings/AI | MISSING | T24, T28, T34–T37 | Connected UI/nav/actions | COMPLETE |
-| 7 predictable simple navigation | PARTIAL | T05, T34, T40 | Active/mobile/keyboard | COMPLETE |
-| 8 public-only information | PARTIAL | T08, T15–T16, T39 | DTO/concealed visibility | COMPLETE |
-| 8 members own private information | COMPLETE | T04, T16, T29, T39 | Own-user/guest scope | COMPLETE |
-| 8 own society/no tenant leaks | COMPLETE | T05, T20–T29, T39 | Canonical foreign/revoked matrix | COMPLETE |
-| 8 server checks beyond UI | COMPLETE | T05, T35–T39 | Direct API/action malicious inputs | COMPLETE |
-| 9 users/societies/memberships/events/types retained | PARTIAL | T08, T10, T22–T24, T38, T41 | Archive/FK/history audit | COMPLETE |
-| 9 orders/tickets/payments/attendance retained | PARTIAL | T10, T18–T21, T38, T41 | Refund/snapshot/restore | COMPLETE |
-| 9 merch/admin records | MISSING | T20, T28, T35–T38 | Actor/replay/restore | COMPLETE |
-| 9 edits preserve historical meaning | PARTIAL | T10, T22, T25, T38 | Snapshot/legacy accuracy | COMPLETE |
-| 10 responsive and accessible | NEEDS VERIFICATION | T40 | Automated/manual accessibility | COMPLETE locally; H06 users |
-| 10 obvious actions/forms/useful errors | PARTIAL | T15, T29, T34, T39–T40 | Invalid/keyboard/retry states | COMPLETE |
-| 10 empty states/polish/clear admin UI | PARTIAL | T08, T15, T26, T34, T40 | Empty/error/mobile review | COMPLETE |
-| 11 payment/idempotency/inventory correctness | COMPLETE | T12–T14, T18, T21, T27, T44–T45 | Race/provider qualifications | COMPLETE |
-| 11 publish/private data correctness | PARTIAL | T11–T12, T24, T39 | Sale/permission matrix | COMPLETE |
-| 11 recovery/feedback | PARTIAL | T18–T19, T30, T39, T42 | Outage/requeue/restore | COMPLETE |
-| 11 deployed reliability | REQUIRES HOSTED/STAGING ENVIRONMENT | H01–H05 | Actual edge/jobs/alerts/restore | REQUIRES HOSTED/STAGING ENVIRONMENT |
-| 12 understandable pricing/fees | PARTIAL | T17, T26, T31, T46 | Disclosure/amount parity | COMPLETE |
-| 12 competitive value/reduced admin | NEEDS VERIFICATION | T34, T37, T46, H06 | Fee/value review and user evidence | COMPLETE local design; H06 fit |
-| 13 focused boundaries/interoperability | NEEDS VERIFICATION | T17, T35–T37, T46 | No social/LMS/ERP/AI bypass | COMPLETE |
-| 14–16 safety/extensibility/alignment/product fit | PARTIAL | T38–T46, H06 | Final traceability/journey/user audit | COMPLETE locally; H06 fit |
-| Requested organisation calendar | MISSING | T33 | Range/timezone/role/mobile | COMPLETE |
-| Supporting auth/invite/receipt/refund/change emails | PARTIAL | T02–T04, T06, T30 | Section 5 event matrix | COMPLETE locally; H03 delivery |
-| Supporting tooling/testing/pre-production | PARTIAL | T01, T39–T46 | Images/schema/CI/recovery evidence | COMPLETE |
+| PRD requirement | Current status | Implementation task | Verification method | Expected final status | T46 audit (2026-10-24) |
+| --- | --- | --- | --- | --- | --- |
+| 1–2 integrated society operating platform | PARTIAL | T08–T09, T20–T37, T46 | Connected section 7 journeys | COMPLETE | COMPLETE, except the assistant (deferred by the founder) |
+| 3.1 organiser profile/events/settings | PARTIAL | T08, T11–T12, T17, T34 | Society operator E2E | COMPLETE | COMPLETE |
+| 3.1 sales/orders/check-in/analytics/AI | PARTIAL | T19, T29, T31–T37 | Role-specific integrated E2E | COMPLETE | COMPLETE, except the assistant (deferred by the founder) |
+| 3.2 member identity/discovery/purchase/services | PARTIAL | T03–T04, T09, T15, T19, T24, T29 | Member journeys | COMPLETE | COMPLETE |
+| 3.3 guest browse/details/organiser identity | PARTIAL | T08, T15 | Anonymous HTML/API | COMPLETE | COMPLETE |
+| 3.3 guest purchase when supported | MISSING | T16, T26–T29 | Guest free/paid/merch E2E | COMPLETE | COMPLETE (guest tickets observed on Stripe test mode, T45) |
+| 4 society-first/simple/integrated positioning | NEEDS VERIFICATION | T34, T40, T46 | Content/task review | COMPLETE locally; H06 fit | COMPLETE locally (public copy reviewed in T46); H06 fit |
+| 5.1 volunteer/committee-friendly design | NEEDS VERIFICATION | T06, T34, T40 | Handover/local UX; H06 | COMPLETE locally; H06 users | COMPLETE locally; H06 users |
+| 5.2 member/society separation | COMPLETE | T05, T34, T44 | Role/mode/denial matrix | COMPLETE | COMPLETE |
+| 5.3 trustworthy event/sale states | PARTIAL | T11, T15, T17, T19 | State matrix | COMPLETE | COMPLETE |
+| 5.4 money integrity/audit/trust | PARTIAL | T12–T14, T18, T38, T45 | Race/provider/history | COMPLETE locally; H03 activation | COMPLETE locally (tickets T45, memberships and merchandise PAY-003, observed on Stripe test mode); H03 activation |
+| 5.5 handover-friendly continuity | PARTIAL | T06, T38, T42 | Committee/restore drill | COMPLETE | COMPLETE |
+| 5.6 extensible coherent architecture | PARTIAL | T20–T21, T35 | Service/DTO regressions | COMPLETE | COMPLETE (commerce families share checkout, refunds and recovery); the assistant's action registry is deferred |
+| 5.7 AI assistant/user control | MISSING | T35–T37 | Preview/confirmation/revoke | COMPLETE | DEFERRED by the founder (2026-10-19); not in this candidate |
+| 6.1 secure signup/signin | COMPLETE | T03–T04, T39, T44 | Auth.js/browser/token tests | COMPLETE | COMPLETE |
+| 6.1 account type/dashboard experience | COMPLETE | T05, T34 | Personal/staff/org nav | COMPLETE | COMPLETE |
+| 6.1 individual member/society account identity | COMPLETE | T04–T06, T08 | Profile/bootstrap schema tests | COMPLETE | COMPLETE |
+| 6.1 one primary organisation | COMPLETE | T08 | Concurrent second-bootstrap and post-retirement active-staff denial | COMPLETE | COMPLETE |
+| 6.1 member profile onboarding | COMPLETE | T03–T04, T09 | Completion/edit/privacy | COMPLETE | COMPLETE |
+| 6.1 organisation information onboarding | PARTIAL | T08, T17 | Wizard/readiness | COMPLETE | COMPLETE |
+| 6.1 role-aware nav/access | PARTIAL | T05, T34 | Mobile/revoked/role tests | COMPLETE | COMPLETE |
+| 6.2 name/description/branding/public profile | COMPLETE | T07–T08 | Safe assets/profile DTO/E2E | COMPLETE | COMPLETE |
+| 6.2 display public events | COMPLETE | T08, T15 | Visibility/date filter | COMPLETE | COMPLETE |
+| 6.2 private admin settings | PARTIAL | T05, T08, T17 | Field separation/denial | COMPLETE | COMPLETE |
+| 6.2 society identity/events/membership home base | PARTIAL | T09, T24, T26, T34 | Profile tab journeys | COMPLETE | COMPLETE |
+| 6.3 create/edit/date/time/location/description | COMPLETE | T11–T12, T33 | Existing lifecycle plus lock/time tests | COMPLETE | COMPLETE |
+| 6.3 draft/publish/unpublish when appropriate | PARTIAL | T11–T12 | Create bypass/replay/order restrictions | COMPLETE | COMPLETE |
+| 6.3 capacity | MISSING | T11–T12 | Independent seat contention | COMPLETE | COMPLETE |
+| 6.3 visibility/restricted access | MISSING | T11, T15, T24 | Public/unlisted/member-only | COMPLETE | COMPLETE |
+| 6.3 types/prices/quantities | COMPLETE | T10–T12 | Sold edits/snapshot/race | COMPLETE | COMPLETE |
+| 6.3 public page/attendee information | PARTIAL | T15, T30 | Public preview/change notices | COMPLETE | COMPLETE |
+| 6.3 readiness blockers and invalid states | PARTIAL | T11, T15, T17 | Common readiness matrix | COMPLETE | COMPLETE |
+| 6.4 public browse/cards/full details | PARTIAL | T08, T15 | Anonymous/filter/mobile | COMPLETE | COMPLETE |
+| 6.4 purchase options/draft-invalid concealment | PARTIAL | T11–T16 | Draft/closed/free/mixed/sold-out | COMPLETE | COMPLETE |
+| 6.5 multiple types/safe stock | COMPLETE | T12–T14 | Locks/holds/capacity | COMPLETE | COMPLETE |
+| 6.5 purchase orders/issued units | COMPLETE | T13–T16 | Free/paid/guest fulfilment | COMPLETE | COMPLETE |
+| 6.5 sales/check-in/attendee access | PARTIAL | T19, T31–T32 | Finance/attendance/private wallet | COMPLETE | COMPLETE |
+| 6.5 historical names/prices | PARTIAL | T10 | Rename/reprice/legacy labels | COMPLETE | COMPLETE |
+| 6.5 charge without tickets recovery | PARTIAL | T18, T42, T45 | Compensation/refund campaign | COMPLETE locally; H03 activation | COMPLETE locally (tickets T18/T45; memberships and merchandise PAY-003); H03 activation |
+| 6.6 checkout clarity/explicit statuses | PARTIAL | T13–T19, T21, T29 | All state journeys | COMPLETE | COMPLETE |
+| 6.6 unpaid/failed/expired no tickets | COMPLETE | T12, T21, T44 | Signed transport/negative states | COMPLETE | COMPLETE |
+| 6.6 duplicate avoidance/idempotency | COMPLETE | T14, T18, T21, T27 | Replay/concurrency/crash | COMPLETE | COMPLETE |
+| 6.6 organiser review/purchase history | PARTIAL | T10, T19, T29, T38 | Tenant/history/snapshot | COMPLETE | COMPLETE |
+| 6.7 connect payment account | COMPLETE | T17, T45 | Connect regression/local provider | COMPLETE | COMPLETE (observed on Stripe test mode, T45) |
+| 6.7 readiness/failures clearly shown | PARTIAL | T11, T15, T17 | Charge/payout distinctions | COMPLETE | COMPLETE |
+| 6.7 only eligible paid checkout | COMPLETE | T12, T17, T21 | Locked provider/quote readiness | COMPLETE | COMPLETE |
+| 6.7 transparent fees | PARTIAL | T10, T17, T26, T31 | Cents/Session/UI parity | COMPLETE | COMPLETE (Fees page and fee copy worked from the fee function; DEF-028 fixed in T46) |
+| 6.7 actual society payouts | REQUIRES HOSTED/STAGING ENVIRONMENT | H03, H06 | Actual provider approval/settlement | REQUIRES HOSTED/STAGING ENVIRONMENT | REQUIRES HOSTED/STAGING ENVIRONMENT (H gates) |
+| 6.8 issued list/check-in/status | COMPLETE | T19 | Cursor/conditional attendance | COMPLETE | COMPLETE |
+| 6.8 useful audit/event-day speed/reliability | PARTIAL | T19, T38, T40, H06 | Actor/network/race and real event | COMPLETE locally; H06 usability | COMPLETE locally; H06 usability |
+| 6.9 membership offer/purchase | MISSING | T22–T24 | Product/term/payment E2E | COMPLETE | COMPLETE |
+| 6.9 free join | COMPLETE | T09 | Idempotence/no authority | COMPLETE | COMPLETE |
+| 6.9 member and organiser status | MISSING | T23–T24 | Roster/term boundaries | COMPLETE | COMPLETE |
+| 6.9 society access/pricing/engagement | MISSING | T23–T24, T31 | Grants vs joins/price policies | COMPLETE | COMPLETE |
+| 6.9 semester/year/team continuity | PARTIAL | T06, T22–T24, T38 | Renewal/handover/history | COMPLETE | COMPLETE |
+| 6.10 name/description/price/images/availability | MISSING | T07, T25–T27 | Catalogue/assets/variant/stock | COMPLETE | COMPLETE |
+| 6.10 member and guest merchandise sales | MISSING | T21, T26–T27 | Cart/identity/payment | COMPLETE | COMPLETE |
+| 6.10 tracked merchandise orders | MISSING | T27–T29 | Pickup/refund/return/history | COMPLETE | COMPLETE |
+| 6.10 natural society/payment integration | MISSING | T26, T29, T34 | Profile/cart/dashboard | COMPLETE | COMPLETE |
+| 6.11 event revenue/ticket sales | PARTIAL | T31–T32 | Defined source reconciliation | COMPLETE | COMPLETE |
+| 6.11 attendance/check-in rates | PARTIAL | T19, T31–T32 | Valid denominator/refund fixtures | COMPLETE | COMPLETE |
+| 6.11 order trends | MISSING | T31–T32 | Range/state/domain aggregation | COMPLETE | COMPLETE |
+| 6.11 engagement/society performance | PARTIAL | T23, T28, T31–T32 | Observed member/commerce metrics | COMPLETE | COMPLETE |
+| 6.11 practical analytics | NEEDS VERIFICATION | T32, T40, H06 | Definitions/tables/operator review | COMPLETE locally; H06 validation | COMPLETE locally; H06 validation |
+| 6.12 find information/summarize events/orders | MISSING | T35, T37 | Authorized source-linked tools | COMPLETE | DEFERRED by the founder (2026-10-19) |
+| 6.12 actions/guidance/navigation | MISSING | T35, T37 | Guided/readiness tasks | COMPLETE | DEFERRED by the founder (2026-10-19) |
+| 6.12 approved admin actions | MISSING | T35–T36 | Shared service/confirm receipts | COMPLETE | DEFERRED by the founder (2026-10-19) |
+| 6.12 permission/payment/audit control | MISSING | T35–T39 | Injection/foreign/revoke/replay | COMPLETE | DEFERRED by the founder (2026-10-19) |
+| 7 member tickets/joins/memberships/events | PARTIAL | T19, T24, T34 | Complete personal journey | COMPLETE | COMPLETE |
+| 7 member purchases/settings | PARTIAL | T04, T29, T34 | Private settings/history | COMPLETE | COMPLETE |
+| 7 org events/orders/payments/analytics | PARTIAL | T17, T29, T32–T34 | Management role journeys | COMPLETE | COMPLETE |
+| 7 org membership/merch/settings/AI | MISSING | T24, T28, T34–T37 | Connected UI/nav/actions | COMPLETE | COMPLETE, except the assistant (deferred by the founder) |
+| 7 predictable simple navigation | PARTIAL | T05, T34, T40 | Active/mobile/keyboard | COMPLETE | COMPLETE |
+| 8 public-only information | PARTIAL | T08, T15–T16, T39 | DTO/concealed visibility | COMPLETE | COMPLETE |
+| 8 members own private information | COMPLETE | T04, T16, T29, T39 | Own-user/guest scope | COMPLETE | COMPLETE |
+| 8 own society/no tenant leaks | COMPLETE | T05, T20–T29, T39 | Canonical foreign/revoked matrix | COMPLETE | COMPLETE |
+| 8 server checks beyond UI | COMPLETE | T05, T35–T39 | Direct API/action malicious inputs | COMPLETE | COMPLETE, except the assistant (deferred by the founder) |
+| 9 users/societies/memberships/events/types retained | PARTIAL | T08, T10, T22–T24, T38, T41 | Archive/FK/history audit | COMPLETE | COMPLETE |
+| 9 orders/tickets/payments/attendance retained | PARTIAL | T10, T18–T21, T38, T41 | Refund/snapshot/restore | COMPLETE | COMPLETE |
+| 9 merch/admin records | MISSING | T20, T28, T35–T38 | Actor/replay/restore | COMPLETE | COMPLETE, except the assistant (deferred by the founder) |
+| 9 edits preserve historical meaning | PARTIAL | T10, T22, T25, T38 | Snapshot/legacy accuracy | COMPLETE | COMPLETE |
+| 10 responsive and accessible | NEEDS VERIFICATION | T40 | Automated/manual accessibility | COMPLETE locally; H06 users | COMPLETE locally (T40 automated checks and review; no certification claimed); screen-reader and zoom passes before the pilot; H06 users |
+| 10 obvious actions/forms/useful errors | PARTIAL | T15, T29, T34, T39–T40 | Invalid/keyboard/retry states | COMPLETE | COMPLETE |
+| 10 empty states/polish/clear admin UI | PARTIAL | T08, T15, T26, T34, T40 | Empty/error/mobile review | COMPLETE | COMPLETE |
+| 11 payment/idempotency/inventory correctness | COMPLETE | T12–T14, T18, T21, T27, T44–T45 | Race/provider qualifications | COMPLETE | COMPLETE |
+| 11 publish/private data correctness | PARTIAL | T11–T12, T24, T39 | Sale/permission matrix | COMPLETE | COMPLETE |
+| 11 recovery/feedback | PARTIAL | T18–T19, T30, T39, T42 | Outage/requeue/restore | COMPLETE | COMPLETE |
+| 11 deployed reliability | REQUIRES HOSTED/STAGING ENVIRONMENT | H01–H05 | Actual edge/jobs/alerts/restore | REQUIRES HOSTED/STAGING ENVIRONMENT | REQUIRES HOSTED/STAGING ENVIRONMENT (H gates) |
+| 12 understandable pricing/fees | PARTIAL | T17, T26, T31, T46 | Disclosure/amount parity | COMPLETE | COMPLETE (3.75% + $0.89 per item, shown on the Fees page, in Settings and in the builders; T46) |
+| 12 competitive value/reduced admin | NEEDS VERIFICATION | T34, T37, T46, H06 | Fee/value review and user evidence | COMPLETE local design; H06 fit | COMPLETE local design (fee set just under Humanitix Standard, T46 fee review); H06 fit |
+| 13 focused boundaries/interoperability | NEEDS VERIFICATION | T17, T35–T37, T46 | No social/LMS/ERP/AI bypass | COMPLETE | COMPLETE (no social, LMS or ERP features; the assistant is deferred) |
+| 14–16 safety/extensibility/alignment/product fit | PARTIAL | T38–T46, H06 | Final traceability/journey/user audit | COMPLETE locally; H06 fit | COMPLETE locally; H06 fit |
+| Requested organisation calendar | MISSING | T33 | Range/timezone/role/mobile | COMPLETE | COMPLETE |
+| Supporting auth/invite/receipt/refund/change emails | PARTIAL | T02–T04, T06, T30 | Section 5 event matrix | COMPLETE locally; H03 delivery | COMPLETE locally (Resend acceptance observed, T45); inbox delivery H03 |
+| Supporting tooling/testing/pre-production | PARTIAL | T01, T39–T46 | Images/schema/CI/recovery evidence | COMPLETE | COMPLETE (T43–T45; storage evidence blocked, OPS-005) |
 
 ## 9. Actual hosted/staging activation tasks
 
@@ -964,6 +979,15 @@ Only the following require the deployed environment. Scripts, adapters, local fa
 DEP-001 genuine advisory PR/failure-notification receipt cannot be manufactured; retain as external operational evidence. Legal/commercial/provider approval and real settlement aren't declared solved by code. These facts do not defer any implementable PRD feature.
 
 ## 10. Readiness gates and final coverage audit
+
+**T46 gate review (2026-10-24).** The boxes below stay as the release checklist; their state at T46:
+- **Met locally:** PRD feature completeness (except the deferred assistant); data integrity; permissions/security; payment, ticket and inventory correctness; end-to-end journeys; UX/accessibility (automated checks and review); operational readiness. Evidence is in [[Pre-hosting Candidate]].
+- **Blocked or external:**
+  - storage provider evidence (OPS-005);
+  - screen-reader and real-zoom passes;
+  - legal terms and a reviewed privacy policy (LEGAL-001);
+  - H01–H06;
+  - founder approval for live money.
 
 ### PRD feature completeness
 - [ ] T01–T46 complete with evidence; each section 8 row maps to usable verified code, not placeholder models/routes.

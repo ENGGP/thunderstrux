@@ -1,0 +1,31 @@
+# T43b: the Droplet's public edge. SITE_ADDRESS is the app's domain in
+# production (Let's Encrypt certificates via ACME_EMAIL); "localhost" in the
+# local rehearsal, which Caddy serves from its own internal CA.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Asset uploads are the largest requests: 5 MiB images plus form overhead.
+	request_body {
+		max_size 6MB
+	}
+
+	reverse_proxy app:3000 {
+		# The one client address the app's rate limiter trusts (SEC-002). Caddy
+		# sets it from the connection, replacing anything the client sent.
+		header_up X-Thunderstrux-Client-IP {remote_host}
+		header_up -X-Forwarded-For
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 60s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

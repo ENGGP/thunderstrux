@@ -1,0 +1,143 @@
+# T43b: the pilot host, a DigitalOcean Droplet in Sydney (syd1) with managed
+# PostgreSQL, managed Valkey and Spaces in the same region. Applied on top of
+# docker-compose.hosted.yml, docker-compose.assets.hosted.yml and
+# docker-compose.schedules.yml by scripts/droplet.mjs; see Production
+# Operations, "Pilot host". Nothing here holds a secret value.
+#
+# Plain Docker Compose (not Swarm) can't read external secrets, so each one is
+# a root-managed file in THUNDERSTRUX_SECRETS_DIR, readable by uid 1000 only.
+
+x-secret-file: &secret-file
+  external: !reset false
+  name: !reset null
+
+services:
+  # The only public entry: HTTPS (Let's Encrypt), request limits and the one
+  # client address the app trusts for rate limiting (SEC-002).
+  caddy:
+    image: caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    cpus: 0.5
+    mem_limit: 256m
+    stop_grace_period: 30s
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+      - "${CADDY_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # The deploy's pre-migration backup of the managed database, on top of
+  # DigitalOcean's own daily backups and point-in-time recovery. Its client
+  # matches the managed cluster's PostgreSQL 16. Prisma's "schema" URL
+  # parameter is dropped because pg_dump rejects it.
+  backup:
+    image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
+    profiles: ["tools"]
+    restart: "no"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      BACKUP_NAME: ${BACKUP_NAME:-manual}
+    volumes:
+      - ${THUNDERSTRUX_BACKUP_DIR:-/var/lib/thunderstrux/backups}:/backups
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    secrets:
+      - source: database_url
+        target: database_url
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        url=$$(sed -e 's/schema=[^&]*&\{0,1\}//' -e 's/[?&]$$//' /run/secrets/database_url)
+        && pg_dump --format=custom --no-owner --file="/backups/$$BACKUP_NAME.partial" "$$url"
+        && pg_restore --list "/backups/$$BACKUP_NAME.partial" > /dev/null
+        && mv "/backups/$$BACKUP_NAME.partial" "/backups/$$BACKUP_NAME.dump"
+        && echo "backup /backups/$$BACKUP_NAME.dump"
+
+  app:
+    environment:
+      # Caddy overwrites this header on every request; the app ignores any other.
+      RATE_LIMIT_TRUSTED_PROXY_HEADER: x-thunderstrux-client-ip
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+  migration:
+    logging: *logging
+  email-worker:
+    logging: *logging
+  notification-worker:
+    logging: *logging
+  stale-order-worker:
+    logging: *logging
+  compensation-worker:
+    logging: *logging
+  checkout-recovery-worker:
+    logging: *logging
+  monitor-worker:
+    logging: *logging
+
+secrets:
+  database_url:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/database_url
+  auth_secret:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/auth_secret
+  mfa_encryption_key:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/mfa_encryption_key
+  rate_limit_redis_url:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/rate_limit_redis_url
+  stripe_secret_key:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/stripe_secret_key
+  stripe_webhook_secret:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/stripe_webhook_secret
+  stripe_connect_webhook_secret:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/stripe_connect_webhook_secret
+  resend_api_key:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/resend_api_key
+  notification_encryption_key:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/notification_encryption_key
+  alert_webhook_url:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/alert_webhook_url
+  asset_storage_access_key:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/asset_storage_access_key
+  asset_storage_secret_key:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/asset_storage_secret_key
+
+volumes:
+  caddy_data:
+  caddy_config:

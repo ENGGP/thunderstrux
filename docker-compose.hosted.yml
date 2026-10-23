@@ -54,6 +54,8 @@ services:
       STRIPE_CONNECT_WEBHOOK_SECRET_FILE: /run/secrets/stripe_connect_webhook_secret
       RESEND_API_KEY_FILE: /run/secrets/resend_api_key
       EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
+      # Optional: the Help and Privacy pages name it once set (T46).
+      PLATFORM_SUPPORT_EMAIL: ${PLATFORM_SUPPORT_EMAIL:-}
       PORT: ${PORT:-3000}
     expose: ["${PORT:-3000}"]
     secrets:

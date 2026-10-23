@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-// Lists only destinations that exist. Support, terms and privacy links are
-// added when the product has real pages for them.
+// Lists only destinations that exist. Terms come when they have been legally
+// drafted (LEGAL-001).
 export function SiteFooter() {
   return (
     <footer className="border-t border-line bg-surface">
@@ -18,6 +18,15 @@ export function SiteFooter() {
           </Link>
           <Link className="hover:text-brand" href="/societies">
             Societies
+          </Link>
+          <Link className="hover:text-brand" href="/fees">
+            Fees
+          </Link>
+          <Link className="hover:text-brand" href="/help">
+            Help
+          </Link>
+          <Link className="hover:text-brand" href="/privacy">
+            Privacy
           </Link>
         </nav>
       </div>

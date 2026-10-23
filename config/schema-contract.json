@@ -1,3 +1,3 @@
 {
-  "requiredMigration": "20261112010000_worker_leases"
+  "requiredMigration": "20261113010000_commerce_payment_recovery"
 }

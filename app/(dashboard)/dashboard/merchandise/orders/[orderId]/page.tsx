@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { MerchandiseMoneyActions, RecordReturn } from "@/components/merchandise/order-actions";
 import { PickupAction } from "@/components/merchandise/pickup-action";
 import { Notice } from "@/components/ui/notice";
+import { StripeReviewNotice } from "@/components/commerce/stripe-review-notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatDateTime, formatMoney, formatPrice } from "@/lib/format";
@@ -65,7 +66,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
   const can = (permission: Parameters<typeof hasOrganisationPermission>[1]) => hasOrganisationPermission(organisation.staffRole, permission);
   const buyer = order.buyerNameSnapshot || order.buyerEmailSnapshot;
   const free = order.paymentKind === "free";
-  const open = order.status === "paid" && !order.requiresCompensationReview && !order.refundStatus && !order.cancelledAt;
+  const open = order.status === "paid" && !order.requiresCompensationReview && !order.refundStatus && !order.disputeStatus && !order.cancelledAt;
   const step = order.pickupStatus === "pending" ? "ready" : order.pickupStatus === "ready" ? "collected" : null;
   const refund = order.refundRequests[0];
   const lineLabel = (line: StaffMerchandiseOrder["lines"][number]) => `${line.nameSnapshot}${line.variantSnapshot ? ` · ${line.variantSnapshot}` : ""}`;
@@ -101,7 +102,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
               {order.pickupStatus === "collected" ? "It had been collected; record a return if the items come back." : "The pickup was cancelled."}
             </p>
           </Notice>
-        ) : refund?.status === "failed" ? (
+        ) : refund?.status === "failed" && !order.refundStatus ? (
           <Notice title="Couldn't refund" tone="danger">
             <p className="mt-0.5">Stripe turned the refund down. Nothing was refunded and the order is unchanged.</p>
           </Notice>
@@ -113,9 +114,10 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
           </Notice>
         ) : order.requiresCompensationReview ? (
           <Notice title="Payment review" tone="warning">
-            <p className="mt-0.5">Don&apos;t hand this over. Stripe took a payment that couldn&apos;t be filled ({order.reviewReason ?? "under review"}); finance sorts it out.</p>
+            <p className="mt-0.5">Don&apos;t hand this over. Stripe took a payment that couldn&apos;t be filled ({order.reviewReason ?? "under review"}). Thunderstrux refunds it in full and emails the buyer; if Stripe refuses, finance sorts it out in Stripe.</p>
           </Notice>
         ) : null}
+        <StripeReviewNotice canAct={can("orders:refund")} kind="merchandise" orderId={order.id} review={{ ...order, dispute: order.disputes[0] ?? null }} timeZone={timeZone} />
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="grid gap-5">
@@ -210,7 +212,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
                 <dd>{order.refundStatus === "refunded" ? formatMoney(order.totalAmount) : order.refundStatus === "processing" ? "Processing" : "Nothing"}</dd>
               </dl>
               {can("orders:refund") && open && !free ? (
-                <MerchandiseMoneyActions action="refund" amount={formatMoney(order.totalAmount)} buyer={buyer} needsCode={mfaEnforcementMode() !== "off"} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />
+                <MerchandiseMoneyActions action="refund" amount={formatMoney(order.totalAmount - order.externalRefundedAmount)} buyer={buyer} needsCode={mfaEnforcementMode() !== "off"} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />
               ) : null}
               {can("orders:refund") && open && free && order.pickupStatus !== "collected" ? (
                 <MerchandiseMoneyActions action="cancel" amount="Free" buyer={buyer} needsCode={mfaEnforcementMode() !== "off"} orderId={order.id} orgSlug={organisation.slug} reference={order.reference} />

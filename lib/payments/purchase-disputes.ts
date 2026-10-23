@@ -1,6 +1,8 @@
 import type { OrderDisputeStatus, Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
+import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
+import { markCommerceExternalRefundReviewed } from "@/lib/commerce/payment-recovery";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
@@ -25,12 +27,12 @@ const idOf = (value: string | { id: string } | null | undefined) => (typeof valu
 const outcomeOf = (status: string): OrderDisputeStatus =>
   status === "lost" ? "lost" : status === "won" || status === "warning_closed" ? "won" : "open";
 
-async function journalled(eventId: string) {
+export async function journalled(eventId: string) {
   return Boolean(await prisma.stripeRefundWebhookEvent.findUnique({ where: { stripeEventId: eventId } }));
 }
 
 // Records the event once; false when another delivery already did.
-async function journal(tx: Prisma.TransactionClient, event: Stripe.Event) {
+export async function journal(tx: Prisma.TransactionClient, event: Stripe.Event) {
   const created = await tx.stripeRefundWebhookEvent.createMany({
     data: [{ stripeEventId: event.id, eventType: event.type, eventCreatedAt: new Date(event.created * 1000) }],
     skipDuplicates: true
@@ -187,8 +189,18 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
   });
 }
 
-// Staff confirm they have looked at a partial refund made outside Thunderstrux.
+// Staff confirm they have looked at a partial refund made outside
+// Thunderstrux, on a ticket order or (PAY-003) a membership or merchandise order.
 export async function markExternalRefundReviewed(input: { organisationId: string; orderId: string; actor: { id: string } }) {
+  const commerce = await prisma.commerceOrder.findFirst({ where: { id: input.orderId, organisationId: input.organisationId }, select: { id: true } });
+  if (commerce) {
+    const outcome = await prisma.$transaction(async (tx) => {
+      if (!(await lockCommerceOrderForFamily(tx, commerce.id))) throw new PurchaseReviewError("not_found", "Order was not found");
+      return markCommerceExternalRefundReviewed(tx, { organisationId: input.organisationId, commerceOrderId: commerce.id, actor: input.actor });
+    });
+    if (outcome === "nothing") throw new PurchaseReviewError("not_allowed", "There is no partial refund to review on this order");
+    return;
+  }
   await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, input.orderId))) throw new PurchaseReviewError("not_found", "Order was not found");
     const order = await tx.order.findFirst({

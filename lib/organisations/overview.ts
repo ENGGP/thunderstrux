@@ -70,7 +70,7 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
           orderBy: { createdAt: "desc" },
           take: 5,
           select: {
-            id: true, kind: true, status: true, paymentKind: true, requiresCompensationReview: true, refundStatus: true, cancelledAt: true,
+            id: true, kind: true, status: true, paymentKind: true, requiresCompensationReview: true, refundStatus: true, disputeStatus: true, externalRefundedAmount: true, externalRefundReviewedAt: true, cancelledAt: true,
             totalAmount: true, createdAt: true, buyerNameSnapshot: true, buyerEmailSnapshot: true,
             lines: { orderBy: { lineNumber: "asc" }, select: { nameSnapshot: true, quantity: true, membershipGrant: { select: { id: true } } } }
           }

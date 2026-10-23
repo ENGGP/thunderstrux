@@ -8,6 +8,7 @@ import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments
 import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
 import { reconcileOrderRefundEvent } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
+import { reconcileCommerceDisputeEvent, reconcileCommerceExternalRefundEvent } from "@/lib/commerce/payment-recovery";
 import { isCommerceSession, reconcileCommerceCheckoutSession, reconcileExpiredCommerceSession } from "@/lib/commerce/reconciliation";
 import {
   getStripe,
@@ -142,14 +143,15 @@ export async function POST(request: Request) {
       const refund = event.data.object as { metadata?: Record<string, string> | null };
       if (refund.metadata?.refundRequestId) await reconcileOrderRefundEvent(event);
       else if (refund.metadata?.compensationRefundJobId) await reconcileRefundEvent(event);
-      else await reconcileExternalRefundEvent(event);
+      else if (!(await reconcileCommerceExternalRefundEvent(event))) await reconcileExternalRefundEvent(event);
       return NextResponse.json({ received: true });
     }
 
     case "charge.dispute.created":
     case "charge.dispute.updated":
     case "charge.dispute.closed": {
-      await reconcileDisputeEvent(event);
+      // A membership or merchandise payment's dispute (PAY-003), else a ticket order's.
+      if (!(await reconcileCommerceDisputeEvent(event))) await reconcileDisputeEvent(event);
       return NextResponse.json({ received: true });
     }
 

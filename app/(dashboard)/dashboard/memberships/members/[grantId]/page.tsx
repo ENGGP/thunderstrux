@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { MembershipActions } from "@/components/memberships/membership-actions";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
+import { StripeReviewNotice } from "@/components/commerce/stripe-review-notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { formatDate, formatDateTime, formatMoney, formatTerm } from "@/lib/format";
@@ -31,7 +32,7 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
   const live = membership.state === "active" || membership.state === "upcoming";
   const canRevoke = live && hasOrganisationPermission(organisation.staffRole, "memberships:manage");
   const canCancel = live && !membership.paid && !membership.cancelled && hasOrganisationPermission(organisation.staffRole, "orders:refund");
-  const canRefund = live && membership.paid && !membership.refundStatus && hasOrganisationPermission(organisation.staffRole, "orders:refund");
+  const canRefund = live && membership.paid && !membership.refundStatus && !membership.stripeReview.disputeStatus && hasOrganisationPermission(organisation.staffRole, "orders:refund");
   const refund = membership.paid ? await latestCommerceRefundRequest(membership.orderId) : null;
 
   // Newest first, from the facts this page already holds.
@@ -82,6 +83,9 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
             {membership.cancelled ? " Nothing was charged, so there was nothing to refund." : " No refund was made."}
           </p>
         </Notice>
+      ) : null}
+      {membership.paid && membership.refundStatus !== "refunded" ? (
+        <StripeReviewNotice canAct={hasOrganisationPermission(organisation.staffRole, "orders:refund")} kind="membership" orderId={membership.orderId} review={membership.stripeReview} timeZone={timeZone} />
       ) : null}
       <div className="grid items-start gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card>
@@ -139,7 +143,7 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
             <div className="grid gap-4">
               <h2 className="font-display text-xl font-semibold text-ink">Manage this membership</h2>
               <MembershipActions
-                amount={formatMoney(membership.amount)}
+                amount={formatMoney(membership.amount - membership.stripeReview.externalRefundedAmount)}
                 canCancel={canCancel}
                 canRefund={canRefund}
                 canRevoke={canRevoke}

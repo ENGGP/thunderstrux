@@ -116,7 +116,7 @@ Society images require the development object-store service and its persistent a
 - database port is not exposed to the host
 - Redis 7 is available as `redis` for rate limiting when `RATE_LIMIT_ENABLED=true`
 - the base PostgreSQL and Redis images are digest pinned and updated only through reviewed Renovate PRs
-- bounded `email-worker`, `notification-worker`, `stale-order-worker`, `compensation-worker` and `checkout-recovery-worker` services are available through the `workers` profile
+- bounded `email-worker`, `notification-worker`, `stale-order-worker`, `compensation-worker`, `checkout-recovery-worker` and `monitor-worker` services are available through the `workers` profile (each run takes a lease and honours `pnpm ops:workers -- pause`; see [[Production Operations]], T42)
 
 `docker-compose.dev.yml` only adds development-specific overrides:
 

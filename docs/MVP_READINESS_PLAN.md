@@ -704,7 +704,7 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
       - both manifests are fetchable without credentials: the packages are public, like the repository, so the Droplet needs no registry token.
 
 #### T44 — Complete production-mode journey qualification
-- [ ] Complete. **Dependencies:** T40, T41, T42, T43 (T37 dropped: OpenClaw deferred).
+- [x] Complete. **Dependencies:** T40, T41, T42, T43 (T37 dropped: OpenClaw deferred).
 - **Tests:** Implement every section 7 row in tests/e2e/integration with synthetic accounts, signed webhooks, captured mail/object-store/AI; production release images, enforced MFA/legacy deny; separate real Redis safety tests. Extend fixtures and run cleanup.
 - **Done:** Risk-appropriate local qualification covers changed executable content: one complete applicable E2E run, no critical skips or success fallback, relevant integration/operations evidence and confirmed run-owned cleanup. Repeat only for failures, changed inputs or a documented reliability concern; GitHub checks are optional.
 - **Ordered PR-sized substeps (parent requires all):**
@@ -745,7 +745,12 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
       - **Operations tests** `ops-76db262d33`: passed. The restore reported `workersPaused: true`, and the rehearsal confirmed the pause in the restored database.
       - **Not run:** the browser campaign, because no application or UI code changed.
       - Every run cleaned up after itself.
-  - [ ] **T44d (after T44c):** Run one complete combined local qualification and cleanup. Done when the retained evidence ties every required scenario to the exact image/schema pair and applicable local checks pass; repeat only for changed inputs, failures or documented reliability concerns.
+  - [x] **T44d (after T44c):** Run one complete combined local qualification and cleanup. Done when the retained evidence ties every required scenario to the exact image/schema pair and applicable local checks pass; repeat only for changed inputs, failures or documented reliability concerns.
+    - [x] **Implemented 2026-10-23** on `codex/t44d-combined-qualification`.
+      - **Combined runs:** baseline `baseline-b2ff8cf634def9f550fa6665`, browser `browser-7d05b953af18e5356cfdd5dc`, operations `ops-17701f7891` and Droplet `droplet-707dfb0351` all passed on revision `3ccada0`, with the tree matching it and migration digest `589d805fc690…`.
+      - **Recorded pairs:** each e2e run's manifest now records the release pair it built (revision, image ids and sizes, required migration, digest), and the operations run prints its own. [[Journey Qualification]] ties every section 7 row to these runs.
+      - **Defect found and fixed (DEF-026):** `next build` had baked the build-time `NEXT_PUBLIC_APP_URL` into the server code. The web image CI published in T43c would therefore have put `http://localhost:3000` into emailed links, Stripe return URLs and the trusted-origin check on any domain. The server now reads the origin at run time (`lib/app-url.ts`), the Dockerfile and Compose files build no origin in, and `runtime-origin.test.mjs` refuses a literal read.
+      - **Proof of the fix:** an image built with no origin trusted an origin set only at run time (the request reached validation, 400) and refused a foreign one (403), and its bundles contain no baked origin.
 
 #### T45 — Observed provider acceptance before hosting
 - [ ] Complete. **Dependencies:** T44.

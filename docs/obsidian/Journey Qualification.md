@@ -113,6 +113,28 @@ This note maps each requirement to the test that proves it. A requirement is onl
 
 **Found and fixed by T44c.** The recovery runbook relied on a restored copy inheriting a pause from the database it replaced. That only works if the backup was taken while workers were paused, and a disaster backup usually wasn't. So a restored copy could start its workers and act again on refunds or emails the old database had already sent. `pnpm ops:restore` now pauses every worker in each verified copy itself, and a copy that can't be fenced is quarantined.
 
-## Still to come
+## Combined qualification (T44d)
 
-T44d runs one combined qualification and ties every row to the exact image and schema pair. OpenClaw is deferred and isn't qualified.
+On 23 Oct 2026, four campaigns qualified every row above on one commit: revision `3ccada0fa8d7eca9e7f7416ee43e4b30de003784`, with the working tree matching it (`treeMatchesRevision`).
+
+All four share:
+- the schema `20261112010000_worker_leases`, migration chain digest `589d805fc6907d2f987cf961d95ca1334f8f0eaedcb6e2149efcc29d4fdc3765`;
+- staff MFA enforced in the MFA step and legacy organisation access denied.
+
+Each campaign built the release pair from that revision and recorded it. Image ids differ between campaigns because each built its own pair, and Docker builds aren't byte-for-byte reproducible. The revision, size and migration digest match.
+
+| Campaign | Run | Web image | Ops image | Result |
+| --- | --- | --- | --- | --- |
+| Baseline: build, guards, typecheck, integration, audit | `baseline-b2ff8cf634def9f550fa6665` | `sha256:a924f76828b2…` (387.1 MiB) | `sha256:295cb87d3853…` (939.4 MiB) | 41/41 runner guards, 634/634 integration tests in 95 files, no known vulnerabilities |
+| Browser: MFA, desktop/mobile, webhook steps | `browser-7d05b953af18e5356cfdd5dc` | `sha256:567a5f2c039d…` (387.1 MiB) | `sha256:c48d362dbd13…` (939.4 MiB) | 9 MFA-step (including the permission matrix), 65 desktop/mobile and 10 webhook-step (including both journeys) checks passed |
+| Operations: deploy, workers, backup, fenced restore, rollback | `ops-17701f7891` | `sha256:76ebe059a2d2…` | `sha256:4c417c5a6cc2…` | Passed: worker contract with 3 alerts received; the restored copy verified and fenced (`workersPaused: true`); rollback; a failed migration left writers stopped |
+| Droplet: deploy, upgrade, rollback, failed release | `droplet-707dfb0351` | releases one and two built from the same revision | | Passed in the required step order |
+
+Every run cleaned up after itself. Each e2e run's `manifest.json` records its pair (`release`), and the operations run prints its `releasePair`.
+
+**Defects found by T44, all fixed and covered by tests:**
+- **DEF-024:** a guest's order page said "You're going" after a refund (T44a).
+- **DEF-025:** a restored copy didn't inherit the worker pause, so it could act again on refunds or emails the old database had already sent (T44c).
+- **DEF-026:** the web image built the app's origin into its server code, so one image served only the domain it was built for (T44d).
+
+**Not covered here.** OpenClaw is deferred. Real providers (Stripe test mode, Resend, Spaces) come in T45, and real users in H06.

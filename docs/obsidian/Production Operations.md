@@ -28,7 +28,7 @@ Since T43a every release is two images built from one revision by `docker/Docker
 - **`ops`** holds production dependencies (the Prisma CLI is one), `lib`, `scripts`, `prisma` and `config`. Migrations, every worker, seeds, the integrity audit, restore verification and asset tools run from it. It has no healthcheck and serves nothing.
 - **`development`** is unchanged: the full dependency tree for `docker-compose.dev.yml`.
 
-Neither release image carries pnpm or Corepack. Both run as `node` through the same entrypoint and secret-file loader.
+Neither release image carries pnpm or Corepack. Neither has the app's origin built in (T44d): the server reads `NEXT_PUBLIC_APP_URL` at run time through `lib/app-url.ts`, so the published image serves whichever domain `config.env` names. Both run as `node` through the same entrypoint and secret-file loader.
 
 **Budgets.** Uncompressed, summed over layers (`docker history`):
 - web at most 600 MiB (387 MiB on 23 Oct 2026);

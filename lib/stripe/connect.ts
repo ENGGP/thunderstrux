@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
-import { getAppUrl, getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
+import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 
 export type StripeConnectState =
   | "NOT_CONNECTED"
@@ -28,7 +28,8 @@ export type StripeConnectStatus = {
   currently_due: string[];
   eventually_due: string[];
   disabled_reason: string | null;
-  dashboard_url: string | null;
+  // The society has finished onboarding, so Stripe can sign it in to its own Express Dashboard.
+  dashboard_available: boolean;
   actionUrl?: string;
   actionRequired?: string;
   error?: string;
@@ -94,11 +95,6 @@ export class OrganisationStripeConnectValidationError extends Error {
   }
 }
 
-function stripeDashboardUrl(accountId: string, livemode = isLiveStripeKey()) {
-  const modeSegment = livemode ? "" : "test/";
-  return `https://dashboard.stripe.com/${modeSegment}connect/accounts/${accountId}`;
-}
-
 function settingsUrl() {
   return new URL("/dashboard/settings", getAppUrl()).toString();
 }
@@ -129,7 +125,7 @@ function statusFromAccount(account: Stripe.Account): StripeConnectStatus {
     currently_due: account.requirements?.currently_due ?? [],
     eventually_due: account.requirements?.eventually_due ?? [],
     disabled_reason: account.requirements?.disabled_reason ?? null,
-    dashboard_url: stripeDashboardUrl(account.id)
+    dashboard_available: Boolean(account.details_submitted)
   };
 }
 
@@ -145,7 +141,7 @@ export function notConnectedStatus(): StripeConnectStatus {
     currently_due: [],
     eventually_due: [],
     disabled_reason: null,
-    dashboard_url: null
+    dashboard_available: false
   };
 }
 
@@ -161,7 +157,7 @@ export function platformNotReadyStatus(): StripeConnectStatus {
     currently_due: [],
     eventually_due: [],
     disabled_reason: null,
-    dashboard_url: null,
+    dashboard_available: false,
     actionUrl: stripePlatformProfileUrl,
     actionRequired: "Complete Stripe Connect platform profile",
     error: "Stripe platform setup incomplete"
@@ -421,7 +417,7 @@ export async function markAccountStatusError(
     currently_due: [],
     eventually_due: [],
     disabled_reason: null,
-    dashboard_url: stripeDashboardUrl(accountId),
+    dashboard_available: known.stripeDetailsSubmitted,
     error: message
   };
 }
@@ -457,6 +453,22 @@ export async function continueOrganisationStripeOnboarding(orgId: string) {
     organisation.stripeAccountId,
     organisation.slug
   );
+}
+
+// A single-use, short-lived sign-in to the society's own Express Dashboard
+// (balance, payouts, bank details), made when a staff member asks for it. The
+// platform's view of the account (dashboard.stripe.com/connect/accounts/...)
+// only opens for the platform owner, never for the society.
+export async function createOrganisationDashboardLink(orgId: string) {
+  const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true } });
+  if (!organisation) throw new OrganisationStripeConnectNotFoundError();
+  if (!organisation.stripeAccountId || !organisation.stripeDetailsSubmitted) {
+    throw new OrganisationStripeConnectValidationError("Stripe setup is not finished", [
+      { path: ["organisationId"], message: "Finish Stripe setup before opening the Stripe dashboard" }
+    ]);
+  }
+  const link = await getStripe().accounts.createLoginLink(organisation.stripeAccountId);
+  return link.url;
 }
 
 export async function getOrganisationStripeConnectStatus(orgId: string) {

@@ -208,7 +208,8 @@ const runtime = [
   "STRIPE_WEBHOOK_SECRET=",
   "STRIPE_CONNECT_WEBHOOK_SECRET=",
   "RESEND_API_KEY=",
-  "EMAIL_FROM="
+  "EMAIL_FROM=",
+  "ALERT_WEBHOOK_URL=http://alert-capture:8025/alerts"
 ].join("\n") + "\n";
 
 await mkdir(stateDir, { recursive: true, mode: 0o700 });

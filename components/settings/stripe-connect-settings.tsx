@@ -468,8 +468,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           <div className="grid gap-1">
             <h2 className="text-xl font-semibold text-ink">Fees</h2>
             <p className="text-[15px] text-ink-soft">
-              Thunderstrux keeps 10% of each paid order, rounded to the cent once per order. Buyers pay the
-              ticket price you set, with nothing added. Free tickets have no fee.
+              Thunderstrux keeps 3.75% of each paid order plus $0.89 for each ticket, membership or merchandise order,
+              rounded to the cent once per order. Buyers pay the price you set, with nothing added. Free sales have no fee.
             </p>
           </div>
           <div className="grid gap-2 rounded-control bg-surface-subtle px-5 py-4">

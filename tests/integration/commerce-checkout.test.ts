@@ -91,13 +91,13 @@ describe("commerce checkout", () => {
     expect(await parseJsonResponse(response)).toEqual({ kind: "stripe", url: "https://checkout.stripe.test/pay" });
 
     const order = await prisma.commerceOrder.findFirstOrThrow({ where: { userId: buyer.id }, include: { lines: true, checkoutAttempt: true } });
-    expect(order).toMatchObject({ kind: "merchandise", status: "pending", paymentKind: "stripe", totalAmount: 3000, feeAmount: 300, feePolicyVersion: "platform_fee_10_percent_v1", sellerStripeAccountId: society.organisation.stripeAccountId });
+    expect(order).toMatchObject({ kind: "merchandise", status: "pending", paymentKind: "stripe", totalAmount: 3000, feeAmount: 202, feePolicyVersion: "platform_fee_3_75_percent_89c_v2", sellerStripeAccountId: society.organisation.stripeAccountId });
     expect(order.expiresAt).toBeInstanceOf(Date);
     expect(order.checkoutAttempt).toMatchObject({ family: "merchandise", state: "provider_attached", stripeSessionId: order.stripeSessionId });
     const [request, options] = stripe.create.mock.calls[0];
     expect(request).toMatchObject({
       metadata: { family: "merchandise", commerceOrderId: order.id, organisationId: society.organisation.id },
-      payment_intent_data: { application_fee_amount: 300, transfer_data: { destination: society.organisation.stripeAccountId }, metadata: { family: "merchandise" } },
+      payment_intent_data: { application_fee_amount: 202, transfer_data: { destination: society.organisation.stripeAccountId }, metadata: { family: "merchandise" } },
       line_items: [{ quantity: 2, price_data: { unit_amount: 1500, product_data: { name: "Hoodie (M)" } } }]
     });
     expect(options).toEqual({ idempotencyKey: order.checkoutAttempt?.providerOperationKey });

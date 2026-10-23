@@ -37,7 +37,7 @@ test("organisers build an event in the society's time zone with a dollar price a
   await page.getByLabel("Price", { exact: true }).fill("15.5");
   await page.getByLabel("Quantity", { exact: true }).fill("40");
   // Rounded with the same fee function checkout uses; the seeded society has no Stripe yet.
-  await expect(page.getByText("For one ticket you receive $13.95", { exact: false })).toBeVisible();
+  await expect(page.getByText("For one ticket you receive $14.03", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "set up payments" })).toBeVisible();
   await page.getByRole("radio", { name: /Link only/ }).check();
 

@@ -19,7 +19,7 @@ test("an owner drafts a plan, sees the publish check, publishes it free and arch
   await expect(page.getByLabel("Last day", { exact: true })).toHaveValue(`30 Jun ${year}`);
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(`Semester 1 ${year}`);
   await page.getByLabel("Price", { exact: true }).fill("25");
-  await expect(page.getByText("your society receives $22.50")).toBeVisible();
+  await expect(page.getByText("your society receives $23.17")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
 
   await expect(page.getByRole("heading", { name: `Semester 1 ${year}`, level: 1 })).toBeVisible();

@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
+import { warnOnVersionMismatch } from "@/lib/stripe/version";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
@@ -76,8 +77,10 @@ export async function POST(request: Request) {
 
   logInfo("stripe.webhook.received", {
     stripeEventId: event.id,
-    eventType: event.type
+    eventType: event.type,
+    apiVersion: event.api_version
   });
+  warnOnVersionMismatch(event, "payments");
 
   // A test-mode event reaching a live deployment (or the reverse) is ignored, not applied.
   if (event.livemode !== isLiveStripeKey()) {

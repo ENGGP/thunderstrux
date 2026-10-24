@@ -8,6 +8,7 @@ export type OperationalAlertName =
   | "payment_reconciliation_ambiguous_order"
   | "stripe_webhook_signature_failure"
   | "stripe_webhook_mode_mismatch"
+  | "stripe_webhook_version_mismatch"
   | "stale_order_worker_failed"
   | "checkout_attempt_recovery_failed"
   | "checkout_attempt_recovery_abandoned"

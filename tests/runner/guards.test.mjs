@@ -34,3 +34,10 @@ test('focused staging selection is explicit and rejects unknown or duplicate sce
     assert.throws(() => stagingScenarios(args));
   }
 });
+
+test('staging checks delivered events against the same Stripe API version the app pins', async () => {
+  const { stripeApiVersion } = await import('../../scripts/e2e-guards.mjs');
+  const { readFile } = await import('node:fs/promises');
+  const app = await readFile(new URL('../../lib/stripe/version.ts', import.meta.url), 'utf8');
+  assert.match(app, new RegExp(`export const stripeApiVersion = "${stripeApiVersion.replace('.', '\.')}";`));
+});

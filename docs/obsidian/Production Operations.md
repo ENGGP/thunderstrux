@@ -190,7 +190,7 @@ every minute: node scripts/process-operations-monitor.mjs   # queue backlog, old
 
 ## Stripe webhook endpoints and keys
 
-Create both endpoints in Stripe Workbench (live mode for production, test mode for staging), as **snapshot** endpoints with API version **`2026-03-25.dahlia`**, the version the app pins (`lib/stripe/index.ts`). An endpoint left on the account's default version sends events shaped for another version. An endpoint's version can't be changed later: moving the app to a new version means creating new endpoints and retiring the old ones.
+Create both endpoints in Stripe Workbench (live mode for production, test mode for staging), as **snapshot** endpoints with API version **`2026-09-30.endive`**, the version the app pins (`lib/stripe/index.ts`, since PAY-006). An endpoint left on the account's default version sends events shaped for another version. An endpoint's version can't be changed later: moving the app to a new version means creating new endpoints and retiring the old ones. Before deploying a version change, wait until the checkout-recovery queue is empty: an uncertain checkout attempt replays its stored Session request, and a request stored before the change can be refused under the new version (for example `payment_method_types`, removed in endive). Recovery then releases the hold as for any refused request.
 
 | Endpoint | Listens to | Events | Secret |
 | --- | --- | --- | --- |
@@ -236,6 +236,7 @@ Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
 | `queue_backlog_high` checkout attempts | an uncertain Stripe Session is over 30 minutes old | Check the checkout-recovery job and compare with the Stripe dashboard. |
 | `queue_backlog_high` compensation or order refunds | a queued or uncertain refund is over an hour old | Check the refunds job and Stripe. Never refund by hand while a refund is uncertain: it may go through twice. |
 | `queue_backlog_high` dispute reversals | a lost dispute hasn't been taken back from the society within an hour of closing | Check the refunds job and the transfer's reversals in Stripe. Never reverse by hand while one is uncertain. |
+| `stripe_webhook_version_mismatch` | a webhook delivered an event shaped for an API version other than the app's pin | The endpoint was created on another version. Create a replacement on the pinned version (see Stripe webhook endpoints and keys), move its signing secret, then retire the old endpoint. Events are still handled meanwhile. |
 | `society_payout_failed` | a society's bank refused a payout | The society sees a warning on Payments and fixes its bank details in Stripe; the money stays in its Stripe balance and goes with the next payout. Help them if it keeps failing. |
 | `dispute_reversal_unresolved` | a lost dispute can't be taken back (no transfer, another account, nothing left, Stripe refused) or is still unknown after six tries | Look at the dispute's charge and transfer in Stripe's Dashboard and reverse or write it off by hand; record what was done on the order. |
 | `queue_backlog_high` ticket holds | an expired hold is still active 10 minutes later | Check the stale-orders job; the held stock stays unavailable until it runs. |

@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { appUrl } from "@/lib/app-url";
+import { stripeApiVersion } from "@/lib/stripe/version";
 
 export class StripeConfigurationError extends Error {
   constructor(message: string) {
@@ -25,9 +26,8 @@ export function getStripe() {
   }
 
   return new Stripe(secretKey, {
-    // Pinned to the version real Stripe acceptance verified. Newer SDKs type only
-    // their own latest version; moving needs a fresh test-mode campaign.
-    apiVersion: "2026-03-25.dahlia" as Stripe.StripeConfig["apiVersion"]
+    // Moving it needs a fresh test-mode campaign and webhook endpoints created on the same version.
+    apiVersion: stripeApiVersion
   });
 }
 

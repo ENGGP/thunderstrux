@@ -112,7 +112,7 @@ describe("dashboards (T34)", () => {
     setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
     const html = await page();
     expect(html.indexOf("Your next plans")).toBeLessThan(html.indexOf("Halloween Social"));
-    for (const text of ["Also coming up", "Robot Wars", "Recent purchases", "Confirming payment", "Membership active", "Memberships don&#x27;t renew automatically", "Societies you&#x27;ve joined", organisation.name]) expect(html).toContain(text);
+    for (const text of ["Also coming up", "Robot Wars", "Recent purchases", "Waiting for payment", "Membership active", "Memberships don&#x27;t renew automatically", "Societies you&#x27;ve joined", organisation.name]) expect(html).toContain(text);
     expect(html.indexOf("Pending Gala")).toBeGreaterThan(html.indexOf("Recent purchases"));
 
     const newcomer = await createMember();

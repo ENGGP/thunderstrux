@@ -9,6 +9,9 @@ import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { GuestClaim } from "@/components/guest/guest-claim";
 import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
+import { UnpaidOrderNotice } from "@/components/purchases/unpaid-order-notice";
+import { guestCsrfToken } from "@/lib/guest/guest-csrf";
+import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { canOpenGuestOrder, guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { formatDateRange, formatMoney } from "@/lib/format";
@@ -24,7 +27,8 @@ export const metadata: Metadata = { title: "Your order", referrer: "no-referrer"
 // session, shows the same page, so an order id alone reveals nothing.
 export default async function GuestOrderPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
-  const [session, live] = await Promise.all([readGuestSession((await cookies()).get(guestCookieName)?.value), getLiveSession()]);
+  const sessionId = (await cookies()).get(guestCookieName)?.value;
+  const [session, live] = await Promise.all([readGuestSession(sessionId), getLiveSession()]);
   const order = session && (await canOpenGuestOrder(session, orderId)) ? await getGuestOrder(orderId) : null;
 
   if (!order || !session) {
@@ -50,17 +54,33 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
   // A refunded, disputed or cancelled order went through checkout; only an unpaid one is still at review.
   const unfinished = projection === "processing" || projection === "failed" || projection === "expired";
   const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
+  // An unpaid order asks Stripe where it stands (round E1).
+  const [checkout, cancelled] = await Promise.all([
+    projection === "processing" ? pendingCheckoutState({ kind: "ticket", id: order.id }) : null,
+    projection === "expired" ? cancelledByBuyer({ kind: "ticket", id: order.id }) : false
+  ]);
 
   return (
     <CheckoutShell current={unfinished ? 1 : 2} society={organisation.name} steps={["Your email", "Review", "Tickets"]} title={going ? `You're going to ${event.title}` : "Your order"}>
       <Card>
         <div className="grid gap-4">
           {going ? <StatusBadge status={order.paymentKind === "free" ? "free" : "paid"} /> : null}
-          <TicketOrderNotice order={order} processing={
-            <Notice role="status" title="Confirming your payment">
-              <p>This usually takes under a minute. <Link className="font-semibold text-brand underline underline-offset-4" href={`/guest/orders/${order.id}`}>Refresh</Link> to check again.</p>
-            </Notice>
-          } />
+          <TicketOrderNotice cancelled={cancelled} order={order} processing={checkout ? (
+            <UnpaidOrderNotice
+              backHref={`/events/${event.id}`}
+              cancelUrl={`/api/purchases/tickets/${order.id}/cancel`}
+              checkout={checkout}
+              confirming={
+                <Notice role="status" title="Confirming your payment">
+                  <p>Stripe has your payment and is telling us about it. This usually takes under a minute. <Link className="font-semibold text-brand underline underline-offset-4" href={`/guest/orders/${order.id}`}>Refresh</Link> to check again.</p>
+                </Notice>
+              }
+              guestCsrf={sessionId ? guestCsrfToken(sessionId) : undefined}
+              held={{ what: `${order.quantity} ${order.quantity === 1 ? "ticket" : "tickets"}`, many: order.quantity > 1, event: event.title }}
+              stacked
+              timeZone={organisation.timeZone}
+            />
+          ) : null} />
           <p className="text-ink-soft [overflow-wrap:anywhere]">
             {formatDateRange(event.startTime, event.endTime, organisation.timeZone)}, {zoneCity(organisation.timeZone)} · {event.location}
           </p>

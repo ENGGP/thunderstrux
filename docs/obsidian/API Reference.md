@@ -812,6 +812,17 @@ Commerce checkout (T21). Body `{organisationId, selection, expectedTotal, idempo
 
 One membership or merchandise order (T20). Requires a signed-in account (`401` otherwise), except that a signed-out guest's session (cookie) reads a merchandise order bought in that checkout session (T27b) or the one order its purchase link names (a receipt or Find your purchase link), and only that (any other id is `404`). The buyer view also carries the society's slug and pickup details. The buyer gets `{view: "buyer", order}`: family, status, payment kind, currency, total, seller name and support email, lines (number, name, variant, quantity, unit and line amounts, membership term) and a history of types and times, with no buyer contact, fee or provider ids. Staff of the current society with `orders:read` get `{view: "finance", order}`, adding the buyer snapshot, fee and fee policy, guest flag, Stripe references, review reason, paid and failed facts, and the full history with actors. A ticket order id, another member's order and another society's order are the same `404`. `no-store`.
 
+### `POST /api/purchases/tickets/[orderId]/cancel` and `POST /api/commerce/orders/[orderId]/cancel`
+
+The buyer cancels an unpaid order (design round E1). Only the member who bought it, or the guest session that may open it, may cancel: a trusted origin, plus the session CSRF token or the guest CSRF header. Everyone else gets the same `404`. The checkout rate limit applies.
+
+Stripe closes the payment page first. The hold is then released at once through the same expiry path a `checkout.session.expired` webhook uses, recorded as the buyer's own action (lifecycle source `checkout`).
+
+- `200 {status: "cancelled"}`: the order was cancelled.
+- `200 {status: "paid"}`: Stripe was paid in the meantime, and nothing changed.
+- `409` with reason `not_pending`: nothing left to cancel.
+- `409` with reason `no_session`: Stripe hasn't opened the payment yet.
+
 ### `GET /api/purchases/tickets/[orderId]/status`
 
 The status of the caller's own ticket order, for the payment return page to poll (T19a). Answers `200 {status}` (the order projection: `processing`, `paid`, `free`, `review`, `refund-processing`, `refunded`, `disputed`, `cancelled`, `failed` or `expired`) only to the member who bought it or a guest session allowed to open it (`canOpenGuestOrder`); everyone else, including an anonymous caller with a real order id, gets the same `404`. `no-store`. It never changes the order: only the signed webhook fulfils.

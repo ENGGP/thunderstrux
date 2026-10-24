@@ -47,7 +47,7 @@ export function BasketLink({ society }: { society: string }) {
   const { basket } = useBasket();
   const count = basketCount(basket, society);
   return (
-    <Link className="inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-brand underline-offset-4 hover:underline" href={basketHref(society)}>
+    <Link className="inline-flex min-h-11 items-center gap-2 text-ui font-semibold text-brand underline-offset-4 hover:underline" href={basketHref(society)}>
       <Icon name="bag" size={20} />
       {count ? `Basket · ${items(count)}` : "Basket"}
     </Link>
@@ -105,7 +105,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
   }
 
   const pill = (on: boolean, off: boolean) =>
-    `flex min-h-11 cursor-pointer items-center gap-2 rounded-control border px-3.5 text-[15px] ${
+    `flex min-h-11 cursor-pointer items-center gap-2 rounded-control border px-3.5 text-ui ${
       off ? "cursor-not-allowed border-dashed border-line-strong text-ink-muted" : on ? "border-2 border-brand bg-brand-tint px-[13px] font-semibold text-brand-ink" : "border-line-strong text-ink"
     }`;
   const images = product.imageAssetIds;
@@ -143,12 +143,12 @@ export function ProductPicker({ society, societyName, product }: { society: stri
           <span className="w-fit rounded-tag border border-neutral-border bg-neutral-bg px-2 py-0.5 text-xs font-semibold text-neutral">Pickup only</span>
           <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-4xl">{product.name}</h1>
           <p className="font-display text-2xl font-semibold tabular-nums text-ink">{selected ? formatPrice(selected.priceAmount) : null}</p>
-          {product.description ? <p className="whitespace-pre-wrap text-[15px] text-ink-soft [overflow-wrap:anywhere]">{product.description}</p> : null}
+          {product.description ? <p className="whitespace-pre-wrap text-ui text-ink-soft [overflow-wrap:anywhere]">{product.description}</p> : null}
         </div>
 
         {colours.length ? (
           <fieldset className="grid gap-2.5">
-            <legend className="mb-2.5 text-[15px] font-semibold text-ink">Colour: {colour}</legend>
+            <legend className="mb-2.5 text-ui font-semibold text-ink">Colour: {colour}</legend>
             <div className="flex flex-wrap gap-2">
               {colours.map((value) => {
                 const off = forColour(value).every((option) => option.available === 0);
@@ -166,7 +166,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
 
         {sizesHere.length ? (
           <fieldset className="grid gap-2.5">
-            <legend className="mb-2.5 text-[15px] font-semibold text-ink">Size: {size}</legend>
+            <legend className="mb-2.5 text-ui font-semibold text-ink">Size: {size}</legend>
             <div className="flex flex-wrap gap-2">
               {sizesHere.map((value) => {
                 const option = variants.find((item) => item.size === value && item.colour === (colours.length ? colour : item.colour));
@@ -200,7 +200,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
 
         {selected && selected.available > 0 ? (
           <div className="grid gap-2">
-            <span className="text-[15px] font-semibold text-ink" id="quantity-label">
+            <span className="text-ui font-semibold text-ink" id="quantity-label">
               Quantity
             </span>
             <div aria-labelledby="quantity-label" className="flex w-fit items-center rounded-control border border-line-strong bg-surface" role="group">
@@ -400,7 +400,7 @@ export function BasketView({ society }: { society: string }) {
           <h2 className="font-display text-xl font-semibold text-ink" id="summary-heading">
             Order summary
           </h2>
-          <div className="grid gap-2 text-[15px] tabular-nums">
+          <div className="grid gap-2 text-ui tabular-nums">
             <div className="flex justify-between gap-3"><span>{items(count)}</span><span>{formatPrice(quote.total)}</span></div>
             <div className="flex justify-between gap-3 text-ink-soft"><span>Delivery</span><span>None, pickup only</span></div>
           </div>

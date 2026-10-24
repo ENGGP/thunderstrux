@@ -158,7 +158,7 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
                 </Link>{" "}
                 · {order.buyer}
               </h2>
-              <div className="text-[15px] text-ink">{items(order)}</div>
+              <div className="text-ui text-ink">{items(order)}</div>
               <p className={`text-sm ${stage === "review" ? "font-semibold text-warning" : "text-ink-soft"}`}>
                 {order.guest ? "Guest · " : ""}
                 {status(order)}

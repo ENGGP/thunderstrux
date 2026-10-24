@@ -136,7 +136,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
                   );
                 })}
               </ol> : null}
-              <ul className="grid gap-1.5 border-t border-line pt-3 text-[15px] text-ink">
+              <ul className="grid gap-1.5 border-t border-line pt-3 text-ui text-ink">
                 {order.lines.map((line) => (
                   <li className="flex justify-between gap-3" key={line.lineNumber}>
                     <span className="[overflow-wrap:anywhere]">
@@ -150,7 +150,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
               <p className="font-semibold text-ink">
                 {free ? "Free" : `Paid ${formatPrice(order.totalAmount)}`} · Order {reference}
               </p>
-              {order.pickupStatus === "collected" || ended ? null : <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-[15px]">
+              {order.pickupStatus === "collected" || ended ? null : <div className="grid gap-1 rounded-control bg-surface-subtle p-3.5 text-ui">
                 <strong>Collect it in person</strong>
                 {order.organisation.pickupPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{order.organisation.pickupPolicy}</span> : null}
                 <span className="text-ink-soft">

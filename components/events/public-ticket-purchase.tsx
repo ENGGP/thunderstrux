@@ -38,7 +38,7 @@ function Box({ badge, children }: { badge?: ReactNode; children: ReactNode }) {
     <section aria-labelledby="tickets-heading" className="grid gap-4 rounded-card border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold text-ink" id="tickets-heading">Tickets</h2>
-        {badge ?? <span className="text-[13px] text-ink-soft">Prices in AUD</span>}
+        {badge ?? <span className="text-caption text-ink-soft">Prices in AUD</span>}
       </div>
       {children}
     </section>
@@ -128,7 +128,7 @@ export function PublicTicketPurchase({
   if (!salesOpen) {
     return (
       <Box badge={<StatusBadge status="sales-closed" />}>
-        <p className="text-[15px] text-ink">{salesCloseLabel ? `Ticket sales closed on ${salesCloseLabel}.` : "Ticket sales have closed."}</p>
+        <p className="text-ui text-ink">{salesCloseLabel ? `Ticket sales closed on ${salesCloseLabel}.` : "Ticket sales have closed."}</p>
         <p className="text-sm text-ink-soft">
           Already have a ticket? It&apos;s in{" "}
           <Link className="font-semibold text-brand underline underline-offset-4" href="/tickets">
@@ -191,7 +191,7 @@ export function PublicTicketPurchase({
         >
           {free ? "Sign in to get free tickets" : "Sign in to buy"}
         </Button>
-        <p className="text-[13px] text-ink-muted">
+        <p className="text-caption text-ink-muted">
           As a guest you confirm your email and your tickets go there. Signed-in members also see them in My tickets. New here?{" "}
           <Link
             className="font-semibold text-brand underline underline-offset-4"
@@ -216,7 +216,7 @@ export function PublicTicketPurchase({
         >
           {free ? "Get free tickets" : "Buy tickets"}
         </Button>
-        <p className="text-[13px] text-ink-muted">
+        <p className="text-caption text-ink-muted">
           {free
             ? "You confirm on the next page. Your tickets are emailed and appear in My tickets."
             : "You review your order on the next page, then pay securely with Stripe."}
@@ -323,7 +323,7 @@ export function PublicTicketPurchase({
       {selected && validQuantity && actionBelow && (viewer === "member" || viewer === "anonymous") ? (
         <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-float lg:hidden">
           <p className="grid min-w-0 flex-1">
-            <span className="truncate text-[13px] text-ink-soft">{quantity} × {selected.name}</span>
+            <span className="truncate text-caption text-ink-soft">{quantity} × {selected.name}</span>
             <span className="text-lg font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>
           </p>
           <Button disabled={leaving} onClick={() => go(primaryHref)} size="lg" type="button">

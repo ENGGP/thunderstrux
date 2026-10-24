@@ -94,7 +94,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
             </div>
           )}
           <div className="grid flex-1 content-start gap-2 p-5 sm:p-6">
-            <p className="text-[13px] font-semibold uppercase tracking-wide text-brand">Your next plans</p>
+            <p className="text-caption font-semibold uppercase tracking-wide text-brand">Your next plans</p>
             <h2 className="font-display text-[26px] font-semibold leading-tight text-ink [overflow-wrap:anywhere]" id="next-plans">{next.event.title}</h2>
             <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
               {formatDateRange(next.event.startTime, next.event.endTime, next.event.organisation.timeZone)}, {zoneCity(next.event.organisation.timeZone)} · {next.event.location}

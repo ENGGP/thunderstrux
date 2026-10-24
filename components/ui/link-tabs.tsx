@@ -6,7 +6,7 @@ export const tabBarClasses =
   "flex overflow-x-auto shadow-[inset_0_-1px_0_var(--color-line)] sm:gap-1";
 
 export function tabClasses(active: boolean) {
-  return `inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-[3px] px-3 text-[15px] sm:px-4 ${
+  return `inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-[3px] px-3 text-ui sm:px-4 ${
     active
       ? "border-brand font-semibold text-brand-ink"
       : "border-transparent font-medium text-ink-soft hover:text-ink"
@@ -23,7 +23,7 @@ export function pillClasses(active: boolean) {
 
 // The one way a tab or pill shows how many it holds.
 export function Count({ value, active }: { value: number; active: boolean }) {
-  return <span className={`rounded-md px-2 text-[13px] font-semibold tabular-nums ${active ? "bg-brand-tint" : "bg-surface-subtle"}`}>{value}</span>;
+  return <span className={`rounded-tag px-2 text-caption font-semibold tabular-nums ${active ? "bg-brand-tint" : "bg-surface-subtle"}`}>{value}</span>;
 }
 
 export function LinkTabs({

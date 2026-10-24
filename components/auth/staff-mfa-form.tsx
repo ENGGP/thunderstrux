@@ -73,7 +73,7 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
       <Notice title="Shown only once" tone="warning">
         Each code works one time if you lose your phone. Store them somewhere safe, such as a password manager.
       </Notice>
-      <ul className="grid grid-cols-2 gap-2 rounded-card bg-surface-subtle p-4 font-mono text-[15px] text-ink">
+      <ul className="grid grid-cols-2 gap-2 rounded-card bg-surface-subtle p-4 font-mono text-ui text-ink">
         {recoveryCodes.map((entry) => <li key={entry}>{entry}</li>)}
       </ul>
       <div>

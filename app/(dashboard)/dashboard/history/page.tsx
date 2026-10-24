@@ -120,7 +120,7 @@ async function HistoryList({ organisationId, filters, filtered, timeZone, cursor
       {restarted ? <Notice title="Showing the newest entries" tone="warning">That page of History is no longer available, so it starts again from the newest.</Notice> : null}
       {days.map(({ day, entries }) => (
         <section aria-labelledby={`day-${day}`} key={day}>
-          <h2 className={`pb-2 pt-4 text-[15px] font-semibold ${day === today ? "text-brand-ink" : "text-ink-soft"}`} id={`day-${day}`}>
+          <h2 className={`pb-2 pt-4 text-ui font-semibold ${day === today ? "text-brand-ink" : "text-ink-soft"}`} id={`day-${day}`}>
             {day === today ? `Today · ${formatDay(day)}` : formatDay(day)}
           </h2>
           <ol className="relative before:absolute before:bottom-1.5 before:left-[18px] before:top-1.5 before:w-0.5 before:bg-line md:before:left-[103px]">
@@ -162,11 +162,11 @@ function HistoryItem({ entry, timeZone }: { entry: HistoryEntry; timeZone: strin
   return (
     <li className="relative grid grid-cols-[36px_minmax(0,1fr)] gap-x-3.5 py-3 md:grid-cols-[80px_36px_minmax(0,1fr)_172px] md:gap-x-0">
       <span className="hidden pr-4 pt-2 text-right text-sm font-semibold tabular-nums text-ink md:block">{formatTime(entry.at, timeZone)}</span>
-      <span aria-hidden="true" className={`relative z-[1] flex size-9 items-center justify-center rounded-full text-[13px] font-semibold shadow-[0_0_0_4px_var(--color-paper)] ${dot}`}>
+      <span aria-hidden="true" className={`relative z-[1] flex size-9 items-center justify-center rounded-full text-caption font-semibold shadow-[0_0_0_4px_var(--color-paper)] ${dot}`}>
         {entry.actor.kind === "thunderstrux" ? <Icon name="zap" size={18} /> : entry.actor.kind === "former" ? <Icon name="user" size={18} /> : entry.actor.initials}
       </span>
       <div className="grid min-w-0 gap-1.5 md:pl-3.5">
-        <p className="flex flex-wrap items-center gap-2 text-[13px] text-ink-muted md:hidden">
+        <p className="flex flex-wrap items-center gap-2 text-caption text-ink-muted md:hidden">
           <strong className="text-sm tabular-nums text-ink">{formatTime(entry.at, timeZone)}</strong>
           {entry.category ? <span className="rounded-tag border border-line bg-surface-subtle px-1.5 text-xs font-semibold leading-[22px] text-ink-soft">{historyCategories[entry.category]}</span> : null}
         </p>

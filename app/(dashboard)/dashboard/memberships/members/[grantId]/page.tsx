@@ -27,7 +27,7 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
   if (!membership) notFound();
   const timeZone = await readTimeZone(organisation.id);
   const lastDay = (endsAt: Date) => formatDate(new Date(endsAt.getTime() - 1), timeZone);
-  const row = "grid gap-x-6 gap-y-2.5 text-[15px] sm:grid-cols-[max-content_1fr]";
+  const row = "grid gap-x-6 gap-y-2.5 text-ui sm:grid-cols-[max-content_1fr]";
   // Only a running or upcoming membership can be ended early.
   const live = membership.state === "active" || membership.state === "upcoming";
   const canRevoke = live && hasOrganisationPermission(organisation.staffRole, "memberships:manage");
@@ -160,7 +160,7 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
       <Card>
         <div className="grid gap-3">
           <h2 className="font-display text-xl font-semibold text-ink">What happened</h2>
-          <ul className="grid gap-2 text-[15px]">
+          <ul className="grid gap-2 text-ui">
             {history.map((entry) => (
               <li key={entry.label}>
                 <span className="font-semibold text-ink">{entry.label}</span>{" "}

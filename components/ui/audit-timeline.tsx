@@ -33,7 +33,7 @@ export function AuditTimeline({
             <li className="break-words py-3" key={entry.id}>
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
                 <div>
-                  <p className="text-[15px] font-semibold text-ink">{entry.title}</p>
+                  <p className="text-ui font-semibold text-ink">{entry.title}</p>
                   {entry.meta ? <p className="text-sm text-ink-soft">{entry.meta}</p> : null}
                 </div>
                 <time className="text-sm text-ink-soft" dateTime={entry.time.toISOString()}>{formatDateTime(entry.time, timeZone ? { timeZone } : {})}</time>

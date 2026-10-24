@@ -389,7 +389,7 @@ export function CreateEventForm({
           value={value}
         />
         {candidates.length === 2 ? (
-          <fieldset className="grid gap-1.5 rounded-control border border-line p-3 text-[15px]">
+          <fieldset className="grid gap-1.5 rounded-control border border-line p-3 text-ui">
             <legend className="px-1 text-sm font-semibold text-ink">{timeLabels[field]}: {time} happens twice that day</legend>
             {candidates.map((candidate, index) => (
               <label className="flex min-h-11 items-center gap-2" key={candidate.toISOString()}>

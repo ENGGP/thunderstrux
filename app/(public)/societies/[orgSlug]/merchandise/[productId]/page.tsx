@@ -44,7 +44,7 @@ export default async function ProductPage({ params }: Props) {
           <BasketLink society={organisation.slug} />
         </div>
         <ProductPicker product={product} society={organisation.slug} societyName={organisation.name} />
-        <section aria-label="Pickup" className="grid max-w-3xl gap-1.5 rounded-card border border-line bg-surface p-5 text-[15px]">
+        <section aria-label="Pickup" className="grid max-w-3xl gap-1.5 rounded-card border border-line bg-surface p-5 text-ui">
           <strong>Collect it in person, no delivery</strong>
           {organisation.pickupPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{organisation.pickupPolicy}</span> : null}
           {organisation.refundPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">Refunds: {organisation.refundPolicy}</span> : null}

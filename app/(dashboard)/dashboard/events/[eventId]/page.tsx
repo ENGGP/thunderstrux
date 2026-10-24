@@ -122,9 +122,9 @@ export default async function OrganiserEventPage({
             <p className="mt-2 text-sm text-ink-soft">No ticket types yet.</p>
           ) : (
             <div aria-label="Ticket performance" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
-              <table className="w-full min-w-[420px] border-collapse text-[15px]">
+              <table className="w-full min-w-[420px] border-collapse text-ui">
                 <thead>
-                  <tr className="text-left text-[13px] text-ink-soft">
+                  <tr className="text-left text-caption text-ink-soft">
                     <th className="py-2.5 font-semibold" scope="col">Ticket</th>
                     <th className="px-2 py-2.5 text-right font-semibold" scope="col">Price</th>
                     <th className="px-2 py-2.5 text-right font-semibold" scope="col">Sold</th>
@@ -188,7 +188,7 @@ export default async function OrganiserEventPage({
             <h2 className="text-lg font-semibold text-ink">Selling status</h2>
             <SaleBadge event={event} />
           </div>
-          <ul className="mt-3 grid list-disc gap-2 pl-5 text-[15px] text-ink">
+          <ul className="mt-3 grid list-disc gap-2 pl-5 text-ui text-ink">
             <li>
               {event.visibility === "unlisted"
                 ? "Published, link only: not listed on Explore events"

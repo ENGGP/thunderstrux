@@ -324,9 +324,9 @@ export async function EngagementTab({ organisationId, range, asOf }: { organisat
         <Card>
           <h2 className="text-lg font-semibold text-ink">Who took part</h2>
           <div aria-label="Who took part" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
-            <table className="w-full min-w-[360px] border-collapse text-[15px]">
+            <table className="w-full min-w-[360px] border-collapse text-ui">
               <thead>
-                <tr className="text-left text-[13px] text-ink-soft"><th className="py-2.5 font-semibold" scope="col">People</th><th className="px-2 py-2.5 text-right font-semibold" scope="col">All</th><th className="px-2 py-2.5 text-right font-semibold" scope="col">Joined</th><th className="py-2.5 pl-2 text-right font-semibold" scope="col">Members</th></tr>
+                <tr className="text-left text-caption text-ink-soft"><th className="py-2.5 font-semibold" scope="col">People</th><th className="px-2 py-2.5 text-right font-semibold" scope="col">All</th><th className="px-2 py-2.5 text-right font-semibold" scope="col">Joined</th><th className="py-2.5 pl-2 text-right font-semibold" scope="col">Members</th></tr>
               </thead>
               <tbody className="tabular-nums">
                 {([["Bought something", t.buyers], ["Checked in at an event", t.attendees]] as const).map(([label, group]) => (

@@ -123,7 +123,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="grid gap-5">
             <Card id="items-heading" title="Items">
-              <ul className="grid gap-2.5 text-[15px]">
+              <ul className="grid gap-2.5 text-ui">
                 {order.lines.map((line) => (
                   <li className="flex items-start justify-between gap-3" key={line.id}>
                     <span className="grid">
@@ -158,7 +158,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
               title="Pickup"
             >
               {order.pickupStatus ? (
-                <ol className="flex flex-wrap gap-x-7 gap-y-2 text-[15px]">
+                <ol className="flex flex-wrap gap-x-7 gap-y-2 text-ui">
                   {(["pending", "ready", "collected"] as const).map((state, index) => (
                     <li className={state === order.pickupStatus ? "font-semibold text-brand-ink" : "text-ink-soft"} key={state}>
                       {index + 1}. {{ pending: "Preparing", ready: "Ready to collect", collected: "Collected" }[state]}
@@ -176,7 +176,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
             </Card>
 
             <Card id="history-heading" title="What happened">
-              <ul className="grid gap-2.5 text-[15px]">
+              <ul className="grid gap-2.5 text-ui">
                 {[...order.lifecycleEvents].reverse().filter((event) => happened[event.type]).map((event) => (
                   <li className="[overflow-wrap:anywhere]" key={event.sequence}>
                     <strong>{happened[event.type]}</strong>{" "}
@@ -193,7 +193,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
 
           <div className="grid gap-5">
             <Card id="buyer-heading" title="Buyer">
-              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-[15px]">
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-ui">
                 <dt className="text-ink-soft">Name</dt>
                 <dd className="[overflow-wrap:anywhere]">{order.buyerNameSnapshot ?? "Not given"}</dd>
                 <dt className="text-ink-soft">Email</dt>
@@ -206,7 +206,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
             </Card>
 
             <Card id="money-heading" title="Money">
-              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-[15px]">
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-ui">
                 <dt className="text-ink-soft">Paid</dt>
                 <dd>{free ? "Nothing, it was free" : `${formatMoney(order.totalAmount)} by card, through Stripe`}</dd>
                 <dt className="text-ink-soft">Refunded</dt>
@@ -223,7 +223,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
 
             <Card id="returns-heading" title="Returns">
               {order.merchandiseReturns.length ? (
-                <ul className="grid gap-2 text-[15px]">
+                <ul className="grid gap-2 text-ui">
                   {order.merchandiseReturns.map((row) => {
                     const line = order.lines.find((item) => item.id === row.commerceOrderLineId);
                     return (

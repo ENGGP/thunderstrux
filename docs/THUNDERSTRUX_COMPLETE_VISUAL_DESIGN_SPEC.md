@@ -1153,6 +1153,14 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 | `EventActions` | `components/events/event-actions.tsx` | Publish, Edit and a popover "More" menu; disabled actions say why. |
 | `DateRail` | `components/events/date-rail.tsx` | Day and month in the society's zone. |
 | `VerifyEmailBanner` | `components/layout/verify-email-banner.tsx` | Dismissible labelled region; never changes verification. |
+| `EmptyState` | `components/ui/empty-state.tsx` | Dashed box, icon, title, one line and one secondary action; never used for failures. |
+| `ResponsiveTable` | `components/ui/responsive-table.tsx` | Bordered table from 768px, the caller's cards below. |
+| `FilterBar` | `components/ui/filter-bar.tsx` | GET form with Apply and Clear; filters live in the URL. |
+| `LinkTabs`, `pillClasses`, `Count` | `components/ui/link-tabs.tsx` | Route tabs; pills for status filters inside a tab; one count chip. |
+| `DateField`, `DateTimeField` | `components/ui/date-field.tsx` | Typed dates with a house calendar; replaces browser date and time pickers. |
+| `MoneyInput` | `components/ui/input.tsx` | `$` prefix; callers convert to cents with `parseMoneyInput`. |
+| `AuditTimeline` | `components/ui/audit-timeline.tsx` | Buyer-safe order history rail. |
+| `SocietyJoinCard` | `components/organisations/society-join-card.tsx` | The society page's side card on every tab. |
 
 ## 16.5 Feedback, confirmation and loading rules [implemented]
 

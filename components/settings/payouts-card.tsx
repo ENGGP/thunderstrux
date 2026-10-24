@@ -51,7 +51,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, seeAll }: { payouts: Payo
       <Card>
         <div className="grid gap-3">
           <h2 className="text-xl font-semibold text-ink">Payouts</h2>
-          <p className="text-[15px] text-ink-soft">
+          <p className="text-ui text-ink-soft">
             Add a bank account in Stripe and Thunderstrux sends your money as each event ends. Sales keep working meanwhile
             {payouts.held.total > 0 ? `; ${formatMoney(payouts.held.total)} is waiting` : ""}.
           </p>
@@ -67,7 +67,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, seeAll }: { payouts: Payo
       <div className="grid gap-5">
         <div className="grid gap-1">
           <h2 className="text-xl font-semibold text-ink">Payouts</h2>
-          <p className="text-[15px] text-ink-soft">
+          <p className="text-ui text-ink-soft">
             Ticket money goes to your bank 2 days after each event ends. Membership and merchandise money goes 7 days after each sale.
             Until then it stays in your Stripe balance, so a refund for a cancelled event comes out of money you still have.
           </p>
@@ -88,7 +88,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, seeAll }: { payouts: Payo
           {payouts.recent.length === 0 ? (
             <p className="text-sm text-ink-soft">No payouts yet. The first goes out after your first paid event ends.</p>
           ) : (
-            <table className="w-full border-collapse text-[15px] tabular-nums">
+            <table className="w-full border-collapse text-ui tabular-nums">
               <caption className="sr-only">Recent payouts to your bank</caption>
               <thead>
                 <tr className="text-left text-sm text-ink-soft">
@@ -111,7 +111,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, seeAll }: { payouts: Payo
           {seeAll}
         </div>
 
-        <p className="text-[13px] text-ink-muted">
+        <p className="text-caption text-ink-muted">
           Stripe holds money for at most 90 days, so money from a sale made more than 80 days before its event is sent then. Money under an
           open dispute waits until the dispute closes.
         </p>

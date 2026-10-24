@@ -21,7 +21,7 @@ export function BarChart({ label, bars, legend }: { label: string; bars: ChartBa
         <div aria-label={name} className="flex h-56 items-end gap-2 border-b border-line pb-1" role="img" style={{ minWidth: bars.length * 14 }}>
           {bars.map((bar) => (
             <div className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5" key={bar.key}>
-              {bars.length <= 12 ? <span className="text-[13px] tabular-nums text-ink-soft">{bar.value}</span> : null}
+              {bars.length <= 12 ? <span className="text-caption tabular-nums text-ink-soft">{bar.value}</span> : null}
               <div className="flex w-full max-w-14 flex-col justify-end gap-0.5">
                 <div className="rounded-t-md bg-brand" style={{ height: height(bar.primary) }} />
                 {bar.secondary ? <div className="rounded-b-sm bg-ink" style={{ height: height(bar.secondary) }} /> : null}
@@ -31,7 +31,7 @@ export function BarChart({ label, bars, legend }: { label: string; bars: ChartBa
         </div>
         <div aria-hidden="true" className="mt-2 flex gap-2" style={{ minWidth: bars.length * 14 }}>
           {bars.map((bar, index) => (
-            <span className="min-w-0 flex-1 whitespace-nowrap text-center text-[13px] text-ink-soft" key={bar.key}>
+            <span className="min-w-0 flex-1 whitespace-nowrap text-center text-caption text-ink-soft" key={bar.key}>
               {index % step === 0 ? bar.label : ""}
             </span>
           ))}

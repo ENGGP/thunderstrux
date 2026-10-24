@@ -12,7 +12,7 @@ export function MoneySummary({
   const total = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
 
   return (
-    <div className="grid gap-3 text-[15px]">
+    <div className="grid gap-3 text-ui">
       <dl className="grid gap-3">
         {lines.map((line) => (
           <div className="flex items-start justify-between gap-4" key={line.label}>

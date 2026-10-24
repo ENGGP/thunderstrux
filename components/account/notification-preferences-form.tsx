@@ -47,7 +47,7 @@ export function NotificationPreferencesForm({ renewalReminders: initial }: { ren
           type="checkbox"
         />
         <span className="grid">
-          <span className="text-[15px] font-semibold text-ink">Membership renewal reminders</span>
+          <span className="text-ui font-semibold text-ink">Membership renewal reminders</span>
           <span className="text-sm text-ink-soft">An email seven days before a membership ends, unless you already have the next one.</span>
         </span>
       </label>

@@ -16,6 +16,7 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 
 - `:root` defines the `--ts-*` custom properties: ink, brand, paper and surface colours, borders, focus, and five status roles. Success (jade), warning (ochre), danger (crimson), info (brand lilac) and neutral each have a text colour, a `-bg` wash, a `-border` hairline and an `-icon` mark; every text colour is at least 6:1 and every icon colour at least 3:1 on its own wash.
 - `@theme inline` exposes them as semantic Tailwind utilities: `bg-paper`, `bg-surface`, `text-ink`, `text-ink-soft`, `bg-brand`, `border-line`, `border-line-strong`, `text-danger`, `bg-warning-bg`, `rounded-control` (9px), `rounded-card` (14px), `shadow-float`, and the widths `max-w-auth`, `max-w-read`, `max-w-checkout`, `max-w-personal`, `max-w-page`, `max-w-admin`.
+- Two type sizes sit between the scale's steps: `text-caption` (13px, meta lines and counts) and `text-ui` (15px, dense body text). Use them instead of `text-[13px]`/`text-[15px]`; only display sizes (17px and up) keep arbitrary values. Corners use `rounded-tag`, `rounded-control`, `rounded-card` or `rounded-feature`, not `rounded-md`/`-lg`/`-xl`.
 - New UI uses these names. Do not add raw palette classes such as `bg-neutral-900` or `text-purple-600`, and do not add hex colours in components.
 - Bare `border` utilities draw the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
 - The keyboard focus ring is a 2px `--ts-focus` outline defined outside any layer, so `outline-none` cannot remove it.

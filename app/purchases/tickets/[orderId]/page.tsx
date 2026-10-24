@@ -97,7 +97,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
             <span>{totalLabel}</span>
             <span className="tabular-nums">{order.paymentKind === "free" ? "Free" : formatPrice(order.totalAmount)}</span>
           </div>
-          <p className="mt-1 text-[13px] text-ink-muted">Order {order.id.slice(-6).toUpperCase()}</p>
+          <p className="mt-1 text-caption text-ink-muted">Order {order.id.slice(-6).toUpperCase()}</p>
           {order.tickets.some((ticket) => ticket.validity === "active") ? (
             <Link className="mt-3 inline-block font-semibold text-brand underline underline-offset-4" href="/tickets">Show tickets in My tickets</Link>
           ) : null}

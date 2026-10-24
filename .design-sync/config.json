@@ -20,7 +20,13 @@
     "Card": ".design-sync/docs/Layout.md",
     "Skeleton": ".design-sync/docs/Feedback.md",
     "ListSkeleton": ".design-sync/docs/Feedback.md",
-    "Icon": ".design-sync/docs/Layout.md"
+    "Icon": ".design-sync/docs/Layout.md",
+    "EmptyState": ".design-sync/docs/Feedback.md",
+    "ResponsiveTable": ".design-sync/docs/Layout.md",
+    "DateField": ".design-sync/docs/Forms.md",
+    "DateTimeField": ".design-sync/docs/Forms.md",
+    "MoneyInput": ".design-sync/docs/Forms.md",
+    "AuditTimeline": ".design-sync/docs/Layout.md"
   },
   "overrides": {
     "ConfirmDialog": {

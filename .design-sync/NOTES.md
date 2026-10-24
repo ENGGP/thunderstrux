@@ -14,6 +14,10 @@ Project: "Thunderstrux UI" — https://claude.ai/design/p/6075c42a-6f43-4f56-8d3
 - Bash tool on this machine truncates commands over ~8,000 chars: write files with the Write tool.
 - Local Node was 22.18 vs the repo pin 22.23.3; the build was unaffected.
 
+## Pending for the next sync (2026-10-25)
+- `components/ui/` grew since the last sync: `EmptyState`, `ResponsiveTable`, `DateField`/`DateTimeField`, `MoneyInput` (in `input.tsx`), `AuditTimeline` are mapped in `docsMap` but have no `previews/` yet; author them when the user runs `/design-sync`. `FilterBar` and `LinkTabs` import `next/link`, so they stay out of scope like the feature components.
+- Tokens: `text-caption` (13px) and `text-ui` (15px) were added to `app/globals.css` and replace every `text-[13px]`/`text-[15px]`; `build-css.mjs` must compile them (the whole repo is scanned, so they are seen).
+
 ## Known render warns
 - `[FONT_REMOTE]` DM Sans / Space Grotesk: expected, see above.
 - ConfirmDialog `Busy` cell shows a dark outline on the dialog: all buttons are disabled so the dialog itself takes focus. True to the product.

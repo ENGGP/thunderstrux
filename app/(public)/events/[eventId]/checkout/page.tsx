@@ -133,7 +133,7 @@ export default async function CheckoutPage({
                 </Link>
               </Notice>
             )}
-            {free ? null : <p className="text-[13px] text-ink-muted">You pay on Stripe&apos;s secure page, then come back here.</p>}
+            {free ? null : <p className="text-caption text-ink-muted">You pay on Stripe&apos;s secure page, then come back here.</p>}
           </div>
         </Card>
       }

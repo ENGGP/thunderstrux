@@ -66,7 +66,7 @@ export function PersonalShell({
           {contexts && contexts.organisations.length > 0 ? (
             <div className="grid gap-1.5 border-t border-line pt-4">
               <ContextSelector contexts={contexts} />
-              <p className="text-[13px] text-ink-muted">Switch to a society you staff to manage its events.</p>
+              <p className="text-caption text-ink-muted">Switch to a society you staff to manage its events.</p>
             </div>
           ) : null}
         </aside>

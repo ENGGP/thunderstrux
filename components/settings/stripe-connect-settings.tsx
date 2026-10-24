@@ -488,14 +488,14 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         <div className="grid gap-4">
           <div className="grid gap-1">
             <h2 className="text-xl font-semibold text-ink">Fees</h2>
-            <p className="text-[15px] text-ink-soft">
+            <p className="text-ui text-ink-soft">
               Thunderstrux keeps 3.75% of each paid order plus $0.89 for each ticket, membership or merchandise order,
               rounded to the cent once per order. Buyers pay the price you set, with nothing added. Free sales have no fee.
             </p>
           </div>
           <div className="grid gap-2 rounded-control bg-surface-subtle px-5 py-4">
             <p className="text-sm font-semibold text-ink-soft">Example: one $20.00 ticket</p>
-            <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-[15px] tabular-nums">
+            <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-ui tabular-nums">
               <dt>The buyer pays</dt>
               <dd className="text-right font-semibold">{formatMoney(2000)}</dd>
               <dt>Thunderstrux keeps</dt>
@@ -503,7 +503,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
               <dt className="border-t border-line pt-1.5 font-semibold">Your society receives</dt>
               <dd className="border-t border-line pt-1.5 text-right font-semibold">{formatMoney(2000 - exampleFee)}</dd>
             </dl>
-            <p className="text-[13px] text-ink-muted">
+            <p className="text-caption text-ink-muted">
               Card processing is included: Stripe charges its processing fee to Thunderstrux, not to your society.
             </p>
           </div>

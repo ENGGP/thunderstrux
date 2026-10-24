@@ -21,7 +21,7 @@ type ActionEvent = {
 
 const menuWidth = 288;
 const menuItem =
-  "flex min-h-11 w-full flex-col items-start justify-center gap-0.5 rounded-control px-3 py-2 text-left text-[15px] font-medium hover:bg-brand-tint disabled:cursor-not-allowed disabled:text-ink-muted disabled:hover:bg-transparent";
+  "flex min-h-11 w-full flex-col items-start justify-center gap-0.5 rounded-control px-3 py-2 text-left text-ui font-medium hover:bg-brand-tint disabled:cursor-not-allowed disabled:text-ink-muted disabled:hover:bg-transparent";
 
 // Publish, Edit and a "More" menu for one event. The blocker texts come from
 // the server read so a disabled action says why; the API still enforces every
@@ -181,7 +181,7 @@ export function EventActions({
           event.saleState === "open" ? (
             <button className={`${menuItem} text-ink`} disabled={busy} onClick={() => run("close")} type="button">
               Close sales
-              <span className="text-[13px] font-normal text-ink-soft">Stops new orders. The event stays published.</span>
+              <span className="text-caption font-normal text-ink-soft">Stops new orders. The event stays published.</span>
             </button>
           ) : (
             <button
@@ -192,7 +192,7 @@ export function EventActions({
             >
               Reopen sales
               {event.reopenBlocker ? (
-                <span className="text-[13px] font-normal text-ink-soft">{event.reopenBlocker}</span>
+                <span className="text-caption font-normal text-ink-soft">{event.reopenBlocker}</span>
               ) : null}
             </button>
           )
@@ -206,7 +206,7 @@ export function EventActions({
           >
             Unpublish
             {event.unpublishBlocker ? (
-              <span className="text-[13px] font-normal text-ink-soft">{event.unpublishBlocker}</span>
+              <span className="text-caption font-normal text-ink-soft">{event.unpublishBlocker}</span>
             ) : null}
           </button>
         ) : null}
@@ -218,7 +218,7 @@ export function EventActions({
         >
           Delete event
           {event.deleteBlocker ? (
-            <span className="text-[13px] font-normal text-ink-soft">{event.deleteBlocker}</span>
+            <span className="text-caption font-normal text-ink-soft">{event.deleteBlocker}</span>
           ) : null}
         </button>
       </div>

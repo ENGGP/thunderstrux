@@ -61,7 +61,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
         actions={canManage ? <Link className={buttonClasses()} href="/dashboard/events/new">New event</Link> : null}
-        badge={<span className="inline-flex h-7 items-center rounded-md bg-surface-subtle px-2.5 text-[13px] font-semibold text-ink-soft">{zoneCity(timeZone)} ({zoneAbbreviation(timeZone, now).split(",")[0]})</span>}
+        badge={<span className="inline-flex h-7 items-center rounded-tag bg-surface-subtle px-2.5 text-caption font-semibold text-ink-soft">{zoneCity(timeZone)} ({zoneAbbreviation(timeZone, now).split(",")[0]})</span>}
         title="Calendar"
       />
       <div className="flex flex-wrap items-center justify-between gap-3">

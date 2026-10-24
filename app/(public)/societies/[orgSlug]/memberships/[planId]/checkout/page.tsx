@@ -88,9 +88,9 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
               </Notice>
             )}
             {free ? (
-              <p className="text-[13px] text-ink-muted">Nothing to pay.</p>
+              <p className="text-caption text-ink-muted">Nothing to pay.</p>
             ) : (
-              <p className="flex items-start gap-2 text-[13px] text-ink-muted">
+              <p className="flex items-start gap-2 text-caption text-ink-muted">
                 <Icon className="mt-0.5" name="lock" size={16} />
                 You pay on Stripe&apos;s secure page, then come back here.
               </p>
@@ -111,7 +111,7 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
             <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">{offer.name}</h2>
             <span className="inline-flex h-6 items-center rounded-tag border border-line bg-surface-subtle px-2 text-xs font-semibold text-ink-soft">No automatic renewal</span>
           </div>
-          <dl className="grid gap-x-6 gap-y-2 text-[15px] sm:grid-cols-[max-content_1fr]">
+          <dl className="grid gap-x-6 gap-y-2 text-ui sm:grid-cols-[max-content_1fr]">
             <dt className="text-ink-soft">Society</dt>
             <dd className="[overflow-wrap:anywhere]">{organisation.name}</dd>
             <dt className="text-ink-soft">Runs</dt>
@@ -128,7 +128,7 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
         <Card>
           <div className="grid gap-3">
             <h2 className="text-lg font-semibold text-ink">Your cover</h2>
-            <dl className="grid gap-x-6 gap-y-2 text-[15px] sm:grid-cols-[max-content_1fr]">
+            <dl className="grid gap-x-6 gap-y-2 text-ui sm:grid-cols-[max-content_1fr]">
               <dt className="text-ink-soft">Now</dt>
               <dd>
                 {current.name}, until {lastDay(current.endsAt)}
@@ -147,7 +147,7 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
       <Card>
         <div className="grid gap-2">
           <h2 className="text-lg font-semibold text-ink">Before you {free ? "confirm" : "pay"}</h2>
-          <ul className="grid list-disc gap-1.5 pl-5 text-[15px] text-ink-soft">
+          <ul className="grid list-disc gap-1.5 pl-5 text-ui text-ink-soft">
             <li className="[overflow-wrap:anywhere]">
               The membership is for you only: {buyer}, {session.user.email}.
             </li>

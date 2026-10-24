@@ -100,7 +100,7 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   const name = ticket.buyerName ?? ticket.buyerEmail ?? "Unknown buyer";
   const state = unknown ? { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved." } : verdict(ticket, timeZone);
   const tone = tones[state.tone];
-  const big = "min-h-14 w-full text-lg md:w-auto md:min-h-11 md:text-[15px]";
+  const big = "min-h-14 w-full text-lg md:w-auto md:min-h-11 md:text-ui";
 
   return (
     <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
@@ -179,7 +179,7 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
           type="search"
           value={query}
         />
-        <span className="text-[13px] font-normal text-ink-muted">Name, email, order or ticket reference. Results update as you type.</span>
+        <span className="text-caption font-normal text-ink-muted">Name, email, order or ticket reference. Results update as you type.</span>
       </label>
       {failed ? <p className="text-sm text-danger" role="alert">Search didn&apos;t answer. Check the connection and type again.</p> : null}
       {shown === null ? null : shown.length === 0 ? (

@@ -176,7 +176,7 @@ export function PlanForm({
                 <div className="flex flex-wrap gap-2">
                   {presets.map((preset) => (
                     <label
-                      className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-control border px-3.5 text-[15px] ${
+                      className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-control border px-3.5 text-ui ${
                         form.preset === preset.id ? "border-brand bg-brand-tint font-semibold text-brand-ink" : "border-line-strong text-ink"
                       }`}
                       key={preset.id}
@@ -285,7 +285,7 @@ export function PlanForm({
                 type="checkbox"
               />
               <span className="grid">
-                <span className="text-[15px] font-semibold text-ink">{unlock.label}</span>
+                <span className="text-ui font-semibold text-ink">{unlock.label}</span>
                 <span className="text-sm text-ink-muted">{unlock.hint}</span>
               </span>
             </label>

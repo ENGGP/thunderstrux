@@ -125,7 +125,7 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
                   return (
                     <article aria-labelledby={`offer-${offer.id}`} className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:p-6" key={offer.id}>
                       {header}
-                      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-[15px]">
+                      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-ui">
                         <dt className="text-ink-soft">Runs</dt>
                         <dd className="font-semibold text-ink">{formatTerm(offer.startsAt, offer.endsAt, zone)}, {zoneCity(zone)}</dd>
                         <dt className="text-ink-soft">Price</dt>
@@ -142,8 +142,8 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
                       {offer.description ? <p className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{offer.description}</p> : null}
                       {offer.entitlements.length ? (
                         <div className="grid gap-2">
-                          <h4 className="text-[15px] font-semibold text-ink">What it unlocks</h4>
-                          <ul className="grid gap-1.5 text-[15px]">
+                          <h4 className="text-ui font-semibold text-ink">What it unlocks</h4>
+                          <ul className="grid gap-1.5 text-ui">
                             {offer.entitlements.map((key) => (
                               <li className="flex items-start gap-2" key={key}>
                                 <Icon className="mt-0.5 text-success" name="success" size={18} />
@@ -155,7 +155,7 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
                       ) : null}
                     </div>
                     <div className="grid content-start gap-3 rounded-control bg-surface-subtle p-5">
-                      <p className="text-[15px] text-ink">
+                      <p className="text-ui text-ink">
                         {formatTerm(offer.startsAt, offer.endsAt, zone)}, {zoneCity(zone)}
                       </p>
                       <p className="font-display text-3xl font-semibold tabular-nums text-ink">{formatPrice(offer.priceAmount)}</p>

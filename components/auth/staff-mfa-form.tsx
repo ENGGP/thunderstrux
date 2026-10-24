@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { signOut } from "next-auth/react";
+import { signOutTo } from "@/lib/client/sign-out";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
@@ -20,7 +20,7 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
     <div className="grid gap-4">
       <p className="text-ink-soft">Sign in again to start staff verification for this session.</p>
       <div>
-        <Button onClick={() => signOut({ callbackUrl: `/login?callbackUrl=${encodeURIComponent(destination)}` })} type="button">
+        <Button onClick={() => signOutTo(`/login?callbackUrl=${encodeURIComponent(destination)}`)} type="button">
           Sign out and sign in again
         </Button>
       </div>

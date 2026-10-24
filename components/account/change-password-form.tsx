@@ -1,6 +1,6 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { signOut } from "next-auth/react";
+import { signOutTo } from "@/lib/client/sign-out";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
@@ -15,7 +15,7 @@ export function ChangePasswordForm({ mfaRequired }: { mfaRequired: boolean }) {
     setBusy(true);
     try {
       await fetchJson("/api/me/account/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) });
-      await signOut({ callbackUrl: "/login?passwordChanged=true" });
+      await signOutTo("/login?passwordChanged=true");
     } catch (failure) { setError(getClientErrorMessage(failure, "Could not change password.")); setBusy(false); }
   }
   return <form className="grid gap-3" onSubmit={submit}>

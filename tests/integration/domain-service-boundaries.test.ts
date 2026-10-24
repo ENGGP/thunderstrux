@@ -110,8 +110,8 @@ describe("domain service boundaries", () => {
 
   test("Connect mutations authorize the target tenant before rate limiting and I/O", async () => {
     const cases = [
-      ["onboard", "startOrganisationStripeOnboarding(organisationId, user.id)"],
-      ["continue", "continueOrganisationStripeOnboarding(organisationId)"],
+      ["onboard", "startOrganisationStripeOnboarding(organisationId, user.id, trustedRequestOrigin(request))"],
+      ["continue", "continueOrganisationStripeOnboarding(organisationId, trustedRequestOrigin(request))"],
       ["disconnect", "disconnectAccount(organisationId, {"]
     ] as const;
 

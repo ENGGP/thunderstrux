@@ -84,6 +84,8 @@ export async function createCommerceCheckout(input: {
   selection: unknown;
   expectedTotal: number;
   idempotencyKey: string;
+  // Where Stripe sends the buyer back: the trusted origin they bought from, else the app URL.
+  returnOrigin?: string;
 }): Promise<CommerceCheckoutResult> {
   const adapter = commerceFamilies[input.family];
   if (!adapter) throw new CommerceCheckoutError("not_available", "This purchase is not available");
@@ -131,7 +133,7 @@ export async function createCommerceCheckout(input: {
         throw new CommerceCheckoutError("stripe_not_ready", "This society can't take payments yet", [{ path: ["organisationId"], message: "The society must finish connecting Stripe" }]);
       }
       const stripe = getStripe();
-      const appUrl = getAppUrl();
+      const appUrl = input.returnOrigin ?? getAppUrl();
       const feeAmount = calculatePlatformFee(totalAmount);
       const order = await createCommerceOrder(tx, {
         ...common, paymentKind: "stripe", feeAmount, feePolicyVersion: PLATFORM_FEE_POLICY_VERSION,

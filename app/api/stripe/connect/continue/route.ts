@@ -3,7 +3,7 @@ import { mapRouteError, validationError } from "@/lib/api/errors";
 import { requireOrganisationStripeConnectAccess, requireStripeConnectCapability } from "@/lib/auth/access";
 import { requireOrganisationId } from "@/lib/db/organisation-scope";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
-import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { enforceTrustedMutationRequest, trustedRequestOrigin } from "@/lib/security/request-guard";
 import { connectRouteRules } from "@/lib/stripe/http";
 import { validateJson } from "@/lib/validators";
 import { continueOrganisationStripeOnboarding } from "@/lib/stripe/connect";
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const url = await continueOrganisationStripeOnboarding(organisationId);
+    const url = await continueOrganisationStripeOnboarding(organisationId, trustedRequestOrigin(request));
 
     return NextResponse.json({ url });
   } catch (error) {

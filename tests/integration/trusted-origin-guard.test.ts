@@ -7,6 +7,7 @@ import { POST as createOrganisation } from "@/app/api/orgs/route";
 import { POST as signup } from "@/app/api/auth/signup/route";
 import { GET as getCsrfToken } from "@/app/api/security/csrf/route";
 import { createCsrfTokenForRequest } from "@/lib/security/csrf";
+import { trustedRequestOrigin } from "@/lib/security/request-guard";
 import { POST as paymentsWebhook } from "@/app/api/payments/webhook/route";
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
 
@@ -34,6 +35,16 @@ function withAppUrlEnv(value: string, run: () => Promise<void>) {
 }
 
 describe("trusted origin guard", () => {
+  test("a redirect follows the request's origin only when it is trusted", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://thunderstrux.example");
+    vi.stubEnv("TRUSTED_APP_ORIGINS", "http://127.0.0.1:3080");
+    const from = (origin?: string) => trustedRequestOrigin(new Request("http://internal:3000/api/x", { method: "POST", headers: origin ? { origin } : {} }));
+    expect(from("http://127.0.0.1:3080")).toBe("http://127.0.0.1:3080");
+    expect(from("https://thunderstrux.example")).toBe("https://thunderstrux.example");
+    // Foreign, malformed and missing origins fall back to the app URL in the caller.
+    for (const origin of ["https://evil.example", "http://127.0.0.1:3080/path", "null", undefined]) expect(from(origin)).toBeUndefined();
+  });
+
   test("accepts first-party origin on protected mutation", async () => {
     await withAppUrlEnv("http://localhost:3000", async () => {
       const user = await createUser({ accountRole: "organisation" });

@@ -97,6 +97,21 @@ describe("membership grants", () => {
     expect(await prisma.commerceOrder.count()).toBe(2);
   });
 
+  test("Stripe returns the member to the trusted address they bought from, and to the app URL otherwise", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://thunderstrux.example");
+    vi.stubEnv("TRUSTED_APP_ORIGINS", "http://127.0.0.1:3080");
+    const { organisation, plan } = await society();
+    const paid = await plan({ priceAmount: 2500 });
+    await member();
+    const from = (origin: string) => membershipCheckout(jsonRequest("http://127.0.0.1:3080/api/payments/checkout/membership", { organisationId: organisation.id, selection: { planId: paid.id }, expectedTotal: 2500, idempotencyKey: unique("membership-origin") }, { headers: { origin } }));
+    expect((await from("http://127.0.0.1:3080")).status).toBe(200);
+    expect(stripe.create.mock.calls[0][0].success_url).toMatch(/^http:\/\/127\.0\.0\.1:3080\/memberships\/orders\//);
+    expect(stripe.create.mock.calls[0][0].cancel_url).toMatch(/^http:\/\/127\.0\.0\.1:3080\/memberships\/orders\/.+\?left=1$/);
+    // An address that isn't trusted never reaches Stripe: the request is refused first.
+    expect((await from("https://evil.example")).status).toBe(403);
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+  });
+
   test("a paid plan grants only from the verified webhook, once, and a second checkout for the same dates waits", async () => {
     const { organisation, plan } = await society();
     const paid = await plan({ priceAmount: 2500 });

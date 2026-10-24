@@ -95,8 +95,9 @@ export class OrganisationStripeConnectValidationError extends Error {
   }
 }
 
-function settingsUrl() {
-  return new URL("/dashboard/settings", getAppUrl()).toString();
+// Stripe returns staff to the trusted origin they started from, else the app URL.
+function settingsUrl(returnOrigin?: string) {
+  return new URL("/dashboard/settings", returnOrigin ?? getAppUrl()).toString();
 }
 
 function mapAccountState(account: Stripe.Account): StripeConnectState {
@@ -283,12 +284,12 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
   };
 }
 
-export async function createOnboardingLink(accountId: string, orgSlug: string) {
+export async function createOnboardingLink(accountId: string, orgSlug: string, returnOrigin?: string) {
   const stripe = getStripe();
   const accountLink = await stripe.accountLinks.create({
     account: accountId,
-    refresh_url: settingsUrl(),
-    return_url: settingsUrl(),
+    refresh_url: settingsUrl(returnOrigin),
+    return_url: settingsUrl(returnOrigin),
     type: "account_onboarding"
   });
 
@@ -422,12 +423,12 @@ export async function markAccountStatusError(
   };
 }
 
-export async function startOrganisationStripeOnboarding(orgId: string, actorUserId: string) {
+export async function startOrganisationStripeOnboarding(orgId: string, actorUserId: string, returnOrigin?: string) {
   const { accountId, orgSlug } = await createExpressAccount(orgId, actorUserId);
-  return createOnboardingLink(accountId, orgSlug);
+  return createOnboardingLink(accountId, orgSlug, returnOrigin);
 }
 
-export async function continueOrganisationStripeOnboarding(orgId: string) {
+export async function continueOrganisationStripeOnboarding(orgId: string, returnOrigin?: string) {
   const organisation = await prisma.organisation.findUnique({
     where: { id: orgId },
     select: { slug: true, stripeAccountId: true }
@@ -451,7 +452,8 @@ export async function continueOrganisationStripeOnboarding(orgId: string) {
 
   return createOnboardingLink(
     organisation.stripeAccountId,
-    organisation.slug
+    organisation.slug,
+    returnOrigin
   );
 }
 

@@ -81,6 +81,8 @@ type CreateEventCheckoutInput = {
   expectedUnitPrice: number;
   // One key per purchase intent; a repeat with the same key returns the same attempt.
   idempotencyKey: string;
+  // Where Stripe sends the buyer back: the trusted origin they bought from, else the app URL.
+  returnOrigin?: string;
 };
 
 export type EventCheckoutResult =
@@ -150,7 +152,8 @@ export async function createEventCheckout({
   ticketTypeId,
   quantity,
   expectedUnitPrice,
-  idempotencyKey
+  idempotencyKey,
+  returnOrigin
 }: CreateEventCheckoutInput): Promise<EventCheckoutResult> {
   let pendingOrderId: string | null = null;
   const requestHash = checkoutRequestHash({ eventId, ticketTypeId, quantity, expectedUnitPrice });
@@ -310,7 +313,7 @@ export async function createEventCheckout({
 
         // Configuration is read only once the request is valid, and before any write.
         const stripe = getStripe();
-        const appUrl = getAppUrl();
+        const appUrl = returnOrigin ?? getAppUrl();
         const totalAmount = unitPrice * quantity;
         const platformFeeAmount = calculatePlatformFee(totalAmount, quantity);
 

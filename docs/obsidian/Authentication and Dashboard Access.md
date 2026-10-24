@@ -135,7 +135,7 @@ Current behavior:
 - Desktop signed-in users see Dashboard, Account (/account/settings), and Sign out; members also see My tickets. Mobile keeps Sign out visible and places Explore events, Explore societies and account links in a native Menu disclosure.
 - Member accounts see `My tickets`, and the personal menu also lists `Purchases` (T19a)
 - Organisation accounts do not see `My tickets`
-- Sign out redirects to `/` on the current site, including isolated staging ports.
+- Sign out redirects to `/` on the current site, including isolated staging ports and a second trusted address beside the public domain. `signOutTo` (`lib/client/sign-out.ts`) signs out without Auth.js's redirect, which `AUTH_URL` would make absolute, then goes to a same-site path. Every sign-out uses it.
 
 ## Organisation Access Helpers
 

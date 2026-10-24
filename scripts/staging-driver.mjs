@@ -15,7 +15,7 @@ assertTestDatabase(process.env.DATABASE_URL);
 assertTestKey(process.env.STRIPE_SECRET_KEY);
 const runId = assertRunId(process.env.E2E_RUN_ID);
 const db = new PrismaClient();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {apiVersion: '2026-03-25.dahlia', timeout: 20_000, maxNetworkRetries: 1});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {apiVersion: '2026-09-30.endive', timeout: 20_000, maxNetworkRetries: 1});
 const [action, scenario] = process.argv.slice(2);
 const baseURL = 'http://localhost:3100';
 const account = process.env.STRIPE_TEST_CONNECTED_ACCOUNT;
@@ -154,7 +154,7 @@ async function eventFor(objectId, types) {
   const events = await stripe.events.list({types, created: {gte: Math.floor(Date.now() / 1000) - 3600}, limit: 100});
   const event = events.data.find(item => item.data.object.id === objectId);
   assert(event && !event.livemode, 'Real Stripe event not found');
-  assert(event.api_version === '2026-03-25.dahlia', 'Webhook API version differs from application; configure listener/account version before acceptance');
+  assert(event.api_version === '2026-09-30.endive', 'Webhook API version differs from application; configure listener/account version before acceptance');
   return event;
 }
 

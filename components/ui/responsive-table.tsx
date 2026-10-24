@@ -31,9 +31,9 @@ export function ResponsiveTable<Row>({
     <>
       {/* Focusable so keyboard users can scroll a wide table sideways (T40). */}
       <div aria-label={label} className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block" role="region" tabIndex={0}>
-        <table aria-label={label} className="w-full border-collapse text-left text-[15px]" style={{ minWidth }}>
+        <table aria-label={label} className="w-full border-collapse text-left text-ui" style={{ minWidth }}>
           <thead>
-            <tr className="text-[13px] text-ink-soft">
+            <tr className="text-caption text-ink-soft">
               {columns.map((column, index) => (
                 <th className={`${edge(index)} py-3.5 font-semibold ${column.align === "right" ? "text-right" : ""}`} key={column.header} scope="col">
                   {column.header}

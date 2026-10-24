@@ -51,7 +51,7 @@ export default async function SocietyMerchandisePage({ params }: { params: Promi
             <>
               <p className="max-w-[70ch] text-ink-soft">Buy online, collect in person. There&apos;s no delivery.</p>
               {organisation.pickupPolicy ? (
-                <div className="flex flex-wrap items-start gap-x-8 gap-y-2 rounded-card border border-line bg-surface px-5 py-4 text-[15px]">
+                <div className="flex flex-wrap items-start gap-x-8 gap-y-2 rounded-card border border-line bg-surface px-5 py-4 text-ui">
                   <span className="flex flex-1 basis-80 items-start gap-2.5">
                     <Icon className="mt-0.5 text-brand" name="pin" />
                     <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">

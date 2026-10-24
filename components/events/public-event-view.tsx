@@ -99,7 +99,7 @@ export function PublicEventView({
             </Link>
           </h2>
           {organisation.supportEmail || organisation.refundPolicy ? (
-            <dl className="grid gap-x-3 gap-y-1 text-[15px] sm:grid-cols-[6rem_1fr]">
+            <dl className="grid gap-x-3 gap-y-1 text-ui sm:grid-cols-[6rem_1fr]">
               {organisation.supportEmail ? (
                 <>
                   <dt className="text-ink-soft">Questions</dt>

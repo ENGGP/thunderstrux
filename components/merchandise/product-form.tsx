@@ -316,9 +316,9 @@ export function ProductForm({
         <div className="grid gap-2" id="pickup">
           <h2 className="font-display text-xl font-semibold text-ink">Pickup</h2>
           {pickupPolicy ? (
-            <p className="whitespace-pre-wrap text-[15px] text-ink [overflow-wrap:anywhere]">{pickupPolicy}</p>
+            <p className="whitespace-pre-wrap text-ui text-ink [overflow-wrap:anywhere]">{pickupPolicy}</p>
           ) : (
-            <p className="text-[15px] text-warning">No pickup details yet. Products can&apos;t go on sale until buyers know where to collect.</p>
+            <p className="text-ui text-warning">No pickup details yet. Products can&apos;t go on sale until buyers know where to collect.</p>
           )}
           <p className="text-sm text-ink-soft">
             Your society&apos;s pickup details, shown with every product.{" "}

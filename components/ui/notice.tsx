@@ -35,12 +35,12 @@ export function Notice({
 
   return (
     <div
-      className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${style.box} ${className}`}
+      className={`flex items-start gap-3 rounded-card border px-4 py-3 text-sm ${style.box} ${className}`}
       role={role}
     >
       <Icon className={`mt-px ${style.icon}`} name={style.name} size={20} />
       <div className={`min-w-0 flex-1 ${title ? "text-ink-soft" : `font-medium ${style.heading}`}`}>
-        {title ? <p className={`text-[15px] font-semibold ${style.heading}`}>{title}</p> : null}
+        {title ? <p className={`text-ui font-semibold ${style.heading}`}>{title}</p> : null}
         {children}
       </div>
       {action ? <div className="shrink-0 self-center">{action}</div> : null}

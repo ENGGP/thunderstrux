@@ -29,7 +29,7 @@ export type ViewProps = {
 };
 
 const termHref = "/dashboard/memberships/members";
-const chipBase = "relative my-px block h-6 min-w-0 truncate border-y px-2 text-[13px] leading-[22px] no-underline";
+const chipBase = "relative my-px block h-6 min-w-0 truncate border-y px-2 text-caption leading-[22px] no-underline";
 // Colours only; each caller sets which borders and corners it draws. Chips and
 // day numbers are positioned so they paint above the (positioned) day cells.
 const tone = (item: CalendarItem) =>
@@ -95,7 +95,7 @@ export function MonthGrid({ days, month, ...props }: ViewProps & { days: string[
                   {props.newEventHref && day >= props.today ? (
                     <Link
                       aria-label={`New event on ${formatDay(day, true)}`}
-                      className="absolute bottom-1.5 right-1.5 rounded-md border border-brand bg-surface px-2 text-[13px] font-semibold leading-6 text-brand opacity-0 focus:opacity-100 group-hover:opacity-100"
+                      className="absolute bottom-1.5 right-1.5 rounded-tag border border-brand bg-surface px-2 text-caption font-semibold leading-6 text-brand opacity-0 focus:opacity-100 group-hover:opacity-100"
                       href={props.newEventHref(day)}
                     >
                       + New event
@@ -105,7 +105,7 @@ export function MonthGrid({ days, month, ...props }: ViewProps & { days: string[
               );
             })}
             {week.map((day, column) => (
-              <span className={`relative px-2.5 pt-2 text-[13px] font-semibold ${day.slice(0, 7) !== month ? "text-ink-muted" : "text-ink"}`} key={day} style={{ gridColumn: column + 1, gridRow: 1 }}>
+              <span className={`relative px-2.5 pt-2 text-caption font-semibold ${day.slice(0, 7) !== month ? "text-ink-muted" : "text-ink"}`} key={day} style={{ gridColumn: column + 1, gridRow: 1 }}>
                 {day === props.today ? (
                   <span aria-label={`${formatDay(day, true)}, today`} className="-ml-1 -mt-1 inline-flex size-[26px] items-center justify-center rounded-full bg-brand text-white">{Number(day.slice(8))}</span>
                 ) : day.endsWith("-01") ? formatDay(day).split(" ").slice(1).join(" ") : Number(day.slice(8))}
@@ -116,7 +116,7 @@ export function MonthGrid({ days, month, ...props }: ViewProps & { days: string[
             ))}
             {hidden.map((count, column) =>
               count ? (
-                <Link className="relative mx-1.5 self-start text-[13px] font-semibold text-brand underline-offset-4 hover:underline" href={`?view=agenda&date=${week[column]}#day-${week[column]}`} key={week[column]} style={{ gridColumn: column + 1, gridRow: 5 }}>
+                <Link className="relative mx-1.5 self-start text-caption font-semibold text-brand underline-offset-4 hover:underline" href={`?view=agenda&date=${week[column]}#day-${week[column]}`} key={week[column]} style={{ gridColumn: column + 1, gridRow: 5 }}>
                   +{count} more
                 </Link>
               ) : null
@@ -183,7 +183,7 @@ export function WeekGrid({ days, now, ...props }: ViewProps & { days: string[]; 
               return (
                 <Link
                   aria-label={itemLabel({ kind: "event", key: event.id, event, firstDay: day, lastDay: day, multiDay: false }, props.timeZone)}
-                  className={`absolute overflow-hidden border px-2 py-1.5 text-[13px] leading-snug no-underline ${tone({ kind: "event", key: event.id, event, firstDay: day, lastDay: day, multiDay: false })} ${entry.clipped ? "rounded-t-lg" : "rounded-lg"}`}
+                  className={`absolute overflow-hidden border px-2 py-1.5 text-caption leading-snug no-underline ${tone({ kind: "event", key: event.id, event, firstDay: day, lastDay: day, multiDay: false })} ${entry.clipped ? "rounded-t-control" : "rounded-control"}`}
                   href={props.eventHref(event.id)}
                   key={event.id}
                   style={{
@@ -219,7 +219,7 @@ export function Agenda({ days, noun, ...props }: ViewProps & { days: string[]; n
   const earlierCount = earlier.reduce((sum, day) => sum + byDay.get(day)!.filter((item) => item.kind !== "clock").length, 0);
   const section = (day: string) => (
     <section aria-labelledby={`day-${day}-h`} className="grid scroll-mt-24 gap-2" id={`day-${day}`} key={day}>
-      <h2 className={`text-[15px] font-semibold ${day === props.today ? "text-brand-ink" : "text-ink-soft"}`} id={`day-${day}-h`}>
+      <h2 className={`text-ui font-semibold ${day === props.today ? "text-brand-ink" : "text-ink-soft"}`} id={`day-${day}-h`}>
         {day === props.today ? `Today · ${formatDay(day)}` : formatDay(day)}
       </h2>
       {byDay.get(day)?.map((item) => <AgendaRow day={day} item={item} key={item.key} {...props} />) ?? <p className="text-sm text-ink-soft">Nothing scheduled.</p>}
@@ -228,7 +228,7 @@ export function Agenda({ days, noun, ...props }: ViewProps & { days: string[]; n
   return (
     <div className="grid gap-5">
       {earlierCount ? (
-        <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
+        <details className="rounded-card border border-line bg-surface px-3.5 py-3">
           <summary className="min-h-6 cursor-pointer font-semibold">Earlier this {noun}: {earlierCount} {earlierCount === 1 ? "entry" : "entries"}</summary>
           <div className="mt-4 grid gap-5">{earlier.map(section)}</div>
         </details>
@@ -239,14 +239,14 @@ export function Agenda({ days, noun, ...props }: ViewProps & { days: string[]; n
 }
 
 function AgendaRow({ day, item, timeZone, eventHref }: ViewProps & { day: string; item: CalendarItem }) {
-  if (item.kind === "clock") return <span className="w-fit rounded-md border border-warning-border bg-warning-bg px-2.5 text-[13px] font-semibold leading-[26px] text-warning">{item.label}</span>;
-  const row = "grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-xl border px-3.5 py-3 text-ink no-underline hover:border-brand";
+  if (item.kind === "clock") return <span className="w-fit rounded-tag border border-warning-border bg-warning-bg px-2.5 text-caption font-semibold leading-[26px] text-warning">{item.label}</span>;
+  const row = "grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-card border px-3.5 py-3 text-ink no-underline hover:border-brand";
   if (item.kind === "term") {
     return (
       <Link className={`${row} border-line bg-surface-subtle`} href={termHref}>
         <span className="text-sm font-semibold">All day</span>
         <span className="grid gap-0.5">
-          <strong className="text-[15px] font-semibold">{membershipLabel(item.end.name)} ends</strong>
+          <strong className="text-ui font-semibold">{membershipLabel(item.end.name)} ends</strong>
           <span className="text-sm text-ink-soft">Last day for {members(item.end.members)}</span>
         </span>
       </Link>
@@ -260,7 +260,7 @@ function AgendaRow({ day, item, timeZone, eventHref }: ViewProps & { day: string
     <Link aria-label={itemLabel(item, timeZone)} className={`${row} bg-surface ${event.status === "draft" ? "border-dashed border-ink-muted" : "border-line"}`} href={eventHref(event.id)}>
       <span className="text-sm font-semibold tabular-nums">{item.firstDay === day ? formatTime(event.startTime, timeZone) : "Ongoing"}</span>
       <span className="grid min-w-0 gap-0.5">
-        <strong className="text-[15px] font-semibold text-brand-ink [overflow-wrap:anywhere]">{event.title}</strong>
+        <strong className="text-ui font-semibold text-brand-ink [overflow-wrap:anywhere]">{event.title}</strong>
         <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{event.location} · until {until}</span>
         {event.status === "draft" ? <StatusBadge status="draft" /> : null}
       </span>

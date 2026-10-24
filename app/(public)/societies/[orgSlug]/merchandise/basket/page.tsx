@@ -15,7 +15,7 @@ export default async function BasketPage({ params }: { params: Promise<{ orgSlug
   return (
     <main id="main" tabIndex={-1} className="bg-paper pb-14">
       <div className="mx-auto grid max-w-page gap-6 px-4 py-7 md:px-8">
-        <Link className="w-fit text-[15px] font-semibold text-brand underline underline-offset-4" href={`/societies/${organisation.slug}/merchandise`}>
+        <Link className="w-fit text-ui font-semibold text-brand underline underline-offset-4" href={`/societies/${organisation.slug}/merchandise`}>
           Keep shopping at {organisation.name}
         </Link>
         <div className="flex flex-wrap items-center gap-3">

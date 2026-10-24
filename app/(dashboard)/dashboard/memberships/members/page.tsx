@@ -128,9 +128,9 @@ async function Roster({ organisationId, view, query, cursor }: { organisationId:
       ) : (
         <>
           <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-            <table className="w-full min-w-[760px] border-collapse text-left text-[15px]">
+            <table className="w-full min-w-[760px] border-collapse text-left text-ui">
               <thead>
-                <tr className="text-[13px] text-ink-soft">
+                <tr className="text-caption text-ink-soft">
                   <th className="px-5 py-3.5 font-semibold" scope="col">Member</th>
                   <th className="px-3 py-3.5 font-semibold" scope="col">Plan</th>
                   <th className="px-3 py-3.5 font-semibold" scope="col">Runs</th>

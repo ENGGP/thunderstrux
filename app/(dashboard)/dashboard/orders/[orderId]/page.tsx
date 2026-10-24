@@ -119,7 +119,7 @@ export default async function OrganisationOrderDetailPage({
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="text-lg font-semibold text-ink">Summary</h2>
-          <dl className="mt-3 grid gap-x-6 gap-y-3 text-[15px] sm:grid-cols-[max-content_minmax(0,1fr)]">
+          <dl className="mt-3 grid gap-x-6 gap-y-3 text-ui sm:grid-cols-[max-content_minmax(0,1fr)]">
             <dt className="text-ink-soft">Buyer</dt>
             <dd className="text-ink [overflow-wrap:anywhere]">
               {buyer?.name ? <span className="block">{buyer.name}</span> : null}

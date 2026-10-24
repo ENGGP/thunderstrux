@@ -67,7 +67,7 @@ function Row({ href, title, detail, columns, date, total, grid }: { href: string
 function Table({ label, grid, headings, children }: { label: string; grid: string; headings: string[]; children: ReactNode }) {
   return (
     <section aria-label={label} className="overflow-hidden rounded-card border border-line bg-surface">
-      <div className={`hidden gap-4 bg-surface-subtle px-5 py-2.5 text-[13px] font-semibold text-ink-muted md:grid ${grid}`}>
+      <div className={`hidden gap-4 bg-surface-subtle px-5 py-2.5 text-caption font-semibold text-ink-muted md:grid ${grid}`}>
         {headings.map((heading) => (
           <span key={heading}>{heading}</span>
         ))}

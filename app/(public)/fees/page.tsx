@@ -28,7 +28,7 @@ export default function FeesPage() {
           {examples.map((example) => (
             <li className="rounded-card border border-line bg-surface px-4 py-3.5" key={example.label}>
               <p className="font-semibold text-ink">{example.label}</p>
-              <dl className="mt-1 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[15px] tabular-nums">
+              <dl className="mt-1 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-ui tabular-nums">
                 <dt>Buyer pays</dt>
                 <dd className="text-right">{formatMoney(example.total)}</dd>
                 <dt>Thunderstrux keeps</dt>
@@ -40,7 +40,7 @@ export default function FeesPage() {
           ))}
         </ul>
         <div className="hidden overflow-x-auto rounded-card border border-line bg-surface sm:block">
-          <table className="w-full border-collapse text-[15px] tabular-nums">
+          <table className="w-full border-collapse text-ui tabular-nums">
             <thead>
               <tr className="border-b border-line text-left text-sm text-ink-soft">
                 <th className="px-4 py-2.5 font-semibold" scope="col">Order</th>

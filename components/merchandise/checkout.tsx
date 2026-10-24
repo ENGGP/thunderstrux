@@ -161,7 +161,7 @@ export function MerchandiseCheckout({
   const count = quote.lines.reduce((total, line) => total + line.quantity, 0);
   const steps = buyer?.guest || !buyer ? ["Your email", "Review", free ? "Pickup" : "Pay with Stripe"] : free ? ["Review", "Pickup"] : ["Review", "Pay with Stripe", "Pickup"];
   const summary = (
-    <p className="flex justify-between gap-3 border-t border-line pt-3 text-[15px] text-ink">
+    <p className="flex justify-between gap-3 border-t border-line pt-3 text-ui text-ink">
       <span className="[overflow-wrap:anywhere]">
         {items(count)} from {society.name}
       </span>
@@ -238,9 +238,9 @@ export function MerchandiseCheckout({
           </>
         )}
         {free ? (
-          <p className="text-[13px] text-ink-muted">Nothing to pay.</p>
+          <p className="text-caption text-ink-muted">Nothing to pay.</p>
         ) : (
-          <p className="flex items-start gap-2 text-[13px] text-ink-muted">
+          <p className="flex items-start gap-2 text-caption text-ink-muted">
             <Icon className="mt-0.5" name="lock" size={16} />
             You pay on Stripe&apos;s secure page, then come back here.
           </p>
@@ -257,7 +257,7 @@ export function MerchandiseCheckout({
       <Card>
         <div className="grid gap-4">
           <h2 className="text-lg font-semibold text-ink">Your items</h2>
-          <ul className="grid gap-3 text-[15px]">
+          <ul className="grid gap-3 text-ui">
             {quote.lines.map((line) => (
               <li className="flex items-start justify-between gap-4" key={line.variantId}>
                 <span className="grid">
@@ -282,14 +282,14 @@ export function MerchandiseCheckout({
       <Card>
         <div className="grid gap-2">
           <h2 className="text-lg font-semibold text-ink">Pickup, no delivery</h2>
-          {quote.pickupPolicy ? <p className="whitespace-pre-wrap text-[15px] text-ink [overflow-wrap:anywhere]">{quote.pickupPolicy}</p> : null}
+          {quote.pickupPolicy ? <p className="whitespace-pre-wrap text-ui text-ink [overflow-wrap:anywhere]">{quote.pickupPolicy}</p> : null}
           <p className="text-sm text-ink-soft">Bring your order reference when you collect.</p>
         </div>
       </Card>
       <Card>
         <div className="grid gap-2">
           <h2 className="text-lg font-semibold text-ink">Receipt goes to</h2>
-          <p className="text-[15px] text-ink [overflow-wrap:anywhere]">
+          <p className="text-ui text-ink [overflow-wrap:anywhere]">
             {buyer.name ? `${buyer.name} · ` : ""}
             {buyer.email}
             {buyer.guest ? <span className="ml-2 text-sm font-semibold text-success">Confirmed</span> : null}
@@ -300,7 +300,7 @@ export function MerchandiseCheckout({
       <Card>
         <div className="grid gap-2">
           <h2 className="text-lg font-semibold text-ink">Before you {free ? "confirm" : "pay"}</h2>
-          <ul className="grid list-disc gap-1.5 pl-5 text-[15px] text-ink-soft">
+          <ul className="grid list-disc gap-1.5 pl-5 text-ui text-ink-soft">
             {free ? null : <li>We hold these items for 30 minutes while you pay.</li>}
             {quote.refundPolicy ? <li className="whitespace-pre-wrap [overflow-wrap:anywhere]">Refunds: {quote.refundPolicy}</li> : null}
             {quote.supportEmail ? (

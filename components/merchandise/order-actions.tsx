@@ -179,7 +179,7 @@ export function RecordReturn({ orgSlug, orderId, reference, lines }: { orgSlug: 
           <fieldset className="grid gap-2">
             <legend className="mb-2 text-sm font-semibold text-ink">Stock</legend>
             {(["yes", "no"] as const).map((value) => (
-              <label className="flex items-start gap-2.5 text-[15px] text-ink" key={value}>
+              <label className="flex items-start gap-2.5 text-ui text-ink" key={value}>
                 <input checked={form.restock === value} className="mt-1 size-5 accent-brand" name="restock" onChange={() => setForm({ ...form, restock: value })} type="radio" value={value} />
                 {value === "yes"
                   ? `Put it back in stock${line.remaining === null ? "" : ` (${line.label} goes from ${line.remaining} to ${line.remaining + quantity} left)`}`

@@ -80,7 +80,7 @@ export default async function MembershipPlanPage({ params }: { params: Promise<{
             </h2>
             <div className="grid gap-2 rounded-card border border-line bg-surface p-5">
               <p className="font-display text-lg font-semibold text-ink [overflow-wrap:anywhere]">{plan.name}</p>
-              <p className="text-[15px] text-ink">
+              <p className="text-ui text-ink">
                 {joinDays(formatDay(plan.firstDay), formatDay(plan.lastDay))}, {zoneCity(timeZone)}
               </p>
               {plan.description ? <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">{plan.description}</p> : null}

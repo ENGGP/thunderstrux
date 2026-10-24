@@ -19,7 +19,7 @@ Use the semantic names below, never raw palette classes (`bg-purple-600`, `text-
 | Borders | `border` + `border-line` (hairline), `border-line-strong` (controls) |
 | Radius | `rounded-tag` 6px, `rounded-control` 9px, `rounded-card` 14px, `rounded-feature` 20px |
 | Shadow | `shadow-card`, `shadow-float` (overlays) |
-| Type | `font-display` for headings, `font-sans` default; sizes `text-xs`..`text-4xl`; weights `font-medium` `font-semibold` `font-bold` |
+| Type | `font-display` for headings, `font-sans` default; sizes `text-xs`..`text-4xl`, plus `text-caption` (13px, meta lines and counts) and `text-ui` (15px, dense body text); weights `font-medium` `font-semibold` `font-bold` |
 | Width | `max-w-auth` 440, `max-w-read` 760, `max-w-checkout` 1060, `max-w-personal` 1160, `max-w-page` 1248, `max-w-admin` 1420 |
 | Layout glue | `flex` `grid` `gap-{0-6,8,10,12,16}` `p/px/py/m/mx/my/mt/mb-{0-6,8,10,12,16}` `grid-cols-{1-4}` (+ `sm:` `md:` `lg:`) `items-*` `justify-*` `w-full` `mx-auto` |
 

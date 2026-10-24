@@ -46,6 +46,11 @@
   --color-neutral-icon: var(--ts-neutral-icon);
   --color-lime: var(--ts-lime);
 
+  /* Two sizes between the type scale's steps that the UI uses everywhere:
+     caption for meta lines and counts, ui for dense body text. */
+  --text-caption: 13px;
+  --text-ui: 15px;
+
   --radius-tag: 6px;
   --radius-control: 9px;
   --radius-card: 14px;

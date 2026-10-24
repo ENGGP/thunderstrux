@@ -37,7 +37,7 @@ export function ReadinessChecklist({
               : null;
 
         return (
-          <li className="flex gap-2.5 text-[15px]" key={check.label}>
+          <li className="flex gap-2.5 text-ui" key={check.label}>
             <Icon
               className={blocker ? "mt-0.5 text-warning" : "mt-0.5 text-success"}
               name={blocker ? "warning" : "success"}

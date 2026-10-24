@@ -212,9 +212,9 @@ export function StaffManagement({
       <Card>
         <h2 className="text-lg font-semibold text-ink">Current staff</h2>
         <div aria-label="Current staff" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
-          <table className="w-full border-collapse text-left text-[15px] md:min-w-[560px]">
+          <table className="w-full border-collapse text-left text-ui md:min-w-[560px]">
             <thead className="sr-only md:not-sr-only md:table-header-group">
-              <tr className="text-[13px] text-ink-soft">
+              <tr className="text-caption text-ink-soft">
                 <th className="py-2.5 pr-4 font-semibold" scope="col">Person</th>
                 <th className="py-2.5 pr-4 font-semibold" scope="col">Role</th>
                 <th className="py-2.5 pr-4 font-semibold" scope="col">Status</th>
@@ -312,9 +312,9 @@ export function StaffManagement({
         <Card>
           <h2 className="text-lg font-semibold text-ink">Past invitations</h2>
           <div aria-label="Past invitations" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
-            <table className="w-full border-collapse text-left text-[15px] md:min-w-[520px]">
+            <table className="w-full border-collapse text-left text-ui md:min-w-[520px]">
               <thead className="sr-only md:not-sr-only md:table-header-group">
-                <tr className="text-[13px] text-ink-soft">
+                <tr className="text-caption text-ink-soft">
                   <th className="py-2.5 pr-4 font-semibold" scope="col">Email</th>
                   <th className="py-2.5 pr-4 font-semibold" scope="col">Role</th>
                   <th className="py-2.5 pr-4 font-semibold" scope="col">Outcome</th>

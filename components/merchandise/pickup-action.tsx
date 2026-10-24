@@ -60,11 +60,11 @@ export function PickupAction({ orgSlug, order, step, stage, wide = false, after 
       >
         <div className="grid gap-3">
           {ready ? null : (
-            <p className="text-[15px] text-ink">
+            <p className="text-ui text-ink">
               For <strong>{order.buyer}</strong>. Check the name with the person collecting.
             </p>
           )}
-          <ul className="grid list-disc gap-1 pl-5 text-[15px] text-ink">
+          <ul className="grid list-disc gap-1 pl-5 text-ui text-ink">
             {order.lines.map((line, index) => (
               <li key={index}>
                 {line.quantity} × {line.nameSnapshot}

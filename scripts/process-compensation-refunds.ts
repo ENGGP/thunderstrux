@@ -2,6 +2,7 @@ import { logInfo } from "@/lib/ops/logger";
 import { runWorker } from "@/lib/ops/worker";
 import { processCompensationRefundBatch } from "@/lib/payments/compensation-refunds";
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
+import { processPayoutBatch } from "@/lib/payouts/payouts";
 import { processOrderRefundBatch } from "@/lib/payments/order-refunds";
 
 function batchLimit() {
@@ -23,4 +24,7 @@ void runWorker("refunds", async () => {
   // PAY-004: lost disputes taken back from the society.
   const reversals = await processDisputeReversalBatch(batchLimit());
   logInfo("dispute_reversal.worker.completed", { processed: reversals.processed });
+  // PAY-005: societies' money sent to their banks once its events are over (each society hourly).
+  const payouts = await processPayoutBatch(batchLimit());
+  logInfo("payouts.worker.completed", { processed: payouts.processed });
 });

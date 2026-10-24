@@ -135,7 +135,7 @@ describe("Stripe Connect application service", () => {
     await expect(startOrganisationStripeOnboarding(organisation.id, user.id)).resolves.toBe("https://connect.stripe.test/new");
     // The society is the settlement merchant (on_behalf_of), and a double click returns the same account.
     expect(stripeMocks.createAccount).toHaveBeenLastCalledWith(
-      { type: "express", capabilities: { card_payments: { requested: true }, transfers: { requested: true } } },
+      { type: "express", capabilities: { card_payments: { requested: true }, transfers: { requested: true } }, settings: { payouts: { schedule: { interval: "manual" }, debit_negative_balances: true } } },
       { idempotencyKey: `connect-account:${organisation.id}:0` }
     );
     expect(await prisma.auditLog.findFirst({ where: { organisationId: organisation.id, action: "stripe_connect.account_created" } })).toMatchObject({

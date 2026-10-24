@@ -15,6 +15,7 @@ export type OperationalAlertName =
   | "purchase_dispute_opened"
   | "purchase_dispute_unmatched"
   | "dispute_reversal_unresolved"
+  | "society_payout_failed"
   | "commerce_webhook_identity_mismatch"
   | "db_migration_failed"
   | "app_healthcheck_failed"

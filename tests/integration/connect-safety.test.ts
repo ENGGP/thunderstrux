@@ -11,6 +11,10 @@ import { disconnectAccount, markAccountStatusError, StripeDisconnectBlockedError
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createEvent, createOrder, createOrganisationAccount, createReservation } from "@/tests/helpers/test-data";
 
+// PAY-005: disconnect hands payouts back to Stripe's schedule; Stripe itself isn't reached here.
+const restoreSchedule = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/payouts/payouts", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/payouts/payouts")>()), restoreStripePayoutSchedule: restoreSchedule }));
+
 async function paidFixture(sellerStripeAccountId: string | null) {
   const owner = await createOrganisationAccount({ stripeReady: true });
   const event = await createEvent({ organisationId: owner.organisation.id, status: "published" });
@@ -84,8 +88,11 @@ describe("disconnect", () => {
     await expect(disconnectAccount(fixture.owner.organisation.id, { actor })).rejects.toBeInstanceOf(StripeDisconnectBlockedError);
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).not.toBeNull();
 
+    expect(restoreSchedule).not.toHaveBeenCalled();
     await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "expired" } });
     await disconnectAccount(fixture.owner.organisation.id, { actor });
+    // Stripe pays out what's left on its own schedule.
+    expect(restoreSchedule).toHaveBeenCalledWith(fixture.owner.organisation.stripeAccountId);
     expect(await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).toMatchObject({ stripeAccountId: null, stripeChargesEnabled: false });
     expect(await prisma.auditLog.findFirst({ where: { organisationId: fixture.owner.organisation.id, action: "stripe_connect.disconnected" } })).toMatchObject({
       actorUserId: actor.id,

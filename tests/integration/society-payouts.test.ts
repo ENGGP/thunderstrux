@@ -1,0 +1,152 @@
+import Stripe from "stripe";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
+import { createCommerceOrder } from "@/lib/commerce/orders";
+import { prisma } from "@/lib/db";
+import { manualPayoutSettings, payoutSummary, processPayoutBatch } from "@/lib/payouts/payouts";
+import { heldMoney } from "@/lib/payouts/release";
+import { createEvent, createMember, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
+
+// PAY-005, design round F1: a society's money stays in its Stripe balance until
+// its event is over, then the refunds worker pays it out.
+
+const stripe = vi.hoisted(() => ({ account: vi.fn(), update: vi.fn(), balance: vi.fn(), create: vi.fn(), payout: vi.fn() }));
+vi.mock("@/lib/stripe", async () => {
+  const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
+  return {
+    StripeConfigurationError: class StripeConfigurationError extends Error {},
+    getAppUrl: () => "http://localhost:3000",
+    isLiveStripeKey: () => false,
+    getStripeConnectWebhookSecret: () => "whsec_payouts_test",
+    getStripe: () => ({
+      accounts: { retrieve: stripe.account, update: stripe.update },
+      balance: { retrieve: stripe.balance },
+      payouts: { create: stripe.create, retrieve: stripe.payout },
+      webhooks: new RealStripe("sk_test_payouts").webhooks
+    })
+  };
+});
+
+beforeEach(() => { stripe.account.mockResolvedValue({ settings: { payouts: { schedule: { interval: "manual" }, debit_negative_balances: true } } }); });
+afterEach(() => { for (const mock of Object.values(stripe)) mock.mockReset(); });
+
+const day = 86_400_000;
+const now = new Date();
+
+// A ready society and a paid $20.00 ticket ($1.64 fee, $18.36 to the society) for an event ending `endsIn` from now.
+async function society() {
+  const owner = await createOrganisationAccount({ stripeReady: true });
+  return { owner, accountId: owner.organisation.stripeAccountId as string, organisationId: owner.organisation.id };
+}
+
+async function ticketSale(fixture: Awaited<ReturnType<typeof society>>, endsIn: number, { paidAgo = day, ...extra }: Record<string, unknown> & { paidAgo?: number } = {}) {
+  const event = await createEvent({ organisationId: fixture.organisationId, status: "published" });
+  const startTime = new Date(now.getTime() + endsIn - 2 * 3600_000);
+  await prisma.event.update({ where: { id: event.id }, data: { startTime, salesCloseAt: startTime, endTime: new Date(now.getTime() + endsIn) } });
+  const order = await createOrder({ organisationId: fixture.organisationId, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date(now.getTime() - paidAgo), unitPrice: 2000 });
+  return prisma.order.update({ where: { id: order.id }, data: { sellerStripeAccountId: fixture.accountId, feeAmount: 164, ...extra } });
+}
+
+async function membershipSale(fixture: Awaited<ReturnType<typeof society>>, paidAgo: number) {
+  const buyer = await createMember();
+  const plan = await prisma.membershipProduct.create({ data: { organisationId: fixture.organisationId, name: unique("Plan"), priceAmount: 2500, startsAt: new Date(now.getTime() - day), endsAt: new Date(now.getTime() + 100 * day), entitlements: ["member_prices"], status: "published", publishedAt: now } });
+  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: fixture.organisationId, kind: "membership", buyer: { userId: buyer.id }, buyerEmail: buyer.email, paymentKind: "stripe", feeAmount: 183, source: "checkout",
+    lines: [{ quantity: 1, unitAmount: 2500, name: plan.name, termStartsAt: plan.startsAt, termEndsAt: plan.endsAt, membershipProductId: plan.id }]
+  }));
+  return prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "paid", paidAt: new Date(now.getTime() - paidAgo) } });
+}
+
+describe("what is held", () => {
+  test("ticket money waits for its event to end plus 2 days, membership money for 7 days, never past 80 days; disputes and reviews wait", async () => {
+    const fixture = await society();
+    await ticketSale(fixture, 10 * day);                    // upcoming: held
+    await ticketSale(fixture, -1 * day);                    // ended yesterday: held
+    await ticketSale(fixture, -3 * day);                    // ended 3 days ago: released
+    await ticketSale(fixture, 30 * day, { paidAgo: 81 * day }); // sold 81 days ago: released by the cap
+    await ticketSale(fixture, -10 * day, { disputeStatus: "open" }); // disputed: held
+    await ticketSale(fixture, 5 * day, { refundStatus: "refunded" }); // refunded: nothing left
+    await ticketSale(fixture, 5 * day, { externalRefundedAmount: 1000 }); // part refunded outside: $8.36
+    await membershipSale(fixture, 3 * day);                 // held ($23.17)
+    await membershipSale(fixture, 8 * day);                 // released
+
+    const held = await heldMoney(fixture.organisationId, fixture.accountId, now);
+    expect(held.events).toMatchObject({ amount: 1836 * 3 + 836, eventCount: 4 });
+    expect(held.events.nextEndsAt?.getTime()).toBe(now.getTime() + 5 * day);
+    expect(held.commerce.amount).toBe(2317);
+    expect(held.total).toBe(1836 * 3 + 836 + 2317);
+    // Another society's account holds nothing of this one's.
+    expect((await heldMoney(fixture.organisationId, "acct_someone_else", now)).total).toBe(0);
+  });
+});
+
+describe("payouts worker", () => {
+  test("pays out what is available less what is held, once a day per society, and checks each society at most hourly", async () => {
+    const fixture = await society();
+    await ticketSale(fixture, 10 * day); // $18.36 held
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: Math.floor(now.getTime() / 1000) + 2 * 86400 }));
+
+    const result = await processPayoutBatch(100, now);
+    expect(result.results).toContainEqual({ organisationId: fixture.organisationId, sent: 5000 - 1836 });
+    expect(stripe.create).toHaveBeenCalledWith(
+      { amount: 3164, currency: "aud", metadata: { organisationId: fixture.organisationId } },
+      { stripeAccount: fixture.accountId, idempotencyKey: `payout:${fixture.accountId}:${now.toISOString().slice(0, 10)}` }
+    );
+    expect(await prisma.societyPayout.findMany({ where: { organisationId: fixture.organisationId } })).toMatchObject([{ amount: 3164, status: "pending", stripeAccountId: fixture.accountId }]);
+
+    // Checked again only after an hour.
+    stripe.create.mockClear();
+    await processPayoutBatch(100, new Date(now.getTime() + 30 * 60_000));
+    expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
+  });
+
+  test("a society still on Stripe's schedule is moved to manual payouts; less than $1.00 free waits", async () => {
+    const fixture = await society();
+    await ticketSale(fixture, 10 * day);
+    stripe.account.mockResolvedValue({ settings: { payouts: { schedule: { interval: "daily" }, debit_negative_balances: false } } });
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 1836 + 99 }] });
+    await processPayoutBatch(100, now);
+    expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: manualPayoutSettings });
+    expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
+  });
+
+  test("a society that can't receive payouts is left alone", async () => {
+    const fixture = await society();
+    await prisma.organisation.update({ where: { id: fixture.organisationId }, data: { stripePayoutsEnabled: false } });
+    await processPayoutBatch(100, now);
+    expect(stripe.balance).not.toHaveBeenCalledWith({}, { stripeAccount: fixture.accountId });
+  });
+});
+
+describe("payout events", () => {
+  function payoutEvent(accountId: string, payout: Record<string, unknown>, type = "payout.updated") {
+    const body = JSON.stringify({ id: unique("evt"), object: "event", type, account: accountId, livemode: false, created: Math.floor(Date.now() / 1000), data: { object: payout } });
+    const signature = new Stripe("sk_test_payouts").webhooks.generateTestHeaderString({ payload: body, secret: "whsec_payouts_test" });
+    return connectWebhook(new Request("http://localhost:3000/api/stripe/connect/webhook", { method: "POST", headers: { "stripe-signature": signature }, body }));
+  }
+
+  test("Stripe's status is recorded as re-read; a refused payout shows until a later one goes through; another account's payout is ignored", async () => {
+    const fixture = await society();
+    const failed = { id: unique("po"), object: "payout", amount: 4128, currency: "aud", status: "failed", failure_message: "The bank account has been closed.", arrival_date: null };
+    stripe.payout.mockResolvedValue(failed);
+    expect((await payoutEvent(fixture.accountId, { ...failed, status: "in_transit" }, "payout.failed")).status).toBe(200);
+    expect(stripe.payout).toHaveBeenCalledWith(failed.id, {}, { stripeAccount: fixture.accountId });
+    expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: failed.id } })).toMatchObject({ organisationId: fixture.organisationId, status: "failed", amount: 4128, failureMessage: "The bank account has been closed." });
+    expect((await payoutSummary(fixture.organisationId, fixture.accountId, now)).failed).toMatchObject({ amount: 4128 });
+
+    // A later payout reaches the bank: the warning goes.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const paid = { id: unique("po"), object: "payout", amount: 4128, currency: "aud", status: "paid", arrival_date: Math.floor(Date.now() / 1000) };
+    stripe.payout.mockResolvedValue(paid);
+    await payoutEvent(fixture.accountId, paid, "payout.paid");
+    const summary = await payoutSummary(fixture.organisationId, fixture.accountId, now);
+    expect(summary.failed).toBeNull();
+    expect(summary.recent.map((payout) => payout.status)).toEqual(["paid", "failed"]);
+
+    // The same payout id reported for another account changes nothing.
+    stripe.payout.mockClear();
+    await payoutEvent("acct_not_this_one", { ...paid, status: "failed" }, "payout.failed");
+    expect(stripe.payout).not.toHaveBeenCalled();
+  });
+});

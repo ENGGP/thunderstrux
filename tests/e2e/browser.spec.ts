@@ -227,7 +227,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   const mobile = page.locator('details');
   await mobile.getByLabel('Workspace').selectOption(second.organisation.id);
   await expect(page.getByText('Current society', { exact: true })).toBeVisible();
-  await expect(page.getByText(second.organisation.name, { exact: true })).toBeVisible();
+  await expect(page.locator('aside p').filter({ hasText: second.organisation.name }).first()).toBeVisible();
   await page.getByText('Society menu', { exact: true }).click();
   await expect(mobile.getByRole('link', { name: 'Orders', exact: true })).toBeVisible();
   await prisma.organisationStaff.updateMany({ where: { userId: data.manager.id, organisationId: second.organisation.id }, data: { status: 'revoked' } });

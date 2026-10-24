@@ -81,7 +81,7 @@ test("a member buys a free membership through checkout and the owner finds them 
 
   await login(page, data.owner.email, "/dashboard/memberships/members");
   await expect(page.getByRole("link", { name: "Members", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("link", { name: "Active · 1" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Active 1" })).toBeVisible();
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

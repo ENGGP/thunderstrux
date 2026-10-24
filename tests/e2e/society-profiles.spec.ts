@@ -89,7 +89,7 @@ test("society profile saves branding, keeps conflicting edits and remains public
   ).toBeVisible();
   await page.getByRole("link", { name: "View public profile" }).click();
   await expect(
-    page.getByRole("heading", { name: "Committee updated name" }),
+    page.getByRole("heading", { name: "Committee updated name", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Campus friends <script>alert('escaped')</script>", {
@@ -103,7 +103,7 @@ test("society profile saves branding, keeps conflicting edits and remains public
   try {
     const publicPage = await anonymous.newPage();
     await publicPage.goto(`/organisations/${data.organisation.slug}`);
-    await expect(publicPage.getByRole("heading", { name: "Committee updated name" })).toBeVisible();
+    await expect(publicPage.getByRole("heading", { name: "Committee updated name", exact: true })).toBeVisible();
     expect(await publicPage.locator("body").textContent()).not.toContain(data.owner.email);
     for (const width of [1280, 390]) {
       await publicPage.setViewportSize({ width, height: 900 });

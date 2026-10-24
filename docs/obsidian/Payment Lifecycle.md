@@ -93,6 +93,13 @@ Read models show Cancelled before every other state ("Cancelled", long form "Can
 
 A commerce payment that needs review is recorded on the order.
 
+**Unpaid orders (design round E1).** An order Stripe hasn't been paid for asks Stripe where it stands each time its page loads (`lib/purchases/pending-checkout.ts`):
+- **Waiting for payment:** the Session is open and the hold lasts. The page offers Return to payment (the same Session) and Cancel order.
+- **Confirming payment:** Stripe has the payment and its webhook is due.
+- **Didn't complete:** the Session expired or the hold ended.
+
+Unpaid orders never read "Paid" or "Confirming". Purchases lists them as Waiting for payment without asking Stripe. Cancel expires the Session at Stripe, then releases the hold through the webhook's expiry path, so the tickets or stock go back on sale at once rather than when the hold lapses. If Stripe was paid meanwhile, nothing is cancelled. Without Stripe's answer the hold decides, and the payment page isn't offered.
+
 **Commerce disputes, outside refunds and compensation (PAY-003).** `lib/commerce/payment-recovery.ts` gives membership and merchandise orders what T18b gives ticket orders. The webhook asks commerce first: a `charge.dispute.*` or unlabelled `refund.*` event is commerce's when its PaymentIntent belongs to a commerce order (stored on the order, or found from Stripe's Session by `family` metadata), and the order, family and destination still match. Anything else goes to the ticket handlers unchanged. Events are journalled once and projected from Stripe's state as re-read. A dispute (`PurchaseDispute` names exactly one of `orderId` or `commerceOrderId`) sets `CommerceOrder.disputeStatus`. While it is `open`, refunds and pickup hand-over are refused; `lost` ends the order's memberships and leaves nothing to hand over; `won` clears the status, and the dispute stays in history. Refunds made in the Stripe dashboard are totalled into `externalRefundedAmount`. A full one marks the order refunded and ends its memberships, which also settles a payment under review. A partial one shows as Payment review until staff mark it reviewed (`POST /api/orders/[orderId]/review` accepts a commerce order); a refund here then takes only the rest. A paid order that can't be filled is refunded in full automatically: compensation queues a system `RefundRequest` (no actor) under the usual fence, and the refund worker verifies the payment before sending it. A mismatch fails the request and leaves the order under review. Commerce has no per-order compensation mode, because automatic is what a ticketing platform does with an order it can't complete. Hosted activation still waits on PAY-002.
 
 ## Storage

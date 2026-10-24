@@ -95,7 +95,8 @@ User selects quantity
   -> fulfilment commits its automatic email intent atomically; a bounded worker sends after commit
   -> in non-production only, /success?session_id=... can reconcile paid sessions if local webhook forwarding is absent
   -> /success shows the order's real state to the member who bought it: "Confirming your payment" while it is pending, polling GET /api/purchases/tickets/[orderId]/status every 3 seconds for about a minute (then "Still confirming"), and "You're going" once the webhook has fulfilled it; it says the tickets were emailed only after the provider accepted the email
-  -> /cancel?order=... says no payment was taken (or that the order went through after all) and names the event only to the buyer
+  -> /cancel?order=... names the event only to the buyer. While the hold lasts it says "You haven't paid yet", with Return to payment (the same Stripe page) and Cancel order (Stripe closes its page, then the hold is released at once; round E1). Otherwise it says no payment was taken, or that the order went through after all.
+  -> an unpaid order page asks Stripe where it stands: Waiting for payment with the same two actions, Confirming payment once Stripe has it, or Didn't complete; it never reads "Paid" before payment
   -> buyer sees the order at /purchases and /purchases/tickets/[orderId], and the tickets at /tickets (Upcoming, Past and Not valid tabs, one ticket face per unit)
 ```
 

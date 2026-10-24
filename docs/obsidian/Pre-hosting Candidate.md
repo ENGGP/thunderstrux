@@ -26,16 +26,16 @@ T46's record of what would go to hosting, what proves it works locally, and what
 | `ALERT_WEBHOOK_URL` (secret file) | required | The monitor and payment paths alert through it (OPS-002). |
 | `EMAIL_FROM`, Resend key | required | Receipts and notices; inbox delivery needs a verified domain (H03). |
 | `PLATFORM_SUPPORT_EMAIL` | optional, unset | Help and Privacy name it once the founder chooses an address and an owner. |
-| Ticket compensation mode | `manual_review` per event (default) | `automatic_full` stays off for tickets until PAY-002 passes hosted. |
+| Ticket compensation mode | `automatic_full` for new events (2026-10-25); a society may choose review | An unfillable ticket payment is refunded in full by the refund worker, as commerce is. No real sales until the hosted refund webhooks pass PAY-002. |
 | Commerce compensation | automatic full refund | A membership or merchandise payment that can't be filled is refunded by the refund worker (PAY-003). |
 | Fee policy | `platform_fee_3_75_percent_89c_v2` | 3.75% + $0.89 per ticket, membership or merchandise order; past orders keep theirs. |
 | Stripe API version | `2026-09-30.endive`, stripe 23 (PAY-006) | Hosted webhook endpoints are created on it; the key should be a restricted `rk_live_` key ([[Production Operations]]). |
-| Society payouts | manual, sent after each event (PAY-005) | Tickets 2 days after the event ends, memberships and merchandise 7 days after the sale, never held past 80 days. |
+| Society payouts | manual, sent after each event (PAY-005), at most one payout a day (DEF-034) | Tickets 2 days after the event ends, memberships and merchandise 7 days after the sale, never held past 80 days. |
 | Lost disputes | taken back from the society (PAY-004) | The transfer is reversed by the disputed amount; Thunderstrux keeps its fee and pays Stripe's dispute fee. |
 
 ## Jobs
 
-Six bounded jobs run every minute under the T42 worker contract (leases, pause, timeouts, alerts): email outbox, notifications, stale orders and commerce expiry, refunds and compensation, checkout recovery, and the operations monitor. Use `docker-compose.schedules.yml` or the platform's scheduler. Since the Stripe audit the refunds job also takes back lost disputes (PAY-004) and sends society payouts, checking each society at most hourly (PAY-005).
+Six bounded jobs run every minute under the T42 worker contract (leases, pause, timeouts, alerts): email outbox, notifications, stale orders and commerce expiry, refunds and compensation, checkout recovery, and the operations monitor. Use `docker-compose.schedules.yml` or the platform's scheduler. Since the Stripe audit the refunds job also takes back lost disputes (PAY-004) and sends society payouts, checking each society at most hourly and paying it at most once a day (PAY-005, DEF-034).
 
 ## Evidence
 

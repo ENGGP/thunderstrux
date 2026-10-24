@@ -17,6 +17,7 @@ export const queueThresholds = {
   checkout_attempts: minutes(30),
   compensation_refunds: minutes(60),
   order_refunds: minutes(60),
+  dispute_reversals: minutes(60),
   ticket_holds: minutes(10),
   commerce_checkouts: minutes(30)
 } as const;
@@ -44,6 +45,9 @@ const queueQueries: Record<QueueName, (stuckBefore: Date) => Prisma.Sql> = {
     COUNT(*) FILTER (WHERE "state" = 'auto_processing' AND "processingStartedAt" < ${stuckBefore}) AS stuck FROM "CompensationRefundJob" WHERE "state" IN ('auto_queued', 'auto_processing', 'refund_pending')`,
   order_refunds: (stuckBefore) => Prisma.sql`SELECT COUNT(*) AS backlog, MIN("createdAt") AS oldest,
     COUNT(*) FILTER (WHERE "processingStartedAt" < ${stuckBefore}) AS stuck FROM "RefundRequest" WHERE "status" IN ('pending', 'uncertain')`,
+  // PAY-004: lost disputes waiting to be taken back from the society, counted from when Stripe closed them.
+  dispute_reversals: (stuckBefore) => Prisma.sql`SELECT COUNT(*) AS backlog, MIN("closedAt") AS oldest,
+    COUNT(*) FILTER (WHERE "reversalProcessingStartedAt" < ${stuckBefore}) AS stuck FROM "PurchaseDispute" WHERE "reversalStatus" IN ('pending', 'uncertain')`,
   ticket_holds: () => Prisma.sql`SELECT COUNT(*) AS backlog, MIN("expiresAt") AS oldest, 0::bigint AS stuck FROM "TicketReservation" WHERE "status" = 'active' AND "expiresAt" < now()`,
   commerce_checkouts: () => Prisma.sql`SELECT COUNT(*) AS backlog, MIN("expiresAt") AS oldest, 0::bigint AS stuck FROM "CommerceOrder" WHERE "status" = 'pending' AND "expiresAt" < now()`
 };

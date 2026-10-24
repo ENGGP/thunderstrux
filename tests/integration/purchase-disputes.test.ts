@@ -4,6 +4,7 @@ import { POST as reviewRoute } from "@/app/api/orders/[orderId]/review/route";
 import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { prisma } from "@/lib/db";
 import { enqueueOrganisationOrderTicketEmail } from "@/lib/orders/order-detail";
+import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { orderReference, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
@@ -12,7 +13,7 @@ import { jsonRequest, routeContext } from "@/tests/helpers/http";
 import { createEvent, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 const webhookSecret = "whsec_disputes_test";
-const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn() }));
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
   return {
@@ -24,6 +25,8 @@ vi.mock("@/lib/stripe", async () => {
       checkout: { sessions: { retrieve: stripe.retrieve, list: stripe.list } },
       refunds: { list: stripe.refunds, create: stripe.create },
       disputes: { retrieve: stripe.dispute },
+      charges: { retrieve: stripe.charge },
+      transfers: { retrieve: stripe.transfer, listReversals: stripe.reversals, createReversal: stripe.reverse },
       // Real signature checking, so the route is exercised as Stripe calls it.
       webhooks: new RealStripe("sk_test_disputes").webhooks
     })
@@ -203,5 +206,93 @@ describe("refunds made outside Thunderstrux", () => {
     expect(full.tickets).toEqual([{ validity: "void", validityReason: "refunded_outside" }, { validity: "void", validityReason: "refunded_outside" }]);
     expect(ticketOrderProjection(full)).toBe("refunded");
     await expect(requestOrderRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "already_refunded" });
+  });
+});
+
+// PAY-004: Stripe takes a lost dispute from the platform; the refunds worker
+// takes it back from the society by reversing the transfer.
+describe("lost dispute recovery", () => {
+  // The order's transfer to the society, as Stripe holds it.
+  function transferIs(fixture: Fixture, extra: Record<string, unknown> = {}) {
+    const transferId = `tr_${fixture.order.id}`;
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: transferId });
+    stripe.transfer.mockResolvedValue({ id: transferId, amount: 3000, amount_reversed: 0, currency: "aud", destination: fixture.owner.organisation.stripeAccountId, ...extra });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockImplementation(async (_transfer: string, params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("trr"), amount: params.amount, metadata: params.metadata }));
+    return transferId;
+  }
+
+  async function loseDispute(fixture: Fixture, extra: Record<string, unknown> = {}) {
+    stripe.dispute.mockResolvedValue(disputeObject(fixture, "lost", extra));
+    await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(fixture, "lost", extra)));
+  }
+
+  const disputeRow = (fixture: Fixture) => prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `dp_${fixture.order.id}` } });
+
+  test("a lost dispute is taken back from the society once, by the disputed amount, and recorded", async () => {
+    const fixture = await paidOrder();
+    const transferId = transferIs(fixture);
+    await loseDispute(fixture);
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "pending", reversalAmount: null });
+
+    const now = new Date(Date.now() + 1000);
+    expect(await processDisputeReversalBatch(25, now)).toMatchObject({ processed: 1, results: [{ status: "succeeded" }] });
+    expect(stripe.reverse).toHaveBeenCalledWith(transferId, { amount: 3000, metadata: { disputeId: `dp_${fixture.order.id}`, orderId: fixture.order.id } }, { idempotencyKey: `dispute-reversal:dp_${fixture.order.id}` });
+    const recovered = await disputeRow(fixture);
+    expect(recovered).toMatchObject({ reversalStatus: "succeeded", reversalAmount: 3000, reversalProcessingToken: null });
+    expect(recovered.stripeTransferReversalId).toMatch(/^trr/);
+    expect(await historyOf(fixture.order.id)).toEqual(["dispute_opened", "dispute_closed", "dispute_funds_recovered"]);
+    expect(await prisma.auditLog.findFirst({ where: { targetId: fixture.order.id, action: "order.dispute_funds_recovered" } })).toMatchObject({ actorUserId: null, metadata: expect.objectContaining({ amount: 3000 }) });
+
+    // Nothing is sent twice, and a late "lost" event queues nothing new.
+    await loseDispute(fixture);
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 2000))).toMatchObject({ processed: 0 });
+    expect(stripe.reverse).toHaveBeenCalledTimes(1);
+  });
+
+  test("a won dispute takes nothing back", async () => {
+    const fixture = await paidOrder();
+    transferIs(fixture);
+    stripe.dispute.mockResolvedValue(disputeObject(fixture, "won"));
+    await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(fixture, "won")));
+    expect((await disputeRow(fixture)).reversalStatus).toBeNull();
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ processed: 0 });
+    expect(stripe.reverse).not.toHaveBeenCalled();
+  });
+
+  test("only what is left of the transfer is reversed when a refund already took part of it", async () => {
+    const fixture = await paidOrder();
+    transferIs(fixture, { amount_reversed: 1000 });
+    await loseDispute(fixture);
+    await processDisputeReversalBatch(25, new Date(Date.now() + 1000));
+    expect(stripe.reverse).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ amount: 2000 }), expect.anything());
+    expect((await disputeRow(fixture)).reversalAmount).toBe(2000);
+  });
+
+  test("a transfer to another account is never reversed; a person is alerted instead", async () => {
+    const fixture = await paidOrder();
+    transferIs(fixture, { destination: "acct_someone_else" });
+    await loseDispute(fixture);
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "failed" }] });
+    expect(stripe.reverse).not.toHaveBeenCalled();
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "failed", reversalLastError: "destination_mismatch" });
+    expect(await historyOf(fixture.order.id)).toEqual(["dispute_opened", "dispute_closed"]);
+  });
+
+  test("an unknown outcome retries later and finds the reversal Stripe already made instead of sending again", async () => {
+    const fixture = await paidOrder();
+    transferIs(fixture);
+    await loseDispute(fixture);
+    stripe.reverse.mockRejectedValueOnce(new Error("socket hang up"));
+    const first = new Date(Date.now() + 1000);
+    expect(await processDisputeReversalBatch(25, first)).toMatchObject({ results: [{ status: "uncertain" }] });
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "uncertain", reversalLastError: "provider_unknown" });
+    // Not due again until the retry delay passes.
+    expect(await processDisputeReversalBatch(25, first)).toMatchObject({ processed: 0 });
+
+    stripe.reversals.mockResolvedValue({ data: [{ id: "trr_made_by_stripe", amount: 3000, metadata: { disputeId: `dp_${fixture.order.id}`, orderId: fixture.order.id } }] });
+    expect(await processDisputeReversalBatch(25, new Date(first.getTime() + 2 * 60_000))).toMatchObject({ results: [{ status: "succeeded" }] });
+    expect(stripe.reverse).toHaveBeenCalledTimes(1);
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "succeeded", stripeTransferReversalId: "trr_made_by_stripe", reversalAmount: 3000 });
   });
 });

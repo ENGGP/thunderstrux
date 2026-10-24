@@ -45,6 +45,7 @@ export function orderLifecycleLabel(type: OrderLifecycleEventType) {
     dispute_opened: "Buyer disputed the payment",
     dispute_closed: "Stripe closed the dispute",
     dispute_resolved: "Tickets restored after the dispute",
+    dispute_funds_recovered: "Lost dispute taken back from the society",
     external_refund_recorded: "Refund made in Stripe recorded",
     external_refund_reviewed: "Refund made in Stripe reviewed",
     free_cancelled: "Free registration cancelled",

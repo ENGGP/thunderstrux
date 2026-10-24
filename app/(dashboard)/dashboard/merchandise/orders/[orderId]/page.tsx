@@ -32,7 +32,8 @@ const happened: Partial<Record<string, string>> = {
   refund_failed: "Stripe turned the refund down",
   pickup_ready: "Marked ready to collect",
   pickup_collected: "Handed over",
-  return_recorded: "Return recorded"
+  return_recorded: "Return recorded",
+  dispute_funds_recovered: "Lost dispute taken back from the society"
 };
 const pickupBadge = { pending: "preparing", ready: "ready-to-collect", collected: "collected" } as const;
 const name = (person: { firstName: string | null; lastName: string | null; email: string } | null) =>

@@ -123,4 +123,18 @@ describe("History (T38)", () => {
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     expect(await page()).not.toContain(leaver.email);
   });
+
+  test("a lost dispute taken back from the society reads as Thunderstrux's step, with the amount and no Stripe IDs", async () => {
+    const { organisation } = await createOrganisationAccount();
+    await prisma.auditLog.create({ data: {
+      organisationId: organisation.id, action: "order.dispute_funds_recovered", targetType: "Order", targetId: "cmorderRECOVERED",
+      metadata: { disputeId: "dp_SENTINEL", amount: 3000, transferReversalId: "trr_SENTINEL" }
+    } });
+    const { entries } = await readHistory(organisation.id, {}, zone);
+    const recovered = entries.find((entry) => entry.sentence.some((part) => typeof part === "string" && part.startsWith("took back the lost dispute's money")))!;
+    expect(recovered.actor).toMatchObject({ kind: "thunderstrux", name: "Thunderstrux" });
+    expect(recovered.facts).toEqual([{ label: "Amount", value: "$30.00" }]);
+    expect(JSON.stringify(recovered)).not.toMatch(/dp_SENTINEL|trr_SENTINEL/);
+  });
 });
+

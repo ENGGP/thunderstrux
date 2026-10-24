@@ -6,6 +6,7 @@ import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
+import { queueDisputeReversal } from "@/lib/payments/dispute-reversals";
 import { journal, journalled } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
@@ -88,6 +89,8 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "dispute_opened", source: "stripe_webhook", stripeEventId: event.id, reason: current.reason, facts: { amount: current.amount } });
     }
     const ended = outcome === "lost" ? await endMemberships(tx, commerceOrderId, "The buyer's bank returned the payment after a dispute", now) : 0;
+    // PAY-004: the society bears a lost dispute; the refunds worker takes the money back.
+    if (outcome === "lost") await queueDisputeReversal(tx, current.id, now);
     if (outcome !== "open") {
       await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "dispute_closed", source: "stripe_webhook", stripeEventId: event.id, reason: current.status, facts: { membershipsEnded: ended } });
     }

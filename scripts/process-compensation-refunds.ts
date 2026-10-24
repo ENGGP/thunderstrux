@@ -1,6 +1,7 @@
 import { logInfo } from "@/lib/ops/logger";
 import { runWorker } from "@/lib/ops/worker";
 import { processCompensationRefundBatch } from "@/lib/payments/compensation-refunds";
+import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { processOrderRefundBatch } from "@/lib/payments/order-refunds";
 
 function batchLimit() {
@@ -19,4 +20,7 @@ void runWorker("refunds", async () => {
   logInfo("compensation_refund.worker.completed", result);
   const ordinary = await processOrderRefundBatch(batchLimit());
   logInfo("order_refund.worker.completed", ordinary);
+  // PAY-004: lost disputes taken back from the society.
+  const reversals = await processDisputeReversalBatch(batchLimit());
+  logInfo("dispute_reversal.worker.completed", { processed: reversals.processed });
 });

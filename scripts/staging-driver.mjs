@@ -393,7 +393,13 @@ const verify = {
     const grant = await db.membershipGrant.findFirstOrThrow({where: {commerceOrderLineId: order.lines[0].id}});
     assert(grant.revokedAt, 'A lost dispute left the membership active');
     const closed = await eventFor(dispute.id, ['charge.dispute.closed']);
-    return {eventId: event.id, fee: intent.application_fee_amount, disputeId: dispute.id, moreEventIds: [opened.id, closed.id]};
+    // PAY-004: the refunds worker takes the disputed amount back from the society's transfer.
+    worker('process-compensation-refunds');
+    const recovered = await poll(async () => { const row = await db.purchaseDispute.findUnique({where: {stripeDisputeId: dispute.id}}); return row?.reversalStatus === 'succeeded' ? row : null; }, 'Dispute transfer reversal');
+    const charge = await stripe.charges.retrieve(dispute.charge, {expand: ['transfer']});
+    const reversal = charge.transfer.reversals.data.find((item) => item.id === recovered.stripeTransferReversalId);
+    assert(reversal && reversal.amount === dispute.amount && recovered.reversalAmount === dispute.amount && reversal.metadata.disputeId === dispute.id, 'The lost dispute was not taken back from the society');
+    return {eventId: event.id, fee: intent.application_fee_amount, disputeId: dispute.id, transferReversalId: reversal.id, moreEventIds: [opened.id, closed.id]};
   },
   // Part refunded outside Thunderstrux: flagged, reviewed by staff, and the app refunds only the rest.
   async 'commerce-outside-refund'(data) {

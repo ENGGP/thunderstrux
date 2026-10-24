@@ -32,7 +32,7 @@ const prefixes: Record<HistoryCategory, string[]> = {
   profile: ["organisation.", "asset."]
 };
 // Automatic steps Thunderstrux takes; any other row without a person came from Stripe.
-const automaticActions = ["order.compensation_refund_queued", "order.compensation_refund_review_required", "order.compensation_refund_started", "asset.orphan_removed"];
+const automaticActions = ["order.compensation_refund_queued", "order.compensation_refund_review_required", "order.compensation_refund_started", "order.dispute_funds_recovered", "commerce_order.dispute_funds_recovered", "asset.orphan_removed"];
 
 export const historyPageSize = 50;
 export class HistoryCursorError extends Error {}
@@ -272,6 +272,10 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   } else if (a === "order.dispute_resolved") {
     sentence = ["restored the tickets on ", ...order(), " after its dispute"];
     facts = [...reason(), ...(num(m.ticketCount) !== null ? [{ label: "Tickets", value: `${m.ticketCount} valid again` }] : [])];
+  } else if (a === "order.dispute_funds_recovered" || a === "commerce_order.dispute_funds_recovered") {
+    // PAY-004: a lost dispute's money taken back from the society's Stripe balance.
+    sentence = ["took back the lost dispute's money for ", ...anyOrder(), " from the society's Stripe balance"];
+    facts = amount();
   } else if (/^(order|commerce_order)\.dispute_/.test(a)) sentence = [`closed the dispute on `, ...anyOrder(), `: ${a.split(".dispute_")[1].replaceAll("_", " ")}`];
   else if (a === "order.free_cancelled" || a === "merchandise_order.free_cancelled") {
     sentence = ["cancelled the free ", ...anyOrder()];

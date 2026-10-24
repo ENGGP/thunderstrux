@@ -50,8 +50,10 @@ const updateTicketTypeFieldsSchema = z.object({
 });
 
 // Events are always created as drafts; publishing is a separate, checked transition.
+// A payment that can't become tickets is refunded automatically unless the society
+// asks to review it, as commerce orders are and as ticketing platforms do.
 export const createEventSchema = eventFieldsSchema.extend({
-  compensationRefundMode: z.enum(["manual_review", "automatic_full"]).default("manual_review"),
+  compensationRefundMode: z.enum(["manual_review", "automatic_full"]).default("automatic_full"),
   ticketTypes: z.array(createTicketTypeSchema).optional().default([])
 });
 

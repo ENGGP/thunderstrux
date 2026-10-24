@@ -158,7 +158,7 @@ test("a member's free join gives no member price, a paid membership does and sur
   // 2. A free join follows the society; it is not a membership.
   await page.goto(`/societies/${data.organisation.slug}`);
   await page.getByRole("button", { name: "Join society", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: /^Joined$/ })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^You've joined / })).toBeVisible();
   await quotes(false);
 
   // 3. A paid term membership (its Stripe checkout fulfilled, as the commerce webhook would) brings the member price.

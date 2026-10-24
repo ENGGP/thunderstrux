@@ -17,7 +17,7 @@ import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
-import { listPastStaffInvites } from "@/lib/staff/management";
+import { listOrganisationStaff, listPastStaffInvites } from "@/lib/staff/management";
 import { selectMockContext, setMockSession } from "@/tests/helpers/auth";
 import { parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import {
@@ -278,6 +278,9 @@ describe("dashboard read services", () => {
       "revoked@example.com": "revoked",
       "expired@example.com": "expired"
     });
+    // An expired invitation is history only, never also listed as pending.
+    const { invites } = await listOrganisationStaff(organisation.id);
+    expect(invites.map((row) => row.email)).toEqual(["pending@example.com"]);
   });
 
   test("the overview reports setup facts and skips finance reads without orders:read", async () => {

@@ -3,6 +3,7 @@ import { GET as listRoute, POST as createRoute } from "@/app/api/orgs/[orgSlug]/
 import { PATCH as updateRoute } from "@/app/api/orgs/[orgSlug]/memberships/[planId]/route";
 import { POST as publishRoute } from "@/app/api/orgs/[orgSlug]/memberships/[planId]/publish/route";
 import { POST as archiveRoute } from "@/app/api/orgs/[orgSlug]/memberships/[planId]/archive/route";
+import { defaultTerm } from "@/components/memberships/plan-form";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { daysFromTerm, listPlans, publicPlans, readPlan } from "@/lib/memberships/plans";
@@ -48,6 +49,12 @@ async function sell(organisationId: string, plan: { id: string; name: string; st
 }
 
 describe("membership plans", () => {
+  test("a new plan opens on the soonest term that hasn't started, never one that is mostly over", () => {
+    expect(defaultTerm(["2026", "2027", "2028"], "2026-10-25")).toEqual({ preset: "year", year: "2027" });
+    expect(defaultTerm(["2026", "2027", "2028"], "2026-02-10")).toEqual({ preset: "semester2", year: "2026" });
+    expect(defaultTerm(["2026", "2027"], "2026-01-01")).toEqual({ preset: "year", year: "2026" });
+  });
+
   test("a draft's days become a term from the first midnight to the midnight after the last day, in the society's zone, with daylight saving", async () => {
     const { user, organisation } = await society({ timeZone: "Australia/Sydney" });
     signIn(user);

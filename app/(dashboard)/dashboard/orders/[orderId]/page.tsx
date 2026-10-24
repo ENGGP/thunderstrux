@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -22,6 +23,8 @@ import {
   getOrganisationOrderLifecycle,
   parseOrderLifecycleCursor
 } from "@/lib/payments/order-lifecycle-history";
+
+export const metadata: Metadata = { title: "Order" };
 
 function buyerName(user: {
   displayName: string | null;

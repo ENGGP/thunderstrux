@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { EventWorkspaceHeader, SaleBadge } from "@/components/events/event-tabs";
@@ -13,6 +14,8 @@ import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/eve
 import { formatDateTime, formatMoney, formatPrice, shortMonths } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { zoneCity } from "@/lib/zoned-time";
+
+export const metadata: Metadata = { title: "Event summary" };
 
 type OrganiserEventPageProps = {
   params: Promise<{
@@ -80,7 +83,7 @@ export default async function OrganiserEventPage({
       ? [{
           label: "Net sales",
           value: formatMoney(money("net")),
-          note: money("refunded") > 0 ? `${formatMoney(money("gross"))} gross, ${formatMoney(money("refunded"))} refunded, before fees` : "Gross, before fees"
+          note: money("refunded") > 0 ? `${formatMoney(money("gross"))} gross, ${formatMoney(money("refunded"))} refunded, before the Thunderstrux fee` : "No refunds. Before the Thunderstrux fee"
         }]
       : [])
   ];
@@ -99,7 +102,7 @@ export default async function OrganiserEventPage({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-6 2xl:grid-cols-2">
         <Card>
           <h2 className="text-lg font-semibold text-ink">Ticket performance</h2>
           {ticketTypes.length === 0 ? (

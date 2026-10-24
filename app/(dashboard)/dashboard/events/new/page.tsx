@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { CreateEventForm } from "@/components/events/create-event-form";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -5,6 +6,8 @@ import { requireManagementPage } from "@/lib/auth/page-access";
 import { isLocalDate } from "@/lib/events/calendar";
 import { entitlementOnSale } from "@/lib/memberships/offers";
 import { readChargeReadiness, readTimeZone } from "@/lib/organisations/profile";
+
+export const metadata: Metadata = { title: "New event" };
 
 export default async function NewEventPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const { date } = await searchParams;

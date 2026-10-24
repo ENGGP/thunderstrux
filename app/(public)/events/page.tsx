@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { EventCard } from "@/components/events/event-card";
@@ -14,6 +15,8 @@ import { getExploreSocieties, getPublishedEvents } from "@/lib/events/public-eve
 import { formatDate } from "@/lib/format";
 import { logError } from "@/lib/ops/logger";
 import { PaginationError, parsePaginationOptionsOrDefault } from "@/lib/pagination/cursor";
+
+export const metadata: Metadata = { title: "Explore events" };
 
 export const dynamic = "force-dynamic";
 

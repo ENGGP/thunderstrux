@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { formatDay, formatTime, localDay } from "@/components/calendar/layout";
@@ -16,6 +17,8 @@ import { requireManagementPage } from "@/lib/auth/page-access";
 import { isLocalDate } from "@/lib/events/calendar";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { zoneCity } from "@/lib/zoned-time";
+
+export const metadata: Metadata = { title: "History" };
 
 type Params = { category?: string; who?: string; from?: string; to?: string; cursor?: string };
 

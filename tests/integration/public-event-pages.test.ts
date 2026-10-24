@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import PublicEventPage from "@/app/(public)/events/[eventId]/page";
+import PublicEventPage, { generateMetadata as eventMetadata } from "@/app/(public)/events/[eventId]/page";
+import { generateMetadata as societyMetadata } from "@/app/(public)/societies/[orgSlug]/page";
 import { prisma } from "@/lib/db";
 import { getEventPreviewDetail, getPublishedEventDetail } from "@/lib/events/public-events";
 import { setMockSession } from "@/tests/helpers/auth";
@@ -17,6 +18,20 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("public event pages", () => {
+  test("public and link-only events and society pages are titled by name; members-only and missing pages are not", async () => {
+    const owner = await createOrganisationAccount();
+    const open = await createEvent({ organisationId: owner.organisation.id, status: "published" });
+    const linkOnly = await createEvent({ organisationId: owner.organisation.id, status: "published", visibility: "unlisted" });
+    const membersOnly = await createEvent({ organisationId: owner.organisation.id, status: "published", visibility: "members_only" });
+    const title = async (eventId: string) => (await eventMetadata({ params: Promise.resolve({ eventId }) })).title;
+
+    expect(await title(open.id)).toBe(open.title);
+    expect(await title(linkOnly.id)).toBe(linkOnly.title);
+    expect(await title(membersOnly.id)).not.toBe(membersOnly.title);
+    expect(await title("missing")).toBeUndefined();
+    expect((await societyMetadata({ params: Promise.resolve({ orgSlug: owner.organisation.slug }) })).title).toBe(owner.organisation.name);
+  });
+
   test("the proxy no longer guards event pages, and the dashboard stays protected", async () => {
     const { config } = await import("@/proxy");
     expect(config.matcher).not.toContain("/events/:path*");

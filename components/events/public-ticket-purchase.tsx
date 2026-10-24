@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
@@ -76,6 +76,16 @@ export function PublicTicketPurchase({
   );
   const [quantity, setQuantity] = useState(1);
   const [leaving, setLeaving] = useState(false);
+  // The phone bar shows only while the box's own button is still below the screen.
+  const actionRef = useRef<HTMLDivElement>(null);
+  const [actionBelow, setActionBelow] = useState(false);
+  useEffect(() => {
+    const target = actionRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setActionBelow(!entry.isIntersecting && entry.boundingClientRect.top > 0));
+    observer.observe(target);
+    return () => observer.disconnect();
+  });
   const selected = ticketTypes.find((ticketType) => ticketType.id === selectedId && !isUnavailable(ticketType));
   const allSoldOut = ticketTypes.length > 0 && ticketTypes.every(isSoldOut);
   const paymentsUnavailable = ticketTypes.some((ticketType) => ticketType.unavailable === "payments_unavailable");
@@ -131,6 +141,13 @@ export function PublicTicketPurchase({
   }
 
   const validQuantity = Boolean(selected) && quantity >= 1 && quantity <= maxQuantity;
+  const go = (href: string) => {
+    if (!checkoutHref) return;
+    setLeaving(true);
+    router.push(href);
+  };
+  const primaryLabel = viewer === "anonymous" ? "Continue as guest" : free ? "Get free tickets" : "Buy tickets";
+  const primaryHref = viewer === "anonymous" ? `${checkoutHref}&guest=1` : checkoutHref;
   const action =
     viewer === "society" ? (
       <Notice title="Society accounts can't buy tickets">
@@ -302,7 +319,18 @@ export function PublicTicketPurchase({
         </>
       ) : null}
 
-      {allSoldOut || !selected ? null : action}
+      {allSoldOut || !selected ? null : <div className="grid gap-4" ref={actionRef}>{action}</div>}
+      {selected && validQuantity && actionBelow && (viewer === "member" || viewer === "anonymous") ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-float lg:hidden">
+          <p className="grid min-w-0 flex-1">
+            <span className="truncate text-[13px] text-ink-soft">{quantity} × {selected.name}</span>
+            <span className="text-lg font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>
+          </p>
+          <Button disabled={leaving} onClick={() => go(primaryHref)} size="lg" type="button">
+            {primaryLabel}
+          </Button>
+        </div>
+      ) : null}
     </Box>
   );
 }

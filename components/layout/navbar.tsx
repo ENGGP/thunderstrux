@@ -84,7 +84,7 @@ export default function Navbar() {
                 </Link>
                 <Link
                   className={buttonClasses({ variant: "secondary", size: "sm" })}
-                  href="/signup"
+                  href="/signup?for=society"
                 >
                   Create a society
                 </Link>
@@ -115,7 +115,7 @@ export default function Navbar() {
               {user ? null : (
                 <Link
                   className="rounded-control px-3 py-2.5 text-ink hover:bg-surface-subtle"
-                  href="/signup"
+                  href="/signup?for=society"
                 >
                   Create a society
                 </Link>

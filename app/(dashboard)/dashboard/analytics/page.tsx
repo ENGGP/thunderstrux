@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -17,6 +18,8 @@ import { readTimeZone } from "@/lib/organisations/profile";
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { zoneCity } from "@/lib/zoned-time";
 import { EngagementTab, MembershipsTab, MerchandiseTab, TicketsTab } from "./analytics-tabs";
+
+export const metadata: Metadata = { title: "Analytics" };
 
 const tabNames = { tickets: "Tickets", memberships: "Memberships", merchandise: "Merchandise", engagement: "Engagement" } as const;
 type Tab = keyof typeof tabNames;

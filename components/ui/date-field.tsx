@@ -76,7 +76,7 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
               aria-describedby={describedBy}
               aria-invalid={shown ? true : undefined}
               autoComplete="off"
-              className={`h-11 ${control.replace("rounded-control", "rounded-l-control")}`}
+              className={`h-11 min-w-[8.5rem] ${control.replace("rounded-control", "rounded-l-control")}`}
               id={fieldId}
               inputMode="text"
               onBlur={read}

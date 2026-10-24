@@ -9,12 +9,17 @@ import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type SignupResponse = { accepted: boolean };
 
-export function SignupForm({ callbackUrl }: { callbackUrl: string }) {
+export function SignupForm({
+  callbackUrl,
+  initialRole = "member"
+}: {
+  callbackUrl: string;
+  // "Create a society" links preselect the society option.
+  initialRole?: "member" | "organisation";
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [accountRole, setAccountRole] = useState<"member" | "organisation">(
-    "member"
-  );
+  const [accountRole, setAccountRole] = useState(initialRole);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [error, setError] = useState<string | null>(null);

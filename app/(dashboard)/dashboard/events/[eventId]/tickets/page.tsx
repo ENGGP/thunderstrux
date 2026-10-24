@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { EventWorkspaceHeader } from "@/components/events/event-tabs";
@@ -8,6 +9,8 @@ import { requireManagementPage } from "@/lib/auth/page-access";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
 import { PaginationError, parsePaginationOptions } from "@/lib/pagination/cursor";
 import { OrganisationEventTicketsAccessError, getOrganisationEventTickets } from "@/lib/tickets/check-in";
+
+export const metadata: Metadata = { title: "Attendees" };
 
 // The check-in console (T19b): search-first, with a page of tickets that admit below.
 export default async function OrganiserEventTicketsPage({

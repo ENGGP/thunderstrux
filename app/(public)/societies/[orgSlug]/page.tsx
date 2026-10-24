@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
 import { EventCard } from "@/components/events/event-card";
@@ -7,6 +8,10 @@ import { membershipOffers } from "@/lib/memberships/offers";
 import { hasShop } from "@/lib/merchandise/shop";
 import { societyViewer } from "./viewer";
 export const dynamic = "force-dynamic";
+export async function generateMetadata({ params }: { params: Promise<{ orgSlug: string }> }): Promise<Metadata> {
+  const organisation = await publicOrganisation((await params).orgSlug);
+  return organisation ? { title: organisation.name } : {};
+}
 export default async function OrganisationDetailsPage({
   params,
 }: {

@@ -352,7 +352,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     {
       label: "Can take payments",
       ok: Boolean(status?.charges_enabled),
-      text: status?.charges_enabled ? "Buyers can pay for tickets by card. Paid tickets are on sale." : "Not yet. Paid tickets go on sale once Stripe enables card payments.",
+      text: status?.charges_enabled ? "Buyers can pay by card for tickets, memberships and merchandise." : "Not yet. Paid sales start once Stripe enables card payments.",
       action: null
     },
     {

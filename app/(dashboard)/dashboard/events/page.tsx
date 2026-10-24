@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -20,6 +21,8 @@ import {
 import { formatDateTime } from "@/lib/format";
 import { hasOrganisationPermission, type OrganisationStaffRole } from "@/lib/permissions";
 import { zoneCity } from "@/lib/zoned-time";
+
+export const metadata: Metadata = { title: "Events" };
 
 const viewLabels: Record<EventView, string> = {
   upcoming: "Upcoming",

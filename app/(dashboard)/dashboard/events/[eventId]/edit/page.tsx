@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { entitlementOnSale } from "@/lib/memberships/offers";
 import { notFound } from "next/navigation";
 import { CreateEventForm } from "@/components/events/create-event-form";
@@ -13,6 +14,8 @@ import {
   getOrganisationEventForEditing
 } from "@/lib/events/event-lifecycle";
 import { readChargeReadiness } from "@/lib/organisations/profile";
+
+export const metadata: Metadata = { title: "Edit event" };
 
 export default async function EditEventPage({
   params

@@ -413,7 +413,7 @@ export function CreateEventForm({
   const occupancy = initialEvent?.occupancy ?? 0;
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div className={`grid items-start gap-6 ${aside ? "lg:grid-cols-[minmax(0,1fr)_20rem]" : "max-w-3xl"}`}>
       <form aria-label="Event details" className="grid gap-6" noValidate onSubmit={onSubmit}>
         {notice ? (
           <Notice
@@ -517,8 +517,8 @@ export function CreateEventForm({
               return (
                 <fieldset className="grid gap-3 border-t border-line pt-4" key={ticketType.id ?? index}>
                   <legend className="sr-only">Ticket {index + 1}</legend>
-                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem_8rem_8rem] sm:items-start">
-                    <TextInput error={errorFor(errors, "ticketTypes", String(index), "name")} label="Name" onChange={(event) => setTicketType(index, { name: event.target.value })} value={ticketType.name} />
+                  <TextInput error={errorFor(errors, "ticketTypes", String(index), "name")} label="Name" onChange={(event) => setTicketType(index, { name: event.target.value })} value={ticketType.name} />
+                  <div className="grid gap-4 sm:grid-cols-3 sm:items-start">
                     <MoneyInput error={errorFor(errors, "ticketTypes", String(index), "price")} onChange={(price) => setTicketType(index, { price })} value={ticketType.price} />
                     <MoneyInput
                       error={errorFor(errors, "ticketTypes", String(index), "memberPrice")}

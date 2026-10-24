@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { EventWorkspaceHeader, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
@@ -32,6 +33,8 @@ import {
   PaginationError,
   parsePaginationOptionsOrDefault
 } from "@/lib/pagination/cursor";
+
+export const metadata: Metadata = { title: "Orders" };
 
 function filterLabel(status: OrderStatusFilter) {
   return status.charAt(0).toUpperCase() + status.slice(1);

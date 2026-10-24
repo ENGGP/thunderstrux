@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { PublicEventView } from "@/components/events/public-event-view";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { getEventPreviewDetail } from "@/lib/events/public-events";
+
+export const metadata: Metadata = { title: "Event preview" };
 
 // The public event page as buyers will see it, for a draft only staff can open.
 // Buying is off; a published event shows its real public page instead.

@@ -137,7 +137,7 @@ export async function CommerceOrders({
       {pagination.invalid ? <Notice tone="warning">Invalid pagination parameters were ignored. Showing the first page.</Notice> : null}
       {orders.length === 0 ? (
         <EmptyState icon={merchandise ? "bag" : "receipt"} title={`No ${filter === "all" ? "" : `${filterLabels[filter].toLowerCase()} `}${merchandise ? "merchandise" : "membership"} orders`}>
-          {search || params.productId || params.startDate || params.endDate ? "Nothing matches these filters. Clear them to see every order." : "Orders show here once buyers pay or join for free."}
+          {search || params.productId || params.startDate || params.endDate ? "Nothing matches these filters. Clear them to see every order." : merchandise ? "Orders show here once buyers check out." : "Orders show here once members buy a membership or get a free one."}
         </EmptyState>
       ) : (
         <ResponsiveTable

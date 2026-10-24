@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { listFailedBusinessNotifications, NotificationCursorError } from "@/lib/email/notification-outbox";
@@ -5,6 +6,8 @@ import { requireManagementPage } from "@/lib/auth/page-access";
 import { FailedNotifications } from "@/components/settings/failed-notifications";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+
+export const metadata: Metadata = { title: "Email delivery" };
 
 export default async function NotificationsPage({ searchParams }: { searchParams: Promise<{ cursor?: string }> }) {
   const organisation = await requireManagementPage("orders:email_resend", "/dashboard/notifications");

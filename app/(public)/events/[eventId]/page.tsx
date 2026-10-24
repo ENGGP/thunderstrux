@@ -18,12 +18,14 @@ async function readPage(eventId: string) {
   return { session, access: await getEventForViewer(eventId, session?.user.id ?? null) };
 }
 
-// Members-only pages, gated or open, stay out of search engines; the gate's
-// title names only the society. Public pages keep the default title.
+// Members-only pages, gated or open, stay out of search engines and keep a
+// generic title (the gate names only the society). Public and link-only
+// events are titled with the event, as shared links expect.
 export async function generateMetadata({ params }: PublicEventPageProps): Promise<Metadata> {
   const { access } = await readPage((await params).eventId);
   if (access?.kind === "gated") return { title: `Members-only event · ${access.gate.society.name}`, robots: { index: false, follow: false } };
-  return access?.event.membersOnly ? { robots: { index: false, follow: false } } : {};
+  if (!access) return {};
+  return access.event.membersOnly ? { robots: { index: false, follow: false } } : { title: access.event.title };
 }
 
 // Anyone can open a public or link-only event (T15a); a members-only event

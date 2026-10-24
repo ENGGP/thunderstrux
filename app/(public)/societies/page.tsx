@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { SocietyCard } from "@/components/organisations/society-card";
 import { Button, buttonClasses } from "@/components/ui/button";
@@ -8,6 +9,8 @@ import {
   discoverOrganisations,
 } from "@/lib/organisations/discovery";
 import { AssetError } from "@/lib/assets/image";
+
+export const metadata: Metadata = { title: "Discover societies" };
 export const dynamic = "force-dynamic";
 export default async function SocietiesPage({
   searchParams,

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -20,6 +21,8 @@ import { hasOrganisationPermission } from "@/lib/permissions";
 import { zoneCity } from "@/lib/zoned-time";
 import { PersonalOverview } from "./personal-overview";
 import { DoorOverview, SocietyOverview } from "./society-overview";
+
+export const metadata: Metadata = { title: "Overview" };
 
 function OverviewSkeleton({ label }: { label: string }) {
   return (

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { StaffManagement } from "@/components/settings/staff-management";
@@ -5,6 +6,8 @@ import { requireManagementPage } from "@/lib/auth/page-access";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
 import { listHandoverTargets, listOrganisationStaff, listPastStaffInvites } from "@/lib/staff/management";
 import { StaffHandover } from "@/components/settings/staff-handover";
+
+export const metadata: Metadata = { title: "Staff" };
 
 export default async function StaffSettingsPage() {
   const organisation = await requireManagementPage("staff:manage", "/dashboard/settings/staff");

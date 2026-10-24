@@ -57,6 +57,8 @@ export function ContextSelector({
     }
   }
 
+  const currentRole = contexts.organisations.find((organisation) => organisation.id === current)?.staffRole;
+
   return (
     <div className={`grid gap-1.5 text-sm ${tone === "dark" ? "text-white" : "text-ink"}`}>
       <label className={`grid gap-1.5 text-xs font-semibold ${tone === "dark" ? "text-white/75" : "text-ink-soft"}`}>
@@ -75,11 +77,13 @@ export function ContextSelector({
           </option>
           {contexts.organisations.map((organisation) => (
             <option key={organisation.id} value={organisation.id}>
-              {organisation.name} · {roleLabels[organisation.staffRole]}
+              {organisation.name}
             </option>
           ))}
         </select>
       </label>
+      {/* The role sits outside the select so the society name isn't cut off in the sidebar. */}
+      {currentRole ? <p className={`text-xs ${tone === "dark" ? "text-white/75" : "text-ink-soft"}`}>Your role: {roleLabels[currentRole]}</p> : null}
       {error ? (
         <p role="alert">
           {error}{" "}

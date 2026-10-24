@@ -25,9 +25,9 @@ export function getStripe() {
   }
 
   return new Stripe(secretKey, {
-    // Pinned to the version real Stripe acceptance verified. Newer SDKs type only
-    // their own latest version; moving needs a fresh test-mode campaign.
-    apiVersion: "2026-03-25.dahlia" as Stripe.StripeConfig["apiVersion"]
+    // The version this SDK (stripe 23) is typed for (PAY-006). Moving it needs a
+    // fresh test-mode campaign and webhook endpoints created on the same version.
+    apiVersion: "2026-09-30.endive"
   });
 }
 

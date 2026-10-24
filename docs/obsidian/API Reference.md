@@ -25,6 +25,7 @@ Custom cookie-authenticated mutation routes (`POST`, `PATCH`, `DELETE`) use a ce
 Rules:
 
 - If `Origin` exists, it must match `NEXT_PUBLIC_APP_URL` or `TRUSTED_APP_ORIGINS`.
+- Redirects back to the browser follow that trusted origin: Stripe Checkout success and cancel URLs (tickets, memberships, merchandise) and Connect onboarding return and refresh URLs. With no trusted `Origin` they use `NEXT_PUBLIC_APP_URL`, and a raw `Host` header is never used. Emails and worker links always use `NEXT_PUBLIC_APP_URL`.
 - If `Origin` is missing and `Referer` exists, the `Referer` origin must be trusted.
 - If both are missing, the request is rejected.
 - Authenticated cookie mutations must also provide the session-bound CSRF token from `GET /api/security/csrf`.

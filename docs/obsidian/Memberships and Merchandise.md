@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[UI Architecture Rules]]", "[[Society Profiles and Assets]]"]
 sources: [lib/merchandise/after-sale.ts, lib/merchandise/pickups.ts, lib/merchandise/sale.ts, lib/merchandise/shop.ts, lib/merchandise/basket.ts, lib/merchandise/catalogue.ts, lib/memberships/plans.ts, lib/events/public-events.ts, lib/commerce/orders.ts, lib/commerce/families.ts, prisma/migrations/20261030010000_memberships/migration.sql]

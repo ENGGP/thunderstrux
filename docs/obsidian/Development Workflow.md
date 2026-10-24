@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Seeding and Data]]"]
 sources: [package.json, docker-compose.dev.yml, scripts/run-e2e.mjs]

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
@@ -10,7 +9,7 @@ import {
   isLiveStripeKey,
   StripeConfigurationError
 } from "@/lib/stripe";
-import { persistConnectedAccountStatus } from "@/lib/stripe/connect";
+import { refreshConnectedAccount } from "@/lib/stripe/connect";
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -84,10 +83,8 @@ export async function POST(request: Request) {
 
   if (event.type === "account.updated") {
     const accountId = (event.data.object as Stripe.Account).id;
-    const known = await prisma.organisation.count({ where: { stripeAccountId: accountId } });
-    // Stripe doesn't promise event order, so the account is re-read rather than
-    // taken from the event; if Stripe can't answer, the 500 makes it retry.
-    const update = known === 0 ? { count: 0 } : await persistConnectedAccountStatus(await stripe.accounts.retrieve(accountId));
+    // If Stripe can't answer, the 500 makes it retry.
+    const update = await refreshConnectedAccount(accountId);
 
     if (update.count === 0) {
       logError("stripe_connect.webhook.ignored", {

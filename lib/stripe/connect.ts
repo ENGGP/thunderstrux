@@ -371,6 +371,14 @@ export async function getAccountStatus(accountId: string) {
   return status;
 }
 
+// account.updated: Stripe doesn't promise event order, so a society's account is
+// re-read rather than taken from the event; an account no society uses is ignored.
+export async function refreshConnectedAccount(accountId: string) {
+  const known = await prisma.organisation.count({ where: { stripeAccountId: accountId } });
+  if (known === 0) return { count: 0 };
+  return persistConnectedAccountStatus(await getStripe().accounts.retrieve(accountId));
+}
+
 export async function persistConnectedAccountStatus(account: Stripe.Account) {
   const status = statusFromAccount(account);
 

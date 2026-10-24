@@ -81,20 +81,20 @@ for (const mismatch of ['amount', 'currency', 'metadata']) {
   });
 }
 
-test('Connect verifies its own secret and updates only a matching account', async ({request, data}) => {
+// A known account is re-read from Stripe, which this synthetic key can't reach;
+// connect-safety.test.ts covers that update with Stripe mocked.
+test('Connect verifies its own secret and ignores an account it does not know', async ({request, data}) => {
   const accountId = `acct_${data.organisation.id}`;
   await prisma.organisation.update({where: {id: data.organisation.id}, data: {stripeAccountId: accountId}});
   const account = {id: accountId, object: 'account', details_submitted: true, charges_enabled: true, payouts_enabled: true, requirements: {currently_due: [], eventually_due: []}};
   const body = payload(account, 'account.updated');
   const send = (text: string, signature: string) => request.post('/api/stripe/connect/webhook', {data: text, headers: {'stripe-signature': signature}});
   for (const signature of ['invalid', stripe.webhooks.generateTestHeaderString({payload: body, secret})]) expect((await send(body, signature)).status()).toBe(400);
-  expect((await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}})).stripeChargesEnabled).toBe(false);
-  expect((await send(body, stripe.webhooks.generateTestHeaderString({payload: body, secret: 'whsec_e2e_connect'}))).status()).toBe(200);
-  const ready = await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}});
-  expect(ready.stripeChargesEnabled).toBe(true);
+  const before = await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}});
+  expect(before.stripeChargesEnabled).toBe(false);
   const unknown = payload({...account, id: 'acct_unknown'}, 'account.updated');
   expect((await send(unknown, stripe.webhooks.generateTestHeaderString({payload: unknown, secret: 'whsec_e2e_connect'}))).status()).toBe(200);
-  expect(await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}})).toEqual(ready);
+  expect(await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}})).toEqual(before);
 });
 
 test('signed commerce Sessions route by family only, never to tickets, and a payment the family cannot honour is held for review', async ({request, data}) => {

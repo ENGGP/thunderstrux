@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
+import { priceAmountSchema } from "@/lib/validators/price";
 import { toZonedInput, zonedCandidates } from "@/lib/zoned-time";
 
 // Membership plans (T22, database spec 8.1): a fixed term [startsAt, endsAt)
@@ -29,7 +30,7 @@ export const planFieldsSchema = z
   .object({
     name: z.string().trim().min(1, "Give the plan a name.").max(120),
     description: z.string().trim().max(2000),
-    priceAmount: z.number().int().min(0).max(99_999_999),
+    priceAmount: priceAmountSchema,
     firstDay: day,
     lastDay: day,
     entitlements: z.array(z.enum(membershipEntitlements)).max(membershipEntitlements.length)

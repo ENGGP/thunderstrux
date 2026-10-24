@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
@@ -82,17 +83,20 @@ export async function POST(request: Request) {
   }
 
   if (event.type === "account.updated") {
-    const account = event.data.object as Stripe.Account;
-    const update = await persistConnectedAccountStatus(account);
+    const accountId = (event.data.object as Stripe.Account).id;
+    const known = await prisma.organisation.count({ where: { stripeAccountId: accountId } });
+    // Stripe doesn't promise event order, so the account is re-read rather than
+    // taken from the event; if Stripe can't answer, the 500 makes it retry.
+    const update = known === 0 ? { count: 0 } : await persistConnectedAccountStatus(await stripe.accounts.retrieve(accountId));
 
     if (update.count === 0) {
       logError("stripe_connect.webhook.ignored", {
         reason: "stripe_account_not_found",
-        stripeAccountId: account.id
+        stripeAccountId: accountId
       });
     } else {
       logInfo("stripe_connect.webhook.received", {
-        stripeAccountId: account.id,
+        stripeAccountId: accountId,
         updatedOrganisations: update.count
       });
     }

@@ -81,7 +81,9 @@ Current implementation details:
 - Checkout is restricted to card payments so `checkout.session.completed` can require `payment_status = paid`
 - Success URL includes `{CHECKOUT_SESSION_ID}` so non-production can run the dev-only reconciliation fallback when local webhook forwarding is missing
 - Platform fee is calculated by `calculatePlatformFee(totalAmount)`
-- Reservation window is 30 minutes because Stripe Checkout `expires_at` must be at least 30 minutes after session creation
+- Reservation window is 30 minutes because Stripe Checkout `expires_at` must be at least 30 minutes after session creation. Since the Stripe audit (2026-10-24) `checkoutSessionExpiresAt` sets it just before the call, 30 minutes plus a 60-second margin for the trip to Stripe, and the hold ends at the same time for tickets and for memberships and merchandise. The margin stays under the 2-minute recovery delay, so a recovery replay of a request Stripe never saw still carries an expiry Stripe refuses
+- Sessions carry the buyer's email (`customer_email`) and an `integration_identifier` per flow (`thunderstrux-tickets-…`, `thunderstrux-commerce-…`) for comparing flows in Stripe's Dashboard
+- Paid prices start at $0.50, Stripe's smallest AUD card payment: ticket and member prices, membership plans and merchandise options accept 0 (free) or 50 cents and up (`priceAmountSchema`, `isBelowStripeMinimum`). A price between 1 and 49 cents could be listed but never paid
 - `TicketType.quantity` remains remaining inventory; reservations are subtracted from it during checkout availability checks
 
 ## Ticket Reservations
@@ -194,13 +196,13 @@ lib/stripe/connect.ts
 
 Responsibilities:
 
-- `startOrganisationStripeOnboarding(orgId, actorUserId)`: composes account creation/reuse with onboarding-link creation. Creating an account writes the audit entry `stripe_connect.account_created` with the actor and account id (T17).
+- `startOrganisationStripeOnboarding(orgId, actorUserId)`: composes account creation/reuse with onboarding-link creation. Creating an account writes the audit entry `stripe_connect.account_created` with the actor and account id (T17). The Express account requests `card_payments` (`on_behalf_of` makes the society the settlement merchant, which needs it) and `transfers` (destination charges), with the idempotency key `connect-account:<orgId>:<earlier accounts>`, so a double click returns the same account and a reconnect after disconnect gets a new one.
 - `continueOrganisationStripeOnboarding(orgId)`: validates a connected account and creates a new onboarding link.
 - `getOrganisationStripeConnectStatus(orgId)`: resolves the organisation, returns canonical local states, refreshes connected accounts, and persists readiness. A connected status also carries `openObligations`, the count of orders that still depend on the account.
 - `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`. If Stripe rejects account creation because platform setup is incomplete, stores `PLATFORM_NOT_READY` and throws `StripeConnectPlatformNotReadyError`.
 - `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid `/dashboard/settings` return and refresh URLs.
 - `getAccountStatus(accountId)`: retrieves the live Stripe account, maps it to a lifecycle state, and persists local readiness flags.
-- `disconnectAccount(orgId, { actor, mfaCode })` (T17): when staff MFA is not `off`, verifies a fresh authenticator code first. Under the Organisation row lock it refuses (`StripeDisconnectBlockedError`, 409) while any Stripe order of this society for that account (or with no seller snapshot) is pending, under compensation review, or has a compensation refund that is not `refunded` or `recovered`. Otherwise it clears the local Stripe fields and writes `stripe_connect.disconnected` with the previous account id. With no account it only resets a blocked `PLATFORM_NOT_READY` state. It never deletes the Stripe account, and past orders keep the account on their snapshot.
+- `disconnectAccount(orgId, { actor, mfaCode })` (T17): when staff MFA is not `off`, verifies a fresh authenticator code first. Under the Organisation row lock it refuses (`StripeDisconnectBlockedError`, 409) while any Stripe order of this society for that account (or with no seller snapshot) is pending, under compensation review, has a compensation refund that is not `refunded` or `recovered`, is being refunded (`refundStatus` processing or a pending or uncertain refund request) or has an open dispute. Membership and merchandise orders for the account count the same way (since the Stripe audit, 2026-10-24). Otherwise it clears the local Stripe fields and writes `stripe_connect.disconnected` with the previous account id. With no account it only resets a blocked `PLATFORM_NOT_READY` state. It never deletes the Stripe account, and past orders keep the account on their snapshot.
 - `notConnectedStatus()`: returns the canonical no-account status payload.
 - `platformNotReadyStatus()`: returns the canonical platform setup block payload.
 - `markAccountStatusError(...)`: stores `ERROR` when status refresh cannot retrieve the account, but keeps the last known charges, payouts and details flags, so sales follow them until a refresh succeeds (T17). The response says Thunderstrux couldn't reach Stripe; the provider's message stays in the log.
@@ -334,7 +336,7 @@ Handled event:
 Responsibility:
 
 - verify Stripe signature
-- persist connected account status flags back to the organisation
+- for an account a society uses, re-read it with `accounts.retrieve` and persist its status flags. Stripe doesn't promise event order, so a late event can't restore an older state; if Stripe can't answer, the error makes Stripe retry. An account no society uses is ignored without a Stripe call.
 
 ## Payment Webhook
 

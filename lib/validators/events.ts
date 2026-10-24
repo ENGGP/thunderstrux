@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { priceAmountSchema } from "@/lib/validators/price";
 
 const eventFieldsSchema = z
   .object({
@@ -26,17 +27,16 @@ const eventFieldsSchema = z
   });
 
 // What a member with the member_prices right pays (T24b): optional, never above the price.
-// Prices stop at $999,999.99, Stripe's largest charge, and stock at a million,
-// so totals stay inside a 32-bit integer (T39).
-const maxPrice = 99_999_999;
+// Prices follow priceAmountSchema (free, or $0.50 to $999,999.99) and stock stops
+// at a million, so totals stay inside a 32-bit integer (T39).
 const maxQuantity = 1_000_000;
-const memberPrice = z.number().int().min(0).max(maxPrice).nullable().optional();
+const memberPrice = priceAmountSchema.nullable().optional();
 const withinPrice = (ticketType: { price: number; memberPrice?: number | null }) => ticketType.memberPrice == null || ticketType.memberPrice <= ticketType.price;
 const withinPriceError = { message: "The member price can't be more than the price", path: ["memberPrice"] };
 
 const createTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  price: z.number().int().min(0).max(maxPrice),
+  price: priceAmountSchema,
   memberPrice,
   quantity: z.number().int().min(1).max(maxQuantity)
 });
@@ -44,7 +44,7 @@ export const createTicketTypeSchema = createTicketTypeFieldsSchema.refine(within
 
 const updateTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  price: z.number().int().min(0).max(maxPrice),
+  price: priceAmountSchema,
   memberPrice,
   quantity: z.number().int().min(0).max(maxQuantity)
 });

@@ -12,7 +12,7 @@ The commerce families a society sells besides tickets. Orders, lines, history, c
 
 ## Membership plans (T22)
 
-A plan (`MembershipProduct`) is one fixed term a society sells: name, description, an integer AUD price (0 for free), a half-open term `[startsAt, endsAt)` and the rights it unlocks, from a whitelist (`member_prices`, `members_only_events`) with an `entitlementVersion`. It is a one-off purchase, never a subscription, and never renews.
+A plan (`MembershipProduct`) is one fixed term a society sells: name, description, an integer AUD price (0 for free, otherwise $0.50 or more, Stripe's smallest card payment; the same rule applies to merchandise options), a half-open term `[startsAt, endsAt)` and the rights it unlocks, from a whitelist (`member_prices`, `members_only_events`) with an `entitlementVersion`. It is a one-off purchase, never a subscription, and never renews.
 
 - **Dates.** Staff enter a first and last day. The term runs from midnight starting the first day to midnight after the last day, in the society's time zone (`termFromDays`; `daysFromTerm` reverses it), so daylight saving is handled by the zone, not the browser. Presets fill both days: Semester 1 is 1 January to 30 June, Semester 2 is 1 July to 31 December, Full year is the calendar year; every date stays editable. A day with no midnight in the zone is a field error.
 - **States.** Draft, published, archived (database), shown as Draft, Published, Ended (published but past its last day) and Archived. Only published plans that have not ended are on sale (`publicPlans`, for T24a). Archive is one way: the plan stops selling and cannot be republished; holders keep their terms. Plans are never deleted.

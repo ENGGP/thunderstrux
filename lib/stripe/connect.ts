@@ -69,8 +69,10 @@ export class StripeDisconnectBlockedError extends Error {
   }
 }
 
-// Orders that still depend on the connected account: being paid, or waiting for
-// compensation review or a refund. Pre-T10 orders have no seller snapshot.
+// Orders that still depend on the connected account: being paid, under review,
+// being refunded or disputed. Pre-T10 orders have no seller snapshot.
+const openRefundRequest = { some: { status: { in: ["pending", "uncertain"] } } } satisfies Prisma.RefundRequestListRelationFilter;
+
 function openObligationsWhere(organisationId: string, accountId: string): Prisma.OrderWhereInput {
   return {
     event: { is: { organisationId } },
@@ -81,11 +83,39 @@ function openObligationsWhere(organisationId: string, accountId: string): Prisma
         OR: [
           { status: "pending" },
           { requiresCompensationReview: true },
-          { compensationRefundJob: { is: { state: { in: ["review_required", "auto_queued", "auto_processing", "refund_pending", "refund_failed"] } } } }
+          { compensationRefundJob: { is: { state: { in: ["review_required", "auto_queued", "auto_processing", "refund_pending", "refund_failed"] } } } },
+          { refundStatus: "processing" },
+          { disputeStatus: "open" },
+          { refundRequests: openRefundRequest }
         ]
       }
     ]
   };
+}
+
+// The same for membership and merchandise orders (T21), which refund through RefundRequest.
+function openCommerceObligationsWhere(organisationId: string, accountId: string): Prisma.CommerceOrderWhereInput {
+  return {
+    organisationId,
+    paymentKind: "stripe",
+    AND: [
+      { OR: [{ sellerStripeAccountId: accountId }, { sellerStripeAccountId: null }] },
+      {
+        OR: [
+          { status: "pending" },
+          { requiresCompensationReview: true },
+          { refundStatus: "processing" },
+          { disputeStatus: "open" },
+          { refundRequests: openRefundRequest }
+        ]
+      }
+    ]
+  };
+}
+
+async function countOpenObligations(client: Pick<Prisma.TransactionClient, "order" | "commerceOrder">, organisationId: string, accountId: string) {
+  const tickets = await client.order.count({ where: openObligationsWhere(organisationId, accountId) });
+  return tickets + (await client.commerceOrder.count({ where: openCommerceObligationsWhere(organisationId, accountId) }));
 }
 
 export class OrganisationStripeConnectValidationError extends Error {
@@ -221,12 +251,23 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
   }
 
   const stripe = getStripe();
+  // One key per connection, so a double click returns the same account instead of
+  // leaving an orphan; a society that disconnected and reconnects gets a new one.
+  const earlierAccounts = await prisma.auditLog.count({
+    where: { organisationId: organisation.id, action: "stripe_connect.account_created" }
+  });
   let account: Stripe.Account;
 
   try {
-    account = await stripe.accounts.create({
-      type: "express"
-    });
+    account = await stripe.accounts.create(
+      {
+        type: "express",
+        // on_behalf_of makes the society the settlement merchant, which needs card_payments;
+        // destination charges need transfers.
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } }
+      },
+      { idempotencyKey: `connect-account:${organisation.id}:${earlierAccounts}` }
+    );
   } catch (error) {
     if (isStripeConnectPlatformNotReadyError(error)) {
       await prisma.organisation.update({
@@ -367,7 +408,7 @@ export async function disconnectAccount(
 
     // No account (for example PLATFORM_NOT_READY): only the local state is reset.
     if (organisation.stripeAccountId) {
-      const open = await tx.order.count({ where: openObligationsWhere(organisation.id, organisation.stripeAccountId) });
+      const open = await countOpenObligations(tx, organisation.id, organisation.stripeAccountId);
       if (open > 0) throw new StripeDisconnectBlockedError(open);
     }
 
@@ -502,7 +543,7 @@ export async function getOrganisationStripeConnectStatus(orgId: string) {
     return notConnectedStatus();
   }
 
-  const openObligations = await prisma.order.count({ where: openObligationsWhere(orgId, organisation.stripeAccountId) });
+  const openObligations = await countOpenObligations(prisma, orgId, organisation.stripeAccountId);
 
   try {
     return { ...(await getAccountStatus(organisation.stripeAccountId)), openObligations };

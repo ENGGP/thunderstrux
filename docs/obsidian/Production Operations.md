@@ -145,7 +145,7 @@ It removes every container, volume, network, image and folder it made.
    - Back up `MFA_ENCRYPTION_KEY`, `NOTIFICATION_ENCRYPTION_KEY` and `AUTH_SECRET` separately; see the Recovery runbook.
    - The alert webhook goes to the chosen receiver (OPS-002).
 7. **Deploy:** take `release.json` from the release workflow's artifact for the chosen `main` commit (T43c), check it with `gh attestation verify`, then run the first deploy with `--smoke-url`. The packages are public, so the Droplet needs no registry login.
-8. **Stripe and Resend:** point the Stripe webhooks (including `refund.*` and `charge.dispute.*`) and the Resend domain at the new URL.
+8. **Stripe and Resend:** create the two Stripe webhook endpoints at the new URL as described in Stripe webhook endpoints and keys below, and point the Resend domain at it.
 
 **Rebuilding a lost Droplet.** No data lives on it, so:
 1. Create a new one from `cloud-init.yml`.
@@ -187,6 +187,23 @@ every minute: node scripts/process-checkout-attempts.mjs   # ticket and commerce
 every minute: node scripts/process-notifications.mjs   # also fans out event changes and queues membership reminders (T30), and deletes tokens 30 days past expiry, 500 a run (T39)
 every minute: node scripts/process-operations-monitor.mjs   # queue backlog, oldest age, stuck items and stale jobs (T42)
 ```
+
+## Stripe webhook endpoints and keys
+
+Create both endpoints in Stripe Workbench (live mode for production, test mode for staging), as **snapshot** endpoints with API version **`2026-03-25.dahlia`**, the version the app pins (`lib/stripe/index.ts`). An endpoint left on the account's default version sends events shaped for another version. An endpoint's version can't be changed later: moving the app to a new version means creating new endpoints and retiring the old ones.
+
+| Endpoint | Listens to | Events | Secret |
+| --- | --- | --- | --- |
+| `https://<app>/api/payments/webhook` | Your account | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` | `STRIPE_WEBHOOK_SECRET` |
+| `https://<app>/api/stripe/connect/webhook` | Connected accounts | `account.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
+
+Subscribe only these events. After creating them, check the endpoint list shows the pinned version, then send a test event to each and confirm HTTP 200 in Workbench's Event deliveries.
+
+**Key.** Use a restricted key (`rk_live_…`) rather than the secret key, with only what the app calls: Checkout Sessions (write: create, retrieve, list, expire), PaymentIntents and Charges (read), Refunds (write), Disputes (read), and Connect accounts, account links and login links (write). Create it in test mode first and run the staging campaign with it: a `403` in Workbench's request logs names a missing permission. Keep it in the `stripe_secret_key` secret file; roll it when someone with access leaves.
+
+**Optional.** The proxy may also accept webhook requests only from [Stripe's published IP addresses](https://docs.stripe.com/ips); signature checks stay the real protection.
+
+**Disputes.** On destination charges the platform answers every dispute in Stripe's Dashboard, before the evidence due date that `purchase_dispute_opened` reports. The dispute amount and Stripe's dispute fee come out of the platform's balance (see PAY-004 in [[Non-Blocking Issue Register]]).
 
 ## Workers, schedules and alerts
 

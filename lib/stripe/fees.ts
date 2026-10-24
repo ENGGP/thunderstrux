@@ -19,3 +19,12 @@ export function calculatePlatformFee(totalAmount: number, items = 1) {
 
   return Math.min(Math.round(totalAmount * PLATFORM_FEE_RATE) + PLATFORM_FEE_PER_ITEM * items, totalAmount);
 }
+
+// Stripe's smallest AUD card payment. A paid price between 1 and 49 cents could be
+// listed but never paid, because Stripe refuses the Checkout Session.
+export const minPaidPrice = 50;
+export const paidPriceMinimum = "Paid prices start at $0.50, Stripe's smallest card payment.";
+
+export function isBelowStripeMinimum(amount: number) {
+  return amount > 0 && amount < minPaidPrice;
+}

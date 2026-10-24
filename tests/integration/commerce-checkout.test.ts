@@ -92,10 +92,13 @@ describe("commerce checkout", () => {
 
     const order = await prisma.commerceOrder.findFirstOrThrow({ where: { userId: buyer.id }, include: { lines: true, checkoutAttempt: true } });
     expect(order).toMatchObject({ kind: "merchandise", status: "pending", paymentKind: "stripe", totalAmount: 3000, feeAmount: 202, feePolicyVersion: "platform_fee_3_75_percent_89c_v2", sellerStripeAccountId: society.organisation.stripeAccountId });
-    expect(order.expiresAt).toBeInstanceOf(Date);
     expect(order.checkoutAttempt).toMatchObject({ family: "merchandise", state: "provider_attached", stripeSessionId: order.stripeSessionId });
     const [request, options] = stripe.create.mock.calls[0];
+    // Stripe's Session and the hold end together, at least 30 minutes after the call.
+    expect(order.expiresAt?.getTime()).toBe(request.expires_at * 1000);
+    expect(request.expires_at - Date.now() / 1000).toBeGreaterThan(30 * 60);
     expect(request).toMatchObject({
+      integration_identifier: "thunderstrux-commerce-wpdlxneg",
       metadata: { family: "merchandise", commerceOrderId: order.id, organisationId: society.organisation.id },
       payment_intent_data: { application_fee_amount: 202, transfer_data: { destination: society.organisation.stripeAccountId }, metadata: { family: "merchandise" } },
       line_items: [{ quantity: 2, price_data: { unit_amount: 1500, product_data: { name: "Hoodie (M)" } } }]

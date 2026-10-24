@@ -77,7 +77,7 @@ describe("merchandise catalogue", () => {
 
     const duplicate = await create(organisation.slug, { ...hoodie([]), variants: [option("Navy", "L"), option("navy", "l")] });
     expect(duplicate).toMatchObject({ status: 400, body: { error: { details: [{ path: ["variants", "1", "size"], message: "This option is already in the list." }] } } });
-    for (const bad of [option("Navy", "S", { sku: "HOOD S!" }), option("Navy", "S", { remaining: -1 }), option("Navy", "S", { priceAmount: 12.5 })]) {
+    for (const bad of [option("Navy", "S", { sku: "HOOD S!" }), option("Navy", "S", { remaining: -1 }), option("Navy", "S", { priceAmount: 12.5 }), option("Navy", "S", { priceAmount: 49 })]) {
       expect((await create(organisation.slug, { ...hoodie([]), variants: [bad] })).status).toBe(400);
     }
     expect((await create(organisation.slug, { ...hoodie([]), name: " " })).status).toBe(400);

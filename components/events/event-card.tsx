@@ -9,6 +9,9 @@ type EventCardProps = {
   location: string;
   timeZone: string;
   heroAssetId?: string | null;
+  // Set when another card in the same list has an image, so every card gets a
+  // 16:9 area and the grid stays even.
+  media?: boolean;
   // Omitted on a society's own page, where the host is already the page subject.
   society?: { name: string; slug: string };
 };
@@ -22,6 +25,7 @@ export function EventCard({
   location,
   timeZone,
   heroAssetId,
+  media = false,
   society
 }: EventCardProps) {
   return (
@@ -29,6 +33,8 @@ export function EventCard({
       {heroAssetId ? (
         // Decorative: the title link names the event.
         <img alt="" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none object-cover" src={`/api/public/assets/${heroAssetId}`} />
+      ) : media ? (
+        <div aria-hidden="true" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none bg-brand-tint bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)]" />
       ) : null}
       <DateRail date={startTime} timeZone={timeZone} />
       <div className="grid min-w-0 flex-1 content-start gap-1">

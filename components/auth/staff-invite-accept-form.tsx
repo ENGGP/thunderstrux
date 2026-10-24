@@ -33,7 +33,7 @@ export function StaffInviteAcceptForm() {
     </div>
     {error && <Notice role="alert" tone="danger">{error}</Notice>}
     {status ? <Notice action={<Link className="text-sm font-semibold text-brand underline underline-offset-4" href="/dashboard">Open dashboard</Link>} role="status" tone="success">{status}</Notice> : <>
-      {!token && <Notice>Open the link from your invitation email. After a full reload, reopen that link.</Notice>}
+      {!token && <Notice>Open the link from your invitation email to accept it.</Notice>}
       <div><Button disabled={!token || busy} size="lg" type="button" onClick={accept}>
         {busy ? "Accepting..." : "Accept staff invitation"}
       </Button></div>

@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/format";
 
 // The society's cover, logo, name, the viewer's Joined and membership badges,
 // and the section tabs, shared by its Overview, Memberships and Merchandise pages.
+// Only Overview shows the cover, so a tab's own content starts near the top.
 // A tab shows only when the society has published content of that kind.
 export function SocietyHeader({
   organisation,
@@ -22,15 +23,17 @@ export function SocietyHeader({
   memberUntil: Date | null;
 }) {
   const base = `/societies/${organisation.slug}`;
+  const cover = current === "overview";
   return (
     <>
       <header>
-        {organisation.coverAssetId ? (
-          <img alt="" className="aspect-video w-full rounded-b-feature object-cover md:aspect-[3/1]" src={`/api/public/assets/${organisation.coverAssetId}`} />
+        {!cover ? null : organisation.coverAssetId ? (
+          <img alt="" className="mt-6 aspect-video w-full rounded-feature object-cover md:aspect-[3/1]" src={`/api/public/assets/${organisation.coverAssetId}`} />
         ) : (
-          <div aria-hidden="true" className="h-32 rounded-b-feature bg-brand-tint md:h-48" />
+          // A quiet branded pattern, not an empty box that reads as a broken image.
+          <div aria-hidden="true" className="mt-6 h-32 rounded-feature bg-brand-tint bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)] md:h-48" />
         )}
-        <div className="-mt-9 flex flex-col items-start gap-3 px-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 md:px-6">
+        <div className={`flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 ${cover ? "-mt-9 px-2 md:px-6" : "mt-8"}`}>
           {organisation.logoAssetId ? (
             <img
               alt={`${organisation.name} logo`}
@@ -44,8 +47,7 @@ export function SocietyHeader({
               {organisation.name.trim().charAt(0).toUpperCase()}
             </div>
           )}
-          <div className="min-w-0 flex-1 sm:pt-10">
-            <p className="text-sm text-ink-muted">Society</p>
+          <div className={`min-w-0 flex-1 ${cover ? "sm:pt-10" : ""}`}>
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{organisation.name}</h1>
             {joined || memberUntil ? (
               <div className="mt-2.5 flex flex-wrap gap-2">
@@ -62,9 +64,6 @@ export function SocietyHeader({
       <nav aria-label="Society sections" className={`mt-8 ${tabBarClasses}`}>
         <Link aria-current={current === "overview" ? "page" : undefined} className={tabClasses(current === "overview")} href={base}>
           Overview
-        </Link>
-        <Link className={tabClasses(false)} href={`${base}#events`}>
-          Events
         </Link>
         {hasMemberships || current === "memberships" ? (
           <Link aria-current={current === "memberships" ? "page" : undefined} className={tabClasses(current === "memberships")} href={`${base}/memberships`}>

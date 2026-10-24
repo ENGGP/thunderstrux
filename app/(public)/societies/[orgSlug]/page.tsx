@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
 import { EventCard } from "@/components/events/event-card";
 import { SocietyHeader } from "@/components/organisations/society-header";
-import { SocietyJoin } from "@/components/organisations/society-join";
+import { SocietyJoinCard } from "@/components/organisations/society-join-card";
 import { membershipOffers } from "@/lib/memberships/offers";
 import { hasShop } from "@/lib/merchandise/shop";
 import { societyViewer } from "./viewer";
@@ -37,8 +37,7 @@ export default async function OrganisationDetailsPage({
           <section className="grid content-start gap-5" id="overview">
             <h2 className="text-2xl font-semibold text-ink">About this society</h2>
             <p className="max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
-              {organisation.description ||
-                "This society is getting its profile ready."}
+              {organisation.description || "This society hasn't added a description yet."}
             </p>
             {organisation.refundPolicy && (
               <div>
@@ -58,23 +57,7 @@ export default async function OrganisationDetailsPage({
             )}
           </section>
 
-          <aside className="grid content-start gap-4 rounded-card border border-line bg-surface p-5">
-            <SocietyJoin slug={organisation.slug} state={joinState} />
-            {organisation.supportEmail && (
-              <p className="text-sm text-ink-soft">
-                Contact{" "}
-                <a
-                  className="text-brand underline [overflow-wrap:anywhere]"
-                  href={`mailto:${organisation.supportEmail}`}
-                >
-                  {organisation.supportEmail}
-                </a>
-              </p>
-            )}
-            <p className="text-sm text-ink-muted">
-              Times are shown in {organisation.timeZone}.
-            </p>
-          </aside>
+          <SocietyJoinCard joinState={joinState} organisation={organisation} />
         </div>
 
         <section className="mt-12 grid gap-5" id="events">
@@ -90,6 +73,7 @@ export default async function OrganisationDetailsPage({
                   id={event.id}
                   key={event.id}
                   location={event.location}
+                  media={organisation.events.some((item) => item.heroAssetId)}
                   heroAssetId={event.heroAssetId}
                   startTime={event.startTime}
                   timeZone={organisation.timeZone}

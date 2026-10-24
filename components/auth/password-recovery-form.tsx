@@ -36,7 +36,7 @@ export function PasswordRecoveryForm({ mode, callbackUrl }: { mode: "request" | 
         {!token && <Notice>Open your reset email link, or <Link className="font-semibold text-brand underline underline-offset-4" href="/forgot-password">request a new link</Link>.</Notice>}
         <TextInput label="New password" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} />
         <TextInput label="Confirm new password" type="password" autoComplete="new-password" minLength={8} required value={confirmation} onChange={event => setConfirmation(event.target.value)} />
-        <p className="text-sm text-ink-muted">Use at least 8 characters and no more than 72 UTF-8 bytes. Your enrolled authenticator remains enabled.</p>
+        <p className="text-sm text-ink-muted">At least 8 characters.</p>
       </>}
       <Button type="submit" disabled={busy || (mode === "reset" && !token)}>{busy ? "Submitting..." : mode === "request" ? "Send password reset email" : "Reset password"}</Button>
     </form>}

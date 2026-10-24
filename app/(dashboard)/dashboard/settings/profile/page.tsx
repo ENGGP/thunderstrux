@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import { SocietyProfile } from "@/components/settings/society-profile";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { readChargeReadiness, readProfile } from "@/lib/organisations/profile";
@@ -41,6 +42,7 @@ export default async function SocietyProfilePage() {
       orgName={organisation.name}
       staffRole={organisation.staffRole}
     >
+      <PageHeader description={`Save each step and come back whenever you need. Your public address stays /societies/${profile.slug}.`} title="Society profile" />
       <div className="max-w-3xl">
         <SocietyProfile
           initialProfile={{

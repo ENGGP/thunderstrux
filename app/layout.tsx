@@ -54,7 +54,8 @@ export default async function RootLayout({
         </a>
         <AuthSessionProvider session={session}>
           <Navbar />
-          <div className="pt-[60px] md:pt-[72px]">
+          {/* A column at least one screen tall, so the footer sits at the bottom of short pages. */}
+          <div className="flex min-h-dvh flex-col pt-[60px] md:pt-[72px]">
             {showVerifyBanner ? <VerifyEmailBanner userId={user.id} /> : null}
             {children}
           </div>

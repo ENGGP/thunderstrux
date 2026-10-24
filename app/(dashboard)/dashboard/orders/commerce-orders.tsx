@@ -3,6 +3,7 @@ import type { CommerceKind } from "@prisma/client";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
+import { pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
 import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
@@ -107,11 +108,11 @@ export async function CommerceOrders({
 
   return (
     <>
-      <nav aria-label={`${merchandise ? "Merchandise" : "Membership"} order status`} className="flex flex-wrap gap-2">
+      <nav aria-label={`${merchandise ? "Merchandise" : "Membership"} order status`} className={pillBarClasses}>
         {commerceOrderFilters.map((name) => (
           <Link
             aria-current={name === filter ? "page" : undefined}
-            className={`inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold ${name === filter ? "border-brand bg-brand-tint text-brand-ink" : "border-line bg-surface text-ink-soft hover:text-ink"}`}
+            className={pillClasses(name === filter)}
             href={href({ status: name === "all" ? undefined : name, cursor: undefined })}
             key={name}
           >
@@ -119,7 +120,7 @@ export async function CommerceOrders({
           </Link>
         ))}
       </nav>
-      <FilterBar action="/dashboard/orders" className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]" label="Filter orders">
+      <FilterBar action="/dashboard/orders" className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_auto]" label="Filter orders">
         <input name="family" type="hidden" value={params.family} />
         {filter !== "all" ? <input name="status" type="hidden" value={filter} /> : null}
         <TextInput defaultValue={search ?? ""} label="Buyer email" name="search" placeholder="Contains…" type="search" />

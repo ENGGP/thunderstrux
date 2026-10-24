@@ -23,7 +23,7 @@ export default async function MerchandisePage() {
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
         actions={
-          <Link className={buttonClasses()} href="/dashboard/merchandise/new">
+          <Link className={buttonClasses({ variant: "secondary" })} href="/dashboard/merchandise/new">
             New product
           </Link>
         }

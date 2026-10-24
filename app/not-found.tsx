@@ -5,7 +5,7 @@ import { buttonClasses } from "@/components/ui/button";
 // whether the thing exists.
 export default function NotFound() {
   return (
-    <main id="main" tabIndex={-1} className="mx-auto grid max-w-read gap-4 px-4 py-20 sm:px-6">
+    <main id="main" tabIndex={-1} className="mx-auto w-full grid max-w-read gap-4 px-4 py-20 sm:px-6">
       <p className="text-sm font-semibold text-brand">404</p>
       <h1 className="text-3xl font-semibold text-ink">
         This page could not be found.

@@ -35,8 +35,7 @@ export default async function MemberOrganisationsPage() {
       <Card>
         <h2 className="text-xl font-semibold text-ink">Your joined societies</h2>
         <p className="mt-2 text-sm text-ink-soft">
-          These are free affiliations. Paid benefits and staff access are
-          separate.
+          Joining is free and follows a society&apos;s events. Memberships are bought separately.
         </p>
         <MemberOrganisationsList organisations={organisations} />
       </Card>

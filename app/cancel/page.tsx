@@ -59,7 +59,7 @@ export default async function CancelPage({ searchParams }: { searchParams: Promi
   }
   return (
     <AuthShell
-      description={own ? "Nothing was charged, and the tickets you were holding are back on sale." : "No payment was taken."}
+      description={own ? "Nothing was charged, and the tickets you were holding are back on sale." : "You left the payment page before paying. You can start again from the event."}
       title="No payment taken"
     >
       <div>

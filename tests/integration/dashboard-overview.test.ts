@@ -75,6 +75,17 @@ describe("dashboards (T34)", () => {
     ]) expect(html).toContain(text);
   });
 
+  test("recent orders and recent purchases leave out checkouts that didn't complete", async () => {
+    const { user, organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await eventAt(organisation.id, "Quiz night", at(day));
+    const buyer = await createMember();
+    await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id, status: "expired" });
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    expect(await page()).toContain("No orders yet.");
+    setMockSession({ userId: buyer.id, email: buyer.email, accountRole: "member" });
+    expect(await page()).not.toContain("Quiz night");
+  });
+
   test("an event manager gets event tasks and ticket counts without money, orders or members", async () => {
     const { staff } = await busySociety();
     await staff("event_manager");

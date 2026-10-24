@@ -52,7 +52,8 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
       : [],
     can("orders:read")
       ? prisma.order.findMany({
-          where: ownedOrder,
+          // Abandoned and failed checkouts stay on Orders, not in this summary.
+          where: { ...ownedOrder, status: { notIn: ["expired", "failed"] } },
           orderBy: { createdAt: "desc" },
           take: 5,
           select: {
@@ -65,8 +66,8 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
       : [],
     can("orders:read")
       ? prisma.commerceOrder.findMany({
-          // Checkouts still waiting on Stripe are left out, as on Orders.
-          where: { organisationId, status: { not: "pending" } },
+          // Checkouts still waiting on Stripe, abandoned or failed are left out.
+          where: { organisationId, status: { notIn: ["pending", "expired", "failed"] } },
           orderBy: { createdAt: "desc" },
           take: 5,
           select: {

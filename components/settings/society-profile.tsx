@@ -204,13 +204,6 @@ export function SocietyProfile({
   ];
   return (
     <section className="grid gap-6 rounded-card border border-line bg-surface p-5 sm:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Society profile</h1>
-        <p className="mt-2 text-sm text-ink-soft">
-          Save each step and return whenever you need. Your public URL stays
-          /societies/{profile.slug}.
-        </p>
-      </div>
       <nav aria-label="Profile setup steps" className="flex flex-wrap gap-2">
         {steps.map((label, index) => (
           <Button
@@ -293,13 +286,13 @@ export function SocietyProfile({
           {step === 1 && (
             <>
               <p className="text-sm text-ink-soft">
-                Optional JPEG, PNG or WebP, up to 5 MiB and 4096 × 4096 pixels.
+                Optional JPEG, PNG or WebP, up to 5 MB and 4096 × 4096 pixels.
                 Removing an image takes effect when you save.
               </p>
               {(["logo", "cover"] as const).map((kind) => (
                 <div className="grid gap-3" key={kind}>
                   <label className="grid gap-2 text-sm font-semibold text-ink">
-                    <span className="capitalize">{kind} image</span>
+                    <span>{kind === "logo" ? "Logo image" : "Cover image"}</span>
                     <input
                       className="font-normal"
                       type="file"
@@ -351,11 +344,21 @@ export function SocietyProfile({
                 required
                 onChange={(event) => field("timeZone", event.target.value)}
               >
-                {timeZones.map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
+                {/* Societies are Australian first: their zones lead, the rest follow. */}
+                <optgroup label="Australia">
+                  {timeZones.filter((zone) => zone.startsWith("Australia/")).map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone.slice("Australia/".length).replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Other time zones">
+                  {timeZones.filter((zone) => !zone.startsWith("Australia/")).map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </optgroup>
               </Select>
               <TextArea
                 label="Public refund policy"

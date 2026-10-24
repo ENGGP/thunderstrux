@@ -27,7 +27,8 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count} ${cou
 const lastDay = (endsAt: Date, timeZone: string) => formatDate(new Date(endsAt.getTime() - 1), timeZone);
 
 export async function PersonalOverview({ userId }: { userId: string }) {
-  const firstPage = { limit: 3, direction: "next" as const };
+  // A few more than shown, so checkouts that didn't complete can be left out below.
+  const firstPage = { limit: 10, direction: "next" as const };
   const now = new Date();
   const [profile, wallet, active, upcomingTerms, tickets, commerce, societies] = await Promise.all([
     readMemberProfile(userId),
@@ -63,6 +64,8 @@ export async function PersonalOverview({ userId }: { userId: string }) {
       };
     })
   ]
+    // A checkout that didn't complete isn't a purchase; Purchases still lists it.
+    .filter((purchase) => !["expired", "failed"].includes(ticketOrderProjection(purchase.order)))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 3);
   const memberships = [...active.memberships, ...upcomingTerms.memberships];

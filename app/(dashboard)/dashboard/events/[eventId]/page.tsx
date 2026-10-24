@@ -92,6 +92,19 @@ export default async function OrganiserEventPage({
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <EventWorkspaceHeader active="summary" event={event} staffRole={organisation.staffRole} />
 
+      {/* A draft's next step is publishing, so its checklist comes before the (empty) sales figures. */}
+      {event.status === "draft" ? (
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">Ready to publish?</h2>
+          <div className="mt-3">
+            <ReadinessChecklist
+              blockers={event.blockers}
+              editHref={canManage ? `/dashboard/events/${event.id}/edit` : undefined}
+            />
+          </div>
+        </Card>
+      ) : null}
+
       <div className="grid gap-6 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
         {tiles.map((tile) => (
           <Card key={tile.label}>
@@ -169,17 +182,7 @@ export default async function OrganiserEventPage({
         ) : null}
       </div>
 
-      {event.status === "draft" ? (
-        <Card>
-          <h2 className="text-lg font-semibold text-ink">Ready to publish?</h2>
-          <div className="mt-3">
-            <ReadinessChecklist
-              blockers={event.blockers}
-              editHref={canManage ? `/dashboard/events/${event.id}/edit` : undefined}
-            />
-          </div>
-        </Card>
-      ) : (
+      {event.status === "draft" ? null : (
         <Card>
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold text-ink">Selling status</h2>

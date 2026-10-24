@@ -36,13 +36,13 @@ test("anonymous society discovery and verified join/leave show fresh personal st
   ).toBe(0);
   await page.getByRole("button", { name: "Join society", exact: true }).click();
   await expect(
-    page.getByRole("status").filter({ hasText: /^Joined$/ }),
+    page.getByRole("status").filter({ hasText: /^You've joined / }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByRole("status").filter({ hasText: /^Joined$/ }),
+    page.getByRole("status").filter({ hasText: /^You've joined / }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Manage joined societies" }).click();
+  await page.getByRole("link", { name: "Manage in My societies" }).click();
   await page
     .getByLabel("Search societies")
     .fill("Discovery campus society");

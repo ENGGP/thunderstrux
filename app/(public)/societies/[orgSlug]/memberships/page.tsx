@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SocietyHeader } from "@/components/organisations/society-header";
-import { SocietyJoin } from "@/components/organisations/society-join";
+import { SocietyJoinCard } from "@/components/organisations/society-join-card";
 import { buttonClasses } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
@@ -173,30 +173,7 @@ export default async function SocietyMembershipsPage({ params }: { params: Promi
             ) : null}
           </section>
 
-          <aside className="grid content-start gap-3.5 self-start rounded-card border border-line bg-surface p-5 sm:p-6">
-            {viewer.joinState === "joined" ? (
-              <>
-                <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">You&apos;ve joined {organisation.name}</h2>
-                <p className="text-[15px] text-ink-soft">Joining is free: you follow the society&apos;s events from your dashboard. It&apos;s separate from a membership, and leaving doesn&apos;t cancel one.</p>
-                <Link className="w-fit text-[15px] font-semibold text-brand underline underline-offset-4" href="/dashboard/organisations">
-                  Manage in My societies
-                </Link>
-              </>
-            ) : (
-              <>
-                <SocietyJoin slug={organisation.slug} state={viewer.joinState} />
-                <p className="text-sm text-ink-soft">Joining is free and follows the society&apos;s events. It&apos;s separate from a membership, and leaving doesn&apos;t cancel one.</p>
-              </>
-            )}
-            {organisation.supportEmail ? (
-              <div className="grid gap-1 border-t border-line pt-3.5 text-sm">
-                <span className="font-semibold text-ink">Contact</span>
-                <a className="w-fit text-brand underline underline-offset-4 [overflow-wrap:anywhere]" href={`mailto:${organisation.supportEmail}`}>
-                  {organisation.supportEmail}
-                </a>
-              </div>
-            ) : null}
-          </aside>
+          <SocietyJoinCard joinState={viewer.joinState} organisation={organisation} />
         </div>
       </div>
     </main>

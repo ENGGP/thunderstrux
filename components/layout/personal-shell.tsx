@@ -41,7 +41,7 @@ export function PersonalShell({
           </p>
           <nav
             aria-label="Personal navigation"
-            className="flex gap-1 overflow-x-auto lg:grid"
+            className="flex gap-1 overflow-x-auto [scrollbar-width:none] lg:grid"
           >
             {items.map((item) => {
               // A purchase's own page sits under Purchases.

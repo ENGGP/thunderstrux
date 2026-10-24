@@ -141,17 +141,15 @@ export function SignupForm({
 
 
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={isSubmitting} size="lg" type="submit">
-          {isSubmitting ? "Creating account..." : "Create account"}
-        </Button>
-        <Link
-          className="text-sm font-medium text-brand underline"
-          href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-        >
+      <Button className="w-full" disabled={isSubmitting} size="lg" type="submit">
+        {isSubmitting ? "Creating account..." : "Create account"}
+      </Button>
+      <p className="text-sm text-ink-soft">
+        Already have an account?{" "}
+        <Link className="font-medium text-brand underline" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>
           Sign in
         </Link>
-      </div>
+      </p>
     </form>
   );
 }

@@ -13,6 +13,19 @@ export function tabClasses(active: boolean) {
   }`;
 }
 
+// Status filters inside a tab (artboard OrdersB2): pills, so they never read as a second row of tabs.
+export const pillBarClasses = "flex flex-wrap gap-2";
+export function pillClasses(active: boolean) {
+  return `inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold ${
+    active ? "border-brand bg-brand-tint text-brand-ink" : "border-line bg-surface text-ink-soft hover:text-ink"
+  }`;
+}
+
+// The one way a tab or pill shows how many it holds.
+export function Count({ value, active }: { value: number; active: boolean }) {
+  return <span className={`rounded-md px-2 text-[13px] font-semibold tabular-nums ${active ? "bg-brand-tint" : "bg-surface-subtle"}`}>{value}</span>;
+}
+
 export function LinkTabs({
   label,
   tabs
@@ -25,7 +38,7 @@ export function LinkTabs({
       {tabs.map((tab) => (
         <Link aria-current={tab.active ? "page" : undefined} className={tabClasses(tab.active)} href={tab.href} key={tab.href}>
           {tab.label}
-          {tab.count ? <span className="text-sm font-normal text-ink-muted">({tab.count})</span> : null}
+          {tab.count ? <Count active={tab.active} value={tab.count} /> : null}
         </Link>
       ))}
     </nav>

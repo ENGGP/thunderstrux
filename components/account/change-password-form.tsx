@@ -24,7 +24,7 @@ export function ChangePasswordForm({ mfaRequired }: { mfaRequired: boolean }) {
     <TextInput label="Current password" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} />
     <TextInput label="New password" type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={event => setNewPassword(event.target.value)} />
     <TextInput label="Confirm new password" type="password" autoComplete="new-password" minLength={8} required value={confirmation} onChange={event => setConfirmation(event.target.value)} />
-    <p className="text-sm text-ink-muted">Use at least 8 characters and no more than 72 UTF-8 bytes. Changing your password signs out all devices; your authenticator remains enrolled.</p>
+    <p className="text-sm text-ink-muted">At least 8 characters. Changing it signs you out on every device.</p>
     <div><Button type="submit" variant="secondary" disabled={busy || mfaRequired}>{busy ? "Changing password..." : "Change password"}</Button></div>
   </form>;
 }

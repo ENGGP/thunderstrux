@@ -190,7 +190,7 @@ export default async function OrganisationOrdersPage({
 
       <FilterBar
         action="/dashboard/orders"
-        className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+        className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_auto]"
         label="Filter orders"
       >
         {activeFilter !== "all" ? (

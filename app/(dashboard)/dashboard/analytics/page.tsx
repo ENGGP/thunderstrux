@@ -90,7 +90,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             );
           })}
         </nav>
-        <FilterBar action="/dashboard/analytics" key={href({})} className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]" label="Choose a range">
+        <FilterBar action="/dashboard/analytics" key={href({})} className="sm:grid-cols-2 xl:grid-cols-[minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]" label="Choose a range">
           {tab !== "tickets" ? <input name="tab" type="hidden" value={tab} /> : null}
           <DateField defaultValue={range.from} label="From" name="from" />
           <DateField defaultValue={range.to} label="To" name="to" />

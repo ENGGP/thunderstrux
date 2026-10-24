@@ -257,6 +257,43 @@ describe("inventory and capacity locks", () => {
     expect(await prisma.order.count({ where: { eventId: event.id } })).toBe(checkout.status === "fulfilled" ? 1 : 0);
   });
 
+  // A ticket release: every buyer gets a ticket or a sold-out answer, never an error.
+  test("a rush of 30 buyers for 20 free tickets gives 20 tickets and 10 sold-out answers", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id, status: "published", ticketTypes: [{ name: "Free entry", price: 0, quantity: 20 }] });
+    const members = await Promise.all(Array.from({ length: 30 }, () => createMember()));
+
+    const results = await Promise.allSettled(members.map((member) => buy(member.id, event, 0, 1)));
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(20);
+    for (const result of results) if (result.status === "rejected") expect(["sold_out", "insufficient_availability"]).toContain(result.reason?.kind);
+    expect(await prisma.ticket.count({ where: { eventId: event.id } })).toBe(20);
+    expect((await prisma.ticketType.findUniqueOrThrow({ where: { id: event.ticketTypes[0].id } })).quantity).toBe(0);
+  });
+
+  test("a rush of 30 buyers for 20 paid tickets holds 20, and their payments all fulfil at once", async () => {
+    mockSessions();
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published", ticketTypes: [{ name: "General", price: 1500, quantity: 20 }] });
+    const members = await Promise.all(Array.from({ length: 30 }, () => createMember()));
+
+    const results = await Promise.allSettled(members.map((member) => buy(member.id, event, 0, 1)));
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(20);
+    for (const result of results) if (result.status === "rejected") expect(["sold_out", "insufficient_availability"]).toContain(result.reason?.kind);
+    const orders = await prisma.order.findMany({ where: { eventId: event.id, status: "pending" } });
+    expect(orders).toHaveLength(20);
+
+    const fulfilled = await Promise.all(orders.map((order) => reconcileCompletedCheckoutSession(checkoutSession({
+      id: order.stripeSessionId ?? "cs_missing", orderId: order.id, eventId: event.id, organisationId: organisation.id,
+      ticketTypeId: event.ticketTypes[0].id, quantity: 1, amountTotal: 1500
+    }), { stripeEventId: `evt_${order.id}` })));
+
+    expect(fulfilled.map((result) => result.status)).toEqual(Array(20).fill("fulfilled"));
+    expect(await prisma.ticket.count({ where: { eventId: event.id } })).toBe(20);
+    expect((await prisma.ticketType.findUniqueOrThrow({ where: { id: event.ticketTypes[0].id } })).quantity).toBe(0);
+  });
+
   test("deleting an event re-checks orders under the event lock", async () => {
     mockSessions();
     const { organisation, user } = await createOrganisationAccount({ stripeReady: true });

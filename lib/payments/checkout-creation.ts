@@ -40,7 +40,7 @@ import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
 import {
   expireOldActiveReservations,
   getReservationExpiry,
-  runSerializableReservationTransaction
+  runReservationTransaction
 } from "@/lib/tickets/reservations";
 
 export type CheckoutCreationErrorKind =
@@ -175,7 +175,7 @@ export async function createEventCheckout({
     // quote and the hold.
     let created;
     try {
-      created = await runSerializableReservationTransaction(async (tx) => {
+      created = await runReservationTransaction(async (tx) => {
         const buyer = guest ? await lockGuestBuyer(tx, guest.grantId, reservationNow) : await lockVerifiedAccount(tx, actor.id);
         // A same-key request that committed while this one waited for the buyer lock.
         const raced = await findCheckoutAttempt(tx, actor, idempotencyKey);

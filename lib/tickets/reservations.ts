@@ -13,14 +13,22 @@ export function getReservationExpiry(now = new Date()) {
   return new Date(now.getTime() + reservationMinutes * 60 * 1000);
 }
 
-export async function runSerializableReservationTransaction<T>(
+// Purchases decide everything after locking the buyer, the Event and its ticket
+// types (or the family's rows), so READ COMMITTED is enough: each statement after
+// the lock sees what the buyer before committed. SERIALIZABLE took its snapshot
+// before the lock wait and refused every buyer queued behind another (DEF-032).
+// A queue of buyers waits up to 10 s for a connection instead of failing at 2 s.
+export const lockedPurchaseTransactionOptions = {
+  isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+  maxWait: 10_000
+};
+
+export async function runReservationTransaction<T>(
   operation: (tx: Prisma.TransactionClient) => Promise<T>
 ) {
   for (let attempt = 1; attempt <= maxReservationTransactionAttempts; attempt += 1) {
     try {
-      return await prisma.$transaction(operation, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-      });
+      return await prisma.$transaction(operation, lockedPurchaseTransactionOptions);
     } catch (error) {
       if (
         attempt < maxReservationTransactionAttempts &&

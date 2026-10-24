@@ -16,6 +16,7 @@ import {
   confirmReservationForOrder,
   expireReservationForOrder,
   findActiveReservationForOrder,
+  lockedPurchaseTransactionOptions,
   releaseReservationForOrder
 } from "@/lib/tickets/reservations";
 
@@ -61,9 +62,7 @@ export async function runCheckoutReconciliationTransaction(
 ) {
   for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
     try {
-      await prisma.$transaction(operation, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-      });
+      await prisma.$transaction(operation, lockedPurchaseTransactionOptions);
       return;
     } catch (error) {
       if (attempt < maxTransactionAttempts && isTransactionConflict(error)) {

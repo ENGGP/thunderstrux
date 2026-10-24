@@ -85,10 +85,10 @@ Checkout flow:
 User selects quantity
   -> POST /api/payments/checkout/event
   -> route validates event, ticket type, quantity, status, inventory, and Stripe readiness
-  -> old active reservations for the ticket type are expired
+  -> lapsed holds don't count toward availability (the stale-order worker expires their orders)
   -> local Order row is created with status=pending
   -> active TicketReservation row is created with a 30-minute expiry
-  -> Stripe Checkout session is created with expires_at matching the reservation expiry
+  -> Stripe Checkout session is created, and the reservation is set to end 5 minutes after its expires_at
   -> Order row is updated with stripeSessionId
   -> browser redirects to Stripe
   -> payment webhook marks Order paid and issues Ticket rows

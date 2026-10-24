@@ -267,9 +267,9 @@ Checkout uses soft holds to prevent overselling:
 - `TicketType.quantity` remains remaining inventory.
 - `TicketReservation` holds a requested quantity for 30 minutes.
 - Checkout availability is `TicketType.quantity - activeReservedQuantity`.
-- Stripe Checkout `expires_at` is aligned with the reservation expiry.
+- The reservation lasts 5 minutes past Stripe Checkout's `expires_at`, so a payment made just before the page closes still finds its hold when the webhook arrives (DEF-033).
 - Webhooks confirm, release, or expire reservations while preserving `Order` history.
-- A bounded one-shot stale-order worker expires pending orders whose reservations are expired or past `expiresAt`, plus legacy reservationless pending orders older than 30 minutes. Normal read paths do not run this cleanup.
+- A bounded one-shot stale-order worker expires pending orders whose reservations are expired or past `expiresAt`, plus legacy reservationless pending orders older than 30 minutes. It is the only place that expires them: checkout and normal read paths ignore lapsed holds without expiring them.
 - `pending` is kept internally for checkout reconciliation but hidden from normal member and organiser UX.
 
 ## Organiser Analytics Model

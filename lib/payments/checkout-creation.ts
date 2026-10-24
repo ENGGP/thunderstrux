@@ -10,7 +10,6 @@ import { emitMetric } from "@/lib/ops/metrics";
 import { eventReadiness, salesOpen } from "@/lib/events/event-readiness";
 import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/events/inventory";
 import { formatMoney } from "@/lib/format";
-import { failStalePreCheckoutOrders } from "@/lib/orders/stale-orders";
 import {
   attachStripeSession,
   CheckoutCreationInternalError,
@@ -37,11 +36,7 @@ import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
-import {
-  expireOldActiveReservations,
-  getReservationExpiry,
-  runSerializableReservationTransaction
-} from "@/lib/tickets/reservations";
+import { getReservationExpiry, lateWebhookGraceMs, runReservationTransaction } from "@/lib/tickets/reservations";
 
 export type CheckoutCreationErrorKind =
   | "event_not_found"
@@ -165,8 +160,6 @@ export async function createEventCheckout({
     const earlier = await findCheckoutAttempt(prisma, actor, idempotencyKey);
     if (earlier) return replayAttempt(earlier, requestHash);
 
-    if (userId) await failStalePreCheckoutOrders({ userId });
-
     const reservationNow = new Date();
     const reservationExpiresAt = getReservationExpiry(reservationNow);
 
@@ -175,7 +168,7 @@ export async function createEventCheckout({
     // quote and the hold.
     let created;
     try {
-      created = await runSerializableReservationTransaction(async (tx) => {
+      created = await runReservationTransaction(async (tx) => {
         const buyer = guest ? await lockGuestBuyer(tx, guest.grantId, reservationNow) : await lockVerifiedAccount(tx, actor.id);
         // A same-key request that committed while this one waited for the buyer lock.
         const raced = await findCheckoutAttempt(tx, actor, idempotencyKey);
@@ -221,10 +214,7 @@ export async function createEventCheckout({
           );
         }
 
-        await expireOldActiveReservations(tx, {
-          now: reservationNow,
-          ticketTypeId: ticketType.id
-        });
+        // Lapsed holds don't count here; the stale-order job expires their orders.
         const sellable = sellableQuantity(
           ticketType,
           await readEventInventory(tx, event.id, reservationNow)
@@ -474,11 +464,12 @@ export async function createEventCheckout({
     };
 
     // Recovery (T14b) replays exactly this request with the same key, so Stripe
-    // returns the original Session instead of treating it as a new one.
+    // returns the original Session instead of treating it as a new one. The hold
+    // outlives the Session, so a payment made just before it closes finds its hold.
     await prisma.$transaction([
       prisma.ticketReservation.update({
         where: { orderId: pendingOrder.id },
-        data: { expiresAt: new Date(stripeExpiresAt * 1000) }
+        data: { expiresAt: new Date(stripeExpiresAt * 1000 + lateWebhookGraceMs) }
       }),
       prisma.checkoutAttempt.update({
         where: { id: pendingOrder.attemptId },

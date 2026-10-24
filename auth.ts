@@ -1,8 +1,7 @@
-import { compare } from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { prisma } from "@/lib/db";
+import { authorizeCredentials } from "@/lib/auth/credentials";
 import { getSessionIdentity } from "@/lib/auth/session-identity";
 import { authSecret } from "@/lib/auth/secret";
 
@@ -16,53 +15,7 @@ const authRuntime = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials) {
-        const email =
-          typeof credentials?.email === "string"
-            ? credentials.email.trim().toLowerCase()
-            : "";
-        const password =
-          typeof credentials?.password === "string" ? credentials.password : "";
-
-        if (!email || !password) {
-          return null;
-        }
-
-        const user = await prisma.user.findUnique({
-          where: { email },
-          select: {
-            id: true,
-            email: true,
-            password: true,
-            disabledAt: true,
-            authVersion: true,
-            accountRole: true,
-            firstName: true,
-            lastName: true,
-            onboardingCompletedAt: true
-          }
-        });
-
-        if (!user || user.disabledAt) {
-          return null;
-        }
-
-        const isValidPassword = await compare(password, user.password);
-
-        if (!isValidPassword) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          authVersion: user.authVersion,
-          email: user.email,
-          accountRole: user.accountRole,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null
-        };
-      }
+      authorize: authorizeCredentials
     })
   ],
   pages: {

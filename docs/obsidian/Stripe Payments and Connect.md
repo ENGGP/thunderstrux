@@ -64,9 +64,9 @@ Public event page
   -> POST /api/payments/checkout/event
   -> route validates origin, input, member auth, and rate limit
   -> checkout creation service validates event, ticket type, amount, and Stripe readiness
-  -> serializable transaction creates local pending Order, active TicketReservation and CheckoutAttempt
+  -> a locked READ COMMITTED transaction creates local pending Order, active TicketReservation and CheckoutAttempt
      (a repeated idempotencyKey returns the existing attempt instead)
-  -> Stripe Checkout Session created with expires_at matching reservation expiry,
+  -> Stripe Checkout Session created with expires_at (the reservation ends 5 minutes later, DEF-033),
      using the attempt's providerOperationKey as the Stripe idempotency key
      (timeout or unknown error: attempt stays provider_uncertain, response 202;
       the checkout-recovery worker later replays the stored request with the same key)
@@ -338,7 +338,7 @@ Design round F1, approved 24 Oct 2026. A society is paid once its event is over,
   - an open dispute or a payment under compensation review holds its money until it closes;
   - nothing is held past 80 days, because Stripe allows manual payouts to hold money at most 90 days in Australia.
   - A sale counts its society share (price less the fee and anything refunded outside Thunderstrux); a refunded order counts nothing. Ticket orders are scoped by `Event.organisationId` and the order's seller account.
-- **Payouts worker** (`processPayoutBatch`, `lib/payouts/payouts.ts`). It is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`), which already holds the Stripe key and runs every minute. Each ready society with payouts enabled is checked at most hourly, claimed through `Organisation.payoutCheckedAt`. The worker makes sure the account is on manual payouts, then reads the available AUD balance. If the balance less what the rules hold is at least $1.00, it sends one payout with the key `payout:<account>:<UTC date>` and records a `SocietyPayout`. A payout can never exceed the available balance, so a retry can't overpay.
+- **Payouts worker** (`processPayoutBatch`, `lib/payouts/payouts.ts`). It is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`), which already holds the Stripe key and runs every minute. Each ready society with payouts enabled is checked at most hourly, claimed through `Organisation.payoutCheckedAt`. The worker makes sure the account is on manual payouts, then reads the available AUD balance. If the balance less what the rules hold is at least $1.00, it sends one payout with the key `payout:<account>:<UTC date>` and records a `SocietyPayout`. A society already paid that UTC day is skipped before Stripe is called (DEF-034), so it gets at most one payout a day, like Eventbrite's batched schedules; money released later in the day goes the next day. A payout can never exceed the available balance, so a retry can't overpay.
 - **Payout events.** The Connect webhook takes `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated`. It re-reads the payout from Stripe on the connected account and records its status: `pending`, `paid`, or `failed` for both failed and canceled. A payout the bank refuses alerts `society_payout_failed`. An event for a payout recorded under another account changes nothing.
 - **Payments page.** A Payouts card shows what is waiting for events to end (with how many events and when the next ends), membership and merchandise money from the last 7 days, what is on its way to the bank, and the last 5 payouts. It links to every payout in Stripe's Express dashboard. A refused payout puts a warning with Check bank details in Stripe at the top of the page until a later payout goes through. Without a bank account the card says how much is waiting.
 - **Disconnect.** Before unlinking, the account goes back to Stripe's daily payouts (`restoreStripePayoutSchedule`), so money held for events isn't stranded. The dialog names the amount still waiting. A disconnect then refused under the lock is put back on manual payouts by the worker's next check.
@@ -549,18 +549,11 @@ The app expires old active reservations and their pending orders through an idem
 
 Design choice:
 
-- Reservation expiry is the source of truth for abandoned checkout cleanup.
+- Reservation expiry is the source of truth for abandoned checkout cleanup. A paid ticket reservation ends 5 minutes after its Stripe page closes, so a late webhook for a payment made in time still finds it (DEF-033).
 - Stripe/session creation failures still mark orders `failed` and release reservations.
-- Broad abandoned-checkout cleanup runs from a bounded one-shot worker, not normal read paths.
-- Checkout-local cleanup remains authoritative before new reservation creation.
+- Abandoned-checkout cleanup runs only from the bounded one-shot worker (`pnpm stale-orders:process`).
 
-Current cleanup paths:
-
-- starting checkout in `POST /api/payments/checkout/event`
-- ticket-type reservation cleanup inside the checkout transaction
-- scheduled worker command `pnpm stale-orders:process`
-
-Public, dashboard, order, ticket, and analytics reads are read-only with respect to stale cleanup. They do not expire reservations or pending orders. Checkout remains authoritative for expiring stale reservations before new reservations are created.
+Checkout, public, dashboard, order, ticket, and analytics reads never expire reservations or pending orders. Availability already ignores lapsed holds, so checkout needs no cleanup before it creates a reservation (DEF-032 removed the per-buyer and in-lock cleanups).
 
 Worker operations:
 
@@ -591,7 +584,7 @@ Safety rules:
 
 Transaction:
 
-- Prisma transaction isolation level is `Serializable`
+- Checkout and fulfilment run at READ COMMITTED with row locks (`lockedPurchaseTransactionOptions`); the stale-order worker locks each order and re-checks it before expiring it
 
 ## Smoke Tests
 

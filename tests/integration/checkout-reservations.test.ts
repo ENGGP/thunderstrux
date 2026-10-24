@@ -11,6 +11,10 @@ import {
   unique
 } from "@/tests/helpers/test-data";
 import { getActiveReservedQuantity } from "@/lib/tickets/reservations";
+import { processStaleOrderCleanupBatch } from "@/lib/orders/stale-orders";
+import { createEventCheckout } from "@/lib/payments/checkout-creation";
+import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 
 const stripeMocks = vi.hoisted(() => ({
   createSession: vi.fn()
@@ -165,8 +169,9 @@ describe("checkout and reservation logic", () => {
     // 30 minutes plus the margin for the trip to Stripe, which refuses anything shorter.
     const expectedExpiresAtSeconds =
       Math.ceil(new Date("2026-05-01T10:00:00.000Z").getTime() / 1000) + 30 * 60 + 60;
+    // The hold outlives the Session by 5 minutes, so a payment made just in time keeps it (DEF-033).
     expect(order.reservation?.expiresAt.getTime()).toBe(
-      expectedExpiresAtSeconds * 1000
+      (expectedExpiresAtSeconds + 5 * 60) * 1000
     );
     expect(stripeMocks.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -329,5 +334,38 @@ describe("checkout and reservation logic", () => {
         })
       ])
     );
+  });
+
+  // DEF-033: Stripe takes no payment after its page closes, but the webhook comes later.
+  test("a payment made just before Stripe closes the page still gets its tickets; one past the grace goes to review", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.setSystemTime(new Date("2026-05-01T10:00:00.000Z"));
+    stripeMocks.createSession
+      .mockResolvedValueOnce({ id: "cs_paid_in_time", url: "https://checkout.stripe.test/in-time" })
+      .mockResolvedValueOnce({ id: "cs_paid_too_late", url: "https://checkout.stripe.test/too-late" });
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published", ticketTypes: [{ name: "General", price: 1000, quantity: 5 }] });
+    const ticketTypeId = event.ticketTypes[0].id;
+    for (const member of [await createMember(), await createMember()]) {
+      await createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: 1000, idempotencyKey: unique("checkout") });
+    }
+    const paid = async (stripeSessionId: string) => {
+      const order = await prisma.order.findUniqueOrThrow({ where: { stripeSessionId } });
+      return reconcileCompletedCheckoutSession(checkoutSession({
+        id: stripeSessionId, orderId: order.id, eventId: event.id, organisationId: organisation.id, ticketTypeId, quantity: 1, amountTotal: 1000
+      }));
+    };
+
+    // Stripe closed both pages at 10:31; this webhook lands two minutes later, after the stale-order job ran.
+    vi.setSystemTime(new Date("2026-05-01T10:33:00.000Z"));
+    await processStaleOrderCleanupBatch();
+    expect(await paid("cs_paid_in_time")).toMatchObject({ status: "fulfilled" });
+
+    // Past the 5-minute grace the hold is gone and the seat may be sold: the payment goes to review.
+    vi.setSystemTime(new Date("2026-05-01T10:37:00.000Z"));
+    await processStaleOrderCleanupBatch();
+    expect(await paid("cs_paid_too_late")).toMatchObject({ status: "compensation_required" });
   });
 });

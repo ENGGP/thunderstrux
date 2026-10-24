@@ -101,6 +101,38 @@ describe("payouts worker", () => {
     expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
   });
 
+  // DEF-034: the hourly check after a payout used to reuse the day's key with a new amount, which Stripe refuses.
+  test("money released later in the day waits for the next day's payout instead of reusing the day's key", async () => {
+    const fixture = await society();
+    const keys = new Map<string, number>();
+    // As Stripe does: the same key with different parameters is refused.
+    stripe.create.mockImplementation(async (params: { amount: number }, options: { idempotencyKey: string }) => {
+      const earlier = keys.get(options.idempotencyKey);
+      if (earlier !== undefined && earlier !== params.amount) throw Object.assign(new Error("Keys for idempotent requests can only be used with the same parameters"), { type: "StripeIdempotencyError" });
+      keys.set(options.idempotencyKey, params.amount);
+      return { id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null };
+    });
+    const morning = new Date(`${now.toISOString().slice(0, 10)}T01:00:00.000Z`);
+    const later = new Date(morning.getTime() + 61 * 60_000);
+    const tomorrow = new Date(morning.getTime() + day);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    await processPayoutBatch(100, morning);
+    // More money became free an hour later: no second payout today, and nothing refused.
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 7000 }] });
+    await processPayoutBatch(100, later);
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("payouts.failed_to_send"))).toEqual([]);
+
+    await processPayoutBatch(100, tomorrow);
+    expect(stripe.create).toHaveBeenLastCalledWith(
+      { amount: 7000, currency: "aud", metadata: { organisationId: fixture.organisationId } },
+      { stripeAccount: fixture.accountId, idempotencyKey: `payout:${fixture.accountId}:${tomorrow.toISOString().slice(0, 10)}` }
+    );
+    expect(await prisma.societyPayout.findMany({ where: { organisationId: fixture.organisationId }, orderBy: { createdAt: "asc" }, select: { amount: true } })).toEqual([{ amount: 5000 }, { amount: 7000 }]);
+  });
+
   test("a society still on Stripe's schedule is moved to manual payouts; less than $1.00 free waits", async () => {
     const fixture = await society();
     await ticketSale(fixture, 10 * day);

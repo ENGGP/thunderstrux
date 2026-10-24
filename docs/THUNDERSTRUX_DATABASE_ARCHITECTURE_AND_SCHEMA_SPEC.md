@@ -460,6 +460,7 @@ PLAN explicitly establishes `Event -> TicketType IDs sorted -> Order -> reservat
 
 - Use short, bounded SQL transactions; no Stripe/email/network/AI calls while locks held.
 - Apply serializable isolation and bounded retries to known transaction serialization/deadlock conflicts *as implemented in the installed Prisma API*. Prisma version differences matter. Do **not** catch every error and retry it.
+  - *Implementation note (2026-10-25, DEF-032):* the locked purchase transactions (ticket and commerce checkout, free registration, ticket fulfilment) run at READ COMMITTED, because every decision is made after the row locks above. Under SERIALIZABLE, PostgreSQL takes a transaction's snapshot at its first statement, before it waits on the shared Event lock, so every buyer queued behind another was refused. The bounded deadlock retry stays.
 - Check current inventory and reservation expiry against **database time**. Query timestamp semantics consistently; database `now()` in PostgreSQL is transaction-start time, not continuously advancing wall clock. Avoid lengthy transactions, and choose a documented clock expression for comparing holds.
 - Use deterministic IDs/lock ordering, unique constraints, optimistic `version` as relevant. A browser disabling a button is not an idempotency mechanism.
 - Compensation/refund must fence paid truth and operation identities so two different workers cannot concurrently produce two refunds.

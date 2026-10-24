@@ -14,7 +14,7 @@ import { attemptReconcileDelayMs, checkoutIntegrationIdentifiers, checkoutSessio
 import { getAppUrl, getStripe } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
-import { reservationMinutes, runSerializableReservationTransaction } from "@/lib/tickets/reservations";
+import { reservationMinutes, runReservationTransaction } from "@/lib/tickets/reservations";
 
 // Membership and merchandise checkout (T21), the commerce twin of ticket
 // checkout (database spec 6.1-6.3): a locked transaction quotes through the
@@ -102,7 +102,7 @@ export async function createCommerceCheckout(input: {
   const now = new Date();
   let created;
   try {
-    created = await runSerializableReservationTransaction(async (tx) => {
+    created = await runReservationTransaction(async (tx) => {
       // Buyer, then the family's resources (inside quote), then the new order.
       const account = guest ? await lockGuestBuyer(tx, guest.grantId, now) : await lockVerifiedAccount(tx, actor.id);
       const raced = await findCommerceAttempt(tx, actor, input.family, input.idempotencyKey);

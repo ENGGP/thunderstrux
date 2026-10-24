@@ -36,7 +36,8 @@ export async function pendingCheckoutState(purchase: Purchase, now = new Date())
     const session = await getStripe().checkout.sessions.retrieve(facts.stripeSessionId);
     if (session.status === "complete" || session.payment_status === "paid") return { state: "confirming" };
     if (session.status === "expired" || !held) return { state: "ended" };
-    return { state: "waiting", holdEndsAt: held, paymentUrl: session.url ?? null };
+    // The buyer's deadline is when Stripe closes the page; a ticket hold lasts a few minutes longer for its webhook.
+    return { state: "waiting", holdEndsAt: new Date(session.expires_at * 1000), paymentUrl: session.url ?? null };
   } catch (error) {
     // Without Stripe's answer, the hold decides; the payment page can't be offered.
     logWarn("checkout.pending_state_unavailable", { kind: purchase.kind, orderId: purchase.id, error });

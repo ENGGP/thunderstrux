@@ -1,26 +1,35 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { isTransactionConflict } from "@/lib/transaction-conflict";
-import {
-  appendOrderLifecycleEvent,
-  lockOrder
-} from "@/lib/payments/order-lifecycle";
 
 export const reservationMinutes = 30;
 export const maxReservationTransactionAttempts = 3;
+
+// A hold outlives its Stripe page by this much. Stripe takes no payment after
+// the page closes, but its webhook arrives later; a payment made in time still
+// finds its hold (DEF-033). Commerce's stale-order expiry waits the same.
+export const lateWebhookGraceMs = 5 * 60 * 1000;
 
 export function getReservationExpiry(now = new Date()) {
   return new Date(now.getTime() + reservationMinutes * 60 * 1000);
 }
 
-export async function runSerializableReservationTransaction<T>(
+// Purchases decide everything after locking the buyer, the Event and its ticket
+// types (or the family's rows), so READ COMMITTED is enough: each statement after
+// the lock sees what the buyer before committed. SERIALIZABLE took its snapshot
+// before the lock wait and refused every buyer queued behind another (DEF-032).
+// A queue of buyers waits up to 10 s for a connection instead of failing at 2 s.
+export const lockedPurchaseTransactionOptions = {
+  isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+  maxWait: 10_000
+};
+
+export async function runReservationTransaction<T>(
   operation: (tx: Prisma.TransactionClient) => Promise<T>
 ) {
   for (let attempt = 1; attempt <= maxReservationTransactionAttempts; attempt += 1) {
     try {
-      return await prisma.$transaction(operation, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-      });
+      return await prisma.$transaction(operation, lockedPurchaseTransactionOptions);
     } catch (error) {
       if (
         attempt < maxReservationTransactionAttempts &&
@@ -37,95 +46,6 @@ export async function runSerializableReservationTransaction<T>(
   }
 
   throw new Error("Reservation transaction retry limit exceeded");
-}
-
-export async function expireOldActiveReservations(
-  tx: Prisma.TransactionClient,
-  {
-    now = new Date(),
-    organisationId,
-    eventId,
-    ticketTypeId,
-    userId
-  }: {
-    now?: Date;
-    organisationId?: string;
-    eventId?: string;
-    ticketTypeId?: string;
-    userId?: string;
-  } = {}
-) {
-  const organisationScope = organisationId
-    ? { event: { is: { organisationId } } }
-    : {};
-  const expiredReservations = await tx.ticketReservation.findMany({
-    where: {
-      ...organisationScope,
-      ...(eventId ? { eventId } : {}),
-      ...(ticketTypeId ? { ticketTypeId } : {}),
-      ...(userId ? { userId } : {}),
-      status: "active",
-      expiresAt: {
-        lte: now
-      }
-    },
-    select: {
-      orderId: true
-    }
-  });
-  const expiredOrderIds = expiredReservations.map(
-    (reservation) => reservation.orderId
-  ).sort();
-
-  let count = 0;
-  for (const orderId of expiredOrderIds) {
-    if (!(await lockOrder(tx, orderId))) continue;
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      select: {
-        status: true,
-        requiresCompensationReview: true,
-        reservation: { select: { status: true, expiresAt: true } }
-      }
-    });
-    if (
-      order?.status !== "pending" ||
-      order.reservation?.status !== "active" ||
-      order.reservation.expiresAt > now
-    ) continue;
-    const reservation = await tx.ticketReservation.updateMany({
-      where: { orderId, status: "active", expiresAt: { lte: now } },
-      data: {
-        status: "expired",
-        releasedAt: now,
-        releaseReason: "Reservation expired before checkout completed"
-      }
-    });
-    if (reservation.count === 0) continue;
-    const updated = await tx.order.updateMany({
-      where: { id: orderId, status: "pending" },
-      data: { status: "expired", failureReason: null }
-    });
-    if (updated.count === 0) continue;
-    await appendOrderLifecycleEvent(tx, {
-      orderId,
-      type: "order_expired",
-      source: "stale_cleanup",
-      reason: "reservation_expired",
-      fromOrderStatus: "pending",
-      toOrderStatus: "expired",
-      fromReservationStatus: "active",
-      toReservationStatus: "expired",
-      baseline: {
-        orderStatus: order.status,
-        reservationStatus: order.reservation.status,
-        compensationReview: order.requiresCompensationReview
-      }
-    });
-    count += 1;
-  }
-
-  return { count };
 }
 
 export async function getActiveReservedQuantity(

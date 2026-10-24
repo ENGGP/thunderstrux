@@ -9,6 +9,7 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { queueCommerceReviewNotice } from "@/lib/payments/compensation-notices";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { getStripe } from "@/lib/stripe";
+import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
 
 // Signed Checkout Session webhooks for membership and merchandise orders
 // (T21). A Session is routed here only by its `family` metadata; the order is
@@ -164,7 +165,7 @@ export async function isCommerceSession(stripeSessionId: string) {
 
 // Stale-order worker: a pending paid order whose Stripe Session has expired
 // (with a margin for a late webhook) is expired and its hold released.
-export async function expireStaleCommerceOrders({ now = new Date(), limit = 100, graceMs = 5 * 60 * 1000 } = {}) {
+export async function expireStaleCommerceOrders({ now = new Date(), limit = 100, graceMs = lateWebhookGraceMs } = {}) {
   const stale = await prisma.commerceOrder.findMany({
     where: { status: "pending", paymentKind: "stripe", expiresAt: { lt: new Date(now.getTime() - graceMs) } },
     orderBy: { expiresAt: "asc" },

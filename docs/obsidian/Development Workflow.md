@@ -691,7 +691,7 @@ pnpm compensation-refunds:process
 pnpm compensation-refunds:process -- --limit=25
 ```
 
-The worker processes a bounded, fenced batch and verifies Stripe identity and refund state before finalizing jobs. Production should schedule it every minute, subscribe the required refund webhooks, and keep event policy at `manual_review` until the real Stripe campaign in [[E2E and Staging Payments]] passes.
+The worker processes a bounded, fenced batch and verifies Stripe identity and refund state before finalizing jobs. Production should schedule it every minute and subscribe the required refund webhooks before any real sale: new events default to `automatic_full` (2026-10-25), and the hosted refund webhooks are still gated by PAY-002 and [[E2E and Staging Payments]].
 
 Checkout attempt recovery worker:
 

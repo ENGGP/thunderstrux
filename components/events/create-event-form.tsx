@@ -108,7 +108,7 @@ function initialState(event: EventFormData | undefined, timeZone: string, startD
         salesCloseAt: "",
         capacity: "",
         visibility: "public",
-        compensationRefundMode: "manual_review",
+        compensationRefundMode: "automatic_full",
         heroAssetId: null
       };
   // In a daylight-saving overlap, keep whichever of the two instants was saved.
@@ -639,8 +639,8 @@ export function CreateEventForm({
               onChange={(event) => setField("compensationRefundMode", event.target.value as RefundMode)}
               value={form.compensationRefundMode}
             >
-              <option value="manual_review">Review it manually</option>
               <option value="automatic_full">Refund the buyer automatically in full</option>
+              <option value="manual_review">Review it manually</option>
             </Select>
           </div>
         </Card>

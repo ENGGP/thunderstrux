@@ -74,7 +74,8 @@ describe("event policy, readiness and explicit transitions", () => {
     }));
     expect(response.status).toBe(201);
     const { event } = await parseJsonResponse(response);
-    expect(event).toMatchObject({ status: "draft", capacity: 80, visibility: "public", saleState: "open", version: 1 });
+    // A payment that can't become tickets is refunded automatically unless the society chose review (as commerce is).
+    expect(event).toMatchObject({ status: "draft", capacity: 80, visibility: "public", saleState: "open", version: 1, compensationRefundMode: "automatic_full" });
     expect(event.salesCloseAt).toBe(startTime.toISOString());
 
     const membersOnly = await createEventRoute(jsonRequest("http://localhost/api/events", {
@@ -84,11 +85,12 @@ describe("event policy, readiness and explicit transitions", () => {
       location: "Hall",
       startTime: startTime.toISOString(),
       endTime: new Date(startTime.getTime() + 3600000).toISOString(),
-      visibility: "members_only"
+      visibility: "members_only",
+      compensationRefundMode: "manual_review"
     }));
     // Members-only drafts save; publishing them needs a plan (members-only-events.test.ts).
     expect(membersOnly.status).toBe(201);
-    expect((await parseJsonResponse(membersOnly)).event).toMatchObject({ status: "draft", visibility: "members_only" });
+    expect((await parseJsonResponse(membersOnly)).event).toMatchObject({ status: "draft", visibility: "members_only", compensationRefundMode: "manual_review" });
   });
 
   test("readiness blocks paid-only events without payments, lets free tickets publish, and needs a future sales window", async () => {

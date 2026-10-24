@@ -100,8 +100,9 @@ Login:
 /login
 ```
 
-- Uses `signIn("credentials")`
+- Uses `signIn("credentials")`; the check is `authorizeCredentials` in `lib/auth/credentials.ts`
 - On success, redirects to `callbackUrl`
+- An unknown or disabled address is checked against a dummy bcrypt hash of the same cost before it is refused, so sign-in takes as long whether or not an account exists, matching signup and recovery (DEF-035)
 
 Signup:
 

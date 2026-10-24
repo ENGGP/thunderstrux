@@ -352,13 +352,12 @@ Reservation statuses:
 Rules:
 
 - active reservations reduce checkout availability
-- reservation expiry is 30 minutes
+- a paid hold lasts 30 minutes plus Stripe's 60-second margin (the Stripe page), then 5 more minutes for a late webhook (DEF-033)
 - expired reservations do not reduce availability
-- pending orders linked to expired reservations are marked `expired` by the stale-order worker
+- pending orders linked to expired reservations are marked `expired` by the stale-order worker, the only place that expires them
 - legacy pending orders without reservations are marked `expired` by the stale-order worker once they are older than 30 minutes
-- organisation-scoped stale order cleanup uses event ownership, so stale denormalized order/reservation ownership cannot expire another organisation's event-owned rows
 - normal reservation expiry does not set `Order.failureReason`
-- Stripe Checkout `expires_at` matches the reservation expiry
+- Stripe Checkout `expires_at` is the buyer's deadline; the reservation ends 5 minutes after it
 - paid webhook reconciliation confirms reservations atomically with order payment, inventory decrement, and ticket creation
 
 `Ticket` is the issued unit created after a paid webhook reconciliation.

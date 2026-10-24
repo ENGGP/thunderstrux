@@ -19,6 +19,8 @@ export default function Navbar() {
   // Dashboard pages have a full-height sidebar at the left edge, so the header spans the window to line up with it.
   const fullWidth = pathname.startsWith("/dashboard");
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  // Checkout keeps a quiet header: no browsing links to pull the buyer away (visual spec 3.3).
+  const checkout = /\/checkout(\/|$)/.test(pathname);
   const user = session?.user?.id ? session.user : null;
   const accountLinks = user
     ? [
@@ -38,7 +40,10 @@ export default function Navbar() {
       Sign out
     </button>
   );
-  const linkClass = "text-ink-soft transition-colors hover:text-brand";
+  const linkClass = "inline-flex h-full items-center text-ink-soft transition-colors hover:text-brand";
+  // The current section: ink text and a brand rule along the header's bottom edge (artboard ExploreEventsA2).
+  const navClass = (href: string) =>
+    isActive(href) ? "inline-flex h-full items-center font-semibold text-brand-ink shadow-[inset_0_-3px_0_0_var(--ts-brand)]" : linkClass;
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-[60px] border-b border-line bg-surface md:h-[72px]">
@@ -52,23 +57,23 @@ export default function Navbar() {
 
         <nav
           aria-label="Primary navigation"
-          className="hidden flex-1 items-center gap-6 md:flex"
+          className="hidden h-full flex-1 items-center gap-6 md:flex"
         >
-          {exploreLinks.map((link) => (
+          {(checkout ? [] : exploreLinks).map((link) => (
             <Link
               aria-current={isActive(link.href) ? "page" : undefined}
-              className={`${linkClass} ${isActive(link.href) ? "font-semibold text-brand" : ""}`}
+              className={navClass(link.href)}
               href={link.href}
               key={link.href}
             >
               {link.label}
             </Link>
           ))}
-          <span className="ml-auto flex items-center gap-5">
-            {accountLinks.map((link) => (
+          <span className="ml-auto flex h-full items-center gap-5">
+            {(checkout ? [] : accountLinks).map((link) => (
               <Link
                 aria-current={isActive(link.href) ? "page" : undefined}
-                className={`${linkClass} ${isActive(link.href) ? "font-semibold text-brand" : ""}`}
+                className={navClass(link.href)}
                 href={link.href}
                 key={link.href}
               >
@@ -95,8 +100,9 @@ export default function Navbar() {
 
         <div className="ml-auto flex items-center gap-2 md:hidden">
           {/* Keyed by route so the menu closes after navigating. */}
+          {checkout ? null : (
           <details className="relative" key={pathname}>
-            <summary className="flex h-9 cursor-pointer list-none items-center rounded-control px-3 text-ink-soft [&::-webkit-details-marker]:hidden">
+            <summary className={`${buttonClasses({ variant: "secondary", size: "sm" })} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
               Menu
             </summary>
             <nav
@@ -122,6 +128,7 @@ export default function Navbar() {
               )}
             </nav>
           </details>
+          )}
           {user ? (
             signOutButton
           ) : (

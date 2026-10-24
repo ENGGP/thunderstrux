@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/input";
-import { LinkTabs } from "@/components/ui/link-tabs";
+import { Count, LinkTabs, pillClasses } from "@/components/ui/link-tabs";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
@@ -88,13 +88,11 @@ async function Roster({ organisationId, view, query, cursor }: { organisationId:
         {([...rosterViews, "joins"] as View[]).map((name) => (
           <Link
             aria-current={name === view ? "page" : undefined}
-            className={`inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold ${
-              name === view ? "border-brand bg-brand-tint text-brand-ink" : "border-line bg-surface text-ink-soft hover:text-ink"
-            } ${name === "joins" ? "sm:ml-3" : ""}`}
+            className={`${pillClasses(name === view)} ${name === "joins" ? "sm:ml-3" : ""}`}
             href={href(name, query)}
             key={name}
           >
-            {viewLabels[name]} · {roster.counts[name]}
+            {viewLabels[name]} <Count active={name === view} value={roster.counts[name]} />
           </Link>
         ))}
       </nav>

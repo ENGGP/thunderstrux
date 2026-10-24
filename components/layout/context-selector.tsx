@@ -73,7 +73,7 @@ export function ContextSelector({
           onChange={(event) => select(event.target)}
         >
           <option value="personal">
-            {contexts.accountRole === "member" ? "Personal" : "Choose organisation"}
+            {contexts.accountRole === "member" ? "Personal" : "Choose a society"}
           </option>
           {contexts.organisations.map((organisation) => (
             <option key={organisation.id} value={organisation.id}>

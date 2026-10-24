@@ -24,7 +24,7 @@ export default async function MembershipsPage() {
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
         actions={
-          <Link className={buttonClasses()} href="/dashboard/memberships/new">
+          <Link className={buttonClasses({ variant: "secondary" })} href="/dashboard/memberships/new">
             New plan
           </Link>
         }

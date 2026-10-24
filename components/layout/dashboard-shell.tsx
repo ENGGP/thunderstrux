@@ -115,12 +115,12 @@ export function DashboardShell({
       {/* Stretches with the page; the inner column sticks under the fixed header. */}
       <aside className="bg-brand-ink text-white">
         <div className="px-4 py-3 [scrollbar-color:rgb(255_255_255/0.3)_transparent] [scrollbar-width:thin] lg:sticky lg:top-[72px] lg:max-h-[calc(100dvh-72px)] lg:overflow-y-auto lg:py-4">
-          <p className="text-xs font-semibold text-white/75">Current organisation</p>
+          <p className="text-xs font-semibold text-white/75">Current society</p>
           <p className="font-semibold [overflow-wrap:anywhere]">{orgName}</p>
           <div className="mt-4 hidden lg:block">{menu}</div>
           <details className="group mt-3 lg:hidden">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-control border border-white/50 px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-              Organisation menu
+              Society menu
               <Icon className="transition-transform group-open:rotate-180" name="chevronDown" size={16} />
             </summary>
             <div className="mt-4 pb-2">{menu}</div>

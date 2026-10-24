@@ -8,7 +8,7 @@ import { PickupAction } from "@/components/merchandise/pickup-action";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/input";
-import { LinkTabs } from "@/components/ui/link-tabs";
+import { Count, LinkTabs, pillClasses } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -126,11 +126,11 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
         {pickupStages.map((name) => (
           <Link
             aria-current={name === stage ? "page" : undefined}
-            className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3.5 text-sm font-semibold ${name === stage ? "border-brand bg-brand-tint text-brand-ink" : "border-line bg-surface text-ink-soft hover:text-ink"}`}
+            className={`shrink-0 ${pillClasses(name === stage)}`}
             href={href(name, query)}
             key={name}
           >
-            {stageLabels[name]} · {counts[name]}
+            {stageLabels[name]} <Count active={name === stage} value={counts[name]} />
           </Link>
         ))}
       </nav>

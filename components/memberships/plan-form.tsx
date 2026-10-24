@@ -247,7 +247,7 @@ export function PlanForm({
 
       <Card>
         <div className="grid gap-3" id="priceAmount">
-          <h2 className="font-display text-xl font-semibold text-ink">Price</h2>
+          <h2 className="font-display text-xl font-semibold text-ink">Price and fees</h2>
           <div className="max-w-60">
             <MoneyInput
               disabled={fixed}

@@ -4,7 +4,7 @@ import Link from "next/link";
 // drafted (LEGAL-001).
 export function SiteFooter() {
   return (
-    <footer className="border-t border-line bg-surface">
+    <footer className="mt-auto border-t border-line bg-surface">
       <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-4 px-4 py-8 text-sm text-ink-soft md:px-8">
         <p>
           <span className="font-display font-semibold text-brand-ink">

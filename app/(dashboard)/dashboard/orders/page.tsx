@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { EventWorkspaceHeader, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
+import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { CommerceOrders } from "./commerce-orders";
 import { buttonClasses } from "@/components/ui/button";
-import { LinkTabs } from "@/components/ui/link-tabs";
+import { LinkTabs, pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
@@ -156,7 +156,7 @@ export default async function OrganisationOrdersPage({
         <EventWorkspaceHeader active="orders" event={event} staffRole={organisation.staffRole} />
       ) : (
         <>
-          <PageHeader description={`Review purchases and payment reconciliation for ${organisation.name}.`} title="Orders" />
+          <PageHeader description={`Everything bought from ${organisation.name}, newest first.`} title="Orders" />
           {/* Family tabs (T29b); an event's orders stay on its Tickets view. */}
           <LinkTabs
             label="Order types"
@@ -175,11 +175,11 @@ export default async function OrganisationOrdersPage({
       ) : (
       <>
 
-      <nav aria-label="Order status" className={`max-w-full ${tabBarClasses}`}>
+      <nav aria-label="Order status" className={pillBarClasses}>
         {visibleStatusFilters.map((status) => (
           <Link
             aria-current={status === activeFilter ? "page" : undefined}
-            className={tabClasses(status === activeFilter)}
+            className={pillClasses(status === activeFilter)}
             href={ordersHref({ status: status === "all" ? undefined : status })}
             key={status}
           >

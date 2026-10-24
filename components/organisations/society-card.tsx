@@ -39,9 +39,7 @@ export function SocietyCard({
             {name}
           </Link>
         </h2>
-        <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
-          {description || "This society is getting its profile ready."}
-        </p>
+        {description ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{description}</p> : null}
         {nextEvent ? (
           <p className="text-sm text-ink-muted [overflow-wrap:anywhere]">
             Coming up: {nextEvent.title}

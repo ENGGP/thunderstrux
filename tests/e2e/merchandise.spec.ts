@@ -218,7 +218,7 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
 
   await login(page, data.owner.email, "/dashboard/merchandise");
   await page.getByRole("link", { name: "Pickups · 1 to prepare" }).click();
-  await expect(page.getByRole("link", { name: "To prepare · 1" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("link", { name: "To prepare 1" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("2 × Enamel pin").first()).toBeVisible();
   await shoot(page, "pickups");
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -226,13 +226,13 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
   await expect(page.getByRole("dialog").getByRole("heading", { name: `Mark order ${reference} ready to collect?` })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Mark ready" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Order ${reference} is on the Ready tab. Sam Lee was emailed.` })).toBeVisible();
-  await page.getByRole("link", { name: "Ready to collect · 1" }).click();
+  await page.getByRole("link", { name: "Ready to collect 1" }).click();
   await expect(page.getByRole("columnheader", { name: "Ready since" })).toBeVisible();
   await page.getByRole("button", { name: `Mark order ${reference} collected` }).first().click();
   await expect(page.getByRole("dialog")).toContainText("For Sam Lee.");
   await page.getByRole("dialog").getByRole("button", { name: "Mark collected" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Order ${reference} was handed over by` })).toBeVisible();
-  await page.getByRole("link", { name: "Collected · 1" }).click();
+  await page.getByRole("link", { name: "Collected 1" }).click();
   await expect(page.getByRole("cell", { name: / by / })).toBeVisible();
   await shoot(page, "pickups-collected");
 

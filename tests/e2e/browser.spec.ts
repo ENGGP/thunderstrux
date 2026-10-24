@@ -209,7 +209,7 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   await expect(page.getByRole('heading', { name: "Societies you've joined" })).toBeVisible();
   const chooser = page.getByLabel('Workspace');
   await chooser.selectOption(data.organisation.id);
-  await expect(page.getByText('Current organisation', { exact: true })).toBeVisible();
+  await expect(page.getByText('Current society', { exact: true })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Organisation navigation' }).first();
   await expect(nav.getByRole('link', { name: 'Events', exact: true })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Orders', exact: true })).toHaveCount(0);
@@ -223,12 +223,12 @@ test('member staff choose a tenant, retain it during this login and see role-awa
   const content = await page.locator('main').first().boundingBox();
   expect(sidebar && content && sidebar.x + sidebar.width <= content.x + 1 && sidebar.y <= content.y + 1).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByText('Organisation menu', { exact: true }).click();
+  await page.getByText('Society menu', { exact: true }).click();
   const mobile = page.locator('details');
   await mobile.getByLabel('Workspace').selectOption(second.organisation.id);
-  await expect(page.getByText('Current organisation', { exact: true })).toBeVisible();
+  await expect(page.getByText('Current society', { exact: true })).toBeVisible();
   await expect(page.locator('aside p').filter({ hasText: second.organisation.name }).first()).toBeVisible();
-  await page.getByText('Organisation menu', { exact: true }).click();
+  await page.getByText('Society menu', { exact: true }).click();
   await expect(mobile.getByRole('link', { name: 'Orders', exact: true })).toBeVisible();
   await prisma.organisationStaff.updateMany({ where: { userId: data.manager.id, organisationId: second.organisation.id }, data: { status: 'revoked' } });
   await page.reload();
@@ -279,7 +279,7 @@ test('private staff invitation email supports explicit acceptance, resend and re
     await recipient.getByRole('link', { name: 'Open dashboard' }).click();
     await expect(recipient.getByLabel('Workspace')).toHaveValue('personal');
     await recipient.getByLabel('Workspace').selectOption(data.organisation.id);
-    await expect(recipient.getByText('Current organisation', { exact: true })).toBeVisible();
+    await expect(recipient.getByText('Current society', { exact: true })).toBeVisible();
   } finally { await context.close(); }
   await page.getByLabel('Email', { exact: true }).fill(data.manager.email);
   await page.getByRole('button', { name: 'Create invite', exact: true }).click();

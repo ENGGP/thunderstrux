@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { EventActions } from "@/components/events/event-actions";
 import { SaleBadge, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
+import { Count } from "@/components/ui/link-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClasses } from "@/components/ui/button";
@@ -128,13 +129,7 @@ async function EventsResults({
               key={name}
             >
               {viewLabels[name]}
-              <span
-                className={`rounded-md px-2 text-[13px] font-semibold tabular-nums ${
-                  name === view ? "bg-brand-tint" : "bg-surface-subtle"
-                }`}
-              >
-                {counts[name]}
-              </span>
+              <Count active={name === view} value={counts[name]} />
             </Link>
           ))}
         </nav>

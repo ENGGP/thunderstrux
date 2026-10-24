@@ -34,7 +34,7 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
         </p>
         <p className="text-sm text-ink-soft">
           Organisation records, event history and the Stripe connection stay with {orgName}. Credentials and
-          authenticators stay with each person. The legacy shared-login ownership link will be retired.
+          authenticators stay with each person.
         </p>
       </div>
       {error && <Notice role="alert" tone="danger">{error}</Notice>}

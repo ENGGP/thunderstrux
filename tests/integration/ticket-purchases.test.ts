@@ -96,7 +96,7 @@ describe("purchases and order status", () => {
     const cancel = () => CancelPage({ searchParams: Promise.resolve({ order: fixture.order.id }) }).then(renderPage);
     asMember(fixture.stranger);
     const foreign = await cancel();
-    expect(foreign).toContain("No payment was taken.");
+    expect(foreign).toContain("You left the payment page before paying.");
     expect(foreign).not.toContain("Engineering Mixer");
     asMember(fixture.buyer);
     expect(await cancel()).toContain("Back to Engineering Mixer");

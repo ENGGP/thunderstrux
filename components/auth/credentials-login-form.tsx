@@ -71,11 +71,11 @@ export function CredentialsLoginForm({
         value={password}
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Link className="text-sm text-brand underline" href={`/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Forgot password?</Link>
-        <Button disabled={isSubmitting} type="submit">
-          {isSubmitting ? "Signing in..." : "Sign in"}
-        </Button>
+      <Button className="w-full" disabled={isSubmitting} size="lg" type="submit">
+        {isSubmitting ? "Signing in..." : "Sign in"}
+      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link className="text-sm font-medium text-brand underline" href={`/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Forgot password?</Link>
         <Link
           className="text-sm font-medium text-brand underline"
           href={`/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`}

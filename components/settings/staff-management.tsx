@@ -212,8 +212,8 @@ export function StaffManagement({
       <Card>
         <h2 className="text-lg font-semibold text-ink">Current staff</h2>
         <div aria-label="Current staff" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
-          <table className="w-full min-w-[560px] border-collapse text-left text-[15px]">
-            <thead>
+          <table className="w-full border-collapse text-left text-[15px] md:min-w-[560px]">
+            <thead className="sr-only md:not-sr-only md:table-header-group">
               <tr className="text-[13px] text-ink-soft">
                 <th className="py-2.5 pr-4 font-semibold" scope="col">Person</th>
                 <th className="py-2.5 pr-4 font-semibold" scope="col">Role</th>
@@ -222,17 +222,19 @@ export function StaffManagement({
               </tr>
             </thead>
             <tbody>
-              {staff.map((row) => (
-                <tr className="border-t border-line align-top" key={row.id}>
-                  <td className="py-3 pr-4">
+              {staff.map((row) => {
+                const lastOwner = row.role === "owner" && row.status === "active" && staff.filter((other) => other.role === "owner" && other.status === "active").length === 1;
+                return (
+                <tr className="grid gap-2 border-t border-line py-3 align-top first:border-0 md:table-row md:py-0 md:first:border-t" key={row.id}>
+                  <td className="md:py-3 md:pr-4">
                     {personName(row) ? <p className="font-semibold text-ink">{personName(row)}</p> : null}
                     <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{row.user.email}</p>
                   </td>
-                  <td className="py-3 pr-4">
+                  <td className="md:py-3 md:pr-4">
                     <select
                       className="h-9 rounded-control border border-line-strong bg-surface px-2 text-sm text-ink disabled:cursor-not-allowed disabled:bg-surface-subtle"
                       aria-label={`Role for ${row.user.email}`}
-                      disabled={isSubmitting || row.status !== "active" || (!canManageOwners && row.role === "owner")}
+                      disabled={isSubmitting || lastOwner || row.status !== "active" || (!canManageOwners && row.role === "owner")}
                       onChange={(event) =>
                         setPending({ row, role: event.target.value as StaffRole })
                       }
@@ -245,14 +247,16 @@ export function StaffManagement({
                       ))}
                     </select>
                   </td>
-                  <td className="py-3 pr-4">
+                  <td className="md:py-3 md:pr-4">
                     <StatusBadge
                       label={row.status === "invited" ? "Invited" : undefined}
                       status={row.status === "invited" ? "pending" : row.status}
                     />
                   </td>
-                  <td className="py-3">
-                    {row.status === "active" && (canManageOwners || row.role !== "owner") ? (
+                  <td className="md:py-3">
+                    {lastOwner ? (
+                      <p className="text-sm text-ink-soft">The only owner. Hand over first.</p>
+                    ) : row.status === "active" && (canManageOwners || row.role !== "owner") ? (
                       <Button
                         aria-label={`Revoke access for ${row.user.email}`}
                         disabled={isSubmitting}
@@ -266,7 +270,8 @@ export function StaffManagement({
                     ) : null}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -307,8 +312,8 @@ export function StaffManagement({
         <Card>
           <h2 className="text-lg font-semibold text-ink">Past invitations</h2>
           <div aria-label="Past invitations" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
-            <table className="w-full min-w-[520px] border-collapse text-left text-[15px]">
-              <thead>
+            <table className="w-full border-collapse text-left text-[15px] md:min-w-[520px]">
+              <thead className="sr-only md:not-sr-only md:table-header-group">
                 <tr className="text-[13px] text-ink-soft">
                   <th className="py-2.5 pr-4 font-semibold" scope="col">Email</th>
                   <th className="py-2.5 pr-4 font-semibold" scope="col">Role</th>
@@ -318,11 +323,11 @@ export function StaffManagement({
               </thead>
               <tbody>
                 {pastInvites.map((invite) => (
-                  <tr className="border-t border-line" key={invite.id}>
-                    <td className="py-3 pr-4 text-ink [overflow-wrap:anywhere]">{invite.email}</td>
-                    <td className="py-3 pr-4 text-ink-soft">{roleLabels[invite.role]}</td>
-                    <td className="py-3 pr-4"><StatusBadge status={invite.state} /></td>
-                    <td className="py-3 text-ink-soft">{formatDate(invite.createdAt)}</td>
+                  <tr className="grid gap-1 border-t border-line py-3 first:border-0 md:table-row md:py-0 md:first:border-t" key={invite.id}>
+                    <td className="md:py-3 md:pr-4 text-ink [overflow-wrap:anywhere]">{invite.email}</td>
+                    <td className="md:py-3 md:pr-4 text-ink-soft">{roleLabels[invite.role]}</td>
+                    <td className="md:py-3 md:pr-4"><StatusBadge status={invite.state} /></td>
+                    <td className="text-ink-soft md:py-3">{formatDate(invite.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

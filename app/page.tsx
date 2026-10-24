@@ -4,6 +4,7 @@ import { EventCard } from "@/components/events/event-card";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SocietyCard } from "@/components/organisations/society-card";
 import { buttonClasses } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { getPublishedEvents } from "@/lib/events/public-events";
@@ -124,16 +125,13 @@ async function HomeListings() {
         </div>
 
         {result.events.length === 0 ? (
-          <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">
-            <p className="font-semibold text-ink">No events available</p>
-            <p className="mt-1 text-sm">
-              Nothing is published right now.{" "}
-              <Link className="text-brand underline" href="/societies">
-                Browse societies
-              </Link>{" "}
-              to see who is active.
-            </p>
-          </div>
+          <EmptyState
+            action={<Link className={buttonClasses({ variant: "secondary" })} href="/societies">Browse societies</Link>}
+            icon="calendar"
+            title="No upcoming events yet"
+          >
+            Events show here as soon as a society publishes them.
+          </EmptyState>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {result.events.map((event) => (
@@ -142,6 +140,7 @@ async function HomeListings() {
                 key={event.id}
                 location={event.location}
                 society={event.organisation}
+                media={result.events.some((item) => item.heroAssetId)}
                 heroAssetId={event.heroAssetId}
                 startTime={event.startTime}
                 timeZone={event.organisation.timeZone}

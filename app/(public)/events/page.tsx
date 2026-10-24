@@ -128,6 +128,7 @@ async function ExploreResults({
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {result.events.map((event) => (
           <EventCard
+            media={result.events.some((item) => item.heroAssetId)}
             heroAssetId={event.heroAssetId}
             id={event.id}
             key={event.id}

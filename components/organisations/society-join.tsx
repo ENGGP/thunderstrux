@@ -79,14 +79,10 @@ export function SocietyJoin({
       )}
       {state === "organisation" ? (
         <p className="text-sm text-ink-soft">
-          Organisation accounts run a society and cannot join one. Sign in with
-          a personal account to join.
+          Society accounts run a society and can&apos;t join one. Sign in with
+          your personal account to join.
         </p>
-      ) : (
-        <p className="text-sm text-ink-muted">
-          Free affiliation does not grant paid benefits or staff access.
-        </p>
-      )}
+      ) : null}
       {error && (
         <Notice role="alert" tone="danger">
           {error}

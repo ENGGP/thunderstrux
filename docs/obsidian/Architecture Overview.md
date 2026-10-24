@@ -139,8 +139,8 @@ app/
 
 `components/layout/dashboard-shell.tsx`
 
-- Renders the deep-plum sidebar column from `lg` (its contents stick below the global header) and, below `lg`, the same column with an `Organisation menu` disclosure.
-- Shows `Current organisation` and the society name in that column; each page renders its own `h1` title.
+- Renders the deep-plum sidebar column from `lg` (its contents stick below the global header) and, below `lg`, the same column with an `Society menu` disclosure.
+- Shows `Current society` and the society name in that column; each page renders its own `h1` title.
 - Owns shared organisation dashboard nav, capability-filtered: Overview, Events, Calendar, Orders; Community (Memberships, Merchandise); Insights (Analytics); then a Settings group (Society profile, Staff, Payments, Email delivery).
 - Receives the context switcher's choices from the server; see [[UI Architecture Rules]].
 - Uses slugless `/dashboard/*` paths for current organisation management routes.

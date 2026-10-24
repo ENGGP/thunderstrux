@@ -47,13 +47,14 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 
 These notes retain their original findings and dates. They do not define today's runtime or delivery policy:
 
+- [[Project Handover 2026-10-25]]: the handover for the 2026-10-15 to 2026-10-25 session (planning and delivering T10 to T46, then the Stripe audit and its fixes, PRs #68 to #166, with every dev database dump and activation) as it stood at main `1bc34ef`; superseded by [[Project Handover]] when the codebase audit session began.
 - [[Project Handover 2026-10-15]]: the handover for the 2026-10-12 to 2026-10-15 session (specification-alignment refactor, tunnel and Redis fixes, UX redesign and design-system sync) as it stood at main `33e84ce`; superseded by [[Project Handover]] when the T10–T46 delivery session began.
 - [[Project Handover 2026-10-12]]: the handover for PR #31 to PR #53 delivery with its qualification evidence; superseded by [[Project Handover]] when a new session began.
 - [[Dependency Advisory Triage 2026-09-18]] ? original advisory inventory; current patches/override removal conditions are in [[Dependency Automation]].
 - [[Production Readiness Verification 2026-09-22]] ? earlier remediation acceptance; current release procedures and remaining gates are in [[Production Operations]] and the handover.
 - [[Docker Architecture Assessment 2026-09-29]] ? topology/design assessment and subsequent foundation evidence; current runtime uses Node 22 and local validation.
 
-Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30 (the separate work packages note was folded into the readiness plan on 2026-10-16), with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. [[Project Handover 2026-10-12]] covers PR #31 to PR #53 and [[Project Handover 2026-10-15]] covers PRs #54 to #67; keep the current handover focused on the session it describes.
+Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30 (the separate work packages note was folded into the readiness plan on 2026-10-16), with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. [[Project Handover 2026-10-12]] covers PR #31 to PR #53, [[Project Handover 2026-10-15]] covers PRs #54 to #67 and [[Project Handover 2026-10-25]] covers PRs #68 to #166; keep the current handover focused on the session it describes.
 
 ## Sources And Maintenance
 

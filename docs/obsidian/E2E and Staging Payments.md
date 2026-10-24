@@ -45,7 +45,7 @@ $env:STRIPE_TEST_CONNECTED_ACCOUNT = 'acct_your_ready_test_account'
 pnpm test:payments:staging -- --use-local-test-key
 ```
 
-This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into Compose. Stripe CLI obtains a new signing secret from the exact active listener. Existing webhook secrets are not reused. The listener API version must match `2026-03-25.dahlia`; a mismatch blocks acceptance.
+This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into Compose. Stripe CLI obtains a new signing secret from the exact active listener. Existing webhook secrets are not reused. The listener API version must match the app's pin, `2026-09-30.endive` since PAY-006; a mismatch blocks acceptance. The listener runs with `--latest`, so it forwards events at Stripe's latest version rather than the account's default; when Stripe publishes a newer version than the pin, the check stops the run until the pin moves.
 
 **Scenarios (T45).** Each scenario gets its own run-owned society with a finance manager. They run in this order:
 

@@ -190,7 +190,7 @@ every minute: node scripts/process-operations-monitor.mjs   # queue backlog, old
 
 ## Stripe webhook endpoints and keys
 
-Create both endpoints in Stripe Workbench (live mode for production, test mode for staging), as **snapshot** endpoints with API version **`2026-03-25.dahlia`**, the version the app pins (`lib/stripe/index.ts`). An endpoint left on the account's default version sends events shaped for another version. An endpoint's version can't be changed later: moving the app to a new version means creating new endpoints and retiring the old ones.
+Create both endpoints in Stripe Workbench (live mode for production, test mode for staging), as **snapshot** endpoints with API version **`2026-09-30.endive`**, the version the app pins (`lib/stripe/index.ts`, since PAY-006). An endpoint left on the account's default version sends events shaped for another version. An endpoint's version can't be changed later: moving the app to a new version means creating new endpoints and retiring the old ones. Before deploying a version change, wait until the checkout-recovery queue is empty: an uncertain checkout attempt replays its stored Session request, and a request stored before the change can be refused under the new version (for example `payment_method_types`, removed in endive). Recovery then releases the hold as for any refused request.
 
 | Endpoint | Listens to | Events | Secret |
 | --- | --- | --- | --- |

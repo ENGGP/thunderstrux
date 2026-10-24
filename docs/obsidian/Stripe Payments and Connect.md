@@ -14,6 +14,8 @@ For production-mode browser testing, real test-mode payment acceptance and isola
 
 P2.16 acceptance verified real Stripe success, decline, user-attested cancellation and forced-expiry reconciliation on API version `2026-03-25.dahlia`. Destination charges, tickets, inventory and outbox state were checked; natural expiry and provider email delivery were not claimed. Implementation merged through PR #10. P3.19 repeat acceptance and journal-correlation evidence are recorded in [[Payment Lifecycle]].
 
+Since PAY-006 (2026-10-24) the app pins API version `2026-09-30.endive` with the `stripe` package 23.0.0, the version that SDK is typed for. Hosted webhook endpoints and the staging listener use the same version (see [[Production Operations]] and [[E2E and Staging Payments]]).
+
 ## Design Principles
 
 - Use Stripe Checkout hosted pages
@@ -78,7 +80,7 @@ Current implementation details:
 
 - Currency is `aud`
 - Payment flow uses destination charges
-- Checkout is restricted to card payments so `checkout.session.completed` can require `payment_status = paid`
+- Checkout is restricted to card payments so `checkout.session.completed` can require `payment_status = paid`. Since PAY-006 (API `2026-09-30.endive`, stripe 23) this is `allowed_payment_method_types: ["card"]`; endive removed `payment_method_types` from Checkout Sessions. Adding any delayed payment method means handling `checkout.session.async_payment_succeeded` and `async_payment_failed` first
 - Success URL includes `{CHECKOUT_SESSION_ID}` so non-production can run the dev-only reconciliation fallback when local webhook forwarding is missing
 - Platform fee is calculated by `calculatePlatformFee(totalAmount)`
 - Reservation window is 30 minutes because Stripe Checkout `expires_at` must be at least 30 minutes after session creation. Since the Stripe audit (2026-10-24) `checkoutSessionExpiresAt` sets it just before the call, 30 minutes plus a 60-second margin for the trip to Stripe, and the hold ends at the same time for tickets and for memberships and merchandise. The margin stays under the 2-minute recovery delay, so a recovery replay of a request Stripe never saw still carries an expiry Stripe refuses

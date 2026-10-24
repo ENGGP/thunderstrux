@@ -108,7 +108,8 @@ describe("checkout attempt recovery", () => {
 
   test("an order that expired before recovery stays expired and keeps the Session on record", async () => {
     const { orderId } = await uncertainCheckout();
-    const afterHold = new Date(Date.now() + 31 * 60 * 1000);
+    // The hold is 30 minutes plus the Session expiry margin.
+    const afterHold = new Date(Date.now() + 32 * 60 * 1000);
     await processStaleOrderCleanupBatch({ now: afterHold });
     const sessionId = unique("cs_after_expiry");
     stripeMocks.createSession.mockResolvedValueOnce({ id: sessionId, url: "https://checkout.stripe.test/expired" });

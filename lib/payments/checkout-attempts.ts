@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { reservationMinutes } from "@/lib/tickets/reservations";
 
 // One durable record per intended checkout (database spec 6.1). The same actor
 // and client key always answers with the same attempt; the provider key is sent
@@ -11,6 +12,22 @@ export const eventCheckoutOperation = "event_checkout";
 // How long a created attempt may wait for its Session before the recovery
 // worker (T14b) treats it as uncertain.
 export const attemptReconcileDelayMs = 2 * 60 * 1000;
+
+// Stripe refuses a Session expiring under 30 minutes after it is created, so the
+// expiry is set just before the call with a margin for the trip there. The margin
+// stays under attemptReconcileDelayMs: a recovery replay of a request Stripe never
+// saw then carries an expiry Stripe refuses, which releases the hold.
+const sessionExpiryMarginSeconds = 60;
+
+export function checkoutSessionExpiresAt(now = Date.now()) {
+  return Math.ceil(now / 1000) + reservationMinutes * 60 + sessionExpiryMarginSeconds;
+}
+
+// Tags each checkout flow's Sessions in the Stripe Dashboard so the flows can be compared.
+export const checkoutIntegrationIdentifiers = {
+  tickets: "thunderstrux-tickets-qhzmvkra",
+  commerce: "thunderstrux-commerce-wpdlxneg"
+} as const;
 
 type AttemptClient = Pick<Prisma.TransactionClient, "checkoutAttempt">;
 

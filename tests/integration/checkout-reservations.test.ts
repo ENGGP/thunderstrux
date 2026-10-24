@@ -162,14 +162,17 @@ describe("checkout and reservation logic", () => {
       })
     ]);
 
+    // 30 minutes plus the margin for the trip to Stripe, which refuses anything shorter.
     const expectedExpiresAtSeconds =
-      Math.ceil(new Date("2026-05-01T10:00:00.000Z").getTime() / 1000) + 30 * 60;
+      Math.ceil(new Date("2026-05-01T10:00:00.000Z").getTime() / 1000) + 30 * 60 + 60;
     expect(order.reservation?.expiresAt.getTime()).toBe(
       expectedExpiresAtSeconds * 1000
     );
     expect(stripeMocks.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         expires_at: expectedExpiresAtSeconds,
+        customer_email: expect.stringContaining("@"),
+        integration_identifier: "thunderstrux-tickets-qhzmvkra",
         metadata: expect.objectContaining({
           orderId: order.id,
           eventId: event.id,

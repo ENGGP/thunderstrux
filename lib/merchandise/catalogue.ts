@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
 import { heldByVariant } from "@/lib/merchandise/sale";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
+import { priceAmountSchema } from "@/lib/validators/price";
 
 // The merchandise catalogue (T25, design round B2): products a society sells
 // for pickup, their photos and the options buyers pick. Every change holds
@@ -32,7 +33,7 @@ const optionSchema = z
       .max(64, "Keep it to 64 characters.")
       .transform((value) => value.toUpperCase())
       .refine((value) => value === "" || SKU.test(value), "Use letters, numbers, dots, dashes or underscores."),
-    priceAmount: z.number().int().min(0).max(99_999_999),
+    priceAmount: priceAmountSchema,
     remaining: z.number().int().min(0, "Stock can't be below 0.").max(100_000, "Stock can be at most 100,000.")
   })
   .strict();

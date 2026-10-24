@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import Stripe from "stripe";
 import { POST as paymentsWebhook } from "@/app/api/payments/webhook/route";
+import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
@@ -90,6 +91,24 @@ describe("disconnect", () => {
       actorUserId: actor.id,
       metadata: { previousStripeAccountId: fixture.owner.organisation.stripeAccountId }
     });
+  });
+
+  test("a membership order still being paid, refunded or disputed also blocks it", async () => {
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    const now = Date.now();
+    const plan = await prisma.membershipProduct.create({ data: { organisationId: owner.organisation.id, name: "Semester 2", priceAmount: 2500, startsAt: new Date(now - 86_400_000), endsAt: new Date(now + 100 * 86_400_000), entitlements: ["member_prices"], status: "published", publishedAt: new Date() } });
+    const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+      organisationId: owner.organisation.id, kind: "membership", buyer: { userId: owner.user.id }, buyerEmail: owner.user.email, paymentKind: "stripe", feeAmount: 183, source: "checkout",
+      lines: [{ quantity: 1, unitAmount: 2500, name: plan.name, termStartsAt: plan.startsAt, termEndsAt: plan.endsAt, membershipProductId: plan.id }], expiresAt: new Date(now + 20 * 60_000)
+    }));
+    const actor = { id: owner.user.id };
+
+    await expect(disconnectAccount(owner.organisation.id, { actor })).rejects.toBeInstanceOf(StripeDisconnectBlockedError);
+    await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "paid", disputeStatus: "open" } });
+    await expect(disconnectAccount(owner.organisation.id, { actor })).rejects.toBeInstanceOf(StripeDisconnectBlockedError);
+    await prisma.commerceOrder.update({ where: { id: order.id }, data: { disputeStatus: "won" } });
+    await disconnectAccount(owner.organisation.id, { actor });
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).toBeNull();
   });
 
   test("with no account, only resets a blocked platform state", async () => {

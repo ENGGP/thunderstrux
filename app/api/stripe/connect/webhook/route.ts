@@ -9,7 +9,7 @@ import {
   isLiveStripeKey,
   StripeConfigurationError
 } from "@/lib/stripe";
-import { persistConnectedAccountStatus } from "@/lib/stripe/connect";
+import { refreshConnectedAccount } from "@/lib/stripe/connect";
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -82,17 +82,18 @@ export async function POST(request: Request) {
   }
 
   if (event.type === "account.updated") {
-    const account = event.data.object as Stripe.Account;
-    const update = await persistConnectedAccountStatus(account);
+    const accountId = (event.data.object as Stripe.Account).id;
+    // If Stripe can't answer, the 500 makes it retry.
+    const update = await refreshConnectedAccount(accountId);
 
     if (update.count === 0) {
       logError("stripe_connect.webhook.ignored", {
         reason: "stripe_account_not_found",
-        stripeAccountId: account.id
+        stripeAccountId: accountId
       });
     } else {
       logInfo("stripe_connect.webhook.received", {
-        stripeAccountId: account.id,
+        stripeAccountId: accountId,
         updatedOrganisations: update.count
       });
     }

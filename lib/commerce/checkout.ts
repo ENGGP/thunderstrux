@@ -10,7 +10,7 @@ import { appendCommerceLifecycleEvent, commerceTotals, createCommerceOrder } fro
 import { lockGuestBuyer } from "@/lib/guest/guest-access";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo } from "@/lib/ops/logger";
-import { attemptReconcileDelayMs, isDefiniteProviderFailure, markAttemptUncertain, newProviderOperationKey, type CheckoutActor } from "@/lib/payments/checkout-attempts";
+import { attemptReconcileDelayMs, checkoutIntegrationIdentifiers, checkoutSessionExpiresAt, isDefiniteProviderFailure, markAttemptUncertain, newProviderOperationKey, type CheckoutActor } from "@/lib/payments/checkout-attempts";
 import { getAppUrl, getStripe } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
@@ -158,11 +158,13 @@ export async function createCommerceCheckout(input: {
   }
 
   const { order, attempt, stripe } = created;
-  const expiresAt = Math.floor((order.expiresAt as Date).getTime() / 1000);
+  // The hold ends when Stripe's Session does, set just before the call.
+  const expiresAt = checkoutSessionExpiresAt();
   const metadata = { family: input.family, commerceOrderId: order.id, organisationId: order.organisationId };
   const sessionRequest: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
     payment_method_types: ["card"],
+    integration_identifier: checkoutIntegrationIdentifiers.commerce,
     // A free option in a paid basket is on the order, not on the card statement.
     line_items: created.lines.filter((line) => line.unitAmount > 0).map((line) => ({
       price_data: { currency: order.currency, product_data: { name: line.variant ? `${line.name} (${line.variant})` : line.name }, unit_amount: line.unitAmount },
@@ -182,7 +184,10 @@ export async function createCommerceCheckout(input: {
     metadata
   };
   // Recovery replays exactly this request with the same key.
-  await prisma.checkoutAttempt.update({ where: { id: attempt.id }, data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue } });
+  await prisma.$transaction([
+    prisma.commerceOrder.update({ where: { id: order.id }, data: { expiresAt: new Date(expiresAt * 1000) } }),
+    prisma.checkoutAttempt.update({ where: { id: attempt.id }, data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue } })
+  ]);
 
   let session: Stripe.Checkout.Session;
   try {

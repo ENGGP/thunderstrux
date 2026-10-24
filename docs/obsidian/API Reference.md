@@ -910,7 +910,7 @@ Rules:
 - Organisation is resolved server-side from the event.
 - Paid types: the organisation must be Stripe-ready; checkout creates a pending `Order` and an active `TicketReservation`.
 - Free types: no Stripe configuration is read and nothing is held. One transaction creates a fulfilled `Order` (`paymentKind: free`, `status: paid`, total and fee 0), its tickets, one stock decrement, the `order_created` and `free_fulfilled` lifecycle events and the automatic ticket email. If the email cannot be queued, nothing is created.
-- Uses 30-minute reservation expiry and sets Stripe Checkout `expires_at` to match.
+- Uses a 30-minute reservation and sets Stripe Checkout `expires_at` to 30 minutes plus a 60-second margin from the call, with the hold ending at the same time.
 - Sets success URL to `/success?session_id={CHECKOUT_SESSION_ID}`, which shows the member's order as it really stands (and, outside production only, runs the dev fallback); for a guest, to `/guest/orders/[orderId]`, which only their session opens. The cancel URL is `/cancel?order={orderId}`, which names the order only to its buyer (T19a).
 - Since T12 every rule is checked under the buyer, event and ticket type locks: publication, sale state and close time, the shared readiness eligibility, and sellable stock = min(remaining minus that type's active holds, capacity minus valid issued tickets and all active holds).
 - `quantity` is 1 to 10 per order.
@@ -1131,7 +1131,7 @@ Handles:
 Responsibilities:
 
 - Verify signature.
-- Persist account status flags on the matching organisation.
+- For an account a society uses, re-read it from Stripe and persist its status flags (a failed read returns 500 so Stripe retries); ignore any other account.
 
 ## General Notifications
 

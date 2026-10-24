@@ -18,6 +18,8 @@ import {
 } from "@/lib/payments/checkout-binding";
 import {
   attemptReconcileDelayMs,
+  checkoutIntegrationIdentifiers,
+  checkoutSessionExpiresAt,
   checkoutAttemptStatus,
   checkoutRequestHash,
   eventCheckoutOperation,
@@ -38,7 +40,6 @@ import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
 import {
   expireOldActiveReservations,
   getReservationExpiry,
-  reservationMinutes,
   runSerializableReservationTransaction
 } from "@/lib/tickets/reservations";
 
@@ -397,7 +398,8 @@ export async function createEventCheckout({
           eventTitle: event.title,
           organisationId: event.organisationId,
           // Payment eligibility above guarantees a connected account.
-          stripeAccountId: organisation.stripeAccountId as string
+          stripeAccountId: organisation.stripeAccountId as string,
+          buyerEmail: buyer.email
         } };
       });
     } catch (error) {
@@ -427,10 +429,12 @@ export async function createEventCheckout({
     });
 
     pendingOrderId = pendingOrder.id;
-    const stripeExpiresAt = Math.ceil(Date.now() / 1000) + reservationMinutes * 60;
+    const stripeExpiresAt = checkoutSessionExpiresAt();
     const sessionRequest: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       payment_method_types: ["card"],
+      integration_identifier: checkoutIntegrationIdentifiers.tickets,
+      customer_email: pendingOrder.buyerEmail,
       line_items: [
         {
           price_data: {

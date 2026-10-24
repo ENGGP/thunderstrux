@@ -10,6 +10,7 @@ import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoneyInput, parseMoneyInput } from "@/lib/format";
 import type { StaffProduct } from "@/lib/merchandise/catalogue";
+import { isBelowStripeMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
 
 const imageTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxImageBytes = 5 * 1024 * 1024;
@@ -103,6 +104,7 @@ export function ProductForm({
       const priceAmount = parseMoneyInput(option.price);
       const remaining = /^\s*\d{1,6}\s*$/.test(option.remaining) ? Number(option.remaining) : null;
       if (priceAmount === null) found[`variants.${index}.priceAmount`] = "Enter an amount like 45.00. Use 0 for free.";
+      else if (isBelowStripeMinimum(priceAmount)) found[`variants.${index}.priceAmount`] = paidPriceMinimum;
       if (remaining === null) found[`variants.${index}.remaining`] = "Enter a whole number, 0 or more.";
       return { id: option.id, expectedVersion: option.expectedVersion, colour: option.colour, size: option.size, sku: option.sku, priceAmount: priceAmount ?? 0, remaining: remaining ?? 0 };
     });

@@ -10,7 +10,7 @@ import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
-import { calculatePlatformFee } from "@/lib/stripe/fees";
+import { calculatePlatformFee, isBelowStripeMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
 import { toZonedInput, zoneAbbreviation, zoneCity, zoneLabel, zonedCandidates } from "@/lib/zoned-time";
 
 type ErrorDetail = { path?: string[]; message: string };
@@ -281,7 +281,9 @@ export function CreateEventForm({
       if (parseMoneyInput(ticketType.price) === null) add(at("price"), "Enter a price in dollars, like 15.00. Use 0 for free.");
       const memberPrice = ticketType.memberPrice.trim() ? parseMoneyInput(ticketType.memberPrice) : undefined;
       const price = parseMoneyInput(ticketType.price);
+      if (price !== null && isBelowStripeMinimum(price)) add(at("price"), paidPriceMinimum);
       if (memberPrice === null) add(at("memberPrice"), "Enter a member price like 10.00, or leave it blank.");
+      else if (memberPrice !== undefined && isBelowStripeMinimum(memberPrice)) add(at("memberPrice"), paidPriceMinimum);
       else if (memberPrice !== undefined && price !== null && memberPrice > price) add(at("memberPrice"), `The member price can't be more than the price (${formatMoney(price)}).`);
       const quantity = ticketType.quantity.trim();
       if (!/^\d+$/.test(quantity)) add(at("quantity"), "Enter a whole number.");
@@ -501,7 +503,7 @@ export function CreateEventForm({
             <div>
               <h2 className="text-lg font-semibold text-ink">Tickets</h2>
               <p className="mt-1 text-sm text-ink-soft">
-                {mode === "edit" ? "Quantity is how many are still available. " : ""}A price of $0.00 is shown as Free.
+                {mode === "edit" ? "Quantity is how many are still available. " : ""}A price of $0.00 is shown as Free; paid prices start at $0.50.
               </p>
             </div>
             {errorFor(errors, "ticketTypes") && !errors.find((error) => error.path?.[0] === "ticketTypes" && error.path.length > 1) ? (

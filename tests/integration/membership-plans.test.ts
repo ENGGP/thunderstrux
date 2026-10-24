@@ -72,6 +72,8 @@ describe("membership plans", () => {
       [{ ...fullYear, firstDay: `${year}-02-30` }, "firstDay"],
       [{ ...fullYear, priceAmount: -1 }, "priceAmount"],
       [{ ...fullYear, priceAmount: 12.5 }, "priceAmount"],
+      // Stripe refuses an AUD card payment under $0.50.
+      [{ ...fullYear, priceAmount: 49 }, "priceAmount"],
       [{ ...fullYear, name: "  " }, "name"],
       [{ ...fullYear, entitlements: ["lifetime_pass"] }, "entitlements"],
       [{ ...fullYear, organisationId: "other" }, ""]

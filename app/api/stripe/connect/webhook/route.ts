@@ -9,6 +9,7 @@ import {
   isLiveStripeKey,
   StripeConfigurationError
 } from "@/lib/stripe";
+import { reconcilePayoutEvent } from "@/lib/payouts/payouts";
 import { refreshConnectedAccount } from "@/lib/stripe/connect";
 
 export async function POST(request: Request) {
@@ -97,6 +98,11 @@ export async function POST(request: Request) {
         updatedOrganisations: update.count
       });
     }
+  }
+
+  // PAY-005: payouts from a society's balance to its bank.
+  if (event.type === "payout.paid" || event.type === "payout.failed" || event.type === "payout.canceled" || event.type === "payout.updated") {
+    await reconcilePayoutEvent(event);
   }
 
   return NextResponse.json({ received: true });

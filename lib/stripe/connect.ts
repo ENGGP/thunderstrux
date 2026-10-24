@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
+import { manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 
 export type StripeConnectState =
@@ -35,6 +36,8 @@ export type StripeConnectStatus = {
   error?: string;
   // Orders still tied to this account; while any exist it cannot be disconnected.
   openObligations?: number;
+  // PAY-005: what is held for events and memberships, on its way, and recent payouts.
+  payouts?: PayoutSummary;
 };
 
 type ConnectOrganisation = Pick<
@@ -264,7 +267,9 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
         type: "express",
         // on_behalf_of makes the society the settlement merchant, which needs card_payments;
         // destination charges need transfers.
-        capabilities: { card_payments: { requested: true }, transfers: { requested: true } }
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+        // PAY-005: Thunderstrux sends the money once each event is over.
+        settings: manualPayoutSettings
       },
       { idempotencyKey: `connect-account:${organisation.id}:${earlierAccounts}` }
     );
@@ -405,6 +410,16 @@ export async function disconnectAccount(
     const digest = mfaGrantDigest(actor.mfaSessionId);
     if (!digest) throw new MfaRequiredError();
     await verifyStaffMfa(actor.id, mfaCode, digest);
+  }
+
+  // PAY-005: before unlinking, Stripe takes payouts back, so the money still
+  // held for events isn't left waiting. A disconnect then refused under the lock
+  // below is put back on manual payouts by the payouts worker's next check.
+  const linked = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true } });
+  if (linked?.stripeAccountId) {
+    const open = await countOpenObligations(prisma, orgId, linked.stripeAccountId);
+    if (open > 0) throw new StripeDisconnectBlockedError(open);
+    await restoreStripePayoutSchedule(linked.stripeAccountId);
   }
 
   await prisma.$transaction(async (tx) => {
@@ -552,9 +567,10 @@ export async function getOrganisationStripeConnectStatus(orgId: string) {
   }
 
   const openObligations = await countOpenObligations(prisma, orgId, organisation.stripeAccountId);
+  const payouts = await payoutSummary(orgId, organisation.stripeAccountId);
 
   try {
-    return { ...(await getAccountStatus(organisation.stripeAccountId)), openObligations };
+    return { ...(await getAccountStatus(organisation.stripeAccountId)), openObligations, payouts };
   } catch (error) {
     console.error("Stripe Connect status refresh failed", {
       organisationId: orgId,
@@ -569,7 +585,8 @@ export async function getOrganisationStripeConnectStatus(orgId: string) {
     // The provider's own message stays in the log, not the response.
     return {
       ...(await markAccountStatusError(orgId, organisation.stripeAccountId, "Thunderstrux couldn't reach Stripe to refresh this account.")),
-      openObligations
+      openObligations,
+      payouts
     };
   }
 }

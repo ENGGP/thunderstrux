@@ -1060,7 +1060,11 @@ Lifecycle states:
 - `READY`: `charges_enabled` is true.
 - `ERROR`: Stripe API failure. The last known flags are kept and returned, with `error: "Thunderstrux couldn't reach Stripe to refresh this account."`.
 
-A connected status also includes `openObligations`: orders that still depend on the account and block disconnect.
+A connected status also includes `openObligations` (orders that still depend on the account and block disconnect) and `payouts` (PAY-005). `payouts` holds:
+- `held`: ticket money waiting for events to end, with the event count and next end, plus membership and merchandise money and the total;
+- `onTheWay`: pending payouts' amount and when the latest was sent;
+- `recent`: the last 5 payouts;
+- `failed`: the latest refused payout, unless a later one went through.
 
 Persists:
 

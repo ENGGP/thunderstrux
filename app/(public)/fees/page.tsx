@@ -70,7 +70,7 @@ export default function FeesPage() {
         <p>A society can refund a whole paid order. The buyer gets back everything they paid. The refund comes out of the society&apos;s Stripe balance and Thunderstrux returns its fee, so the society gives back only what it received.</p>
       </PolicySection>
       <PolicySection title="How societies get paid">
-        <p>Societies take payments through their own Stripe account, set up from Settings. Each sale is transferred to that account straight away, and Stripe pays it into the society&apos;s bank on the society&apos;s payout schedule.</p>
+        <p>Societies take payments through their own Stripe account, set up from Settings. Thunderstrux sends a society its ticket money 2 days after the event ends, and membership and merchandise money 7 days after the sale. Until then the money stays in the society&apos;s Stripe balance, so refunds for a cancelled event come out of money the society still has.</p>
       </PolicySection>
     </PolicyPage>
   );

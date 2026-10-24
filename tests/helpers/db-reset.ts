@@ -91,6 +91,7 @@ export async function resetTestDatabase() {
       "MerchandiseProduct",
       "RefundRequest",
       "PurchaseDispute",
+      "SocietyPayout",
       "Order",
       "GuestAccessGrant",
       "GuestIdentity",

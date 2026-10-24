@@ -109,6 +109,8 @@ model Organisation {
   stripeChargesEnabled Boolean              @default(false)
   stripePayoutsEnabled Boolean              @default(false)
   stripeDetailsSubmitted Boolean            @default(false)
+  // PAY-005: when the payouts worker last looked at this society's Stripe balance.
+  payoutCheckedAt     DateTime?
   createdAt           DateTime             @default(now())
   accountUser         User?                @relation("OrganisationAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
   notificationJobs    NotificationOutbox[]
@@ -128,6 +130,7 @@ model Organisation {
   membershipProducts  MembershipProduct[]
   merchandiseProducts MerchandiseProduct[]
   membershipGrants    MembershipGrant[]
+  payouts             SocietyPayout[]
 
   @@index([accountUserId])
   @@index([stripeAccountId])
@@ -613,6 +616,32 @@ model PurchaseDispute {
   @@index([orderId, createdAt])
   @@index([commerceOrderId, createdAt])
   @@index([reversalStatus, reversalNextAttemptAt])
+}
+
+// PAY-005: money sent from a society's Stripe balance to its bank, once the
+// event it came from is over. Created by the payouts worker, or from Stripe's
+// payout events; Stripe's status is the truth.
+model SocietyPayout {
+  id              String              @id @default(cuid())
+  organisationId  String
+  stripeAccountId String
+  stripePayoutId  String              @unique
+  amount          Int
+  currency        String
+  status          SocietyPayoutStatus @default(pending)
+  failureMessage  String?
+  arrivalDate     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  organisation    Organisation        @relation(fields: [organisationId], references: [id], onDelete: Restrict)
+
+  @@index([organisationId, createdAt])
+}
+
+enum SocietyPayoutStatus {
+  pending
+  paid
+  failed
 }
 
 enum DisputeReversalStatus {

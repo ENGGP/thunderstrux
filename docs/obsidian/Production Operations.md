@@ -182,7 +182,7 @@ Pause the workers before deployment (`pnpm ops:workers -- pause all --reason=...
 ```text
 every minute: node scripts/process-email-outbox.mjs
 every minute: node scripts/process-stale-orders.mjs   # also expires stale commerce orders (T21)
-every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a) and takes back lost disputes (PAY-004)
+every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a), takes back lost disputes (PAY-004) and pays societies out (PAY-005)
 every minute: node scripts/process-checkout-attempts.mjs   # ticket and commerce attempts (T21)
 every minute: node scripts/process-notifications.mjs   # also fans out event changes and queues membership reminders (T30), and deletes tokens 30 days past expiry, 500 a run (T39)
 every minute: node scripts/process-operations-monitor.mjs   # queue backlog, oldest age, stuck items and stale jobs (T42)
@@ -195,11 +195,11 @@ Create both endpoints in Stripe Workbench (live mode for production, test mode f
 | Endpoint | Listens to | Events | Secret |
 | --- | --- | --- | --- |
 | `https://<app>/api/payments/webhook` | Your account | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` | `STRIPE_WEBHOOK_SECRET` |
-| `https://<app>/api/stripe/connect/webhook` | Connected accounts | `account.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| `https://<app>/api/stripe/connect/webhook` | Connected accounts | `account.updated`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 
 Subscribe only these events. After creating them, check the endpoint list shows the pinned version, then send a test event to each and confirm HTTP 200 in Workbench's Event deliveries.
 
-**Key.** Use a restricted key (`rk_live_…`) rather than the secret key, with only what the app calls: Checkout Sessions (write: create, retrieve, list, expire), PaymentIntents and Charges (read), Refunds (write), Disputes (read), and Connect accounts, account links and login links (write). Create it in test mode first and run the staging campaign with it: a `403` in Workbench's request logs names a missing permission. Keep it in the `stripe_secret_key` secret file; roll it when someone with access leaves.
+**Key.** Use a restricted key (`rk_live_…`) rather than the secret key, with only what the app calls: Checkout Sessions (write: create, retrieve, list, expire), PaymentIntents and Charges (read), Refunds (write), Disputes (read), Connect accounts, account links and login links (write), Transfers (write, for dispute reversals), and Balance (read) and Payouts (write) on connected accounts. Create it in test mode first and run the staging campaign with it: a `403` in Workbench's request logs names a missing permission. Keep it in the `stripe_secret_key` secret file; roll it when someone with access leaves.
 
 **Optional.** The proxy may also accept webhook requests only from [Stripe's published IP addresses](https://docs.stripe.com/ips); signature checks stay the real protection.
 
@@ -236,6 +236,7 @@ Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
 | `queue_backlog_high` checkout attempts | an uncertain Stripe Session is over 30 minutes old | Check the checkout-recovery job and compare with the Stripe dashboard. |
 | `queue_backlog_high` compensation or order refunds | a queued or uncertain refund is over an hour old | Check the refunds job and Stripe. Never refund by hand while a refund is uncertain: it may go through twice. |
 | `queue_backlog_high` dispute reversals | a lost dispute hasn't been taken back from the society within an hour of closing | Check the refunds job and the transfer's reversals in Stripe. Never reverse by hand while one is uncertain. |
+| `society_payout_failed` | a society's bank refused a payout | The society sees a warning on Payments and fixes its bank details in Stripe; the money stays in its Stripe balance and goes with the next payout. Help them if it keeps failing. |
 | `dispute_reversal_unresolved` | a lost dispute can't be taken back (no transfer, another account, nothing left, Stripe refused) or is still unknown after six tries | Look at the dispute's charge and transfer in Stripe's Dashboard and reverse or write it off by hand; record what was done on the order. |
 | `queue_backlog_high` ticket holds | an expired hold is still active 10 minutes later | Check the stale-orders job; the held stock stays unavailable until it runs. |
 | `queue_backlog_high` commerce checkouts | a pending commerce checkout is 30 minutes past its expiry | Check the stale-orders job. |

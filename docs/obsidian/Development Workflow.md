@@ -717,7 +717,7 @@ To reach one dev app at two addresses (say `http://127.0.0.1:3080` and a tunnell
 
 To receive webhooks, add two test-mode endpoints in the Stripe Dashboard, each with API version `2026-03-25.dahlia` (see Stripe webhook endpoints and keys in [[Production Operations]]):
 - **Platform payments:** `https://<public address>/api/payments/webhook`, with `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed` and `charge.dispute.created`/`updated`/`closed`. Its signing secret goes in `STRIPE_WEBHOOK_SECRET`.
-- **Connected accounts:** `https://<public address>/api/stripe/connect/webhook`, with `account.updated`. Its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET`.
+- **Connected accounts:** `https://<public address>/api/stripe/connect/webhook`, with `account.updated` and `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated`. Its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET`.
 
 Restart the app afterwards. Stripe can reach only the public address, which serves both addresses' orders because they share one database. Local development may use `off` and `allow`. Production must set an explicit MFA mode, a separately backed-up 32-byte base64 MFA key for enrollment/enforcement, exact trusted origins, and must move legacy access to `deny` after named-staff enrollment. Follow [[Production Readiness Verification 2026-09-22]] rather than changing these values ad hoc.
 

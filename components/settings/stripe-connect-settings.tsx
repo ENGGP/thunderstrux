@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { PayoutFailedNotice, PayoutsCard, type PayoutSummaryView } from "@/components/settings/payouts-card";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -42,6 +43,7 @@ type ConnectStatus = {
   actionRequired?: string;
   error?: string;
   openObligations?: number;
+  payouts?: PayoutSummaryView;
 };
 
 function stateContent(status: ConnectStatus | null): {
@@ -357,7 +359,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       label: "Can receive payouts",
       ok: Boolean(status?.payouts_enabled),
       text: status?.payouts_enabled
-        ? "Yes. Stripe pays out to your bank account on its usual schedule."
+        ? "Yes. Thunderstrux sends your money to your bank once each event is over; see Payouts below."
         : "Not yet. Ticket money is held in Stripe until you add a bank account. Sales keep working meanwhile.",
       action:
         status?.state === "READY" && !status.payouts_enabled ? (
@@ -368,8 +370,19 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     }
   ];
 
+  const dashboardButton = (label: string, variant: "primary" | "secondary") => (
+    <Button disabled={isOpeningDashboard || !status?.dashboard_available} onClick={openDashboard} type="button" variant={variant}>
+      {isOpeningDashboard ? "Opening Stripe..." : label}
+    </Button>
+  );
+  const waiting = status?.payouts?.held.total ?? 0;
+
   return (
     <>
+      {isConnected && status?.payouts?.failed ? (
+        <PayoutFailedNotice action={dashboardButton("Check bank details in Stripe", "primary")} failed={status.payouts.failed} />
+      ) : null}
+
       <Card>
         <div className="grid gap-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -463,6 +476,14 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         </div>
       </Card>
 
+      {isConnected && status?.payouts ? (
+        <PayoutsCard
+          payouts={status.payouts}
+          payoutsEnabled={status.payouts_enabled}
+          seeAll={status.dashboard_available ? <div>{dashboardButton("See every payout in Stripe", "secondary")}</div> : null}
+        />
+      ) : null}
+
       <Card>
         <div className="grid gap-4">
           <div className="grid gap-1">
@@ -495,8 +516,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           <div className="grid max-w-xl gap-1">
             <h2 className="text-lg font-semibold text-ink">Disconnect Stripe</h2>
             <p className="text-sm text-ink-soft">
-              Unlinks the account from Thunderstrux only. Your Stripe account and its money are not touched.
-              Paid sales stop until you connect again.
+              Unlinks the account from Thunderstrux only. Your Stripe account and its money are not touched, and Stripe
+              pays out what&apos;s left on its usual schedule. Paid sales stop until you connect again.
             </p>
           </div>
           {openObligations > 0 ? (
@@ -534,8 +555,9 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       >
         <div className="grid gap-4">
           <p>
-            Paid tickets go off sale for every event until you connect again. Your Stripe account, its balance
-            and past payouts are not touched. Past orders keep the account they were paid to.
+            Paid tickets go off sale for every event until you connect again. Your Stripe account and its balance are not
+            touched: Stripe pays {waiting > 0 ? `the ${formatMoney(waiting)} still waiting` : "anything left"} into your bank on its
+            usual schedule. Past orders keep the account they were paid to.
           </p>
           {needsCode ? (
             <TextInput

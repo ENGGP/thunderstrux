@@ -325,6 +325,23 @@ This endpoint is both a status reader and a local state synchronizer.
 
 All Stripe Connect mutation routes require live Stripe Connect capability for the canonical target organisation, or the explicitly enabled legacy fallback.
 
+## Payouts After The Event (PAY-005)
+
+Design round F1, approved 24 Oct 2026. A society is paid once its event is over, as Humanitix and Eventbrite pay organisers, so refunds for a cancelled event come out of money the society still has. On Express accounts with destination charges the platform carries negative balances, so this protects Thunderstrux as well.
+
+- **Manual payouts.** New Express accounts are created with `settings.payouts.schedule.interval = manual` and `debit_negative_balances = true` (`manualPayoutSettings`). Societies already connected are switched on the payouts worker's first check of them. Money then stays in the society's Stripe balance until Thunderstrux sends it.
+- **Release rules** (`lib/payouts/release.ts`, `heldMoney`):
+  - ticket money is held until 2 days after its event ends;
+  - membership and merchandise money for 7 days after the sale;
+  - an open dispute or a payment under compensation review holds its money until it closes;
+  - nothing is held past 80 days, because Stripe allows manual payouts to hold money at most 90 days in Australia.
+  - A sale counts its society share (price less the fee and anything refunded outside Thunderstrux); a refunded order counts nothing. Ticket orders are scoped by `Event.organisationId` and the order's seller account.
+- **Payouts worker** (`processPayoutBatch`, `lib/payouts/payouts.ts`). It is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`), which already holds the Stripe key and runs every minute. Each ready society with payouts enabled is checked at most hourly, claimed through `Organisation.payoutCheckedAt`. The worker makes sure the account is on manual payouts, then reads the available AUD balance. If the balance less what the rules hold is at least $1.00, it sends one payout with the key `payout:<account>:<UTC date>` and records a `SocietyPayout`. A payout can never exceed the available balance, so a retry can't overpay.
+- **Payout events.** The Connect webhook takes `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated`. It re-reads the payout from Stripe on the connected account and records its status: `pending`, `paid`, or `failed` for both failed and canceled. A payout the bank refuses alerts `society_payout_failed`. An event for a payout recorded under another account changes nothing.
+- **Payments page.** A Payouts card shows what is waiting for events to end (with how many events and when the next ends), membership and merchandise money from the last 7 days, what is on its way to the bank, and the last 5 payouts. It links to every payout in Stripe's Express dashboard. A refused payout puts a warning with Check bank details in Stripe at the top of the page until a later payout goes through. Without a bank account the card says how much is waiting.
+- **Disconnect.** Before unlinking, the account goes back to Stripe's daily payouts (`restoreStripePayoutSchedule`), so money held for events isn't stranded. The dialog names the amount still waiting. A disconnect then refused under the lock is put back on manual payouts by the worker's next check.
+- **Not built (F1 defaults):** early payouts, and the per-payout list of what it covered; the round's artboard showed a For column, which the page leaves out because a payout is the balance less what is held, not a set of orders.
+
 ## Stripe Connect Webhook
 
 `POST /api/stripe/connect/webhook`
@@ -332,6 +349,7 @@ All Stripe Connect mutation routes require live Stripe Connect capability for th
 Handled event:
 
 - `account.updated`
+- `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` (PAY-005; see Payouts After The Event)
 
 Responsibility:
 

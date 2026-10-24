@@ -93,6 +93,8 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 
 ## Validation evidence
 
+**PAY-005 payouts (2026-10-24, dev app, not a staging run).** Real payout on Stripe test mode (dev app, 24 Oct 2026): a $10.00 test destination charge to the Empty Society (`pi_3UU4ZeRuN9MD4SvF1SEVvhrQ`, Stripe's `pm_card_bypassPending`, so the money was available at once). One refunds-worker run then sent payout `po_1UU4ZwRwWHtrRpnvSnTTzE4m`: $10.00 available, $0.00 held, `automatic: false`, with the society in its metadata. It was recorded as a `SocietyPayout`, and the account's available balance went back to $0.00. A signed `payout.paid` sent to the Connect webhook (body status `in_transit`) recorded Stripe's re-read status, paid, and Payments listed $10.00 Paid.
+
 **PAY-004 lost-dispute recovery (2026-10-24).** `staging-d456141b4d8bbadbdbd84901` (commerce-dispute) on `05ca852` (tree matching, migration `20261114010000_dispute_transfer_reversal` required): dispute `du_1UU2uVRuN9MD4SvFXvgHpRMP` on a paid membership was lost, the membership ended, and the refunds worker reversed the society's transfer by the disputed amount as `trr_1UU2v1RuN9MD4SvF1tUcwKJJ`, with the dispute in its metadata. All three Stripe events were delivered (listener HTTP 200) and received; Stripe cleanup completed.
 
 **T46 fee (2026-10-24).** `staging-531f5b0f778b85d1fe58fbf2` (success) on `3e6f323`: the $12.00 ticket carried the new $1.34 fee (`platform_fee_3_75_percent_89c_v2`), and the full refund returned $12.00 and the $1.34; Resend accepted the receipt.

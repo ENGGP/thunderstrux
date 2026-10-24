@@ -212,7 +212,7 @@ Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
 
 `/dashboard/settings` (Payments)
 
-- Renders Stripe Connect settings. State-specific Connect controls are allowed here because they are settings content, not dashboard navigation. A skeleton shows while the status loads; disconnecting sits in its own zone and asks for confirmation.
+- Renders Stripe Connect settings. State-specific Connect controls are allowed here because they are settings content, not dashboard navigation. Since PAY-005 (round F1) a connected society also sees a Payouts card (`components/settings/payouts-card.tsx`) between the Stripe account and Fees cards, and a refused payout puts a warning above them. A skeleton shows while the status loads; disconnecting sits in its own zone and asks for confirmation.
 
 `/dashboard/organisations`
 

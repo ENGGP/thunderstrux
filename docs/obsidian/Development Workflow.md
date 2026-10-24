@@ -711,7 +711,15 @@ LEGACY_ORGANISATION_ACCESS_MODE=allow
 TRUSTED_APP_ORIGINS=
 ```
 
-To reach one dev app at two addresses (say `http://127.0.0.1:3080` and a tunnelled public domain), keep the public one in `NEXT_PUBLIC_APP_URL`, `AUTH_URL` and `NEXTAUTH_URL`, and list both in `TRUSTED_APP_ORIGINS`. Stripe returns and sign-out then stay on the address in use, while emailed links use the public domain. Sessions are per host, so signing in on one address doesn't sign you in on the other. Local development may use `off` and `allow`. Production must set an explicit MFA mode, a separately backed-up 32-byte base64 MFA key for enrollment/enforcement, exact trusted origins, and must move legacy access to `deny` after named-staff enrollment. Follow [[Production Readiness Verification 2026-09-22]] rather than changing these values ad hoc.
+To reach one dev app at two addresses (say `http://127.0.0.1:3080` and a tunnelled public domain), keep the public one in `NEXT_PUBLIC_APP_URL`, `AUTH_URL` and `NEXTAUTH_URL`, and list both in `TRUSTED_APP_ORIGINS`. Stripe returns and sign-out then stay on the address in use, while emailed links use the public domain. Sessions are per host, so signing in on one address doesn't sign you in on the other.
+
+**Stripe webhooks on the dev app.** Without a webhook endpoint, a dev payment completes only when the browser comes back to `/success`: the development-only fallback reads the Session from Stripe. Expiries, refunds and disputes never arrive, and unpaid orders stay pending until the stale-order worker runs, because the dev stack runs no workers.
+
+To receive webhooks, add two test-mode endpoints in the Stripe Dashboard:
+- **Platform payments:** `https://<public address>/api/payments/webhook`, with `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed` and `charge.dispute.created`/`updated`/`closed`. Its signing secret goes in `STRIPE_WEBHOOK_SECRET`.
+- **Connected accounts:** `https://<public address>/api/stripe/connect/webhook`, with `account.updated`. Its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET`.
+
+Restart the app afterwards. Stripe can reach only the public address, which serves both addresses' orders because they share one database. Local development may use `off` and `allow`. Production must set an explicit MFA mode, a separately backed-up 32-byte base64 MFA key for enrollment/enforcement, exact trusted origins, and must move legacy access to `deny` after named-staff enrollment. Follow [[Production Readiness Verification 2026-09-22]] rather than changing these values ad hoc.
 
 Rate-limit values:
 

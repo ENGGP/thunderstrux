@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { StaffMfaForm } from "@/components/auth/staff-mfa-form";
@@ -5,6 +6,8 @@ import { AuthShell } from "@/components/layout/auth-shell";
 import { Card } from "@/components/ui/card";
 import { getStaffMfaStatus, MfaInputError } from "@/lib/security/staff-mfa";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
+
+export const metadata: Metadata = { title: "Staff verification" };
 
 export default async function MfaPage({ searchParams }: {
   searchParams: Promise<{ callbackUrl?: string }>;

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 export type JoinState =
   | "anonymous"
@@ -65,11 +66,8 @@ export function SocietyJoin({
       )}
       {state === "joined" && (
         <>
-          <p
-            className="rounded-tag bg-success-bg px-2 py-0.5 text-xs font-semibold text-success"
-            role="status"
-          >
-            Joined
+          <p role="status">
+            <StatusBadge status="joined" />
           </p>
           <Link
             className="text-sm text-brand underline"

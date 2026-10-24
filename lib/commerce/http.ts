@@ -1,12 +1,12 @@
 import type { CommerceKind } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { z, ZodError } from "zod";
+import { z } from "zod";
 import { apiError, badRequest, forbidden, mapRouteError, notFound, routeErrorRule, serviceUnavailable, unauthorized, validationError } from "@/lib/api/errors";
 import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { AccountVerificationError } from "@/lib/auth/account-lifecycle";
 import { OrganisationAccessError, requireVerifiedUser } from "@/lib/auth/access";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { CommerceCheckoutError, createCommerceCheckout } from "@/lib/commerce/checkout";
+import { CommerceCheckoutError, CommerceSelectionError, createCommerceCheckout } from "@/lib/commerce/checkout";
 import { MembershipUnavailableError } from "@/lib/memberships/grants";
 import { MerchandiseUnavailableError } from "@/lib/merchandise/sale";
 import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
@@ -60,7 +60,7 @@ export async function commerceCheckoutRoute(request: Request, family: CommerceKi
         routeErrorRule(GuestAccessError, (failure) => unauthorized(failure.message)),
         routeErrorRule(OrganisationAccessError, (failure) => forbidden(failure.message)),
         routeErrorRule(AccountVerificationError, (failure) => forbidden(failure.message)),
-        routeErrorRule(ZodError, (failure) => validationError(failure.issues.map((issue) => ({ path: ["selection", ...issue.path.map(String)], message: issue.message })))),
+        routeErrorRule(CommerceSelectionError, (failure) => validationError(failure.issues.map((issue) => ({ path: ["selection", ...issue.path.map(String)], message: issue.message })))),
         // Nothing charged: the plan left sale, the dates are already covered, or a checkout for them is open.
         routeErrorRule(MembershipUnavailableError, (failure) => apiError("CONFLICT", failure.message, 409, [{ path: ["selection"], message: failure.message, reason: failure.reason }])),
         routeErrorRule(MerchandiseUnavailableError, (failure) =>

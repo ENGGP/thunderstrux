@@ -32,7 +32,7 @@ export function PublicEventView({
         />
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:items-start">
         <article className="grid gap-6">
           <header className="grid gap-2">
             <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
@@ -73,37 +73,10 @@ export function PublicEventView({
             <p className="mt-3 max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{event.description}</p>
           </section>
 
-          <section className="grid gap-2 border-t border-line pt-5">
-            <h2 className="text-lg font-semibold text-ink">
-              Hosted by{" "}
-              <Link className="text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
-                {organisation.name}
-              </Link>
-            </h2>
-            {organisation.supportEmail || organisation.refundPolicy ? (
-              <dl className="grid gap-x-3 gap-y-1 text-[15px] sm:grid-cols-[6rem_1fr]">
-                {organisation.supportEmail ? (
-                  <>
-                    <dt className="text-ink-soft">Questions</dt>
-                    <dd className="[overflow-wrap:anywhere]">
-                      <a className="text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>
-                        {organisation.supportEmail}
-                      </a>
-                    </dd>
-                  </>
-                ) : null}
-                {organisation.refundPolicy ? (
-                  <>
-                    <dt className="text-ink-soft">Refunds</dt>
-                    <dd className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{organisation.refundPolicy}</dd>
-                  </>
-                ) : null}
-              </dl>
-            ) : null}
-          </section>
+
         </article>
 
-        <div className="lg:sticky lg:top-24">
+        <div className="lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <PublicTicketPurchase
             eventId={event.id}
             memberPlan={memberPlan}
@@ -116,6 +89,36 @@ export function PublicEventView({
             viewer={viewer}
           />
         </div>
+
+        {/* After the ticket box on phones, under About on desktop. */}
+        <section className="grid gap-2 border-t border-line pt-5 lg:col-start-1">
+          <h2 className="text-lg font-semibold text-ink">
+            Hosted by{" "}
+            <Link className="text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
+              {organisation.name}
+            </Link>
+          </h2>
+          {organisation.supportEmail || organisation.refundPolicy ? (
+            <dl className="grid gap-x-3 gap-y-1 text-[15px] sm:grid-cols-[6rem_1fr]">
+              {organisation.supportEmail ? (
+                <>
+                  <dt className="text-ink-soft">Questions</dt>
+                  <dd className="[overflow-wrap:anywhere]">
+                    <a className="text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>
+                      {organisation.supportEmail}
+                    </a>
+                  </dd>
+                </>
+              ) : null}
+              {organisation.refundPolicy ? (
+                <>
+                  <dt className="text-ink-soft">Refunds</dt>
+                  <dd className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{organisation.refundPolicy}</dd>
+                </>
+              ) : null}
+            </dl>
+          ) : null}
+        </section>
       </div>
     </div>
   );

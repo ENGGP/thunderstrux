@@ -403,7 +403,7 @@ export async function listProducts(organisationId: string) {
       take: 200,
       include: {
         images: { where: { position: 0 }, select: { assetId: true } },
-        variants: { where: { archivedAt: null }, select: { colour: true, size: true, priceAmount: true, remaining: true } }
+        variants: { where: { archivedAt: null }, orderBy: [{ position: "asc" }, { id: "asc" }], select: { colour: true, size: true, priceAmount: true, remaining: true } }
       }
     })
   ]);

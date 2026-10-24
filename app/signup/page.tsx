@@ -11,10 +11,10 @@ export const metadata: Metadata = { title: "Create account" };
 export default async function SignupPage({
   searchParams
 }: {
-  searchParams: Promise<{ callbackUrl?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; for?: string }>;
 }) {
   const session = await getLiveSession();
-  const { callbackUrl } = await searchParams;
+  const { callbackUrl, for: accountFor } = await searchParams;
   const safeCallbackUrl = safeReturnPath(callbackUrl);
 
   if (session?.user) {
@@ -27,7 +27,7 @@ export default async function SignupPage({
       title="Create account"
     >
       <Card>
-        <SignupForm callbackUrl={safeCallbackUrl} />
+        <SignupForm callbackUrl={safeCallbackUrl} initialRole={accountFor === "society" ? "organisation" : "member"} />
       </Card>
     </AuthShell>
   );

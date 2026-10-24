@@ -31,6 +31,19 @@ async function quote(body: unknown) {
 }
 
 describe("merchandise shop", () => {
+  test("a card lists sizes in the organiser's order, not alphabetically", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    // L is stored first but the organiser moved M to the top: only position decides.
+    await product(organisation.id, user.id, [
+      { colour: "Navy", size: "L", priceAmount: 4500, remaining: 5 },
+      { colour: "Navy", size: "M", priceAmount: 4500, remaining: 5 }
+    ]);
+    await prisma.merchandiseVariant.updateMany({ where: { organisationId: organisation.id, size: "L" }, data: { position: 1 } });
+    await prisma.merchandiseVariant.updateMany({ where: { organisationId: organisation.id, size: "M" }, data: { position: 0 } });
+    const [card] = await shopProducts(organisation.id);
+    expect(card.summary).toBe("Navy · M to L");
+  });
+
   test("buyers see published products only, with options still on sale, low stock and sold out", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const hoodie = await product(organisation.id, user.id, [

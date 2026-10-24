@@ -1133,8 +1133,9 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 
 - **Header:** Explore events, Explore societies; signed in, My tickets (members), Dashboard, Account and a visible Sign out button. The current section is marked; the phone menu closes after navigation.
 - **Society sidebar:** Overview, Events, Orders, then a **Community** group (Memberships, since T22), then a **Settings** group: Society profile, Staff, Payments, Email delivery. Capability-filtered; every page and API still enforces its own permission. The staff authenticator is not in the sidebar: it lives in Account settings and is reached automatically when a page requires it.
-- **Deviation from 3.5:** the sidebar is a fixed 244px column from 1024px (not 1200px), sticky below the header, with a labelled "Organisation menu" disclosure below that width. There is no collapsed icon rail. Calendar, Members, Memberships, Merchandise, Analytics, History and OpenClaw are absent until their tasks deliver them.
-- **Workspace switcher:** labelled "Workspace" in both shells.
+- **Deviation from 3.5:** the sidebar is a fixed 244px column from 1024px (not 1200px), sticky below the header, with a labelled "Organisation menu" disclosure below that width. There is no collapsed icon rail. Calendar, Memberships, Merchandise, Analytics and History have since arrived (T22–T38, see [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md)); OpenClaw stays deferred. From `lg` nav rows are 36px so the column fits an 800px-tall screen.
+- **Workspace switcher:** labelled "Workspace" in both shells; options are society names and the role sits under the control.
+- **Page titles:** every page sets its own document title; public and link-only event pages and society pages use their name.
 - **Content width:** the society shell owns one content width (`max-w-admin`) for every society page.
 - **Page titles:** every page has exactly one `h1`, its title, through `PageHeader` (breadcrumb, title, status badge beside the heading, primary actions).
 
@@ -1165,15 +1166,15 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 - **ORG-01 Overview:** "Finish setting up" checklist with only tasks the viewer can act on (payments in warning tone; profile and scheduling an event in information tone), upcoming count with the next event, revenue this month with `orders:read`, linked upcoming events with sold and left, recent orders (pending orders unlinked).
 - **ORG-03 Events:** server-rendered views Upcoming (not yet ended, default), Drafts, Past, All with counts and title search in the URL; table from 768px, cards below; "N sold · N left" only with `analytics:read`; check-in staff see published events only.
 - **ORG-05 Event workspace:** tabs are **Summary, Attendees, Orders, Edit** (not the six tabs in 5.x): each shown only with its permission and hidden when only one would show. Orders is the society orders list filtered to the event. Summary shows tickets sold, tickets left, revenue (finance roles), ticket performance and revenue by day.
-- **ORG-04 Event form:** Details, Ticket types and "If tickets cannot be issued" cards; the price field is labelled "Price in cents" with an example until dollar entry lands (EVT-002).
+- **ORG-04 Event form:** Details, Ticket types and "If tickets cannot be issued" cards; prices are entered in dollars (EVT-002); the ticket name has its own row above Price, Member price and Quantity.
 - **ORG-06 Attendees:** tiles, cards on phones, buttons that name the attendee, "Undo check-in". No QR scanning.
 - **ORG-08 Orders:** status tabs, event filter, one table in time order (cards on phones); order detail has Summary and "Manage this order" cards.
 - **ORG-14 Payments:** status badge and notice per Stripe state, plain readiness rows, separate disconnect zone.
 - **ORG-15 Staff:** role hints under the invitation role; tables for current staff and past invitations, a list for pending invitations; handover form in a warning-bordered zone.
 - **AUTH-04 Account settings:** section links, signed-in summary, authenticator row only for people the authenticator page accepts.
 - **PER-01, PER-02:** profile prompt linking to Account settings; My tickets cards with short ticket and order references.
-- **PUB-03 / BUY-01:** one ticket choice, one quantity and "Buy tickets" with the running total; unverified members see the verify prompt instead.
+- **PUB-03 / BUY-01:** one ticket choice, one quantity and "Buy tickets" with the running total; unverified members see the verify prompt instead. On phones the ticket box comes before Hosted by and a bottom bar carries the total and action while the box's button is below the screen (artboard PublicEventAnonA2Mobile).
 
 ## 16.7 Still targets
 
-Everything in sections 5 to 9 that depends on T10+ features (event cover images, guest checkout, memberships, merchandise, calendar, analytics, check-in console with scanning, activity history, OpenClaw) remains a target and has no screen.
+Event images, guest checkout, memberships, merchandise, calendar, analytics and history were delivered with T10–T46; their live treatment is recorded in [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md). QR scanning and OpenClaw remain targets with no screen. The 2026-10-25 UI audit's open consistency items are tracked as UI-004 in the issue register.

@@ -81,18 +81,18 @@ export function DashboardShell({
     )
     .sort((a, b) => b.href.length - a.href.length)[0];
   const menu = (
-    <div className="grid gap-5">
+    <div className="grid gap-5 lg:gap-4">
       <ContextSelector contexts={contexts} tone="dark" />
-      <nav aria-label="Organisation navigation" className="grid gap-1">
+      <nav aria-label="Organisation navigation" className="grid gap-1 lg:gap-0.5">
         {groups.map((group) => (
-          <div className="grid gap-1" key={group.label ?? "main"}>
+          <div className="grid gap-1 lg:gap-0.5" key={group.label ?? "main"}>
             {group.label ? (
-              <p className="px-3 pt-3 text-xs font-semibold tracking-wide text-white/70">{group.label}</p>
+              <p className="px-3 pt-3 text-xs font-semibold tracking-wide text-white/70 lg:pt-2">{group.label}</p>
             ) : null}
             {group.items.map((item) => (
               <Link
                 aria-current={active === item ? "page" : undefined}
-                className={`flex min-h-11 items-center gap-2.5 rounded-control border-l-[3px] px-3 text-sm font-medium ${
+                className={`flex min-h-11 items-center gap-2.5 rounded-control border-l-[3px] lg:min-h-9 px-3 text-sm font-medium ${
                   active === item
                     ? "border-brand-200 bg-brand-tint text-brand-ink"
                     : "border-transparent text-white/90 hover:bg-white/10 hover:text-white"
@@ -114,10 +114,10 @@ export function DashboardShell({
     <div className="min-h-screen bg-paper lg:grid lg:grid-cols-[244px_minmax(0,1fr)]">
       {/* Stretches with the page; the inner column sticks under the fixed header. */}
       <aside className="bg-brand-ink text-white">
-        <div className="px-4 py-3 lg:sticky lg:top-[72px] lg:max-h-[calc(100dvh-72px)] lg:overflow-y-auto lg:py-5">
+        <div className="px-4 py-3 [scrollbar-color:rgb(255_255_255/0.3)_transparent] [scrollbar-width:thin] lg:sticky lg:top-[72px] lg:max-h-[calc(100dvh-72px)] lg:overflow-y-auto lg:py-4">
           <p className="text-xs font-semibold text-white/75">Current organisation</p>
           <p className="font-semibold [overflow-wrap:anywhere]">{orgName}</p>
-          <div className="mt-5 hidden lg:block">{menu}</div>
+          <div className="mt-4 hidden lg:block">{menu}</div>
           <details className="group mt-3 lg:hidden">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-control border border-white/50 px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
               Organisation menu

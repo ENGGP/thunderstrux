@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { SocietyCard } from "@/components/organisations/society-card";
 import { buttonClasses } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { getPublishedEvents } from "@/lib/events/public-events";
 import {
   discoverOrganisations,
@@ -13,7 +14,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default async function Home() {
+  // A society needs its own account, so signed-in visitors are not offered one here.
+  const signedIn = Boolean((await getLiveSession())?.user);
+
   return (
     <>
       <main id="main" tabIndex={-1} className="bg-paper">
@@ -37,16 +41,18 @@ export default function Home() {
               >
                 Find a society
               </Link>
-              <Link
-                className={buttonClasses({
-                  size: "lg",
-                  variant: "tertiary",
-                  className: "text-white"
-                })}
-                href="/signup"
-              >
-                Create a society
-              </Link>
+              {signedIn ? null : (
+                <Link
+                  className={buttonClasses({
+                    size: "lg",
+                    variant: "tertiary",
+                    className: "text-white"
+                  })}
+                  href="/signup?for=society"
+                >
+                  Create a society
+                </Link>
+              )}
             </div>
           </div>
         </section>
@@ -55,20 +61,22 @@ export default function Home() {
           <Suspense fallback={<HomeSkeleton />}>
             <HomeListings />
           </Suspense>
-          <section className="grid gap-4 rounded-feature bg-warm-paper p-8 md:grid-cols-[1fr_auto] md:items-center">
-            <div>
-              <h2 className="text-2xl font-semibold text-ink">
-                Running a society?
-              </h2>
-              <p className="mt-2 max-w-xl text-ink-soft">
-                Publish events, sell tickets and hand the account to next
-                year&apos;s committee without losing your history.
-              </p>
-            </div>
-            <Link className={buttonClasses({ size: "lg" })} href="/signup">
-              Create a society
-            </Link>
-          </section>
+          {signedIn ? null : (
+            <section className="grid gap-4 rounded-feature bg-warm-paper p-8 md:grid-cols-[1fr_auto] md:items-center">
+              <div>
+                <h2 className="text-2xl font-semibold text-ink">
+                  Running a society?
+                </h2>
+                <p className="mt-2 max-w-xl text-ink-soft">
+                  Publish events, sell tickets and hand the account to next
+                  year&apos;s committee without losing your history.
+                </p>
+              </div>
+              <Link className={buttonClasses({ size: "lg" })} href="/signup?for=society">
+                Create a society
+              </Link>
+            </section>
+          )}
         </div>
       </main>
       <SiteFooter />

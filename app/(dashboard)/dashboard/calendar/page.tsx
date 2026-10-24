@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Agenda, MonthGrid, WeekGrid } from "@/components/calendar/calendar-views";
@@ -16,6 +17,8 @@ import { formatDate, joinDays } from "@/lib/format";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { hasOrganisationPermission, type OrganisationStaffRole } from "@/lib/permissions";
 import { zoneAbbreviation, zoneCity } from "@/lib/zoned-time";
+
+export const metadata: Metadata = { title: "Calendar" };
 
 const views = { month: "Month", week: "Week", agenda: "Agenda" } as const;
 type View = keyof typeof views;

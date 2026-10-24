@@ -89,7 +89,7 @@ export async function TicketsTab({ organisationId, range, access, eventId }: { o
     ? [
         { label: "Gross sales", value: money(t.gross), note: plural(t.fulfilledOrders - t.freeOrders, "paid order") },
         { label: "Refunded", value: money(t.refunded), note: `${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"} confirmed by Stripe` },
-        { label: "Net sales", value: money(t.net), note: "Before Stripe's fees. Not a payout." }
+        { label: "Net sales", value: money(t.net), note: "Before the Thunderstrux fee. Not a payout." }
       ]
     : [
         { label: "Tickets issued", value: t.ticketsIssued, note: `${t.ticketsIssued - t.ticketsFree} paid, ${t.ticketsFree} free` },
@@ -244,7 +244,7 @@ export async function MerchandiseTab({ organisationId, range, access, canFulfil 
         tiles={[
           { label: "Gross sales", value: money(t.gross), note: `${plural(t.fulfilledOrders - t.freeOrders, "paid order")}, ${plural(t.itemsSold, "item")}` },
           { label: "Refunded", value: money(t.refunded), note: `${t.refunds} ${t.refunds === 1 ? "refund" : "refunds"} confirmed by Stripe` },
-          { label: "Net sales", value: money(t.net), note: "Before Stripe's fees. Not a payout." }
+          { label: "Net sales", value: money(t.net), note: "Before the Thunderstrux fee. Not a payout." }
         ]}
       />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">

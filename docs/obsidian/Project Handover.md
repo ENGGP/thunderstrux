@@ -62,9 +62,14 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 | Item | PR | Status and evidence |
 | --- | --- | --- |
 | Audit fixes: checkout rush, late payers, payouts, sign-in timing (DEF-032 to DEF-035) | [#167](https://github.com/ENGGP/thunderstrux/pull/167) | Merged as `478b4e6`. No migration. Each new regression failed without its fix (30 buyers for 20 tickets gave 7 free and 5 paid sales before the change). Validation on `b77cb3e`, tree matching: baseline `baseline-6c03f713d391d53964a33823` (production build, 42/42 runner guards, typecheck, 665/665 integration tests in 101 files, no known vulnerabilities); browser `browser-9264cddad228d8fe358abcc1` (9 enforced-MFA, 69 desktop/mobile, 10 signed-webhook checks; builder screenshots show the automatic-refund default); real Stripe test mode `staging-c4ad83c75bbf179da2fe45ad` (`--scenario=success`: fulfilled, receipt accepted by Resend, refunded as `re_3UU8K6RuN9MD4SvF0V4K7xF1` with the $1.34 fee, events `evt_1UU8K8RuN9MD4SvFiXeVB3Br` and `evt_3UU8K6RuN9MD4SvF0qdN4veZ` delivered). An earlier baseline, `baseline-daa1fa1710011aa33237fcdb` on `1e97dd9`, passed 664/665; the failure was a recovery test's hard-coded 32-minute hold, fixed in tests. Every run cleaned up. |
-| This handover | this PR | Docs only. The previous handover becomes [[Project Handover 2026-10-25]]. |
+| This handover | [#168](https://github.com/ENGGP/thunderstrux/pull/168) | Docs only. The previous handover becomes [[Project Handover 2026-10-25]]. |
+| UI audit P1 fixes (DEF-036 to DEF-038, UI-003) | this PR | Page titles, Create-a-society routing, phone event page order and buy bar, money and empty-state copy, plan default, Joined badge, clipping at 1280 px, expired staff invitations; from audit pass 2, option order on shop cards and checkout errors no longer blamed on the buyer. No migration. |
 
 **Development activation (2026-10-25).** The dev app was restarted on the #167 branch (no migration) and now serves main at `478b4e6`. As `member@example.com`, a $1.00 test-mode checkout for "Super launch" stored its hold exactly 300 s past Stripe's `expires_at`. The cancel page read "holding until 2:40 am" (Stripe's time) at 375 and 1280 px. Cancel order then expired the order and released the hold.
+
+**UI audit (2026-10-25, read only, then fixes).** Every reachable page of the dev app was walked at 390 and 1280 px and compared with the "Thunderstrux redesign" canvas and the UX and visual specs. Most screens match; the misleading or clipped items were fixed (UI-003, DEF-036), and the remaining consistency findings are UI-004. Agreed with the maintainer through a `grill-me` interview: P1 fixes first in one PR, then audit pass 2 on demo content created through the app (a plan, products with photos, an event image, a draft), then the consistency pass (PR B) and the design-system and docs sync (PR C).
+
+**Audit pass 2 (2026-10-25).** Demo content was created in dev through the app as the Engineering organiser: profile text, refund and pickup policies, logo and cover, two published products with photos (EngSoc hoodie, Enamel pin), the free "Semester 2 2026" plan, an image and $0.50 member price on Super launch, and the draft "CAD workshop for first-years". Writes from `http://localhost:3080` are refused as untrusted; use `http://127.0.0.1:3080`, which `.env` trusts. Free memberships can't complete in dev until `EMAIL_FROM` is set in `.env` (DEF-037).
 
 **Lessons.**
 - Focused integration runs inside the dev app container need the baseline test container's settings, or unrelated tests fail: `RATE_LIMIT_ENABLED=false`, `MFA_ENFORCEMENT_MODE=off`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, empty `TRUSTED_APP_ORIGINS`, `AUTH_URL`/`NEXTAUTH_URL` on plain `http`, capture-only `RESEND_API_KEY`, and `DATABASE_URL` pointing at `thunderstrux_test`. The baseline remains the evidence of record.
@@ -74,9 +79,10 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 
 1. Before hosting: create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]], and pass PAY-002 on the hosted endpoint. Automatic refunds are now the default for new events, as for commerce.
 2. When hosting is chosen, run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`, and add an uptime or heartbeat check that covers the monitor (OPS-002).
-3. Optional cleanup from the audit: the three nice-to-haves above, in one small PR.
-4. PAY-009, when it is scheduled: shorter or society-set holds, by closing the Stripe page early from the stale-order job. Design it as its own task.
-5. Before activating account lifecycle, obtain independent security and migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance. #167 changed payments and sign-in, which this review also covers.
+3. UI-004: audit pass 2 on populated demo data, then the consistency pass and design-system sync.
+4. Optional cleanup from the audit: the three nice-to-haves above, in one small PR.
+5. PAY-009, when it is scheduled: shorter or society-set holds, by closing the Stripe page early from the stale-order job. Design it as its own task.
+6. Before activating account lifecycle, obtain independent security and migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance. #167 changed payments and sign-in, which this review also covers.
 
 ## Production Release Gates
 

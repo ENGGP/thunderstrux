@@ -37,6 +37,13 @@ function presetDays(preset: Exclude<Preset, "custom">, year: string) {
 function presetName(preset: Exclude<Preset, "custom">, year: string) {
   return preset === "year" ? `${year} membership` : `${preset === "semester1" ? "Semester 1" : "Semester 2"} ${year}`;
 }
+// A new plan starts on the soonest preset term that hasn't begun yet, so the
+// form never opens on a term that is mostly over. `today` is YYYY-MM-DD in the society's zone.
+export function defaultTerm(years: string[], today: string): { preset: Exclude<Preset, "custom">; year: string } {
+  const terms = years.flatMap((year) => (["year", "semester1", "semester2"] as const).map((preset) => ({ preset, year, firstDay: presetDays(preset, year).firstDay })));
+  const next = terms.filter((term) => term.firstDay >= today).sort((a, b) => a.firstDay.localeCompare(b.firstDay))[0];
+  return next ? { preset: next.preset, year: next.year } : { preset: "year", year: years[0] };
+}
 function detectPreset(firstDay: string, lastDay: string): { preset: Preset; year: string } {
   const year = firstDay.slice(0, 4);
   const match = (["semester1", "semester2", "year"] as const).find((preset) => {
@@ -50,6 +57,7 @@ export function PlanForm({
   orgSlug,
   timeZone,
   years,
+  today,
   plan,
   locked = false,
   archived = false
@@ -57,6 +65,8 @@ export function PlanForm({
   orgSlug: string;
   timeZone: string;
   years: string[];
+  // The society's date today; only a new plan uses it.
+  today?: string;
   // Left out for a new plan.
   plan?: StaffPlan;
   // Sold: only the description changes.
@@ -64,13 +74,14 @@ export function PlanForm({
   archived?: boolean;
 }) {
   const router = useRouter();
-  const start = plan ? detectPreset(plan.firstDay, plan.lastDay) : { preset: "year" as Preset, year: years[0] };
-  const initialDays = plan ? { firstDay: plan.firstDay, lastDay: plan.lastDay } : presetDays("year", start.year);
+  const fresh = defaultTerm(years, today ?? "");
+  const start: { preset: Preset; year: string } = plan ? detectPreset(plan.firstDay, plan.lastDay) : fresh;
+  const initialDays = plan ? { firstDay: plan.firstDay, lastDay: plan.lastDay } : presetDays(fresh.preset, fresh.year);
   const initial = {
     preset: start.preset,
     year: start.year,
     ...initialDays,
-    name: plan?.name ?? presetName("year", start.year),
+    name: plan?.name ?? presetName(fresh.preset, fresh.year),
     description: plan?.description ?? "",
     price: plan ? formatMoneyInput(plan.priceAmount) : "",
     entitlements: plan?.entitlements ?? (["member_prices", "members_only_events"] as Entitlement[])

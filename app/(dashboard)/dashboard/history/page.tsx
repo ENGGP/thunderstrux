@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { formatDay, formatTime, localDay } from "@/components/calendar/layout";
@@ -16,6 +17,8 @@ import { requireManagementPage } from "@/lib/auth/page-access";
 import { isLocalDate } from "@/lib/events/calendar";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { zoneCity } from "@/lib/zoned-time";
+
+export const metadata: Metadata = { title: "History" };
 
 type Params = { category?: string; who?: string; from?: string; to?: string; cursor?: string };
 
@@ -36,7 +39,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader description={`What staff, Stripe and Thunderstrux did in ${organisation.name}, newest first. ${zoneCity(timeZone)}.`} title="History" />
       <div className="rounded-card border border-line bg-surface p-4">
-      <FilterBar action="/dashboard/history" className="sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]" key={query} label="Filter history">
+      <FilterBar action="/dashboard/history" className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_auto]" key={query} label="Filter history">
         <Select defaultValue={filters.category ?? ""} label="What" name="category">
           <option value="">All activity</option>
           {(Object.keys(historyCategories) as HistoryCategory[]).map((name) => (

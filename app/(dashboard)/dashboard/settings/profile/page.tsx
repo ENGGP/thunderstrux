@@ -7,7 +7,7 @@ import { hasOrganisationPermission } from "@/lib/permissions";
 import { listOrganisationStaff } from "@/lib/staff/management";
 import { notFound } from "next/navigation";
 
-export const metadata: Metadata = { title: "Society settings" };
+export const metadata: Metadata = { title: "Society profile" };
 
 export default async function SocietyProfilePage() {
   const organisation = await requireManagementPage(

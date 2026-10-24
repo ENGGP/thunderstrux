@@ -97,6 +97,23 @@ describe("membership grants", () => {
     expect(await prisma.commerceOrder.count()).toBe(2);
   });
 
+  test("a malformed selection is the buyer's 400; an internal failure is a 500 that never blames the selection", async () => {
+    const { organisation, plan } = await society();
+    const current = await plan();
+    await member();
+    const malformed = await membershipCheckout(jsonRequest("http://localhost:3000/api/payments/checkout/membership", { organisationId: organisation.id, selection: { planId: "" }, expectedTotal: 0, idempotencyKey: unique("membership-key-00") }));
+    expect(malformed.status).toBe(400);
+    expect((await parseJsonResponse(malformed)).error.details[0].path).toEqual(["selection", "planId"]);
+
+    // Without a sender address the receipt can't be rendered: that is the server's fault, not the buyer's.
+    vi.stubEnv("EMAIL_FROM", "");
+    const failed = await buy(organisation.id, current.id);
+    vi.stubEnv("EMAIL_FROM", "synthetic@example.com");
+    expect(failed.status).toBe(500);
+    expect(JSON.stringify(failed.body)).not.toContain("selection");
+    expect(await prisma.membershipGrant.count({ where: { membershipProductId: current.id } })).toBe(0);
+  });
+
   test("Stripe returns the member to the trusted address they bought from, and to the app URL otherwise", async () => {
     vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://thunderstrux.example");
     vi.stubEnv("TRUSTED_APP_ORIGINS", "http://127.0.0.1:3080");

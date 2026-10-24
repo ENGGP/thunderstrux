@@ -5,6 +5,11 @@ import { isTransactionConflict } from "@/lib/transaction-conflict";
 export const reservationMinutes = 30;
 export const maxReservationTransactionAttempts = 3;
 
+// A hold outlives its Stripe page by this much. Stripe takes no payment after
+// the page closes, but its webhook arrives later; a payment made in time still
+// finds its hold (DEF-033). Commerce's stale-order expiry waits the same.
+export const lateWebhookGraceMs = 5 * 60 * 1000;
+
 export function getReservationExpiry(now = new Date()) {
   return new Date(now.getTime() + reservationMinutes * 60 * 1000);
 }

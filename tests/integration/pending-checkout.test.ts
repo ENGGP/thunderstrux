@@ -30,12 +30,14 @@ async function unpaidTicketOrder(holdMinutes = 20) {
   const buyer = await createMember();
   const order = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id, quantity: 2, unitPrice: 1500 });
   await prisma.ticketReservation.create({ data: { orderId: order.id, organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id, quantity: 2, expiresAt: new Date(Date.now() + holdMinutes * minute) } });
+  // Stripe's page closes 5 minutes before the hold ends (DEF-033).
+  const closesAt = Math.floor((Date.now() + (holdMinutes - 5) * minute) / 1000);
   const session = (status: string, paymentStatus = "unpaid") => ({
-    id: order.stripeSessionId, status, payment_status: paymentStatus, url: "https://checkout.stripe.com/c/pay/test",
+    id: order.stripeSessionId, status, payment_status: paymentStatus, url: "https://checkout.stripe.com/c/pay/test", expires_at: closesAt,
     metadata: { orderId: order.id, eventId: event.id, organisationId: society.organisation.id, ticketTypeId: event.ticketTypes[0].id, quantity: "2" }
   });
   setMockSession({ userId: buyer.id, email: buyer.email, accountRole: "member" });
-  return { society, event, buyer, order, session };
+  return { society, event, buyer, order, session, closesAt };
 }
 
 const cancel = (orderId: string, init: RequestInit = {}) =>
@@ -46,7 +48,8 @@ describe("unpaid orders", () => {
     const fixture = await unpaidTicketOrder();
     const state = () => pendingCheckoutState({ kind: "ticket", id: fixture.order.id });
     stripe.retrieve.mockResolvedValue(fixture.session("open"));
-    expect(await state()).toMatchObject({ state: "waiting", paymentUrl: "https://checkout.stripe.com/c/pay/test" });
+    // The buyer is told Stripe's deadline, not the hold's few extra minutes.
+    expect(await state()).toEqual({ state: "waiting", holdEndsAt: new Date(fixture.closesAt * 1000), paymentUrl: "https://checkout.stripe.com/c/pay/test" });
     stripe.retrieve.mockResolvedValue(fixture.session("complete", "paid"));
     expect(await state()).toEqual({ state: "confirming" });
     stripe.retrieve.mockResolvedValue(fixture.session("expired"));
@@ -105,7 +108,7 @@ describe("unpaid orders", () => {
     }));
     const order = await prisma.commerceOrder.update({ where: { id: created.id }, data: { stripeSessionId: "cs_test_membership_cancel" } });
     setMockSession({ userId: buyer.id, email: buyer.email, accountRole: "member" });
-    stripe.retrieve.mockResolvedValue({ id: order.stripeSessionId, status: "open", payment_status: "unpaid", url: "https://checkout.stripe.com/c/pay/m" });
+    stripe.retrieve.mockResolvedValue({ id: order.stripeSessionId, status: "open", payment_status: "unpaid", url: "https://checkout.stripe.com/c/pay/m", expires_at: Math.floor((now + 20 * minute) / 1000) });
     stripe.expire.mockResolvedValue({ id: order.stripeSessionId, status: "expired", payment_status: "unpaid" });
     expect(await pendingCheckoutState({ kind: "commerce", id: order.id })).toMatchObject({ state: "waiting" });
 

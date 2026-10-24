@@ -36,7 +36,7 @@ import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
-import { getReservationExpiry, runReservationTransaction } from "@/lib/tickets/reservations";
+import { getReservationExpiry, lateWebhookGraceMs, runReservationTransaction } from "@/lib/tickets/reservations";
 
 export type CheckoutCreationErrorKind =
   | "event_not_found"
@@ -464,11 +464,12 @@ export async function createEventCheckout({
     };
 
     // Recovery (T14b) replays exactly this request with the same key, so Stripe
-    // returns the original Session instead of treating it as a new one.
+    // returns the original Session instead of treating it as a new one. The hold
+    // outlives the Session, so a payment made just before it closes finds its hold.
     await prisma.$transaction([
       prisma.ticketReservation.update({
         where: { orderId: pendingOrder.id },
-        data: { expiresAt: new Date(stripeExpiresAt * 1000) }
+        data: { expiresAt: new Date(stripeExpiresAt * 1000 + lateWebhookGraceMs) }
       }),
       prisma.checkoutAttempt.update({
         where: { id: pendingOrder.attemptId },

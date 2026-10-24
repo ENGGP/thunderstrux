@@ -34,6 +34,15 @@ export class CommerceCheckoutError extends Error {
   }
 }
 
+// The request's selection was malformed. Kept apart from other validation
+// failures so an internal error is never reported to the buyer as theirs.
+export class CommerceSelectionError extends Error {
+  constructor(readonly issues: Array<{ path: PropertyKey[]; message: string }>) {
+    super("Invalid selection");
+    this.name = "CommerceSelectionError";
+  }
+}
+
 export type CommerceCheckoutResult =
   | { status: "redirect"; attemptId: string; url: string }
   | { status: "processing"; attemptId: string }
@@ -91,7 +100,9 @@ export async function createCommerceCheckout(input: {
   if (!adapter) throw new CommerceCheckoutError("not_available", "This purchase is not available");
   const guest = "guest" in input.buyer ? input.buyer.guest : null;
   if (guest && !adapter.guests) throw new CommerceCheckoutError("members_only", "Sign in to buy this");
-  const selection = adapter.selection.parse(input.selection);
+  const parsed = adapter.selection.safeParse(input.selection);
+  if (!parsed.success) throw new CommerceSelectionError(parsed.error.issues);
+  const selection = parsed.data;
   const actor: CheckoutActor = guest ? { kind: "guest", id: guest.grantId } : { kind: "user", id: (input.buyer as { userId: string }).userId };
   const buyer: CommerceBuyer = guest ? { guestIdentityId: guest.guestIdentityId } : { userId: actor.id };
   const requestHash = commerceRequestHash(input.family, input.organisationId, selection, input.expectedTotal);

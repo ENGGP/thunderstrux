@@ -27,7 +27,7 @@ export async function shopProducts(organisationId: string) {
       id: true,
       name: true,
       images: { where: { position: 0 }, select: { assetId: true } },
-      variants: { where: { archivedAt: null }, select: optionSelect }
+      variants: { where: { archivedAt: null }, orderBy: [{ position: "asc" }, { id: "asc" }], select: optionSelect }
     }
   });
   const available = await availability(products.flatMap((product) => product.variants));

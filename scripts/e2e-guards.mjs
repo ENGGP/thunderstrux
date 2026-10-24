@@ -2,6 +2,10 @@
 // staging payments); it is also its Compose project and evidence folder.
 export const runIdPattern = /^(baseline|browser|staging)-[a-f0-9]{24}$/;
 
+// The Stripe API version the app pins (lib/stripe/version.ts). Staging checks that
+// every event the app received was shaped for it.
+export const stripeApiVersion = '2026-09-30.endive';
+
 export function assertRunId(value) {
   if (!runIdPattern.test(value ?? '')) throw new Error('Invalid E2E run ID');
   return value;

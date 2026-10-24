@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { appUrl } from "@/lib/app-url";
+import { stripeApiVersion } from "@/lib/stripe/version";
 
 export class StripeConfigurationError extends Error {
   constructor(message: string) {
@@ -25,9 +26,8 @@ export function getStripe() {
   }
 
   return new Stripe(secretKey, {
-    // The version this SDK (stripe 23) is typed for (PAY-006). Moving it needs a
-    // fresh test-mode campaign and webhook endpoints created on the same version.
-    apiVersion: "2026-09-30.endive"
+    // Moving it needs a fresh test-mode campaign and webhook endpoints created on the same version.
+    apiVersion: stripeApiVersion
   });
 }
 

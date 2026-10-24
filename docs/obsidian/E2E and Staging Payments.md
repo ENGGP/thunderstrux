@@ -45,7 +45,7 @@ $env:STRIPE_TEST_CONNECTED_ACCOUNT = 'acct_your_ready_test_account'
 pnpm test:payments:staging -- --use-local-test-key
 ```
 
-This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into Compose. Stripe CLI obtains a new signing secret from the exact active listener. Existing webhook secrets are not reused. The listener API version must match the app's pin, `2026-09-30.endive` since PAY-006; a mismatch blocks acceptance. The listener runs with `--latest`, so it forwards events at Stripe's latest version rather than the account's default; when Stripe publishes a newer version than the pin, the check stops the run until the pin moves.
+This reads only `STRIPE_SECRET_KEY` from `.env`; it does not load that file into Compose. Stripe CLI obtains a new signing secret from the exact active listener. Existing webhook secrets are not reused. The events the app receives must be shaped for its pin, `2026-09-30.endive` since PAY-006; a mismatch blocks acceptance. The listener runs with `--latest`, which forwards events at the newest version its Stripe CLI build knows (endive for v1.53.1), not the account's default. The app logs each webhook's `apiVersion`, and the runner checks it for every event a scenario relied on. An event fetched back from the API carries the account's default version at the time it was created (still dahlia on the test account), so it can't show what was delivered; the first endive campaign, `staging-2774be7496147e7612cb171c`, stopped on exactly that check. `stripeApiVersion` in `scripts/e2e-guards.mjs` must equal `lib/stripe/version.ts`, and a runner guard test checks that.
 
 **Scenarios (T45).** Each scenario gets its own run-owned society with a finance manager. They run in this order:
 

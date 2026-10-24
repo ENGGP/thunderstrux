@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { createInterface } from 'node:readline/promises';
-import { assertTestKey, cardScenarios, stagingScenarios } from './e2e-guards.mjs';
+import { assertTestKey, cardScenarios, stagingScenarios, stripeApiVersion } from './e2e-guards.mjs';
 
 const card = 'Pay using Stripe test card 4242 4242 4242 4242, any future expiry, any CVC.';
 // What the person at the terminal does on each scenario's Checkout page.
@@ -98,10 +98,15 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
         const evidence = JSON.parse(await readFile(resolve(directory, 'reports', `payment-${scenario}.json`), 'utf8'));
         const listenerLog = await capture('logs', '--no-color', 'stripe');
         const appLog = await capture('logs', '--no-color', 'app');
-        // Every Stripe event the scenario relied on was delivered by the listener and received by the app.
+        // Every Stripe event the scenario relied on was delivered by the listener and received by the app,
+        // shaped for the app's API version. An event fetched from the API carries the account's default
+        // version instead, so only the app's own log shows what it received.
         for (const eventId of evidence.eventIds) {
           if (!listenerLog.split('\n').some(line => line.includes(eventId) && line.includes('[200]')) || !appLog.includes(eventId)) {
             throw new Error(`No correlated successful Stripe delivery and app receipt found for ${scenario}`);
+          }
+          if (!appLog.split('\n').some(line => line.includes(eventId) && line.includes(`"apiVersion":"${stripeApiVersion}"`))) {
+            throw new Error(`Webhook API version differs from application for ${scenario}; the listener must forward ${stripeApiVersion} events`);
           }
         }
         manifest[scenario] = {...evidence, deliveryVerified: evidence.eventIds.length > 0};

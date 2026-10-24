@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-24
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Stripe Payments and Connect]]"]
 sources: [scripts/run-e2e.mjs, scripts/staging-payments.mjs, scripts/staging-driver.mjs, docker-compose.e2e.yml]

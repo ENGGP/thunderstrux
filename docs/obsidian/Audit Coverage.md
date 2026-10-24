@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[UI Architecture Rules]]"]
 sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, prisma/migrations/20261110010000_audit_actor_role/migration.sql, tests/integration/history.test.ts]

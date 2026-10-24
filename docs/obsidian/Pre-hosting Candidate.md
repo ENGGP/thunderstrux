@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-24
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Project Handover]]", "[[Journey Qualification]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Non-Blocking Issue Register]]"]
 sources: [docs/MVP_READINESS_PLAN.md, lib/stripe/fees.ts, docker-compose.hosted.yml, docker-compose.schedules.yml]
@@ -13,8 +13,8 @@ T46's record of what would go to hosting, what proves it works locally, and what
 ## The candidate
 
 - **Code:** `main` after the T46 merge. CI publishes its web and ops image pair, and the `release-<revision>` artifact from the Release Images run on that merge is what a deploy uses (see [[Production Operations]]).
-- **Schema:** 62 migrations; the required one is `20261113010000_commerce_payment_recovery` (PAY-003). All are additive. Migrations run as a one-shot job from the ops image before the web image rolls out.
-- **Migration digest:** `64da2e06fe107086935feb7fa2e0826733594682b368c7c8d621515a8bc4a411` (T46's runs below).
+- **Schema:** 64 migrations since the Stripe audit (62 at T46); the required one is `20261115010000_society_payouts` (PAY-005). All are additive. Migrations run as a one-shot job from the ops image before the web image rolls out.
+- **Migration digest:** `8291fbe5b1ac5ae4f6d244cabcf129d6241f4641c4591e0f4c52e85f6e3d4929` (the endive staging campaign below); T46's runs had `64da2e06fe107086935feb7fa2e0826733594682b368c7c8d621515a8bc4a411`.
 
 ## Settings
 
@@ -29,10 +29,13 @@ T46's record of what would go to hosting, what proves it works locally, and what
 | Ticket compensation mode | `manual_review` per event (default) | `automatic_full` stays off for tickets until PAY-002 passes hosted. |
 | Commerce compensation | automatic full refund | A membership or merchandise payment that can't be filled is refunded by the refund worker (PAY-003). |
 | Fee policy | `platform_fee_3_75_percent_89c_v2` | 3.75% + $0.89 per ticket, membership or merchandise order; past orders keep theirs. |
+| Stripe API version | `2026-09-30.endive`, stripe 23 (PAY-006) | Hosted webhook endpoints are created on it; the key should be a restricted `rk_live_` key ([[Production Operations]]). |
+| Society payouts | manual, sent after each event (PAY-005) | Tickets 2 days after the event ends, memberships and merchandise 7 days after the sale, never held past 80 days. |
+| Lost disputes | taken back from the society (PAY-004) | The transfer is reversed by the disputed amount; Thunderstrux keeps its fee and pays Stripe's dispute fee. |
 
 ## Jobs
 
-Six bounded jobs run every minute under the T42 worker contract (leases, pause, timeouts, alerts): email outbox, notifications, stale orders and commerce expiry, refunds and compensation, checkout recovery, and the operations monitor. Use `docker-compose.schedules.yml` or the platform's scheduler.
+Six bounded jobs run every minute under the T42 worker contract (leases, pause, timeouts, alerts): email outbox, notifications, stale orders and commerce expiry, refunds and compensation, checkout recovery, and the operations monitor. Use `docker-compose.schedules.yml` or the platform's scheduler. Since the Stripe audit the refunds job also takes back lost disputes (PAY-004) and sends society payouts, checking each society at most hourly (PAY-005).
 
 ## Evidence
 
@@ -42,6 +45,7 @@ Six bounded jobs run every minute under the T42 worker contract (leases, pause, 
 | Provider acceptance (T45) | Stripe test mode, nine scenarios (`staging-741aec2c…`, `staging-20ffc6bc…`, `staging-02b236b7…`); Resend accepted ticket receipts; storage blocked (OPS-005) |
 | Commerce recovery (PAY-003) | baseline `baseline-9734427260591184e71e8334`, browser `browser-f884013075b6ac47e03097d7`, operations `ops-b747a83484`, staging `staging-a828d3d0…`, `staging-f5d4c10a…`, `staging-d1981708…` |
 | T46 (fee, public pages, audit) | baseline `baseline-c0ff0efd8c4250c005ff024e` on `3e4bb68` (41/41 guards, 642 integration tests in 98 files, typecheck, clean audit); browser `browser-598296fd5c1112147bf994eb` on `78cc794` (9 MFA, 68 desktop/mobile with the Fees, Help and Privacy screenshots, 10 webhook checks). The commits after `3e4bb68` change only the public pages' layout and copy and their browser test. Staging `staging-531f5b0f778b85d1fe58fbf2` on `3e6f323` confirmed the new fee on real Stripe test mode: a $12.00 ticket carried a $1.34 application fee, and the full refund returned the $12.00 and the $1.34. |
+| Stripe audit (DEF-031, PAY-004 to PAY-006) | #159 baseline `baseline-1f95f18e…` and browser `browser-7422320a…`; #160 baseline `baseline-986612515c5fbf9bf704355a`, operations `ops-cb89090db0`, staging `staging-d456141b…` (dispute reversed); #162 baseline `baseline-5a9e0e1f365e986ce8e74d58`, browser `browser-9f3bc87f…`, operations `ops-b68382c0ce`, a real $10.00 test-mode payout (`po_1UU4ZwRwWHtrRpnvSnTTzE4m`); #164 baseline `baseline-638068d83b1f4138dc931894`, browser `browser-1473fd78…`, full staging campaign `staging-872334655caa4b455d206a0f` on endive (twelve scenarios) |
 
 [[Journey Qualification]] maps every section 7 journey to its tests. The readiness plan's section 8 carries T46's verdict for every PRD row.
 

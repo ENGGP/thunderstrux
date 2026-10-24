@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-21
+last-reviewed: 2026-10-25
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]"]
 sources: [lib/stripe/connect.ts, lib/payments/checkout-creation.ts]

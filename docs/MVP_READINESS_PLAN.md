@@ -1004,6 +1004,11 @@ DEP-001 genuine advisory PR/failure-notification receipt cannot be manufactured;
 - [ ] Private pilot/actual enrollment remains H02 until activated.
 
 ### Payment/ticket/inventory correctness
+**Stripe audit (2026-10-24 to 25).** The integration was checked against Stripe's current docs.
+- **Fixed:** DEF-031 (#159), lost-dispute recovery PAY-004 (#160), payouts after the event PAY-005 (#162), and the move to API `2026-09-30.endive` with stripe 23, PAY-006 (#164).
+- **Evidence:** real test-mode runs, including the full staging campaign `staging-872334655caa4b455d206a0f` on endive.
+- **Accepted risks:** PAY-007 and PAY-008.
+- **Before hosting:** the hosted webhook endpoints (on endive) and a restricted key, following [[Production Operations]].
 - [ ] Stripe truth/free noncash classification; no browser/model paid-state authority.
 - [ ] Locks/capacity/holds/snapshots/keys/replay/crash tests for ticket/membership/merch pass.
 - [ ] Uncertain creation/late paid/failed fulfilment/refund/dispute/mail recovery durable; no double charge/issue/grant/restock/negative stock.

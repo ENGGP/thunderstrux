@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { signOutTo } from "@/lib/client/sign-out";
 import { buttonClasses } from "@/components/ui/button";
 
 const exploreLinks = [
@@ -31,7 +32,7 @@ export default function Navbar() {
   const signOutButton = (
     <button
       className={buttonClasses({ variant: "secondary", size: "sm" })}
-      onClick={() => signOut({ callbackUrl: "/" })}
+      onClick={() => signOutTo("/")}
       type="button"
     >
       Sign out

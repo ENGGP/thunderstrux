@@ -12,7 +12,7 @@ import { MerchandiseUnavailableError } from "@/lib/merchandise/sale";
 import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
 import { GUEST_CSRF_HEADER, verifyGuestCsrf } from "@/lib/guest/guest-csrf";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
-import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { enforceTrustedMutationRequest, trustedRequestOrigin } from "@/lib/security/request-guard";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { validateJson } from "@/lib/validators";
 
@@ -34,7 +34,7 @@ export async function commerceCheckoutRoute(request: Request, family: CommerceKi
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
   const body = await validateJson(request, schema);
   if (!body.success) return validationError(body.details);
-  const input = { family, organisationId: body.data.organisationId, selection: body.data.selection, expectedTotal: body.data.expectedTotal, idempotencyKey: body.data.idempotencyKey };
+  const input = { family, organisationId: body.data.organisationId, selection: body.data.selection, expectedTotal: body.data.expectedTotal, idempotencyKey: body.data.idempotencyKey, returnOrigin: trustedRequestOrigin(request) };
   try {
     const sessionId = guestSessionIdFrom(request);
     if (family === "merchandise" && sessionId && !(await getLiveSession())) {

@@ -1,6 +1,6 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { signOut } from "next-auth/react";
+import { signOutTo } from "@/lib/client/sign-out";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
@@ -13,7 +13,7 @@ export function CloseAccountForm({ eligibility, mfaRequired }: { eligibility: { 
     event.preventDefault(); setError(""); setBusy(true);
     try {
       await fetchJson("/api/me/account/closure", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: password, acknowledgement }) });
-      setPassword(""); await signOut({ callbackUrl: "/login?accountClosed=true" });
+      setPassword(""); await signOutTo("/login?accountClosed=true");
     } catch (failure) { setError(getClientErrorMessage(failure, "Could not close your account.")); }
     finally { setBusy(false); }
   }

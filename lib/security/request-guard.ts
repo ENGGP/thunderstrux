@@ -51,6 +51,17 @@ function configuredTrustedOrigins(): Set<string> {
   return trusted;
 }
 
+// The origin a browser request came from, when this deployment serves it (the app
+// URL or TRUSTED_APP_ORIGINS). Redirects back to that browser (Stripe returns) use
+// it, so a second trusted address stays on itself; anything else, or no Origin
+// header, gets undefined and the caller falls back to the app URL. Never the raw
+// Host header: a forged host must not decide where Stripe sends someone.
+export function trustedRequestOrigin(request: Request): string | undefined {
+  const header = request.headers.get("origin");
+  const origin = header ? parseOriginHeader(header) : null;
+  return origin && configuredTrustedOrigins().has(origin) ? origin : undefined;
+}
+
 function getRequestPath(request: Request): string {
   try {
     return new URL(request.url).pathname;

@@ -8,7 +8,7 @@ import {
   createEventCheckout
 } from "@/lib/payments/checkout-creation";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
-import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { enforceTrustedMutationRequest, trustedRequestOrigin } from "@/lib/security/request-guard";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
 import { GUEST_CSRF_HEADER, verifyGuestCsrf } from "@/lib/guest/guest-csrf";
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       if (!verifyGuestCsrf(sessionId, request.headers.get(GUEST_CSRF_HEADER))) return forbidden("Invalid CSRF token");
       const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: ["guest", guest.grantId, validation.data.eventId, getRateLimitClientIp(request)] });
       if (limit) return limit;
-      return checkoutResponse(await createEventCheckout({ ...validation.data, guest: { grantId: guest.grantId, guestIdentityId: guest.guestIdentityId } }));
+      return checkoutResponse(await createEventCheckout({ ...validation.data, guest: { grantId: guest.grantId, guestIdentityId: guest.guestIdentityId }, returnOrigin: trustedRequestOrigin(request) }));
     }
 
     const user = await requireVerifiedUser();
@@ -66,7 +66,8 @@ export async function POST(request: Request) {
       ticketTypeId: validation.data.ticketTypeId,
       quantity: validation.data.quantity,
       expectedUnitPrice: validation.data.expectedUnitPrice,
-      idempotencyKey: validation.data.idempotencyKey
+      idempotencyKey: validation.data.idempotencyKey,
+      returnOrigin: trustedRequestOrigin(request)
     }));
   } catch (error) {
     return mapRouteError(error, {

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
+import { signOutTo } from "@/lib/client/sign-out";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
@@ -25,7 +26,7 @@ export function EmailChangeConfirmForm() {
         setPassword(""); await update();
       } else {
         await fetchJson("/api/me/account/email/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: password, token }) });
-        setPassword(""); setToken(""); await signOut({ callbackUrl: "/login?emailChanged=true" });
+        setPassword(""); setToken(""); await signOutTo("/login?emailChanged=true");
       }
     } catch (failure) { setError(getClientErrorMessage(failure, "Could not confirm email change.")); }
     finally { setBusy(false); }

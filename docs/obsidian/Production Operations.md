@@ -182,7 +182,7 @@ Pause the workers before deployment (`pnpm ops:workers -- pause all --reason=...
 ```text
 every minute: node scripts/process-email-outbox.mjs
 every minute: node scripts/process-stale-orders.mjs   # also expires stale commerce orders (T21)
-every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a)
+every minute: node scripts/process-compensation-refunds.mjs   # also resolves ordinary refunds (T18a) and takes back lost disputes (PAY-004)
 every minute: node scripts/process-checkout-attempts.mjs   # ticket and commerce attempts (T21)
 every minute: node scripts/process-notifications.mjs   # also fans out event changes and queues membership reminders (T30), and deletes tokens 30 days past expiry, 500 a run (T39)
 every minute: node scripts/process-operations-monitor.mjs   # queue backlog, oldest age, stuck items and stale jobs (T42)
@@ -203,7 +203,7 @@ Subscribe only these events. After creating them, check the endpoint list shows 
 
 **Optional.** The proxy may also accept webhook requests only from [Stripe's published IP addresses](https://docs.stripe.com/ips); signature checks stay the real protection.
 
-**Disputes.** On destination charges the platform answers every dispute in Stripe's Dashboard, before the evidence due date that `purchase_dispute_opened` reports. The dispute amount and Stripe's dispute fee come out of the platform's balance (see PAY-004 in [[Non-Blocking Issue Register]]).
+**Disputes.** On destination charges the platform answers every dispute in Stripe's Dashboard, before the evidence due date that `purchase_dispute_opened` reports. The dispute amount and Stripe's dispute fee come out of the platform's balance. Once a dispute is lost the refunds worker takes the amount back from the society's transfer (PAY-004, see [[Payment Lifecycle]]); the dispute fee stays with the platform.
 
 ## Workers, schedules and alerts
 
@@ -235,6 +235,8 @@ Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
 | `queue_backlog_high` email or notifications | the oldest pending message is over 15 minutes old | Check Resend acceptance and the `email_outbox_retry_exhausted` and `notification_outbox_retry_exhausted` alerts. |
 | `queue_backlog_high` checkout attempts | an uncertain Stripe Session is over 30 minutes old | Check the checkout-recovery job and compare with the Stripe dashboard. |
 | `queue_backlog_high` compensation or order refunds | a queued or uncertain refund is over an hour old | Check the refunds job and Stripe. Never refund by hand while a refund is uncertain: it may go through twice. |
+| `queue_backlog_high` dispute reversals | a lost dispute hasn't been taken back from the society within an hour of closing | Check the refunds job and the transfer's reversals in Stripe. Never reverse by hand while one is uncertain. |
+| `dispute_reversal_unresolved` | a lost dispute can't be taken back (no transfer, another account, nothing left, Stripe refused) or is still unknown after six tries | Look at the dispute's charge and transfer in Stripe's Dashboard and reverse or write it off by hand; record what was done on the order. |
 | `queue_backlog_high` ticket holds | an expired hold is still active 10 minutes later | Check the stale-orders job; the held stock stays unavailable until it runs. |
 | `queue_backlog_high` commerce checkouts | a pending commerce checkout is 30 minutes past its expiry | Check the stale-orders job. |
 | `queue_processing_stuck` | an item has been processing for over 15 minutes | Lease recovery should requeue it; if it doesn't, inspect the item before requeueing. |

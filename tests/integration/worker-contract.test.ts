@@ -124,7 +124,7 @@ describe("operations monitor (T42)", () => {
 
       expect(await run("monitor", () => runOperationsMonitor())).toBe("succeeded");
       expect(receiver.received.map((alert) => alert.dedupeKey).sort()).toEqual(["queue_backlog_high:notification_outbox", "queue_processing_stuck:notification_outbox"]);
-      expect(info.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0]))).filter((entry) => entry.metricName === "queue.oldest_age_seconds")).toHaveLength(7);
+      expect(info.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0]))).filter((entry) => entry.metricName === "queue.oldest_age_seconds")).toHaveLength(8);
 
       // Still firing: no repeat within 30 minutes.
       await run("monitor", () => runOperationsMonitor());

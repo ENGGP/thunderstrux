@@ -7,6 +7,7 @@ import { createCommerceOrder } from "@/lib/commerce/orders";
 import { reconcileCommerceCheckoutSession } from "@/lib/commerce/reconciliation";
 import { prisma } from "@/lib/db";
 import { listPickups } from "@/lib/merchandise/pickups";
+import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { orderReference, processOrderRefundBatch, requestCommerceRefund } from "@/lib/payments/order-refunds";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
 import { setMockSession } from "@/tests/helpers/auth";
@@ -17,7 +18,7 @@ import { createMember, createOrganisationAccount, unique } from "@/tests/helpers
 // merchandise orders, and the automatic refund of a payment that couldn't be filled.
 
 const webhookSecret = "whsec_commerce_recovery_test";
-const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn() }));
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
   return {
@@ -29,6 +30,8 @@ vi.mock("@/lib/stripe", async () => {
       checkout: { sessions: { retrieve: stripe.retrieve, list: stripe.list } },
       refunds: { list: stripe.refunds, create: stripe.create },
       disputes: { retrieve: stripe.dispute },
+      charges: { retrieve: stripe.charge },
+      transfers: { retrieve: stripe.transfer, listReversals: stripe.reversals, createReversal: stripe.reverse },
       webhooks: new RealStripe("sk_test_commerce_recovery").webhooks
     })
   };
@@ -133,6 +136,16 @@ describe("commerce disputes", () => {
     expect((await prisma.auditLog.findMany({ where: { targetId: fixture.order.id }, orderBy: { createdAt: "asc" } })).map((row) => row.action)).toEqual(["commerce_order.dispute_opened", "commerce_order.dispute_lost"]);
     // Ticket handling never saw it.
     expect(await prisma.order.count({ where: { disputeStatus: { not: null }, organisationId: fixture.society.organisation.id } })).toBe(0);
+
+    // PAY-004: the refunds worker takes the lost $15.00 back from the society's transfer.
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: "tr_membership" });
+    stripe.transfer.mockResolvedValue({ id: "tr_membership", amount: 1500, amount_reversed: 0, currency: "aud", destination: fixture.society.organisation.stripeAccountId });
+    stripe.reversals.mockResolvedValue({ data: [] });
+    stripe.reverse.mockResolvedValue({ id: "trr_membership", amount: 1500, metadata: {} });
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "succeeded" }] });
+    expect(stripe.reverse).toHaveBeenCalledWith("tr_membership", { amount: 1500, metadata: { disputeId: `dp_${fixture.order.id}`, commerceOrderId: fixture.order.id } }, { idempotencyKey: `dispute-reversal:dp_${fixture.order.id}` });
+    expect(await historyOf(fixture.order.id)).toEqual(["order_created", "dispute_opened", "dispute_closed", "dispute_funds_recovered"]);
+    expect(await prisma.auditLog.findFirst({ where: { targetId: fixture.order.id, action: "commerce_order.dispute_funds_recovered" } })).toMatchObject({ targetType: "CommerceOrder" });
   });
 
   test("a disputed merchandise order can't be handed over and waits under Review; a won dispute clears it", async () => {

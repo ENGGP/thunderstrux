@@ -593,6 +593,16 @@ model PurchaseDispute {
   resolvedAt       DateTime?
   resolvedByUserId String?
   resolutionReason String?
+  // PAY-004: once lost, the transfer to the society is reversed by the
+  // disputed amount; the refund worker sends it and retries an unknown outcome.
+  reversalStatus              DisputeReversalStatus?
+  reversalAmount              Int?
+  stripeTransferReversalId    String?                @unique
+  reversalAttempts            Int                    @default(0)
+  reversalNextAttemptAt       DateTime?
+  reversalProcessingToken     String?
+  reversalProcessingStartedAt DateTime?
+  reversalLastError           String?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   order            Order?       @relation(fields: [orderId], references: [id], onDelete: Restrict)
@@ -602,6 +612,14 @@ model PurchaseDispute {
 
   @@index([orderId, createdAt])
   @@index([commerceOrderId, createdAt])
+  @@index([reversalStatus, reversalNextAttemptAt])
+}
+
+enum DisputeReversalStatus {
+  pending
+  uncertain
+  succeeded
+  failed
 }
 
 model Ticket {
@@ -860,6 +878,7 @@ enum OrderLifecycleEventType {
   dispute_opened
   dispute_closed
   dispute_resolved
+  dispute_funds_recovered
   external_refund_recorded
   external_refund_reviewed
   free_cancelled
@@ -949,6 +968,7 @@ enum CommerceLifecycleEventType {
   return_recorded
   dispute_opened
   dispute_closed
+  dispute_funds_recovered
   external_refund_recorded
   external_refund_reviewed
 }

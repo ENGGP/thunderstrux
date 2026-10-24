@@ -41,7 +41,8 @@ export function purchasedTicketTypeLabel(purchasedName: string | null, currentNa
 export function buyerPurchaseBadge(order: Parameters<typeof ticketOrderProjection>[0]): { status: TicketOrderProjection; label?: string } {
   const projection = ticketOrderProjection(order);
   if (projection === "failed" || projection === "expired") return { status: "expired", label: "Didn't complete" };
-  if (projection === "processing") return { status: projection, label: "Confirming payment" };
+  // Unpaid until Stripe says otherwise (round E1); the order page asks Stripe and may say Confirming.
+  if (projection === "processing") return { status: projection, label: "Waiting for payment" };
   if (projection === "cancelled") return { status: projection, label: "Cancelled by the society" };
   // Payment review is either a charge awaiting compensation or a partial refund made in Stripe.
   if (projection === "review") return { status: projection, label: order.requiresCompensationReview ? "Payment issue" : "Partly refunded" };

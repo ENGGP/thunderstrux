@@ -61,7 +61,8 @@ const buyerTimelineLabels: Partial<Record<OrderLifecycleEventType, string>> = {
   external_refund_recorded: "Refund recorded",
   dispute_opened: "Payment disputed",
   dispute_resolved: "Tickets restored",
-  free_cancelled: "Cancelled by the society"
+  free_cancelled: "Cancelled by the society",
+  order_expired: "Checkout didn't complete"
 };
 
 // One of the member's own orders for /purchases/tickets/[orderId], with every
@@ -110,7 +111,7 @@ export function getOwnOrderForCheckoutSession(userId: string, stripeSessionId: s
 export function getTicketPurchaseStatus(orderId: string) {
   return prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, userId: true, guestIdentityId: true, ...projectionSelect, event: { select: { id: true, title: true } } }
+    select: { id: true, userId: true, guestIdentityId: true, quantity: true, ...projectionSelect, event: { select: { id: true, title: true, organisation: { select: { timeZone: true } } } } }
   });
 }
 

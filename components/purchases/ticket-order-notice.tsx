@@ -13,14 +13,15 @@ type Order = Parameters<typeof ticketOrderProjection>[0] & {
 
 // Where a ticket order stands, in the buyer's words. Shared by a member's
 // purchase page and a guest's order page (T44a), which differ only in how a
-// payment still being confirmed is shown: `processing`.
-export function TicketOrderNotice({ order, processing }: { order: Order; processing: ReactNode }) {
+// payment still being confirmed is shown: `processing`. `cancelled`: the buyer
+// cancelled it themselves (round E1) rather than the hold running out.
+export function TicketOrderNotice({ order, processing, cancelled = false }: { order: Order; processing: ReactNode; cancelled?: boolean }) {
   const projection = ticketOrderProjection(order);
   const society = order.event.organisation.name;
   const refund = order.refundRequests[0];
   if (projection === "processing") return processing;
   if (projection === "failed" || projection === "expired") {
-    return <Notice title="This checkout didn't complete"><p>Nothing was charged. <Link className="font-semibold text-brand underline underline-offset-4" href={`/events/${order.event.id}`}>Back to the event</Link></p></Notice>;
+    return <Notice title="This checkout didn't complete"><p>{cancelled ? "You cancelled it, so nothing was charged and the tickets are back on sale." : "Nothing was charged."} <Link className="font-semibold text-brand underline underline-offset-4" href={`/events/${order.event.id}`}>Back to the event</Link></p></Notice>;
   }
   if (projection === "refunded") {
     return (

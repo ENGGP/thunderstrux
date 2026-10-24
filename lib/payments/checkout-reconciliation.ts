@@ -114,7 +114,8 @@ export async function findOrderForCheckoutSession(
 
 export async function reconcileExpiredCheckoutSession(
   session: Stripe.Checkout.Session,
-  { stripeEventId }: { stripeEventId?: string } = {}
+  // `checkout` when the buyer cancelled and Stripe confirmed the Session expired.
+  { stripeEventId, source = "stripe_webhook" }: { stripeEventId?: string; source?: "stripe_webhook" | "checkout" } = {}
 ): Promise<CheckoutReconciliationResult> {
   let result: CheckoutReconciliationResult = {
     status: "ignored",
@@ -249,7 +250,7 @@ export async function reconcileExpiredCheckoutSession(
     await appendOrderLifecycleEvent(tx, {
       orderId: order.id,
       type: "order_expired",
-      source: "stripe_webhook",
+      source,
       stripeEventId,
       stripeSessionId: session.id,
       fromOrderStatus: "pending",

@@ -71,3 +71,38 @@ test("back from Stripe, the success page says it is confirming until the webhook
   await page.goto(`/cancel?order=${order.id}`);
   await expect(page.getByRole("heading", { name: "Your order went through" })).toBeVisible();
 });
+
+// Design round E1: an unpaid order says so and offers Cancel order while the hold lasts.
+test("an unpaid order says it is waiting for payment, reads To pay, and asks once before cancelling", async ({ page, data }) => {
+  const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, quantity: 1, unitPrice: 1200 });
+  await prisma.ticketReservation.create({ data: { orderId: order.id, organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, quantity: 1, expiresAt: new Date(Date.now() + 20 * 60_000) } });
+
+  await login(page, data.member.email, `/purchases/tickets/${order.id}`);
+  await expect(page.getByText("Waiting for payment").first()).toBeVisible();
+  await expect(page.getByText("You haven't paid yet")).toBeVisible();
+  await expect(page.getByText("We're holding 1 ticket for you until", { exact: false })).toBeVisible();
+  await expect(page.getByText("To pay", { exact: true })).toBeVisible();
+  await expect(page.getByText("Paid", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel order" }).click();
+  const dialog = page.getByRole("dialog", { name: "Cancel this order?" });
+  await expect(dialog).toContainText("goes back on sale. Nothing has been charged.");
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.screenshot({ path: `test-results/unpaid-order-dialog-${width}.png`, fullPage: true });
+  }
+  await dialog.getByRole("button", { name: "Keep it" }).click();
+  await expect(dialog).toBeHidden();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/unpaid-order-${width}.png`, fullPage: true });
+  }
+  expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("pending");
+
+  // Once the hold has ended, it didn't complete and nothing was charged.
+  await prisma.ticketReservation.update({ where: { orderId: order.id }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+  await page.reload();
+  await expect(page.getByText("Didn't complete").first()).toBeVisible();
+  await expect(page.getByText("The hold ended before payment", { exact: false })).toBeVisible();
+  await expect(page.getByText("Not charged", { exact: true })).toBeVisible();
+});

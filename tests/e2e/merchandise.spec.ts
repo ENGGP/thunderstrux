@@ -179,16 +179,22 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
     organisationId: organisation.id, kind: "merchandise", buyer: { userId: data.member.id }, buyerEmail: data.member.email, paymentKind: "stripe", feeAmount: 450,
     lines: [{ quantity: 1, unitAmount: 4500, name: "Sticker pack", variant: "Large", merchandiseVariantId: paid.id }], source: "checkout", expiresAt: new Date(Date.now() + 30 * 60_000)
   }));
+  // Not paid yet (round E1): it says so, with Cancel order while the hold lasts.
   await page.goto(`/merchandise/orders/${order.id}`);
-  await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible();
-  await expect(page.getByText("Processing")).toBeVisible();
-  await shoot(page, "order-confirming");
+  await expect(page.getByRole("heading", { name: "You haven't paid yet" })).toBeVisible();
+  await expect(page.getByText("Waiting for payment")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel order" })).toBeVisible();
+  await shoot(page, "order-waiting");
   await page.goto(`/merchandise/orders/${order.id}?left=1`);
+  await expect(page.getByText("You left Stripe before paying, so nothing was charged.", { exact: false })).toBeVisible();
+  // Once the hold has ended, nothing is held and the basket is still there.
+  await prisma.commerceOrder.update({ where: { id: order.id }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+  await page.goto(`/merchandise/orders/${order.id}`);
   await expect(page.getByRole("heading", { name: "No payment taken" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to basket" }).last()).toBeVisible();
   await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "failed", requiresCompensationReview: true, reviewReason: "sold_out", paidAt: new Date(), failedAt: new Date() } });
   await page.goto(`/merchandise/orders/${order.id}`);
-  await expect(page.getByRole("heading", { name: "We're checking your payment" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "We're refunding your payment" })).toBeVisible();
 
   // Someone else's order is not found.
   await page.context().clearCookies();

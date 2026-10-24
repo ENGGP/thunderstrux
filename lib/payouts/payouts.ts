@@ -36,7 +36,8 @@ export async function restoreStripePayoutSchedule(accountId: string) {
 const statusOf = (payout: Stripe.Payout): SocietyPayoutStatus =>
   payout.status === "paid" ? "paid" : payout.status === "failed" || payout.status === "canceled" ? "failed" : "pending";
 
-async function record(organisationId: string, accountId: string, payout: Stripe.Payout) {
+// `sentAt`: the worker's clock for a payout it sent, so the stored day is the key's day.
+async function record(organisationId: string, accountId: string, payout: Stripe.Payout, sentAt?: Date) {
   const fields = {
     status: statusOf(payout),
     failureMessage: payout.failure_message ?? null,
@@ -44,14 +45,24 @@ async function record(organisationId: string, accountId: string, payout: Stripe.
   };
   return prisma.societyPayout.upsert({
     where: { stripePayoutId: payout.id },
-    create: { organisationId, stripeAccountId: accountId, stripePayoutId: payout.id, amount: payout.amount, currency: payout.currency, ...fields },
+    create: { organisationId, stripeAccountId: accountId, stripePayoutId: payout.id, amount: payout.amount, currency: payout.currency, ...fields, ...(sentAt ? { createdAt: sentAt } : {}) },
     update: fields
   });
 }
 
-// One society: what Stripe has available, less what the rules still hold.
+// One society: what Stripe has available, less what the rules still hold. At
+// most one payout a UTC day (the key's day), like Eventbrite's batched payouts:
+// a second call that day would reuse the key with another amount, which Stripe
+// refuses (DEF-034). Money released later in the day goes out the next day.
 async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountId: string }, now: Date) {
   await ensureManualPayouts(stripe, organisation.stripeAccountId);
+  const day = now.toISOString().slice(0, 10);
+  const dayStart = new Date(`${day}T00:00:00.000Z`);
+  const paidToday = await prisma.societyPayout.findFirst({
+    where: { stripeAccountId: organisation.stripeAccountId, createdAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86_400_000) } },
+    select: { id: true }
+  });
+  if (paidToday) return { sent: 0 };
   const balance = await stripe.balance.retrieve({}, { stripeAccount: organisation.stripeAccountId });
   const available = balance.available.find((entry) => entry.currency === "aud")?.amount ?? 0;
   const held = await heldMoney(organisation.id, organisation.stripeAccountId, now);
@@ -59,9 +70,9 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   if (amount < minPayout) return { sent: 0 };
   const payout = await stripe.payouts.create(
     { amount, currency: "aud", metadata: { organisationId: organisation.id } },
-    { stripeAccount: organisation.stripeAccountId, idempotencyKey: `payout:${organisation.stripeAccountId}:${now.toISOString().slice(0, 10)}` }
+    { stripeAccount: organisation.stripeAccountId, idempotencyKey: `payout:${organisation.stripeAccountId}:${day}` }
   );
-  await record(organisation.id, organisation.stripeAccountId, payout);
+  await record(organisation.id, organisation.stripeAccountId, payout, now);
   logInfo("payouts.sent", { organisationId: organisation.id, amount, available, held: held.total });
   return { sent: amount };
 }

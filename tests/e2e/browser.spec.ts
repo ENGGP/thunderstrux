@@ -90,6 +90,12 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
   await expect.poll(() => page.url()).not.toContain('#');
   expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).toBeNull();
+  // Verification proves the password holder, not just the mailbox (SEC-008).
+  await page.getByLabel('Password', { exact: true }).fill('wrong-password');
+  await page.getByRole('button', { name: 'Verify email', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).toBeNull();
+  await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Verify email', exact: true }).click();
   await expect(page.getByText('Email verified. Sign in to continue.')).toBeVisible();
   expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).not.toBeNull();

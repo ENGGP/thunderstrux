@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const ipLimit = await lifecycleIpLimit(request); if (ipLimit) return ipLimit;
   const body = await validateJson(request, z.object({ email: z.string().trim().toLowerCase().email().max(320), callbackUrl: z.string().max(1000).optional() }).strict());
   if (!body.success) return validationError(body.details);
-  const emailLimit = await lifecycleEmailLimit(request, body.data.email); if (emailLimit) return emailLimit;
+  const emailLimit = await lifecycleEmailLimit(request, body.data.email, "password_reset"); if (emailLimit) return emailLimit;
   try { await requestPasswordReset(body.data.email, body.data.callbackUrl); return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } }); }
   catch (error) { return mapRouteError(error, { operation: "auth.password_request", request }); }
 }

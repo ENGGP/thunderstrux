@@ -7,9 +7,9 @@ import { validateJson } from "@/lib/validators";
 import { badRequest, mapRouteError, routeErrorRule, validationError } from "@/lib/api/errors";
 export async function POST(request: Request) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
-  const body = await validateJson(request, z.object({ token: z.string().min(1).max(100) }).strict());
+  const body = await validateJson(request, z.object({ token: z.string().min(1).max(100), password: z.string().min(1).max(200) }).strict());
   if (!body.success) return validationError(body.details);
   const limit = await lifecycleRedemptionLimit(request, body.data.token); if (limit) return limit;
-  try { return NextResponse.json(await consumeVerification(body.data.token), { headers: { "Cache-Control": "no-store" } }); }
-  catch (error) { return mapRouteError(error, { operation: "auth.verification_confirm", request, rules: [routeErrorRule(AccountTokenError, (invalid) => badRequest(invalid.message))] }); }
+  try { return NextResponse.json(await consumeVerification(body.data.token, body.data.password), { headers: { "Cache-Control": "no-store" } }); }
+  catch (error) { return mapRouteError(error, { operation: "auth.verification_confirm", request, rules: [routeErrorRule(AccountTokenError, () => badRequest("Check the password, or the link may be invalid or expired. Request a new link."))] }); }
 }

@@ -51,7 +51,7 @@ The dev stack is for loopback only: never put it behind a public hostname. `next
 
 ## Public Preview (pre-production)
 
-The public preview at `https://thunderstrux.mistayu.com` runs the production build through the single-host deploy path in [Production Operations](docs/obsidian/Production%20Operations.md), as `thunderstrux.com` will later. It has its own project, database, Redis and workers, separate from the dev stack.
+The public preview at `https://thunderstrux.mistayu.com` is closed for now (2026-10-26). When it reopens, it runs the production build through the single-host deploy path in [Production Operations](docs/obsidian/Production%20Operations.md), as `thunderstrux.com` will later. It has its own project, database, Redis and workers, separate from the dev stack.
 
 1. Create an ignored `.env.preview` from `.env.example`:
    - random `AUTH_SECRET` (at least 32 characters), `MFA_ENCRYPTION_KEY` and `NOTIFICATION_ENCRYPTION_KEY`: `openssl rand -base64 32`;

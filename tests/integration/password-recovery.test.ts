@@ -14,6 +14,8 @@ import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest } from "@/tests/helpers/http";
 import { POST as requestRoute } from "@/app/api/auth/password/request/route";
 import { POST as confirmRoute } from "@/app/api/auth/password/confirm/route";
+import { POST as signupRoute } from "@/app/api/auth/signup/route";
+import { POST as verificationRoute } from "@/app/api/auth/verification/request/route";
 import { POST as changeRoute } from "@/app/api/me/account/password/route";
 import { GET as settingsRoute } from "@/app/api/me/account/route";
 import { GET as csrfRoute } from "@/app/api/security/csrf/route";
@@ -71,7 +73,7 @@ test("latest reset wins and verification links cannot reset passwords", async ()
   await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: null } }); await requestVerification(user.email);
   await expect(consumePasswordReset(await rawToken(user.id, "verify_account"), "replacement123")).rejects.toBeInstanceOf(AccountTokenError);
   await consumePasswordReset(await rawToken(user.id), "replacement123");
-  expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).emailVerifiedAt).toBeNull();
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).emailVerifiedAt).not.toBeNull(); // A completed reset proves the mailbox (SEC-008).
   expect(await prisma.authToken.count({ where: { consumedAt: null, invalidatedAt: null } })).toBe(0);
 });
 test("expired, altered identity/version, and disabled reset links are rejected", async () => {
@@ -133,4 +135,13 @@ test("password byte limit, CSRF, rate failure and anonymous client boundaries ar
   await fetchJson("/api/auth/password/request", { method: "POST", body: JSON.stringify({ email: user.email }) });
   await fetchJson("/api/auth/password/confirm", { method: "POST", body: JSON.stringify({ token, newPassword: "replacement123" }) });
   expect(fetch.mock.calls).toHaveLength(2);
+});
+test("signup and verification requests cannot use up the owner's reset budget (SEC-026)", async () => {
+  const user = await createMember();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    expect((await signupRoute(jsonRequest("http://localhost:3000/api/auth/signup", { email: user.email, password: "password123" }))).status).toBe(202);
+    expect((await verificationRoute(jsonRequest("http://localhost:3000/api/auth/verification/request", { email: user.email }))).status).toBe(202);
+  }
+  expect((await requestRoute(jsonRequest("http://localhost:3000/api/auth/password/request", { email: user.email }))).status).toBe(202);
+  expect(await prisma.authToken.count({ where: { userId: user.id, purpose: "reset_password" } })).toBe(1);
 });

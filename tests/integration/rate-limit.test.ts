@@ -436,6 +436,31 @@ describe("rate-limited routes", () => {
     expect(nextAuthPost).toHaveBeenCalledTimes(10);
   });
 
+  test("duplicate email fields are refused before the NextAuth handler (SEC-007)", async () => {
+    vi.resetModules();
+    const nextAuthPost = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.doMock("@/auth", () => ({ handlers: { GET: vi.fn(), POST: nextAuthPost } }));
+    const rateLimit = await import("@/lib/security/rate-limit");
+    rateLimit.setRateLimitTestBackend(rateLimit.createTestRateLimitBackend());
+    rateLimit.setRateLimitTestBackendFailure(null);
+    rateLimit.setRateLimitTestEnabled(true);
+    const { POST } = await import("@/app/api/auth/[...nextauth]/route");
+
+    const body = new URLSearchParams([["email", "decoy@example.com"], ["email", "victim@example.com"], ["password", "wrong"]]);
+    const response = await POST(new NextRequest("http://localhost/api/auth/callback/credentials", { method: "POST", body }));
+    expect(response.status).toBe(400);
+    expect(nextAuthPost).not.toHaveBeenCalled();
+  });
+
+  test("an unknown reset token costs no password hash (SEC-019)", async () => {
+    vi.resetModules();
+    const hashMock = vi.fn(async () => "hashed-password");
+    vi.doMock("bcryptjs", async (importOriginal) => ({ ...(await importOriginal<typeof import("bcryptjs")>()), hash: hashMock }));
+    const { consumePasswordReset } = await import("@/lib/auth/account-lifecycle");
+    await expect(consumePasswordReset("a".repeat(43), "replacement123")).rejects.toThrow();
+    expect(hashMock).not.toHaveBeenCalled();
+  });
+
   test("signup email throttling stops before password hashing", async () => {
     vi.resetModules();
     const hashMock = vi.fn(async () => "hashed-password");

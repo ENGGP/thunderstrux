@@ -6,7 +6,8 @@ export function safeReturnPath(value: string | undefined, fallback = "/dashboard
   try {
     const base = "https://thunderstrux.invalid";
     const parsed = new URL(value, base);
-    if (parsed.origin !== base) return fallback;
+    // Dot segments can turn "/.//host" into "//host", which a browser treats as another site (SEC-012).
+    if (parsed.origin !== base || parsed.pathname.startsWith("//")) return fallback;
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
     return fallback;

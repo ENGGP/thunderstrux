@@ -1,7 +1,7 @@
 import { readStaffInviteToken } from "@/tests/helpers/staff-invites";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
-import { signupAccount, requestVerification, consumeVerification, AccountTokenError } from "@/lib/auth/account-lifecycle";
+import { signupAccount, requestVerification, consumeVerification, AccountTokenError, requestPasswordReset, consumePasswordReset } from "@/lib/auth/account-lifecycle";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { claimNotificationJobs, processNotificationClaim } from "@/lib/email/notification-outbox";
 import { POST as signup } from "@/app/api/auth/signup/route";
@@ -52,28 +52,52 @@ test("issuance misconfiguration has the same response for known and unknown addr
 });
 test("explicit verification consumes once under concurrent requests and keeps safe callback", async () => {
   await signupAccount(input); const raw = await rawToken();
-  const results = await Promise.allSettled([consumeVerification(raw), consumeVerification(raw)]);
+  const results = await Promise.allSettled([consumeVerification(raw, input.password), consumeVerification(raw, input.password)]);
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
   expect((results.find(result => result.status === "fulfilled") as PromiseFulfilledResult<unknown>).value).toEqual({ verified: true, callbackUrl: "/events/example" });
   expect((await prisma.user.findFirstOrThrow()).emailVerifiedAt).not.toBeNull();
-  await expect(consumeVerification(raw)).rejects.toBeInstanceOf(AccountTokenError);
+  await expect(consumeVerification(raw, input.password)).rejects.toBeInstanceOf(AccountTokenError);
+});
+test("verification needs the account's password; a reset verifies the mailbox owner and ends other sessions (SEC-008)", async () => {
+  await signupAccount({ ...input, password: "squatter-pass-111" });
+  const squatter = await prisma.user.findFirstOrThrow();
+  const raw = await rawToken();
+  const wrong = await confirmRoute(jsonRequest("http://localhost:3000/api/auth/verification/confirm", { token: raw, password: "owner-pass-222" }));
+  expect(wrong.status).toBe(400);
+  expect((await wrong.json()).error.message).toContain("Check the password");
+  expect((await prisma.user.findFirstOrThrow()).emailVerifiedAt).toBeNull();
+  expect((await prisma.authToken.findFirstOrThrow({ where: { purpose: "verify_account" } })).consumedAt).toBeNull();
+
+  await requestPasswordReset(input.email);
+  await consumePasswordReset(await rawToken(), "owner-new-password-222");
+  const owner = await prisma.user.findFirstOrThrow();
+  expect(owner.emailVerifiedAt).not.toBeNull();
+  expect(owner.authVersion).toBe(squatter.authVersion + 1);
+  setMockSession({ userId: squatter.id, email: squatter.email, accountRole: "member", authVersion: squatter.authVersion });
+  await expect(requireAuthenticatedUser()).rejects.toThrow("Authentication required");
+
+  // The right password still verifies through the route.
+  await signupAccount({ ...input, email: "holder@example.com" });
+  const right = await confirmRoute(jsonRequest("http://localhost:3000/api/auth/verification/confirm", { token: await rawToken(), password: input.password }));
+  expect(right.status).toBe(200);
+  expect((await prisma.user.findUniqueOrThrow({ where: { email: "holder@example.com" } })).emailVerifiedAt).not.toBeNull();
 });
 test("resend supersedes old tokens and fences already claimed security jobs", async () => {
   await signupAccount(input); const old = await rawToken(); const [claim] = await claimNotificationJobs(new Date(Date.now() + 1000));
   await requestVerification(input.email, "https://evil.example");
-  await expect(consumeVerification(old)).rejects.toBeInstanceOf(AccountTokenError);
+  await expect(consumeVerification(old, input.password)).rejects.toBeInstanceOf(AccountTokenError);
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch); expect(await processNotificationClaim(claim)).toBe("skipped"); expect(fetch).not.toHaveBeenCalled();
-  expect(await consumeVerification(await rawToken())).toEqual({ verified: true, callbackUrl: "/dashboard" });
+  expect(await consumeVerification(await rawToken(), input.password)).toEqual({ verified: true, callbackUrl: "/dashboard" });
 });
 test("expired, wrong-purpose, changed-email, disabled and stale-version tokens are denied", async () => {
   await signupAccount(input); const raw = await rawToken(); const user = await prisma.user.findFirstOrThrow();
   const token = await prisma.authToken.findFirstOrThrow();
   for (const change of [{ purpose: "reset_password" }, { expiresAt: new Date(0) }]) {
-    await prisma.authToken.update({ where: { id: token.id }, data: change }); await expect(consumeVerification(raw)).rejects.toBeInstanceOf(AccountTokenError);
+    await prisma.authToken.update({ where: { id: token.id }, data: change }); await expect(consumeVerification(raw, input.password)).rejects.toBeInstanceOf(AccountTokenError);
     await prisma.authToken.update({ where: { id: token.id }, data: { purpose: token.purpose, expiresAt: token.expiresAt } });
   }
   for (const change of [{ email: "changed@example.com" }, { disabledAt: new Date() }, { authVersion: 1 }]) {
-    await prisma.user.update({ where: { id: user.id }, data: change }); await expect(consumeVerification(raw)).rejects.toBeInstanceOf(AccountTokenError);
+    await prisma.user.update({ where: { id: user.id }, data: change }); await expect(consumeVerification(raw, input.password)).rejects.toBeInstanceOf(AccountTokenError);
     await prisma.user.update({ where: { id: user.id }, data: { email: user.email, disabledAt: null, authVersion: 0 } });
   }
 });
@@ -85,7 +109,7 @@ test("anonymous requests are generic, trusted-origin protected and fail closed",
   expect((await requestRoute(jsonRequest("http://localhost:3000/api/auth/verification/request", input, { headers: { Origin: "https://evil.example" } }))).status).toBe(403);
   setRateLimitTestEnabled(false); expect((await requestRoute(jsonRequest("http://localhost:3000/api/auth/verification/request", { email: input.email }))).status).toBe(503);
   setRateLimitTestEnabled(true); setRateLimitTestBackendFailure(new Error("synthetic Redis failure"));
-  expect((await confirmRoute(jsonRequest("http://localhost:3000/api/auth/verification/confirm", { token: "synthetic" }))).status).toBe(503);
+  expect((await confirmRoute(jsonRequest("http://localhost:3000/api/auth/verification/confirm", { token: "synthetic", password: "synthetic" }))).status).toBe(503);
 });
 test("unverified joins/bootstrap and disabled session access are denied using live state", async () => {
   const user = await createUser({ accountRole: "organisation" }); const society = await createOrganisationAccount();

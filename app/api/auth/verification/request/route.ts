@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
   const ipLimit = await lifecycleIpLimit(request); if (ipLimit) return ipLimit;
   const body = await validateJson(request, schema); if (!body.success) return validationError(body.details);
-  const emailLimit = await lifecycleEmailLimit(request, body.data.email); if (emailLimit) return emailLimit;
+  const emailLimit = await lifecycleEmailLimit(request, body.data.email, "verification"); if (emailLimit) return emailLimit;
   try { await requestVerification(body.data.email, body.data.callbackUrl); return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } }); }
   catch (error) { return mapRouteError(error, { operation: "auth.verification_request", request }); }
 }

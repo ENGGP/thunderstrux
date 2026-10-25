@@ -82,7 +82,7 @@ Returns the same public-safe shape with `status: "ready"` only when the applicat
 
 - **Errors.** Every route answers errors in the shared envelope through `mapRouteError`. A failure the route doesn't name returns `500` with a generic message, and the log holds only the operation and the error's class, never the error, the body or provider data.
 - **Contract test.** `route-contract.test.ts` fails a new route that skips the mapper or, when it changes data, the origin check.
-- **Request bodies (SEC-001).** `validateJson` reads at most 100 KB (the profile route allows 80 KB and answers `413`); a larger body is `400` "Request body is too large". A validation answer lists at most 20 issues.
+- **Request bodies (SEC-025).** `validateJson` reads at most 100 KB (the profile route allows 80 KB and answers `413`); a larger body is `400` "Request body is too large". A validation answer lists at most 20 issues.
 - **Caching.** Every `/api` response except `/api/public/*` and `/api/health*` carries `Cache-Control: private, no-store` unless the route sets its own. Public reads use short public caching.
 - **Headers.** Every response carries the security headers listed in [[Route Security Inventory]].
 - **Stripe misconfiguration.** Ticket checkout answers `503` "Payments are unavailable right now. Try again later." when Stripe isn't configured, without naming the server's settings.
@@ -184,7 +184,7 @@ Rules:
 
 ### Verification
 
-POST `/api/auth/verification/request` accepts `{email, callbackUrl?}` and returns generic `202 {accepted:true}`. POST `/api/auth/verification/confirm` accepts `{token}` and returns `{verified:true, callbackUrl}` or generic invalid/expired-link `400`; IP/token redemption limits are 50/10 per ten minutes. Both require trusted origin, no-store responses and explicit POST. Email/token authority is independent of session cookies; these anonymous endpoints do not require cookie CSRF. Raw tokens travel in email fragments and POST bodies; no GET consumption. Latest token per purpose wins, expires after 24 hours and is single use. Disabled identities, wrong purpose/email/version, expiry, replay and superseded tokens are denied. Protected purchases/joins/bootstrap/invite acceptance require live verified identity; profile/login remain available while unverified.
+POST `/api/auth/verification/request` accepts `{email, callbackUrl?}` and returns generic `202 {accepted:true}`. POST `/api/auth/verification/confirm` accepts `{token, password}` (the account's password; a wrong one leaves the token unused) and returns `{verified:true, callbackUrl}` or generic invalid/expired-link `400`; IP/token redemption limits are 50/10 per ten minutes. Both require trusted origin, no-store responses and explicit POST. Email/token authority is independent of session cookies; these anonymous endpoints do not require cookie CSRF. Raw tokens travel in email fragments and POST bodies; no GET consumption. Latest token per purpose wins, expires after 24 hours and is single use. Disabled identities, wrong purpose/email/version, expiry, replay and superseded tokens are denied. Protected purchases/joins/bootstrap/invite acceptance require live verified identity; profile/login remain available while unverified.
 
 ### Guest access (T16a)
 

@@ -21,7 +21,7 @@ import { MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
 // their stock. Paying, failing or expiring the order ends its hold, so the
 // two can never disagree.
 
-export type MerchandiseUnavailableReason = "unavailable" | "sold_out" | "not_enough" | "quote_changed";
+export type MerchandiseUnavailableReason = "unavailable" | "sold_out" | "not_enough" | "quote_changed" | "purchase_in_progress";
 
 export class MerchandiseUnavailableError extends Error {
   constructor(readonly reason: MerchandiseUnavailableReason, message: string, readonly variantId?: string, readonly available?: number) {
@@ -77,7 +77,13 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
   // Under the buyer and option locks: every option still on sale in this
   // society, enough left after other checkouts' holds, and the prices the
   // buyer reviewed. Nothing is lowered here; the basket re-quotes instead.
-  async quote(tx, { organisationId, selection: { items, quoteVersion: version }, now }) {
+  async quote(tx, { organisationId, buyer, selection: { items, quoteVersion: version }, now }) {
+    // One unpaid basket per buyer per society holds stock at a time (SEC-010). Checkout has already locked the buyer.
+    const open = await tx.commerceOrder.findFirst({
+      where: { organisationId, kind: "merchandise", status: "pending", paymentKind: "stripe", expiresAt: { gt: now }, ...buyer },
+      select: { id: true }
+    });
+    if (open) throw new MerchandiseUnavailableError("purchase_in_progress", "You already have a checkout in progress. Finish or cancel it first.");
     const ids = items.map((item) => item.variantId);
     await lockVariants(tx, ids);
     const [options, held] = await Promise.all([

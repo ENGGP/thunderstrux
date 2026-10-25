@@ -136,6 +136,31 @@ describe("whole-order refunds", () => {
     expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
   });
 
+  test("once a refund may exist, a throttled or mismatched lookup keeps the request open, and Stripe's later success voids the tickets (SEC-011)", async () => {
+    const fixture = await paidOrder();
+    stripe.create.mockRejectedValueOnce(new Error("socket hang up"));
+    const lost = await requestOrderRefund(refundInput(fixture));
+    expect(lost.status).toBe("uncertain");
+    const open = async () => {
+      expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: lost.refundRequestId } })).toMatchObject({ status: "uncertain" });
+      expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "processing" });
+    };
+
+    // A throttled read is a definite Stripe error, but it says nothing about the refund.
+    stripe.list.mockRejectedValueOnce(Object.assign(new Error("Too many requests"), { type: "StripeRateLimitError" }));
+    await processOrderRefundBatch(25, new Date(Date.now() + 2 * 60 * 1000));
+    await open();
+    // Nor does a lookup that can't find it among other refunds.
+    stripe.list.mockResolvedValueOnce({ data: [{ id: "re_dashboard", status: "succeeded", amount: 500, metadata: {} }] });
+    await processOrderRefundBatch(25, new Date(Date.now() + 10 * 60 * 1000));
+    await open();
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+
+    await reconcileOrderRefundEvent({ id: unique("evt"), type: "refund.updated", created: Math.floor(Date.now() / 1000), data: { object: providerRefund(fixture, lost.refundRequestId) } } as unknown as Stripe.Event);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
+    expect(await prisma.ticket.count({ where: { orderId: fixture.order.id, validity: "active" } })).toBe(0);
+  });
+
   test("when Stripe has no refund for it, the worker retries with the same key; a definite refusal lifts the fence", async () => {
     const fixture = await paidOrder();
     stripe.create.mockRejectedValueOnce(new Error("timeout"));

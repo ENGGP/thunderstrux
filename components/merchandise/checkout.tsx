@@ -112,6 +112,7 @@ export function MerchandiseCheckout({
 
   function refusalFor(failure: unknown): Refusal {
     const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
+    if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: "Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing more has been charged." };
     if (detail?.reason === "unavailable") return { title: "An item is no longer sold", body: "Remove it from your basket to continue. Nothing has been charged.", toBasket: true };
     if (detail?.reason === "sold_out" || detail?.reason === "not_enough" || detail?.reason === "quote_changed" || detail?.path?.[0] === "expectedTotal") {
       return { title: "Some items changed", body: "A price or stock level changed while you were checking out. Nothing has been charged.", toBasket: true };

@@ -10,6 +10,7 @@ import { emitMetric } from "@/lib/ops/metrics";
 import { eventReadiness, salesOpen } from "@/lib/events/event-readiness";
 import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/events/inventory";
 import { formatMoney } from "@/lib/format";
+import { maxTicketsPerOrder } from "@/lib/validators/payments";
 import {
   attachStripeSession,
   CheckoutCreationInternalError,
@@ -45,6 +46,7 @@ export type CheckoutCreationErrorKind =
   | "sales_closed"
   | "sold_out"
   | "insufficient_availability"
+  | "purchase_in_progress"
   | "stripe_not_ready"
   | "quote_changed"
   | "idempotency_conflict";
@@ -300,6 +302,18 @@ export async function createEventCheckout({
             }
           });
           return { kind: "free" as const, ...free };
+        }
+
+        // One buyer's unpaid holds on an event stay within one order's worth, so
+        // repeated checkouts can't take the whole stock off sale (SEC-005).
+        const { _sum: ownHeld } = await tx.ticketReservation.aggregate({
+          _sum: { quantity: true },
+          where: { eventId: event.id, status: "active", expiresAt: { gt: reservationNow }, order: guest ? { guestIdentityId: guest.guestIdentityId } : { userId } }
+        });
+        if ((ownHeld.quantity ?? 0) + quantity > maxTicketsPerOrder) {
+          throw new CheckoutCreationError("purchase_in_progress", "You already have a checkout in progress for this event", [
+            { path: ["quantity"], message: "Finish or cancel your open checkout first", value: maxTicketsPerOrder - (ownHeld.quantity ?? 0) }
+          ]);
         }
 
         // Configuration is read only once the request is valid, and before any write.

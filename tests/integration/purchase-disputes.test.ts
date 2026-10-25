@@ -141,6 +141,42 @@ describe("disputes", () => {
     expect((await reviewAs(fixture, { action: "restore_tickets", reason: "Stripe closed it in our favour." })).status).toBe(409);
   });
 
+  test("with two disputes on one charge, the order shows the worse one and restores only when both closed in the society's favour (SEC-024)", async () => {
+    const twoDisputes = async () => {
+      const fixture = await paidOrder();
+      const now: Record<string, string> = {};
+      stripe.dispute.mockImplementation(async (id: string) => disputeObject(fixture, now[id], { id }));
+      const deliver = async (name: string, status: string) => {
+        const id = `${name}_${fixture.order.id}`;
+        now[id] = status;
+        await reconcileDisputeEvent(signedEvent(status === "needs_response" ? "charge.dispute.created" : "charge.dispute.closed", disputeObject(fixture, status, { id })));
+      };
+      await deliver("dp_a", "needs_response");
+      await deliver("dp_b", "needs_response");
+      return { fixture, deliver };
+    };
+
+    // A closing in the society's favour (prevented counts) leaves B open: no restore yet.
+    const first = await twoDisputes();
+    await first.deliver("dp_a", "prevented");
+    expect((await orderState(first.fixture.order.id)).disputeStatus).toBe("open");
+    expect((await reviewAs(first.fixture, { action: "restore_tickets", reason: "Stripe closed it in our favour." })).status).toBe(409);
+    // B's later loss still voids the tickets.
+    await first.deliver("dp_b", "lost");
+    const lost = await orderState(first.fixture.order.id);
+    expect(lost.disputeStatus).toBe("lost");
+    expect(lost.tickets.every((ticket) => ticket.validity === "void")).toBe(true);
+
+    // Both won: one restore resolves both.
+    const second = await twoDisputes();
+    await second.deliver("dp_a", "won");
+    await second.deliver("dp_b", "warning_closed");
+    expect((await orderState(second.fixture.order.id)).disputeStatus).toBe("won");
+    expect((await reviewAs(second.fixture, { action: "restore_tickets", reason: "Stripe closed both in our favour." })).status).toBe(200);
+    expect(await prisma.purchaseDispute.count({ where: { orderId: second.fixture.order.id, resolvedAt: null } })).toBe(0);
+    expect((await orderState(second.fixture.order.id)).tickets.every((ticket) => ticket.validity === "active")).toBe(true);
+  });
+
   test("dispute and refund events that don't verify as the order's payment change nothing", async () => {
     const fixture = await paidOrder();
     const before = await orderState(fixture.order.id);

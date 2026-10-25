@@ -368,4 +368,27 @@ describe("checkout and reservation logic", () => {
     await processStaleOrderCleanupBatch();
     expect(await paid("cs_paid_too_late")).toMatchObject({ status: "compensation_required" });
   });
+
+  test("one buyer's unpaid holds on an event stay within one order's worth (SEC-005)", async () => {
+    stripeMocks.createSession.mockImplementation(async () => ({ id: unique("cs_cap"), url: "https://checkout.stripe.test/session" }));
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published", ticketTypes: [{ name: "General", price: 1000, quantity: 50 }] });
+    const ticketTypeId = event.ticketTypes[0].id;
+    const member = await createMember();
+    const other = await createMember();
+    const checkout = (userId: string, quantity: number) =>
+      createEventCheckout({ userId, eventId: event.id, ticketTypeId, quantity, expectedUnitPrice: 1000, idempotencyKey: unique("checkout") });
+
+    await checkout(member.id, 6);
+    await expect(checkout(member.id, 5)).rejects.toMatchObject({ kind: "purchase_in_progress" });
+    await checkout(member.id, 4);
+    await expect(checkout(member.id, 1)).rejects.toMatchObject({ kind: "purchase_in_progress" });
+    // Other buyers are unaffected.
+    await checkout(other.id, 10);
+    // A hold that ended (cancelled, failed or lapsed) no longer counts.
+    await prisma.ticketReservation.updateMany({ where: { userId: member.id }, data: { status: "released", releasedAt: new Date() } });
+    await checkout(member.id, 10);
+    await expect(prisma.ticketReservation.count({ where: { status: "active" } })).resolves.toBe(2);
+    stripeMocks.createSession.mockReset();
+  });
 });

@@ -26,7 +26,7 @@ type Selection = { quantity: number; unitPrice: number };
 type Screen =
   | { kind: "quote_changed"; unitPrice: number }
   | { kind: "insufficient_availability"; available: number }
-  | { kind: "sold_out" | "sales_closed" | "stripe_not_ready" | "still_confirming" }
+  | { kind: "sold_out" | "sales_closed" | "stripe_not_ready" | "still_confirming" | "purchase_in_progress" }
   | { kind: "error"; message: string };
 
 const pollIntervalMs = 2000;
@@ -43,7 +43,7 @@ function screenFor(failure: unknown): Screen {
   const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
   const reason = detail?.reason;
   const value = detail?.value;
-  if (reason === "sold_out" || reason === "sales_closed" || reason === "stripe_not_ready") return { kind: reason };
+  if (reason === "sold_out" || reason === "sales_closed" || reason === "stripe_not_ready" || reason === "purchase_in_progress") return { kind: reason };
   if (reason === "quote_changed" && value !== undefined) return { kind: reason, unitPrice: value };
   if (reason === "insufficient_availability" && value) return { kind: reason, available: value };
   return { kind: "error", message: getClientErrorMessage(failure, "Checkout could not start. Please try again.") };
@@ -196,6 +196,12 @@ export function CheckoutAction({
       return (
         <StateScreen actions={backTo("Back to ticket options")} title="Paid checkout unavailable" tone="warning">
           {society} can&apos;t take payments right now.{freeTicketsAvailable ? " Free tickets are still available." : ""} Nothing has been charged.
+        </StateScreen>
+      );
+    case "purchase_in_progress":
+      return (
+        <StateScreen actions={guestCsrf ? backTo("Back to ticket options") : <Link className={linkClass} href="/tickets">Go to My tickets</Link>} title="You already have a checkout in progress" tone="warning">
+          Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing more has been charged.
         </StateScreen>
       );
     case "still_confirming":

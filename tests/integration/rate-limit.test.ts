@@ -500,7 +500,7 @@ describe("rate-limited routes", () => {
     expect(hashMock).toHaveBeenCalledTimes(3);
   });
 
-  test("checkout throttling prevents extra Stripe sessions, orders, and reservations", async () => {
+  test("checkout throttling prevents extra Stripe sessions, orders, and reservations, whatever the client address (SEC-005)", async () => {
     stripeMocks.createSession.mockImplementation(async () => ({
       id: `cs_rate_limited_${stripeMocks.createSession.mock.calls.length}`,
       url: "https://checkout.stripe.test/session"
@@ -522,7 +522,7 @@ describe("rate-limited routes", () => {
           expectedUnitPrice: ticketType.price,
           idempotencyKey: unique("checkout"),
           quantity: 1
-        })
+        }, { headers: { "x-forwarded-for": `198.51.100.${attempt + 1}` } })
       );
       expect(response.status).toBe(200);
     }
@@ -534,7 +534,7 @@ describe("rate-limited routes", () => {
         expectedUnitPrice: ticketType.price,
         idempotencyKey: unique("checkout"),
         quantity: 1
-      })
+      }, { headers: { "x-forwarded-for": "203.0.113.99" } })
     );
 
     expect(throttled.status).toBe(429);

@@ -224,10 +224,16 @@ describe("merchandise sale", () => {
     await edit(3);
     expect(await stock(variants[0].id)).toMatchObject({ remaining: 3 });
 
-    setMockSession({ userId: buyer.userId, email: buyer.email, accountRole: "member" });
     const route = (selection: unknown, expectedTotal = 1500) =>
       merchandiseCheckout(jsonRequest("http://localhost:3000/api/payments/checkout/merchandise", { organisationId: organisation.id, selection, expectedTotal, idempotencyKey: unique("merch-route-key") }));
     const one = [{ variantId: variants[1].id, quantity: 1, unitPrice: 1500 }];
+    // The holder's open basket blocks a second one in this society (SEC-010).
+    setMockSession({ userId: buyer.userId, email: buyer.email, accountRole: "member" });
+    const second = await route(selectionFor(one));
+    expect(second.status).toBe(409);
+    expect((await parseJsonResponse(second)).error.details[0]).toMatchObject({ reason: "purchase_in_progress" });
+    const shopper = await member();
+    setMockSession({ userId: shopper.userId, email: shopper.email, accountRole: "member" });
     const stale = await route({ ...selectionFor(one), quoteVersion: quoteVersion([{ ...one[0], unitPrice: 1400 }]) });
     expect(stale.status).toBe(409);
     expect((await parseJsonResponse(stale)).error.details[0]).toMatchObject({ reason: "quote_changed" });
@@ -242,6 +248,15 @@ describe("merchandise sale", () => {
       expect((await parseJsonResponse(refused)).error.details[0]).toMatchObject({ reason: "unavailable" });
     }
     expect((await route({ items: [{ variantId: variants[0].id, quantity: 1 }, { variantId: variants[0].id, quantity: 1 }], quoteVersion: "0".repeat(16) })).status).toBe(400);
+  });
+
+  test("one guest email keeps one unpaid basket per society across checkout sessions (SEC-010)", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 2500, remaining: 5 }]);
+    const email = `${unique("guest")}@example.com`;
+    const items = [{ variantId: variants[0].id, quantity: 1, unitPrice: 2500 }];
+    expect((await buy(organisation.id, { guest: await verifiedGuest(email) }, items)).status).toBe("redirect");
+    await expect(buy(organisation.id, { guest: await verifiedGuest(email) }, items)).rejects.toMatchObject({ reason: "purchase_in_progress" });
+    expect((await buy(organisation.id, { guest: await verifiedGuest() }, items)).status).toBe("redirect");
   });
 
   test("a guest's checkout session reads the order it bought, and no other session of that email, member or stranger can", async () => {

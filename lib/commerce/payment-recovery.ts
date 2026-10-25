@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { OrderDisputeStatus, Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
@@ -7,7 +7,7 @@ import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { queueDisputeReversal } from "@/lib/payments/dispute-reversals";
-import { journal, journalled } from "@/lib/payments/purchase-disputes";
+import { journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-003: what Stripe reports about a membership or merchandise payment that
@@ -18,8 +18,6 @@ import { getStripe } from "@/lib/stripe";
 // commerce order's, and the ticket handler takes it instead.
 
 const idOf = (value: string | { id: string } | null | undefined) => (typeof value === "string" ? value : value?.id ?? null);
-const outcomeOf = (status: string): OrderDisputeStatus =>
-  status === "lost" ? "lost" : status === "won" || status === "warning_closed" ? "won" : "open";
 
 // The commerce order a PaymentIntent paid for: its Session names the order and
 // family, and the money went to the account the order was sold for.
@@ -84,7 +82,8 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       update: fields
     });
     if (existing && outcomeOf(existing.providerStatus) === outcome) return false;
-    await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { disputeStatus: outcome === "won" ? null : outcome, stripePaymentIntentId: intentId } });
+    const worst = worstOutcome((await tx.purchaseDispute.findMany({ where: { commerceOrderId }, select: { providerStatus: true } })).map((row) => row.providerStatus));
+    await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId } });
     if (!existing) {
       await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "dispute_opened", source: "stripe_webhook", stripeEventId: event.id, reason: current.reason, facts: { amount: current.amount } });
     }

@@ -5,6 +5,7 @@ import { getOrganisationStripeConnectStatus } from "@/lib/stripe/connect";
 import { selectMockContext, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { createMember, createOrganisationAccount, createOrganisationStaff } from "@/tests/helpers/test-data";
+import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 
 // "Open Stripe dashboard" signs a society's payments staff in to the society's
 // own Express Dashboard with a single-use link made on click, never the
@@ -22,7 +23,7 @@ beforeEach(() => {
   vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
   stripe.createLoginLink.mockImplementation(async (accountId: string) => ({ object: "login_link", url: `https://connect.stripe.com/express/${accountId}/session` }));
 });
-afterEach(() => stripe.createLoginLink.mockReset());
+afterEach(() => { stripe.createLoginLink.mockReset(); setRateLimitTestEnabled(null); setRateLimitTestBackend(null); });
 
 const ask = (organisationId: string, headers?: Record<string, string>) =>
   dashboardLink(jsonRequest("http://localhost:3000/api/stripe/connect/dashboard", { organisationId }, headers ? { headers } : undefined));
@@ -40,6 +41,10 @@ describe("Stripe Express dashboard link", () => {
     // Enroll mode lets an unenrolled owner past the login check, so the code step itself answers.
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
     vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+    // Staff MFA operations require rate limiting; an in-memory backend stands in for Redis.
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    setRateLimitTestEnabled(true);
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     await asStaff(organisation.id, "owner");
     const refused = await ask(organisation.id);

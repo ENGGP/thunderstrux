@@ -10,4 +10,11 @@ describe("safe internal return paths", () => {
       expect(safeReturnPath(value)).toBe("/dashboard");
     }
   });
+
+  test("dot segments that normalise to a protocol-relative path are refused (SEC-012)", () => {
+    for (const value of ["/.//evil.example", "/..//evil.example", "/%2e//evil.example", "/././/evil.example", "/x/..//evil.example"]) {
+      expect(safeReturnPath(value)).toBe("/dashboard");
+    }
+    expect(safeReturnPath("/events/./a/../b")).toBe("/events/b");
+  });
 });

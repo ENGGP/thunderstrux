@@ -1,6 +1,7 @@
 import { handlers } from "@/auth";
 import type { NextRequest } from "next/server";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
+import { badRequest } from "@/lib/api/errors";
 
 export const { GET } = handlers;
 
@@ -25,6 +26,9 @@ export async function POST(request: NextRequest) {
       .clone()
       .formData()
       .catch(() => new FormData());
+    // Auth.js signs in with the last "email" field while this throttle reads the first, so
+    // duplicates could move each attempt into a fresh bucket (SEC-007). A form sends one.
+    if (formData.getAll("email").length > 1) return badRequest("Send one email address");
     const submittedEmail = formData.get("email");
     const email =
       typeof submittedEmail === "string" ? submittedEmail.trim().toLowerCase() : "";

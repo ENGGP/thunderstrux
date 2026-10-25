@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
   const ipLimit = await lifecycleIpLimit(request); if (ipLimit) return ipLimit;
   const body = await validateJson(request, signupSchema); if (!body.success) return validationError(body.details);
-  const emailLimit = await lifecycleEmailLimit(request, body.data.email); if (emailLimit) return emailLimit;
+  const emailLimit = await lifecycleEmailLimit(request, body.data.email, "signup"); if (emailLimit) return emailLimit;
   try {
     await signupAccount(body.data);
     return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } });

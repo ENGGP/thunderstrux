@@ -34,9 +34,9 @@ What every API route checks, and in which order (T39). [[Audit Coverage]] lists 
 
 | Family | Routes | Authority | Rate policy | Notes |
 | --- | --- | --- | --- | --- |
-| Sign-up and recovery | `auth/signup`, `auth/password/request`, `auth/verification/request` | Public | `signup_ip`, `signup_email` (closed) | The same answer whether or not the address has an account. |
-| Token redemption | `auth/password/confirm`, `auth/verification/confirm` | The token | `account_token_ip`, `account_token_digest` (closed) | Single use; a used, expired or replaced token is refused. |
-| Sign-in | `auth/[...nextauth]` | Auth.js | `login_ip_email`, `login_ip_global` (closed) | Auth.js CSRF and responses. |
+| Sign-up and recovery | `auth/signup`, `auth/password/request`, `auth/verification/request` | Public | `signup_ip`, `signup_email` (closed) | The same answer whether or not the address has an account. `signup_email` is keyed per purpose, so signup or verification requests can't use up the reset budget. |
+| Token redemption | `auth/password/confirm`, `auth/verification/confirm` | The token (verification also needs the account's password) | `account_token_ip`, `account_token_digest` (closed) | Single use; a used, expired or replaced token is refused. |
+| Sign-in | `auth/[...nextauth]` | Auth.js | `login_ip_email`, `login_ip_global` (closed) | Auth.js CSRF and responses. More than one `email` field is refused before Auth.js. |
 | Account | `me/account`, `me/profile`, `me/notification-preferences`, `me/context` | Signed in, live session version | `account_security_change` (closed) for password, email change and closure | Changing password or email signs other devices out. |
 | Staff MFA | `me/mfa/setup`, `confirm`, `verify`, `status` | Signed in | `staff_mfa_setup`, `staff_mfa_verify` (closed) | Grants are bound to the session. |
 | Events | `events`, `events/[eventId]` (+`publish`, `sales`, `ticket-types`) | `events:manage` (reads `events:read`) | — | Version compare-and-swap; inventory lock on edits. |

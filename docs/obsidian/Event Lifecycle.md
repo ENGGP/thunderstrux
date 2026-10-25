@@ -78,7 +78,7 @@ The new and Edit pages share `components/events/create-event-form.tsx`:
 - **Event image.** An optional 16:9 image uploads as an `event` asset (`POST /api/orgs/[slug]/assets?kind=event`, needs events:manage) and previews through the private asset route; the event stores it on save. Replace and Remove change it on the next save.
 - **If tickets cannot be issued** chooses what happens to a payment that arrives when tickets can't be issued (the event sold out while the buyer was paying, or the payment landed after the hold). New events default to "Refund the buyer automatically in full" (`automatic_full`, 2026-10-25), as commerce orders are refunded, and the society can choose "Review it manually" instead. Each order keeps the choice it was made under.
 - Each existing ticket type shows sold (active tickets) and held (live checkout holds); a type with orders or tickets cannot be removed.
-- An event has at most 50 ticket types (SEC-001); at the limit "Add ticket type" is disabled with a note, and the API refuses more.
+- An event has at most 50 ticket types (SEC-025); at the limit "Add ticket type" is disabled with a note, and the API refuses more.
 - Saving an edit stays on the page and shows "Event saved"; a stale version shows "This event changed since you opened it" and keeps the edits on screen; changed stock after sales shows "Ticket stock changed while you were editing". Unsaved changes are marked and leaving the page asks first.
 - A draft's Edit page shows the readiness checklist beside the form.
 

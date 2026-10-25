@@ -76,7 +76,7 @@ export async function requestVerification(email: string, callbackUrl?: string) {
     await issueVerification(tx, user, callbackUrl);
   });
 }
-export async function consumeVerification(raw: string, now = new Date()) {
+export async function consumeVerification(raw: string, password: string, now = new Date()) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new AccountTokenError();
   return prisma.$transaction(async tx => {
     const candidate = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { userId: true } });
@@ -85,6 +85,9 @@ export async function consumeVerification(raw: string, now = new Date()) {
     const token = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) } });
     if (!user || user.disabledAt || !token || token.purpose !== "verify_account" || token.consumedAt || token.invalidatedAt || token.expiresAt <= now ||
         token.email !== user.email || token.authVersion !== user.authVersion || user.emailVerifiedAt) throw new AccountTokenError();
+    // The mailbox proof must come from whoever set the password (SEC-008); otherwise a mailbox
+    // owner verifies an account someone else pre-registered. A mismatch leaves the token unused.
+    if (!await compare(password, user.password)) throw new AccountTokenError();
     const consumed = await tx.authToken.updateMany({ where: { id: token.id, consumedAt: null, invalidatedAt: null }, data: { consumedAt: now } });
     if (consumed.count !== 1) throw new AccountTokenError();
     await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: now } });
@@ -127,6 +130,8 @@ export async function requestPasswordReset(email: string, callbackUrl?: string) 
 }
 export async function consumePasswordReset(raw: string, newPassword: string, now = new Date()) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new AccountTokenError();
+  // An unknown token costs no hash (SEC-019); the transaction re-checks it under the lock.
+  if (!await prisma.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { id: true } })) throw new AccountTokenError();
   const password = await hash(newPasswordSchema.parse(newPassword), 12);
   return prisma.$transaction(async tx => {
     const candidate = await tx.authToken.findUnique({ where: { tokenHash: accountTokenDigest(raw) }, select: { userId: true } });
@@ -137,7 +142,9 @@ export async function consumePasswordReset(raw: string, newPassword: string, now
         token.email !== user.email || token.authVersion !== user.authVersion) throw new AccountTokenError();
     const consumed = await tx.authToken.updateMany({ where: { id: token.id, consumedAt: null, invalidatedAt: null }, data: { consumedAt: now } });
     if (consumed.count !== 1) throw new AccountTokenError();
-    const updated = await tx.user.update({ where: { id: user.id }, data: { password, authVersion: { increment: 1 } } });
+    // A reset proves the mailbox and sets the owner's own password, so it also verifies the
+    // address; the authVersion bump ends any other holder's sessions (SEC-008).
+    const updated = await tx.user.update({ where: { id: user.id }, data: { password, authVersion: { increment: 1 }, emailVerifiedAt: user.emailVerifiedAt ?? now } });
     await tx.mfaGrant.deleteMany({ where: { userId: user.id } });
     await invalidateAccountTokens(tx, user.id, undefined, now);
     await tx.notificationOutbox.updateMany({ where: { authTokenId: token.id, status: { in: ["pending", "processing"] } }, data: { status: "cancelled", processingToken: null, lastError: "consumed" } });

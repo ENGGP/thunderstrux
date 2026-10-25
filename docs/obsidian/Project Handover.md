@@ -38,7 +38,7 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
   - The stale-order job is the only place unpaid ticket orders expire.
 - **Holds (DEF-033, PAY-009):** a ticket hold lasts 5 minutes past its Stripe page (`lateWebhookGraceMs`, shared with commerce's stale expiry); pages show Stripe's closing time. New events default to `automatic_full` compensation, as commerce does.
 - **Payouts (PAY-005, DEF-034):** held until 2 days after the event (7 days for commerce), then at most one payout per society per UTC day.
-- Public preview (T48, SEC-014): `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview` with ignored `.env.preview`, loopback port 3090 behind the Cloudflare Tunnel, `cf-connecting-ip` for client addresses, MFA enforced and legacy access denied. The dev stack (port 3080) is loopback-only and never tunnelled. `proxy.ts` and the app's own cookies follow the Auth.js public URL's scheme. Preview reachability does not resolve production release gates.
+- Public preview (T48, SEC-014): **closed by the owner on 2026-10-26**; nothing is publicly hosted. When reopened, `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview` with ignored `.env.preview`, loopback port 3090 behind the Cloudflare Tunnel, `cf-connecting-ip` for client addresses, MFA enforced and legacy access denied. The dev stack (port 3080) is loopback-only and never tunnelled. `proxy.ts` and the app's own cookies follow the Auth.js public URL's scheme. Preview reachability does not resolve production release gates.
 - Validation follows the risk table in [[Engineering Delivery Workflow]]: local evidence recorded in each PR, GitHub test checks not required (VALID-001), documentation-only changes use docs and diff checks only.
 - Product decisions follow how Eventbrite, Humanitix and Luma solved the same problem, thought through critically for a student-society tool, with the reasoning recorded in the PR.
 
@@ -81,28 +81,29 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 
 ## Security Audit And Remediation (T47 to T53)
 
-**Audit (2026-10-25).** A deep `/security-audit` run (`thunderstrux-run-1`, outside the repository) covered `7d72e33` in 72 coverage units over four hunter waves, ending with a clean final critic. Every finding was found, validated and finally verified by separate sandboxed agents with no network and dummy data. It found no cross-tenant access, authentication bypass or injection. The results are 13 confirmed findings (1 high, 5 medium, 7 low) and 11 leads, registered as SEC-001 to SEC-024 in [[Non-Blocking Issue Register]].
+**Audit (2026-10-25).** A deep `/security-audit` run (`thunderstrux-run-1`, outside the repository) covered `7d72e33` in 72 coverage units over four hunter waves, ending with a clean final critic. Every finding was found, validated and finally verified by separate sandboxed agents with no network and dummy data. It found no cross-tenant access, authentication bypass or injection. The results are 13 confirmed findings (1 high, 5 medium, 7 low) and 11 leads, registered as SEC-003 to SEC-026 (SEC-001 and SEC-002 were already external gates, so the first two audit rows are SEC-025 and SEC-026) in [[Non-Blocking Issue Register]].
 
 **Remediation order**, one PR each:
-- T47: request bounds and the unused image optimizer (SEC-001, 013, 018);
+- T47: request bounds and the unused image optimizer (SEC-025, 013, 018);
 - T48: move the live preview onto the production profile, with the seed guard, `AUTH_SECRET` rule and scheme-based secure cookies (SEC-014 to 017);
-- T49: accounts and recovery (SEC-002, 007, 008, 012, 019);
+- T49: accounts and recovery (SEC-026, 007, 008, 012, 019);
 - T50: checkout holds, refunds and disputes (SEC-005, 010, 011, 024);
 - T51: events, staff and notices (SEC-003, 004, 006, 009);
 - T52: `thunderstrux.com` readiness: alerts, public images, release binding, restore fence (SEC-020 to 023);
 - T53: a hardening bundle.
 
-The preview at `thunderstrux.mistayu.com` stays the pre-production host; `thunderstrux.com` follows on the Droplet path.
+The owner closed the preview at `thunderstrux.mistayu.com` on 2026-10-26, so T49 to T53 are validated locally only. If it reopens, it does so through the T48 `ops-preview` path; `thunderstrux.com` follows on the Droplet path.
 
 | Item | PR | Status and evidence |
 | --- | --- | --- |
+| T49 accounts and recovery | T49 | Signup, verification and reset each have their own per-address bucket (SEC-026); verification needs the account's password and a completed reset verifies the address (SEC-008); duplicate sign-in `email` fields are refused (SEC-007); normalised `//host` return paths are refused (SEC-012); an unknown reset token costs no hash (SEC-019 source part). `/verify-email` gains a password field. Audit rows SEC-001/SEC-002 renamed SEC-025/SEC-026, as those IDs were already external gates. No migration. Evidence pending. |
 | T48 production-profile preview | [#176](https://github.com/ENGGP/thunderstrux/pull/176) | `allowedDevOrigins` lists no public host and Next's dev MCP endpoint is off; `AUTH_SECRET` falls back only in tests and builds (production needs 32 characters); guest and context cookies follow the public URL's scheme; the seed refuses a public origin without `SEED_DEMO_PASSWORD`. The preview moves to `ops-preview` (README, Public Preview). No migration. Baseline baseline-33b8bc3817d47b15a6a79d6a on 908244e: production build, 42/42 guards, typecheck, 680/680 integration tests in 103 files, no known vulnerabilities; operations rehearsal ops-ad72c25e25 passed. |
 | T47 request bounds | [#175](https://github.com/ENGGP/thunderstrux/pull/175) | Ticket types capped at 50, JSON bodies at 100 KB through one `readJsonBody`, validation answers at 20 issues, and `/_next/image` off. No migration. Baseline `baseline-d43e7a4d2bab3a203b1d1261` on `2637fe2`: production build, 42/42 guards, typecheck, 674/674 integration tests in 102 files, no known vulnerabilities. |
 
 ## Next Safe Actions
 
 First, ahead of the list below:
-- **Cut the preview over (owner).** Deploy `ops-preview` from `.env.preview` and point the tunnel at port 3090 (README, Public Preview). Until then, keep the tunnel's public hostname paused or behind a Cloudflare Access policy. Re-password or disable the seeded `@example.com` accounts in the dev database, which was public, and keep a random `AUTH_SECRET` in `.env`.
+- **Preview (owner).** Closed on 2026-10-26. If it reopens, deploy `ops-preview` from `.env.preview` and point the tunnel at port 3090 (README, Public Preview). Don't reopen the dev-stack tunnel. Re-password or disable the seeded `@example.com` accounts in the dev database, which was public, and keep a random `AUTH_SECRET` in `.env`.
 - Continue the security remediation in order, T49 to T53, flipping each SEC row as its PR lands.
 
 1. Before hosting: create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]], and pass PAY-002 on the hosted endpoint. Automatic refunds are now the default for new events, as for commerce.

@@ -254,6 +254,17 @@ describe("rate limit helper", () => {
     ).toBe("unknown");
   });
 
+  test("an IPv6 client is keyed by its /64, and an IPv4-mapped address by its IPv4 address (T53)", () => {
+    vi.stubEnv("RATE_LIMIT_TRUSTED_PROXY_HEADER", "x-forwarded-for");
+    const ip = (value: string) => getRateLimitClientIp(new Request("http://localhost/api/test", { headers: { "x-forwarded-for": value } }));
+    expect(ip("2001:db8:aaaa:bbbb:1:2:3:4")).toBe("2001:db8:aaaa:bbbb::/64");
+    expect(ip("2001:DB8:AAAA:BBBB::99")).toBe("2001:db8:aaaa:bbbb::/64");
+    expect(ip("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(ip("2001:db8:aaaa:bbbb:ffff::1%eth0")).toBe("2001:db8:aaaa:bbbb::/64");
+    expect(ip("::ffff:203.0.113.8")).toBe("203.0.113.8");
+    expect(ip("203.0.113.8")).toBe("203.0.113.8");
+  });
+
   test("rejects proxy chains and invalid configured header names", () => {
     expect(
       getRateLimitClientIp(

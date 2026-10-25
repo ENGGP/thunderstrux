@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { POST as refundRoute } from "@/app/api/orders/[orderId]/refunds/route";
 import { prisma } from "@/lib/db";
+import { lockOrder } from "@/lib/payments/order-lifecycle";
 import { processCompensationRefundBatch } from "@/lib/payments/compensation-refunds";
 import { OrderRefundError, orderReference, processOrderRefundBatch, reconcileOrderRefundEvent, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { setMockSession } from "@/tests/helpers/auth";
@@ -119,6 +120,15 @@ describe("whole-order refunds", () => {
     expect(await prisma.orderLifecycleEvent.count({ where: { orderId: fixture.order.id, type: "refunded" } })).toBe(1);
     // The replayed event adds no second History row (T38).
     expect(await prisma.auditLog.count({ where: { targetId: fixture.order.id, action: "order.refund_succeeded" } })).toBe(1);
+  });
+
+  test("a staff path locks only its own society's order, and another society's refund finds nothing (T53)", async () => {
+    const fixture = await paidOrder();
+    const other = await createOrganisationAccount({ stripeReady: true });
+    expect(await prisma.$transaction((tx) => lockOrder(tx, fixture.order.id, other.organisation.id))).toBe(false);
+    expect(await prisma.$transaction((tx) => lockOrder(tx, fixture.order.id, fixture.owner.organisation.id))).toBe(true);
+    await expect(requestOrderRefund({ ...refundInput(fixture), organisationId: other.organisation.id })).rejects.toMatchObject({ kind: "not_found" });
+    expect(stripe.create).not.toHaveBeenCalled();
   });
 
   test("a lost Stripe response is looked up before the same key is sent again", async () => {

@@ -46,6 +46,9 @@ export function validateHostedConfig(config) {
   if (app.ports?.length) throw new Error("Hosted app must leave public port publication to the platform ingress");
   if (!app.healthcheck) throw new Error("Hosted app must define a readiness healthcheck");
   if (app.environment?.RATE_LIMIT_ENABLED !== "true") throw new Error("Hosted app must enable Redis rate limiting");
+  // T53: staff authority on a hosted app always needs an authenticator and a live staff row.
+  if (app.environment?.MFA_ENFORCEMENT_MODE !== "enforce") throw new Error("Hosted app must set MFA_ENFORCEMENT_MODE=enforce");
+  if (app.environment?.LEGACY_ORGANISATION_ACCESS_MODE !== "deny") throw new Error("Hosted app must set LEGACY_ORGANISATION_ACCESS_MODE=deny");
 
   const secretVariables = [
     "DATABASE_URL",

@@ -412,8 +412,9 @@ async function restore(ctx) {
     // Only the restore verifier receives the separately recovered key; ordinary
     // migration jobs continue without notification/auth/provider secrets.
     const notificationKey = parseEnv(await readFile(ctx.envFile, "utf8")).NOTIFICATION_ENCRYPTION_KEY;
-    await compose(ctx, ["run", "--rm", "-e", `DATABASE_URL=${restoredUrl}`, "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/verify-restored-database.mjs"], {
-      env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
+    // The URL holds the database password, so it travels in the environment, never in process arguments (T53).
+    await compose(ctx, ["run", "--rm", "-e", "DATABASE_URL", "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/verify-restored-database.mjs"], {
+      env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId, DATABASE_URL: restoredUrl, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
     });
     // SEC-023: sessions, MFA logins, links and invitations from before the
     // restore point end here, before the copy can serve anyone.
@@ -423,8 +424,8 @@ async function restore(ctx) {
     // reconciled the providers and resumes them (Production Operations,
     // Recovery runbook). A copy that can't be fenced is not promoted.
     const reason = `Restored from ${archive.split(/[\\/]/).pop()}: reconcile Stripe, refunds and the outbox, then resume`.slice(0, 200);
-    await compose(ctx, ["run", "--rm", "-e", `DATABASE_URL=${restoredUrl}`, "migration", "node", "scripts/workers.mjs", "pause", "all", `--reason=${reason}`], {
-      env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId }
+    await compose(ctx, ["run", "--rm", "-e", "DATABASE_URL", "migration", "node", "scripts/workers.mjs", "pause", "all", `--reason=${reason}`], {
+      env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId, DATABASE_URL: restoredUrl }
     });
     console.log(JSON.stringify({ status: "restored-and-verified", target, identityFenced: true, workersPaused: true }));
   } catch (error) {

@@ -97,7 +97,7 @@ export async function updateProfile(
       ),
     ].sort();
     for (const id of ids)
-      await tx.$queryRaw`SELECT "id" FROM "Asset" WHERE "id" = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "Asset" WHERE "id" = ${id} AND "organisationId" = ${organisationId} FOR UPDATE`;
     for (const kind of ["logo", "cover"] as const) {
       const id = values[`${kind}AssetId`];
       if (!id) continue;

@@ -68,6 +68,8 @@ services:
       - source: database_url
         target: database_url
     entrypoint: ["sh", "-c"]
+    # Keeps the newest seven dumps (T53).
+    # shortcut: pg_dump takes the URL as an argument inside this one-shot container, where only host root can see it, and host root can read the secret file anyway; move it to a pgpass file if the host ever has other users.
     command:
       - >-
         url=$$(sed -e 's/schema=[^&]*&\{0,1\}//' -e 's/[?&]$$//' /run/secrets/database_url)
@@ -75,6 +77,7 @@ services:
         && pg_restore --list "/backups/$$BACKUP_NAME.partial" > /dev/null
         && mv "/backups/$$BACKUP_NAME.partial" "/backups/$$BACKUP_NAME.dump"
         && echo "backup /backups/$$BACKUP_NAME.dump"
+        && ls -1t /backups/*.dump | tail -n +8 | xargs -r rm --
 
   app:
     environment:

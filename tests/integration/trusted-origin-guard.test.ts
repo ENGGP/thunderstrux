@@ -6,7 +6,7 @@ import { createUser, unique } from "@/tests/helpers/test-data";
 import { POST as createOrganisation } from "@/app/api/orgs/route";
 import { POST as signup } from "@/app/api/auth/signup/route";
 import { GET as getCsrfToken } from "@/app/api/security/csrf/route";
-import { createCsrfTokenForRequest } from "@/lib/security/csrf";
+import { createCsrfTokenForRequest, verifyCsrfTokenForRequest } from "@/lib/security/csrf";
 import { trustedRequestOrigin } from "@/lib/security/request-guard";
 import { POST as paymentsWebhook } from "@/app/api/payments/webhook/route";
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
@@ -183,6 +183,13 @@ describe("trusted origin guard", () => {
       });
       await expect(prisma.user.count()).resolves.toBe(0);
     });
+  });
+
+  test("with duplicate session cookies, the token binds the first, which Auth.js authenticates (T53)", () => {
+    const token = createCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie: "authjs.session-token=real" } }))!;
+    const request = (cookie: string) => new Request("http://localhost/", { headers: { cookie, "x-thunderstrux-csrf-token": token } });
+    expect(verifyCsrfTokenForRequest(request("authjs.session-token=real; authjs.session-token=planted"))).toBe(true);
+    expect(verifyCsrfTokenForRequest(request("authjs.session-token=planted; authjs.session-token=real"))).toBe(false);
   });
 
   test("session cookie mutations require a session-bound CSRF header", async () => {

@@ -47,7 +47,7 @@ export class EventLifecycleConflictError extends Error {
 // The image must be a ready event image of this society. Callers hold the
 // Event lock (or are creating the event); the Asset row is locked after it.
 async function assertHeroAsset(tx: Prisma.TransactionClient, organisationId: string, heroAssetId: string) {
-  await tx.$queryRaw`SELECT "id" FROM "Asset" WHERE "id" = ${heroAssetId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT "id" FROM "Asset" WHERE "id" = ${heroAssetId} AND "organisationId" = ${organisationId} FOR UPDATE`;
   const asset = await tx.asset.findFirst({
     where: { id: heroAssetId, organisationId, kind: "event", status: "ready", deletedAt: null },
     select: { id: true }

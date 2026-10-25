@@ -81,3 +81,9 @@ ds-bundle/
 # Claude Code: session worktrees and personal settings stay local; shared skills are committed.
 .claude/worktrees/
 .claude/settings.local.json
+
+# Key material and database dumps never belong in Git (T53)
+*.pem
+*.key
+*.p12
+*.dump

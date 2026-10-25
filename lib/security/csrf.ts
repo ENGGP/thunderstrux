@@ -17,7 +17,9 @@ function sessionCookieFromHeader(raw: string | null): string | null {
   for (const part of raw.split(";")) {
     const separator = part.indexOf("=");
     if (separator < 0) continue;
-    cookies.set(part.slice(0, separator).trim(), part.slice(separator + 1).trim());
+    const name = part.slice(0, separator).trim();
+    // The first of duplicate cookies wins, as Auth.js reads them, so the token binds the session it authenticates (T53).
+    if (!cookies.has(name)) cookies.set(name, part.slice(separator + 1).trim());
   }
   for (const name of SESSION_COOKIE_NAMES) {
     const direct = cookies.get(name);

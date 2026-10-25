@@ -78,6 +78,20 @@ describe("what is held", () => {
     // Another society's account holds nothing of this one's.
     expect((await heldMoney(fixture.organisationId, "acct_someone_else", now)).total).toBe(0);
   });
+
+  test("a lost dispute's money stays held until its transfer reversal settles (T53)", async () => {
+    const fixture = await society();
+    const order = await ticketSale(fixture, -10 * day, { disputeStatus: "lost" });
+    const dispute = await prisma.purchaseDispute.create({ data: {
+      orderId: order.id, organisationId: fixture.organisationId, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"),
+      amount: 2000, currency: "aud", providerStatus: "lost", reversalStatus: "pending"
+    } });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836);
+    await prisma.purchaseDispute.update({ where: { id: dispute.id }, data: { reversalStatus: "uncertain" } });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836);
+    await prisma.purchaseDispute.update({ where: { id: dispute.id }, data: { reversalStatus: "succeeded" } });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(0);
+  });
 });
 
 describe("payouts worker", () => {

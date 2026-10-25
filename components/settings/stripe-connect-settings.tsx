@@ -110,6 +110,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [needsCode, setNeedsCode] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [confirmingDashboard, setConfirmingDashboard] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   const checkStatus = useCallback(
     async (targetOrganisation: Organisation, showMessage = false) => {
@@ -197,7 +199,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     };
   }, [checkStatus, organisation]);
 
-  async function redirectToOnboarding(endpoint: string) {
+  async function redirectToOnboarding(endpoint: string, extra: Record<string, string> = {}) {
     if (!organisation) {
       return;
     }
@@ -207,7 +209,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       headers: {
         "content-type": "application/json"
       },
-      body: JSON.stringify({ organisationId: organisation.id })
+      body: JSON.stringify({ organisationId: organisation.id, ...extra })
     });
 
     window.location.href = data.url;
@@ -269,17 +271,28 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   }
 
   // Stripe signs the society in to its own Express Dashboard with a single-use link made now.
+  // The dashboard can change where payouts go, so with staff MFA on it asks for a code first (T53).
   async function openDashboard() {
-    setIsOpeningDashboard(true);
     setMessage(null);
+    setMfaCode("");
+    setDashboardError(null);
+    // The server decides; this only chooses whether to ask for a code.
+    const mfa = await fetchJson<{ mode: string }>("/api/me/mfa/status").catch(() => ({ mode: "enforce" }));
+    if (mfa.mode === "off") return goToDashboard(false);
+    setConfirmingDashboard(true);
+  }
+
+  async function goToDashboard(withCode: boolean) {
+    setIsOpeningDashboard(true);
+    setDashboardError(null);
 
     try {
-      await redirectToOnboarding("/api/stripe/connect/dashboard");
+      // An empty field sends no code, so the server asks for one in words.
+      await redirectToOnboarding("/api/stripe/connect/dashboard", withCode && mfaCode.trim() ? { mfaCode } : {});
     } catch (error) {
-      setMessage({
-        ok: false,
-        text: error instanceof ClientApiError ? error.message : "Unable to open the Stripe dashboard."
-      });
+      const text = getClientErrorMessage(error, "Unable to open the Stripe dashboard.");
+      if (withCode) setDashboardError(text);
+      else setMessage({ ok: false, text });
       setIsOpeningDashboard(false);
     }
   }
@@ -305,7 +318,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       const data = await fetchJson<{ disconnected: boolean; status: ConnectStatus }>("/api/stripe/connect/disconnect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ organisationId: organisation.id, ...(needsCode ? { mfaCode } : {}) })
+        body: JSON.stringify({ organisationId: organisation.id, ...(needsCode && mfaCode.trim() ? { mfaCode } : {}) })
       });
 
       setStatus(data.status);
@@ -543,6 +556,32 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        busy={isOpeningDashboard}
+        confirmLabel="Open Stripe"
+        onCancel={() => setConfirmingDashboard(false)}
+        onConfirm={() => goToDashboard(true)}
+        open={confirmingDashboard}
+        title="Open Stripe dashboard?"
+      >
+        <div className="grid gap-4">
+          <p>Stripe&apos;s dashboard can change the bank account payouts go to, so it needs your authenticator code.</p>
+          <TextInput
+            autoComplete="one-time-code"
+            hint="6 digits from your authenticator app"
+            inputMode="numeric"
+            label="Authenticator code"
+            onChange={(event) => setMfaCode(event.target.value)}
+            value={mfaCode}
+          />
+          {dashboardError ? (
+            <p className="text-sm text-danger" role="alert">
+              {dashboardError}
+            </p>
+          ) : null}
+        </div>
+      </ConfirmDialog>
 
       <ConfirmDialog
         busy={isDisconnecting}

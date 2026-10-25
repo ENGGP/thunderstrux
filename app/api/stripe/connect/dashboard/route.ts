@@ -7,10 +7,11 @@ import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { connectRouteRules } from "@/lib/stripe/http";
 import { validateJson } from "@/lib/validators";
 import { createOrganisationDashboardLink } from "@/lib/stripe/connect";
-import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
+import { stripeDisconnectSchema } from "@/lib/validators/stripe-connect";
 
 // A fresh sign-in link to the society's own Stripe Express Dashboard, for staff
-// who manage its payments. Links are single use, so one is made per click.
+// who manage its payments. Links are single use, so one is made per click; it
+// needs a fresh authenticator code when staff MFA is on.
 export async function POST(request: Request) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireStripeConnectCapability();
-    const validation = await validateJson(request, organisationConnectSchema);
+    const validation = await validateJson(request, stripeDisconnectSchema);
 
     if (!validation.success) {
       return validationError(validation.details);
@@ -38,7 +39,13 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const url = await createOrganisationDashboardLink(organisationId, user.id);
+    // Authenticator guesses share the staff verification limit.
+    if (validation.data.mfaCode) {
+      const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [user.id] });
+      if (codeLimit) return codeLimit;
+    }
+
+    const url = await createOrganisationDashboardLink(organisationId, { actor: user, mfaCode: validation.data.mfaCode });
 
     return NextResponse.json({ url });
   } catch (error) {

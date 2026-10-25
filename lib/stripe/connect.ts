@@ -405,12 +405,7 @@ export async function disconnectAccount(
   orgId: string,
   { actor, mfaCode }: { actor: { id: string; mfaSessionId?: string }; mfaCode?: string }
 ) {
-  if (mfaEnforcementMode() !== "off") {
-    if (!mfaCode) throw new MfaInputError("Enter your authenticator code to disconnect Stripe");
-    const digest = mfaGrantDigest(actor.mfaSessionId);
-    if (!digest) throw new MfaRequiredError();
-    await verifyStaffMfa(actor.id, mfaCode, digest);
-  }
+  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to disconnect Stripe");
 
   // PAY-005: before unlinking, Stripe takes payouts back, so the money still
   // held for events isn't left waiting. A disconnect then refused under the lock
@@ -525,7 +520,19 @@ export async function continueOrganisationStripeOnboarding(orgId: string, return
 // (balance, payouts, bank details), made when a staff member asks for it. The
 // platform's view of the account (dashboard.stripe.com/connect/accounts/...)
 // only opens for the platform owner, never for the society.
-export async function createOrganisationDashboardLink(orgId: string, actorUserId: string) {
+// Outside MFA "off", an action that can move a society's money needs a fresh authenticator code.
+async function requireFreshStaffMfa(actor: { id: string; mfaSessionId?: string }, mfaCode: string | undefined, prompt: string) {
+  if (mfaEnforcementMode() === "off") return;
+  if (!mfaCode) throw new MfaInputError(prompt);
+  const digest = mfaGrantDigest(actor.mfaSessionId);
+  if (!digest) throw new MfaRequiredError();
+  await verifyStaffMfa(actor.id, mfaCode, digest);
+}
+
+// The Express Dashboard can change where payouts go, so opening it needs a fresh code, like disconnect (T53).
+export async function createOrganisationDashboardLink(orgId: string, { actor, mfaCode }: { actor: { id: string; mfaSessionId?: string }; mfaCode?: string }) {
+  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to open the Stripe dashboard");
+  const actorUserId = actor.id;
   const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true } });
   if (!organisation) throw new OrganisationStripeConnectNotFoundError();
   if (!organisation.stripeAccountId || !organisation.stripeDetailsSubmitted) {

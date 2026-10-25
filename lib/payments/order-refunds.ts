@@ -108,7 +108,7 @@ export async function requestOrderRefund(input: {
   const now = new Date();
 
   const request = await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, input.orderId))) throw new OrderRefundError("not_found", "Order was not found");
+    if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new OrderRefundError("not_found", "Order was not found");
     const order = await tx.order.findFirst({
       where: { id: input.orderId, event: { organisationId: input.organisationId } },
       include: { compensationRefundJob: { select: { state: true } } }

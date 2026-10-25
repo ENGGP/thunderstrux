@@ -24,7 +24,8 @@ export function encryptNotification(value: unknown, context: string) {
 export function decryptNotification(value: string, context: string): unknown {
   const [version, iv, tag, ciphertext, extra] = value.split(":");
   if (version !== "v1" || !iv || !tag || !ciphertext || extra) throw new Error("Invalid notification envelope");
-  const cipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"));
+  // A full 16-byte tag only: a truncated one would weaken the check (T53).
+  const cipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"), { authTagLength: 16 });
   cipher.setAAD(Buffer.from(context));
   cipher.setAuthTag(Buffer.from(tag, "base64url"));
   return JSON.parse(Buffer.concat([cipher.update(Buffer.from(ciphertext, "base64url")), cipher.final()]).toString("utf8"));

@@ -2,6 +2,7 @@ import { readStaffInviteToken } from "@/tests/helpers/staff-invites";
 import { beforeEach, afterEach, test, expect, vi } from "vitest";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { createCommerceOrder } from "@/lib/commerce/orders";
 import { closeAccount, readAccountClosureEligibility, closureAcknowledgement } from "@/lib/auth/account-closure";
 import { requestPasswordReset, signupAccount, lockVerifiedAccount } from "@/lib/auth/account-lifecycle";
 import { getSessionIdentity } from "@/lib/auth/session-identity";
@@ -62,6 +63,18 @@ test("pending, unresolved compensation and upcoming paid purchases block; manual
   const job = await prisma.compensationRefundJob.create({ data: { orderId: order.id, amount: 1200, state: "review_required" } });
   await expect(close(user)).rejects.toMatchObject({ kind: "blocked" });
   await prisma.compensationRefundJob.update({ where: { id: job.id }, data: { state: "refunded", resolvedAt: new Date() } });
+  await close(user);
+});
+test("a membership or merchandise checkout still waiting on Stripe also blocks closure (T53)", async () => {
+  const user = await createMember(); const society = await createOrganisationAccount({ stripeReady: true });
+  const plan = await prisma.membershipProduct.create({ data: { organisationId: society.organisation.id, name: "Plan", priceAmount: 2500, startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 100 * 86_400_000), entitlements: ["member_prices"], status: "published", publishedAt: new Date() } });
+  const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: society.organisation.id, kind: "membership", buyer: { userId: user.id }, buyerEmail: user.email, paymentKind: "stripe", feeAmount: 183, source: "checkout",
+    lines: [{ quantity: 1, unitAmount: 2500, name: plan.name, termStartsAt: plan.startsAt, termEndsAt: plan.endsAt, membershipProductId: plan.id }]
+  }));
+  expect((await prisma.commerceOrder.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("pending");
+  await expect(close(user)).rejects.toMatchObject({ kind: "blocked" });
+  await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "expired" } });
   await close(user);
 });
 test("closure anonymises profile, revokes credentials/staff/joins and tokens, retains business records and private notice", async () => {

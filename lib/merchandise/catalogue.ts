@@ -144,7 +144,7 @@ function audit(tx: Prisma.TransactionClient, actor: AccountActor, product: Merch
 // Photos: ready product images of this society, locked after the product.
 async function savePhotos(tx: Prisma.TransactionClient, product: MerchandiseProduct, assetIds: string[]) {
   const previous = (await tx.merchandiseProductImage.findMany({ where: { productId: product.id }, select: { assetId: true } })).map((row) => row.assetId);
-  for (const id of [...assetIds].sort()) await tx.$queryRaw`SELECT "id" FROM "Asset" WHERE "id" = ${id} FOR UPDATE`;
+  for (const id of [...assetIds].sort()) await tx.$queryRaw`SELECT "id" FROM "Asset" WHERE "id" = ${id} AND "organisationId" = ${product.organisationId} FOR UPDATE`;
   const usable = await tx.asset.count({
     where: { id: { in: assetIds }, organisationId: product.organisationId, kind: "product", status: "ready", deletedAt: null }
   });

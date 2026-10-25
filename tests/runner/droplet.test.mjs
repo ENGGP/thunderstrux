@@ -34,6 +34,28 @@ test("a real host deploys registry digests only; the local rehearsal deploys ima
   assert.throws(() => releaseImages({ ...manifest(), revision: "main" }, { local: true }), /revision/);
 });
 
+test("a real host deploys only images from the two release repositories (SEC-022)", () => {
+  const digest = (n) => `@sha256:${n.repeat(64)}`;
+  for (const refs of [
+    { web: `ghcr.io/attacker/thunderstrux${digest("1")}` },
+    { ops: `ghcr.io/enggp/thunderstrux${digest("2")}` },
+    { web: `docker.io/enggp/thunderstrux${digest("1")}` },
+    { web: `ghcr.io/enggp/thunderstrux-evil${digest("1")}` }
+  ]) assert.throws(() => releaseImages(manifest(refs), { local: false }), /must come from/);
+  assert.deepEqual(releaseImages(manifest({ web: `ghcr.io/enggp/thunderstrux:sha-abc${digest("1")}` }), { local: false }).APP_IMAGE, `ghcr.io/enggp/thunderstrux:sha-abc${digest("1")}`);
+});
+
+test("only main publishes and attests release images, verified against this workflow on main (SEC-022)", async () => {
+  const workflow = await text(".github/workflows/release.yml");
+  const lines = workflow.split("\n");
+  const gates = lines.filter((line) => line.includes("if: github.event_name != 'pull_request'"));
+  assert.equal(gates.length, 6);
+  for (const gate of gates) assert.ok(gate.includes("&& github.ref == 'refs/heads/main'"), gate);
+  const verifies = lines.filter((line) => line.includes("gh attestation verify"));
+  assert.equal(verifies.length, 2);
+  for (const verify of verifies) assert.ok(verify.includes('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" --source-ref refs/heads/main'), verify);
+});
+
 test("server commands quote their arguments", () => {
   assert.equal(quote("it's"), "'it'\\''s'");
   assert.equal(quote("a b; rm -rf /"), "'a b; rm -rf /'");

@@ -34,11 +34,18 @@ export const deploySteps = ["validate", "upload", "pull", "check-config", "stop-
 
 export const quote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
 
+// The only repositories the release workflow publishes to on main (SEC-022).
+export const releaseRepositories = { web: "ghcr.io/enggp/thunderstrux", ops: "ghcr.io/enggp/thunderstrux-ops" };
+
 export function releaseImages(manifest, { local }) {
   validateReleaseManifest(manifest);
   // A real host pulls by registry digest; the local rehearsal runs local image ids.
   if (local) return { APP_IMAGE: manifest.web.id, OPS_IMAGE: manifest.ops.id };
-  return { APP_IMAGE: assertImmutableImageRef(manifest.web.ref), OPS_IMAGE: assertImmutableImageRef(manifest.ops.ref) };
+  for (const target of ["web", "ops"]) {
+    const ref = assertImmutableImageRef(manifest[target].ref);
+    if (ref.split("@")[0].replace(/:[^/]*$/, "") !== releaseRepositories[target]) throw new Error(`The ${target} image must come from ${releaseRepositories[target]}`);
+  }
+  return { APP_IMAGE: manifest.web.ref, OPS_IMAGE: manifest.ops.ref };
 }
 
 function option(args, name, fallback) {

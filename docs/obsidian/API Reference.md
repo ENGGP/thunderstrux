@@ -137,7 +137,7 @@ Implemented stable events:
 Implemented alert names:
 
 - `paid_but_unfulfilled_compensation_required`
-- `stripe_webhook_signature_failure`
+- `stripe_webhook_signature_failure` (sent to the receiver at most every five minutes per process; SEC-020)
 - `checkout_session_creation_failure`
 - `email_outbox_retry_exhausted`
 - `stale_order_worker_failed`

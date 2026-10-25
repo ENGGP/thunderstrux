@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import sharp from "sharp";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import {
   createMember,
@@ -199,16 +200,18 @@ test("only ready same-tenant slot images attach; public bytes and references sur
   expect(response.headers.get("content-type")).toBe("image/webp");
   expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   expect(response.headers.get("cache-control")).toContain("max-age=300");
-  expect(
-    (
-      await publicImage(
-        new Request("http://localhost", {
-          headers: { "If-None-Match": response.headers.get("etag")! },
-        }),
-        { params: Promise.resolve({ assetId: logo.id }) },
-      )
-    ).status,
-  ).toBe(304);
+  // A revalidation and a HEAD are answered from the row; storage is never read (SEC-021).
+  const send = vi.spyOn(S3Client.prototype, "send");
+  const params = { params: Promise.resolve({ assetId: logo.id }) };
+  const revalidated = await publicImage(new Request("http://localhost", { headers: { "If-None-Match": response.headers.get("etag")! } }), params);
+  expect(revalidated.status).toBe(304);
+  expect(revalidated.headers.get("etag")).toBe(response.headers.get("etag"));
+  const head = await publicImage(new Request("http://localhost", { method: "HEAD" }), params);
+  expect(head.status).toBe(200);
+  expect(head.headers.get("content-length")).toBe(String(logo.byteSize));
+  expect(await head.text()).toBe("");
+  expect(send.mock.calls.filter(([command]) => command instanceof GetObjectCommand)).toHaveLength(0);
+  send.mockRestore();
   await maintainAssets({
     dryRun: false,
     now: new Date(Date.now() + 2 * 86400000),

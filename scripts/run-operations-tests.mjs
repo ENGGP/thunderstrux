@@ -344,6 +344,13 @@ try {
   // T44c: the restored copy is fenced: every worker paused until providers are reconciled.
   const fence = await compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "${project.replace(/-/g, "_")}_restore_test" -tAc 'SELECT "pauseReason" FROM "WorkerLease" WHERE "name" = $$all$$ AND "pausedAt" IS NOT NULL'`], { capture: true });
   if (!fence.includes("reconcile Stripe")) throw new Error(`Restored copy is not fenced: ${fence.slice(-500)}`);
+  // SEC-023: and its identity is fenced: every account's sessions end, and no MFA login, link or invitation survives.
+  const scalar = (database, query) => compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "${database}" -tAc '${query}'`], { capture: true }).then((value) => value.trim());
+  const restoredDb = `${project.replace(/-/g, "_")}_restore_test`;
+  const sourceVersions = await scalar("$POSTGRES_DB", 'SELECT COALESCE(SUM("authVersion"), 0) + COUNT(*) FROM "User"');
+  const restoredVersions = await scalar(restoredDb, 'SELECT COALESCE(SUM("authVersion"), 0) FROM "User"');
+  const leftovers = await scalar(restoredDb, 'SELECT (SELECT COUNT(*) FROM "MfaGrant") + (SELECT COUNT(*) FROM "AuthToken" WHERE "consumedAt" IS NULL AND "invalidatedAt" IS NULL) + (SELECT COUNT(*) FROM "GuestAccessGrant" WHERE "revokedAt" IS NULL) + (SELECT COUNT(*) FROM "OrganisationStaffInvite" WHERE "acceptedAt" IS NULL AND "revokedAt" IS NULL)');
+  if (sourceVersions !== restoredVersions || leftovers !== "0" || sourceVersions === "0") throw new Error(`Restored identity is not fenced: versions ${sourceVersions}/${restoredVersions}, leftovers ${leftovers}`);
   await assetRehearsal("remove");
   await assetRehearsal("restore", ["-e", `DATABASE_URL=postgresql://ops:ops-disposable-only@db:5432/${project.replace(/-/g, "_")}_restore_test?schema=public`]);
 

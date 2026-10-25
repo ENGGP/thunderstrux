@@ -54,14 +54,17 @@ It refuses a pair over budget, the same image twice, or one without a revision o
 6. Attach signed GitHub build-provenance and SBOM attestations to each digest.
 7. Upload `release-<revision>`: the release manifest, with registry digests (`release.json`), and the SBOMs, kept 90 days.
 
-A second job pulls both digests on a fresh runner and checks they match the manifest's image ids and revision. It verifies both attestations with `gh attestation verify` and smoke-tests the images. Pull requests that change the images run the build, budget, scan and SBOM steps without publishing.
+A second job pulls both digests on a fresh runner and checks they match the manifest's image ids and revision. It verifies both attestations with `gh attestation verify` and smoke-tests the images. Pull requests that change the images run the build, budget, scan and SBOM steps without publishing, and so does a manual run on any branch other than `main`.
 
 To deploy a release, download its manifest and run the T43b command:
 
 ```bash
-gh run download --repo ENGGP/thunderstrux --name release-<revision>
-gh attestation verify oci://<web ref@sha256> --repo ENGGP/thunderstrux
+gh run download <run-id> --repo ENGGP/thunderstrux --name release-<revision>
+gh attestation verify oci://<web ref@sha256> --repo ENGGP/thunderstrux --signer-workflow ENGGP/thunderstrux/.github/workflows/release.yml --source-ref refs/heads/main
+gh attestation verify oci://<ops ref@sha256> --repo ENGGP/thunderstrux --signer-workflow ENGGP/thunderstrux/.github/workflows/release.yml --source-ref refs/heads/main
 ```
+
+Take `<run-id>` from the Release Images run of that `main` commit (`gh run list --workflow release.yml --branch main`), not by artifact name alone: any workflow run can upload an artifact with that name. Only `main` publishes and attests, and `scripts/droplet.mjs` deploys only refs from `ghcr.io/enggp/thunderstrux` and `ghcr.io/enggp/thunderstrux-ops` (SEC-022).
 
 Then deploy with `--manifest release.json` (Pilot host below). Both packages are public, like the repository: a host pulls them by digest with no registry login. The images hold no secrets. The first publication was run 39887918318 on `9788d6d`, 23 Oct 2026.
 
@@ -144,7 +147,7 @@ It removes every container, volume, network, image and folder it made.
 6. **Secrets:** write each secret file in `/etc/thunderstrux/secrets`, then `chown 1000:1000` and `chmod 0400` them.
    - Back up `MFA_ENCRYPTION_KEY`, `NOTIFICATION_ENCRYPTION_KEY` and `AUTH_SECRET` separately; see the Recovery runbook.
    - The alert webhook goes to the chosen receiver (OPS-002).
-7. **Deploy:** take `release.json` from the release workflow's artifact for the chosen `main` commit (T43c), check it with `gh attestation verify`, then run the first deploy with `--smoke-url`. The packages are public, so the Droplet needs no registry login.
+7. **Deploy:** take `release.json` from the Release Images run of the chosen `main` commit by run id (T43c), check both images with `gh attestation verify --signer-workflow ... --source-ref refs/heads/main` (Release images above), then run the first deploy with `--smoke-url`. The packages are public, so the Droplet needs no registry login.
 8. **Stripe and Resend:** create the two Stripe webhook endpoints at the new URL as described in Stripe webhook endpoints and keys below, and point the Resend domain at it.
 
 **Rebuilding a lost Droplet.** No data lives on it, so:
@@ -221,7 +224,7 @@ Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
   - Each service keeps only its own secrets.
   - A host with cron or a platform scheduler can run the one-shot services instead; the lease still prevents overlap.
 - **Monitor.** `process-operations-monitor.mjs` emits `queue.backlog`, `queue.oldest_age_seconds` and `queue.stuck` for each queue, and `worker.seconds_since_success` for each job. It alerts when a threshold below is crossed. A firing alert repeats every 30 minutes; a cleared one alerts again at once if it comes back.
-- **Alert transport.** With `ALERT_WEBHOOK_URL` set, each operational alert is also POSTed as JSON `{event, environment, timestamp, dedupeKey, details}`, redacted like the logs, with a 3-second timeout.
+- **Alert transport.** With `ALERT_WEBHOOK_URL` set, each operational alert is also POSTed as JSON `{event, environment, timestamp, dedupeKey, details}`, redacted like the logs, with a 3-second timeout. Anyone can send an unsigned webhook, so `stripe_webhook_signature_failure` reaches the receiver at most once every five minutes per process, with `details.suppressed` counting those held back; the log line is still written for each (SEC-020).
   - Hosted, it comes from `ALERT_WEBHOOK_URL_FILE`, a required secret for the app and every worker.
   - A failing receiver is logged (`ops.alert.delivery_failed`) and never fails the caller.
   - Point it at a receiver that groups alerts by `dedupeKey`.
@@ -248,18 +251,19 @@ Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
 ## Recovery runbook
 
 1. **Stop writes.** Stop the app (or put the platform into maintenance) and run `pnpm ops:workers -- pause all --reason="Recovery <date>"`. Wait until `status` shows no job running. Stopping the scheduled services also stops them.
-2. **Restore separately.** Restore into a new `_restore_test` database (see Backup And Restore below) with no Stripe or Resend credentials, so nothing restored can charge, refund or email. Restore verification runs the integrity audit (T41), then the restore pauses every worker in the copy (T44c).
+2. **Restore separately.** Restore into a new `_restore_test` database (see Backup And Restore below) with no Stripe or Resend credentials, so nothing restored can charge, refund or email. Restore verification runs the integrity audit (T41). The restore then fences identity in the copy (`scripts/fence-restored-identity.sql`, SEC-023): every account's `authVersion` advances so all sessions end, MFA logins are deleted, and unused account links, guest links and sessions, and pending staff invitations are revoked. Last, it pauses every worker in the copy (T44c). For a hosted point-in-time restore, run the same SQL against the new cluster before pointing the app at it.
 3. **Reconcile before resuming.** Point the restored database at the real credentials, keep the workers paused, and compare it with Stripe:
    - **Paid Sessions after the backup that the database lacks:** replay their webhooks from the Stripe dashboard (fulfilment is idempotent), or let the stale-orders job reconcile the pending orders.
    - **Refunds and disputes after the backup:** replay the `refund.*` and `charge.dispute.*` events.
    - **The outbox:** messages still marked pending may have been sent before the failure. Accept a possible duplicate, or cancel the ones the provider's log shows were delivered.
-4. **Resume.** Switch the app to the recovered database, check readiness, then run `pnpm ops:workers -- resume all`. Watch for backlog and stale-job alerts for the next 15 minutes.
-5. **Back up these secrets with the database:**
+4. **Re-apply identity changes and rotate the session key.** The copy has forgotten account and staff changes made after its restore point. From the audit log and support records, close accounts again, disable accounts whose passwords were changed for a compromise (their owners reset), and revoke staff access that was revoked after the restore point. Rotate `AUTH_SECRET` so no token signed before the failure is accepted, even with a matching `authVersion`.
+5. **Resume.** Switch the app to the recovered database, check readiness, then run `pnpm ops:workers -- resume all`. Watch for backlog and stale-job alerts for the next 15 minutes.
+6. **Back up these secrets with the database:**
    - `MFA_ENCRYPTION_KEY`, which encrypts staff MFA secrets;
    - `NOTIFICATION_ENCRYPTION_KEY`, which encrypts queued notices;
    - the asset storage keys and bucket;
    - the Stripe account and webhook signing secrets, the provider identity the orders refer to;
-   - `AUTH_SECRET` and `ALERT_WEBHOOK_URL`.
+   - `AUTH_SECRET` (rotated, not reused, in a recovery) and `ALERT_WEBHOOK_URL`.
 
    Without its encryption keys, a restored database can't decrypt MFA secrets or pending notices.
 

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { runOperationsMonitor, readQueues } from "@/lib/ops/monitor";
 import { runWorker, scheduledWorkers } from "@/lib/ops/worker";
+import { emitOperationalAlert, flushOperationalAlerts } from "@/lib/ops/alerts";
 
 // T42: the worker contract (lease, pause, timeout, failure alert) and the
 // monitor's backlog, stuck-item and stale-job alerts, received over HTTP.
@@ -83,6 +84,28 @@ describe("worker contract (T42)", () => {
       expect(await prisma.workerLease.findUniqueOrThrow({ where: { name: "checkout-recovery" } })).toMatchObject({ holder: null, lastFailedAt: expect.any(Date), lastError: "Error: Stripe unreachable" });
       expect(receiver.received).toEqual([expect.objectContaining({ event: "worker_failed", dedupeKey: "worker_failed:checkout-recovery", details: expect.objectContaining({ worker: "checkout-recovery" }) })]);
       expect(JSON.stringify(receiver.received)).not.toContain("secret-token");
+    } finally {
+      await receiver.close();
+    }
+  });
+
+  test("unsigned-webhook alerts reach the receiver once per five minutes with the held-back count; other alerts still go (SEC-020)", async () => {
+    quiet();
+    const receiver = await alertReceiver();
+    try {
+      // Clear of any cooldown an earlier test in this process started.
+      const start = Date.now() + 3_600_000;
+      const now = vi.spyOn(Date, "now").mockReturnValue(start);
+      for (let attempt = 0; attempt < 5; attempt += 1) emitOperationalAlert("stripe_webhook_signature_failure", { reason: "invalid_signature" });
+      emitOperationalAlert("paid_but_unfulfilled_compensation_required", { orderId: "order-1", reason: "sold_out" });
+      await flushOperationalAlerts();
+      expect(receiver.received.map((alert) => alert.event).sort()).toEqual(["paid_but_unfulfilled_compensation_required", "stripe_webhook_signature_failure"]);
+
+      now.mockReturnValue(start + 5 * 60_000);
+      emitOperationalAlert("stripe_webhook_signature_failure", { reason: "invalid_signature" });
+      await flushOperationalAlerts();
+      expect(receiver.received).toHaveLength(3);
+      expect(receiver.received.at(-1)).toMatchObject({ event: "stripe_webhook_signature_failure", details: expect.objectContaining({ suppressed: 4 }) });
     } finally {
       await receiver.close();
     }

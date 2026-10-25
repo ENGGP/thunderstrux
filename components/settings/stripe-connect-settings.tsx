@@ -287,7 +287,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     setDashboardError(null);
 
     try {
-      await redirectToOnboarding("/api/stripe/connect/dashboard", withCode ? { mfaCode } : {});
+      // An empty field sends no code, so the server asks for one in words.
+      await redirectToOnboarding("/api/stripe/connect/dashboard", withCode && mfaCode.trim() ? { mfaCode } : {});
     } catch (error) {
       const text = getClientErrorMessage(error, "Unable to open the Stripe dashboard.");
       if (withCode) setDashboardError(text);
@@ -317,7 +318,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       const data = await fetchJson<{ disconnected: boolean; status: ConnectStatus }>("/api/stripe/connect/disconnect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ organisationId: organisation.id, ...(needsCode ? { mfaCode } : {}) })
+        body: JSON.stringify({ organisationId: organisation.id, ...(needsCode && mfaCode.trim() ? { mfaCode } : {}) })
       });
 
       setStatus(data.status);

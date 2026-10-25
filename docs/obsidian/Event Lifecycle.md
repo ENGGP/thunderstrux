@@ -123,7 +123,7 @@ Status changes send an explicit target and the version the page loaded: `{ targe
 - A sales close time in the future and not after the end.
 - At least one ticket type with remaining quantity, and at least one type that can be bought now: a free type, or a paid type once the society can take payments.
 
-Events are always created as drafts, so a direct API call cannot skip these checks (EVT-003). Unpublishing is blocked once orders exist. `PATCH /api/events/[eventId]/sales` closes and reopens sales separately.
+Events are always created as drafts, so a direct API call cannot skip these checks (EVT-003). Unpublishing is blocked once orders exist, rechecked under the event lock that checkout takes (SEC-009). `PATCH /api/events/[eventId]/sales` closes and reopens sales separately.
 
 ## Edit Boundary
 
@@ -133,7 +133,7 @@ General event editing uses:
 PATCH /api/events/[eventId]
 ```
 
-The edit endpoint updates event fields and synchronises ticket types. It does not own the publish/unpublish lifecycle.
+The edit endpoint updates event fields and synchronises ticket types. It does not own the publish/unpublish lifecycle. An edit can't move the end time earlier into the past (400 on `endTime`), because payouts are held until two days after the end (SEC-004); moving it later, or earlier but still in the future, is fine.
 
 Current edit route:
 

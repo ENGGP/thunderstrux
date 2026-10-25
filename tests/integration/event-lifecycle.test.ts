@@ -491,6 +491,27 @@ describe("event lifecycle", () => {
     expect(getResponse.status).toBe(200);
   });
 
+  test("an edit can't move the end earlier into the past, which would release held ticket money (SEC-004)", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date() });
+    const edit = (startTime: Date, endTime: Date, version: number) => updateEventRoute(jsonRequest(`http://localhost/api/events/${event.id}`, {
+      organisationId: organisation.id, title: event.title, description: event.description, location: event.location, version,
+      startTime: startTime.toISOString(), endTime: endTime.toISOString(), salesCloseAt: new Date(startTime.getTime() - 60_000).toISOString(),
+      ticketTypes: event.ticketTypes.map((type) => ({ id: type.id, name: type.name, price: type.price, quantity: type.quantity, expectedQuantity: type.quantity }))
+    }, { method: "PATCH" }), routeContext({ eventId: event.id }));
+
+    const hour = 3_600_000;
+    const past = await edit(new Date(Date.now() - 3 * hour), new Date(Date.now() - hour), event.version);
+    expect(past.status).toBe(400);
+    expect((await parseJsonResponse(past)).error.details).toEqual([expect.objectContaining({ path: ["endTime"], message: "Choose an end time after now" })]);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).endTime).toEqual(event.endTime);
+    // Moving it later is still fine.
+    const later = await edit(event.startTime, new Date(event.endTime.getTime() + hour), event.version);
+    expect(later.status).toBe(200);
+  });
+
   test("event analytics use event ownership when order organisation is inconsistent", async () => {
     const { user, organisation } = await createOrganisationAccount();
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });

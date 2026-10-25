@@ -546,6 +546,14 @@ export async function updateOrganisationEvent(
       throw new EventLifecycleConflictError();
     }
 
+    // Payouts are held until two days after the end, so moving the end earlier into
+    // the past would release ticket money before the event has run (SEC-004).
+    if (input.endTime < locked.endTime && input.endTime <= new Date()) {
+      throw new EventLifecycleValidationError("The end time can't be moved earlier into the past", [
+        { path: ["endTime"], message: "Choose an end time after now" }
+      ]);
+    }
+
     const inventory = await readEventInventory(transaction, existingEvent.id, new Date());
 
     if (capacity !== null && capacity < inventory.occupancy) {
@@ -759,6 +767,15 @@ export async function setOrganisationEventPublication(
     }
 
     await prisma.$transaction(async (transaction) => {
+      if (targetStatus !== "published") {
+        // Checkout takes the same lock, so no order can land between this count and the change (SEC-009).
+        await lockEventInventory(transaction, event.id, []);
+        if (await transaction.order.count({ where: { eventId: event.id } })) {
+          throw new EventLifecycleValidationError("Event cannot be unpublished after orders exist", [
+            { path: ["eventId"], message: "Keep this event published for purchasers and order history" }
+          ]);
+        }
+      }
       const updated = await transaction.event.updateMany({
         where: { id: event.id, version, status: event.status },
         data: { status: targetStatus, version: { increment: 1 } }

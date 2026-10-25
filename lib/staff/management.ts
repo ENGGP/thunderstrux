@@ -4,6 +4,7 @@ import { lockAccount, type AccountActor } from "@/lib/auth/account-lifecycle";
 import { liveStaffRole, roleHasPermission } from "@/lib/staff/live-authority";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { mfaGrantDigest } from "@/lib/security/csrf";
+import { revokeOrganisationStaffInvites } from "@/lib/staff/invite-cancellation";
 export class StaffUpdateError extends Error {
   constructor(readonly kind: "not_found" | "stale_session" | "authority" | "conflict", message: string) { super(message); }
 }
@@ -36,6 +37,7 @@ export async function updateOrganisationStaff(actor: AccountActor, organisationI
         await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active" } }) <= 1) throw new StaffUpdateError("conflict", "At least one active owner is required");
     const staff = await tx.organisationStaff.update({ where: { id: staffId }, data: { role: nextRole, status: nextStatus, revokedAt: nextStatus === "revoked" ? now : null, revokedById: nextStatus === "revoked" ? actor.id : null },
       select: { id: true, role: true, status: true, acceptedAt: true, revokedAt: true, user: { select: { id: true, email: true } } } });
+    if (nextStatus === "revoked") await revokeOrganisationStaffInvites(tx, organisationId, staff.user.email, now);
     await tx.auditLog.create({ data: { organisationId, actorUserId: actor.id, action: "staff.updated", targetType: "OrganisationStaff", targetId: staff.id,
       metadata: { previousRole: existing.role, previousStatus: existing.status, nextRole, nextStatus } } });
     return staff;

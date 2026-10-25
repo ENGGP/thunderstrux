@@ -11,7 +11,7 @@ import { MembershipUnavailableError } from "@/lib/memberships/grants";
 import { MerchandiseUnavailableError } from "@/lib/merchandise/sale";
 import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
 import { GUEST_CSRF_HEADER, verifyGuestCsrf } from "@/lib/guest/guest-csrf";
-import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest, trustedRequestOrigin } from "@/lib/security/request-guard";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { validateJson } from "@/lib/validators";
@@ -41,13 +41,13 @@ export async function commerceCheckoutRoute(request: Request, family: CommerceKi
       const guest = await readGuestSession(sessionId);
       if (!guest || guest.purpose !== "checkout") return unauthorized(guestSessionEndedMessage);
       if (!verifyGuestCsrf(sessionId, request.headers.get(GUEST_CSRF_HEADER))) return forbidden("Invalid CSRF token");
-      const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: ["guest", guest.grantId, family, getRateLimitClientIp(request)] });
+      const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: ["guest", guest.guestIdentityId, family] });
       if (limit) return limit;
       return respond(await createCommerceCheckout({ ...input, buyer: { guest: { grantId: guest.grantId, guestIdentityId: guest.guestIdentityId } } }));
     }
     const user = await requireVerifiedUser();
     if (user.accountRole !== "member") return badRequest("Member account required", [{ path: ["accountRole"], message: "Only member accounts can buy" }]);
-    const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: [user.id, family, getRateLimitClientIp(request)] });
+    const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: [user.id, family] });
     if (limit) return limit;
     return respond(await createCommerceCheckout({ ...input, buyer: { userId: user.id } }));
   } catch (error) {

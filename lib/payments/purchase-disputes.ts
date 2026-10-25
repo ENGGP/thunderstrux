@@ -24,9 +24,17 @@ export class PurchaseReviewError extends Error {
 const idOf = (value: string | { id: string } | null | undefined) => (typeof value === "string" ? value : value?.id ?? null);
 
 // Stripe's dispute status, as the order sees it. warning_closed is an inquiry
-// that never became a chargeback: the society kept the money.
-const outcomeOf = (status: string): OrderDisputeStatus =>
-  status === "lost" ? "lost" : status === "won" || status === "warning_closed" ? "won" : "open";
+// that never became a chargeback, and prevented a dispute that never went
+// ahead: either way the society kept the money.
+export const outcomeOf = (status: string): OrderDisputeStatus =>
+  status === "lost" ? "lost" : status === "won" || status === "warning_closed" || status === "prevented" ? "won" : "open";
+
+// A charge can carry more than one dispute; the order shows the worst, so one
+// won dispute can't release another's fence or payout hold (SEC-024).
+export const worstOutcome = (statuses: string[]): OrderDisputeStatus => {
+  const outcomes = statuses.map(outcomeOf);
+  return outcomes.includes("lost") ? "lost" : outcomes.includes("open") ? "open" : "won";
+};
 
 export async function journalled(eventId: string) {
   return Boolean(await prisma.stripeRefundWebhookEvent.findUnique({ where: { stripeEventId: eventId } }));
@@ -99,7 +107,8 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
       update: fields
     });
     if (existing && outcomeOf(existing.providerStatus) === outcome) return false;
-    await tx.order.update({ where: { id: orderId }, data: { disputeStatus: outcome, stripePaymentIntentId: intentId } });
+    const all = await tx.purchaseDispute.findMany({ where: { orderId }, select: { providerStatus: true } });
+    await tx.order.update({ where: { id: orderId }, data: { disputeStatus: worstOutcome(all.map((row) => row.providerStatus)), stripePaymentIntentId: intentId } });
     if (!existing) {
       await tx.ticket.updateMany({ where: { orderId, validity: "active" }, data: { validity: "refund_review", validityReason: "disputed", validityChangedAt: now } });
       await appendOrderLifecycleEvent(tx, { orderId, type: "dispute_opened", source: "stripe_webhook", stripeEventId: event.id, reason: current.reason, facts: { amount: current.amount } });
@@ -130,9 +139,12 @@ export async function restoreDisputedTickets(input: { organisationId: string; or
     if (!(await lockOrder(tx, input.orderId))) throw new PurchaseReviewError("not_found", "Order was not found");
     const order = await tx.order.findFirst({ where: { id: input.orderId, event: { organisationId: input.organisationId } }, select: { disputeStatus: true } });
     if (!order) throw new PurchaseReviewError("not_found", "Order was not found");
-    if (order.disputeStatus !== "won") throw new PurchaseReviewError("not_allowed", "Tickets can be restored only after Stripe closes the dispute in the society's favour");
-    const dispute = await tx.purchaseDispute.findFirstOrThrow({ where: { orderId: input.orderId, resolvedAt: null }, orderBy: { createdAt: "desc" } });
-    await tx.purchaseDispute.update({ where: { id: dispute.id }, data: { resolvedAt: now, resolvedByUserId: input.actor.id, resolutionReason: reason } });
+    // Every dispute still on the order must have closed in the society's favour; all of them are resolved together.
+    const disputes = await tx.purchaseDispute.findMany({ where: { orderId: input.orderId, resolvedAt: null }, select: { id: true, stripeDisputeId: true, providerStatus: true } });
+    if (order.disputeStatus !== "won" || !disputes.length || worstOutcome(disputes.map((row) => row.providerStatus)) !== "won") {
+      throw new PurchaseReviewError("not_allowed", "Tickets can be restored only after Stripe closes every dispute in the society's favour");
+    }
+    await tx.purchaseDispute.updateMany({ where: { id: { in: disputes.map((row) => row.id) } }, data: { resolvedAt: now, resolvedByUserId: input.actor.id, resolutionReason: reason } });
     const restored = await tx.ticket.updateMany({
       where: { orderId: input.orderId, validity: "refund_review", validityReason: "disputed" },
       data: { validity: "active", validityReason: null, validityChangedAt: now }
@@ -141,7 +153,7 @@ export async function restoreDisputedTickets(input: { organisationId: string; or
     await appendOrderLifecycleEvent(tx, { orderId: input.orderId, type: "dispute_resolved", source: "staff_action", actorUserId: input.actor.id, reason, facts: { ticketCount: restored.count } });
     await tx.auditLog.create({ data: {
       organisationId: input.organisationId, actorUserId: input.actor.id, action: "order.dispute_resolved", targetType: "Order", targetId: input.orderId,
-      metadata: { disputeId: dispute.stripeDisputeId, reason, ticketCount: restored.count }
+      metadata: { disputeIds: disputes.map((row) => row.stripeDisputeId), reason, ticketCount: restored.count }
     } });
   });
 }

@@ -7,7 +7,7 @@ import {
   CheckoutCreationError,
   createEventCheckout
 } from "@/lib/payments/checkout-creation";
-import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest, trustedRequestOrigin } from "@/lib/security/request-guard";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { GuestAccessError, guestSessionEndedMessage, guestSessionIdFrom, readGuestSession } from "@/lib/guest/guest-access";
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       const guest = await readGuestSession(sessionId);
       if (!guest || guest.purpose !== "checkout") return unauthorized(guestSessionEndedMessage);
       if (!verifyGuestCsrf(sessionId, request.headers.get(GUEST_CSRF_HEADER))) return forbidden("Invalid CSRF token");
-      const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: ["guest", guest.grantId, validation.data.eventId, getRateLimitClientIp(request)] });
+      const limit = await enforceRateLimit({ policy: "checkout_create", request, keyParts: ["guest", guest.guestIdentityId, validation.data.eventId] });
       if (limit) return limit;
       return checkoutResponse(await createEventCheckout({ ...validation.data, guest: { grantId: guest.grantId, guestIdentityId: guest.guestIdentityId }, returnOrigin: trustedRequestOrigin(request) }));
     }
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     const limitResponse = await enforceRateLimit({
       policy: "checkout_create",
       request,
-      keyParts: [user.id, validation.data.eventId, getRateLimitClientIp(request)]
+      keyParts: [user.id, validation.data.eventId]
     });
 
     if (limitResponse) {
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         routeErrorRule(CheckoutCreationError, (refused) =>
           refused.kind === "event_not_found" || refused.kind === "ticket_type_not_found"
             ? notFound(refused.message)
-            : refused.kind === "quote_changed" || refused.kind === "idempotency_conflict"
+            : refused.kind === "quote_changed" || refused.kind === "idempotency_conflict" || refused.kind === "purchase_in_progress"
               ? apiError("CONFLICT", refused.message, 409, refused.details)
               : badRequest(refused.message, refused.details)
         ),

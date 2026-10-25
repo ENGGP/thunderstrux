@@ -251,11 +251,14 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
     const status = await applyOutcome(request.id, refund, { source, token });
     return { refundRequestId: request.id, status };
   } catch (error) {
-    if (error instanceof RefundVerificationError) {
+    // An earlier attempt recorded the intent before creating, so this request's refund
+    // may already exist: a failed read proves nothing, and only Stripe's outcome settles it (SEC-011).
+    const mayExist = request.stripePaymentIntentId !== null;
+    if (!mayExist && error instanceof RefundVerificationError) {
       await fail(request.id, token, error.code, source);
       throw new OrderRefundError("verification_failed", "Stripe's record of this payment doesn't match the order, so nothing was refunded");
     }
-    if (isDefiniteProviderFailure(error)) {
+    if (!mayExist && isDefiniteProviderFailure(error)) {
       await fail(request.id, token, "provider_refused", source);
       throw new OrderRefundError("provider_refused", request.commerceOrderId ? "Stripe refused the refund. Nothing was refunded and the order is unchanged." : "Stripe refused the refund. The tickets are still valid.");
     }

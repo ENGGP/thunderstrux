@@ -114,6 +114,17 @@ describe("guest checkout", () => {
     expect((await redeemGuestAccess(await newestLink(buyer.email))).callbackUrl).toBe(`/guest/orders/${order.id}`);
   });
 
+  test("one guest email's unpaid holds are capped across checkout sessions (SEC-005)", async () => {
+    stripeMocks.createSession.mockImplementation(async () => ({ id: unique("cs_guest_cap"), url: "https://checkout.stripe.test/guest" }));
+    const fixture = await eventWith(1500);
+    const email = `${unique("guest")}@example.com`;
+    expect((await checkoutRoute(guestRequest((await guestSession(email)).sessionId, buy(fixture, 10)))).status).toBe(200);
+    const refused = await checkoutRoute(guestRequest((await guestSession(email)).sessionId, buy(fixture, 1)));
+    expect(refused.status).toBe(409);
+    expect((await parseJsonResponse(refused)).error.details[0]).toMatchObject({ reason: "purchase_in_progress" });
+    expect((await checkoutRoute(guestRequest((await guestSession()).sessionId, buy(fixture, 1)))).status).toBe(200);
+  });
+
   test("guest checkout needs a live checkout session and its CSRF token", async () => {
     const fixture = await eventWith(0);
     const { sessionId, guest } = await guestSession();

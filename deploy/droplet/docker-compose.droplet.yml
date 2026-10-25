@@ -52,7 +52,7 @@ services:
   # matches the managed cluster's PostgreSQL 16. Prisma's "schema" URL
   # parameter is dropped because pg_dump rejects it.
   backup:
-    image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
     profiles: ["tools"]
     restart: "no"
     read_only: true

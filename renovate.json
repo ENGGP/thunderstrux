@@ -23,10 +23,11 @@
   },
   "packageRules": [
     {
-      "description": "Keep pinned container digests current through reviewed pull requests.",
+      "description": "Keep pinned container digests current through reviewed pull requests. Digest rebuilds carry no release timestamp, so a release-age wait would stay pending forever.",
       "matchDatasources": ["docker"],
       "matchUpdateTypes": ["digest"],
       "groupName": "container image digests",
+      "minimumReleaseAge": null,
       "automerge": false
     },
     {

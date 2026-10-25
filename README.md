@@ -47,7 +47,33 @@ Open:
 http://localhost:3080
 ```
 
-Cloudflare Tunnel service URL: `http://127.0.0.1:3080`. For `https://thunderstrux.mistayu.com`, set AUTH_URL, NEXTAUTH_URL, NEXT_PUBLIC_APP_URL and TRUSTED_APP_ORIGINS to that public origin in ignored .env, then recreate the app. Next's development-origin allowlist includes this exact hostname so browser assets load through the tunnel. The container still listens on port 3000; APP_PORT only controls the host port.
+The dev stack is for loopback only: never put it behind a public hostname. `next dev` answers development endpoints to anyone who can reach it, and its seeded accounts share a published password (SEC-014, SEC-015). The container still listens on port 3000; APP_PORT only controls the host port.
+
+## Public Preview (pre-production)
+
+The public preview at `https://thunderstrux.mistayu.com` runs the production build through the single-host deploy path in [Production Operations](docs/obsidian/Production%20Operations.md), as `thunderstrux.com` will later. It has its own project, database, Redis and workers, separate from the dev stack.
+
+1. Create an ignored `.env.preview` from `.env.example`:
+   - random `AUTH_SECRET` (at least 32 characters), `MFA_ENCRYPTION_KEY` and `NOTIFICATION_ENCRYPTION_KEY`: `openssl rand -base64 32`;
+   - `AUTH_URL`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL` and `TRUSTED_APP_ORIGINS` set to `https://thunderstrux.mistayu.com`, and `APP_PORT=3090`;
+   - `MFA_ENFORCEMENT_MODE=enforce`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, `RATE_LIMIT_ENABLED=true` and `RATE_LIMIT_TRUSTED_PROXY_HEADER=cf-connecting-ip`;
+   - Stripe **test** keys and the test-mode webhook secrets for the preview's endpoints (live keys are for `thunderstrux.com` only);
+   - email (`RESEND_API_KEY`, `EMAIL_FROM`) and an S3-compatible bucket in the `ASSET_STORAGE_*` values;
+   - `DATABASE_URL` for the `db` service with the credentials in `.env.db`. The `ops-preview` project gets its own volume, so it starts as a fresh database, never the dev one.
+2. Deploy, then start the workers:
+
+   ```bash
+   pnpm ops:deploy -- --project ops-preview --env-file .env.preview --url http://127.0.0.1:3090 --release <git-sha>
+   ```
+
+   ```bash
+   docker compose --env-file .env.preview -p ops-preview -f docker-compose.yml -f docker-compose.hardened.yml -f docker-compose.schedules.yml --profile workers up -d
+   ```
+
+3. Point the Cloudflare Tunnel's public hostname at `http://127.0.0.1:3090`.
+4. Optional demo content: run `node prisma/seed.mjs` in the preview's `migration` service with `SEED_DEMO_PASSWORD` (at least 16 characters). The seed refuses a public origin without it, and the accounts then use that password, not `password123`.
+
+Staff enrol an authenticator on first sign-in, as production requires.
 
 Database from host:
 
@@ -132,7 +158,7 @@ Organisation management normally uses an active `OrganisationStaff` record, its 
 
 ## Seeded Accounts
 
-All seeded accounts use:
+For local (loopback) databases only. On a public origin the seed needs `SEED_DEMO_PASSWORD` and uses it instead. All locally seeded accounts use:
 
 ```text
 password123

@@ -19,4 +19,9 @@ describe("security headers (T39)", () => {
   test("the unused image optimizer stays off, so /_next/image answers 404", () => {
     expect(nextConfig.images?.unoptimized).toBe(true);
   });
+
+  test("the dev server serves no public host and exposes no MCP endpoint (SEC-014)", () => {
+    expect(nextConfig.allowedDevOrigins).toEqual(["127.0.0.1", "localhost"]);
+    expect(nextConfig.experimental?.mcpServer).toBe(false);
+  });
 });

@@ -68,23 +68,33 @@ describe("shared formatters", () => {
 });
 
 describe("auth secret resolution", () => {
-  test("auth and proxy share one development fallback", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    for (const AUTH_SECRET of ["", "dev-secret", "replace-with-a-non-empty-secret"]) {
-      expect(resolveAuthSecret({ NODE_ENV: "development", AUTH_SECRET })).toBe(
-        "dev-only-auth-secret"
-      );
+  test("only tests and builds fall back; development refuses placeholders (SEC-016)", () => {
+    const unsafe = ["", "  ", "dev-secret", "replace-with-a-non-empty-secret", "build-time-only-auth-secret-change-at-runtime"];
+    for (const AUTH_SECRET of unsafe) {
+      expect(resolveAuthSecret({ NODE_ENV: "test", AUTH_SECRET })).toBe("dev-only-auth-secret");
+      expect(() => resolveAuthSecret({ NODE_ENV: "development", AUTH_SECRET })).toThrow("openssl rand -base64 32");
+      expect(() => resolveAuthSecret({ NODE_ENV: "development", AUTH_SECRET, AUTH_URL: "https://preview.example.test" })).toThrow();
     }
+    expect(resolveAuthSecret({ NODE_ENV: "development", AUTH_SECRET: " local-only-secret " })).toBe("local-only-secret");
     expect(
-      resolveAuthSecret({ NODE_ENV: "production", AUTH_SECRET: " real-secret " })
-    ).toBe("real-secret");
+      resolveAuthSecret({ NODE_ENV: "production", AUTH_SECRET: ` ${"r".repeat(32)} ` })
+    ).toBe("r".repeat(32));
   });
 
-  test("production rejects placeholders except while building", () => {
+  test("production rejects placeholders and short secrets except while building", () => {
     expect(() =>
       resolveAuthSecret({ NODE_ENV: "production", AUTH_SECRET: "dev-secret" })
-    ).toThrow("AUTH_SECRET must be set");
+    ).toThrow("AUTH_SECRET must be");
+    expect(() =>
+      resolveAuthSecret({ NODE_ENV: "production", AUTH_SECRET: "r".repeat(31) })
+    ).toThrow("at least 32 characters");
+    expect(
+      resolveAuthSecret({
+        NODE_ENV: "production",
+        AUTH_SECRET: "build-time-only-auth-secret-change-at-runtime",
+        npm_lifecycle_event: "build"
+      })
+    ).toBe("dev-only-auth-secret");
     expect(
       resolveAuthSecret({
         NODE_ENV: "production",

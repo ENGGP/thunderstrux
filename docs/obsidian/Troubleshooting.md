@@ -24,9 +24,9 @@ Contracts: [[Authentication and Dashboard Access]], [[API Reference]], [[Email D
 
 ## HTTPS Tunnel Redirect Loop
 
-If a signed-in dashboard, account or event URL alternates between itself and `/login?callbackUrl=...`, check the shared proxy rather than clearing all cookies. The login page can see the HTTPS secure session while a proxy using Auth.js's default non-secure cookie name sees no session. `proxy.ts` now derives `secureCookie` from `AUTH_URL`, `NEXTAUTH_URL` or the request URL, matching the issuer. Keep auth/public URLs set to `https://thunderstrux.mistayu.com` and the tunnel service at `http://127.0.0.1:3080`.
+If a signed-in dashboard, account or event URL alternates between itself and `/login?callbackUrl=...`, check the shared proxy rather than clearing all cookies. The login page can see the HTTPS secure session while a proxy using Auth.js's default non-secure cookie name sees no session. `proxy.ts` now derives `secureCookie` from `AUTH_URL`, `NEXTAUTH_URL` or the request URL, matching the issuer. Keep the preview's auth/public URLs set to `https://thunderstrux.mistayu.com` and the tunnel service at the preview's loopback port (`http://127.0.0.1:3090`, README, Public Preview).
 
-After changing the proxy, restart only the app with `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart app`; the development server may retain the old guard. Refresh the affected URL after restart. Existing valid HTTPS sessions work; revoked, expired or invalid sessions still require fresh login. Do not disable secure cookies, live identity checks or CSRF to work around a redirect loop.
+After changing the proxy, restart the app (the preview redeploys through `pnpm ops:deploy`; the local dev app restarts with `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart app`). Refresh the affected URL after restart. Existing valid HTTPS sessions work; revoked, expired or invalid sessions still require fresh login. Do not disable secure cookies, live identity checks or CSRF to work around a redirect loop.
 
 ## Sign In Does Nothing In Local Docker
 
@@ -34,7 +34,7 @@ Symptom: on `http://127.0.0.1:3080/login` (or any page) buttons do nothing, and 
 
 Cause: Next 16 blocks its dev resources, including the HMR socket, for any host not in `allowedDevOrigins`, and the page then never hydrates. The app log says `Blocked cross-origin request to Next.js dev resource /_next/hmr from "127.0.0.1"`.
 
-Fix: `next.config.ts` allows `127.0.0.1` and `localhost` beside the tunnel host (22 Oct 2026). If you open the dev app at another name, add it there; Next restarts itself when the file changes. Production builds ignore this setting.
+Fix: `next.config.ts` allows `127.0.0.1` and `localhost` (22 Oct 2026). Since SEC-014 it lists no public host: the dev app is never tunnelled, and the public preview runs the production build. To open the dev app at another local name, add it there; Next restarts itself when the file changes. Production builds ignore this setting.
 
 ## UI Change Not Visible
 
@@ -587,15 +587,16 @@ Stripe variables may remain empty for non-payment local work.
 
 Symptoms:
 
-- Production-like app startup or proxy initialization fails with:
+- App startup or proxy initialization fails with one of:
 
 ```text
-AUTH_SECRET must be set to a strong non-placeholder value in production.
+AUTH_SECRET must be a random value of at least 32 characters in production.
+AUTH_SECRET must be set to a random value. Generate one with: openssl rand -base64 32
 ```
 
 Reason:
 
-- Production runtime rejects empty or placeholder auth secrets.
+- Production and development runtimes reject empty or placeholder auth secrets (SEC-016); production also rejects secrets shorter than 32 characters. Only tests and builds fall back.
 - `auth.ts` and `proxy.ts` both enforce this.
 
 Fix:

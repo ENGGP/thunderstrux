@@ -553,7 +553,7 @@ Expected behavior:
 - Logged-in requests continue normally.
 - `/events/[eventId]` is public (T15a); its checkout pages require a member sign-in.
 - Member accounts requesting `/dashboard/events/[eventId]` redirect to `/`.
-- Production startup rejects missing or placeholder `AUTH_SECRET` values. `auth.ts` and `proxy.ts` resolve the secret through `lib/auth/secret.ts`, so a placeholder in development gives both the same fallback.
+- Startup rejects missing or placeholder `AUTH_SECRET` values in development and production (production also needs 32 characters); only tests and builds fall back. `auth.ts` and `proxy.ts` resolve the secret through `lib/auth/secret.ts`. Generate a local value with `openssl rand -base64 32`.
 
 ## Docker Access From Codex
 
@@ -711,7 +711,7 @@ LEGACY_ORGANISATION_ACCESS_MODE=allow
 TRUSTED_APP_ORIGINS=
 ```
 
-To reach one dev app at two addresses (say `http://127.0.0.1:3080` and a tunnelled public domain), keep the public one in `NEXT_PUBLIC_APP_URL`, `AUTH_URL` and `NEXTAUTH_URL`, and list both in `TRUSTED_APP_ORIGINS`. Stripe returns and sign-out then stay on the address in use, while emailed links use the public domain. Sessions are per host, so signing in on one address doesn't sign you in on the other.
+The dev app is loopback-only. Don't tunnel it to a public domain: `next dev` answers development endpoints to anyone who reaches it (SEC-014), and `next.config.ts` lists only `127.0.0.1` and `localhost` as dev origins. The public preview runs the production build under its own project (README, Public Preview; [[Production Operations]]). To reach one app at two addresses, keep the public one in `NEXT_PUBLIC_APP_URL`, `AUTH_URL` and `NEXTAUTH_URL` and list both in `TRUSTED_APP_ORIGINS`; sessions are per host.
 
 **Stripe webhooks on the dev app.** Without a webhook endpoint, a dev payment completes only when the browser comes back to `/success`: the development-only fallback reads the Session from Stripe. Expiries, refunds and disputes never arrive, and unpaid orders stay pending until the stale-order worker runs, because the dev stack runs no workers.
 

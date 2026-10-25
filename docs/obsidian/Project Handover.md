@@ -38,7 +38,7 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
   - The stale-order job is the only place unpaid ticket orders expire.
 - **Holds (DEF-033, PAY-009):** a ticket hold lasts 5 minutes past its Stripe page (`lateWebhookGraceMs`, shared with commerce's stale expiry); pages show Stripe's closing time. New events default to `automatic_full` compensation, as commerce does.
 - **Payouts (PAY-005, DEF-034):** held until 2 days after the event (7 days for commerce), then at most one payout per society per UTC day.
-- Tunnel preview: APP_PORT=3080 maps loopback host port 3080 to container port 3000; ignored .env uses https://thunderstrux.mistayu.com for auth/public/trusted origins and cf-connecting-ip for client addresses; `proxy.ts` picks the secure session cookie from the Auth.js public URL. Evidence is in [[Project Handover 2026-10-15]]; preview reachability does not resolve production release gates.
+- Public preview (T48, SEC-014): `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview` with ignored `.env.preview`, loopback port 3090 behind the Cloudflare Tunnel, `cf-connecting-ip` for client addresses, MFA enforced and legacy access denied. The dev stack (port 3080) is loopback-only and never tunnelled. `proxy.ts` and the app's own cookies follow the Auth.js public URL's scheme. Preview reachability does not resolve production release gates.
 - Validation follows the risk table in [[Engineering Delivery Workflow]]: local evidence recorded in each PR, GitHub test checks not required (VALID-001), documentation-only changes use docs and diff checks only.
 - Product decisions follow how Eventbrite, Humanitix and Luma solved the same problem, thought through critically for a student-society tool, with the reasoning recorded in the PR.
 
@@ -96,13 +96,14 @@ The preview at `thunderstrux.mistayu.com` stays the pre-production host; `thunde
 
 | Item | PR | Status and evidence |
 | --- | --- | --- |
+| T48 production-profile preview | [#176](https://github.com/ENGGP/thunderstrux/pull/176) | `allowedDevOrigins` lists no public host and Next's dev MCP endpoint is off; `AUTH_SECRET` falls back only in tests and builds (production needs 32 characters); guest and context cookies follow the public URL's scheme; the seed refuses a public origin without `SEED_DEMO_PASSWORD`. The preview moves to `ops-preview` (README, Public Preview). No migration. Baseline baseline-33b8bc3817d47b15a6a79d6a on 908244e: production build, 42/42 guards, typecheck, 680/680 integration tests in 103 files, no known vulnerabilities; operations rehearsal ops-ad72c25e25 passed. |
 | T47 request bounds | [#175](https://github.com/ENGGP/thunderstrux/pull/175) | Ticket types capped at 50, JSON bodies at 100 KB through one `readJsonBody`, validation answers at 20 issues, and `/_next/image` off. No migration. Baseline `baseline-d43e7a4d2bab3a203b1d1261` on `2637fe2`: production build, 42/42 guards, typecheck, 674/674 integration tests in 102 files, no known vulnerabilities. |
 
 ## Next Safe Actions
 
 First, ahead of the list below:
-- **Contain the live preview now (owner).** Until T48 lands, pause the tunnel's public hostname or put a Cloudflare Access policy in front of it. Re-password or disable the seeded `@example.com` accounts in the dev database, and confirm the ignored `.env` holds a random `AUTH_SECRET` (`openssl rand -base64 32`).
-- Continue the security remediation in order, T48 to T53, flipping each SEC row as its PR lands.
+- **Cut the preview over (owner).** Deploy `ops-preview` from `.env.preview` and point the tunnel at port 3090 (README, Public Preview). Until then, keep the tunnel's public hostname paused or behind a Cloudflare Access policy. Re-password or disable the seeded `@example.com` accounts in the dev database, which was public, and keep a random `AUTH_SECRET` in `.env`.
+- Continue the security remediation in order, T49 to T53, flipping each SEC row as its PR lands.
 
 1. Before hosting: create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]], and pass PAY-002 on the hosted endpoint. Automatic refunds are now the default for new events, as for commerce.
 2. When hosting is chosen, run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`, and add an uptime or heartbeat check that covers the monitor (OPS-002).

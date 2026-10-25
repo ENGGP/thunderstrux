@@ -33,12 +33,12 @@ Main files:
 
 `AUTH_SECRET` rules:
 
-- production runtime requires a real non-placeholder `AUTH_SECRET`
-- development may use a dev-only fallback with a warning
-- Docker image builds use a build-time placeholder only so real secrets are not required during image creation
-- `auth.ts` and `proxy.ts` share one resolver, `lib/auth/secret.ts`, so the proxy always reads sessions with the secret that signed them, including the development fallback
+- production runtime requires a random `AUTH_SECRET` of at least 32 characters
+- development also refuses placeholders (SEC-016): the fallback key is in source, and a dev app can be reachable from outside; only tests and builds use it
+- Docker image builds use a build-time placeholder only so real secrets are not required during image creation; the runtime refuses that value
+- `auth.ts` and `proxy.ts` share one resolver, `lib/auth/secret.ts`, so the proxy always reads sessions with the secret that signed them
 
-The proxy selects Auth.js's secure session cookie from `AUTH_URL`, then `NEXTAUTH_URL`, then the request URL. An HTTPS public URL uses `__Secure-authjs.session-token` even when Cloudflare forwards to an HTTP loopback service; HTTP local development uses `authjs.session-token`. Auth.js handles chunked cookies. The proxy still validates the live account/authVersion before allowing `/dashboard/*`, `/account/*` or `/events/*`. A missing, invalid, stale or disabled session redirects to login with the original path/query as its callback.
+The proxy selects Auth.js's secure session cookie from `AUTH_URL`, then `NEXTAUTH_URL`, then the request URL (`publicOriginIsHttps` in `lib/auth/public-origin.ts`). The guest session and dashboard-context cookies are `Secure` in production and whenever that public URL is https, so an https preview never sends them in clear (SEC-017). An HTTPS public URL uses `__Secure-authjs.session-token` even when Cloudflare forwards to an HTTP loopback service; HTTP local development uses `authjs.session-token`. Auth.js handles chunked cookies. The proxy still validates the live account/authVersion before allowing `/dashboard/*`, `/account/*` or `/events/*`. A missing, invalid, stale or disabled session redirects to login with the original path/query as its callback.
 
 ## User Model
 
@@ -88,7 +88,7 @@ Behavior:
 - Relative callback URL is preserved in the query string
 - Organisation accounts see public event pages as buyers do; the ticket box tells them society accounts can't buy
 - Management pages resolve live staff/capability/MFA authority; a member accountRole alone neither grants nor prevents staff access.
-- In production, the shared secret resolver fails startup for unsafe `AUTH_SECRET` values: empty string, `dev-secret`, or `replace-with-a-non-empty-secret`
+- Outside tests and builds, the shared secret resolver fails startup for unsafe `AUTH_SECRET` values: empty, `dev-secret`, `replace-with-a-non-empty-secret` or the Dockerfile's build placeholder; production also requires at least 32 characters
 
 ## Login and Signup Flow
 

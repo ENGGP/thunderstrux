@@ -9,20 +9,51 @@ export type ValidationResult<T> =
   | { success: true; data: T }
   | { success: false; details: ApiErrorDetail[] };
 
+// Bounds what one request can make the server buffer and echo back.
+const maxJsonBodyBytes = 100_000;
+const maxErrorDetails = 20;
+
+export class RequestBodyTooLargeError extends Error {}
+
 function zodErrorDetails(error: ZodError): ApiErrorDetail[] {
-  return error.issues.map((issue) => ({
+  return error.issues.slice(0, maxErrorDetails).map((issue) => ({
     path: issue.path.map((pathPart) => String(pathPart)),
     message: issue.message
   }));
 }
 
+// Reads at most maxBytes, stopping before buffering the rest; bad JSON throws SyntaxError.
+export async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
+  if (Number(request.headers.get("content-length") ?? 0) > maxBytes) throw new RequestBodyTooLargeError();
+  let length = 0;
+  const chunks: Uint8Array[] = [];
+  if (request.body) {
+    const reader = request.body.getReader();
+    try {
+      while (true) {
+        const next = await reader.read();
+        if (next.done) break;
+        length += next.value.length;
+        if (length > maxBytes) {
+          await reader.cancel();
+          throw new RequestBodyTooLargeError();
+        }
+        chunks.push(next.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
+}
+
 export async function parseJsonBody(request: Request): Promise<ParseJsonResult> {
   try {
-    return { success: true, data: await request.json() };
-  } catch {
+    return { success: true, data: await readJsonBody(request, maxJsonBodyBytes) };
+  } catch (error) {
     return {
       success: false,
-      details: [{ message: "Request body must be valid JSON" }]
+      details: [{ message: error instanceof RequestBodyTooLargeError ? "Request body is too large" : "Request body must be valid JSON" }]
     };
   }
 }

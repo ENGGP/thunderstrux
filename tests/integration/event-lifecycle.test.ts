@@ -139,6 +139,29 @@ describe("event lifecycle", () => {
     );
   });
 
+  test("ticket types are capped so one request cannot validate an unbounded list", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const ticketTypes = (count: number) => Array.from({ length: count }, (_item, index) => ({ name: `Type ${index}`, price: 1500, quantity: 10 }));
+
+    const tooMany = await createEventRoute(jsonRequest("http://localhost/api/events", eventPayload(organisation.id, { ticketTypes: ticketTypes(51) })));
+    expect(tooMany.status).toBe(400);
+    const body = await parseJsonResponse(tooMany);
+    expect(body.error.details).toEqual([expect.objectContaining({ path: ["ticketTypes"], message: "Up to 50 ticket types." })]);
+    expect(await prisma.event.count({ where: { organisationId: organisation.id } })).toBe(0);
+
+    // Invalid items past the cap still yield one issue, not one per item, even without a session.
+    clearMockSession();
+    const invalid = await createEventRoute(jsonRequest("http://localhost/api/events", eventPayload(organisation.id, { ticketTypes: Array.from({ length: 5000 }, () => ({})) })));
+    expect(invalid.status).toBe(400);
+    expect((await parseJsonResponse(invalid)).error.details).toHaveLength(1);
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const atLimit = await createEventRoute(jsonRequest("http://localhost/api/events", eventPayload(organisation.id, { ticketTypes: ticketTypes(50) })));
+    expect(atLimit.status).toBe(201);
+    expect((await parseJsonResponse(atLimit)).event.ticketTypes).toHaveLength(50);
+  });
+
   test("event update authenticates before validation", async () => {
     const { organisation } = await createOrganisationAccount();
     const event = await createEvent({ organisationId: organisation.id });

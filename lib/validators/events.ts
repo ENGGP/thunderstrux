@@ -30,6 +30,9 @@ const eventFieldsSchema = z
 // Prices follow priceAmountSchema (free, or $0.50 to $999,999.99) and stock stops
 // at a million, so totals stay inside a 32-bit integer (T39).
 const maxQuantity = 1_000_000;
+// An unbounded array let one request validate millions of items before authentication.
+export const MAX_TICKET_TYPES = 50;
+const ticketTypeCountError = `Up to ${MAX_TICKET_TYPES} ticket types.`;
 const memberPrice = priceAmountSchema.nullable().optional();
 const withinPrice = (ticketType: { price: number; memberPrice?: number | null }) => ticketType.memberPrice == null || ticketType.memberPrice <= ticketType.price;
 const withinPriceError = { message: "The member price can't be more than the price", path: ["memberPrice"] };
@@ -54,7 +57,7 @@ const updateTicketTypeFieldsSchema = z.object({
 // asks to review it, as commerce orders are and as ticketing platforms do.
 export const createEventSchema = eventFieldsSchema.extend({
   compensationRefundMode: z.enum(["manual_review", "automatic_full"]).default("automatic_full"),
-  ticketTypes: z.array(createTicketTypeSchema).optional().default([])
+  ticketTypes: z.array(createTicketTypeSchema).max(MAX_TICKET_TYPES, ticketTypeCountError).optional().default([])
 });
 
 // An existing type also sends the remaining quantity the editor loaded, so a
@@ -75,7 +78,7 @@ const versionSchema = z.number().int().positive();
 export const updateEventSchema = eventFieldsSchema.extend({
   version: versionSchema,
   compensationRefundMode: z.enum(["manual_review", "automatic_full"]).optional(),
-  ticketTypes: z.array(updateTicketTypeSchema).optional().default([])
+  ticketTypes: z.array(updateTicketTypeSchema).max(MAX_TICKET_TYPES, ticketTypeCountError).optional().default([])
 });
 
 export const eventPublicationSchema = z.object({

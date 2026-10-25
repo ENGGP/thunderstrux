@@ -275,6 +275,18 @@ test("profile transport preserves member/tenant, CSRF, strict input and fail-clo
       )
     ).status,
   ).toBe(400);
+  expect(
+    (
+      await PATCH(
+        jsonRequest(
+          "http://localhost",
+          { ...input(), description: "x".repeat(80_000) },
+          { method: "PATCH" },
+        ),
+        routeContext({ orgSlug: own.organisation.slug }),
+      )
+    ).status,
+  ).toBe(413);
   setRateLimitTestEnabled(true);
   setRateLimitTestBackendFailure(new Error("synthetic Redis outage"));
   vi.stubEnv("RATE_LIMIT_ENABLED", "true");

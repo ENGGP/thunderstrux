@@ -15,4 +15,8 @@ describe("security headers (T39)", () => {
     for (const path of ["/api/me/account", "/api/orders/x", "/api/orgs/a/calendar"]) expect(pattern.test(path)).toBe(true);
     for (const path of ["/api/public/organisations/search", "/api/public/assets/a", "/api/health", "/api/health/ready"]) expect(pattern.test(path)).toBe(false);
   });
+
+  test("the unused image optimizer stays off, so /_next/image answers 404", () => {
+    expect(nextConfig.images?.unoptimized).toBe(true);
+  });
 });

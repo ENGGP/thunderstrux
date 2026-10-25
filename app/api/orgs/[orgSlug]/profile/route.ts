@@ -8,6 +8,7 @@ import {
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { AssetError } from "@/lib/assets/image";
+import { readJsonBody, RequestBodyTooLargeError } from "@/lib/api/request";
 type Context = { params: Promise<{ orgSlug: string }> };
 export async function GET(_request: Request, context: Context) {
   try {
@@ -37,29 +38,11 @@ export async function PATCH(request: Request, context: Context) {
       keyParts: [actor.id, organisationId],
     });
     if (limited) return limited;
-    let length = 0;
-    const chunks: Uint8Array[] = [];
-    if (request.body) {
-      const reader = request.body.getReader();
-      try {
-        while (true) {
-          const next = await reader.read();
-          if (next.done) break;
-          length += next.value.length;
-          if (length > 80000) {
-            await reader.cancel();
-            throw new AssetError(413, "Profile request is too large");
-          }
-          chunks.push(next.value);
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    }
     let json: unknown;
     try {
-      json = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    } catch {
+      json = await readJsonBody(request, 80000);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) throw new AssetError(413, "Profile request is too large");
       throw new AssetError(400, "Request body must be valid JSON");
     }
     return NextResponse.json(

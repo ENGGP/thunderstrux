@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-25]]", "[[Project Handover 2026-10-15]]", "[[Project Handover 2026-10-12]]"]
@@ -79,7 +79,30 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 - Focused integration runs inside the dev app container need the baseline test container's settings, or unrelated tests fail: `RATE_LIMIT_ENABLED=false`, `MFA_ENFORCEMENT_MODE=off`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, empty `TRUSTED_APP_ORIGINS`, `AUTH_URL`/`NEXTAUTH_URL` on plain `http`, capture-only `RESEND_API_KEY`, and `DATABASE_URL` pointing at `thunderstrux_test`. The baseline remains the evidence of record.
 - Tests that move the clock past a hold should derive the time from the hold, not hard-code it.
 
+## Security Audit And Remediation (T47 to T53)
+
+**Audit (2026-10-25).** A deep `/security-audit` run (`thunderstrux-run-1`, outside the repository) covered `7d72e33` in 72 coverage units over four hunter waves, ending with a clean final critic. Every finding was found, validated and finally verified by separate sandboxed agents with no network and dummy data. It found no cross-tenant access, authentication bypass or injection. The results are 13 confirmed findings (1 high, 5 medium, 7 low) and 11 leads, registered as SEC-001 to SEC-024 in [[Non-Blocking Issue Register]].
+
+**Remediation order**, one PR each:
+- T47: request bounds and the unused image optimizer (SEC-001, 013, 018);
+- T48: move the live preview onto the production profile, with the seed guard, `AUTH_SECRET` rule and scheme-based secure cookies (SEC-014 to 017);
+- T49: accounts and recovery (SEC-002, 007, 008, 012, 019);
+- T50: checkout holds, refunds and disputes (SEC-005, 010, 011, 024);
+- T51: events, staff and notices (SEC-003, 004, 006, 009);
+- T52: `thunderstrux.com` readiness: alerts, public images, release binding, restore fence (SEC-020 to 023);
+- T53: a hardening bundle.
+
+The preview at `thunderstrux.mistayu.com` stays the pre-production host; `thunderstrux.com` follows on the Droplet path.
+
+| Item | PR | Status and evidence |
+| --- | --- | --- |
+| T47 request bounds | pending | Ticket types capped at 50, JSON bodies at 100 KB through one `readJsonBody`, validation answers at 20 issues, and `/_next/image` off. No migration. |
+
 ## Next Safe Actions
+
+First, ahead of the list below:
+- **Contain the live preview now (owner).** Until T48 lands, pause the tunnel's public hostname or put a Cloudflare Access policy in front of it. Re-password or disable the seeded `@example.com` accounts in the dev database, and confirm the ignored `.env` holds a random `AUTH_SECRET` (`openssl rand -base64 32`).
+- Continue the security remediation in order, T48 to T53, flipping each SEC row as its PR lands.
 
 1. Before hosting: create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]], and pass PAY-002 on the hosted endpoint. Automatic refunds are now the default for new events, as for commerce.
 2. When hosting is chosen, run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`, and add an uptime or heartbeat check that covers the monitor (OPS-002).

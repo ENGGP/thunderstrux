@@ -82,6 +82,7 @@ Returns the same public-safe shape with `status: "ready"` only when the applicat
 
 - **Errors.** Every route answers errors in the shared envelope through `mapRouteError`. A failure the route doesn't name returns `500` with a generic message, and the log holds only the operation and the error's class, never the error, the body or provider data.
 - **Contract test.** `route-contract.test.ts` fails a new route that skips the mapper or, when it changes data, the origin check.
+- **Request bodies (SEC-001).** `validateJson` reads at most 100 KB (the profile route allows 80 KB and answers `413`); a larger body is `400` "Request body is too large". A validation answer lists at most 20 issues.
 - **Caching.** Every `/api` response except `/api/public/*` and `/api/health*` carries `Cache-Control: private, no-store` unless the route sets its own. Public reads use short public caching.
 - **Headers.** Every response carries the security headers listed in [[Route Security Inventory]].
 - **Stripe misconfiguration.** Ticket checkout answers `503` "Payments are unavailable right now. Try again later." when Stripe isn't configured, without naming the server's settings.
@@ -420,6 +421,7 @@ Rules:
 - `startTime` must be before `endTime`.
 - Ticket prices are integer cents.
 - Ticket quantities must be greater than zero.
+- At most 50 ticket types (create and edit); more returns 400 with `path: ["ticketTypes"]`.
 - Always creates a `draft` (T11); a submitted `status` is ignored. Publishing goes through `PATCH /api/events/[eventId]/publish`.
 - Optional `capacity` (positive integer or null), `visibility` (`public`, `unlisted` or `members_only`; publishing a members-only event needs a published plan that unlocks members-only events) and `salesCloseAt` (defaults to `startTime`, must not be after `endTime`).
 - Optional `heroAssetId` (T11b): a ready, undeleted `event` asset of the same society; anything else returns 400 with `path: ["heroAssetId"]`. Times are ISO instants; the dashboard builder converts the society's wall-clock times before sending.

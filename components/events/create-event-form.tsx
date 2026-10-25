@@ -11,6 +11,7 @@ import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
 import { calculatePlatformFee, isBelowStripeMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
+import { MAX_TICKET_TYPES } from "@/lib/validators/events";
 import { toZonedInput, zoneAbbreviation, zoneCity, zoneLabel, zonedCandidates } from "@/lib/zoned-time";
 
 type ErrorDetail = { path?: string[]; message: string };
@@ -577,10 +578,18 @@ export function CreateEventForm({
               );
             })}
 
-            <div>
-              <Button onClick={() => change({ ticketTypes: [...ticketTypes, { ...emptyTicketType }] })} type="button" variant="secondary">
+            <div className="grid justify-items-start gap-2">
+              <Button
+                disabled={ticketTypes.length >= MAX_TICKET_TYPES}
+                onClick={() => change({ ticketTypes: [...ticketTypes, { ...emptyTicketType }] })}
+                type="button"
+                variant="secondary"
+              >
                 Add ticket type
               </Button>
+              {ticketTypes.length >= MAX_TICKET_TYPES ? (
+                <p className="text-sm text-ink-muted">An event can have up to {MAX_TICKET_TYPES} ticket types.</p>
+              ) : null}
             </div>
           </div>
         </Card>

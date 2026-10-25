@@ -136,7 +136,7 @@ export async function restoreDisputedTickets(input: { organisationId: string; or
   const reason = input.reason.trim();
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, input.orderId))) throw new PurchaseReviewError("not_found", "Order was not found");
+    if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new PurchaseReviewError("not_found", "Order was not found");
     const order = await tx.order.findFirst({ where: { id: input.orderId, event: { organisationId: input.organisationId } }, select: { disputeStatus: true } });
     if (!order) throw new PurchaseReviewError("not_found", "Order was not found");
     // Every dispute still on the order must have closed in the society's favour; all of them are resolved together.
@@ -217,7 +217,7 @@ export async function markExternalRefundReviewed(input: { organisationId: string
     return;
   }
   await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, input.orderId))) throw new PurchaseReviewError("not_found", "Order was not found");
+    if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new PurchaseReviewError("not_found", "Order was not found");
     const order = await tx.order.findFirst({
       where: { id: input.orderId, event: { organisationId: input.organisationId } },
       select: { externalRefundedAmount: true, externalRefundReviewedAt: true, refundStatus: true }

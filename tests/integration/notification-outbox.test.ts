@@ -45,6 +45,10 @@ describe("general notification outbox", () => {
     expect(job.encryptedPayload).not.toContain("synthetic-token");
     expect(JSON.stringify(decryptNotification(job.encryptedPayload, job.id))).toContain("synthetic-token");
     expect(() => decryptNotification(job.encryptedPayload, "different-job")).toThrow();
+    // A truncated authentication tag is refused, not checked against fewer bytes (T53).
+    const [version, iv, tag, ciphertext] = job.encryptedPayload.split(":");
+    const short = Buffer.from(tag, "base64url").subarray(0, 4).toString("base64url");
+    expect(() => decryptNotification([version, iv, short, ciphertext].join(":"), job.id)).toThrow();
   });
   test("a society notice may name its own subject, with line breaks folded to spaces; other templates may not (SEC-003)", () => {
     expect(renderNotification("business_notice", { message: "Moved", subject: "Change to Trivia night" }).subject).toBe("Change to Trivia night");

@@ -102,7 +102,7 @@ export async function markPickup(actor: AccountActor, organisationId: string, or
   const { step, expectedVersion } = pickupStepSchema.parse(input);
   return prisma.$transaction(async (tx) => {
     const organisation = await lockOrganisationActor(tx, actor, organisationId, "merchandise:fulfil");
-    await lockCommerceOrder(tx, orderId);
+    await lockCommerceOrder(tx, orderId, organisationId);
     const order = await tx.commerceOrder.findFirst({
       where: { id: orderId, organisationId, kind: "merchandise" },
       select: { id: true, version: true, status: true, pickupStatus: true, requiresCompensationReview: true, refundStatus: true, disputeStatus: true, cancelledAt: true, buyerEmailSnapshot: true, sellerName: true }

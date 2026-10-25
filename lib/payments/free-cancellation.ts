@@ -21,7 +21,7 @@ export async function cancelFreePurchase(input: { organisationId: string; orderI
   const reason = input.reason.trim();
   const now = new Date();
   return prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, input.orderId))) throw new FreeCancellationError("not_found", "Order was not found");
+    if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new FreeCancellationError("not_found", "Order was not found");
     const order = await tx.order.findFirst({
       where: { id: input.orderId, event: { organisationId: input.organisationId } },
       select: { paymentKind: true, status: true, fulfilledAt: true, cancelledAt: true, buyerEmailSnapshot: true, event: { select: { title: true } } }

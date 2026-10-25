@@ -216,6 +216,31 @@ describe("ticket visibility and check-in API", () => {
     );
   });
 
+  test("a search keeps its filter on later pages (T53)", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+    const ticketType = event.ticketTypes[0];
+    const matches: string[] = [];
+    for (const [index, name] of ["findme-a", "someone-else", "findme-b", "findme-c"].entries()) {
+      const member = await createMember({ email: `${name}-${organisation.id}@example.com` });
+      const { ticket } = await createPaidTicket({
+        organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, userId: member.id,
+        createdAt: new Date(`2026-05-01T10:0${index}:00.000Z`)
+      });
+      if (name.startsWith("findme")) matches.push(ticket.id);
+    }
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const page = async (cursor?: string) => parseJsonResponse(await getEventTickets(
+      jsonRequest(`http://localhost/api/events/${event.id}/tickets?limit=2&q=findme${cursor ? `&cursor=${encodeURIComponent(cursor)}&direction=next` : ""}`),
+      routeContext({ eventId: event.id })
+    ));
+    const first = await page();
+    expect(first.tickets.map((ticket: { id: string }) => ticket.id)).toEqual(matches.slice(0, 2));
+    const second = await page(first.pageInfo.nextCursor);
+    expect(second.tickets.map((ticket: { id: string }) => ticket.id)).toEqual(matches.slice(2));
+  });
+
   test("invalid ticket pagination params return bad request", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const event = await createEvent({ organisationId: organisation.id });

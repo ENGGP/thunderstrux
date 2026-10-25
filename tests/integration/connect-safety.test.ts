@@ -7,7 +7,7 @@ import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { MfaInputError } from "@/lib/security/staff-mfa";
 import { getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
-import { disconnectAccount, markAccountStatusError, StripeDisconnectBlockedError } from "@/lib/stripe/connect";
+import { createOrganisationDashboardLink, disconnectAccount, markAccountStatusError, StripeDisconnectBlockedError } from "@/lib/stripe/connect";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createEvent, createOrder, createOrganisationAccount, createReservation } from "@/tests/helpers/test-data";
 
@@ -130,6 +130,14 @@ describe("disconnect", () => {
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     await expect(disconnectAccount(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toBeInstanceOf(MfaInputError);
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).not.toBeNull();
+  });
+
+  test("opening the Stripe dashboard also needs an authenticator code when staff MFA is on, before Stripe is asked (T53)", async () => {
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
+    await expect(createOrganisationDashboardLink(owner.organisation.id, { actor: { id: owner.user.id } })).rejects.toBeInstanceOf(MfaInputError);
+    await expect(createOrganisationDashboardLink(owner.organisation.id, { actor: { id: owner.user.id }, mfaCode: "123456" })).rejects.toThrow();
+    expect(await prisma.auditLog.count({ where: { action: "stripe_connect.dashboard_opened" } })).toBe(0);
   });
 });
 

@@ -98,7 +98,7 @@ Data stays in Australia, the database is managed, and the hosted Compose contrac
   - **Caddy** is the only public service: automatic Let's Encrypt HTTPS, a 6 MB request limit and compression.
   - It sets `X-Thunderstrux-Client-IP` from the connection on every request, and the app trusts only that header for rate limiting (SEC-002). Incoming `X-Forwarded-For` is dropped.
   - **Secrets:** each one is a file in `/etc/thunderstrux/secrets`, owned by uid 1000 with mode 0400, because plain Compose can't read Swarm's external secrets.
-  - **Backups:** a `backup` tool (PostgreSQL 16 client) writes a checked `pg_dump` before every migration.
+  - **Backups:** a `backup` tool (PostgreSQL 16 client) writes a checked `pg_dump` before every migration and keeps the newest seven dumps (T53).
 - **`Caddyfile`** and **`config.env.example`:** the non-secret settings, which become `/opt/thunderstrux/config.env`.
 
 **Deploying** (from a laptop or CI, over SSH as `deploy`):

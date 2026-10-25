@@ -335,7 +335,7 @@ Design round F1, approved 24 Oct 2026. A society is paid once its event is over,
 - **Release rules** (`lib/payouts/release.ts`, `heldMoney`):
   - ticket money is held until 2 days after its event ends;
   - membership and merchandise money for 7 days after the sale;
-  - an open dispute or a payment under compensation review holds its money until it closes;
+  - an open dispute or a payment under compensation review holds its money until it closes, and a lost dispute's money stays held while its transfer reversal is pending or uncertain (T53);
   - nothing is held past 80 days, because Stripe allows manual payouts to hold money at most 90 days in Australia.
   - A sale counts its society share (price less the fee and anything refunded outside Thunderstrux); a refunded order counts nothing. Ticket orders are scoped by `Event.organisationId` and the order's seller account.
 - **Payouts worker** (`processPayoutBatch`, `lib/payouts/payouts.ts`). It is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`), which already holds the Stripe key and runs every minute. Each ready society with payouts enabled is checked at most hourly, claimed through `Organisation.payoutCheckedAt`. The worker makes sure the account is on manual payouts, then reads the available AUD balance. If the balance less what the rules hold is at least $1.00, it sends one payout with the key `payout:<account>:<UTC date>` and records a `SocietyPayout`. A society already paid that UTC day is skipped before Stripe is called (DEF-034), so it gets at most one payout a day, like Eventbrite's batched schedules; money released later in the day goes the next day. A payout can never exceed the available balance, so a retry can't overpay.

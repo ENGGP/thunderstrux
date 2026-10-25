@@ -45,7 +45,7 @@ test("hosted contract requires external services, file secrets, and runtime hard
   const workerEnvironment = { ALERT_WEBHOOK_URL_FILE: "/run/secrets/alert_webhook_url" };
   const config = {
     services: {
-      app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true" }, healthcheck: { test: ["CMD", "node"] } }),
+      app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true", MFA_ENFORCEMENT_MODE: "enforce", LEGACY_ORGANISATION_ACCESS_MODE: "deny" }, healthcheck: { test: ["CMD", "node"] } }),
       migration: hardenedService({ image: opsImage, profiles: ["tools"] }),
       "notification-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
       "email-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
@@ -57,6 +57,11 @@ test("hosted contract requires external services, file secrets, and runtime hard
   };
   assert.equal(validateHostedConfig(config), config);
   assert.throws(() => validateHostedConfig({ ...config, services: { ...config.services, db: {} } }));
+  // T53: MFA enforcement and legacy denial are pinned.
+  for (const [name, value] of [["MFA_ENFORCEMENT_MODE", "enroll"], ["LEGACY_ORGANISATION_ACCESS_MODE", "allow"]]) {
+    const app = { ...config.services.app, environment: { ...config.services.app.environment, [name]: value } };
+    assert.throws(() => validateHostedConfig({ ...config, services: { ...config.services, app } }), new RegExp(name));
+  }
   assert.throws(() => validateHostedConfig({
     ...config,
     services: { ...config.services, app: { ...config.services.app, environment: { ...environment, AUTH_SECRET: "unsafe" } } }

@@ -38,10 +38,17 @@ export type AppendOrderLifecycleEventInput = {
   };
 };
 
-export async function lockOrder(tx: LifecycleClient, orderId: string) {
-  const rows = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE
-  `;
+// Staff paths pass their society, so a client-supplied id never locks another
+// tenant's row; the event decides the owner (T53).
+export async function lockOrder(tx: LifecycleClient, orderId: string, organisationId?: string) {
+  const rows = organisationId
+    ? await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT o."id" FROM "Order" o JOIN "Event" e ON e."id" = o."eventId"
+      WHERE o."id" = ${orderId} AND e."organisationId" = ${organisationId} FOR UPDATE OF o
+    `
+    : await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE
+    `;
   return rows.length > 0;
 }
 

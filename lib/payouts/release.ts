@@ -32,7 +32,8 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
   const capped = new Date(now.getTime() - maxHoldMs);
   // A nullable column: NOT refunded would also drop the never-refunded rows.
   const paidTo = { sellerStripeAccountId: stripeAccountId, paymentKind: "stripe" as const, paidAt: { gt: capped }, OR: [{ refundStatus: null }, { refundStatus: "processing" as const }] };
-  const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }];
+  // A lost dispute's money stays held until its transfer reversal settles (T53).
+  const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }, { disputes: { some: { reversalStatus: { in: ["pending" as const, "uncertain" as const] } } } }];
   const [tickets, commerce] = await Promise.all([
     prisma.order.findMany({
       // The event owns a ticket order (Event.organisationId is canonical).

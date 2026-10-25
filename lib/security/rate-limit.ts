@@ -147,7 +147,21 @@ export function getRateLimitClientIp(request: Request) {
   // The edge must overwrite this header with one canonical client address.
   // Comma-separated chains are rejected because choosing an element here would
   // make application behavior depend on untrusted proxy input.
-  return value.includes(",") ? "unknown" : value;
+  return value.includes(",") ? "unknown" : clientKey(value);
+}
+
+// One IPv6 client usually holds a whole /64, so its addresses share one bucket;
+// an IPv4-mapped address counts as its IPv4 address (T53).
+export function clientKey(address: string) {
+  const ip = address.replace(/%.*$/, "").toLowerCase();
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(ip);
+  if (mapped) return mapped[1];
+  if (!ip.includes(":") || !/^[0-9a-f:.]+$/.test(ip) || ip.split("::").length > 2) return address;
+  const [head, tail] = ip.split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? left : [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+  return `${groups.slice(0, 4).map((group) => parseInt(group || "0", 16).toString(16)).join(":")}::/64`;
 }
 
 function hashBucketKey(policy: RateLimitPolicy, keyParts: EnforceRateLimitInput["keyParts"]) {

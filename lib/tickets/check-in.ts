@@ -104,10 +104,14 @@ export async function getOrganisationEventTickets(
   const decoded = cursor ? decodeTimestampCursor("createdAt", cursor) : null;
   const [tickets, totalCount, checkedInCount] = await prisma.$transaction([
     prisma.ticket.findMany({
+      // Both the search and the cursor are OR clauses, so they're ANDed rather than spread:
+      // a spread let the cursor replace the search and later pages listed every ticket (T53).
       where: {
         ...scope,
-        ...(search.length >= 2 ? searchWhere(search) : { validity: "active" as const }),
-        ...(decoded ? ascendingCursorWhere("createdAt", decoded, direction) : {})
+        AND: [
+          search.length >= 2 ? searchWhere(search) : { validity: "active" as const },
+          ...(decoded ? [ascendingCursorWhere("createdAt", decoded, direction)] : [])
+        ]
       },
       orderBy: orderByForDirection("createdAt", direction, "asc"),
       take: limit + 1,

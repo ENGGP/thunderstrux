@@ -1089,11 +1089,12 @@ Rules:
 
 Returns a single-use link that signs the caller in to the society's own Stripe Express Dashboard: its balance, payouts and bank details.
 
-Request: `{ "organisationId": "..." }`. Response: `{ "url": "https://connect.stripe.com/express/..." }`.
+Request: `{ "organisationId": "...", "mfaCode"?: "123456" }`. Response: `{ "url": "https://connect.stripe.com/express/..." }`.
 
 Rules:
 
 - Auth, a trusted origin and live `stripe:manage` for that society, then the Connect rate limit.
+- Outside MFA mode `off`, a fresh authenticator code, as for disconnect: that dashboard can change where payouts go (T53). A missing or wrong code is `400` on `mfaCode` and Stripe is never called; guesses share the `staff_mfa_verify` limit.
 - The society must have finished Stripe setup (details submitted); otherwise `400` with `path: ["organisationId"]`.
 - Staff without `stripe:manage`, and other societies, get the same concealed answer as the other Connect routes, and Stripe is never called.
 - Links expire quickly and work once, so the page asks for one per click. Each link records `stripe_connect.dashboard_opened` in the society's History, naming who opened it, because payout details can change in that dashboard. No record is made when the request is refused. The status response says whether a dashboard is available (`dashboard_available`) and carries no link.

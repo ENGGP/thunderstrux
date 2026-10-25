@@ -36,6 +36,17 @@ async function asStaff(organisationId: string, role: "owner" | "admin" | "event_
 }
 
 describe("Stripe Express dashboard link", () => {
+  test("with staff MFA on, the link needs an authenticator code before Stripe is asked (T53)", async () => {
+    // Enroll mode lets an unenrolled owner past the login check, so the code step itself answers.
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    await asStaff(organisation.id, "owner");
+    const refused = await ask(organisation.id);
+    expect(refused.status).toBe(400);
+    expect((await parseJsonResponse(refused)).error.message).toContain("authenticator code");
+    expect(stripe.createLoginLink).not.toHaveBeenCalled();
+  });
+
   test("staff who manage payments get a fresh sign-in link to their society's own account, one per click", async () => {
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const openers: string[] = [];

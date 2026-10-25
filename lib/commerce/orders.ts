@@ -72,8 +72,11 @@ export function commerceTotals(kind: CommerceKind, paymentKind: PaymentKind, lin
   return { priced, totalAmount: Number(total) };
 }
 
-export async function lockCommerceOrder(tx: Prisma.TransactionClient, commerceOrderId: string) {
-  const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CommerceOrder" WHERE "id" = ${commerceOrderId} FOR UPDATE`;
+// Staff paths pass their society, so a client-supplied id never locks another tenant's row (T53).
+export async function lockCommerceOrder(tx: Prisma.TransactionClient, commerceOrderId: string, organisationId?: string) {
+  const rows = organisationId
+    ? await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CommerceOrder" WHERE "id" = ${commerceOrderId} AND "organisationId" = ${organisationId} FOR UPDATE`
+    : await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CommerceOrder" WHERE "id" = ${commerceOrderId} FOR UPDATE`;
   return rows.length > 0;
 }
 

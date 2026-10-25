@@ -96,7 +96,7 @@ The preview at `thunderstrux.mistayu.com` stays the pre-production host; `thunde
 
 | Item | PR | Status and evidence |
 | --- | --- | --- |
-| T48 production-profile preview | pending | `allowedDevOrigins` lists no public host and Next's dev MCP endpoint is off; `AUTH_SECRET` falls back only in tests and builds (production needs 32 characters); guest and context cookies follow the public URL's scheme; the seed refuses a public origin without `SEED_DEMO_PASSWORD`. The preview moves to `ops-preview` (README, Public Preview). No migration. |
+| T48 production-profile preview | [#176](https://github.com/ENGGP/thunderstrux/pull/176) | `allowedDevOrigins` lists no public host and Next's dev MCP endpoint is off; `AUTH_SECRET` falls back only in tests and builds (production needs 32 characters); guest and context cookies follow the public URL's scheme; the seed refuses a public origin without `SEED_DEMO_PASSWORD`. The preview moves to `ops-preview` (README, Public Preview). No migration. Baseline baseline-33b8bc3817d47b15a6a79d6a on 908244e: production build, 42/42 guards, typecheck, 680/680 integration tests in 103 files, no known vulnerabilities; operations rehearsal ops-ad72c25e25 passed. |
 | T47 request bounds | [#175](https://github.com/ENGGP/thunderstrux/pull/175) | Ticket types capped at 50, JSON bodies at 100 KB through one `readJsonBody`, validation answers at 20 issues, and `/_next/image` off. No migration. Baseline `baseline-d43e7a4d2bab3a203b1d1261` on `2637fe2`: production build, 42/42 guards, typecheck, 674/674 integration tests in 102 files, no known vulnerabilities. |
 
 ## Next Safe Actions

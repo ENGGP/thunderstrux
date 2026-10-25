@@ -46,10 +46,10 @@ describe("general notification outbox", () => {
     expect(JSON.stringify(decryptNotification(job.encryptedPayload, job.id))).toContain("synthetic-token");
     expect(() => decryptNotification(job.encryptedPayload, "different-job")).toThrow();
   });
-  test("a society notice may name its own subject; other templates and line breaks may not", () => {
+  test("a society notice may name its own subject, with line breaks folded to spaces; other templates may not (SEC-003)", () => {
     expect(renderNotification("business_notice", { message: "Moved", subject: "Change to Trivia night" }).subject).toBe("Change to Trivia night");
     expect(renderNotification("verify_account", { message: "Verify", subject: "Spoofed" }).subject).toBe("Verify your Thunderstrux email");
-    expect(() => renderNotification("business_notice", { message: "Moved", subject: "Change\nBcc: someone" })).toThrow();
+    expect(renderNotification("business_notice", { message: "Moved", subject: "Change\r\nBcc: someone" }).subject).toBe("Change Bcc: someone");
   });
   test("templates escape injection and reject foreign/credential links", () => {
     expect(renderNotification("verify_account", input().payload).html).not.toContain("<script>");

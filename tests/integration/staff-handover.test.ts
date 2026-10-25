@@ -7,6 +7,7 @@ import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, routeContext } from "@/tests/helpers/http";
 import { POST } from "@/app/api/orgs/[orgSlug]/staff/handover/route";
 import { updateOrganisationStaff } from "@/lib/staff/management";
+import { createOrganisationStaffInvite } from "@/lib/staff/invites";
 import { requireOrganisationPermission } from "@/lib/auth/access";
 import { closeAccount, closureAcknowledgement, readAccountClosureEligibility } from "@/lib/auth/account-closure";
 import { mfaGrantDigest } from "@/lib/security/csrf";
@@ -47,7 +48,10 @@ test("handover atomically promotes incoming owner, retains admin and retires the
 
 test("revocation removes old-session authority in legacy allow mode and releases account closure ownership blockers", async () => {
   const data = await fixture(); vi.stubEnv("LEGACY_ORGANISATION_ACCESS_MODE", "allow");
+  // A pending invitation to the outgoing owner goes with their access (SEC-006).
+  const pending = await createOrganisationStaffInvite({ organisationId: data.organisation.id, actor: actor(data.user), email: data.user.email, role: "owner" });
   await handOverOrganisationOwnership(actor(data.user), data.organisation.id, input(data.staff.id, "revoked"));
+  expect((await prisma.organisationStaffInvite.findUniqueOrThrow({ where: { id: pending.invite.id } })).revokedAt).not.toBeNull();
   setMockSession({ userId: data.user.id, email: data.user.email, accountRole: "organisation" });
   await expect(requireOrganisationPermission(data.organisation.id, "staff:manage")).rejects.toThrow();
   expect((await readAccountClosureEligibility(actor(data.user))).eligible).toBe(true);

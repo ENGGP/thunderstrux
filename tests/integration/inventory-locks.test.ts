@@ -312,4 +312,21 @@ describe("inventory and capacity locks", () => {
     if (removed) expect(checkout).toMatchObject({ status: "rejected", reason: { kind: "event_not_found" } });
     else expect(await prisma.event.count({ where: { id: event.id } })).toBe(1);
   });
+
+  test("unpublishing re-checks orders under the event lock, so a draft never has orders (SEC-009)", async () => {
+    mockSessions();
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const { setOrganisationEventPublication } = await import("@/lib/events/event-lifecycle");
+
+    const [checkout, unpublish] = await Promise.allSettled([
+      buy((await createMember()).id, event, 0, 1),
+      setOrganisationEventPublication(organisation.id, event.id, { targetStatus: "draft", version: event.version })
+    ]);
+
+    // Either the order landed and the event stays published, or the event went draft first and checkout refused.
+    expect(checkout.status === "fulfilled" && unpublish.status === "fulfilled").toBe(false);
+    const after = await prisma.event.findUniqueOrThrow({ where: { id: event.id }, select: { status: true, _count: { select: { orders: true } } } });
+    expect(after.status === "draft" && after._count.orders > 0).toBe(false);
+  });
 });

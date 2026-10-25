@@ -101,6 +101,19 @@ describe("notification matrix (T30)", () => {
     expect(read(jobs.find((job) => job.recipient === member.email)!).text).toContain("http://localhost:3000/tickets");
   });
 
+  test("a line break in one society's event title folds in the subject and doesn't hold up another society's notices (SEC-003)", async () => {
+    const first = await ticketedEvent();
+    await edit(first.event, 1, { title: "Spring\nGala", location: "Main Hall" });
+    const second = await ticketedEvent();
+    await edit(second.event, 1, { location: "Main Hall" });
+    while (await fanOutEventChanges(later())) { /* every page */ }
+    const jobs = await prisma.notificationOutbox.findMany({ where: { eventKey: { startsWith: "event-change/" } } });
+    const of = (eventId: string) => jobs.filter((job) => job.eventKey.startsWith(`event-change/${eventId}/`));
+    expect(of(first.event.id)).toHaveLength(2);
+    expect(of(second.event.id)).toHaveLength(2);
+    expect(read(of(first.event.id)[0]).subject).toBe("Change to Spring Gala");
+  });
+
   test("other edits, events without tickets and an undo before anyone heard send nothing; a correction keeps the original 'was'", async () => {
     const { event } = await ticketedEvent();
     await edit(event, 1, { title: "Renamed night", description: "New words" });

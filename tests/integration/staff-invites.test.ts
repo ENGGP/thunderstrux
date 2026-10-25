@@ -13,6 +13,7 @@ import { claimNotificationJobs, processNotificationClaim } from "@/lib/email/not
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestBackendFailure, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { closeAccount, closureAcknowledgement } from "@/lib/auth/account-closure";
 import { GET as listNotifications } from "@/app/api/notifications/route";
+import { updateOrganisationStaff } from "@/lib/staff/management";
 
 beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend()); setRateLimitTestBackendFailure(null); });
 afterEach(() => { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); setRateLimitTestBackendFailure(null); });
@@ -41,6 +42,18 @@ test("parallel acceptance commits once; accepted replay never reactivates revoke
   expect(await prisma.auditLog.count({ where: { action: "staff.invite.accepted" } })).toBe(1);
   await prisma.organisationStaff.update({ where: { id: outcomes[0].staff.id }, data: { status: "revoked" } });
   expect(await acceptOrganisationStaffInvite({ token: invite.token, actor: actor(data.recipient) })).toMatchObject({ alreadyAccepted: true, staff: { status: "revoked" } });
+});
+test("revoking staff revokes their pending invitations, so they can't rejoin unasked; a fresh invitation still works (SEC-006)", async () => {
+  vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
+  const data = await fixture();
+  const staff = await createOrganisationStaff({ organisationId: data.organisation.id, userId: data.recipient.id, role: "event_manager" });
+  const pending = await issue(data, "admin");
+  await updateOrganisationStaff(actor(data.user), data.organisation.id, staff.id, { status: "revoked" });
+  expect((await prisma.organisationStaffInvite.findUniqueOrThrow({ where: { id: pending.invite.id } })).revokedAt).not.toBeNull();
+  await expect(acceptOrganisationStaffInvite({ token: pending.token, actor: actor(data.recipient) })).rejects.toThrow();
+  expect(await prisma.organisationStaff.findUniqueOrThrow({ where: { id: staff.id } })).toMatchObject({ status: "revoked" });
+  const fresh = await issue(data);
+  expect((await acceptOrganisationStaffInvite({ token: fresh.token, actor: actor(data.recipient) })).staff).toMatchObject({ status: "active", role: "event_manager" });
 });
 test("lower-role invites preserve existing owners and every active role", async () => {
   const data = await fixture();

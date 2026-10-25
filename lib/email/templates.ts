@@ -9,8 +9,9 @@ export type NotificationTemplate = z.infer<typeof notificationTemplateSchema>;
 export const notificationPayloadSchema = z.object({
   message: z.string().min(1).max(2000),
   link: z.string().url().max(2000).optional(),
-  // A society notice can name its own subject (T30), such as the event that changed.
-  subject: z.string().trim().min(1).max(200).regex(/^[^\r\n]*$/).optional()
+  // A society notice can name its own subject (T30), such as the event that changed. Organiser
+  // text may hold line breaks; they fold to a space so one name can't fail a whole fan-out (SEC-003).
+  subject: z.preprocess((value) => (typeof value === "string" ? value.replace(/[\r\n]+/g, " ") : value), z.string().trim().min(1).max(200)).optional()
 }).strict();
 export const renderedNotificationSchema = z.object({
   subject: z.string().max(200), text: z.string().max(10000), html: z.string().max(15000),

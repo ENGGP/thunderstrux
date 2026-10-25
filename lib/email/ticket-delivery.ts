@@ -153,7 +153,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
   const ticketIdHtml = ticketIds
     .map((id) => `<li><code>${escapeHtml(id)}</code></li>`)
     .join("");
-  const subject = `Your tickets for ${order.event.title}`;
+  const subject = `Your tickets for ${order.event.title.replace(/[\r\n]+/g, " ")}`;
   // Purchase-time facts; the event date and place stay live.
   const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
   const seller = order.sellerName ?? order.event.organisation.name;

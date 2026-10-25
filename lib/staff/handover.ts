@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { lockAccount, requireSecurityActor, type AccountActor } from "@/lib/auth/account-lifecycle";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { staffHandoverSchema } from "@/lib/validators/staff";
+import { revokeOrganisationStaffInvites } from "@/lib/staff/invite-cancellation";
 
 export class StaffHandoverError extends Error {
   constructor(readonly kind: "authority" | "conflict", message: string) { super(message); }
@@ -45,6 +46,7 @@ export async function handOverOrganisationOwnership(actor: AccountActor, organis
       role: revoked ? "owner" : "admin", status: revoked ? "revoked" : "active",
       revokedAt: revoked ? now : null, revokedById: revoked ? actor.id : null
     } });
+    if (revoked) await revokeOrganisationStaffInvites(tx, organisationId, (await tx.user.findUniqueOrThrow({ where: { id: actor.id }, select: { email: true } })).email, now);
     if (await tx.organisationStaff.count({ where: { organisationId, role: "owner", status: "active" } }) < 1)
       throw new StaffHandoverError("conflict", "At least one active owner is required");
     await tx.organisation.update({ where: { id: organisationId }, data: { accountUserId: null } });

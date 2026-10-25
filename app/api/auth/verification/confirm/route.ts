@@ -11,5 +11,5 @@ export async function POST(request: Request) {
   if (!body.success) return validationError(body.details);
   const limit = await lifecycleRedemptionLimit(request, body.data.token); if (limit) return limit;
   try { return NextResponse.json(await consumeVerification(body.data.token, body.data.password), { headers: { "Cache-Control": "no-store" } }); }
-  catch (error) { return mapRouteError(error, { operation: "auth.verification_confirm", request, rules: [routeErrorRule(AccountTokenError, (invalid) => badRequest(invalid.message))] }); }
+  catch (error) { return mapRouteError(error, { operation: "auth.verification_confirm", request, rules: [routeErrorRule(AccountTokenError, () => badRequest("Check the password, or the link may be invalid or expired. Request a new link."))] }); }
 }

@@ -64,6 +64,7 @@ test("verification needs the account's password; a reset verifies the mailbox ow
   const raw = await rawToken();
   const wrong = await confirmRoute(jsonRequest("http://localhost:3000/api/auth/verification/confirm", { token: raw, password: "owner-pass-222" }));
   expect(wrong.status).toBe(400);
+  expect((await wrong.json()).error.message).toContain("Check the password");
   expect((await prisma.user.findFirstOrThrow()).emailVerifiedAt).toBeNull();
   expect((await prisma.authToken.findFirstOrThrow({ where: { purpose: "verify_account" } })).consumedAt).toBeNull();
 

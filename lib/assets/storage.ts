@@ -11,6 +11,7 @@ export type AssetStorage = {
 function isMissing(error: unknown) {
   return typeof error === "object" && error !== null && "name" in error && ["NoSuchKey", "NotFound"].includes(String(error.name));
 }
+const clients = new Map<string, S3Client>();
 export function assetStorage(): AssetStorage {
   const bucket = process.env.ASSET_STORAGE_BUCKET;
   const endpoint = process.env.ASSET_STORAGE_ENDPOINT;
@@ -18,8 +19,12 @@ export function assetStorage(): AssetStorage {
   const secretAccessKey = process.env.ASSET_STORAGE_SECRET_KEY;
   if (!bucket || !accessKeyId || !secretAccessKey) throw new AssetError(503, "Image storage is not configured");
   if (endpoint && !/^https?:\/\//.test(endpoint)) throw new AssetError(503, "Image storage is not configured");
-  const client = new S3Client({ region: process.env.ASSET_STORAGE_REGION || "us-east-1", endpoint,
-    forcePathStyle: process.env.ASSET_STORAGE_PATH_STYLE === "true", credentials: { accessKeyId, secretAccessKey }, maxAttempts: 2 });
+  const options = { region: process.env.ASSET_STORAGE_REGION || "us-east-1", endpoint,
+    forcePathStyle: process.env.ASSET_STORAGE_PATH_STYLE === "true", credentials: { accessKeyId, secretAccessKey }, maxAttempts: 2 };
+  // One client, and so one connection pool, per process and configuration (SEC-021).
+  const cacheKey = JSON.stringify(options);
+  let client = clients.get(cacheKey);
+  if (!client) clients.set(cacheKey, (client = new S3Client(options)));
   const invoke = <T>(operation: () => Promise<T>) => operation().catch(() => { throw new AssetError(503, "Image storage is temporarily unavailable"); });
   return {
     put: (Key, Body) => invoke(async () => { await client.send(new PutObjectCommand({ Bucket: bucket, Key, Body, ContentType: "image/webp" }), { abortSignal: AbortSignal.timeout(10000) }); }),

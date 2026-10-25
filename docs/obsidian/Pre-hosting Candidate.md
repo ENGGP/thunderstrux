@@ -105,3 +105,18 @@ How the table was worked:
 | LEGAL-001 terms and reviewed privacy policy | Founder |
 | Support address and owner | Founder |
 | Live money | Founder approval after the critical gates pass |
+
+## Go-live checklist for thunderstrux.com
+
+Settings and checks that move the candidate from a preview host to `https://thunderstrux.com` on the Droplet path. The code holds no hostname, so each is configuration or an owner check. Tick each against its register row before the first real user (T52).
+
+| Item | What to set or check | Row |
+| --- | --- | --- |
+| Domain | `SITE_ADDRESS=thunderstrux.com` and `ACME_EMAIL` for Caddy; `AUTH_URL`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL` and `TRUSTED_APP_ORIGINS` all `https://thunderstrux.com`. Production sends HSTS (`next.config.ts`). | H01 |
+| Staff authority | `MFA_ENFORCEMENT_MODE=enforce`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`; every owner enrols TOTP. Never run `prisma/seed.mjs` against production; it refuses a public origin unless `SEED_DEMO_PASSWORD` is set, which production never sets. | SEC-001, SEC-015 |
+| Stripe | A restricted `rk_live_` key and the two live webhook endpoints on `2026-09-30.endive`, with their signing secrets ([[Production Operations]]). | PAY-002, PAY-006 |
+| Alerts | `ALERT_WEBHOOK_URL` points at the chosen receiver; check its quota and grouping. Unsigned-webhook alerts are cooled to one per five minutes per process, so a flood can't page or crowd out payment alerts. | OPS-002, SEC-020 |
+| Edge rate limits | Caddy has none. Put Cloudflare (or another proxy) in front with limits on `/api/auth/*`, `/api/payments/webhook`, `/api/stripe/connect/webhook` and `/api/public/assets/*`. With a proxy in front, Caddy's `{remote_host}` is the proxy, so set `trusted_proxies` to its ranges and take the client address from its header; confirm how IPv6 clients are keyed. | SEC-019, SEC-021, SEC-002 (gate) |
+| Release | Deploy only the `release-<revision>` manifest from the Release Images run of a `main` commit, by run id, after verifying both images with `--signer-workflow` and `--source-ref refs/heads/main`; `scripts/droplet.mjs` refuses images from any other repository. In GitHub, require approval for fork pull-request workflows and limit who can push branches or dispatch workflows. | SEC-022 |
+| Recovery | A restore fences identity automatically (every session ends; MFA logins, links and invitations are revoked). During a real recovery, rotate `AUTH_SECRET` and re-apply closures, password and email changes and staff revocations made after the restore point (Recovery runbook). | SEC-023, OPS-003 |
+| Storage | Spaces bucket and keys, with the T45 smoke passing. | OPS-005 |

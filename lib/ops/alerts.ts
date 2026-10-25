@@ -38,13 +38,28 @@ export type OperationalAlertPayload = {
 const ALERT_DELIVERY_TIMEOUT_MS = 3_000;
 const pendingDeliveries = new Set<Promise<void>>();
 
+// Anyone can send an unsigned webhook, so that alert reaches the receiver at most
+// every five minutes per process, carrying how many were held back; the log still
+// records each one (SEC-020).
+const ALERT_COOLDOWN_MS = 5 * 60_000;
+const cooledAlerts = new Set<OperationalAlertName>(["stripe_webhook_signature_failure"]);
+const cooldowns = new Map<OperationalAlertName, { until: number; suppressed: number }>();
+
 // T42: with ALERT_WEBHOOK_URL set, each alert is also POSTed there as JSON
 // (redacted like the logs). Delivery is best effort: a slow or failing
 // receiver is logged and never delays or fails the caller.
 function deliverAlert(event: OperationalAlertName, payload: OperationalAlertPayload) {
   const url = process.env.ALERT_WEBHOOK_URL;
   if (!url) return;
-  const details = redactLogContext(payload);
+  let suppressed = 0;
+  if (cooledAlerts.has(event)) {
+    const now = Date.now();
+    const state = cooldowns.get(event);
+    if (state && now < state.until) { state.suppressed += 1; return; }
+    suppressed = state?.suppressed ?? 0;
+    cooldowns.set(event, { until: now + ALERT_COOLDOWN_MS, suppressed: 0 });
+  }
+  const details: Record<string, unknown> = { ...redactLogContext(payload), ...(suppressed ? { suppressed } : {}) };
   const body = JSON.stringify({
     event,
     environment: process.env.NODE_ENV ?? "development",

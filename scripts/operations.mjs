@@ -415,6 +415,9 @@ async function restore(ctx) {
     await compose(ctx, ["run", "--rm", "-e", `DATABASE_URL=${restoredUrl}`, "-e", "NOTIFICATION_ENCRYPTION_KEY", "migration", "node", "scripts/verify-restored-database.mjs"], {
       env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId, NOTIFICATION_ENCRYPTION_KEY: notificationKey ?? "" }
     });
+    // SEC-023: sessions, MFA logins, links and invitations from before the
+    // restore point end here, before the copy can serve anyone.
+    await compose(ctx, ["exec", "-T", "db", "sh", "-c", `psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "${target}"`], { input: join(root, "scripts", "fence-restored-identity.sql") });
     // T44c: a restored copy holds jobs that may already have reached Stripe or
     // the email provider. Every worker stays paused in it until someone has
     // reconciled the providers and resumes them (Production Operations,
@@ -423,7 +426,7 @@ async function restore(ctx) {
     await compose(ctx, ["run", "--rm", "-e", `DATABASE_URL=${restoredUrl}`, "migration", "node", "scripts/workers.mjs", "pause", "all", `--reason=${reason}`], {
       env: { ...process.env, OPS_IMAGE: release.opsImageId ?? release.candidateImageId }
     });
-    console.log(JSON.stringify({ status: "restored-and-verified", target, workersPaused: true }));
+    console.log(JSON.stringify({ status: "restored-and-verified", target, identityFenced: true, workersPaused: true }));
   } catch (error) {
     throw new Error(`Restore target ${target} is quarantined and was not promoted: ${error.message}`);
   }

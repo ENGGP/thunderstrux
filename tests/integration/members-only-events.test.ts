@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import sharp from "sharp";
 import { GET as publicEventRoute } from "@/app/api/public/events/[eventId]/route";
-import { memberEventAsset, publicAsset, uploadAsset } from "@/lib/assets/service";
+import { assetBytes, memberEventAsset, publicAsset, uploadAsset } from "@/lib/assets/service";
 import type { AssetStorage } from "@/lib/assets/storage";
 import { prisma } from "@/lib/db";
 import { decryptNotification } from "@/lib/email/notification-crypto";
@@ -156,7 +156,9 @@ describe("members-only events", () => {
     const member = await createMember();
     await createMembershipGrant(fixture.organisation.id, member.id, member.email, open);
     expect(await publicAsset(asset.id)).toBeNull();
-    expect(await memberEventAsset(asset.id, outsider.id, storage)).toBeNull();
-    expect((await memberEventAsset(asset.id, member.id, storage))?.bytes.length).toBeGreaterThan(0);
+    expect(await memberEventAsset(asset.id, outsider.id)).toBeNull();
+    const unlocked = await memberEventAsset(asset.id, member.id);
+    expect(unlocked?.id).toBe(asset.id);
+    expect((await assetBytes(unlocked!, storage)).length).toBeGreaterThan(0);
   });
 });

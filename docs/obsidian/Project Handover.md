@@ -96,7 +96,7 @@ The preview at `thunderstrux.mistayu.com` stays the pre-production host; `thunde
 
 | Item | PR | Status and evidence |
 | --- | --- | --- |
-| T47 request bounds | [#175](https://github.com/ENGGP/thunderstrux/pull/175) | Ticket types capped at 50, JSON bodies at 100 KB through one `readJsonBody`, validation answers at 20 issues, and `/_next/image` off. No migration. Baseline  on : production build, 42/42 guards, typecheck, 674/674 integration tests in 102 files, no known vulnerabilities. |
+| T47 request bounds | [#175](https://github.com/ENGGP/thunderstrux/pull/175) | Ticket types capped at 50, JSON bodies at 100 KB through one `readJsonBody`, validation answers at 20 issues, and `/_next/image` off. No migration. Baseline `baseline-d43e7a4d2bab3a203b1d1261` on `2637fe2`: production build, 42/42 guards, typecheck, 674/674 integration tests in 102 files, no known vulnerabilities. |
 
 ## Next Safe Actions
 

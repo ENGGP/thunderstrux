@@ -35,7 +35,22 @@
     },
     "Icon": {
       "cardMode": "column"
+    },
+    "ResponsiveTable": {
+      "cardMode": "column"
+    },
+    "AuditTimeline": {
+      "cardMode": "column"
     }
+  },
+  "componentSrcMap": {
+    "FilterBar": null,
+    "LinkTabs": null,
+    "Count": null,
+    "Field": null
+  },
+  "libOverrides": {
+    "source-kit.mjs": "synthesized entry skips src files importing next/* (app-only, crash the browser bundle)"
   },
   "readmeHeader": ".design-sync/conventions.md"
 }

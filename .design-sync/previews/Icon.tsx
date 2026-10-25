@@ -1,6 +1,11 @@
 import { Icon } from 'thunderstrux';
 
-const names = ['home', 'calendar', 'receipt', 'ticket', 'users', 'mail', 'card', 'pin', 'search', 'shield', 'info', 'success', 'warning', 'error'] as const;
+const names = [
+  'home', 'chart', 'clock', 'zap', 'calendar', 'calendarDays', 'receipt',
+  'profile', 'user', 'users', 'badge', 'card', 'mail', 'ticket',
+  'bag', 'pin', 'search', 'shield', 'lock', 'close', 'info',
+  'success', 'warning', 'error', 'chevronDown', 'chevronLeft', 'chevronRight',
+] as const;
 
 export const Set = () => (
   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 72px)', gap: 16, color: 'var(--ts-ink)' }}>

@@ -18,12 +18,13 @@ const fonts = `@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ita
 // Tailwind only emits classes it finds in source, so designs would lack common layout glue
 // (gap-*, max-w-*, font-bold...). Safelist a basic set for the design agent's own layout.
 const safelist = `
-@source inline("{p,px,py,m,mx,my,mt,mb,gap}-{0,1,2,3,4,5,6,8,10,12,16}");
+@source inline("{sm:,md:,lg:,}{p,px,py,m,mx,my,mt,mb,gap}-{0,1,2,3,4,5,6,8,10,12,16}");
 @source inline("text-{xs,sm,base,lg,xl,2xl,3xl,4xl}");
 @source inline("font-{medium,semibold,bold}");
 @source inline("max-w-{sm,md,lg,xl,2xl,3xl}");
 @source inline("{sm:,md:,lg:,}grid-cols-{1,2,3,4}");
-@source inline("{flex,grid,flex-col,flex-wrap,w-full,mx-auto,text-center,items-start,items-center,items-end,justify-between,justify-center,justify-end,bg-lime}");
+@source inline("{sm:,md:,lg:,}{flex,grid,flex-col,flex-wrap,w-full,mx-auto,text-center,items-start,items-center,items-end,justify-between,justify-center,justify-end}");
+@source inline("bg-lime");
 `;
 const result = await postcss([tailwind({ base: root })]).process(readFileSync(from, "utf8") + safelist, { from });
 mkdirSync(dirname(out), { recursive: true });

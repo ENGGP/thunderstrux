@@ -175,6 +175,8 @@ Use a unique immutable release name and an explicit environment file:
 pnpm ops:deploy -- --project ops-thunderstrux --env-file .env.production --url http://127.0.0.1:3000 --release <git-sha>
 ```
 
+The pre-production preview at `thunderstrux.mistayu.com` uses this path as project `ops-preview` with `.env.preview` on loopback port 3090 behind the Cloudflare Tunnel (README, Public Preview), so it already runs the production build, workers and backups that `thunderstrux.com` will.
+
 The runner acquires a target lock, builds one image, identifies any current app, stops writers, creates a pre-migration backup, runs `prisma migrate deploy` once, starts the candidate, and performs read-only smoke checks. It records image IDs and migration checksums under ignored, access-restricted `tmp/operations/<project>/` state. Ordinary app restarts never run migrations.
 
 Pause the workers before deployment (`pnpm ops:workers -- pause all --reason=...`) and resume them only after readiness succeeds. Compose exposes the bounded jobs through the `workers` profile; run them every minute with `docker-compose.schedules.yml` or a platform scheduler. Each command enforces its own lease, pause and timeout (see Workers, schedules and alerts):

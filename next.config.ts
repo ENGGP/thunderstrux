@@ -35,7 +35,11 @@ export const securityHeaders = [
 const nextConfig: NextConfig = {
   // Next 16 blocks dev resources (HMR) for unlisted hosts, which stops pages
   // hydrating; the local Docker app is opened at 127.0.0.1:3080 or localhost.
-  allowedDevOrigins: ["thunderstrux.mistayu.com", "127.0.0.1", "localhost"],
+  // No public host: the dev server is never served publicly (the preview runs
+  // the production build, SEC-014).
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
+  // next dev's MCP endpoint reports open browser sessions' pages; nothing here uses it.
+  experimental: { mcpServer: false },
   distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next",
   // The app never uses next/image. Off, /_next/image answers 404, so it neither keeps
   // copies of images after they are withdrawn nor transcodes on anonymous requests.

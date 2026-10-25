@@ -3,6 +3,8 @@ import { NextRequest } from "next/server";
 import { encode } from "next-auth/jwt";
 import { proxy } from "@/proxy";
 import { authSecret } from "@/lib/auth/secret";
+import { appCookieSecure } from "@/lib/auth/public-origin";
+import { guestCookieOptions } from "@/lib/guest/guest-access";
 import { prisma } from "@/lib/db";
 import { createMember } from "@/tests/helpers/test-data";
 
@@ -48,5 +50,16 @@ describe("proxy session cookies", () => {
     }
     await prisma.user.update({ where: { id: user.id }, data: { disabledAt: new Date() } });
     expect((await proxy(request(`${cookieName}=${token}`))).status).toBe(307);
+  });
+
+  test.each([
+    { nodeEnv: "development", authUrl: "https://preview.example.test", secure: true },
+    { nodeEnv: "development", authUrl: "http://127.0.0.1:3080", secure: false },
+    { nodeEnv: "production", authUrl: "http://localhost:3100", secure: true }
+  ])("guest and context cookies are Secure when NODE_ENV=$nodeEnv and AUTH_URL=$authUrl is https or production (SEC-017)", ({ nodeEnv, authUrl, secure }) => {
+    vi.stubEnv("NODE_ENV", nodeEnv);
+    vi.stubEnv("AUTH_URL", authUrl);
+    expect(appCookieSecure()).toBe(secure);
+    expect(guestCookieOptions(new Date()).secure).toBe(secure);
   });
 });

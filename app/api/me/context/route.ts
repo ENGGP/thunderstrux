@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuthenticatedUser, requireOrganisationPermission } from "@/lib/auth/access";
 import { readAccountContext } from "@/lib/auth/context";
 import { contextCookieName, encodeContext } from "@/lib/auth/context-cookie";
+import { appCookieSecure } from "@/lib/auth/public-origin";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 import { forbidden, mapRouteError, validationError } from "@/lib/api/errors";
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     if (input.data.mode === "staff") await requireOrganisationPermission(input.data.organisationId, "events:read");
     const response = NextResponse.json({ selected: true }, { headers: { "Cache-Control": "no-store" } });
     response.cookies.set(contextCookieName, encodeContext(input.data, user), {
-      httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/"
+      httpOnly: true, secure: appCookieSecure(), sameSite: "lax", path: "/"
     });
     return response;
   } catch (error) { return failure(error, request); }

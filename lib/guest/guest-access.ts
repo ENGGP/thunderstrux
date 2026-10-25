@@ -5,6 +5,7 @@ import { assertNotificationConfiguration } from "@/lib/email/notification-crypto
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { safeReturnPath } from "@/lib/security/safe-return-path";
 import { appUrl } from "@/lib/app-url";
+import { appCookieSecure } from "@/lib/auth/public-origin";
 
 // Verified guest access (T16a). An emailed link proves the address; redeeming
 // it by POST starts a short browser session. Raw link tokens and session ids
@@ -26,7 +27,7 @@ export const guestDigest = (raw: string) => createHash("sha256").update(raw).dig
 const newSecret = () => randomBytes(32).toString("base64url");
 
 export function guestCookieOptions(expires: Date) {
-  return { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/", expires };
+  return { httpOnly: true, secure: appCookieSecure(), sameSite: "lax" as const, path: "/", expires };
 }
 
 async function revokeOpenGrants(tx: Prisma.TransactionClient, guestIdentityId: string, now: Date) {

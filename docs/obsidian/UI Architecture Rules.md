@@ -35,7 +35,7 @@ sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navb
 - Widths: `max-w-auth`, `max-w-read`, `max-w-checkout`, `max-w-personal`, `max-w-page`, `max-w-admin` (values in `app/globals.css`).
 - No raw palette classes (`bg-neutral-900`, `text-purple-600`) and no hex colours in components.
 - Bare `border` draws the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
-- The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` shortens every transition and animation.
+- The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` sets every transition and animation to `0s`; not `0.01ms`, because every element defaults to `transition-property: all`, and any duration would make even the focus ring transition in from 3px.
 - Motion tokens sit in their own `@theme` block: `ease-out` is the strong curve `cubic-bezier(0.23, 1, 0.32, 1)`, and `animate-pop-in` (160ms), `animate-dialog-in` (200ms), `animate-fade-in` (200ms) and `animate-sheet-up` (240ms) are entry keyframes. Where they are used: [[#Motion]].
 - `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through `next/font`; they are downloaded at build time and served by the app.
 - No dark mode. No icon library: `components/ui/icon.tsx` holds the outline icons, always decorative beside text.

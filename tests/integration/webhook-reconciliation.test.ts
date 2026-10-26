@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
-import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { reconcileCompletedCheckoutSession, reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { setAutomaticOutboxEnqueueTestFailure } from "@/lib/email/ticket-email-outbox";
 import {
   createEvent,
@@ -1124,12 +1124,12 @@ describe("webhook reconciliation", () => {
   });
 
   // TEST-001 direct cases and the PAY-001 replay diagnostic.
-  async function pendingWithHold(quantity = 1) {
+  async function pendingWithHold(quantity = 1, { reservationQuantity = quantity, capacity = null }: { reservationQuantity?: number; capacity?: number | null } = {}) {
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
-    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const event = await createEvent({ organisationId: organisation.id, status: "published", capacity });
     const ticketType = event.ticketTypes[0];
     const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, quantity, unitPrice: ticketType.price });
-    await createReservation({ orderId: order.id, organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, quantity, expiresAt: new Date(Date.now() + 30 * 60 * 1000) });
+    await createReservation({ orderId: order.id, organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, quantity: reservationQuantity, expiresAt: new Date(Date.now() + 30 * 60 * 1000) });
     const session = (extra: Parameters<typeof checkoutSession>[0] = {}) => checkoutSession({
       id: order.stripeSessionId as string, orderId: order.id, eventId: event.id, organisationId: organisation.id, ticketTypeId: ticketType.id,
       quantity, amountTotal: ticketType.price * quantity, ...extra
@@ -1171,5 +1171,67 @@ describe("webhook reconciliation", () => {
     const { order, session, state } = await pendingWithHold();
     expect(await reconcileCompletedCheckoutSession(session({ paymentStatus: "unpaid" }))).toMatchObject({ status: "failed", orderId: order.id });
     expect(await state()).toMatchObject({ status: "failed", failureReason: "webhook_mismatch", requiresCompensationReview: false, compensationRefundJob: null, tickets: [] });
+  });
+
+  // Paid-session guards that had no test (2026-10-26 test audit). Each one keeps
+  // money it can't account for out of fulfilment: no tickets are issued.
+  test("a paid session in another currency goes to compensation review and frees the hold", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { order, session, state } = await pendingWithHold();
+    expect(await reconcileCompletedCheckoutSession(session({ currency: "usd" }))).toEqual({ status: "compensation_required", orderId: order.id, reason: "webhook_mismatch" });
+    expect(await state()).toMatchObject({ status: "failed", requiresCompensationReview: true, fulfilmentFailureReason: "webhook_mismatch", tickets: [], reservation: { status: "released" } });
+  });
+
+  test("a paid session whose hold covers fewer tickets than the order goes to compensation review", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { order, session, state } = await pendingWithHold(2, { reservationQuantity: 1 });
+    expect(await reconcileCompletedCheckoutSession(session())).toEqual({ status: "compensation_required", orderId: order.id, reason: "reservation_quantity_mismatch_after_payment" });
+    expect(await state()).toMatchObject({ status: "failed", requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
+  });
+
+  test("a paid session for an event whose capacity fell below its holds goes to compensation review", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { order, session, state } = await pendingWithHold(2, { capacity: 2 });
+    // Capacity lowered underneath the hold (the edit path refuses this; a direct change does not).
+    await prisma.event.update({ where: { id: order.eventId }, data: { capacity: 1 } });
+    expect(await reconcileCompletedCheckoutSession(session())).toEqual({ status: "compensation_required", orderId: order.id, reason: "capacity_exceeded_after_payment" });
+    expect(await state()).toMatchObject({ status: "failed", requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
+  });
+
+  // Current behaviour, recorded as PAY-010: no alert and no compensation for such a payment.
+  test("a paid session that names an order recorded with another session is ignored and changes nothing", async () => {
+    const { order, session, state } = await pendingWithHold();
+    expect(await reconcileCompletedCheckoutSession(session({ id: "cs_not_this_orders_session" }))).toEqual({ status: "ignored", orderId: order.id, reason: "session_mismatch" });
+    expect(await state()).toMatchObject({ status: "pending", requiresCompensationReview: false, tickets: [], reservation: { status: "active" } });
+  });
+
+  test("a paid session for no known order is ignored", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await reconcileCompletedCheckoutSession(checkoutSession({ id: "cs_unknown_session", amountTotal: 1200 }))).toEqual({ status: "ignored", reason: "order_not_found" });
+    await expect(prisma.ticket.count()).resolves.toBe(0);
+  });
+
+  test("a late expiry never undoes a paid, failed or expired order, nor one recorded with another session", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const paid = await pendingWithHold();
+    await reconcileCompletedCheckoutSession(paid.session());
+    expect(await reconcileExpiredCheckoutSession(paid.session())).toEqual({ status: "already_paid", orderId: paid.order.id });
+    expect(await paid.state()).toMatchObject({ status: "paid", tickets: [expect.anything()] });
+
+    const other = await pendingWithHold();
+    expect(await reconcileExpiredCheckoutSession(other.session({ id: "cs_not_this_orders_session" }))).toEqual({ status: "ignored", orderId: other.order.id, reason: "session_mismatch" });
+    expect(await other.state()).toMatchObject({ status: "pending", reservation: { status: "active" } });
+
+    const failed = await pendingWithHold();
+    await reconcileCompletedCheckoutSession(failed.session({ currency: "usd" }));
+    expect(await reconcileExpiredCheckoutSession(failed.session())).toEqual({ status: "failed", orderId: failed.order.id, reason: "webhook_mismatch" });
+    expect(await failed.state()).toMatchObject({ status: "failed", requiresCompensationReview: true });
+
+    const expired = await pendingWithHold();
+    expect(await reconcileExpiredCheckoutSession(expired.session())).toMatchObject({ status: "expired", orderId: expired.order.id });
+    expect(await reconcileExpiredCheckoutSession(expired.session())).toEqual({ status: "expired", orderId: expired.order.id });
+    expect(await expired.state()).toMatchObject({ status: "expired", reservation: { status: "expired" } });
+
+    expect(await reconcileExpiredCheckoutSession(checkoutSession({ id: "cs_unknown_expired" }))).toEqual({ status: "ignored", reason: "order_not_found" });
   });
 });

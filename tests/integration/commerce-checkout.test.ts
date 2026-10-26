@@ -238,4 +238,41 @@ describe("commerce checkout", () => {
     expect((await merchandiseCheckout(jsonRequest("http://localhost:3000/api/payments/checkout/merchandise", { ...body, selection: { variant: "M", quantity: 1 } }))).status).toBe(400);
     expect(await prisma.commerceOrder.count()).toBe(0);
   });
+
+  // Failure paths (2026-10-26 test audit): no order is left holding stock
+  // when Stripe can't or won't start the payment.
+  test("a society that hasn't finished connecting Stripe can't sell; nothing is recorded or sent", async () => {
+    const society = await createOrganisationAccount();
+    const buyer = await createMember();
+    setMockSession({ userId: buyer.id, email: buyer.email, accountRole: "member" });
+    const body = { organisationId: society.organisation.id, selection: { variant: "M", quantity: 1 }, expectedTotal: 1500, idempotencyKey: unique("commerce-not-ready") };
+    const response = await merchandiseCheckout(jsonRequest("http://localhost:3000/api/payments/checkout/merchandise", body));
+    expect(response.status).toBe(400);
+    expect(await parseJsonResponse(response)).toMatchObject({ error: { details: [{ path: ["organisationId"] }] } });
+    expect(await prisma.commerceOrder.count()).toBe(0);
+    expect(await prisma.checkoutAttempt.count()).toBe(0);
+    expect(stripe.create).not.toHaveBeenCalled();
+  });
+
+  test("Stripe refusing the Session fails the order and releases the hold", async () => {
+    const { checkout } = await shop();
+    const refusal = Object.assign(new Error("Invalid destination account"), { type: "StripeInvalidRequestError" });
+    stripe.create.mockRejectedValueOnce(refusal);
+    await expect(checkout()).rejects.toBe(refusal);
+    const order = await prisma.commerceOrder.findFirstOrThrow({ include: { checkoutAttempt: true } });
+    expect(order).toMatchObject({ status: "failed", failureReason: "provider_refused", stripeSessionId: null });
+    expect(order.checkoutAttempt).toMatchObject({ state: "failed", reconcileDueAt: null, lastOutcome: "provider_refused" });
+    expect(family.released).toEqual([order.id]);
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("a Session that comes back without a payment page fails the order instead of stranding the buyer", async () => {
+    const { checkout } = await shop();
+    stripe.create.mockResolvedValueOnce({ id: unique("cs_commerce"), url: null });
+    await expect(checkout()).rejects.toMatchObject({ name: "CommerceCheckoutError", kind: "unavailable" });
+    const order = await prisma.commerceOrder.findFirstOrThrow({ include: { checkoutAttempt: true } });
+    expect(order).toMatchObject({ status: "failed", failureReason: "missing_redirect_url" });
+    expect(order.checkoutAttempt).toMatchObject({ state: "failed", lastOutcome: "missing_redirect_url" });
+    expect(family.released).toEqual([order.id]);
+  });
 });

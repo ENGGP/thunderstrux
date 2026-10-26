@@ -76,7 +76,7 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 **Audit pass 2 (2026-10-25).** Demo content was created in dev through the app as the Engineering organiser: profile text, refund and pickup policies, logo and cover, two published products with photos (EngSoc hoodie, Enamel pin), the free "Semester 2 2026" plan, an image and $0.50 member price on Super launch, and the draft "CAD workshop for first-years". Writes from `http://localhost:3080` are refused as untrusted; use `http://127.0.0.1:3080`, which `.env` trusts. Free memberships can't complete in dev until `EMAIL_FROM` is set in `.env` (DEF-037).
 
 **Lessons.**
-- Focused integration runs inside the dev app container need the baseline test container's settings, or unrelated tests fail: `RATE_LIMIT_ENABLED=false`, `MFA_ENFORCEMENT_MODE=off`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, empty `TRUSTED_APP_ORIGINS`, `AUTH_URL`/`NEXTAUTH_URL` on plain `http`, capture-only `RESEND_API_KEY`, and `DATABASE_URL` pointing at `thunderstrux_test`. The baseline remains the evidence of record.
+- Focused integration runs inside the dev app container need only `DATABASE_URL` on `thunderstrux_test`, `NODE_ENV=test` and `THUNDERSTRUX_INTEGRATION_TEST=1`. Since DEF-042 the test setup pins the other switches itself, whatever the dev `.env` holds. The baseline remains the evidence of record.
 - Tests that move the clock past a hold should derive the time from the hold, not hard-code it.
 
 ## Security Audit And Remediation (T47 to T53)

@@ -331,4 +331,75 @@ describe("lost dispute recovery", () => {
     expect(stripe.reverse).toHaveBeenCalledTimes(1);
     expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "succeeded", stripeTransferReversalId: "trr_made_by_stripe", reversalAmount: 3000 });
   });
+
+  // Failure paths (2026-10-26 test audit). Each ends with a person alerted,
+  // never with money moved from the wrong place or sent twice.
+  const unresolvedAlerts = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls
+    .map((call: unknown[]) => JSON.parse(String(call[0])))
+    .filter((entry: { event?: string }) => entry.event === "dispute_reversal_unresolved");
+
+  test("a charge Stripe can't load is retried; one with no transfer fails to a person with an alert", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    transferIs(fixture);
+    await loseDispute(fixture);
+    stripe.charge.mockRejectedValueOnce(new Error("socket hang up"));
+    const first = new Date(Date.now() + 1000);
+    expect(await processDisputeReversalBatch(25, first)).toMatchObject({ results: [{ status: "uncertain" }] });
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "uncertain", reversalLastError: "provider_unknown", reversalAttempts: 1 });
+
+    stripe.charge.mockResolvedValue({ id: fixture.chargeId, transfer: null });
+    expect(await processDisputeReversalBatch(25, new Date(first.getTime() + 2 * 60_000))).toMatchObject({ results: [{ status: "failed" }] });
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "failed", reversalLastError: "no_transfer", reversalNextAttemptAt: null, reversalProcessingToken: null });
+    expect(unresolvedAlerts(error)).toEqual([expect.objectContaining({ disputeId: `dp_${fixture.order.id}`, orderId: fixture.order.id, reason: "no_transfer" })]);
+    expect(stripe.reverse).not.toHaveBeenCalled();
+  });
+
+  test("a transfer that refunds already reversed in full leaves nothing to take back", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    transferIs(fixture, { amount_reversed: 3000 });
+    await loseDispute(fixture);
+    expect(await processDisputeReversalBatch(25, new Date(Date.now() + 1000))).toMatchObject({ results: [{ status: "failed" }] });
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "failed", reversalLastError: "nothing_to_reverse" });
+    expect(unresolvedAlerts(error)).toHaveLength(1);
+    expect(stripe.reverse).not.toHaveBeenCalled();
+  });
+
+  test("a reversal Stripe refuses is failed for a person, not retried", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    transferIs(fixture);
+    await loseDispute(fixture);
+    stripe.reverse.mockRejectedValue(Object.assign(new Error("Insufficient funds in the connected account"), { type: "StripeInvalidRequestError" }));
+    const first = new Date(Date.now() + 1000);
+    expect(await processDisputeReversalBatch(25, first)).toMatchObject({ results: [{ status: "failed" }] });
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "failed", reversalLastError: "provider_refused" });
+    expect(unresolvedAlerts(error)).toEqual([expect.objectContaining({ reason: "provider_refused" })]);
+    expect(await processDisputeReversalBatch(25, new Date(first.getTime() + 60 * 60_000))).toMatchObject({ processed: 0 });
+    expect(stripe.reverse).toHaveBeenCalledTimes(1);
+    expect(await historyOf(fixture.order.id)).toEqual(["dispute_opened", "dispute_closed"]);
+  });
+
+  test("after six unknown outcomes the worker stops calling Stripe, alerts, and checks back hourly", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    transferIs(fixture);
+    await loseDispute(fixture);
+    await prisma.purchaseDispute.update({
+      where: { stripeDisputeId: `dp_${fixture.order.id}` },
+      data: { reversalStatus: "uncertain", reversalAttempts: 6, reversalLastError: "provider_unknown" }
+    });
+    const now = new Date(Date.now() + 1000);
+    expect(await processDisputeReversalBatch(25, now)).toMatchObject({ results: [{ status: "unresolved" }] });
+    const row = await disputeRow(fixture);
+    expect(row).toMatchObject({ reversalStatus: "uncertain", reversalLastError: "provider_unresolved", reversalProcessingToken: null, reversalAttempts: 7 });
+    expect(row.reversalNextAttemptAt).toEqual(new Date(now.getTime() + 60 * 60_000));
+    expect(unresolvedAlerts(error)).toEqual([expect.objectContaining({ reason: "provider_unresolved" })]);
+    expect(stripe.charge).not.toHaveBeenCalled();
+    expect(stripe.reverse).not.toHaveBeenCalled();
+  });
 });

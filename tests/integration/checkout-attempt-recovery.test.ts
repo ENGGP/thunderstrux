@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { processStaleOrderCleanupBatch } from "@/lib/orders/stale-orders";
-import { attemptRecoveryLeaseMs, processCheckoutAttemptRecoveryBatch } from "@/lib/payments/checkout-attempt-recovery";
+import { attemptRecoveryLeaseMs, attemptReplayWindowMs, processCheckoutAttemptRecoveryBatch } from "@/lib/payments/checkout-attempt-recovery";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
@@ -65,7 +65,7 @@ describe("checkout attempt recovery", () => {
     await expect(createEventCheckout(request)).resolves.toMatchObject({ status: "redirect", url: "https://checkout.stripe.test/recovered" });
   });
 
-  test("a replay Stripe refuses means no Session exists, so the order fails and the hold is released", async () => {
+  test("a replay Stripe refuses, or one without a payment page, fails the order and releases the hold", async () => {
     const { orderId } = await uncertainCheckout();
     stripeMocks.createSession.mockRejectedValueOnce(refusal());
 
@@ -75,6 +75,11 @@ describe("checkout attempt recovery", () => {
     expect(order).toMatchObject({ status: "failed", failureReason: "stripe_error", reservation: { status: "released" } });
     expect(order.checkoutAttempt).toMatchObject({ state: "failed", lastOutcome: "provider_refused", reconcileDueAt: null });
     expect(order.lifecycleEvents.at(-1)).toMatchObject({ type: "order_failed", source: "checkout_recovery" });
+
+    const noPage = await uncertainCheckout();
+    stripeMocks.createSession.mockResolvedValueOnce({ id: unique("cs_no_page"), url: null });
+    await expect(processCheckoutAttemptRecoveryBatch({ now: soon() })).resolves.toMatchObject({ processed: 1, provider_refused: 1 });
+    expect(await orderState(noPage.orderId)).toMatchObject({ status: "failed", reservation: { status: "released" }, checkoutAttempt: { state: "failed", lastOutcome: "missing_redirect_url" } });
   });
 
   test("an unknown replay outcome keeps the hold and retries later", async () => {
@@ -153,5 +158,15 @@ describe("checkout attempt recovery", () => {
     const order = await orderState(orderId);
     expect(order).toMatchObject({ status: "failed", reservation: { status: "released" } });
     expect(order.checkoutAttempt).toMatchObject({ state: "failed", lastOutcome: "provider_never_called" });
+  });
+
+  test("an attempt still unknown after Stripe's 24-hour replay window is closed with an alert, never replayed", async () => {
+    const { attempt } = await uncertainCheckout();
+    const later = new Date(attempt.createdAt.getTime() + attemptReplayWindowMs + 60_000);
+
+    await expect(processCheckoutAttemptRecoveryBatch({ now: later })).resolves.toMatchObject({ processed: 1, replay_window_passed: 1 });
+    expect(stripeMocks.createSession).toHaveBeenCalledTimes(1);
+    expect(await prisma.checkoutAttempt.findUniqueOrThrow({ where: { id: attempt.id } })).toMatchObject({ state: "failed", lastOutcome: "replay_window_passed", reconcileDueAt: null });
+    expect(vi.mocked(console.error).mock.calls.filter(([line]) => String(line).includes('"event":"checkout_attempt_recovery_abandoned"'))).toHaveLength(1);
   });
 });

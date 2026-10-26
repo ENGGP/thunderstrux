@@ -35,7 +35,7 @@ Which mutations write an `AuditLog` row, what each row holds, and how the societ
 | `PATCH /api/events/[eventId]/publish` | same | `event.published`, `event.unpublished` | — |
 | `PATCH /api/events/[eventId]/sales` | same | `event.sales_closed`, `event.sales_reopened` | — |
 | `DELETE /api/events/[eventId]` | same | `event.deleted` (title, T38) | — |
-| `POST /api/events/[eventId]/ticket-types` | same | `ticket_type.created` | Ticket type |
+| Removed `POST /api/events/[eventId]/ticket-types` (DEF-045) | — | `ticket_type.created` on older rows only; History still shows them | Ticket type |
 | `POST /api/tickets/[ticketId]/check-in`, `check-out` | `lib/tickets/check-in.ts` | `ticket.checked_in`, `ticket.checked_out` | Ticket reference (Check-ins filter only) |
 | `POST /api/orders/[orderId]/refunds` | `lib/payments/order-refunds.ts` | `order.refund_requested`; webhook `order.refund_{succeeded,pending,failed,canceled}`, `order.refund_failed` | Amount, reason |
 | `PATCH /api/orders/[orderId]/refund-manual` | `lib/orders/order-detail.ts` | `order.manual_refund_marked` | — |

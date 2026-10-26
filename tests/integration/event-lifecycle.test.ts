@@ -17,7 +17,6 @@ import {
   PATCH as updateEventRoute
 } from "@/app/api/events/[eventId]/route";
 import { PATCH as publishEventRoute } from "@/app/api/events/[eventId]/publish/route";
-import { POST as createTicketTypeRoute } from "@/app/api/events/[eventId]/ticket-types/route";
 import {
   eventTicketTypeMetrics,
   ticketMetrics
@@ -106,7 +105,7 @@ describe("event lifecycle", () => {
     });
   });
 
-  test("missing and cross-tenant event update return the same safe 404", async () => {
+  test("missing and cross-tenant event read and update return the same safe 404", async () => {
     const owned = await createOrganisationAccount();
     const other = await createOrganisationAccount();
     const otherEvent = await createEvent({ organisationId: other.organisation.id });
@@ -137,6 +136,11 @@ describe("event lifecycle", () => {
     expect(await parseJsonResponse(crossTenantResponse)).toEqual(
       await parseJsonResponse(missingResponse)
     );
+
+    const read = (eventId: string) => getEventRoute(new Request(`http://localhost/api/events/${eventId}?orgId=${owned.organisation.id}`), routeContext({ eventId }));
+    const [missingRead, crossTenantRead] = [await read("missing-event"), await read(otherEvent.id)];
+    expect([missingRead.status, crossTenantRead.status]).toEqual([404, 404]);
+    expect(await parseJsonResponse(crossTenantRead)).toEqual(await parseJsonResponse(missingRead));
   });
 
   test("ticket types are capped so one request cannot validate an unbounded list", async () => {
@@ -272,38 +276,6 @@ describe("event lifecycle", () => {
     );
   });
 
-  test("missing and cross-tenant ticket type creation return the same safe 404", async () => {
-    const owned = await createOrganisationAccount();
-    const other = await createOrganisationAccount();
-    const otherEvent = await createEvent({ organisationId: other.organisation.id });
-    const payload = {
-      organisationId: owned.organisation.id,
-      name: "Late Release",
-      price: 1800,
-      quantity: 5
-    };
-
-    setMockSession({
-      userId: owned.user.id,
-      email: owned.user.email,
-      accountRole: "organisation"
-    });
-    const missingResponse = await createTicketTypeRoute(
-      jsonRequest("http://localhost/api/events/missing-event/ticket-types", payload),
-      routeContext({ eventId: "missing-event" })
-    );
-    const crossTenantResponse = await createTicketTypeRoute(
-      jsonRequest(`http://localhost/api/events/${otherEvent.id}/ticket-types`, payload),
-      routeContext({ eventId: otherEvent.id })
-    );
-
-    expect(missingResponse.status).toBe(404);
-    expect(crossTenantResponse.status).toBe(404);
-    expect(await parseJsonResponse(crossTenantResponse)).toEqual(
-      await parseJsonResponse(missingResponse)
-    );
-  });
-
   test("member and unauthenticated event mutation access remains forbidden or unauthorized", async () => {
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();
@@ -405,9 +377,11 @@ describe("event lifecycle", () => {
     });
   });
 
-  test("deletes an unsold event with expected response shape", async () => {
+  test("deletes an unsold event with expected response shape; one with orders is kept for its history", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const event = await createEvent({ organisationId: organisation.id });
+    const sold = await createEvent({ organisationId: organisation.id });
+    await createOrder({ organisationId: organisation.id, eventId: sold.id, ticketTypeId: sold.ticketTypes[0].id });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await deleteEventRoute(
@@ -419,6 +393,10 @@ describe("event lifecycle", () => {
 
     expect(response.status).toBe(200);
     expect(await parseJsonResponse(response)).toEqual({ deleted: true });
+
+    const refused = await deleteEventRoute(jsonRequest(`http://localhost/api/events/${sold.id}`, undefined, { method: "DELETE" }), routeContext({ eventId: sold.id }));
+    expect(refused.status).toBe(400);
+    expect(await prisma.event.count({ where: { id: sold.id } })).toBe(1);
   });
 
   test("sold ticket types can be renamed and repriced but not deleted", async () => {

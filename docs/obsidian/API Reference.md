@@ -525,17 +525,6 @@ Rules:
 - Reopening is refused (400) once `salesCloseAt` has passed.
 - Audited as `event.sales_closed` and `event.sales_reopened`. Checkout refuses closed sales with `400` and the message `Ticket sales are closed`.
 
-### `POST /api/events/[eventId]/ticket-types`
-
-Creates a ticket type for an event.
-
-Rules:
-
-- Auth required.
-- Event-management role required.
-- Price must be non-negative integer cents.
-- Quantity must be greater than zero.
-
 ### `GET /api/events/[eventId]/tickets`
 
 Lists issued tickets for one organiser-owned event with cursor pagination.
@@ -804,7 +793,7 @@ Staff routes for a society's membership plans (T22). Every route needs a signed-
 
 See [[Memberships and Merchandise]].
 
-Ticket types in `POST /api/events`, `PATCH /api/events/[eventId]` and `POST /api/events/[eventId]/ticket-types` accept an optional `memberPrice` (integer cents, at most `price`; `null` clears it). Ticket checkout's `expectedUnitPrice` is the member price for a member account with a running membership carrying member prices, and the standard price for everyone else (T24b1).
+Ticket types are created and edited only through `POST /api/events` and `PATCH /api/events/[eventId]`, which version-check the edit, lock the event and keep the 50-type cap (the standalone `POST /api/events/[eventId]/ticket-types` was removed on 2026-10-26, DEF-045). They accept an optional `memberPrice` (integer cents, at most `price`; `null` clears it). Ticket checkout's `expectedUnitPrice` is the member price for a member account with a running membership carrying member prices, and the standard price for everyone else (T24b1).
 
 ### `POST /api/payments/checkout/membership` and `POST /api/payments/checkout/merchandise`
 

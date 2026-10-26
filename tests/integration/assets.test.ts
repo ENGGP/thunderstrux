@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import sharp from "sharp";
 import { prisma } from "@/lib/db";
 import { sanitiseImage, readImageForm } from "@/lib/assets/image";
@@ -7,10 +7,18 @@ import { maintainAssets } from "@/lib/assets/maintenance";
 import type { AssetStorage } from "@/lib/assets/storage";
 import { createOrganisationAccount, createMember } from "@/tests/helpers/test-data";
 import { setMockSession } from "@/tests/helpers/auth";
-import { setRateLimitTestEnabled, setRateLimitTestBackendFailure } from "@/lib/security/rate-limit";
+import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled, setRateLimitTestBackendFailure } from "@/lib/security/rate-limit";
 import { POST } from "@/app/api/orgs/[orgSlug]/assets/route";
+import { DELETE as deleteRoute, GET as previewRoute } from "@/app/api/orgs/[orgSlug]/assets/[assetId]/route";
 import { GET as publicImage } from "@/app/api/public/assets/[assetId]/route";
 import { jsonRequest } from "@/tests/helpers/http";
+
+// The routes build their own storage; route tests hand them this one.
+const routeStorage = vi.hoisted(() => ({ current: null as AssetStorage | null }));
+vi.mock("@/lib/assets/storage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/assets/storage")>()),
+  assetStorage: () => { if (!routeStorage.current) throw new Error("No test storage"); return routeStorage.current; }
+}));
 
 function memoryStorage() {
   const objects = new Map<string, Buffer>();
@@ -114,4 +122,42 @@ test("provider failure, stale sessions and failed object deletion retain bounded
   storage.delete = remove;
   await deleteAsset(own.user, own.organisation.id, asset.id, storage);
   expect(await prisma.auditLog.count({ where: { action: "asset.deleted", targetId: asset.id } })).toBe(1);
+});
+test("preview and delete routes sign in before revealing an image, stay inside the society, and delete only with abuse protection", async () => {
+  const own = await createOrganisationAccount(); const other = await createOrganisationAccount();
+  const { storage, objects } = memoryStorage();
+  routeStorage.current = storage;
+  setRateLimitTestBackendFailure(null);
+  onTestFinished(() => { routeStorage.current = null; setRateLimitTestEnabled(null); setRateLimitTestBackend(null); });
+  const asset = await uploadAsset(own.user, own.organisation.id, "logo", { bytes: await png(), type: "image/png" }, storage);
+  const at = (orgSlug: string, assetId = asset.id) => ({ url: `http://localhost/api/orgs/${orgSlug}/assets/${assetId}`, context: { params: Promise.resolve({ orgSlug, assetId }) } });
+  const preview = (orgSlug: string, assetId?: string) => { const { url, context } = at(orgSlug, assetId); return previewRoute(new Request(url), context); };
+  const remove = (orgSlug: string) => { const { url, context } = at(orgSlug); return deleteRoute(jsonRequest(url, undefined, { method: "DELETE" }), context); };
+
+  // Signed out, a real image and a made-up id look the same.
+  expect((await preview(own.organisation.slug)).status).toBe(401);
+  expect((await preview(own.organisation.slug, "missing")).status).toBe(401);
+
+  setMockSession({ userId: own.user.id, email: own.user.email, accountRole: "organisation" });
+  const shown = await preview(own.organisation.slug);
+  expect(shown.status).toBe(200);
+  expect(Object.fromEntries(["content-type", "x-content-type-options", "cache-control"].map((name) => [name, shown.headers.get(name)])))
+    .toEqual({ "content-type": "image/webp", "x-content-type-options": "nosniff", "cache-control": "private, no-store" });
+  expect((await preview(own.organisation.slug, "missing")).status).toBe(404);
+
+  // Another society reaches it through neither its own address nor the owner's.
+  setMockSession({ userId: other.user.id, email: other.user.email, accountRole: "organisation" });
+  for (const slug of [own.organisation.slug, other.organisation.slug]) {
+    expect((await preview(slug)).status).toBe(404);
+    expect((await remove(slug)).status).toBe(404);
+  }
+
+  setMockSession({ userId: own.user.id, email: own.user.email, accountRole: "organisation" });
+  setRateLimitTestEnabled(false);
+  expect((await remove(own.organisation.slug)).status).toBe(503);
+  expect(objects.size).toBe(1);
+  setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend());
+  expect((await remove(own.organisation.slug)).status).toBe(200);
+  expect(objects.size).toBe(0);
+  expect((await preview(own.organisation.slug)).status).toBe(404);
 });

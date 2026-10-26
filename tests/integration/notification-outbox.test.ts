@@ -153,4 +153,32 @@ describe("general notification outbox", () => {
     expect((await processNotificationBatch()).failed).toBe(1); expect(fetch).not.toHaveBeenCalled();
     expect(exhausted(error, "invalid_payload")).toBe(1);
   });
+
+  test("Send again queues a failed notice once, with a reason; one the provider took, one past its expiry or retry window is a 409", async () => {
+    const owner = await createOrganisationAccount();
+    setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
+    let notices = 0;
+    const failedNotice = async (extra: Partial<Record<"acceptedAt" | "expiresAt" | "firstAttemptAt", Date>> = {}) => {
+      const job = await prisma.$transaction(tx => enqueueNotification(tx, { ...input(), eventKey: `business/${notices++}`, template: "business_notice", organisationId: owner.organisation.id }));
+      await prisma.notificationOutbox.update({ where: { id: job.id! }, data: { status: "failed", lastError: "provider_unavailable", ...extra } });
+      return job.id!;
+    };
+    const sendAgain = (jobId: string, reason: string) =>
+      requeueRoute(jsonRequest(`http://localhost:3000/api/notifications/${jobId}/requeue`, { reason }), { params: Promise.resolve({ jobId }) });
+
+    const failed = await failedNotice();
+    expect((await sendAgain(failed, "short")).status).toBe(400);
+    const queued = await sendAgain(failed, "Provider issue fixed");
+    expect(queued.status).toBe(200);
+    expect(await queued.json()).toEqual({ queued: true });
+    expect(await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: failed } })).toMatchObject({ status: "pending", attempts: 0, lastError: null });
+
+    // The provider may already have sent it, or it is too old to send safely.
+    for (const extra of [{ acceptedAt: new Date() }, { expiresAt: new Date(Date.now() - 1000) }, { firstAttemptAt: new Date(Date.now() - 23 * 3600_000) }]) {
+      const jobId = await failedNotice(extra);
+      expect((await sendAgain(jobId, "Provider issue fixed")).status).toBe(409);
+      expect((await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: jobId } })).status).toBe("failed");
+    }
+    expect(await prisma.auditLog.count({ where: { action: "notification.requeued" } })).toBe(1);
+  });
 });

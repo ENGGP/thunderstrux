@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { POST as confirmRoute } from "@/app/api/orders/[orderId]/compensation-refund/confirm/route";
 import { prisma } from "@/lib/db";
 import {
   confirmCompensationRefund,
@@ -13,6 +14,8 @@ import {
   createOrganisationAccount,
   createReservation
 } from "@/tests/helpers/test-data";
+import { setMockSession } from "@/tests/helpers/auth";
+import { jsonRequest, routeContext } from "@/tests/helpers/http";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 
 const stripeMock = vi.hoisted(() => ({
@@ -30,7 +33,7 @@ vi.mock("@/lib/stripe", async (importOriginal) => ({
 }));
 
 async function automaticCompensationFixture() {
-  const { organisation } = await createOrganisationAccount({ stripeReady: true });
+  const { organisation, user: owner } = await createOrganisationAccount({ stripeReady: true });
   const member = await createMember();
   const event = await createEvent({
     organisationId: organisation.id,
@@ -59,7 +62,7 @@ async function automaticCompensationFixture() {
       currency: "aud"
     }
   });
-  return { organisation, member, event, ticketType, order, job };
+  return { organisation, owner, member, event, ticketType, order, job };
 }
 
 function configureEligibleStripe(fixture: Awaited<ReturnType<typeof automaticCompensationFixture>>) {
@@ -551,5 +554,30 @@ describe("compensation refunds", () => {
     await expect(confirmCompensationRefund(fixture.organisation.id, fixture.order.id, "re_second_claim", fixture.member.id)).rejects.toMatchObject({ name: "CompensationRefundConflictError" });
     await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refunded", stripeRefundId: "re_already_settled" });
     expect(await historyCount(fixture.order.id, "compensation_refunded")).toBe(0);
+  });
+
+  test("the confirm route checks the refund id's shape, answers 404 for another society's order and confirms a verified refund", async () => {
+    const fixture = await automaticCompensationFixture();
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { state: "review_required" } });
+    configureEligibleStripe(fixture);
+    stripeMock.refunds.retrieve.mockResolvedValue({
+      id: "re_route_confirmed", status: "succeeded", amount: fixture.order.totalAmount, currency: "aud", payment_intent: "pi_compensation", metadata: { orderId: fixture.order.id }
+    });
+    const confirm = (orderId: string, refundId: string) =>
+      confirmRoute(jsonRequest(`http://localhost:3000/api/orders/${orderId}/compensation-refund/confirm`, { refundId }), routeContext({ orderId }));
+
+    setMockSession({ userId: fixture.owner.id, email: fixture.owner.email, accountRole: "organisation" });
+    expect((await confirm(fixture.order.id, "not-a-refund")).status).toBe(400);
+    const other = await createOrganisationAccount({ stripeReady: true });
+    setMockSession({ userId: other.user.id, email: other.user.email, accountRole: "organisation" });
+    expect((await confirm(fixture.order.id, "re_route_confirmed")).status).toBe(404);
+    expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled();
+
+    setMockSession({ userId: fixture.owner.id, email: fixture.owner.email, accountRole: "organisation" });
+    const confirmed = await confirm(fixture.order.id, "re_route_confirmed");
+    expect(confirmed.status).toBe(200);
+    expect(await confirmed.json()).toEqual({ confirmed: true });
+    await expect(prisma.compensationRefundJob.findUniqueOrThrow({ where: { id: fixture.job.id } })).resolves.toMatchObject({ state: "refunded" });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.compensation_refund_confirmed", targetId: fixture.order.id } })).toMatchObject({ actorUserId: fixture.owner.id });
   });
 });

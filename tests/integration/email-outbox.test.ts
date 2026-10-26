@@ -247,6 +247,27 @@ describe("ticket email outbox", () => {
     }
   });
 
+  test("an automatic tickets email is skipped without calling the provider once the tickets were already emailed", async () => {
+    const restoreEnv = configureEmailEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const order = await createPaidTicketOrder("already-sent@example.com");
+      await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+      // A resend from the order page got there first.
+      await prisma.order.update({ where: { id: order.id }, data: { ticketEmailSentAt: new Date("2026-06-01T11:00:00.000Z") } });
+      await makeOutboxJobsDue(order.id, new Date("2026-06-01T12:00:00.000Z"));
+
+      expect(await processTicketEmailOutboxBatch({ now: new Date("2026-06-01T12:05:00.000Z") })).toMatchObject({ claimed: 1, sent: 0, skipped: 1 });
+      expect(fetchMock).not.toHaveBeenCalled();
+      await expect(prisma.emailOutbox.findFirstOrThrow({ where: { orderId: order.id } }))
+        .resolves.toMatchObject({ status: "sent", sentAt: new Date("2026-06-01T12:05:00.000Z"), providerMessageId: null, processingToken: null });
+    } finally {
+      restoreEnv();
+    }
+  });
+
   test("worker retries provider failures and leaves terminal failed jobs unclaimed", async () => {
     const restoreEnv = configureEmailEnv();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});

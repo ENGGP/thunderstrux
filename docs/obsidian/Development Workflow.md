@@ -363,7 +363,7 @@ Important:
 - Do not run integration tests against the normal `thunderstrux` development database.
 - Vitest 4 does not support the literal Jest flag `--runInBand`; the current sequential flags are the equivalent.
 - The integration suite blocks real network calls through the global test `fetch` stub and mocks Stripe at the SDK boundary where needed.
-- Loading the Prisma client copies `.env` into every unset variable, so `tests/setup/integration.setup.ts` pins each behaviour switch to the baseline value before every test: MFA off with a test key, legacy access denied, capture-only email, and rate limiting, trusted origins, the Auth.js URLs and the alert webhook unset (DEF-042). A test that needs another value sets it with `vi.stubEnv`.
+- Loading the Prisma client copies `.env` into every unset variable, so `tests/setup/integration.setup.ts` pins each behaviour switch to the baseline value before every test: MFA off with a test key, legacy access denied, capture-only email, and rate limiting, trusted origins, the Auth.js URLs, the alert webhook and the worker and email outbox tuning unset (DEF-042). Image storage is left as the container sets it: the baseline gives its tests a disposable bucket. A test that needs another value sets it with `vi.stubEnv`. Shared fixtures for a staff MFA enrolment (`tests/helpers/mfa.ts`) and a real guest checkout session (`tests/helpers/guest.ts`) live beside the other helpers.
 
 The build script runs:
 

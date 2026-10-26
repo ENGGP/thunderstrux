@@ -153,6 +153,26 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(["First", "Second"]).toContain(saved.title);
   });
 
+  test("an edit is refused when sales would close after the end, a ticket type repeats or belongs to another event, or it was loaded before the last save", async () => {
+    const { organisation } = await signedInOrganiser();
+    const event = await createEvent({ organisationId: organisation.id });
+    const other = await createEvent({ organisationId: organisation.id });
+    const own = event.ticketTypes[0];
+    const type = (id: string) => ({ id, name: own.name, price: own.price, quantity: own.quantity, expectedQuantity: own.quantity });
+    const refused = async (overrides: Record<string, unknown>, status: number, path?: string) => {
+      const response = await edit(event.id, editPayload(event, { version: 1, ticketTypes: [type(own.id)], ...overrides }));
+      expect(response.status).toBe(status);
+      if (path) expect((await parseJsonResponse(response)).error.details[0].path).toEqual([path]);
+    };
+
+    await refused({ salesCloseAt: new Date(event.endTime.getTime() + 60_000).toISOString() }, 400, "salesCloseAt");
+    await refused({ ticketTypes: [type(own.id), type(own.id)] }, 400, "ticketTypes");
+    await refused({ ticketTypes: [type(own.id), type(other.ticketTypes[0].id)] }, 400, "ticketTypes");
+    expect((await edit(event.id, editPayload(event, { version: 1, title: "Saved", ticketTypes: [type(own.id)] }))).status).toBe(200);
+    await refused({ title: "Stale" }, 409);
+    expect(await prisma.event.findUniqueOrThrow({ where: { id: event.id }, select: { title: true, version: true } })).toEqual({ title: "Saved", version: 2 });
+  });
+
   test("closing sales keeps the event published and stops checkout; reopening needs a future close time", async () => {
     const { organisation } = await signedInOrganiser(true);
     const member = await createMember();
@@ -168,10 +188,12 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(await prisma.order.count({ where: { eventId: event.id } })).toBe(0);
 
     expect((await setSales(event.id, { saleState: "open", version: 2 })).status).toBe(200);
+    expect((await setSales(event.id, { saleState: "closed", version: 2 })).status).toBe(409);
 
     await prisma.event.update({ where: { id: event.id }, data: { salesCloseAt: new Date(Date.now() - 60000), saleState: "closed", version: 4 } });
     const pastWindow = await setSales(event.id, { saleState: "open", version: 4 });
     expect(pastWindow.status).toBe(400);
+    expect((await getDashboardEvent(organisation.id, event.id)).reopenBlocker).toBe("The sales close time has passed. Move it later on the Edit page first.");
     await prisma.event.update({ where: { id: event.id }, data: { saleState: "open" } });
     await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity: 1, expectedUnitPrice: event.ticketTypes[0].price, idempotencyKey: unique("checkout") }))
       .rejects.toBeInstanceOf(CheckoutCreationError);

@@ -71,6 +71,8 @@ describe("ending a membership early", () => {
     expect((await prisma.commerceLifecycleEvent.findMany({ where: { commerceOrderId: order.id }, orderBy: { sequence: "asc" }, select: { type: true } })).map((event) => event.type)).toEqual(["order_created", "free_cancelled"]);
     expect(grantState(await prisma.membershipGrant.findUniqueOrThrow({ where: { id: grant.id } }))).toBe("revoked");
     expect(await prisma.refundRequest.count()).toBe(0);
+    expect(await prisma.auditLog.findMany({ where: { action: "membership.free_cancelled", targetId: grant.id } }))
+      .toEqual([expect.objectContaining({ organisationId: society.organisation.id, actorUserId: society.user.id, metadata: { reason, commerceOrderId: order.id } })]);
     // A paid order can't take a cancellation fact, even directly.
     const paid = await membership({ paid: true });
     await expect(prisma.commerceOrder.update({ where: { id: paid.order.id }, data: { cancelledAt: new Date(), cancellationReason: reason } })).rejects.toThrow();

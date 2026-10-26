@@ -97,7 +97,8 @@ export async function attachStripeSession(
     if (order.status !== "pending" || order.stripeSessionId) {
       await tx.checkoutAttempt.updateMany({
         where: { orderId },
-        // Keep the Session on record: a payment on it reaches compensation through the webhook.
+        // Keep the Session on record. A payment on it reaches compensation through the
+        // webhook when the order closed; when the order holds another Session, it alerts a person (PAY-010).
         data: { state: "failed", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
       });
       // Report it after the transaction commits, so this record is not rolled back.

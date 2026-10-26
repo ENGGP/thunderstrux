@@ -1,5 +1,15 @@
 import { describe, expect, test, vi } from "vitest";
+import DashboardPage from "@/app/(dashboard)/dashboard/page";
+import OrganisationOrdersPage from "@/app/(dashboard)/dashboard/orders/page";
+import { GET as getOrderDetail } from "@/app/api/orders/[orderId]/route";
+import { GET as getOrders } from "@/app/api/orders/route";
+import { GET as getPublicEvent } from "@/app/api/public/events/[eventId]/route";
+import MyTicketsPage from "@/app/tickets/page";
+import { eventTicketTypeMetrics, ticketMetrics } from "@/lib/analytics/metrics";
 import { prisma } from "@/lib/db";
+import { setMockSession } from "@/tests/helpers/auth";
+import { jsonRequest, routeContext } from "@/tests/helpers/http";
+import { renderPage } from "@/tests/helpers/render";
 import {
   parseStaleOrderCleanupCliOptions,
   processStaleOrderCleanupBatch
@@ -11,6 +21,13 @@ import {
   createOrganisationAccount,
   createReservation
 } from "@/tests/helpers/test-data";
+
+// The dashboard and personal shells read the pathname.
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  usePathname: () => "/dashboard/orders",
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() })
+}));
 
 function parseConsoleEntries(spy: ReturnType<typeof vi.spyOn>) {
   return spy.mock.calls.map(
@@ -127,6 +144,38 @@ describe("pending order cleanup", () => {
     expect(byId.get(paid.id)?.reservation?.status).toBe("confirmed");
     expect(byId.get(failed.id)?.status).toBe("failed");
     expect(byId.get(failed.id)?.failureReason).toBe("already_failed");
+  });
+
+  // Only the job expires an order; every page and API shows a stale one as it stands.
+  test("no page or API that reads a stale pending order expires it or releases its hold", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const member = await createMember();
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const ticketType = event.ticketTypes[0];
+    const pending = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, userId: member.id, status: "pending", unitPrice: ticketType.price });
+    await createReservation({ orderId: pending.id, organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, userId: member.id, expiresAt: new Date(Date.now() - 60 * 1000) });
+    const state = () => prisma.order.findUniqueOrThrow({ where: { id: pending.id }, select: { status: true, failureReason: true, reservation: { select: { status: true, releasedAt: true } } } });
+    const before = await state();
+    expect(before).toMatchObject({ status: "pending", reservation: { status: "active", releasedAt: null } });
+
+    expect((await getPublicEvent(new Request(`http://localhost/api/public/events/${event.id}`), routeContext({ eventId: event.id }))).status).toBe(200);
+    setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
+    expect(await renderPage(await MyTicketsPage({ searchParams: Promise.resolve({}) }))).not.toContain(pending.id);
+
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    expect(JSON.stringify(await (await getOrders(jsonRequest("http://localhost/api/orders?includeSystem=true&status=pending"))).json())).toContain(pending.id);
+    // Shown with its buyer, but order detail serves settled orders only.
+    expect((await getOrderDetail(jsonRequest(`http://localhost/api/orders/${pending.id}`), routeContext({ orderId: pending.id }))).status).toBe(404);
+    const ordersPage = await renderPage(await OrganisationOrdersPage({ searchParams: Promise.resolve({ includeSystem: "true", status: "pending" }) }));
+    expect(ordersPage).toContain(member.email);
+    expect(ordersPage).not.toContain(`/dashboard/orders/${pending.id}`);
+    const landing = await renderPage(await DashboardPage());
+    expect(landing).toContain("Recent orders");
+    expect(landing).not.toContain(`/dashboard/orders/${pending.id}`);
+    await eventTicketTypeMetrics(organisation.id, event.id, { financial: true });
+    await ticketMetrics(organisation.id, { from: "2026-05-01", to: "2026-05-31", bucket: "day", timeZone: "Australia/Brisbane" }, { financial: true }, event.id);
+
+    expect(await state()).toEqual(before);
   });
 
   test("worker expires stale reservations and old legacy pending orders in a bounded batch", async () => {

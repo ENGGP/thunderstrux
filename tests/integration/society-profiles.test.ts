@@ -142,6 +142,10 @@ test("profiles use optimistic versions, derive completion and preserve private/p
       })
     ).onboardingCompletedAt,
   ).toBeNull();
+  // One record per saved version, naming what changed; the refused racer left none.
+  const audits = await prisma.auditLog.findMany({ where: { action: "organisation.profile_updated", targetId: own.organisation.id }, orderBy: { createdAt: "asc" } });
+  expect(audits.map((row) => row.actorUserId)).toEqual([own.user.id, own.user.id]);
+  expect(audits[1].metadata).toEqual({ profileVersion: 3, changedFields: ["description"] });
   expect(await publicOrganisation(own.organisation.slug)).not.toHaveProperty(
     "stripeAccountId",
   );

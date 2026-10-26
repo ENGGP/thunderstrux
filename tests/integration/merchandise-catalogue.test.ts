@@ -64,6 +64,8 @@ describe("merchandise catalogue", () => {
     expect(created.status).toBe(201);
     const product = created.body.product;
     expect(product).toMatchObject({ status: "draft", version: 1, name: "EngSoc hoodie" });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "merchandise_product.created", targetId: product.id } }))
+      .toMatchObject({ organisationId: organisation.id, actorUserId: user.id, metadata: expect.objectContaining({ photos: 1, options: 2 }) });
     const variants = await prisma.merchandiseVariant.findMany({ where: { productId: product.id }, orderBy: { position: "asc" } });
     expect(variants.map((variant) => variant.sku)).toEqual(["ENGSOC-HOODIE-NAVY-L", "HOOD-XL"]);
     expect((await prisma.asset.findUniqueOrThrow({ where: { id: cover.id } })).unreferencedAt).toBeNull();
@@ -130,6 +132,9 @@ describe("merchandise catalogue", () => {
     expect(published).toMatchObject({ status: 200, body: { product: { status: "published" } } });
     expect(await prisma.$transaction((tx) => assetPublicReferenced(tx, cover.id))).toBe(true);
     expect((await publish(organisation.slug, draft.id, 1)).status).toBe(200);
+    // Publishing again changes nothing, so it is on record once.
+    expect(await prisma.auditLog.findMany({ where: { action: "merchandise_product.published", targetId: draft.id } }))
+      .toEqual([expect.objectContaining({ organisationId: organisation.id, actorUserId: user.id })]);
 
     // On sale: stock may run out, but the photo and options must stay.
     state = await editorState(organisation.slug, draft.id);

@@ -944,7 +944,7 @@ Preview uses an authorised read path plus **DRAFT PREVIEW** watermark and disabl
 
 - **Status cards:** `Charges enabled`, `Payouts enabled`, `Details submitted`, `Account action required`, observed updated time. Do not conflate Stripe charges and actual settlement.
 - **CTA:** Connect Stripe / Continue onboarding / View account status / Disconnect where safe. Redirect through official provider onboarding; no sensitive provider values entered directly into frontend.
-- **Financial disclosure:** where platform policy remains 10% of organisation gross, clearly state this is withheld from society proceeds; buyer total is displayed price with no invented extra surcharge. Actual provider processing costs/payout timing need provider-verified data or honest unknown wording.
+- **Financial disclosure:** the platform fee (since T46, 3.75% plus $0.89 per ticket, membership or merchandise order; corrected 2026-10-26) is withheld from society proceeds, and the page says so; buyer total is displayed price with no invented extra surcharge. Actual provider processing costs/payout timing need provider-verified data or honest unknown wording.
 - **Disconnect:** permission + MFA + blockers if unresolved financial obligations exist; historic orders remain linked to original provider account for refund/reconciliation. Never imply funds immediately transferred after a paid order.
 - **Free products:** can function without Connect charges if all other validation passes.
 
@@ -1097,7 +1097,7 @@ For paid ticket/merchandise orders, reservation lasts **30 minutes** from the se
 
 - Use integer AUD cents for server arithmetic; display `A$` or `$` plus visible `AUD` context at checkout.
 - Backend rechecks price, name, entitlement, stock, event policy, seller and fee policy under its transaction locks.
-- Checkout review displays buyer total and any applicable fees honestly. Under current T17, **10% is deducted from society gross**, not an extra buyer surcharge. Never display a guessed processing fee or payout net as guaranteed.
+- Checkout review displays buyer total and any applicable fees honestly. Since T46 the platform fee, **3.75% plus $0.89 per ticket, membership or merchandise order, is deducted from society gross**, not an extra buyer surcharge (corrected 2026-10-26; it was 10% under T17). Never display a guessed processing fee or payout net as guaranteed.
 - Lock purchased snapshots: seller, ticket/line/product/variant name, price, policy version, membership term, currency, fees, buyer identity. Later edits may change live listing but not the purchase receipt.
 - Server 409 price/version conflict -> clear comparison and explicit user decision; do not issue an order from outdated quote.
 
@@ -1385,7 +1385,7 @@ idle
 7. **Notifications vs campaigns:** transaction emails in plan do not constitute a bulk email marketing platform. Do not add mailing-list sending or spam-prone automated blasts by default.
 8. **Connect payouts:** successful charges do not prove payouts enabled or bank settlement. UI must show distinct states.
 9. **Unlisted vs member-only:** link-only discovery suppression is distinct from entitlement-only content concealment.
-10. **Price transparency:** currently specified 10% platform fee is deducted from society gross. Avoid mechanically importing competitor buyer booking fees into checkout.
+10. **Price transparency:** the platform fee (3.75% plus $0.89 per ticket, membership or merchandise order since T46; corrected 2026-10-26) is deducted from society gross. Avoid mechanically importing competitor buyer booking fees into checkout.
 
 ---
 

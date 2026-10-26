@@ -34,35 +34,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("public-safe pages and APIs", () => {
-  test("public event list read does not create demo data when database is empty", async () => {
-    const list = await getPublicEvents(
-      new Request("http://localhost/api/public/events")
-    );
-    expect(list.status).toBe(200);
-    await expect(parseJsonResponse(list)).resolves.toEqual({
-      events: [],
-      pageInfo: {
-        limit: 25,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        nextCursor: null,
-        previousCursor: null
-      }
-    });
-
-    await expect(
-      Promise.all([
-        prisma.organisation.count(),
-        prisma.event.count(),
-        prisma.ticketType.count(),
-        prisma.user.count(),
-        prisma.order.count(),
-        prisma.ticketReservation.count(),
-        prisma.ticket.count()
-      ])
-    ).resolves.toEqual([0, 0, 0, 0, 0, 0, 0]);
-  });
-
   test("public events APIs return published events only", async () => {
     const { organisation } = await createOrganisationAccount();
     const published = await createEvent({
@@ -124,244 +95,46 @@ describe("public-safe pages and APIs", () => {
     expect(draftDetail.status).toBe(404);
   });
 
-  test("public event detail read does not mutate stale pending orders or reservations", async () => {
+  test("public availability keeps raw stock, counts only live holds against it and never goes below zero", async () => {
     const { organisation } = await createOrganisationAccount();
     const member = await createMember();
+    const later = new Date(Date.now() + 30 * 60 * 1000);
     const event = await createEvent({
       organisationId: organisation.id,
-      title: "Published Event With Stale Reservation",
-      status: "published"
-    });
-    const ticketType = event.ticketTypes[0];
-    const order = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      status: "pending",
-      quantity: 1,
-      unitPrice: ticketType.price
-    });
-    const reservation = await createReservation({
-      orderId: order.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      quantity: 1,
-      status: "active",
-      expiresAt: new Date(Date.now() - 60 * 1000)
-    });
-    const countsBefore = await Promise.all([
-      prisma.organisation.count(),
-      prisma.event.count(),
-      prisma.ticketType.count(),
-      prisma.user.count(),
-      prisma.order.count(),
-      prisma.ticketReservation.count(),
-      prisma.ticket.count()
-    ]);
-
-    const detail = await getPublicEvent(
-      new Request(`http://localhost/api/public/events/${event.id}`),
-      routeContext({ eventId: event.id })
-    );
-    expect(detail.status).toBe(200);
-    await expect(
-      Promise.all([
-        prisma.organisation.count(),
-        prisma.event.count(),
-        prisma.ticketType.count(),
-        prisma.user.count(),
-        prisma.order.count(),
-        prisma.ticketReservation.count(),
-        prisma.ticket.count()
-      ])
-    ).resolves.toEqual(countsBefore);
-
-    await expect(
-      prisma.order.findUniqueOrThrow({
-        where: { id: order.id },
-        select: { status: true, failureReason: true }
-      })
-    ).resolves.toEqual({
-      status: "pending",
-      failureReason: null
-    });
-    await expect(
-      prisma.ticketReservation.findUniqueOrThrow({
-        where: { id: reservation.id },
-        select: { status: true, releasedAt: true, confirmedAt: true }
-      })
-    ).resolves.toEqual({
-      status: "active",
-      releasedAt: null,
-      confirmedAt: null
-    });
-  });
-
-  test("public event detail returns reservation-aware availability while preserving raw quantity", async () => {
-    const { organisation } = await createOrganisationAccount();
-    const member = await createMember();
-    const event = await createEvent({
-      organisationId: organisation.id,
-      title: "Published Event With Active Reservations",
       status: "published",
       ticketTypes: [
-        { name: "General", price: 1200, quantity: 10 },
-        { name: "VIP", price: 2500, quantity: 8 }
+        { name: "Held", price: 1200, quantity: 10 },
+        { name: "Lapsed holds", price: 1200, quantity: 10 },
+        { name: "Over-held", price: 1200, quantity: 5 },
+        { name: "Untouched", price: 2500, quantity: 8 }
       ]
     });
-    const [general, vip] = event.ticketTypes;
-    const order = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: general.id,
-      userId: member.id,
-      quantity: 3,
-      unitPrice: general.price
-    });
-    await createReservation({
-      orderId: order.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: general.id,
-      userId: member.id,
-      quantity: 3,
-      status: "active",
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000)
-    });
-
-    const detail = await getPublicEvent(
-      new Request(`http://localhost/api/public/events/${event.id}`),
-      routeContext({ eventId: event.id })
-    );
-
-    expect(detail.status).toBe(200);
-    const body = await parseJsonResponse(detail);
-    expect(body.event.ticketTypes).toEqual([
-      expect.objectContaining({
-        id: general.id,
-        quantity: 10,
-        availableQuantity: 7
-      }),
-      expect.objectContaining({
-        id: vip.id,
-        quantity: 8,
-        availableQuantity: 8
-      })
-    ]);
-  });
-
-  test("public event detail ignores expired and non-active reservations for availability", async () => {
-    const { organisation } = await createOrganisationAccount();
-    const member = await createMember();
-    const event = await createEvent({
-      organisationId: organisation.id,
-      title: "Published Event With Inactive Reservations",
-      status: "published"
-    });
-    const ticketType = event.ticketTypes[0];
-
-    const reservationInputs = [
-      {
-        status: "active" as const,
-        expiresAt: new Date(Date.now() - 60 * 1000)
-      },
-      {
-        status: "released" as const,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-        releasedAt: new Date(),
-        releaseReason: "test_release"
-      },
-      {
-        status: "confirmed" as const,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-        confirmedAt: new Date()
-      },
-      {
-        status: "expired" as const,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-        releasedAt: new Date(),
-        releaseReason: "expired"
-      }
-    ];
-
-    for (const reservationInput of reservationInputs) {
-      const order = await createOrder({
-        organisationId: organisation.id,
-        eventId: event.id,
-        ticketTypeId: ticketType.id,
-        userId: member.id,
-        quantity: 2,
-        unitPrice: ticketType.price
-      });
-      await createReservation({
-        orderId: order.id,
-        organisationId: organisation.id,
-        eventId: event.id,
-        ticketTypeId: ticketType.id,
-        userId: member.id,
-        quantity: 2,
-        ...reservationInput
-      });
+    const [held, lapsed, over] = event.ticketTypes;
+    const holds = [
+      [held, 3, { status: "active", expiresAt: later }],
+      [lapsed, 2, { status: "active", expiresAt: new Date(Date.now() - 60 * 1000) }],
+      [lapsed, 2, { status: "released", expiresAt: later, releasedAt: new Date(), releaseReason: "test_release" }],
+      [lapsed, 2, { status: "confirmed", expiresAt: later, confirmedAt: new Date() }],
+      [lapsed, 2, { status: "expired", expiresAt: later, releasedAt: new Date(), releaseReason: "expired" }],
+      [over, 7, { status: "active", expiresAt: later }]
+    ] as const;
+    for (const [ticketType, quantity, hold] of holds) {
+      const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, userId: member.id, quantity, unitPrice: ticketType.price });
+      await createReservation({ orderId: order.id, organisationId: organisation.id, eventId: event.id, ticketTypeId: ticketType.id, userId: member.id, quantity, ...hold });
     }
 
     const detail = await getPublicEvent(
       new Request(`http://localhost/api/public/events/${event.id}`),
       routeContext({ eventId: event.id })
     );
-
     expect(detail.status).toBe(200);
-    const body = await parseJsonResponse(detail);
-    expect(body.event.ticketTypes[0]).toMatchObject({
-      id: ticketType.id,
-      quantity: ticketType.quantity,
-      availableQuantity: ticketType.quantity
-    });
-  });
-
-  test("public event detail clamps over-reserved availability to zero", async () => {
-    const { organisation } = await createOrganisationAccount();
-    const member = await createMember();
-    const event = await createEvent({
-      organisationId: organisation.id,
-      title: "Published Over Reserved Event",
-      status: "published",
-      ticketTypes: [{ name: "General", price: 1200, quantity: 5 }]
-    });
-    const ticketType = event.ticketTypes[0];
-    const order = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      quantity: 7,
-      unitPrice: ticketType.price
-    });
-    await createReservation({
-      orderId: order.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      quantity: 7,
-      status: "active",
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000)
-    });
-
-    const detail = await getPublicEvent(
-      new Request(`http://localhost/api/public/events/${event.id}`),
-      routeContext({ eventId: event.id })
-    );
-
-    expect(detail.status).toBe(200);
-    const body = await parseJsonResponse(detail);
-    expect(body.event.ticketTypes[0]).toMatchObject({
-      id: ticketType.id,
-      quantity: 5,
-      availableQuantity: 0
-    });
+    const types: Array<{ name: string; quantity: number; availableQuantity: number }> = (await parseJsonResponse(detail)).event.ticketTypes;
+    expect(types.map(({ name, quantity, availableQuantity }) => [name, quantity, availableQuantity])).toEqual([
+      ["Held", 10, 7],
+      ["Lapsed holds", 10, 10],
+      ["Over-held", 5, 0],
+      ["Untouched", 8, 8]
+    ]);
   });
 
   test("public ticket purchase renders sold out when reservations consume raw inventory", async () => {

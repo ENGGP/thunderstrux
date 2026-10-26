@@ -48,7 +48,7 @@ const refundInput = (fixture: Awaited<ReturnType<typeof paidOrder>>, extra: Part
 });
 
 describe("whole-order refunds", () => {
-  test("a confirmed refund voids the tickets, keeps the order paid, records history and emails the buyer", async () => {
+  test("a confirmed refund voids the tickets, keeps the order paid, records history and emails the buyer, and puts no tickets back on sale", async () => {
     const fixture = await paidOrder();
     stripe.create.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => providerRefund(fixture, params.metadata.refundRequestId));
     setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
@@ -70,6 +70,10 @@ describe("whole-order refunds", () => {
     ]);
     expect((await prisma.orderLifecycleEvent.findMany({ where: { orderId: fixture.order.id }, orderBy: { sequence: "asc" } })).map((event) => event.type)).toEqual(expect.arrayContaining(["refund_requested", "refunded"]));
     expect(await prisma.notificationOutbox.count({ where: { eventKey: `refund/${request.id}`, recipient: "buyer@example.com" } })).toBe(1);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.refund_requested", targetId: fixture.order.id } }))
+      .toMatchObject({ organisationId: fixture.owner.organisation.id, actorUserId: fixture.owner.user.id, metadata: expect.objectContaining({ amount: 3000 }) });
+    // A refund never reopens tickets: stock stays as the sale left it.
+    expect((await prisma.ticketType.findUniqueOrThrow({ where: { id: fixture.event.ticketTypes[0].id } })).quantity).toBe(fixture.event.ticketTypes[0].quantity);
   });
 
   test("the wrong reference, a free or unpaid order, compensation and a second refund are refused before Stripe", async () => {

@@ -123,18 +123,23 @@ describe("commerce checkout", () => {
     expect(stripe.create).toHaveBeenCalledTimes(1);
   });
 
-  test("the signed webhook fulfils through the family once; replays and a late expiry change nothing", async () => {
+  test("the signed webhook reads the PaymentIntent Stripe names by id and fulfils through the family once; replays and a late expiry change nothing", async () => {
     const { checkout } = await shop();
     await checkout();
     const order = await prisma.commerceOrder.findFirstOrThrow();
-    const paid = await sessionFor(order.id);
+    // As Stripe sends it: the Session names its PaymentIntent by id, not expanded.
+    const expanded = await sessionFor(order.id);
+    const intent = expanded.payment_intent as { id: string };
+    stripe.intent.mockResolvedValue(intent);
+    const paid = { ...expanded, payment_intent: intent.id };
     const id = unique("evt");
     await deliver("checkout.session.completed", paid, id);
     await deliver("checkout.session.completed", paid, id);
     await deliver("checkout.session.completed", paid);
     await deliver("checkout.session.expired", paid);
     expect(family.fulfilled).toEqual([order.id]);
-    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "paid", expiresAt: null, stripePaymentIntentId: (paid.payment_intent as { id: string }).id });
+    expect(stripe.intent).toHaveBeenCalledWith(intent.id);
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "paid", expiresAt: null, stripePaymentIntentId: intent.id });
     expect((await prisma.commerceLifecycleEvent.findMany({ where: { commerceOrderId: order.id }, orderBy: { sequence: "asc" } })).map((event) => event.type))
       .toEqual(["order_created", "stripe_session_attached", "payment_fulfilled"]);
   });

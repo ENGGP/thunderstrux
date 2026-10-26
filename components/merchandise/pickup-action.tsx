@@ -46,8 +46,10 @@ export function PickupAction({ orgSlug, order, step, stage, wide = false, after 
           <p className="mt-0.5">{error} Check before handing anything over.</p>
         </Notice>
       ) : null}
-      <Button aria-label={`Mark order ${order.reference} ${ready ? "ready to collect" : "collected"}`} className={wide ? "w-full" : ""} onClick={() => setOpen(true)} size={wide ? "lg" : "sm"} type="button">
-        {ready ? "Mark ready" : "Mark collected"}
+      {/* The spoken name starts with the visible words, so voice control finds it (WCAG 2.5.3). */}
+      {/* relative keeps the hidden words inside the button, so they can't widen a scrolling table. */}
+      <Button className={wide ? "relative w-full" : "relative"} onClick={() => setOpen(true)} size={wide ? "lg" : "sm"} type="button">
+        {ready ? "Mark ready" : "Mark collected"}<span className="sr-only"> for order {order.reference}</span>
       </Button>
       <ConfirmDialog
         busy={busy}

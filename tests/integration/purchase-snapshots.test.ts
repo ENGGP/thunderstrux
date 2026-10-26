@@ -6,7 +6,7 @@ import { getWalletTickets } from "@/lib/purchases/ticket-purchases";
 import { getOrganisationOrderDetail } from "@/lib/orders/order-detail";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
-import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
+import { buyerPurchaseBadge, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import {
   checkInOrganisationTicket,
@@ -207,12 +207,28 @@ describe("purchase snapshots and ticket validity", () => {
     await expect(checkInOrganisationTicket(owner.organisation.id, valid.id, owner.user.id)).resolves.toMatchObject({ status: "checked-in" });
   });
 
-  test("the projection reads free orders as Free and charged-but-unfulfilled orders as Payment review", async () => {
-    expect(ticketOrderProjection({ status: "paid", paymentKind: "free", requiresCompensationReview: false })).toBe("free");
-    expect(ticketOrderProjection({ status: "paid", paymentKind: "stripe", requiresCompensationReview: false })).toBe("paid");
-    expect(ticketOrderProjection({ status: "failed", paymentKind: "stripe", requiresCompensationReview: true })).toBe("review");
-    expect(ticketOrderProjection({ status: "pending", paymentKind: "stripe", requiresCompensationReview: false })).toBe("processing");
-    expect(ticketOrderProjection({ status: "expired", paymentKind: "stripe", requiresCompensationReview: false })).toBe("expired");
+  test("one status per order, by the UX spec's precedence, and buyers read each in their own words", async () => {
+    // UX spec 9.6: cancellation, dispute and refund outrank review, which outranks fulfilment; failed and expired come last.
+    const paid = { status: "paid", paymentKind: "stripe", requiresCompensationReview: false } as const;
+    const at = new Date();
+    const rows: Array<[string, Parameters<typeof ticketOrderProjection>[0], string, string | undefined]> = [
+      ["cancelled outranks a dispute and a refund", { ...paid, paymentKind: "free", cancelledAt: at, disputeStatus: "open", refundStatus: "refunded" }, "cancelled", "Cancelled by the society"],
+      ["a dispute outranks a refund and review", { ...paid, disputeStatus: "lost", refundStatus: "refunded", requiresCompensationReview: true }, "disputed", undefined],
+      ["refunded outranks review", { ...paid, refundStatus: "refunded", externalRefundedAmount: 500 }, "refunded", undefined],
+      ["a refund in progress outranks review", { ...paid, refundStatus: "processing", externalRefundedAmount: 500 }, "refund-processing", undefined],
+      ["a charge that couldn't be fulfilled", { ...paid, status: "failed", requiresCompensationReview: true }, "review", "Payment issue"],
+      ["a partial refund made in Stripe, until reviewed", { ...paid, externalRefundedAmount: 500 }, "review", "Partly refunded"],
+      ["a reviewed partial refund", { ...paid, externalRefundedAmount: 500, externalRefundReviewedAt: at }, "paid", undefined],
+      ["waiting for Stripe", { ...paid, status: "pending" }, "processing", "Waiting for payment"],
+      ["paid", paid, "paid", undefined],
+      ["free, though stored as paid", { ...paid, paymentKind: "free" }, "free", undefined],
+      ["failed", { ...paid, status: "failed" }, "failed", "Didn't complete"],
+      ["expired", { ...paid, status: "expired" }, "expired", "Didn't complete"]
+    ];
+    for (const [why, order, projection, label] of rows) {
+      expect(ticketOrderProjection(order), why).toBe(projection);
+      expect(buyerPurchaseBadge(order).label, why).toBe(label);
+    }
 
     const owner = await createOrganisationAccount();
     const event = await createEvent({ organisationId: owner.organisation.id, status: "published" });

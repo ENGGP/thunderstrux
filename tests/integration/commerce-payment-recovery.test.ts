@@ -164,6 +164,31 @@ describe("commerce disputes", () => {
     expect((await prisma.purchaseDispute.findUniqueOrThrow({ where: { stripeDisputeId: `dp_${fixture.order.id}` } })).closedAt).not.toBeNull();
     expect((await listPickups(fixture.society.organisation.id, { stage: "prepare" })).orders.map((row) => row.id)).toEqual([fixture.order.id]);
   });
+
+  test("dispute and refund events that don't verify as the order's payment change nothing; each dispute alerts a person", async () => {
+    const fixture = await paid("membership");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const before = await order(fixture.order.id);
+    const verified = await stripe.retrieve();
+    const cases: Array<[string, object, object?]> = [
+      ["another charge on the same payment", {}, { charge: "ch_other" }],
+      ["a Session naming another order", { metadata: { ...verified.metadata, commerceOrderId: "another-order" } }],
+      ["money sent to another account", { payment_intent: { ...verified.payment_intent, transfer_data: { destination: "acct_someone_else" } } }]
+    ];
+    for (const [why, session, disputed] of cases) {
+      stripe.retrieve.mockResolvedValue({ ...verified, ...session });
+      expect((await postSigned(signedEvent("charge.dispute.created", { ...dispute(fixture, "needs_response"), ...disputed }))).status, why).toBe(200);
+      // A refund names no charge, so it is checked only against the payment.
+      if (!disputed) expect((await postSigned(signedEvent("refund.created", outsideRefund(fixture, 1500)))).status, why).toBe(200);
+    }
+    expect(stripe.dispute).not.toHaveBeenCalled();
+    expect(stripe.refunds).not.toHaveBeenCalled();
+    expect(await order(fixture.order.id)).toEqual(before);
+    expect(await historyOf(fixture.order.id)).toEqual(["order_created"]);
+    expect(await prisma.purchaseDispute.count({ where: { commerceOrderId: fixture.order.id } })).toBe(0);
+    expect((await grantOf(fixture)).revokedAt).toBeNull();
+    expect(error.mock.calls.filter(([line]) => String(line).includes('"event":"purchase_dispute_unmatched"'))).toHaveLength(3);
+  });
 });
 
 describe("commerce refunds made in Stripe", () => {
@@ -187,6 +212,12 @@ describe("commerce refunds made in Stripe", () => {
     expect(stripe.create.mock.calls[0][0]).toMatchObject({ amount: 1000, payment_intent: fixture.intentId });
     expect(await order(fixture.order.id)).toMatchObject({ refundStatus: "refunded" });
     expect(await historyOf(fixture.order.id)).toEqual(["order_created", "external_refund_recorded", "external_refund_reviewed", "refund_requested", "refunded"]);
+    expect((await prisma.auditLog.findMany({ where: { targetId: fixture.order.id }, orderBy: { createdAt: "asc" } })).map((row) => [row.action, row.actorUserId])).toEqual([
+      ["commerce_order.external_refund_recorded", null],
+      ["commerce_order.external_refund_reviewed", fixture.society.user.id],
+      ["commerce_order.refund_requested", fixture.society.user.id],
+      ["commerce_order.refund_succeeded", null]
+    ]);
   });
 
   test("a full refund in Stripe ends the membership once, however often it is delivered", async () => {

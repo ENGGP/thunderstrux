@@ -1,9 +1,9 @@
 ---
 status: living
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[UI Architecture Rules]]", "[[Route Security Inventory]]", "[[Engineering Delivery Workflow]]"]
-sources: [tests/e2e/accessibility.spec.ts, app/layout.tsx, components/ui/responsive-table.tsx, components/purchases/money-summary.tsx, components/settings/staff-management.tsx]
+sources: [tests/e2e/accessibility.spec.ts, components/merchandise/pickup-action.tsx, app/layout.tsx, components/ui/responsive-table.tsx, components/purchases/money-summary.tsx, components/settings/staff-management.tsx]
 ---
 
 # Accessibility Review
@@ -41,6 +41,16 @@ Each page is scanned at 390, 768 and 1280px, and at 640px, which is 1280px zoome
 | The page scrolled sideways on phones and at 200% zoom (1.4.10) | Staff settings | The outer grid lets its cards shrink; the tables scroll inside them |
 
 Public journeys had no findings.
+
+## Found and fixed (26 Oct 2026)
+
+axe-core 4.14 (#189) flags an accessible name that doesn't contain the visible words (`label-content-name-mismatch`).
+
+| Finding | Where | Fix |
+| --- | --- | --- |
+| "Mark ready" and "Mark collected" were named "Mark order ABC123 ready to collect" and "Mark order ABC123 collected", so a voice-control user saying the visible words couldn't click them (2.5.3, DEF-046) | Merchandise Pickups and a merchandise order | The visible words come first and the order follows for screen readers only ("Mark ready for order ABC123"), as the check-in console does. The button is `relative`: hidden text positioned outside it escaped the table's scroll area and made the page scroll sideways at 768px (1.4.10) |
+
+Other buttons with their own names already start with their visible words. A dependency update to axe or Playwright needs a browser campaign before it merges: #189 didn't have one, so main failed.
 
 ## Already in place
 

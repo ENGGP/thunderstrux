@@ -7,7 +7,6 @@ import {
   createMember,
   createOrder,
   createOrganisationAccount,
-  createReservation,
   futureDate
 } from "@/tests/helpers/test-data";
 import { POST as createEventRoute } from "@/app/api/events/route";
@@ -75,6 +74,8 @@ describe("event lifecycle", () => {
     });
 
     const event = createBody.event;
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "event.created", targetId: event.id } }))
+      .toMatchObject({ organisationId: organisation.id, actorUserId: user.id, metadata: { title: "Integration Event" } });
     const updatePayload = {
       ...eventPayload(organisation.id, {
         title: "Integration Event Updated",
@@ -393,6 +394,8 @@ describe("event lifecycle", () => {
 
     expect(response.status).toBe(200);
     expect(await parseJsonResponse(response)).toEqual({ deleted: true });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "event.deleted", targetId: event.id } }))
+      .toMatchObject({ organisationId: organisation.id, actorUserId: user.id, metadata: { title: event.title } });
 
     const refused = await deleteEventRoute(jsonRequest(`http://localhost/api/events/${sold.id}`, undefined, { method: "DELETE" }), routeContext({ eventId: sold.id }));
     expect(refused.status).toBe(400);
@@ -516,39 +519,5 @@ describe("event lifecycle", () => {
     ]);
     // The order's own society field is not authority: the other society sees nothing.
     expect((await ticketMetrics(other.organisation.id, range, full)).totals.gross).toBe(0);
-  });
-
-  test("event analytics do not mutate stale pending orders or reservations", async () => {
-    const { user, organisation } = await createOrganisationAccount();
-    const member = await createMember();
-    const event = await createEvent({ organisationId: organisation.id });
-    const ticketType = event.ticketTypes[0];
-    const pending = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      status: "pending",
-      unitPrice: ticketType.price
-    });
-    await createReservation({
-      orderId: pending.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      expiresAt: new Date(Date.now() - 60 * 1000)
-    });
-
-    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    await eventTicketTypeMetrics(organisation.id, event.id, { financial: true });
-    await ticketMetrics(organisation.id, { from: "2026-05-01", to: "2026-05-31", bucket: "day", timeZone: "Australia/Brisbane" }, { financial: true }, event.id);
-
-    const persisted = await prisma.order.findUniqueOrThrow({
-      where: { id: pending.id },
-      include: { reservation: true }
-    });
-    expect(persisted.status).toBe("pending");
-    expect(persisted.reservation?.status).toBe("active");
   });
 });

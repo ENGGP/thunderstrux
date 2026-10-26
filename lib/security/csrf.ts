@@ -21,14 +21,15 @@ function sessionCookieFromHeader(raw: string | null): string | null {
     // The first of duplicate cookies wins, as Auth.js reads them, so the token binds the session it authenticates (T53).
     if (!cookies.has(name)) cookies.set(name, part.slice(separator + 1).trim());
   }
+  // As Auth.js's SessionStore reads a session: every cookie whose name starts with
+  // the session cookie's, in chunk-suffix order, joined. Any such cookie needs a token,
+  // so a lone or reordered chunk can't skip the check (SEC-027).
+  const suffix = (name: string) => parseInt(name.split(".").pop() || "0");
   for (const name of SESSION_COOKIE_NAMES) {
-    const direct = cookies.get(name);
-    if (direct) return `${name}:${direct}`;
-    const chunks: string[] = [];
-    for (let index = 0; cookies.has(`${name}.${index}`); index += 1) {
-      chunks.push(cookies.get(`${name}.${index}`)!);
-    }
-    if (chunks.length > 0) return `${name}:${chunks.join("")}`;
+    const parts = [...cookies].filter(([cookieName, value]) => cookieName.startsWith(name) && value);
+    if (parts.length === 0) continue;
+    parts.sort(([a], [b]) => suffix(a) - suffix(b));
+    return `${name}:${parts.map(([, value]) => value).join("")}`;
   }
   return null;
 }

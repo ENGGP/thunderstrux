@@ -254,6 +254,27 @@ describe("trusted origin guard", () => {
     expect(check("authjs.session-token=abcdef")).toBe(false);
   });
 
+  test("any session cookie Auth.js would read needs its token: a lone or reordered chunk can't skip the check (SEC-027)", async () => {
+    // Auth.js joins chunks in suffix order, whatever order the browser sends them in.
+    const now = Date.UTC(2026, 9, 26, 10, 0, 0);
+    const ordered = createCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie: "authjs.session-token.0=abc; authjs.session-token.1=def" } }), now)!;
+    expect(verifyCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie: "authjs.session-token.1=def; authjs.session-token.0=abc", "x-thunderstrux-csrf-token": ordered } }), now)).toBe(true);
+
+    await withAppUrlEnv("http://localhost:3000", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const user = await createUser({ accountRole: "organisation" });
+      setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+      // Auth.js signs a request in from this alone, so it is a session like any other.
+      const cookie = "authjs.session-token.1=lone-chunk";
+      const create = (headers: Record<string, string>) =>
+        createOrganisation(jsonRequest("http://localhost/api/orgs", { name: unique("Org") }, { headers: { cookie, ...headers } }));
+      expect((await create({})).status).toBe(403);
+      await expect(prisma.organisation.count()).resolves.toBe(0);
+      const token = createCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie } }))!;
+      expect((await create({ "x-thunderstrux-csrf-token": token })).status).toBe(201);
+    });
+  });
+
   // Built without jsonRequest, which always adds an Origin header: these reach
   // the Referer fallback a browser uses when it strips Origin.
   const fromReferer = (referer: string, headers: Record<string, string> = {}) => new Request("http://localhost/api/orgs", {

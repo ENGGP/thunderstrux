@@ -64,6 +64,11 @@ describe("staff MFA", () => {
       mfaGrantDigest(sessionB)!, next);
     await expect(requireStaffMfa(user.id, mfaGrantDigest(sessionB)!, next))
       .resolves.toBeUndefined();
+    // Each society the person works for keeps the record.
+    expect((await prisma.auditLog.findMany({ where: { targetId: user.id, action: { startsWith: "staff_mfa." } }, orderBy: { createdAt: "asc" } }))
+      .map((row) => [row.action, row.actorUserId, row.organisationId])).toEqual([
+      ["staff_mfa.enabled", user.id, organisation.id], ["staff_mfa.verified", user.id, organisation.id]
+    ]);
     await expect(requireStaffMfa(user.id, mfaGrantDigest(sessionB)!,
       new Date(next.getTime() + 13 * 60 * 60_000))).rejects.toBeInstanceOf(MfaRequiredError);
     await prisma.organisationStaff.delete({ where: { organisationId_userId: {
@@ -83,6 +88,7 @@ describe("staff MFA", () => {
     await expect(verifyStaffMfa(user.id, recoveryCodes[0], mfaGrantDigest(sessionB)!, now))
       .rejects.toThrow("Invalid MFA");
     await expect(prisma.mfaRecoveryCode.count({ where: { userId: user.id } })).resolves.toBe(9);
+    expect(await prisma.auditLog.count({ where: { targetId: user.id, actorUserId: user.id, action: "staff_mfa.recovery_used" } })).toBe(1);
   });
 
   test("a permitted staff action keeps the MFA challenge when other permissions are denied", async () => {

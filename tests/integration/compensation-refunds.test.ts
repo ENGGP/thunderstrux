@@ -138,6 +138,9 @@ describe("compensation refunds", () => {
       requiresCompensationReview: false,
       isManuallyRefunded: true
     });
+    // Thunderstrux's own step, recorded with no person behind it.
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.compensation_refund_started", targetId: fixture.order.id } }))
+      .toMatchObject({ organisationId: fixture.organisation.id, actorUserId: null, metadata: { attempt: 1 } });
   });
 
   test("routes a pre-existing unrelated refund to review without another provider mutation", async () => {
@@ -155,6 +158,8 @@ describe("compensation refunds", () => {
       state: "review_required",
       lastErrorCode: "existing_refund_requires_review"
     });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.compensation_refund_review_required", targetId: fixture.order.id } }))
+      .toMatchObject({ organisationId: fixture.organisation.id, actorUserId: null, metadata: { reason: "existing_refund_requires_review" } });
   });
 
   test("routes absent or disputed provider charge state to review", async () => {

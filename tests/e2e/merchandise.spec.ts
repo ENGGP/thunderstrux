@@ -222,13 +222,13 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
   await expect(page.getByText("2 × Enamel pin").first()).toBeVisible();
   await shoot(page, "pickups");
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.getByRole("button", { name: `Mark order ${reference} ready to collect` }).first().click();
+  await page.getByRole("button", { name: `Mark ready for order ${reference}` }).first().click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: `Mark order ${reference} ready to collect?` })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Mark ready" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Order ${reference} is on the Ready tab. Sam Lee was emailed.` })).toBeVisible();
   await page.getByRole("link", { name: "Ready to collect 1" }).click();
   await expect(page.getByRole("columnheader", { name: "Ready since" })).toBeVisible();
-  await page.getByRole("button", { name: `Mark order ${reference} collected` }).first().click();
+  await page.getByRole("button", { name: `Mark collected for order ${reference}` }).first().click();
   await expect(page.getByRole("dialog")).toContainText("For Sam Lee.");
   await page.getByRole("dialog").getByRole("button", { name: "Mark collected" }).click();
   await expect(page.getByRole("status").filter({ hasText: `Order ${reference} was handed over by` })).toBeVisible();
@@ -278,7 +278,7 @@ test("a disputed order can't be handed over, and a partial refund made in Stripe
   await expect(page.getByText("The buyer has disputed this payment")).toBeVisible();
   await expect(page.getByText("refunds are paused and the order can't be handed over")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open the dispute in Stripe" })).toHaveAttribute("href", `https://dashboard.stripe.com/test/disputes/dp_e2e_${disputed.id}`);
-  await expect(page.getByRole("button", { name: /Mark .* ready/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Mark (ready|collected)/ })).toHaveCount(0);
   await shoot(page, "order-disputed");
   await page.goto("/dashboard/merchandise/pickups?stage=review");
   await expect(page.getByText("1 × Club scarf").first()).toBeVisible();

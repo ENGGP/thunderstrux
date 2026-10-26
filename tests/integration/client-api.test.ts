@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ClientApiError, fetchJson, fetchWithCsrf, getClientErrorMessage, type ApiErrorPayload } from "@/lib/client/api";
+import { waitForAttempt } from "@/lib/client/checkout";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe("client CSRF refresh", () => {
   test("retries once after an Auth.js cookie rotation invalidates the fetched token", async () => {
@@ -64,5 +68,42 @@ describe("client error messages", () => {
     await expect(fetchJson("/api/events/missing")).rejects.toMatchObject({ name: "ClientApiError", status: 404, message: "Event not found" });
     await expect(fetchJson("/api/events/missing")).rejects.toMatchObject({ status: 502, message: "Request failed. Please try again.", payload: null });
     await expect(fetchJson("/api/events/missing")).resolves.toBeNull();
+  });
+});
+
+describe("checkout attempt polling", () => {
+  test("polls every two seconds: ready opens Stripe, completed names the order, failed says nothing was charged, and half a minute of processing is slow", async () => {
+    vi.useFakeTimers();
+    const answers = (...bodies: object[]) => {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "processing" })));
+      for (const body of bodies) fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(body)));
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    };
+
+    const fetchMock = answers({ status: "processing" }, { status: "ready", url: "https://checkout.stripe.com/c/pay/cs_test" });
+    const ready = waitForAttempt("attempt-1");
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/payments/checkout/attempts/attempt-1", undefined);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await ready).toEqual({ url: "https://checkout.stripe.com/c/pay/cs_test" });
+
+    answers({ status: "completed", orderId: "order-1" });
+    const completed = waitForAttempt("attempt-2");
+    await vi.runAllTimersAsync();
+    expect(await completed).toEqual({ orderId: "order-1" });
+
+    answers({ status: "failed" });
+    const failed = expect(waitForAttempt("attempt-3")).rejects.toThrow("Checkout didn't start. Nothing has been charged.");
+    await vi.runAllTimersAsync();
+    await failed;
+
+    const processing = answers();
+    const slow = waitForAttempt("attempt-4");
+    await vi.runAllTimersAsync();
+    expect(await slow).toBe("slow");
+    expect(processing).toHaveBeenCalledTimes(15);
   });
 });

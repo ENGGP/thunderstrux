@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
-import { manualPayoutSettings, payoutSummary, processPayoutBatch } from "@/lib/payouts/payouts";
+import { manualPayoutSettings, payoutSummary, processPayoutBatch, restoreStripePayoutSchedule } from "@/lib/payouts/payouts";
 import { heldMoney } from "@/lib/payouts/release";
 import { createEvent, createMember, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
@@ -162,6 +162,39 @@ describe("payouts worker", () => {
     await prisma.organisation.update({ where: { id: fixture.organisationId }, data: { stripePayoutsEnabled: false } });
     await processPayoutBatch(100, now);
     expect(stripe.balance).not.toHaveBeenCalledWith({}, { stripeAccount: fixture.accountId });
+  });
+
+  test("a payout Stripe won't send is logged and tried next hour; the other societies are still paid", async () => {
+    const failing = await society();
+    const other = await society();
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.create.mockImplementation(async (params: { amount: number }, options: { stripeAccount: string }) => {
+      if (options.stripeAccount === failing.accountId) throw Object.assign(new Error("Your account cannot currently make payouts"), { type: "StripeInvalidRequestError" });
+      return { id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null };
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await processPayoutBatch(100, now);
+    expect(result.results).toEqual(expect.arrayContaining([
+      { organisationId: failing.organisationId, sent: 0, error: true },
+      { organisationId: other.organisationId, sent: 5000 }
+    ]));
+    expect(error.mock.calls.map(([line]) => JSON.parse(String(line))).filter((entry) => entry.event === "payouts.failed_to_send"))
+      .toEqual([expect.objectContaining({ organisationId: failing.organisationId })]);
+    expect(await prisma.societyPayout.count({ where: { organisationId: failing.organisationId } })).toBe(0);
+
+    // Not before the hour is up; then the same day's key is tried again.
+    stripe.create.mockClear();
+    await processPayoutBatch(100, new Date(now.getTime() + 30 * 60_000));
+    expect(stripe.create).not.toHaveBeenCalled();
+    await processPayoutBatch(100, new Date(now.getTime() + 61 * 60_000));
+    expect(stripe.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: failing.accountId }));
+  });
+
+  test("on disconnect, Stripe goes back to paying the account out daily", async () => {
+    const fixture = await society();
+    await restoreStripePayoutSchedule(fixture.accountId);
+    expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: { payouts: { schedule: { interval: "daily" } } } });
   });
 });
 

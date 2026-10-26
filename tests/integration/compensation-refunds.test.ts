@@ -443,4 +443,113 @@ describe("compensation refunds", () => {
       });
     }
   });
+
+  // Failure paths (2026-10-26 test audit): what happens when Stripe errors,
+  // declines, or stays pending, and when staff confirm a refund that can't apply.
+  const jobState = (id: string) => prisma.compensationRefundJob.findUniqueOrThrow({ where: { id } });
+  const historyCount = (orderId: string, type: "compensation_refund_failed" | "compensation_refunded") =>
+    prisma.orderLifecycleEvent.count({ where: { orderId, type } });
+
+  test("an order that changed since it was queued goes to review without asking Stripe", async () => {
+    const fixture = await automaticCompensationFixture();
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { isManuallyRefunded: true } });
+
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ processed: 0 });
+    expect(stripeMock.checkout.sessions.retrieve).not.toHaveBeenCalled();
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "review_required", lastErrorCode: "local_state_not_eligible", processingToken: null });
+  });
+
+  test("a provider error retries with a growing delay and gives up after the fifth attempt", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await automaticCompensationFixture();
+    configureEligibleStripe(fixture);
+    stripeMock.refunds.create.mockRejectedValue(new Error("socket hang up"));
+
+    const before = Date.now();
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ results: [{ state: "auto_queued" }] });
+    const queued = await jobState(fixture.job.id);
+    expect(queued).toMatchObject({ state: "auto_queued", attempts: 1, lastErrorCode: "provider_request_failed", processingToken: null });
+    expect(queued.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before + 60_000);
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ processed: 0 });
+
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { attempts: 4, nextAttemptAt: new Date(0) } });
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ results: [{ state: "refund_failed" }] });
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refund_failed", attempts: 5, lastErrorCode: "provider_request_failed" });
+    expect(await historyCount(fixture.order.id, "compensation_refund_failed")).toBe(1);
+    await expect(prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).resolves.toMatchObject({ requiresCompensationReview: true, isManuallyRefunded: false });
+
+    // A failed job is left for a person; the worker never sends it again.
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { nextAttemptAt: new Date(0) } });
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ processed: 0 });
+    expect(stripeMock.refunds.create).toHaveBeenCalledTimes(2);
+  });
+
+  test("a refund Stripe declines is recorded as failed and the order stays in review", async () => {
+    const fixture = await automaticCompensationFixture();
+    configureEligibleStripe(fixture);
+    stripeMock.refunds.create.mockResolvedValue({
+      id: "re_declined", status: "failed", amount: fixture.order.totalAmount, currency: "aud", payment_intent: "pi_compensation",
+      metadata: { compensationRefundJobId: fixture.job.id, orderId: fixture.order.id }
+    });
+
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ results: [{ state: "refund_failed" }] });
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refund_failed", stripeRefundId: "re_declined", lastErrorCode: "provider_refund_failed", resolvedAt: null });
+    expect(await historyCount(fixture.order.id, "compensation_refund_failed")).toBe(1);
+    await expect(prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).resolves.toMatchObject({ requiresCompensationReview: true, isManuallyRefunded: false });
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: `compensation-refund/${fixture.job.id}` } })).toBe(0);
+  });
+
+  test("a refund still pending on the last attempt goes to a person instead of polling forever", async () => {
+    const fixture = await automaticCompensationFixture();
+    configureEligibleStripe(fixture);
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { attempts: 4 } });
+    stripeMock.refunds.create.mockResolvedValue({
+      id: "re_stuck_pending", status: "pending", amount: fixture.order.totalAmount, currency: "aud", payment_intent: "pi_compensation",
+      metadata: { compensationRefundJobId: fixture.job.id, orderId: fixture.order.id }
+    });
+
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ results: [{ state: "review_required" }] });
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "review_required", lastErrorCode: "provider_refund_pending_review", stripeRefundId: "re_stuck_pending" });
+  });
+
+  test("a refund.failed webhook fails the job; an older event delivered late changes nothing", async () => {
+    const fixture = await automaticCompensationFixture();
+    await prisma.compensationRefundJob.update({
+      where: { id: fixture.job.id },
+      data: { state: "refund_pending", stripePaymentIntentId: "pi_compensation", stripeRefundId: "re_webhook_failed" }
+    });
+    const refundEvent = (id: string, type: string, status: string, created: number) => ({
+      id, type, created,
+      data: { object: {
+        id: "re_webhook_failed", status, amount: fixture.order.totalAmount, currency: "aud", payment_intent: "pi_compensation",
+        metadata: { compensationRefundJobId: fixture.job.id, orderId: fixture.order.id }
+      } }
+    }) as never;
+
+    await reconcileRefundEvent(refundEvent("evt_refund_pending_later", "refund.updated", "pending", 1_800_000_100));
+    await reconcileRefundEvent(refundEvent("evt_refund_failed_older", "refund.failed", "failed", 1_800_000_000));
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refund_pending", lastErrorCode: null });
+
+    await reconcileRefundEvent(refundEvent("evt_refund_failed", "refund.failed", "failed", 1_800_000_200));
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refund_failed", lastErrorCode: "provider_refund_failed", providerStatus: "failed" });
+    expect(await historyCount(fixture.order.id, "compensation_refund_failed")).toBe(1);
+    await expect(prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).resolves.toMatchObject({ requiresCompensationReview: true });
+  });
+
+  test("manual confirmation refuses another society's order and a refund that is already settled", async () => {
+    const fixture = await automaticCompensationFixture();
+    const other = await createOrganisationAccount({ stripeReady: true });
+
+    await expect(confirmCompensationRefund(other.organisation.id, fixture.order.id, "re_any", fixture.member.id)).rejects.toMatchObject({ name: "CompensationRefundNotFoundError" });
+    expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled();
+
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { state: "refunded", stripeRefundId: "re_already_settled" } });
+    configureEligibleStripe(fixture);
+    stripeMock.refunds.retrieve.mockResolvedValue({
+      id: "re_second_claim", status: "succeeded", amount: fixture.order.totalAmount, currency: "aud", payment_intent: "pi_compensation", metadata: { orderId: fixture.order.id }
+    });
+    await expect(confirmCompensationRefund(fixture.organisation.id, fixture.order.id, "re_second_claim", fixture.member.id)).rejects.toMatchObject({ name: "CompensationRefundConflictError" });
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refunded", stripeRefundId: "re_already_settled" });
+    expect(await historyCount(fixture.order.id, "compensation_refunded")).toBe(0);
+  });
 });

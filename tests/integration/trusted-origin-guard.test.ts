@@ -226,6 +226,40 @@ describe("trusted origin guard", () => {
     });
   });
 
+  test("a CSRF token is refused once its hour has passed, in another version or shape, and without a session cookie", () => {
+    const cookie = "authjs.session-token=token-session";
+    const now = Date.UTC(2026, 9, 26, 10, 59, 59);
+    const token = createCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie } }), now)!;
+    const check = (supplied: string, at = now) =>
+      verifyCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie, "x-thunderstrux-csrf-token": supplied } }), at);
+    expect(token).toMatch(/^v1\.\d+\.[a-f0-9]{64}$/);
+    expect(check(token)).toBe(true);
+    expect(check(token, now + 1000)).toBe(false);
+    const [, hour, digest] = token.split(".");
+    for (const forged of [`v2.${hour}.${digest}`, `${token}.extra`, `v1.${hour}x.${digest}`, `v1.${hour}.${digest.slice(0, 63)}`, `v1.${Number(hour) + 1}.${digest}`]) {
+      expect(check(forged)).toBe(false);
+    }
+    expect(verifyCsrfTokenForRequest(new Request("http://localhost/", { headers: { "x-thunderstrux-csrf-token": token } }), now)).toBe(false);
+    expect(createCsrfTokenForRequest(new Request("http://localhost/"), now)).toBeNull();
+  });
+
+  test("a session split across chunked cookies binds the same token as the whole cookie", () => {
+    const now = Date.UTC(2026, 9, 26, 10, 0, 0);
+    const whole = createCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie: "__Secure-authjs.session-token=abcdef" } }), now)!;
+    const check = (cookie: string) => verifyCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie, "x-thunderstrux-csrf-token": whole } }), now);
+    expect(check("__Secure-authjs.session-token.0=abc; __Secure-authjs.session-token.1=def")).toBe(true);
+    expect(check("__Secure-authjs.session-token.0=abc; __Secure-authjs.session-token.1=xyz")).toBe(false);
+    expect(check("__Secure-authjs.session-token.0=abc")).toBe(false);
+    // Another cookie name is another session, even with the same value.
+    expect(check("authjs.session-token=abcdef")).toBe(false);
+  });
+
+  // Built without jsonRequest, which always adds an Origin header: these reach
+  // the Referer fallback a browser uses when it strips Origin.
+  const fromReferer = (referer: string, headers: Record<string, string> = {}) => new Request("http://localhost/api/orgs", {
+    method: "POST", headers: { "content-type": "application/json", referer, ...headers }, body: JSON.stringify({ name: unique("Org") })
+  });
+
   test("accepts trusted referer when origin is missing", async () => {
     await withAppUrlEnv("http://localhost:3000", async () => {
       const user = await createUser({ accountRole: "organisation" });
@@ -235,14 +269,31 @@ describe("trusted origin guard", () => {
         accountRole: "organisation"
       });
 
-      const response = await createOrganisation(
-        jsonRequest("http://localhost/api/orgs", { name: unique("Org") }, {
-          method: "POST",
-          headers: { referer: "http://localhost:3000/dashboard/orgs" }
-        })
-      );
+      const response = await createOrganisation(fromReferer("http://localhost:3000/dashboard/orgs"));
 
       expect(response.status).toBe(201);
+    });
+  });
+
+  test("without an origin, a foreign or malformed referer is refused, and a session cookie still needs its CSRF token", async () => {
+    await withAppUrlEnv("http://localhost:3000", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const user = await createUser({ accountRole: "organisation" });
+      setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+
+      for (const referer of ["https://evil.example/dashboard", "not a url"]) {
+        expect((await createOrganisation(fromReferer(referer))).status).toBe(403);
+      }
+      expect(warn.mock.calls.map(([line]) => JSON.parse(String(line))).filter((entry) => entry.event === "trusted_origin.rejected")).toEqual([
+        expect.objectContaining({ reason: "untrusted_referer", origin: null, refererOrigin: "https://evil.example" }),
+        expect.objectContaining({ reason: "untrusted_referer", origin: null, refererOrigin: null })
+      ]);
+
+      const cookie = "authjs.session-token=referer-session";
+      expect((await createOrganisation(fromReferer("http://localhost:3000/dashboard/orgs", { cookie }))).status).toBe(403);
+      await expect(prisma.organisation.count()).resolves.toBe(0);
+      const token = createCsrfTokenForRequest(new Request("http://localhost/", { headers: { cookie } }))!;
+      expect((await createOrganisation(fromReferer("http://localhost:3000/dashboard/orgs", { cookie, "x-thunderstrux-csrf-token": token }))).status).toBe(201);
     });
   });
 

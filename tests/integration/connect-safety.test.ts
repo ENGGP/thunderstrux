@@ -117,7 +117,7 @@ describe("disconnect", () => {
 
     // An account this platform can no longer reach has nothing to pay out, so it is still unlinked (PAY-015).
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    keepManual.mockRejectedValueOnce(Object.assign(new Error("The provided key does not have access to that account."), { type: "StripePermissionError" }));
+    keepManual.mockRejectedValueOnce(Object.assign(new Error("The provided key does not have access to account 'acct_gone' (or that account does not exist)."), { type: "StripePermissionError" }));
     await disconnectAccount(fixture.owner.organisation.id, { actor });
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).toBeNull();
   });

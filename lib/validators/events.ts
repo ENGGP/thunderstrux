@@ -90,7 +90,3 @@ export const eventSaleStateSchema = z.object({
   saleState: z.enum(["open", "closed"]),
   version: versionSchema
 });
-
-export const createScopedTicketTypeSchema = createTicketTypeFieldsSchema.extend({
-  organisationId: z.string().trim().min(1)
-}).refine(withinPrice, withinPriceError);

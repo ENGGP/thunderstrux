@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { runOperationsMonitor, readQueues } from "@/lib/ops/monitor";
-import { runWorker, scheduledWorkers } from "@/lib/ops/worker";
+import { DEFAULT_WORKER_TIMEOUT_MS, runWorker, scheduledWorkers, workerTimeoutMs } from "@/lib/ops/worker";
 import { emitOperationalAlert, flushOperationalAlerts } from "@/lib/ops/alerts";
 
 // T42: the worker contract (lease, pause, timeout, failure alert) and the
@@ -126,6 +126,15 @@ describe("worker contract (T42)", () => {
     expect(events(error)).toEqual(expect.arrayContaining(["worker.timed_out", "worker_timed_out"]));
     // Its lease is released, so the next scheduled run isn't blocked.
     expect((await prisma.workerLease.findUniqueOrThrow({ where: { name: "stale-orders" } })).holder).toBeNull();
+  });
+  test("a run's timeout is five minutes unless set, and a setting outside 10 seconds to an hour is refused", () => {
+    expect(workerTimeoutMs()).toBe(DEFAULT_WORKER_TIMEOUT_MS);
+    vi.stubEnv("WORKER_TIMEOUT_SECONDS", "90");
+    expect(workerTimeoutMs()).toBe(90_000);
+    for (const value of ["5", "3601", "1.5", "soon"]) {
+      vi.stubEnv("WORKER_TIMEOUT_SECONDS", value);
+      expect(() => workerTimeoutMs()).toThrow("WORKER_TIMEOUT_SECONDS must be an integer from 10 to 3600");
+    }
   });
 });
 

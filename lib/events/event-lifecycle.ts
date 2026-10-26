@@ -11,7 +11,6 @@ import { entitlementOnSale } from "@/lib/memberships/offers";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
   createEventSchema,
-  createScopedTicketTypeSchema,
   eventPublicationSchema,
   eventSaleStateSchema,
   updateEventSchema
@@ -21,7 +20,6 @@ type CreateEventInput = z.infer<typeof createEventSchema>;
 type UpdateEventInput = z.infer<typeof updateEventSchema>;
 type EventPublicationInput = z.infer<typeof eventPublicationSchema>;
 type EventSaleStateInput = z.infer<typeof eventSaleStateSchema>;
-type CreateTicketTypeInput = z.infer<typeof createScopedTicketTypeSchema>;
 
 export class EventLifecycleNotFoundError extends Error {
   constructor(message = "Event was not found in this organisation") {
@@ -902,53 +900,5 @@ export async function deleteOrganisationEvent(
         metadata: { title: locked.title }
       }
     });
-  });
-}
-
-export async function createOrganisationEventTicketType(
-  organisationId: string,
-  eventId: string,
-  input: CreateTicketTypeInput,
-  actorUserId?: string
-) {
-  const event = await prisma.event.findFirst({
-    where: scopedByOrganisation(organisationId, { id: eventId }),
-    select: { id: true }
-  });
-
-  if (!event) {
-    throw new EventLifecycleNotFoundError();
-  }
-
-  return prisma.$transaction(async (transaction) => {
-    await transaction.event.update({ where: { id: event.id }, data: { version: { increment: 1 } } });
-    const ticketType = await transaction.ticketType.create({
-      data: {
-        eventId: event.id,
-        name: input.name,
-        price: input.price,
-        memberPrice: input.memberPrice ?? null,
-        quantity: input.quantity
-      },
-      select: {
-        id: true,
-        eventId: true,
-        name: true,
-        price: true,
-        quantity: true,
-        createdAt: true
-      }
-    });
-    await transaction.auditLog.create({
-      data: {
-        organisationId,
-        actorUserId: actorUserId ?? null,
-        action: "ticket_type.created",
-        targetType: "TicketType",
-        targetId: ticketType.id,
-        metadata: { eventId }
-      }
-    });
-    return ticketType;
   });
 }

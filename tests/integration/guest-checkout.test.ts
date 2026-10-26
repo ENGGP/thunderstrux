@@ -13,6 +13,7 @@ import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestBackendFailure, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
+import { guestSession, newestGuestLink } from "@/tests/helpers/guest";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { renderPage } from "@/tests/helpers/render";
 import { createEvent, createMember, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
@@ -31,20 +32,6 @@ vi.mock("next/navigation", () => ({
 
 beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend()); setRateLimitTestBackendFailure(null); });
 afterEach(() => { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); stripeMocks.createSession.mockReset(); });
-
-// The raw token of the newest link emailed to an address, read from the encrypted outbox.
-async function newestLink(email: string) {
-  const job = await prisma.notificationOutbox.findFirstOrThrow({ where: { recipient: email, status: "pending" }, orderBy: { createdAt: "desc" } });
-  const { text } = decryptNotification(job.encryptedPayload, job.id) as { text: string };
-  return new URLSearchParams(new URL(text.split("\n\n").at(-1)!).hash.slice(1)).get("token")!;
-}
-
-async function guestSession(email = `${unique("guest")}@example.com`) {
-  await requestGuestAccess(email);
-  const { sessionId } = await redeemGuestAccess(await newestLink(email));
-  const session = (await readGuestSession(sessionId))!;
-  return { email, sessionId, session, guest: { grantId: session.grantId, guestIdentityId: session.guestIdentityId } };
-}
 
 async function eventWith(price: number) {
   const { organisation } = await createOrganisationAccount({ stripeReady: true });
@@ -111,7 +98,7 @@ describe("guest checkout", () => {
     await expect(reconcileCompletedCheckoutSession(session, { stripeEventId: unique("evt_guest") })).resolves.toMatchObject({ status: "fulfilled" });
     expect(await prisma.ticket.count({ where: { orderId: order.id } })).toBe(2);
     await requestGuestRecovery(buyer.email);
-    expect((await redeemGuestAccess(await newestLink(buyer.email))).callbackUrl).toBe(`/guest/orders/${order.id}`);
+    expect((await redeemGuestAccess(await newestGuestLink(buyer.email))).callbackUrl).toBe(`/guest/orders/${order.id}`);
   });
 
   test("one guest email's unpaid holds are capped across checkout sessions (SEC-005)", async () => {

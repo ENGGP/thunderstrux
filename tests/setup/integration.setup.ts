@@ -44,7 +44,10 @@ beforeEach(async () => {
   vi.stubEnv("RESEND_API_KEY", "re_capture_only");
   for (const name of [
     "RATE_LIMIT_ENABLED", "RATE_LIMIT_TRUSTED_PROXY_HEADER", "RATE_LIMIT_KEY_PREFIX", "RATE_LIMIT_REDIS_URL",
-    "AUTH_URL", "NEXTAUTH_URL", "TRUSTED_APP_ORIGINS", "ALERT_WEBHOOK_URL"
+    "AUTH_URL", "NEXTAUTH_URL", "TRUSTED_APP_ORIGINS", "ALERT_WEBHOOK_URL",
+    // Worker tuning falls back to the code's defaults. Image storage is left as
+    // the container sets it: the baseline gives its tests a disposable bucket.
+    "WORKER_TIMEOUT_SECONDS", "EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS", "EMAIL_OUTBOX_MAX_ATTEMPTS", "EMAIL_OUTBOX_BATCH_SIZE"
   ]) vi.stubEnv(name, undefined);
   vi.stubGlobal(
     "fetch",

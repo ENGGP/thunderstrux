@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as cancelRoute } from "@/app/api/orders/[orderId]/cancel/route";
 import { prisma } from "@/lib/db";
 import { enqueueOrganisationOrderTicketEmail } from "@/lib/orders/order-detail";
 import { cancelFreePurchase } from "@/lib/payments/free-cancellation";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
+import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
 import { setMockSession } from "@/tests/helpers/auth";
+import { enrolStaffMfa } from "@/tests/helpers/mfa";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { createEvent, createOrder, createOrganisationAccount } from "@/tests/helpers/test-data";
 
@@ -80,7 +82,7 @@ describe("cancelling a free registration", () => {
     await expect(prisma.purchaseDispute.update({ where: { id: dispute.id }, data: { resolvedAt: new Date() } })).rejects.toThrow();
   });
 
-  test("with staff MFA on, the route needs a fresh authenticator code before anything is recorded", async () => {
+  test("with staff MFA on, the route needs a fresh authenticator code, and goes through with one", async () => {
     const fixture = await freeOrder();
     // "enroll" lets the dashboard through without a grant, so the route's own code check answers.
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
@@ -92,5 +94,11 @@ describe("cancelling a free registration", () => {
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     expect((await send(fixture, { reason: "Duplicate registration." })).status).toBe(403);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).cancelledAt).toBeNull();
+
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    onTestFinished(() => setRateLimitTestBackend(null));
+    const { code } = await enrolStaffMfa(fixture.owner.user);
+    expect((await send(fixture, { reason: "Duplicate registration.", mfaCode: code() })).status).toBe(200);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).cancelledAt).not.toBeNull();
   });
 });

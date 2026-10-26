@@ -1,6 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as quoteRoute } from "@/app/api/merchandise/quote/route";
 import { prisma } from "@/lib/db";
+import { addToBasket, BASKET_EVENT, basketCount, MAX_BASKET_LINES, MAX_LINE_QUANTITY, readBasket, writeBasket } from "@/lib/merchandise/basket";
 import { hasShop, shopProduct, shopProducts } from "@/lib/merchandise/shop";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { createOrganisationAccount, unique } from "@/tests/helpers/test-data";
@@ -138,5 +139,51 @@ describe("merchandise shop", () => {
     for (const bad of [{ society: organisation.slug }, { society: organisation.slug, items: [{ variantId: variants[0].id, quantity: 0 }] }, { society: organisation.slug, items: [], extra: 1 }]) {
       expect((await quote(bad)).status).toBe(400);
     }
+  });
+});
+
+// The basket lives in the browser's storage; these run it against a stand-in.
+describe("the basket on this device", () => {
+  function device({ blocked = false } = {}) {
+    const stored = new Map<string, string>();
+    const refuse = () => { throw new Error("Storage blocked"); };
+    const changes: string[] = [];
+    vi.stubGlobal("window", {
+      localStorage: blocked
+        ? { getItem: refuse, setItem: refuse, removeItem: refuse }
+        : { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => void stored.set(key, value), removeItem: (key: string) => void stored.delete(key) },
+      dispatchEvent: (event: Event) => { changes.push(event.type); return true; }
+    });
+    onTestFinished(() => { vi.unstubAllGlobals(); });
+    return { stored, changes };
+  }
+
+  test("one society's options merge up to ten each and ten options in all; another society's basket is never mixed in", () => {
+    const { changes } = device();
+    expect(addToBasket("engsoc", "v1", 4)).toEqual({ ok: true });
+    expect(addToBasket("engsoc", "v2", 1)).toEqual({ ok: true });
+    expect(addToBasket("engsoc", "v1", 9)).toEqual({ ok: true });
+    expect(readBasket()).toEqual({ society: "engsoc", lines: [{ variantId: "v1", quantity: MAX_LINE_QUANTITY }, { variantId: "v2", quantity: 1 }] });
+    expect(addToBasket("engsoc", "v1", 1)).toEqual({ ok: false, reason: "line_full" });
+    for (let option = 3; option <= MAX_BASKET_LINES; option += 1) addToBasket("engsoc", `v${option}`, 1);
+    expect(addToBasket("engsoc", "v11", 1)).toEqual({ ok: false, reason: "too_many_lines" });
+    expect(addToBasket("artsoc", "a1", 1)).toEqual({ ok: false, reason: "other_society", society: "engsoc" });
+    expect(basketCount(readBasket(), "engsoc")).toBe(19);
+    expect(basketCount(readBasket(), "artsoc")).toBe(0);
+    // Every change tells the open pages, and an emptied basket is removed.
+    expect(changes).toEqual(Array(MAX_BASKET_LINES + 1).fill(BASKET_EVENT));
+    writeBasket({ society: "engsoc", lines: [] });
+    expect(readBasket()).toBeNull();
+  });
+
+  test("a damaged or blocked store reads as an empty basket and never breaks the page", () => {
+    const { stored } = device();
+    for (const value of ["not json", JSON.stringify({ society: "engsoc", lines: [{ variantId: "v1", quantity: 0 }] }), JSON.stringify({ society: 7, lines: [] })]) {
+      stored.set("thunderstrux:merchandise-basket", value);
+      expect(readBasket()).toBeNull();
+    }
+    device({ blocked: true });
+    expect(readBasket()).toBeNull();
+    expect(() => writeBasket({ society: "engsoc", lines: [{ variantId: "v1", quantity: 1 }] })).not.toThrow();
   });
 });

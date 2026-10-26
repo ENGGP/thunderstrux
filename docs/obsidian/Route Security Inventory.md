@@ -39,7 +39,7 @@ What every API route checks, and in which order (T39). [[Audit Coverage]] lists 
 | Sign-in | `auth/[...nextauth]` | Auth.js | `login_ip_email`, `login_ip_global` (closed) | Auth.js CSRF and responses. More than one `email` field is refused before Auth.js. |
 | Account | `me/account`, `me/profile`, `me/notification-preferences`, `me/context` | Signed in, live session version | `account_security_change` (closed) for password, email change and closure | Changing password or email signs other devices out. |
 | Staff MFA | `me/mfa/setup`, `confirm`, `verify`, `status` | Signed in | `staff_mfa_setup`, `staff_mfa_verify` (closed) | Grants are bound to the session. |
-| Events | `events`, `events/[eventId]` (+`publish`, `sales`, `ticket-types`) | `events:manage` (reads `events:read`) | — | Version compare-and-swap; inventory lock on edits. |
+| Events | `events`, `events/[eventId]` (+`publish`, `sales`) | `events:manage` (reads `events:read`) | — | Version compare-and-swap; inventory lock on edits. |
 | Attendance | `events/[eventId]/tickets`, `tickets/[ticketId]/check-in`, `check-out` | `tickets:check_in` | `ticket_check_in_out` (open) | One state change wins when two volunteers act. |
 | Calendar | `orgs/[orgSlug]/calendar` | `events:read`; drafts need `events:manage`, membership endings `members:read` | — | Range of at most 93 days. |
 | Ticket orders | `orders`, `orders/[orderId]` (+`refunds`, `cancel`, `review`, `refund-manual`, `resend`, `email-jobs/…/requeue`, `compensation-refund/confirm`) | `orders:read`, `orders:refund`, `orders:refund_mark`, `orders:email_resend` | `order_resend` (open); `staff_mfa_verify` for refunds and cancellations | Refunds are webhook-confirmed. |

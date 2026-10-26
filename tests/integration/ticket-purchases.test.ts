@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { GET as statusRoute } from "@/app/api/purchases/tickets/[orderId]/status/route";
 import CancelPage from "@/app/cancel/page";
 import PurchasesPage from "@/app/purchases/page";
@@ -7,16 +7,19 @@ import MyTicketsPage from "@/app/tickets/page";
 import { prisma } from "@/lib/db";
 import { purchaseLinkForEmail, redeemGuestAccess } from "@/lib/guest/guest-access";
 import { getOwnTicketPurchase, getWalletTickets } from "@/lib/purchases/ticket-purchases";
+import { StripeConfigurationError } from "@/lib/stripe";
 import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
 import { parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { renderPage } from "@/tests/helpers/render";
 import { createEvent, createMember, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
-// The success page's development fallback must not reach Stripe in tests.
-vi.mock("@/lib/stripe", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/stripe")>();
-  return { ...actual, getStripe: () => { throw new actual.StripeConfigurationError("Stripe is not configured"); } };
-});
+// The success page's development fallback reads Stripe; unless a test says otherwise, Stripe isn't configured.
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn() }));
+vi.mock("@/lib/stripe", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/stripe")>()),
+  getStripe: () => ({ checkout: { sessions: { retrieve: stripe.retrieve } } })
+}));
+beforeEach(() => { stripe.retrieve.mockReset().mockRejectedValue(new StripeConfigurationError("Stripe is not configured")); });
 vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), usePathname: () => "/purchases", useRouter: () => ({ refresh: () => undefined }) }));
 
 const asMember = (member: { id: string; email: string }) => setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
@@ -129,5 +132,35 @@ describe("purchases and order status", () => {
     expect(purchases).toContain("Not charged");
     expect(purchases).toContain(`/purchases/tickets/${past.id}`);
     expect(purchases).not.toContain(theirs.id);
+  });
+
+  // AGENTS.md: an order is never marked paid from the browser's success page.
+  test("in production the success page never asks Stripe; in development an unpaid visit fulfils nothing; other outcomes say where the order stands", async () => {
+    const fixture = await pendingPurchase();
+    asMember(fixture.buyer);
+    const visit = () => SuccessPage({ searchParams: Promise.resolve({ session_id: fixture.order.stripeSessionId as string }) }).then(renderPage);
+    const sessionSays = (paymentStatus: string) => stripe.retrieve.mockResolvedValue({ id: fixture.order.stripeSessionId, payment_status: paymentStatus, metadata: { orderId: fixture.order.id } });
+
+    sessionSays("paid");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(await visit()).toContain("Confirming your payment");
+    expect(stripe.retrieve).not.toHaveBeenCalled();
+
+    vi.stubEnv("NODE_ENV", "test");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    sessionSays("unpaid");
+    expect(await visit()).toContain("Confirming your payment");
+    expect(stripe.retrieve).toHaveBeenCalledWith(fixture.order.stripeSessionId);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id }, select: { status: true, paidAt: true } })).toEqual({ status: "pending", paidAt: null });
+
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "failed", failedAt: new Date() } });
+    const failed = await visit();
+    expect(failed).toContain("This checkout didn&#x27;t complete");
+    expect(failed).toContain("Nothing was charged.");
+
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "paid", paymentKind: "free", unitPrice: 0, totalAmount: 0, paidAt: new Date(), failedAt: null } });
+    expect(await visit()).toContain("Registration confirmed for 2 tickets");
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { refundStatus: "refunded" } });
+    expect(await visit()).toContain("for where it stands.");
   });
 });

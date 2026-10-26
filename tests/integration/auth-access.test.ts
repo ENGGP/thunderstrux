@@ -547,4 +547,34 @@ describe("auth and role access", () => {
     );
     expect(downgradeResponse.status).toBe(409);
   });
+
+  test("an owner changes a staff member's role; another society's staff is a 404, staff without staff management are refused, and only owners grant ownership", async () => {
+    const { user: owner, organisation } = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const manager = await createMember();
+    const staff = await createOrganisationStaff({ organisationId: organisation.id, userId: manager.id, role: "event_manager" });
+    const otherOwner = await prisma.organisationStaff.findFirstOrThrow({ where: { organisationId: other.organisation.id, role: "owner" } });
+    const patch = (staffId: string, body: Record<string, string>) => updateStaff(
+      jsonRequest(`http://localhost/api/orgs/${organisation.slug}/staff/${staffId}`, body, { method: "PATCH" }),
+      routeContext({ orgSlug: organisation.slug, staffId })
+    );
+
+    setMockSession({ userId: manager.id, email: manager.email, accountRole: "member" });
+    expect((await patch(staff.id, { role: "admin" })).status).toBe(403);
+
+    setMockSession({ userId: owner.id, email: owner.email, accountRole: "organisation" });
+    expect((await patch(otherOwner.id, { status: "revoked" })).status).toBe(404);
+    const changed = await patch(staff.id, { role: "admin" });
+    expect(changed.status).toBe(200);
+    expect(await parseJsonResponse(changed)).toMatchObject({ staff: { id: staff.id, role: "admin", status: "active", user: { id: manager.id } } });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "staff.updated", targetId: staff.id } }))
+      .toMatchObject({ actorUserId: owner.id, organisationId: organisation.id, metadata: { previousRole: "event_manager", nextRole: "admin" } });
+    expect(await prisma.organisationStaff.findUniqueOrThrow({ where: { id: otherOwner.id } })).toMatchObject({ status: "active" });
+
+    // Now an admin, the manager may manage staff but not hand out ownership.
+    setMockSession({ userId: manager.id, email: manager.email, accountRole: "member" });
+    const promote = await patch(staff.id, { role: "owner" });
+    expect(promote.status).toBe(403);
+    expect((await parseJsonResponse(promote)).error.message).toBe("Only owners can change owner authority");
+  });
 });

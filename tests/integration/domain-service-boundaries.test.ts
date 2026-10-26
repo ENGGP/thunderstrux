@@ -7,7 +7,6 @@ const routeFiles = [
   "app/api/events/route.ts",
   "app/api/events/[eventId]/route.ts",
   "app/api/events/[eventId]/publish/route.ts",
-  "app/api/events/[eventId]/ticket-types/route.ts",
   "app/api/orders/route.ts",
   "app/api/orders/[orderId]/route.ts",
   "app/api/orders/[orderId]/refund-manual/route.ts",
@@ -71,9 +70,6 @@ describe("domain service boundaries", () => {
   test("event mutations retain their established guard ordering", async () => {
     const collectionRoute = await source("app/api/events/route.ts");
     const eventRoute = await source("app/api/events/[eventId]/route.ts");
-    const ticketTypeRoute = await source(
-      "app/api/events/[eventId]/ticket-types/route.ts"
-    );
 
     expectInOrder(collectionRoute, [
       "enforceTrustedMutationRequest(request)",
@@ -87,12 +83,6 @@ describe("domain service boundaries", () => {
       "requireOrganisationEventManagementAccess(organisation.id)",
       "validateJson(request, updateEventSchema)",
       "updateOrganisationEvent("
-    ]);
-    expectInOrder(ticketTypeRoute, [
-      "enforceTrustedMutationRequest(request)",
-      "validateJson(request, createScopedTicketTypeSchema)",
-      "requireOrganisationEventManagementAccess(organisationId)",
-      "createOrganisationEventTicketType("
     ]);
   });
 

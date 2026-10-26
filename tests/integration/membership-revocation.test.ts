@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as cancelRoute } from "@/app/api/orgs/[orgSlug]/memberships/members/[grantId]/cancel/route";
 import { POST as revokeRoute } from "@/app/api/orgs/[orgSlug]/memberships/members/[grantId]/revoke/route";
 import { createCommerceOrder } from "@/lib/commerce/orders";
@@ -6,7 +6,9 @@ import { prisma } from "@/lib/db";
 import { grantState } from "@/lib/memberships/grants";
 import { cancelFreeMembership } from "@/lib/memberships/revocation";
 import { setSocietyJoin } from "@/lib/organisations/join";
+import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
 import { setMockSession } from "@/tests/helpers/auth";
+import { enrolStaffMfa } from "@/tests/helpers/mfa";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { createMember, createOrganisationAccount, createOrganisationStaff, joinOrganisation } from "@/tests/helpers/test-data";
 
@@ -100,7 +102,7 @@ describe("ending a membership early", () => {
     expect((await prisma.membershipGrant.findUniqueOrThrow({ where: { id: paid.grant.id } })).revokedAt).toBeNull();
   });
 
-  test("with staff MFA on, the routes need a fresh authenticator code before anything changes", async () => {
+  test("with staff MFA on, the routes need a fresh authenticator code, and go through with one", async () => {
     const { society, grant } = await membership();
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
     vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
@@ -113,6 +115,11 @@ describe("ending a membership early", () => {
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
     expect((await end("revoke", society.organisation.slug, grant.id)).status).toBe(403);
     expect((await prisma.membershipGrant.findUniqueOrThrow({ where: { id: grant.id } })).revokedAt).toBeNull();
+
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    onTestFinished(() => setRateLimitTestBackend(null));
+    const { code } = await enrolStaffMfa(society.user);
+    expect(await end("revoke", society.organisation.slug, grant.id, { reason, mfaCode: code() })).toMatchObject({ status: 200, body: { status: "revoked" } });
   });
 
   test("leaving the society removes only the free join; the membership stays active", async () => {

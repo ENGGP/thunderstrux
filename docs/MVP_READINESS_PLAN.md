@@ -202,7 +202,7 @@ CI E2E qualification on `f5cab84` passed [attempt 1](https://github.com/ENGGP/th
 | Connect/disclosure | stripe-connect-service, organisation-connect-disclosure, Connect HTTP webhook | Fee/payout/disconnect improvements: T17 |
 | Tickets/check-in/order views | ticket-check-in, orders-api, dashboard-orders-page, buyer/browser history | Guest/validity/full history UX: T19 |
 | Email/compensation/fencing | email-outbox, compensation-refunds, lifecycle tests | General notifications/commerce: T02, T20–T30 |
-| Origins/CSRF/rate/error controls | trusted-origin-guard, client-csrf-retry, rate-limit, api-error-mapper, route-contract, security-headers, security-limits; real Redis in isolated E2E/operations | Surveyed in T39 ([[Route Security Inventory]]) |
+| Origins/CSRF/rate/error controls | trusted-origin-guard, client-api, rate-limit, api-error-mapper, route-contract, security-headers, security-limits; real Redis in isolated E2E/operations | Surveyed in T39 ([[Route Security Inventory]]) |
 | Docker/schema/recovery | all runner tests, schema contract, isolated operations deployment/restore/rollback | Immutable release and hosted activation: T41–T46, H01–H06 |
 
 

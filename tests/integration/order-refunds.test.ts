@@ -5,10 +5,9 @@ import { prisma } from "@/lib/db";
 import { lockOrder } from "@/lib/payments/order-lifecycle";
 import { processCompensationRefundBatch } from "@/lib/payments/compensation-refunds";
 import { OrderRefundError, orderReference, processOrderRefundBatch, reconcileOrderRefundEvent, requestOrderRefund } from "@/lib/payments/order-refunds";
-import { mfaGrantDigest } from "@/lib/security/csrf";
 import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
-import { beginStaffMfaEnrollment, confirmStaffMfaEnrollment, totpCode } from "@/lib/security/staff-mfa";
 import { setMockSession } from "@/tests/helpers/auth";
+import { enrolStaffMfa } from "@/tests/helpers/mfa";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { createEvent, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
@@ -197,7 +196,33 @@ describe("whole-order refunds", () => {
     stripe.list.mockResolvedValue({ data: [{ id: "re_dashboard", status: "succeeded", metadata: {} }] });
     await expect(requestOrderRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "verification_failed" });
     expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: fixture.order.id } })).toMatchObject({ status: "failed", lastErrorCode: "existing_refund_requires_review" });
+
+    const disputed = await paidOrder();
+    stripe.retrieve.mockResolvedValue({
+      payment_status: "paid", amount_total: 3000, currency: "aud", metadata: { orderId: disputed.order.id },
+      payment_intent: { id: disputed.intentId, amount_received: 3000, transfer_data: { destination: disputed.owner.organisation.stripeAccountId }, latest_charge: { disputed: true } }
+    });
+    await expect(requestOrderRefund(refundInput(disputed))).rejects.toMatchObject({ kind: "verification_failed" });
+    expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: disputed.order.id } })).toMatchObject({ status: "failed", lastErrorCode: "provider_identity_not_eligible" });
     expect(stripe.create).not.toHaveBeenCalled();
+  });
+
+  test("a refund still unresolved after six checks keeps its fence, stops asking Stripe and alerts a person, then checks hourly", async () => {
+    const fixture = await paidOrder();
+    stripe.create.mockRejectedValueOnce(new Error("socket hang up"));
+    const lost = await requestOrderRefund(refundInput(fixture));
+    await prisma.refundRequest.update({ where: { id: lost.refundRequestId }, data: { attempts: 6 } });
+    for (const mock of Object.values(stripe)) mock.mockClear();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const now = new Date(Date.now() + 2 * 60 * 1000);
+    await processOrderRefundBatch(25, now);
+    expect(stripe.retrieve).not.toHaveBeenCalled();
+    expect(stripe.create).not.toHaveBeenCalled();
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: lost.refundRequestId } }))
+      .toMatchObject({ status: "uncertain", lastErrorCode: "provider_unresolved", processingToken: null, nextAttemptAt: new Date(now.getTime() + 60 * 60_000) });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "processing" });
+    expect(error.mock.calls.filter(([line]) => String(line).includes('"event":"order_refund_unresolved"'))).toHaveLength(1);
   });
 
   test("with staff MFA on, the route needs a fresh authenticator code before anything is recorded", async () => {
@@ -228,20 +253,16 @@ describe("whole-order refunds", () => {
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
     setRateLimitTestBackend(createTestRateLimitBackend());
     onTestFinished(() => setRateLimitTestBackend(null));
-    const { user } = fixture.owner;
-    const step = Math.floor(Date.now() / 30_000);
-    const setup = await beginStaffMfaEnrollment(user.id, user.email);
-    await confirmStaffMfaEnrollment(user.id, totpCode(setup.secret, step), mfaGrantDigest("refund-session")!);
-    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation", mfaSessionId: "refund-session" });
+    const { code } = await enrolStaffMfa(fixture.owner.user);
     const send = (mfaCode: string) => refundRoute(
       jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/refunds`, { reason: "Buyer asked for a refund.", confirmation: orderReference(fixture.order.id), mfaCode }),
       routeContext({ orderId: fixture.order.id })
     );
 
-    const refunded = await send(totpCode(setup.secret, step + 1));
+    const refunded = await send(code());
     expect(refunded.status).toBe(200);
     expect(await parseJsonResponse(refunded)).toMatchObject({ status: "succeeded" });
-    const replay = await send(totpCode(setup.secret, step + 1));
+    const replay = await send(code());
     expect(replay.status).toBe(400);
     expect((await parseJsonResponse(replay)).error.details[0].path).toEqual(["mfaCode"]);
     expect(stripe.create).toHaveBeenCalledTimes(1);

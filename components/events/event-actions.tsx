@@ -67,6 +67,8 @@ export function EventActions({
     style.left = `${Math.max(8, Math.min(box.right - menuWidth, window.innerWidth - menuWidth - 8))}px`;
     style.top = box.bottom + 220 > window.innerHeight ? "auto" : `${box.bottom + 4}px`;
     style.bottom = style.top === "auto" ? `${window.innerHeight - box.top + 4}px` : "auto";
+    // Grow out of the button, whichever side the menu opens on.
+    style.transformOrigin = style.top === "auto" ? "bottom right" : "top right";
   }
 
   function choose(action: "unpublish" | "delete" | "cancel") {
@@ -215,7 +217,7 @@ export function EventActions({
       {status}
 
       <div
-        className="m-0 rounded-card border border-line bg-surface p-2 shadow-float"
+        className="m-0 animate-pop-in rounded-card border border-line bg-surface p-2 shadow-float"
         id={`${id}-menu`}
         popover="auto"
         ref={menu}

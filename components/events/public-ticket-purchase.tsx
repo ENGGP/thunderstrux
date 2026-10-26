@@ -333,7 +333,7 @@ export function PublicTicketPurchase({
 
       {allSoldOut || !selected ? null : <div className="grid gap-4" ref={actionRef}>{action}</div>}
       {selected && validQuantity && actionBelow && (viewer === "member" || viewer === "anonymous") ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-float lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-40 flex animate-sheet-up items-center gap-3 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-float lg:hidden">
           <p className="grid min-w-0 flex-1">
             <span className="truncate text-caption text-ink-soft">{quantity} × {selected.name}</span>
             <span className="text-lg font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>

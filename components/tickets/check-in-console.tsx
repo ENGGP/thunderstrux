@@ -102,7 +102,7 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   const big = "min-h-14 w-full text-lg md:w-auto md:min-h-11 md:text-ui";
 
   return (
-    <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
+    <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 transition-colors duration-150 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-3 md:block">
           <h3 className="font-display text-[22px] font-semibold leading-tight text-ink [overflow-wrap:anywhere] md:text-lg">{name}</h3>
@@ -125,7 +125,7 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
             Undo check-in<span className="sr-only"> for {name}</span>
           </button>
         ) : (
-          <button className={`inline-flex items-center justify-center rounded-control px-4 font-semibold text-white bg-success hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${big}`} disabled={busy} onClick={() => act("check-in")} type="button">
+          <button className={`inline-flex items-center justify-center rounded-control px-4 font-semibold text-white bg-success transition-[opacity,scale] duration-150 ease-out hover:opacity-90 active:not-disabled:scale-97 disabled:cursor-not-allowed disabled:opacity-60 ${big}`} disabled={busy} onClick={() => act("check-in")} type="button">
             Check in<span className="sr-only"> {name}</span>
           </button>
         )}

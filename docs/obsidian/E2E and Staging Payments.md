@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Journey Qualification]]", "[[Stripe Payments and Connect]]", "[[Environment Variables]]", "[[Production Operations]]"]
 sources: [scripts/run-e2e.mjs, scripts/e2e-guards.mjs, scripts/staging-payments.mjs, scripts/staging-driver.mjs, docker-compose.e2e.yml, docker/Dockerfile.e2e]
@@ -24,7 +24,7 @@ sources: [scripts/run-e2e.mjs, scripts/e2e-guards.mjs, scripts/staging-payments.
 | Mail and alert capture | `scripts/mail-capture.mjs` |
 | Notification fixture | `scripts/seed-notification-e2e.mjs` (called by `tests/e2e/notifications.spec.ts`; refuses outside an isolated run id) |
 | CI job summary | `scripts/e2e-ci-summary.mjs` (reads `summary-*.json` from `tests/e2e/summary-reporter.ts`) |
-| Specs | `tests/e2e/*.spec.ts`; projects `desktop` and `mobile` (Pixel 7, `mobile.spec.ts` only) |
+| Specs | `tests/e2e/*.spec.ts`; projects `desktop` and `mobile` (Pixel 7, `mobile.spec.ts` only); every run emulates reduced motion (`playwright.config.ts`) |
 | Runner safety tests | `tests/runner/*.test.mjs` (`pnpm test:e2e:guards`), incl. `tests/runner/staging.test.mjs`, `tests/runner/guards.test.mjs`, `tests/runner/e2e-port.test.mjs` |
 | Manual CI | `.github/workflows/e2e.yml` (guards, browser campaign, allowlisted counts) |
 

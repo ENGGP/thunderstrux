@@ -103,50 +103,60 @@ export async function requestOrderRefund(input: {
   confirmation: string;
 }) {
   // The caller has verified the staff member's authenticator code (see the route).
-  const reason = input.reason.trim();
   const token = randomUUID();
-  const now = new Date();
-
-  const request = await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new OrderRefundError("not_found", "Order was not found");
-    const order = await tx.order.findFirst({
-      where: { id: input.orderId, event: { organisationId: input.organisationId } },
-      include: { compensationRefundJob: { select: { state: true } } }
-    });
-    if (!order) throw new OrderRefundError("not_found", "Order was not found");
-    if (input.confirmation.trim().toUpperCase() !== orderReference(order.id)) {
-      throw new OrderRefundError("confirmation_mismatch", `Type ${orderReference(order.id)} to confirm`);
-    }
-    if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
-    if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
-    if (order.disputeStatus) throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
-    // After a partial refund made in Stripe, this refunds the rest.
-    const amount = order.totalAmount - order.externalRefundedAmount;
-    if (
-      order.paymentKind !== "stripe" || order.status !== "paid" || order.requiresCompensationReview || order.isManuallyRefunded ||
-      !order.stripeSessionId || !order.sellerStripeAccountId || (order.compensationRefundJob && order.compensationRefundJob.state !== "recovered") || amount <= 0
-    ) {
-      throw new OrderRefundError("not_refundable", "This order can't be refunded here");
-    }
-    await tx.order.update({ where: { id: order.id }, data: { refundStatus: "processing" } });
-    const created = await tx.refundRequest.create({
-      data: {
-        orderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
-        actorUserId: input.actor.id, operationKey: `order-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
-        attempts: 1, processingToken: token, processingStartedAt: now
-      }
-    });
-    await appendOrderLifecycleEvent(tx, {
-      orderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount }
-    });
-    await tx.auditLog.create({ data: {
-      organisationId: input.organisationId, actorUserId: input.actor.id, action: "order.refund_requested", targetType: "Order", targetId: order.id,
-      metadata: { refundRequestId: created.id, amount, reason }
-    } });
-    return created;
-  });
-
+  const request = await prisma.$transaction((tx) => openOrderRefund(tx, { ...input, processing: { token, now: new Date() } }));
   return sendRefund(request.id, token, "staff_action");
+}
+
+// Checks one ticket order under its lock, sets the refund fence and records the
+// request. With `processing` the caller sends it at once under that lease;
+// without it the refund worker sends it (an event cancellation queues one per
+// order, EVT-004). `confirmation` is the order reference staff type back.
+export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
+  organisationId: string;
+  orderId: string;
+  actor: Actor;
+  reason: string;
+  confirmation?: string;
+  processing?: { token: string; now: Date };
+}) {
+  const reason = input.reason.trim();
+  if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new OrderRefundError("not_found", "Order was not found");
+  const order = await tx.order.findFirst({
+    where: { id: input.orderId, event: { organisationId: input.organisationId } },
+    include: { compensationRefundJob: { select: { state: true } } }
+  });
+  if (!order) throw new OrderRefundError("not_found", "Order was not found");
+  if (input.confirmation !== undefined && input.confirmation.trim().toUpperCase() !== orderReference(order.id)) {
+    throw new OrderRefundError("confirmation_mismatch", `Type ${orderReference(order.id)} to confirm`);
+  }
+  if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
+  if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
+  if (order.disputeStatus) throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
+  // After a partial refund made in Stripe, this refunds the rest.
+  const amount = order.totalAmount - order.externalRefundedAmount;
+  if (
+    order.paymentKind !== "stripe" || order.status !== "paid" || order.requiresCompensationReview || order.isManuallyRefunded ||
+    !order.stripeSessionId || !order.sellerStripeAccountId || (order.compensationRefundJob && order.compensationRefundJob.state !== "recovered") || amount <= 0
+  ) {
+    throw new OrderRefundError("not_refundable", "This order can't be refunded here");
+  }
+  await tx.order.update({ where: { id: order.id }, data: { refundStatus: "processing" } });
+  const created = await tx.refundRequest.create({
+    data: {
+      orderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
+      actorUserId: input.actor.id, operationKey: `order-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
+      ...(input.processing ? { attempts: 1, processingToken: input.processing.token, processingStartedAt: input.processing.now } : {})
+    }
+  });
+  await appendOrderLifecycleEvent(tx, {
+    orderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount }
+  });
+  await tx.auditLog.create({ data: {
+    organisationId: input.organisationId, actorUserId: input.actor.id, action: "order.refund_requested", targetType: "Order", targetId: order.id,
+    metadata: { refundRequestId: created.id, amount, reason }
+  } });
+  return created;
 }
 
 // The same whole-order refund for a membership or merchandise order (T23c).

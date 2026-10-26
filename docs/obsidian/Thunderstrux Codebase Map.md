@@ -59,7 +59,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/date-input.ts` | Parsing and formatting for the house date picker | |
 | `lib/db` | Prisma client and organisation scope helpers | `index.ts` (`prisma`), `organisation-scope.ts`, `organisation-drift.ts` |
 | `lib/email` | Ticket email, notification outbox, templates, encryption | `ticket-delivery.ts`, `ticket-email-outbox.ts`, `notification-outbox.ts`, `templates.ts`, `notification-crypto.ts` |
-| `lib/events` | Event lifecycle, inventory locks, readiness, public reads, calendar | `event-lifecycle.ts`, `inventory.ts`, `event-readiness.ts`, `public-events.ts`, `explore-filters.ts`, `calendar.ts`, `event-changes.ts`, `http.ts` |
+| `lib/events` | Event lifecycle, inventory locks, readiness, public reads, calendar | `event-lifecycle.ts`, `event-cancellation.ts`, `inventory.ts`, `event-readiness.ts`, `public-events.ts`, `explore-filters.ts`, `calendar.ts`, `event-changes.ts`, `http.ts` |
 | `lib/format.ts` | Money, dates in a zone (default `Australia/Brisbane`), order references | |
 | `lib/guest` | Verified guest sessions, guest CSRF, claim into an account | `guest-access.ts`, `guest-csrf.ts`, `guest-claim.ts` |
 | `lib/memberships` | Plans, offers, grants, roster, revocation, reminders | `plans.ts`, `offers.ts`, `grants.ts`, `roster.ts`, `revocation.ts`, `reminders.ts`, `http.ts` |
@@ -72,7 +72,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/payouts` | Manual payouts after events and the money held back | `payouts.ts` (`processPayoutBatch`), `release.ts` |
 | `lib/permissions` | Roles and the permission matrix | `index.ts` |
 | `lib/purchases` | Buyer purchase reads, projection to buyer-facing status, pending-checkout actions | `ticket-purchases.ts`, `projection.ts`, `pending-checkout.ts`, `pending-checkout-http.ts` |
-| `lib/security` | Origin and CSRF guard, rate limits, staff MFA, safe return paths, token cleanup | `request-guard.ts`, `csrf.ts`, `rate-limit.ts`, `staff-mfa.ts`, `safe-return-path.ts`, `token-cleanup.ts` |
+| `lib/security` | Origin and CSRF guard, rate limits, staff MFA, safe return paths, token cleanup | `request-guard.ts`, `csrf.ts`, `rate-limit.ts`, `staff-mfa.ts`, `fresh-staff-mfa.ts`, `safe-return-path.ts`, `token-cleanup.ts` |
 | `lib/staff` | Live staff authority, staff management, invitations, owner handover | `live-authority.ts`, `management.ts`, `invites.ts`, `invite-http.ts`, `handover.ts` |
 | `lib/stripe` | Stripe client, Connect lifecycle, fees, API version | `index.ts` (`getStripe`), `connect.ts`, `fees.ts` (`calculatePlatformFee`), `version.ts`, `http.ts` |
 | `lib/tickets` | Reservations and purchase transaction options, check-in | `reservations.ts`, `check-in.ts`, `http.ts` |
@@ -97,7 +97,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `components/orders` | Staff order detail actions | `order-detail-actions.tsx`, `order-review-actions.tsx` |
 | `components/organisations` | Society cards, header, join controls, search, joined list, creation | `society-header.tsx`, `society-join-card.tsx`, `society-join.tsx`, `society-card.tsx`, `organisation-search.tsx`, `member-organisations-list.tsx`, `create-organisation-form.tsx` |
 | `components/public` | Policy page layout for Fees, Help, Privacy | `policy-page.tsx` |
-| `components/purchases` | Ticket checkout action, money summary, payment poller, unpaid-order actions and notices | `checkout-action.tsx`, `money-summary.tsx`, `payment-status-poller.tsx`, `unpaid-order-actions.tsx`, `unpaid-order-notice.tsx`, `ticket-order-notice.tsx` |
+| `components/purchases` | Ticket checkout action, money summary, payment poller, unpaid-order actions and notices | `checkout-action.tsx`, `money-summary.tsx`, `payment-status-poller.tsx`, `unpaid-order-actions.tsx`, `unpaid-order-notice.tsx`, `ticket-order-notice.tsx`, `release-registration.tsx` |
 | `components/settings` | Society profile, staff, handover, Stripe Connect, payouts, failed emails | `society-profile.tsx`, `staff-management.tsx`, `staff-handover.tsx`, `stripe-connect-settings.tsx`, `payouts-card.tsx`, `failed-notifications.tsx` |
 | `components/tickets` | Check-in console and the buyer's ticket face | `check-in-console.tsx`, `ticket-face.tsx` |
 | `components/ui` | Shared primitives ([[UI Architecture Rules#Primitives]]) | `button.tsx`, `input.tsx`, `date-field.tsx`, `notice.tsx`, `status-badge.tsx`, `link-tabs.tsx`, `responsive-table.tsx`, `confirm-dialog.tsx`, `empty-state.tsx`, `filter-bar.tsx`, `audit-timeline.tsx`, `skeleton.tsx`, `card.tsx`, `icon.tsx` |

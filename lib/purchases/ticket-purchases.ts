@@ -28,6 +28,9 @@ const projectionSelect = {
 const listSelect = {
   id: true,
   ...projectionSelect,
+  // Whether the buyer released it themselves (releasedByBuyer); member pages only.
+  cancelledByUserId: true,
+  userId: true,
   quantity: true,
   totalAmount: true,
   purchasedTicketTypeName: true,
@@ -77,7 +80,7 @@ export async function getOwnTicketPurchase(userId: string, orderId: string) {
       ticketEmailSentAt: true,
       event: {
         select: {
-          id: true, title: true, startTime: true, endTime: true, location: true,
+          id: true, title: true, startTime: true, endTime: true, location: true, cancelledAt: true,
           organisation: { select: { name: true, timeZone: true, supportEmail: true, refundPolicy: true } }
         }
       },
@@ -90,9 +93,16 @@ export async function getOwnTicketPurchase(userId: string, orderId: string) {
     where: { orderId, type: { in: Object.keys(buyerTimelineLabels) as OrderLifecycleEventType[] } },
     orderBy: { sequence: "desc" },
     take: 10,
-    select: { id: true, type: true, createdAt: true }
+    select: { id: true, type: true, source: true, createdAt: true }
   });
-  return { ...order, history: history.map((event) => ({ id: event.id, label: buyerTimelineLabels[event.type] as string, createdAt: event.createdAt })) };
+  return {
+    ...order,
+    history: history.map((event) => ({
+      id: event.id,
+      label: event.type === "free_cancelled" && event.source === "buyer_action" ? "You cancelled your registration" : buyerTimelineLabels[event.type] as string,
+      createdAt: event.createdAt
+    }))
+  };
 }
 
 // The order a member's Stripe return names, for /success. Only the member's own.

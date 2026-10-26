@@ -1,3 +1,3 @@
 {
-  "requiredMigration": "20261116010000_guest_checkout_name"
+  "requiredMigration": "20261117010000_event_cancellation"
 }

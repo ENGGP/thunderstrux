@@ -129,6 +129,7 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | Session id, amount, currency `aud`, metadata against the order (organisation = the event's owner), or destination against `sellerStripeAccountId` (orders without a snapshot skip it) | `webhook_mismatch` |
 | The order had failed ordinarily | `paid_session_received_after_order_failed` |
 | A refund made in Stripe (`externalRefundedAmount`) or a dispute (`disputeStatus`) reached the order before this webhook | `refunded_or_disputed_before_fulfilment` |
+| The society cancelled the event before the payment was confirmed (EVT-004) | `event_cancelled_before_fulfilment` |
 | Hold expired or lapsed / missing | `reservation_expired_after_payment` / `reservation_missing_after_payment` |
 | Hold quantity differs | `reservation_quantity_mismatch_after_payment` |
 | Member-price membership revoked (read `FOR SHARE`) | `member_price_membership_revoked` |
@@ -194,7 +195,7 @@ The `checkout-recovery` worker (`processCheckoutAttemptRecoveryBatch`, tickets a
 | Ticket email | `email_enqueued` (also an operator requeue), `email_retry_scheduled`, `email_provider_accepted`, `email_delivery_exhausted` |
 | Legacy | `legacy_baseline` |
 
-Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `development_fallback`, `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy`.
+Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `development_fallback`, `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy`, `buyer_action` (a buyer releasing a free registration).
 
 - An order with no history gets `legacy_baseline` (source `legacy`) before its first new event, and the timeline warns that earlier history is incomplete.
 - Duplicate deliveries and idempotent replays append nothing. Worker claims and leases are not history.

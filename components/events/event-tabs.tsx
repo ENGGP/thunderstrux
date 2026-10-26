@@ -11,13 +11,15 @@ import {
   type OrganisationPermission,
   type OrganisationStaffRole
 } from "@/lib/permissions";
+import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { zoneCity } from "@/lib/zoned-time";
 
 export type EventTab = "summary" | "attendees" | "orders" | "edit" | "preview";
 
 // Selling state of a published event, beside its Published badge.
-export function SaleBadge({ event }: { event: Pick<DashboardEvent, "status" | "salesOpen" | "soldOut"> }) {
+export function SaleBadge({ event }: { event: Pick<DashboardEvent, "status" | "salesOpen" | "soldOut" | "cancelledAt"> }) {
   if (event.status !== "published") return null;
+  if (event.cancelledAt) return <StatusBadge label="Event cancelled" status="cancelled" />;
   return <StatusBadge status={!event.salesOpen ? "sales-closed" : event.soldOut ? "sold-out" : "sales-open"} />;
 }
 
@@ -64,7 +66,12 @@ export function EventWorkspaceHeader({
       <PageHeader
         actions={
           editing ? null : canManage ? (
-            <EventActions event={event} inHeader size="md" />
+            <EventActions
+              cancel={hasOrganisationPermission(staffRole, "orders:refund") ? { needsCode: mfaEnforcementMode() !== "off" } : null}
+              event={event}
+              inHeader
+              size="md"
+            />
           ) : event.status === "published" ? (
             <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={`/events/${event.id}`}>
               View public page

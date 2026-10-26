@@ -71,6 +71,8 @@ export type PublicEventDetail = {
   status?: "draft" | "published";
   salesOpen?: boolean;
   salesCloseAt?: Date;
+  // The society cancelled it (EVT-004); the page stays for ticket holders.
+  cancelled?: boolean;
 };
 
 export async function getPublishedEvents({
@@ -95,10 +97,11 @@ export async function getPublishedEvents({
     : {};
   const events = await prisma.event.findMany({
     // Unlisted events open by direct link only; members-only events never appear
-    // publicly; ended events drop out of every list (PUB-001).
+    // publicly; ended and cancelled events drop out of every list (PUB-001, EVT-004).
     where: {
       status: "published",
       visibility: "public",
+      cancelledAt: null,
       endTime: { gt: now },
       ...(title ? { title: { contains: title, mode: "insensitive" as const } } : {}),
       ...(societySlug ? { organisation: { slug: societySlug } } : {}),
@@ -143,7 +146,7 @@ export async function getPublishedEvents({
 // The societies the Explore filter offers: those with a listed event still to come.
 export function getExploreSocieties(now = new Date()) {
   return prisma.organisation.findMany({
-    where: { events: { some: { status: "published", visibility: "public", endTime: { gt: now } } } },
+    where: { events: { some: { status: "published", visibility: "public", cancelledAt: null, endTime: { gt: now } } } },
     orderBy: { name: "asc" },
     select: { name: true, slug: true }
   });
@@ -161,6 +164,7 @@ const detailSelect = {
   visibility: true,
   saleState: true,
   salesCloseAt: true,
+  cancelledAt: true,
   organisation: {
     select: {
       name: true,
@@ -203,6 +207,7 @@ async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEve
     membersOnly: event.visibility === "members_only",
     salesOpen: salesOpen(event, now),
     salesCloseAt: event.salesCloseAt,
+    cancelled: event.cancelledAt !== null,
     // The society's Stripe fields decide availability but are not public.
     organisation: {
       name: event.organisation.name,

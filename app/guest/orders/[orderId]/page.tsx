@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { GuestClaim } from "@/components/guest/guest-claim";
 import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
 import { UnpaidOrderNotice } from "@/components/purchases/unpaid-order-notice";
+import { ReleaseRegistration } from "@/components/purchases/release-registration";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { getLiveSession } from "@/lib/auth/live-session";
@@ -103,6 +104,10 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
             </section>
           ) : null}
           {going ? <p className="text-sm text-ink-soft">At the door, give your name or show the ticket reference from your email.</p> : null}
+          {/* A free registration can be released until the event starts (EVT-005). */}
+          {projection === "free" && count > 0 && event.startTime > new Date() && !event.cancelledAt ? (
+            <ReleaseRegistration event={event.title} guestCsrf={sessionId ? guestCsrfToken(sessionId) : undefined} orderId={order.id} ticketCount={count} />
+          ) : null}
           {organisation.supportEmail || organisation.refundPolicy ? (
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-sm">
               {organisation.supportEmail ? <><dt className="text-ink-soft">Questions</dt><dd className="[overflow-wrap:anywhere]"><a className="text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>{organisation.supportEmail}</a></dd></> : null}

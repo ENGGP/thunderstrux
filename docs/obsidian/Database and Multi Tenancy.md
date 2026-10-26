@@ -69,7 +69,7 @@ Fields, defaults and relations: `prisma/schema.prisma`. Amounts are integer cent
 
 | Model | Purpose and notable rules |
 | --- | --- |
-| `Event` | Owner `organisationId`; `status`, `visibility`, `saleState`, `salesCloseAt`, optional `capacity` (positive), `version` (compare-and-swap, positive), `compensationRefundMode`, optional `heroAssetId` through `(heroAssetId, organisationId)` ([[Event Lifecycle]]). End after start (check). |
+| `Event` | Owner `organisationId`; `status`, `visibility`, `saleState`, `salesCloseAt`, optional `capacity` (positive), `version` (compare-and-swap, positive), `compensationRefundMode`, optional `heroAssetId` through `(heroAssetId, organisationId)`, optional `cancelledAt` and `cancellationReason` (EVT-004) ([[Event Lifecycle]]). End after start (check). |
 | `TicketType` | `price`, optional `memberPrice` (at most `price`, check), `quantity` = remaining stock (never original capacity; non-negative). |
 | `Ticket` | One admission. `issueSequence` unique per order and positive; `validity`, `validityReason`, `validityChangedAt` (set by refunds, disputes, cancellations); `checkedInAt` (check-in). |
 | `EventChange` | A time or place change to an event with active tickets: old and new start, end and location, unique `(eventId, eventVersion)`, fan-out `cursor`, `notifiedCount`, `completedAt` with `outcome` `sent` or `superseded` (both null or both set). |
@@ -146,7 +146,7 @@ Values are a contract: code, SQL checks and stored rows use them. Adding a value
 | `MembershipEntitlement` | `member_prices`, `members_only_events` |
 | `MerchandiseProductStatus` | `draft`, `published`, `archived` |
 | `MerchandisePickupStatus` | `pending`, `ready`, `collected` |
-| `OrderLifecycleSource` | `checkout`, `stripe_webhook`, `development_fallback`, `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy` (also the source of commerce history) |
+| `OrderLifecycleSource` | `checkout`, `stripe_webhook`, `development_fallback`, `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy`, `buyer_action` (also the source of commerce history) |
 
 `OrderLifecycleEventType`: `legacy_baseline`, `order_created`, `stripe_session_attached`, `order_failed`, `order_expired`, `compensation_required`, `payment_fulfilled`, `free_fulfilled`, `compensation_recovered`, `manual_refund_marked`, `compensation_refund_queued`, `compensation_refund_started`, `compensation_refund_pending`, `compensation_refunded`, `compensation_refund_failed`, `refund_requested`, `refund_pending`, `refunded`, `refund_failed`, `dispute_opened`, `dispute_closed`, `dispute_resolved`, `dispute_funds_recovered`, `external_refund_recorded`, `external_refund_reviewed`, `free_cancelled`, `email_enqueued`, `email_retry_scheduled`, `email_provider_accepted`, `email_delivery_exhausted`.
 

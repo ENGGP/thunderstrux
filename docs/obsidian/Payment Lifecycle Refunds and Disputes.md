@@ -16,15 +16,16 @@ sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, l
 
 | Concern | Where |
 | --- | --- |
-| Whole-order refunds, worker, webhook | `lib/payments/order-refunds.ts`: `requestOrderRefund`, `requestCommerceRefund`, `processOrderRefundBatch`, `reconcileOrderRefundEvent` |
+| Whole-order refunds, worker, webhook | `lib/payments/order-refunds.ts`: `requestOrderRefund`, `openOrderRefund`, `requestCommerceRefund`, `processOrderRefundBatch`, `reconcileOrderRefundEvent` |
 | Ticket compensation refunds | `lib/payments/compensation-refunds.ts`: `processCompensationRefundBatch`, `reconcileRefundEvent`, `confirmCompensationRefund` |
 | Ticket disputes and outside refunds | `lib/payments/purchase-disputes.ts`: `reconcileDisputeEvent`, `reconcileExternalRefundEvent`, `restoreDisputedTickets`, `markExternalRefundReviewed` |
 | Commerce disputes, outside refunds, automatic compensation | `lib/commerce/payment-recovery.ts` |
 | Lost-dispute reversals | `lib/payments/dispute-reversals.ts`: `queueDisputeReversal`, `processDisputeReversalBatch` |
-| Free ticket cancellation | `lib/payments/free-cancellation.ts`: `cancelFreePurchase` |
+| Free ticket cancellation | `lib/payments/free-cancellation.ts`: `cancelFreeOrder`, `cancelFreePurchase`, `releaseFreeRegistration` |
+| Event cancellation (refund every order) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` ([[Event Lifecycle#Cancelling]]) |
 | Manual refund mark, resend refusals | `lib/orders/order-detail.ts`: `markOrganisationOrderManuallyRefunded` |
 | Worker | `scripts/process-compensation-refunds.ts` (`pnpm compensation-refunds:process`) |
-| Tests | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts`, `tests/integration/purchase-disputes.test.ts`, `tests/integration/commerce-payment-recovery.test.ts`, `tests/integration/membership-refunds.test.ts`, `tests/integration/merchandise-after-sale.test.ts`, `tests/integration/free-cancellation.test.ts`, `tests/e2e/order-refunds.spec.ts` |
+| Tests | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts`, `tests/integration/purchase-disputes.test.ts`, `tests/integration/commerce-payment-recovery.test.ts`, `tests/integration/membership-refunds.test.ts`, `tests/integration/merchandise-after-sale.test.ts`, `tests/integration/free-cancellation.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/e2e/order-refunds.spec.ts` |
 
 ## Staff routes
 
@@ -52,6 +53,7 @@ A `RefundRequest` refunds one ticket order or one commerce order (database check
    - refused when already `refunded` or `processing`, or `disputeStatus` is set;
    - the order must be a Stripe, `paid`, fulfilled order with a Session and a seller snapshot, not under compensation review. Tickets also need no `isManuallyRefunded` mark and a compensation job that is absent or `recovered`.
    
+   The checks and the fence are `openOrderRefund`, shared with event cancellation. A staff refund sends at once under its own lease; an event cancellation leaves each request `pending` with no lease, and the refunds worker sends it on its next run (one code for the whole event instead of one per order).
    The amount is `totalAmount − externalRefundedAmount`, so after a partial refund made in Stripe this is **refund the rest**. It records the request (`operationKey` `order-refund:<uuid>` or `commerce-refund:<uuid>`, `destinationAccountId` from the snapshot), sets `refundStatus = processing`, appends `refund_requested` and writes the audit row.
 2. **Verify, outside the transaction:** re-read the Session with its PaymentIntent and charge. It must be paid, match total, currency and the order id in metadata, have `amount_received` equal to the total, and transfer to the snapshot account. The charge's `disputed` flag is not read: Stripe keeps it true after a dispute closes, so a won dispute would block every later refund. The order's `disputeStatus` fences an open or lost dispute, and Stripe refuses a refund while one is open (PAY-021). Stripe's other refunds on the payment must total exactly what this request leaves out, else `existing_refund_requires_review`. The PaymentIntent is recorded on the request and the order before anything is sent.
 3. **Send:** `refunds.create` with `reverse_transfer`, `refund_application_fee`, metadata `refundRequestId` plus `orderId` or `commerceOrderId`, and `operationKey` as the idempotency key. A refund this request already made is reused, never sent twice.
@@ -136,9 +138,18 @@ On destination charges Stripe takes a lost dispute's amount and fee from the pla
 
 ## Free cancellation
 
-`cancelFreePurchase` (`POST /api/orders/[orderId]/cancel`) for a confirmed free ticket order (`paymentKind = free`, `paid`, fulfilled):
-- Records `cancelledAt`, `cancelledByUserId` and `cancellationReason`; tickets `void` (`cancelled`, check-ins kept); `free_cancelled`; audit `order.free_cancelled`; the buyer's `cancellation/{orderId}` notice.
-- It is never a refund: no `RefundRequest`, `status` stays `paid`, fulfilment stays, stock is not restored.
+`cancelFreeOrder` runs inside the caller's transaction for a confirmed free ticket order (`paymentKind = free`, `paid`, fulfilled). Three callers:
+
+| Caller | Who | Stock | Buyer email |
+| --- | --- | --- | --- |
+| `cancelFreePurchase` (`POST /api/orders/[orderId]/cancel`) | staff, with a fresh code | not restored | `cancellation/{orderId}`: cancelled by the society |
+| `releaseFreeRegistration` (`POST /api/purchases/tickets/[orderId]/cancel-registration`) | the buyer, before the event starts (EVT-005) | the voided tickets go back to `TicketType.quantity`, under the event and type locks taken before the order's | `cancellation/{orderId}`: you cancelled |
+| `cancelOrganisationEvent` | staff cancelling the event | not restored (nothing sells again) | none of its own; the event's `event_cancelled` notice |
+
+- Records `cancelledAt`, `cancelledByUserId` (the staff member or member buyer; null for a guest buyer) and `cancellationReason`; tickets `void` (`cancelled`, check-ins kept); `free_cancelled` with source `staff_action` or `buyer_action`; audit `order.free_cancelled` with `by`.
+- Buyer pages tell a buyer's own release apart (`releasedByBuyer` in `lib/purchases/projection.ts`): staff cancellations always record who did it.
+- It is never a refund: no `RefundRequest`, `status` stays `paid`, fulfilment stays.
+- Why a buyer's release restores stock and staff's doesn't: the buyer gave the place up, so it should sell again (Luma and Humanitix free the spot); a staff cancellation may remove someone who shouldn't have had it, and the organiser decides whether to add stock.
 - A repeat answers `already_cancelled` and changes nothing. The database refuses a cancellation on a non-free order or without a reason.
 - Read models show Cancelled first, resends are refused, and the guest order page says the registration was cancelled.
 

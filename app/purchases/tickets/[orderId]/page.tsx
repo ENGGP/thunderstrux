@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { PersonalShell } from "@/components/layout/personal-shell";
 import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
+import { ReleaseRegistration } from "@/components/purchases/release-registration";
 import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
 import { UnpaidOrderNotice } from "@/components/purchases/unpaid-order-notice";
 import { ticketState } from "@/components/tickets/ticket-face";
@@ -44,6 +45,9 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
   const ticketType = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
   const notCharged = projection === "failed" || projection === "expired" || checkout?.state === "ended";
   const totalLabel = order.paymentKind === "free" ? "Free" : notCharged ? "Not charged" : checkout?.state === "waiting" ? "To pay" : "Paid";
+  // A free registration can be released until the event starts (EVT-005).
+  const activeTickets = order.tickets.filter((ticket) => ticket.validity === "active").length;
+  const canRelease = projection === "free" && activeTickets > 0 && event.startTime > new Date() && !event.cancelledAt;
 
   return (
     <PersonalShell>
@@ -98,8 +102,13 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
             <span className="tabular-nums">{order.paymentKind === "free" ? "Free" : formatPrice(order.totalAmount)}</span>
           </div>
           <p className="mt-1 text-caption text-ink-muted">Order {order.id.slice(-6).toUpperCase()}</p>
-          {order.tickets.some((ticket) => ticket.validity === "active") ? (
+          {activeTickets > 0 ? (
             <Link className="mt-3 inline-block font-semibold text-brand underline underline-offset-4" href="/tickets">Show tickets in My tickets</Link>
+          ) : null}
+          {canRelease ? (
+            <div className="mt-4 border-t border-line pt-3">
+              <ReleaseRegistration event={event.title} orderId={order.id} ticketCount={activeTickets} />
+            </div>
           ) : null}
         </Card>
         <div className="grid gap-6">

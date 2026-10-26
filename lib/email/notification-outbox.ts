@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
 import { encryptNotification, decryptNotification } from "./notification-crypto";
-import { notificationTemplateSchema, renderNotification, renderedNotificationSchema, type NotificationTemplate } from "./templates";
+import { businessTemplates, notificationTemplateSchema, renderNotification, renderedNotificationSchema, type NotificationTemplate } from "./templates";
 import { sendWithResend } from "./ticket-delivery";
 import { logInfo } from "@/lib/ops/logger";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
@@ -49,7 +49,7 @@ export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   const template = notificationTemplateSchema.parse(input.template);
   if (template === "staff_invite" && (!input.staffInviteId || !Number.isInteger(input.staffInviteVersion) || (input.staffInviteVersion ?? 0) < 1))
     throw new Error("Staff invitations require versioned linkage");
-  const privacy = template === "business_notice" ? "business" : "security";
+  const privacy = businessTemplates.includes(template) ? "business" : "security";
   if (privacy === "business" && !input.organisationId) throw new Error("Business notifications require a tenant");
   if (privacy === "security" && input.organisationId) throw new Error("Security notifications cannot belong to a tenant");
   const eventKey = z.string().min(1).max(200).parse(input.eventKey);

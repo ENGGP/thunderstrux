@@ -2,8 +2,7 @@ import type Stripe from "stripe";
 import type { Organisation, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ApiErrorDetail } from "@/lib/api/errors";
-import { mfaGrantDigest } from "@/lib/security/csrf";
-import { MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
+import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
 import { manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
 import { heldMoney } from "@/lib/payouts/release";
 import { logWarn } from "@/lib/ops/logger";
@@ -559,15 +558,6 @@ export async function continueOrganisationStripeOnboarding(orgId: string, { acto
 // (balance, payouts, bank details), made when a staff member asks for it. The
 // platform's view of the account (dashboard.stripe.com/connect/accounts/...)
 // only opens for the platform owner, never for the society.
-// Outside MFA "off", an action that can move a society's money needs a fresh authenticator code.
-async function requireFreshStaffMfa(actor: { id: string; mfaSessionId?: string }, mfaCode: string | undefined, prompt: string) {
-  if (mfaEnforcementMode() === "off") return;
-  if (!mfaCode) throw new MfaInputError(prompt);
-  const digest = mfaGrantDigest(actor.mfaSessionId);
-  if (!digest) throw new MfaRequiredError();
-  await verifyStaffMfa(actor.id, mfaCode, digest);
-}
-
 // The Express Dashboard can change where payouts go, so opening it needs a fresh code, like disconnect (T53).
 export async function createOrganisationDashboardLink(orgId: string, { actor, mfaCode }: FreshCode) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to open the Stripe dashboard");

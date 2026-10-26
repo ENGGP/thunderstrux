@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type MouseEvent } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TextArea, TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type ActionEvent = {
@@ -17,7 +19,11 @@ type ActionEvent = {
   publishBlocker: string | null;
   unpublishBlocker: string | null;
   deleteBlocker: string | null;
+  cancelBlocker: string | null;
+  cancelledAt: Date | null;
 };
+
+type CancelResult = { status: "cancelled" | "already_cancelled"; refundsQueued: number; freeCancelled: number; skipped: unknown[] };
 
 const menuWidth = 288;
 const menuItem =
@@ -29,10 +35,14 @@ const menuItem =
 export function EventActions({
   event,
   size = "sm",
-  inHeader = false
+  inHeader = false,
+  cancel = null
 }: {
   event: ActionEvent;
   size?: "sm" | "md";
+  // Cancel event (EVT-004), offered to staff who may also refund; needsCode
+  // asks for an authenticator code unless staff MFA is off.
+  cancel?: { needsCode: boolean } | null;
   // The event's own header: "Edit event", the public link outside the menu,
   // and back to the list after a delete.
   inHeader?: boolean;
@@ -41,7 +51,9 @@ export function EventActions({
   const id = useId();
   const menu = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState<"unpublish" | "delete" | null>(null);
+  const [confirming, setConfirming] = useState<"unpublish" | "delete" | "cancel" | null>(null);
+  const [cancelForm, setCancelForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
+  const [cancelError, setCancelError] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const blockerId = `${id}-blocker`;
 
@@ -57,7 +69,7 @@ export function EventActions({
     style.bottom = style.top === "auto" ? `${window.innerHeight - box.top + 4}px` : "auto";
   }
 
-  function choose(action: "unpublish" | "delete") {
+  function choose(action: "unpublish" | "delete" | "cancel") {
     menu.current?.hidePopover();
     setConfirming(action);
   }
@@ -113,6 +125,28 @@ export function EventActions({
     }
   }
 
+  async function cancelEvent() {
+    setBusy(true);
+    setCancelError("");
+    try {
+      const result = await fetchJson<CancelResult>(`/api/events/${event.id}/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: cancelForm.reason, confirmation: cancelForm.confirmation, ...(cancel?.needsCode ? { mfaCode: cancelForm.mfaCode } : {}) })
+      });
+      setConfirming(null);
+      setMessage({
+        ok: true,
+        text: `Event cancelled. ${result.refundsQueued} ${result.refundsQueued === 1 ? "refund" : "refunds"} started and ${result.freeCancelled} free ${result.freeCancelled === 1 ? "registration" : "registrations"} cancelled.${result.skipped.length ? ` ${result.skipped.length} ${result.skipped.length === 1 ? "order needs" : "orders need"} you in Orders.` : ""}`
+      });
+      router.refresh();
+    } catch (error) {
+      setCancelError(getClientErrorMessage(error, "Could not cancel the event. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const publicLink =
     event.status === "published" ? (
       <Link
@@ -122,6 +156,24 @@ export function EventActions({
         View public page
       </Link>
     ) : null;
+  const status = message ? (
+    <p
+      className={`max-w-64 text-sm font-medium ${message.ok ? "text-success" : "text-danger"}`}
+      role={message.ok ? "status" : "alert"}
+    >
+      {message.text}
+    </p>
+  ) : null;
+
+  // A cancelled event changes no more; its public page stays for ticket holders.
+  if (event.cancelledAt) {
+    return (
+      <div className="grid w-fit gap-1.5">
+        {inHeader ? publicLink : null}
+        {status}
+      </div>
+    );
+  }
 
   return (
     <div className="grid w-fit gap-1.5">
@@ -160,14 +212,7 @@ export function EventActions({
           {event.publishBlocker}
         </p>
       ) : null}
-      {message ? (
-        <p
-          className={`max-w-64 text-sm font-medium ${message.ok ? "text-success" : "text-danger"}`}
-          role={message.ok ? "status" : "alert"}
-        >
-          {message.text}
-        </p>
-      ) : null}
+      {status}
 
       <div
         className="m-0 rounded-card border border-line bg-surface p-2 shadow-float"
@@ -210,6 +255,17 @@ export function EventActions({
             ) : null}
           </button>
         ) : null}
+        {event.status === "published" && cancel ? (
+          <button
+            className={`${menuItem} text-danger`}
+            disabled={Boolean(event.cancelBlocker)}
+            onClick={() => choose("cancel")}
+            type="button"
+          >
+            Cancel event
+            <span className="text-caption font-normal text-ink-soft">{event.cancelBlocker ?? "Refunds every order and emails every ticket holder."}</span>
+          </button>
+        ) : null}
         <button
           className={`${menuItem} text-danger`}
           disabled={Boolean(event.deleteBlocker)}
@@ -246,6 +302,35 @@ export function EventActions({
         This cannot be undone. Events with orders or issued tickets cannot be
         deleted and will report an error instead.
       </ConfirmDialog>
+      {cancel ? (
+        <ConfirmDialog
+          busy={busy}
+          cancelLabel="Keep event"
+          confirmLabel="Cancel event"
+          destructive
+          onCancel={() => setConfirming(null)}
+          onConfirm={cancelEvent}
+          open={confirming === "cancel"}
+          title={`Cancel "${event.title}"?`}
+        >
+          <div className="grid gap-3">
+            {cancelError ? <Notice role="alert" tone="danger">{cancelError}</Notice> : null}
+            <ul className="grid list-disc gap-1 pl-5">
+              <li>Ticket sales stop for good and the event leaves Explore. Its page stays up and says it&apos;s cancelled.</li>
+              <li>Every paid order is refunded in full, Thunderstrux fee included, from the society&apos;s Stripe balance. Refunds go out over the next few minutes.</li>
+              <li>Free registrations are cancelled.</li>
+              <li>Every ticket holder is emailed your message.</li>
+              <li>Disputed orders are left for you to settle in Orders.</li>
+              <li>This can&apos;t be undone.</li>
+            </ul>
+            <TextArea hint="Emailed to every ticket holder and kept in History. 8 to 500 characters." label="Message to ticket holders" maxLength={500} onChange={(change) => setCancelForm({ ...cancelForm, reason: change.target.value })} rows={3} value={cancelForm.reason} />
+            <TextInput autoComplete="off" label={`Type ${event.title} to confirm`} onChange={(change) => setCancelForm({ ...cancelForm, confirmation: change.target.value })} value={cancelForm.confirmation} />
+            {cancel.needsCode ? (
+              <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(change) => setCancelForm({ ...cancelForm, mfaCode: change.target.value })} value={cancelForm.mfaCode} />
+            ) : null}
+          </div>
+        </ConfirmDialog>
+      ) : null}
     </div>
   );
 }

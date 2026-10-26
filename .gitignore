@@ -33,6 +33,8 @@ blob-report/
 # Local Codex workspace state
 .worktrees/
 docs/.obsidian/workspace.json
+# Obsidian settings made when docs/obsidian is opened as its own vault; the vault root is docs/.
+docs/obsidian/.obsidian/
 
 
 # Environment files

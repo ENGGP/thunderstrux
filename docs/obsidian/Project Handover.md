@@ -9,18 +9,18 @@ sources: [package.json, prisma/schema.prisma]
 
 # Project Handover
 
-This is the only current handover. It covers the session that began on **2026-10-25 at main `1bc34ef`**: a whole-repository audit and the fixes for its five most important findings (#167). The previous session (planning and delivering T10 to T46, then the Stripe audit and its fixes, 2026-10-15 to 2026-10-25) is retained in [[Project Handover 2026-10-25]]. Earlier sessions are in [[Project Handover 2026-10-15]] and [[Project Handover 2026-10-12]]. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
+This is the only current handover. It covers the session that began on **2026-10-25 at main `1bc34ef`**: a whole-repository audit and the fixes for its five most important findings (#167), then the 2026-10-25 security audit's remediation (T47 to T53) and the 2026-10-26 test audit (#191 to #193). The previous session (planning and delivering T10 to T46, then the Stripe audit and its fixes, 2026-10-15 to 2026-10-25) is retained in [[Project Handover 2026-10-25]]. Earlier sessions are in [[Project Handover 2026-10-15]] and [[Project Handover 2026-10-12]]. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
 
 ## Current State
 
-**Status at 2026-10-25 (main `478b4e6`).** T01–T46 are delivered and locally qualified, apart from the assistant (T35–T37), which the founder deferred; [[Pre-hosting Candidate]] holds the candidate record. This session's audit fixes (#167) are merged. Only this handover change is in review.
+**Status at 2026-10-26 (main `bc21753`).** T01–T46 are delivered and locally qualified, apart from the assistant (T35–T37), which the founder deferred; [[Pre-hosting Candidate]] holds the candidate record. This session's audit fixes (#167), the security remediation (T47 to T53) and the test audit (#191 to #193) are merged; no code change is in review.
 
 What remains before real users is outside the code:
 - the hosting choice and the hosted gates below;
 - the hosted Stripe webhook endpoints on endive with a restricted key (runbook in [[Production Operations]]). New events now refund unfillable payments automatically, so the hosted refund webhooks (PAY-002) must be live before any real sale;
 - Spaces (OPS-005) and legal terms (LEGAL-001).
 
-Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6.19.3 and stripe 23.0.0 on API `2026-09-30.endive`. Main's migration chain has 64 migrations, ending in `20261115010000_society_payouts` (the readiness schema contract names it), and 39 models. The latest full baseline is `baseline-b804a38b50797943158c3f63` (test audit findings, 2026-10-26): 748 integration tests in 105 files.
+Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6.19.3 and stripe 23.0.1 on API `2026-09-30.endive`. Main's migration chain has 64 migrations, ending in `20261115010000_society_payouts` (the readiness schema contract names it), and 39 models. The latest full baseline is `baseline-b804a38b50797943158c3f63` (test audit findings, 2026-10-26): 748 integration tests in 105 files.
 
 **Local development** runs all 64 migrations; #167 added none. The dev app serves the working tree, so keep its checkout on main or a branch built from it. The notification key lives in ignored `.env` with a separate Windows-user-only backup. [[Troubleshooting]] and [[Production Operations]] own backup and rollback procedure. Dev database dumps and their checksums are listed in [[Project Handover 2026-10-25]].
 
@@ -47,7 +47,7 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 **Audit (2026-10-25, read only).** The whole repository was read against the docs, PRD, database spec and user-flow spec. The assumed load was a pilot with tens of societies, peaking when 20 to 200 people act within a minute on one event or society. The report found:
 - two must-fix bugs: rush errors, and late payers charged without tickets;
 - three should-fix items: the payout key, login timing, and three copies of the expiry rule;
-- three nice-to-haves, still open: dead code in the payment path (a metadata re-check that can't fail, `getActiveReservedQuantity`, a duplicate expiry call), the unused `autoprefixer` dependency, and image requests reading the whole object before answering "not modified".
+- three nice-to-haves: dead code in the payment path (a metadata re-check that can't fail, `getActiveReservedQuantity`, a duplicate expiry call) and the unused `autoprefixer` dependency, both still open; image requests reading the whole object before answering "not modified" were fixed by T52 (SEC-021).
 
 **Plan.** Agreed with the maintainer through a `grill-me` interview, then checked against Eventbrite, Humanitix and Luma at the maintainer's request:
 - one PR for findings 1 to 5;
@@ -118,7 +118,7 @@ First, ahead of the list below:
 1. Before hosting: create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]], and pass PAY-002 on the hosted endpoint. Automatic refunds are now the default for new events, as for commerce.
 2. When hosting is chosen, run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`, and add an uptime or heartbeat check that covers the monitor (OPS-002).
 3. UI-004: phone filter folding, one date formatter and the society Overview previews.
-4. Optional cleanup from the audit: the three nice-to-haves above, in one small PR.
+4. Optional cleanup from the audit: the two nice-to-haves still open above, in one small PR.
 5. PAY-009, when it is scheduled: shorter or society-set holds, by closing the Stripe page early from the stale-order job. Design it as its own task.
 6. Before activating account lifecycle, obtain independent security and migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance. #167 changed payments and sign-in, which this review also covers.
 7. Test audit (2026-10-26) is done: tier 1 in #191, tiers 2 and 3 in #192, and its findings (DEF-046, PAY-010, SEC-027, the missing and redundant tests) in #193. Nothing is left from it.

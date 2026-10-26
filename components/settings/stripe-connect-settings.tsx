@@ -359,6 +359,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     </Button>
   );
   const waiting = status?.payouts?.held.total ?? 0;
+  // Held money blocks disconnect, unless Thunderstrux can't reach the account (PAY-015), which the server checks.
+  const heldBlocksDisconnect = isConnected && waiting > 0 && status?.state !== "ERROR";
 
   return (
     <>
@@ -513,7 +515,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
                 View orders
               </Link>
             </Notice>
-          ) : isConnected && waiting > 0 ? (
+          ) : heldBlocksDisconnect ? (
             <Notice title="You can't disconnect right now" tone="info">
               <p>
                 {formatMoney(waiting)} from your sales is held for refunds until 2 days after each event, and 7 days after
@@ -523,7 +525,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           ) : null}
           <div>
             <Button
-              disabled={isDisconnecting || openObligations > 0 || (isConnected && waiting > 0)}
+              disabled={isDisconnecting || openObligations > 0 || heldBlocksDisconnect}
               onClick={openDisconnect}
               type="button"
               variant="danger"

@@ -3,7 +3,7 @@ import type { Organisation, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
-import { manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
+import { keepStripePayoutsManual, manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
 import { heldMoney } from "@/lib/payouts/release";
 import { logWarn } from "@/lib/ops/logger";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
@@ -433,14 +433,20 @@ export async function disconnectAccount(
   if (linked?.stripeAccountId) {
     const open = await countOpenObligations(prisma, orgId, linked.stripeAccountId);
     if (open > 0) throw new StripeDisconnectBlockedError(open);
-    // Held money would reach the bank at once on Stripe's schedule, before the
-    // events it may have to refund have run, so it is paid out here first.
-    if ((await heldMoney(orgId, linked.stripeAccountId)).total > 0) throw new StripeDisconnectBlockedError(0, heldMoneyBlocksDisconnect);
+    const held = (await heldMoney(orgId, linked.stripeAccountId)).total > 0;
     try {
+      // Held money would reach the bank at once on Stripe's schedule, before the
+      // events it may have to refund have run, so a reachable account keeps
+      // manual payouts and stays linked until it is paid out.
+      if (held) {
+        await keepStripePayoutsManual(linked.stripeAccountId);
+        throw new StripeDisconnectBlockedError(0, heldMoneyBlocksDisconnect);
+      }
       await restoreStripePayoutSchedule(linked.stripeAccountId);
     } catch (error) {
-      // An account out of this platform's reach has no schedule to give back,
-      // so it is unlinked here; nothing else could ever unlink it.
+      if (error instanceof StripeDisconnectBlockedError) throw error;
+      // An account out of this platform's reach has no schedule to give back and
+      // no money we could pay out, so it is unlinked here; nothing else could ever unlink it.
       if (!isAccountOutOfReach(error)) {
         const type = (error as { type?: unknown } | null)?.type;
         throw typeof type === "string" && type.startsWith("Stripe") ? new StripeDisconnectUnavailableError() : error;

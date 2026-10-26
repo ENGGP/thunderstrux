@@ -14,7 +14,8 @@ import { createEvent, createOrder, createOrganisationAccount, createReservation 
 
 // PAY-005: disconnect hands payouts back to Stripe's schedule; Stripe itself isn't reached here.
 const restoreSchedule = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/payouts/payouts", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/payouts/payouts")>()), restoreStripePayoutSchedule: restoreSchedule }));
+const keepManual = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/payouts/payouts", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/payouts/payouts")>()), restoreStripePayoutSchedule: restoreSchedule, keepStripePayoutsManual: keepManual }));
 
 async function paidFixture(sellerStripeAccountId: string | null) {
   const owner = await createOrganisationAccount({ stripeReady: true });
@@ -110,8 +111,15 @@ describe("disconnect", () => {
     const actor = { id: fixture.owner.user.id };
 
     await expect(disconnectAccount(fixture.owner.organisation.id, { actor })).rejects.toThrow(heldMoneyBlocksDisconnect);
+    expect(keepManual).toHaveBeenCalledWith(fixture.owner.organisation.stripeAccountId);
     expect(restoreSchedule).not.toHaveBeenCalledWith(fixture.owner.organisation.stripeAccountId);
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).not.toBeNull();
+
+    // An account this platform can no longer reach has nothing to pay out, so it is still unlinked (PAY-015).
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    keepManual.mockRejectedValueOnce(Object.assign(new Error("The provided key does not have access to account 'acct_gone' (or that account does not exist)."), { type: "StripePermissionError" }));
+    await disconnectAccount(fixture.owner.organisation.id, { actor });
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).toBeNull();
   });
 
   test("a membership order still being paid, refunded or disputed also blocks it", async () => {

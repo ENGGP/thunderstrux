@@ -2,805 +2,247 @@
 status: living
 last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]"]
-sources: [lib/stripe/connect.ts, lib/payments/checkout-creation.ts]
+related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Troubleshooting]]"]
+sources: [lib/stripe/index.ts, lib/stripe/version.ts, lib/stripe/connect.ts, lib/stripe/fees.ts, lib/stripe/http.ts, lib/payouts/payouts.ts, lib/payouts/release.ts, lib/payments/checkout-creation.ts, lib/commerce/checkout.ts, app/api/payments/webhook/route.ts, app/api/stripe/connect/webhook/route.ts]
 ---
 
 # Stripe Payments and Connect
 
-Payment, reservation, compensation, refund-bookkeeping, and email transitions are now recorded in the append-only lifecycle journal described in [[Payment Lifecycle]]. Current state remains on the existing order/reservation/outbox fields; the journal provides operator reconstruction and does not replace Stripe as provider truth.
-
-For production-mode browser testing, real test-mode payment acceptance and isolated webhook forwarding, see [[E2E and Staging Payments]]. The E2E runner does not reuse the development webhook secret or rely on the success-page development fallback.
-
-P2.16 acceptance verified real Stripe success, decline, user-attested cancellation and forced-expiry reconciliation on API version `2026-03-25.dahlia`. Destination charges, tickets, inventory and outbox state were checked; natural expiry and provider email delivery were not claimed. Implementation merged through PR #10. P3.19 repeat acceptance and journal-correlation evidence are recorded in [[Payment Lifecycle]].
-
-Since PAY-006 (2026-10-24) the app pins API version `2026-09-30.endive` with the `stripe` package 23.0.0, the version that SDK is typed for. Hosted webhook endpoints and the staging listener use the same version (see [[Production Operations]] and [[E2E and Staging Payments]]).
-
-## Design Principles
-
-- Use Stripe Checkout hosted pages
-- Do not fulfil from frontend redirects in production
-- Fulfil production payments only from Stripe webhooks
-- Keep a local `Order` row before redirecting to Stripe
-- Create a temporary ticket reservation before redirecting to Stripe
-- Reconcile amount, currency, and metadata before marking paid
-- Reduce inventory and issue tickets atomically
-- Mark paid-but-unfulfilled sessions for compensation review instead of silently treating them as ordinary failed checkouts
-- Send ticket delivery email only after successful webhook fulfilment and ticket issuance
-
-## Stripe Files
-
-Core files:
-
-- `app/api/payments/checkout/event/route.ts`
-- `app/api/payments/webhook/route.ts`
-- `app/api/public/events/[eventId]/route.ts`
-- `app/tickets/page.tsx`
-- `app/(dashboard)/dashboard/orders/page.tsx`
-- `app/(dashboard)/dashboard/events/[eventId]/page.tsx`
-- `app/api/stripe/connect/onboard/route.ts`
-- `app/api/stripe/connect/continue/route.ts`
-- `app/api/stripe/connect/disconnect/route.ts`
-- `app/api/stripe/connect/status/route.ts`
-- `app/api/stripe/connect/webhook/route.ts`
-- `lib/stripe/index.ts`
-- `lib/stripe/connect.ts`
-- `lib/stripe/fees.ts`
-- `lib/payments/checkout-fulfilment-orchestrator.ts`
-- `lib/payments/checkout-creation.ts`
-- `lib/payments/checkout-reconciliation.ts`
-- `lib/email/ticket-delivery.ts`
-- `lib/orders/stale-orders.ts`
-- `lib/tickets/reservations.ts`
-- `lib/events/event-analytics.ts`
-- `components/settings/stripe-connect-settings.tsx`
-- `components/events/public-ticket-purchase.tsx`
-
-## Checkout Flow
-
-```text
-Public event page
-  -> user selects ticket type + quantity
-  -> POST /api/payments/checkout/event
-  -> route validates origin, input, member auth, and rate limit
-  -> checkout creation service validates event, ticket type, amount, and Stripe readiness
-  -> a locked READ COMMITTED transaction creates local pending Order, active TicketReservation and CheckoutAttempt
-     (a repeated idempotencyKey returns the existing attempt instead)
-  -> Stripe Checkout Session created with expires_at (the reservation ends 5 minutes later, DEF-033),
-     using the attempt's providerOperationKey as the Stripe idempotency key
-     (timeout or unknown error: attempt stays provider_uncertain, response 202;
-      the checkout-recovery worker later replays the stored request with the same key)
-  -> Checkout Session metadata includes orderId, eventId, organisationId, ticketTypeId, and quantity
-  -> local Order is updated with stripeSessionId
-  -> browser redirected to Stripe
-  -> Stripe redirects back to /success?session_id={CHECKOUT_SESSION_ID}
-```
-
-Current implementation details:
-
-- Currency is `aud`
-- Payment flow uses destination charges
-- Checkout is restricted to card payments so `checkout.session.completed` can require `payment_status = paid`. Since PAY-006 (API `2026-09-30.endive`, stripe 23) this is `allowed_payment_method_types: ["card"]`; endive removed `payment_method_types` from Checkout Sessions. Adding any delayed payment method means handling `checkout.session.async_payment_succeeded` and `async_payment_failed` first
-- Success URL includes `{CHECKOUT_SESSION_ID}` so non-production can run the dev-only reconciliation fallback when local webhook forwarding is missing
-- Platform fee is calculated by `calculatePlatformFee(totalAmount)`
-- Reservation window is 30 minutes because Stripe Checkout `expires_at` must be at least 30 minutes after session creation. Since the Stripe audit (2026-10-24) `checkoutSessionExpiresAt` sets it just before the call, 30 minutes plus a 60-second margin for the trip to Stripe, and the hold ends at the same time for tickets and for memberships and merchandise. The margin stays under the 2-minute recovery delay, so a recovery replay of a request Stripe never saw still carries an expiry Stripe refuses
-- Sessions carry the buyer's email (`customer_email`) and an `integration_identifier` per flow (`thunderstrux-tickets-…`, `thunderstrux-commerce-…`) for comparing flows in Stripe's Dashboard
-- Paid prices start at $0.50, Stripe's smallest AUD card payment: ticket and member prices, membership plans and merchandise options accept 0 (free) or 50 cents and up (`priceAmountSchema`, `isBelowStripeMinimum`). A price between 1 and 49 cents could be listed but never paid
-- `TicketType.quantity` remains remaining inventory; reservations are subtracted from it during checkout availability checks
-
-## Ticket Reservations
-
-`TicketReservation` is a soft hold linked one-to-one with an `Order`.
-
-Statuses:
-
-- `active`: counts against checkout availability until `expiresAt`
-- `confirmed`: paid webhook completed and tickets were issued
-- `released`: checkout failed before a normal expiry path
-- `expired`: local hold expired before payment completed
-
-Availability:
-
-```text
-availableNow = TicketType.quantity - activeReservedQuantity
-```
-
-Checkout creates a reservation only after these preconditions pass:
-
-- authenticated member account
-- live verified, non-disabled identity with matching authVersion; account closure/checkout share the User fence
-- published event
-- ticket type belongs to the event
-- positive amount
-- organisation Stripe account present and charges-enabled
-
-If Stripe session creation fails after a reservation is created, the order is marked `failed` and the reservation is released.
-
-## Required Conditions For Checkout
-
-Checkout currently requires:
-
-- authenticated member account
-- published event
-- ticket type that belongs to the event
-- requested quantity within remaining inventory
-- organisation Stripe account id present
-- organisation charges enabled
-- Stripe secret key configured
-
-Public society contact/policies/profile completion are separate from existing charge-readiness and refund behavior. Free society affiliation does not issue paid entitlements, tickets or staff access. T10–T18 own the remaining ticket/Connect/public/guest/refund foundations; ordinary zero-total acquisition and paid membership/merchandise are not implemented. [[Project Handover]] and the readiness plan own current progress.
-
-## Why `Stripe not connected` Happens
-
-The checkout API returns this when:
-
-- `stripeAccountId` is missing, or
-- the connected account is not considered ready for charges
-
-Current readiness helper:
-
-```ts
-isOrganisationStripeReady({
-  stripeAccountId,
-  stripeChargesEnabled
-})
-```
-
-This means local failures are often caused by:
-
-- onboarding never started
-- Stripe platform profile/setup is incomplete
-- onboarding incomplete
-- Stripe keys missing
-- Connect webhook/status refresh not updating local flags yet
-
-## Stripe Connect Lifecycle
-
-Stripe Connect management requires live staff capability for the canonical organisation, or legacy owner authority only while the configured migration fallback permits it.
-
-Member accounts without active staff authority cannot manage Stripe Connect; live stripe:manage capability is authoritative.
-
-Thunderstrux uses strict internal lifecycle states:
-
-```ts
-type StripeConnectState =
-  | "NOT_CONNECTED"
-  | "PLATFORM_NOT_READY"
-  | "CONNECTED_INCOMPLETE"
-  | "RESTRICTED"
-  | "READY"
-  | "ERROR";
-```
-
-Mapping:
-
-- `NOT_CONNECTED`: no `stripeAccountId`.
-- `PLATFORM_NOT_READY`: Stripe platform profile/setup is incomplete and Express account creation is blocked before a connected account exists.
-- `CONNECTED_INCOMPLETE`: `details_submitted = false`.
-- `RESTRICTED`: details submitted but `charges_enabled = false`.
-- `READY`: `charges_enabled = true`.
-- `ERROR`: Stripe API failure or account mismatch.
-
-Important:
-
-- `Connected` means an account exists.
-- `READY` means ticket payments can be accepted.
-- `PLATFORM_NOT_READY` means the platform account cannot create Express accounts yet. It is not a connected-account state.
-- Checkout only cares about payment readiness, not whether an account merely exists.
-
-## Stripe Connect Service Layer
-
-File:
-
-```text
-lib/stripe/connect.ts
-```
-
-Responsibilities:
-
-- `startOrganisationStripeOnboarding(orgId, actorUserId)`: composes account creation/reuse with onboarding-link creation. Creating an account writes the audit entry `stripe_connect.account_created` with the actor and account id (T17). The Express account requests `card_payments` (`on_behalf_of` makes the society the settlement merchant, which needs it) and `transfers` (destination charges), with the idempotency key `connect-account:<orgId>:<earlier accounts>`, so a double click returns the same account and a reconnect after disconnect gets a new one.
-- `continueOrganisationStripeOnboarding(orgId)`: validates a connected account and creates a new onboarding link.
-- `getOrganisationStripeConnectStatus(orgId)`: resolves the organisation, returns canonical local states, refreshes connected accounts, and persists readiness. A connected status also carries `openObligations`, the count of orders that still depend on the account.
-- `createExpressAccount(orgId)`: resolves organisation server-side, creates Stripe Express account if needed, stores `stripeAccountId`, and sets `stripeAccountStatus`. If Stripe rejects account creation because platform setup is incomplete, stores `PLATFORM_NOT_READY` and throws `StripeConnectPlatformNotReadyError`.
-- `createOnboardingLink(accountId, orgSlug)`: creates a Stripe-hosted onboarding link with valid `/dashboard/settings` return and refresh URLs.
-- `getAccountStatus(accountId)`: retrieves the live Stripe account, maps it to a lifecycle state, and persists local readiness flags.
-- `disconnectAccount(orgId, { actor, mfaCode })` (T17): when staff MFA is not `off`, verifies a fresh authenticator code first. Under the Organisation row lock it refuses (`StripeDisconnectBlockedError`, 409) while any Stripe order of this society for that account (or with no seller snapshot) is pending, under compensation review, has a compensation refund that is not `refunded` or `recovered`, is being refunded (`refundStatus` processing or a pending or uncertain refund request) or has an open dispute. Membership and merchandise orders for the account count the same way (since the Stripe audit, 2026-10-24). Otherwise it clears the local Stripe fields and writes `stripe_connect.disconnected` with the previous account id. With no account it only resets a blocked `PLATFORM_NOT_READY` state. It never deletes the Stripe account, and past orders keep the account on their snapshot.
-- `notConnectedStatus()`: returns the canonical no-account status payload.
-- `platformNotReadyStatus()`: returns the canonical platform setup block payload.
-- `markAccountStatusError(...)`: stores `ERROR` when status refresh cannot retrieve the account, but keeps the last known charges, payouts and details flags, so sales follow them until a refresh succeeds (T17). The response says Thunderstrux couldn't reach Stripe; the provider's message stays in the log.
-
-The service layer does not decide whether the current user is allowed to perform an action. API routes perform live capability and target-organisation permission checks before calling service functions.
-
-## Stripe Connect Onboarding Flow
-
-Flow:
-
-```text
-Settings page
-  -> resolve canonical organisation and live Stripe Connect capability
-  -> GET /api/stripe/connect/status?organisationId=...
-  -> UI renders one of NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
-  -> user clicks Connect Stripe Account, Continue onboarding, or Fix account
-  -> POST /api/stripe/connect/onboard
-  -> or POST /api/stripe/connect/continue
-  -> API creates or reuses Express account
-  -> API stores stripeAccountId and lifecycle status
-  -> API returns account onboarding link
-  -> user completes onboarding on Stripe
-  -> user returns to settings
-  -> GET /api/stripe/connect/status refreshes local readiness flags
-```
-
-If Stripe platform setup is incomplete:
-
-```text
-Settings page
-  -> POST /api/stripe/connect/onboard
-  -> stripe.accounts.create({ type: "express" }) fails
-  -> service maps known platform setup errors to PLATFORM_NOT_READY
-  -> API returns 409 with actionUrl
-  -> UI shows Open Stripe Platform Settings and Retry after completion
-```
-
-Control buttons:
-
-The Payments page (T17, design round A2) shows the account as two rows, **Can take payments** (charges enabled) and **Can receive payouts** (payouts enabled), each with its next action, so a society that can sell but has no bank account keeps selling under an amber `Payouts not set up` badge. A Fees card works the fee through a $20.00 example. Since T46 the fee is 3.75% plus $0.89 per ticket, membership or merchandise order: the buyer pays $20.00, Thunderstrux keeps $1.64 and the society receives $18.36 (it was 10% before T46; card processing is included, because Stripe charges its processing fee to the platform on destination charges, as T45 observed) from `calculatePlatformFee`.
-
-- `Connect Stripe`: shown for `NOT_CONNECTED`.
-- `Open Stripe Platform Settings` and `Retry after completion`: shown for `PLATFORM_NOT_READY`.
-- `Continue Stripe setup`: shown for `CONNECTED_INCOMPLETE`; `Fix in Stripe` for `RESTRICTED`; `Add a bank account in Stripe` when ready without payouts.
-- `Refresh status` (or `Try again` for `ERROR`) and `Open Stripe dashboard`: shown when connected.
-- `Disconnect Stripe account`: shown when connected and for `PLATFORM_NOT_READY`. While orders depend on the account it is disabled under "You can't disconnect right now" with the count. Its confirmation asks for an authenticator code when staff MFA is on.
-
-Stripe connected-account dashboard link format:
-
-```text
-https://dashboard.stripe.com/test/connect/accounts/{accountId}
-https://dashboard.stripe.com/connect/accounts/{accountId}
-```
-
-The code chooses test vs live from `STRIPE_SECRET_KEY` (`isLiveStripeKey`: `sk_live_` or `rk_live_`). Since T17 `getStripe()` refuses a live key unless `NODE_ENV` is `production`, and both webhooks acknowledge an event whose `livemode` differs from the key's mode with `{ ignored: "mode_mismatch" }`, log `stripe.webhook.mode_mismatch` and raise `stripe_webhook_mode_mismatch`, changing nothing.
-
-Platform profile link:
-
-```text
-https://dashboard.stripe.com/settings/connect/platform-profile
-```
-
-Disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the Stripe connected account. After disconnect, clicking `Connect Stripe` creates a new account unless the old `acct_...` value is restored manually.
-
-Manual reconnect to a previously disconnected account:
-
-```sql
-UPDATE "Organisation"
-SET
-  "stripeAccountId" = 'acct_old_account_id',
-  "stripeAccountStatus" = 'CONNECTED_INCOMPLETE',
-  "stripeChargesEnabled" = false,
-  "stripePayoutsEnabled" = false,
-  "stripeDetailsSubmitted" = false
-WHERE slug = 'engineering-society';
-```
-
-Then open `/dashboard/settings` and click `Refresh status`.
-
-## Stripe Connect Status
-
-`GET /api/stripe/connect/status`
-
-Behavior:
-
-- verifies live Stripe Connect capability and canonical organisation ownership
-- loads organisation from Prisma
-- if no connected account and no stored platform setup block, returns `state: NOT_CONNECTED`
-- if no connected account and `stripeAccountStatus = PLATFORM_NOT_READY`, returns `state: PLATFORM_NOT_READY`
-- if account exists, retrieves live account state from Stripe
-- persists `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted`, `stripeAccountStatus`
-- returns requirements fields from Stripe where available:
-  - `currently_due`
-  - `eventually_due`
-  - `disabled_reason`
-
-This endpoint is both a status reader and a local state synchronizer.
-
-## Stripe Connect API Routes
-
-`POST /api/stripe/connect/onboard`
-
-- Creates or reuses an Express account.
-- Returns a Stripe-hosted onboarding URL.
-- If platform setup is incomplete, returns `409` with `state`, `message`, `actionRequired`, and `actionUrl`.
-
-`POST /api/stripe/connect/continue`
-
-- Requires an existing `stripeAccountId`.
-- Returns a fresh Stripe-hosted onboarding URL.
-
-`POST /api/stripe/connect/disconnect`
-
-- Clears the local Stripe account fields.
-- Returns canonical `NOT_CONNECTED` status.
-
-`GET /api/stripe/connect/status?organisationId=...`
-
-- Retrieves Stripe account status and maps it to the lifecycle state.
-
-All Stripe Connect mutation routes require live Stripe Connect capability for the canonical target organisation, or the explicitly enabled legacy fallback.
-
-## Payouts After The Event (PAY-005)
-
-Design round F1, approved 24 Oct 2026. A society is paid once its event is over, as Humanitix and Eventbrite pay organisers, so refunds for a cancelled event come out of money the society still has. On Express accounts with destination charges the platform carries negative balances, so this protects Thunderstrux as well.
-
-- **Manual payouts.** New Express accounts are created with `settings.payouts.schedule.interval = manual` and `debit_negative_balances = true` (`manualPayoutSettings`). Societies already connected are switched on the payouts worker's first check of them. Money then stays in the society's Stripe balance until Thunderstrux sends it.
-- **Release rules** (`lib/payouts/release.ts`, `heldMoney`):
-  - ticket money is held until 2 days after its event ends;
-  - membership and merchandise money for 7 days after the sale;
-  - an open dispute or a payment under compensation review holds its money until it closes, and a lost dispute's money stays held while its transfer reversal is pending or uncertain (T53);
-  - nothing is held past 80 days, because Stripe allows manual payouts to hold money at most 90 days in Australia.
-  - A sale counts its society share (price less the fee and anything refunded outside Thunderstrux); a refunded order counts nothing. Ticket orders are scoped by `Event.organisationId` and the order's seller account.
-- **Payouts worker** (`processPayoutBatch`, `lib/payouts/payouts.ts`). It is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`), which already holds the Stripe key and runs every minute. Each ready society with payouts enabled is checked at most hourly, claimed through `Organisation.payoutCheckedAt`. The worker makes sure the account is on manual payouts, then reads the available AUD balance. If the balance less what the rules hold is at least $1.00, it sends one payout with the key `payout:<account>:<UTC date>` and records a `SocietyPayout`. A society already paid that UTC day is skipped before Stripe is called (DEF-034), so it gets at most one payout a day, like Eventbrite's batched schedules; money released later in the day goes the next day. A payout can never exceed the available balance, so a retry can't overpay.
-- **Payout events.** The Connect webhook takes `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated`. It re-reads the payout from Stripe on the connected account and records its status: `pending`, `paid`, or `failed` for both failed and canceled. A payout the bank refuses alerts `society_payout_failed`. An event for a payout recorded under another account changes nothing.
-- **Payments page.** A Payouts card shows what is waiting for events to end (with how many events and when the next ends), membership and merchandise money from the last 7 days, what is on its way to the bank, and the last 5 payouts. It links to every payout in Stripe's Express dashboard. A refused payout puts a warning with Check bank details in Stripe at the top of the page until a later payout goes through. Without a bank account the card says how much is waiting.
-- **Disconnect.** Before unlinking, the account goes back to Stripe's daily payouts (`restoreStripePayoutSchedule`), so money held for events isn't stranded. The dialog names the amount still waiting. A disconnect then refused under the lock is put back on manual payouts by the worker's next check.
-- **Not built (F1 defaults):** early payouts, and the per-payout list of what it covered; the round's artboard showed a For column, which the page leaves out because a payout is the balance less what is held, not a set of orders.
-
-## Stripe Connect Webhook
-
-`POST /api/stripe/connect/webhook`
-
-Handled event:
-
-- `account.updated`
-- `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` (PAY-005; see Payouts After The Event)
-
-Responsibility:
-
-- verify Stripe signature
-- for an account a society uses, re-read it with `accounts.retrieve` and persist its status flags. Stripe doesn't promise event order, so a late event can't restore an older state; if Stripe can't answer, the error makes Stripe retry. An account no society uses is ignored without a Stripe call.
-
-## Payment Webhook
-
-`POST /api/payments/webhook`
-
-Handled event:
-
-- `checkout.session.completed`
-- `checkout.session.expired`
-- `refund.created`, `refund.updated`, `refund.failed` (T18a ordinary refunds, compensation and, since T18b, refunds made in the dashboard)
-- `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` (T18b)
-
-The hosted webhook endpoint must subscribe to all of these; see [[Payment Lifecycle]].
-
-Reconciliation checks:
-
-- Stripe signature valid
-- raw request body is read with `request.text()`
-- local order exists by `stripeSessionId`
-- Stripe metadata `orderId` resolves the local order
-- local order is still `pending`
-- matching active, non-expired reservation exists
-- session amount matches local total
-- currency matches expected `aud`
-- Stripe metadata matches local order
-- metadata quantity matches local order quantity
-- enough inventory still exists
-
-On success:
-
-- order marked `paid`
-- `paidAt` timestamp stored
-- ticket type inventory decremented
-- reservation marked `confirmed`
-- one `Ticket` row created per purchased ticket
-- automatic ticket delivery email job enqueued inside the same database transaction as fulfilment
-- automatic outbox worker success stores `Order.ticketEmailSentAt`
-- worker failure stores `Order.ticketEmailLastError` and does not roll back fulfilment
-
-On paid reconciliation failure before tickets are issued:
-
-- order is stored as `status = failed`
-- `requiresCompensationReview = true`
-- `paidAt` is set or preserved because Stripe confirmed payment
-- `fulfilmentFailedAt` and `fulfilmentFailureReason` are write-once diagnostics
-- a redacted operational alert `paid_but_unfulfilled_compensation_required` is emitted only after the first compensation transition commits
-- tickets are not issued
-- automatic ticket email is not sent
-- active reservations are released only for unsafe/unrecoverable mismatch paths; confirmed/released/expired reservations are not restored
-
-If a later webhook retry naturally succeeds while an active unexpired reservation still exists:
-
-- `requiresCompensationReview` is cleared
-- `fulfilmentFailedAt` and `fulfilmentFailureReason` are preserved as historical diagnostics
-- no compensation alert is emitted for the successful recovery
-- normal successful fulfilment continues: paid order, confirmed reservation, inventory decrement, tickets, and transactional automatic email enqueue
-
-On ordinary non-paid reconciliation failure:
-
-- order is marked `failed`
-- `failedAt` timestamp is stored
-- `failureReason` is stored for organiser debugging
-
-Expired Checkout sessions:
-
-- The webhook resolves the local order with `metadata.orderId` first.
-- If `metadata.orderId` is missing or stale, it falls back to `stripeSessionId`.
-- If the order is still `pending`, it is marked `expired`.
-- Any active reservation for the order is marked `expired`.
-- If the order is already `paid`, the webhook logs the idempotency path and does nothing.
-- If the order is already `failed`, the webhook logs the idempotency path and does nothing.
-- If the order is already `expired`, the webhook logs the idempotency path and does nothing.
-
-Completed Checkout sessions with missing or expired local reservations:
-
-- if Stripe confirms payment, the order becomes compensation-required failed state
-- if Stripe did not confirm payment, normal expiry leaves the order `expired`
-- tickets are not issued
-- inventory is not decremented
-
-Unhandled signed event types:
-
-- return `200`
-- log that the event was ignored
-- do not attempt reconciliation
-
-## Checkout Reconciliation Helper
-
-Shared helper:
-
-```text
-lib/payments/checkout-reconciliation.ts
-```
-
-Responsibilities:
-
-- Validate paid Checkout Session metadata, amount, currency, order status, and reservation state.
-- Mark orders paid.
-- Confirm reservations.
-- Decrement remaining ticket inventory.
-- Create ticket rows.
-- Return a typed reconciliation result for the caller.
-- Preserve idempotency for duplicate completed events.
-- Preserve already-paid duplicate webhook behavior.
-- Return `compensation_required` for paid-but-unfulfilled orders.
-
-Side-effect orchestrator:
-
-```text
-lib/payments/checkout-fulfilment-orchestrator.ts
-```
-
-Responsibilities:
-
-- Call the reconciliation helper.
-- Preserve the shared call shape for webhook and non-production success fallback.
-- Do not perform provider I/O.
-
-Callers:
-
-- `POST /api/payments/webhook` for production webhook fulfilment.
-- `/success?session_id=...` only when `NODE_ENV !== "production"` as a local-dev fallback.
-
-The dev fallback exists because Stripe redirects the browser to `/success` even when local webhook forwarding is not running. It does not replace webhook fulfilment in production.
-
-## Ticket Delivery Email
-
-Files:
-
-```text
-lib/email/ticket-delivery.ts
-lib/email/ticket-email-outbox.ts
-app/api/orders/[orderId]/resend/route.ts
-scripts/process-email-outbox.mjs
-```
-
-Provider:
-
-- Uses a Resend-compatible HTTP API through `fetch`.
-- No npm provider package is currently required.
-- Runtime env values:
-  - `RESEND_API_KEY`
-  - `EMAIL_FROM`
-
-Automatic delivery:
-
-- Is enqueued inside successful paid checkout reconciliation after ticket issuance and before transaction commit.
-- Uses a raw partial unique index so duplicate webhook delivery cannot enqueue duplicate automatic jobs for the same order.
-- Provider I/O is performed by `pnpm email:outbox:process`, which processes one bounded batch and exits.
-- Production should schedule `pnpm email:outbox:process` every 1 minute. Without the scheduled worker, paid buyers may not receive ticket delivery email.
-- Provider calls use `Idempotency-Key: ticket-email/{EmailOutbox.id}`.
-- Worker success stores provider metadata on `EmailOutbox.providerMessageId` and `EmailOutbox.deliveredToProviderAt` when available.
-- On worker success, sets `ticketEmailSentAt` and clears `ticketEmailLastError`.
-- Provider/worker failure after commit does not reverse payment or tickets. Automatic outbox insertion failure rolls the fulfilment transaction back.
-
-Manual resend:
-
-- Route: `POST /api/orders/[orderId]/resend`.
-- Organisation account and finance access required.
-- Order must belong to the current organisation and have `status = paid`.
-- Queues a repeatable manual outbox job even when `ticketEmailSentAt` is already set.
-- Worker success sets `ticketEmailResentAt` and clears `ticketEmailLastError`.
-- Worker failure sets `ticketEmailLastError`.
-
-Current MVP email content:
-
-- event name
-- ticket type
-- quantity
-- order total
-- issued ticket ids
-
-Not included:
-
-- attachments
-- QR codes
-- queues
-- notification preferences
-- full template system
-
-## Stale Pending Orders
-
-The app expires old active reservations and their pending orders through an idempotent server-side cleanup helper.
-
-- active reservation with `expiresAt` in the past becomes `expired`
-- matching pending order becomes `expired`
-- pending order with an already-expired linked reservation becomes `expired`
-- pending order with no reservation becomes `expired` only when older than 30 minutes
-- normal expiry does not set `failureReason`
-
-Design choice:
-
-- Reservation expiry is the source of truth for abandoned checkout cleanup. A paid ticket reservation ends 5 minutes after its Stripe page closes, so a late webhook for a payment made in time still finds it (DEF-033).
-- Stripe/session creation failures still mark orders `failed` and release reservations.
-- Abandoned-checkout cleanup runs only from the bounded one-shot worker (`pnpm stale-orders:process`).
-
-Checkout, public, dashboard, order, ticket, and analytics reads never expire reservations or pending orders. Availability already ignores lapsed holds, so checkout needs no cleanup before it creates a reservation (DEF-032 removed the per-buyer and in-lock cleanups).
-
-Worker operations:
-
-- Run `pnpm stale-orders:process` every 1 minute in production.
-- Use `pnpm stale-orders:process -- --dry-run` to inspect candidate counts without writes or row locks.
-- Use `pnpm stale-orders:process -- --limit=100` to override the default batch size.
-- The worker processes one bounded batch and exits.
-- Expected output is structured JSON with `stale_orders.batch.processed`, `ops.metric` for `stale_orders_expired_total`, and `stale_orders.worker.completed`.
-- If stale rows remain, rerun the worker or inspect pending/active rows before increasing cadence or limit.
-- Paid users are not affected by stale cleanup; the worker must not be used as payment fulfilment.
-
-Operational alerting:
-
-- `stale_orders.batch.failed` is emitted when cleanup fails.
-- `stale_order_worker_failed` is emitted as an alert on cleanup failure.
-- `stale_orders_expired_total` is a console/log-derived metric only.
-
-Safety rules:
-
-- Paid orders are never changed by stale cleanup.
-- Failed orders are never changed by stale cleanup.
-- Confirmed reservations are never changed by stale cleanup.
-- Cleanup uses bounded guarded updates and is safe to run repeatedly or concurrently.
-- Normal organiser and member product views hide pending orders.
-- `/dashboard/orders?includeSystem=true` exposes pending orders for debugging.
-- Expired orders do not count in analytics because analytics queries include only `status = paid`.
-- Expired reservations do not reduce availability because availability counts only active reservations with `expiresAt` in the future.
-
-Transaction:
-
-- Checkout and fulfilment run at READ COMMITTED with row locks (`lockedPurchaseTransactionOptions`); the stale-order worker locks each order and re-checks it before expiring it
-
-## Integration Test Coverage
-
-Payment-related integration suites run without live Stripe CLI delivery.
-
-Current coverage:
-
-- checkout creates pending `Order` plus active `TicketReservation`
-- Stripe-not-ready checkout does not create a reservation
-- member-only checkout and organisation-account checkout denial
-- active reservations reduce availability
-- expired reservations do not reduce availability
-- completed Checkout reconciliation marks the order paid, confirms the reservation, creates tickets, and decrements inventory
-- duplicate completed reconciliation is idempotent
-- automatic ticket email is enqueued after successful fulfilment
-- email outbox worker success/failure updates delivery tracking without rolling back fulfilment
-- manual resend queues paid organiser-owned orders for worker delivery
-- invalid metadata, amount, or currency does not mark an order paid
-- paid-but-unfulfilled sessions become compensation-required failed orders
-- first-time compensation transitions emit a redacted `paid_but_unfulfilled_compensation_required` alert after the transaction commits
-- duplicate compensation webhooks do not issue tickets, send email, or overwrite write-once diagnostics
-- duplicate compensation webhooks do not emit duplicate compensation alerts
-- successful natural retry clears `requiresCompensationReview` and preserves diagnostics
-- successful natural retry does not emit a compensation alert
-- already-paid orders with ticket mismatches are logged but not mutated into compensation review
-- compensation-required orders do not surface as valid member tickets
-- reservation-backed pending orders and legacy reservationless pending orders expire through stale cleanup
-- paid and failed orders are preserved by stale cleanup
-- request-time reads do not mutate stale rows; stale rows may temporarily exist until the worker runs
-
-The webhook integration tests call `lib/payments/checkout-reconciliation.ts` with mocked `Stripe.Checkout.Session` objects. They verify local reconciliation behavior, not Stripe CLI forwarding or raw webhook signature plumbing.
-
-## Payment Operational Events
-
-Payment and Stripe routes emit structured JSON operational logs.
-
-High-risk event names:
-
-- `stripe.webhook.signature_failed`
-- `stripe.webhook.received`
-- `stripe.webhook.ignored`
-- `stripe_connect.webhook.signature_failed`
-- `stripe_connect.webhook.received`
-- `stripe_connect.webhook.ignored`
-- `checkout.session.create_started`
-- `checkout.session.created`
-- `checkout.session.create_failed`
-
-Alert names:
-
-- `stripe_webhook_signature_failure`
-- `checkout_session_creation_failure`
-- `paid_but_unfulfilled_compensation_required`
-- `payment_reconciliation_ambiguous_order`
-
-Console/log-derived metrics:
-
-- `stripe_webhook_signature_failures_total`
-- `checkout_session_create_failures_total`
-
-Production should alert on any `paid_but_unfulfilled_compensation_required`, on checkout session creation failure spikes, and on Stripe webhook signature failures above the normal baseline in a 5-minute window. These are log-derived only for MVP; there is no built-in metrics backend or alert transport.
-
-## Local Testing Limits
-
-Full payment flow requires:
-
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_CONNECT_WEBHOOK_SECRET`
-- webhook forwarding to the local app
-- a test connected account that becomes charges-enabled
-
-Without those:
-
-- public discovery still works
-- dashboard still works
-- Stripe onboarding and payment completion will not complete end-to-end
-
-## Local Stripe CLI Flow
-
-Use Stripe test mode keys in `.env`.
-
-Authenticate the CLI:
+**Owns:** the Stripe integration: the client and API version pin, society Connect accounts (create, onboard, status, Express dashboard, disconnect), payouts after the event, Checkout Session parameters, platform fees, both webhook endpoints and every event they handle, and the local Stripe CLI flow.
+**Read when:** changing anything that calls Stripe or receives its events, the Payments settings page, fees, payouts, or webhook subscriptions.
+**Not here:** what happens to orders, holds, refunds and disputes once an event arrives ([[Payment Lifecycle]]); guard order and rate-limit numbers ([[Route Security Inventory]]); hosted webhook endpoint setup and alert routing ([[Production Operations]]); live symptoms such as signature failures ([[Troubleshooting]]); real test-mode campaigns ([[E2E and Staging Payments]]).
+
+## Code
+
+| Concern | Where |
+| --- | --- |
+| Client, live-key fence, webhook secrets | `lib/stripe/index.ts`: `getStripe`, `isLiveStripeKey`, `getStripeWebhookSecret`, `getStripeConnectWebhookSecret`, `StripeConfigurationError` |
+| API version pin and mismatch alert | `lib/stripe/version.ts`: `stripeApiVersion`, `warnOnVersionMismatch` |
+| Connect accounts, status, dashboard link, disconnect | `lib/stripe/connect.ts` |
+| Connect error to HTTP mapping | `lib/stripe/http.ts`: `connectRouteRules` |
+| Connect request bodies | `lib/validators/stripe-connect.ts`: `organisationConnectSchema`, `stripeDisconnectSchema` |
+| Payout worker, payout events, Payments page summary | `lib/payouts/payouts.ts`: `processPayoutBatch`, `reconcilePayoutEvent`, `payoutSummary` |
+| Money held back from payouts | `lib/payouts/release.ts`: `heldMoney` |
+| Fees and the paid-price minimum | `lib/stripe/fees.ts` |
+| Ticket Checkout Session | `lib/payments/checkout-creation.ts`: `createEventCheckout` |
+| Commerce Checkout Session | `lib/commerce/checkout.ts`: `createCommerceCheckout` |
+| Session expiry, integration ids, definite-failure test | `lib/payments/checkout-attempts.ts` |
+| Payment destination read before fulfilment | `lib/payments/checkout-fulfilment-orchestrator.ts` |
+| Webhook endpoints | `app/api/payments/webhook/route.ts`, `app/api/stripe/connect/webhook/route.ts` |
+| Development success fallback | `app/success/page.tsx` |
+| UI | `components/settings/stripe-connect-settings.tsx`, `components/settings/payouts-card.tsx` on `/dashboard/settings` |
+| Tests | `tests/integration/stripe-connect-service.test.ts`, `tests/integration/connect-safety.test.ts`, `tests/integration/stripe-dashboard-link.test.ts`, `tests/integration/society-payouts.test.ts`, `tests/integration/payments-webhook.test.ts`, `tests/e2e/webhooks.spec.ts` |
+
+## Client and API version
+
+- `getStripe()` throws `StripeConfigurationError` when `STRIPE_SECRET_KEY` is missing, and refuses a live key (`sk_live_` or `rk_live_`) unless `NODE_ENV` is `production`.
+- Every client speaks `stripeApiVersion` (`lib/stripe/version.ts`), the version the `stripe` package in `package.json` is typed for (PAY-006). Hosted webhook endpoints and the staging listener are created on the same version.
+- Moving the pin needs a fresh test-mode campaign ([[E2E and Staging Payments]]) and webhook endpoints recreated on the new version ([[Production Operations]]).
+- Currency is `aud` everywhere. Charges are destination charges with `on_behalf_of`: the society is the settlement merchant, Thunderstrux takes `application_fee_amount`.
+
+## Connect accounts
+
+Each society has at most one Express account, stored on `Organisation`: `stripeAccountId`, `stripeAccountStatus`, `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted`.
+
+| Route | Does | Notable answers |
+| --- | --- | --- |
+| `POST /api/stripe/connect/onboard` | `startOrganisationStripeOnboarding`: create the account if none, then return an onboarding link `{ url }` | 409 `{ state, message, actionRequired, actionUrl }` when the platform isn't ready |
+| `POST /api/stripe/connect/continue` | `continueOrganisationStripeOnboarding`: a fresh onboarding link | 400 when no account is connected |
+| `GET /api/stripe/connect/status?organisationId=` | `getOrganisationStripeConnectStatus`: read Stripe, persist the flags, return the status | 503 when Stripe isn't configured |
+| `POST /api/stripe/connect/dashboard` | `createOrganisationDashboardLink`: a single-use Express Dashboard login link `{ url }` | 400 until details are submitted |
+| `POST /api/stripe/connect/disconnect` | `disconnectAccount`, then `{ disconnected: true, status }` with `NOT_CONNECTED` | 409 while orders depend on the account |
+
+- **Authority:** every route needs `stripe:manage` on the target society (`requireStripeConnectCapability`, then `requireOrganisationStripeConnectAccess`). The body or query names `organisationId`; it is authorised, never trusted ([[Authentication and Dashboard Access#Roles and permissions]]).
+- **Guards:** the four POSTs check the trusted origin and rate limit `stripe_connect_mutation` per society and action. Dashboard and disconnect also apply `staff_mfa_verify` per user when a code is sent ([[Route Security Inventory#Rate limits]]).
+- **Errors** (`connectRouteRules`): a missing or unreachable society is 404, permission is 403, a bad `organisationId` is 400, `MfaRequiredError` 403, a bad code 400, MFA misconfiguration 503, `StripeConfigurationError` 503. The 503 text names `STRIPE_SECRET_KEY` (API-002). Provider messages never reach the client.
+- **Account creation** (`createExpressAccount`): `type: "express"`, capabilities `card_payments` (needed by `on_behalf_of`) and `transfers` (destination charges), and `settings: manualPayoutSettings` (see Payouts). The idempotency key is `connect-account:<orgId>:<n>`, where `n` counts earlier `stripe_connect.account_created` audit rows: a double click returns the same account, a reconnect after disconnect gets a new one. Success stores the id with `CONNECTED_INCOMPLETE` and all flags false, and writes `stripe_connect.account_created`.
+- **Onboarding links:** `accountLinks.create` (`account_onboarding`); return and refresh URLs are `/dashboard/settings` on the trusted origin the request came from, else the app URL.
+- **Status:** with an account, the response adds `openObligations` (orders that block disconnect) and `payouts` (`payoutSummary`). `dashboard_available` is `details_submitted`.
+- **Express dashboard:** needs a fresh authenticator code unless staff MFA is `off`, because the dashboard can change where payouts go. It calls `accounts.createLoginLink` per click and writes `stripe_connect.dashboard_opened`. The platform's own view (`dashboard.stripe.com/connect/accounts/...`) never opens for a society.
+- **Disconnect:** a fresh authenticator code unless MFA is `off`. Open obligations are counted first; if none, the account goes back to Stripe's daily payouts (`restoreStripePayoutSchedule`). Then, under the `Organisation` row lock, they are counted again. The local Stripe fields are cleared and `stripe_connect.disconnected` records the previous account id. With no account (for example `PLATFORM_NOT_READY`) only the local state resets. The Stripe account is never deleted, and past orders keep it as their seller snapshot.
+- **Open obligations** are Stripe orders for the account, or orders with no seller snapshot: ticket orders of the society's events and commerce orders of the society. One counts while it is `pending`, under compensation review, `refundStatus = processing`, `disputeStatus = open`, or has a `RefundRequest` that is `pending` or `uncertain`. Ticket orders also count while their `CompensationRefundJob` is `review_required`, `auto_queued`, `auto_processing`, `refund_pending` or `refund_failed`.
+
+## Connect account states
+
+`StripeConnectState` in `lib/stripe/connect.ts`, stored as `Organisation.stripeAccountStatus`:
+
+| State | Meaning | Settings action |
+| --- | --- | --- |
+| `NOT_CONNECTED` | No `stripeAccountId` | Connect Stripe |
+| `PLATFORM_NOT_READY` | No account; Stripe refused to create one because the platform's Connect profile is unfinished (detected from the error's message, type or code) | Open Stripe Platform Settings (`stripePlatformProfileUrl`), Retry after completion, Disconnect |
+| `CONNECTED_INCOMPLETE` | `details_submitted` is false | Continue Stripe setup |
+| `RESTRICTED` | Details submitted, `charges_enabled` false | Fix in Stripe |
+| `READY` | `charges_enabled` true | Add a bank account in Stripe while `payouts_enabled` is false (badge "Payouts not set up") |
+| `ERROR` | The last refresh couldn't reach Stripe. Flags keep their last values; the response says Thunderstrux couldn't reach Stripe and the provider message stays in the log | Try again |
+
+- Settings shows two rows, **Can take payments** (charges) and **Can receive payouts** (payouts), so a society with no bank account keeps selling.
+- **Selling depends on flags, not the state:** `isOrganisationStripeReady` is `stripeAccountId && stripeChargesEnabled`. In `ERROR` sales follow the last known flags until a refresh succeeds.
+- **The `account.updated` webhook** re-reads the account (`refreshConnectedAccount`) for an account some society uses, and persists the same flags and state. An account no society uses logs `stripe_connect.webhook.ignored` (`stripe_account_not_found`) without calling Stripe.
+
+## Payouts
+
+Societies are paid after their event, as Humanitix and Eventbrite pay organisers, so refunds for a cancelled event come from money the society still holds (PAY-005). On destination charges the platform carries negative balances, so this protects Thunderstrux too.
+
+- **Manual payouts:** new accounts get `manualPayoutSettings`: `payouts.schedule.interval = manual` and `debit_negative_balances = true`, so a refund after a payout is debited from the society's bank, not left to Thunderstrux. Older accounts are switched the first time the worker checks them.
+- **Worker:** `processPayoutBatch` is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`, `pnpm compensation-refunds:process`). It takes societies with an account, state `READY` and `stripePayoutsEnabled`, at most once an hour each, claimed by compare-and-set on `Organisation.payoutCheckedAt`. Per society it:
+  1. makes sure the account is on manual payouts;
+  2. skips the society if a `SocietyPayout` for that account already exists this UTC day (DEF-034);
+  3. reads the available AUD balance and subtracts `heldMoney`;
+  4. if at least `minPayout` (100 cents) is left, creates one payout on the connected account, key `payout:<account>:<UTC date>`, and records a `SocietyPayout`.
+
+  So a society gets at most one payout a UTC day, and money released later in the day goes the next day. A payout never exceeds the available balance, so a retry can't overpay. A failure logs `payouts.failed_to_send` and is retried next hour; a payout Stripe made despite the error arrives through its webhook.
+- **Held money** (`heldMoney`, `lib/payouts/release.ts`) counts paid Stripe sales to that account (by seller snapshot) with `refundStatus` null or `processing`, paid within `maxHoldMs` (80 days; Stripe holds manual-payout money at most 90 days in Australia):
+
+  | Sale | Held while |
+  | --- | --- |
+  | Ticket order of the society's event | until `ticketHoldAfterEventMs` (2 days) after the event ends |
+  | Membership or merchandise order | `commerceHoldMs` (7 days) after payment |
+  | Any of them | while `disputeStatus = open`, under compensation review, or a dispute reversal is `pending` or `uncertain` |
+
+  Each sale holds its society share: total less `feeAmount` less `externalRefundedAmount`. Compensation-refunded and manually-refunded ticket orders and lost disputes already reversed are still held until their window ends (PAY-012).
+- **Payout events:** the Connect webhook passes `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated` to `reconcilePayoutEvent`. It re-reads the payout on the connected account and records `SocietyPayoutStatus`: `paid`, `failed` (failed or canceled) or `pending`. A first move to `failed` alerts `society_payout_failed`. A payout with no known society, or recorded under another account, logs `payouts.webhook.ignored` and changes nothing.
+- **Payments page:** the payouts card shows money waiting for events (amount, event count, next event end), commerce money from the last 7 days, what is on its way (pending payouts), and the last 5 payouts. A refused payout shows a warning until a later payout is paid. Every payout opens in the Express dashboard.
+- **Disconnect** first restores Stripe's daily schedule. If disconnect is then refused under the lock, the next worker check puts the account back on manual payouts.
+- **Not built:** early payouts and a per-payout breakdown of orders. A payout is the balance less what is held, not a set of orders.
+
+## Checkout Sessions
+
+Both flows build the request, store it on `CheckoutAttempt.providerRequest`, then call `checkout.sessions.create` outside any transaction with the attempt's `providerOperationKey` (`checkout_<uuid>`) as the idempotency key. Recovery replays the stored request with the same key ([[Payment Lifecycle]]).
+
+| Parameter | Tickets (`createEventCheckout`) | Memberships and merchandise (`createCommerceCheckout`) |
+| --- | --- | --- |
+| `mode` | `payment` | `payment` |
+| `allowed_payment_method_types` | `["card"]` | `["card"]` |
+| `integration_identifier` | `checkoutIntegrationIdentifiers.tickets` | `checkoutIntegrationIdentifiers.commerce` |
+| `customer_email` | buyer snapshot | buyer snapshot |
+| `line_items` | one line: event title, quoted unit price (member price when one applied), quantity | one per paid line, named `name (variant)`; free lines are left off |
+| `payment_intent_data` | `application_fee_amount`, `on_behalf_of` and `transfer_data.destination` = the society's account, metadata | same |
+| `metadata` (Session and PaymentIntent) | `orderId`, `eventId`, `organisationId`, `ticketTypeId`, `quantity` | `family`, `commerceOrderId`, `organisationId` |
+| `success_url` | member: `/success?session_id={CHECKOUT_SESSION_ID}`; guest: `/guest/orders/{orderId}` | `/memberships/orders/{id}` or `/merchandise/orders/{id}` |
+| `cancel_url` | `/cancel?order={orderId}` | the same order page with `?left=1` |
+| `expires_at` | `checkoutSessionExpiresAt()`: now + 30 minutes + 60 seconds | same |
+
+- URLs use the trusted origin the buyer bought from, else `getAppUrl()`. A guest's order page opens only with their session cookie, and the cancel page names the order only to its buyer.
+- **Card only:** a completed Session is then paid at once, so fulfilment needs no async payment events. API version `2026-09-30.endive` removed `payment_method_types`.
+- **Expiry:** Stripe refuses an `expires_at` under 30 minutes after creation. The 60-second margin covers the trip to Stripe and stays under the 2-minute recovery delay, so replaying a request Stripe never saw is refused and the hold is released.
+- **Errors:** a definite Stripe refusal (`isDefiniteProviderFailure`: card, invalid request, authentication, permission or rate-limit error) fails the order. Any other error leaves the attempt `provider_uncertain`, alerts `checkout_session_creation_failure` and answers 202. A Session without a `url` fails the order (`missing_redirect_url`). Ticket checkout also logs `checkout.session.create_started`, `checkout.session.created` and `checkout.session.create_failed`, with metric `checkout_session_create_failures_total`.
+
+## Fees
+
+`lib/stripe/fees.ts`, decided at checkout and recorded on the order (`feeAmount`, `feePolicyVersion`):
+
+- `calculatePlatformFee(totalAmount, items)`: `PLATFORM_FEE_RATE` (3.75%) of the order, rounded once, plus `PLATFORM_FEE_PER_ITEM` (89 cents) per ticket, never more than the total. A membership or merchandise order is one item (T46).
+- `PLATFORM_FEE_POLICY_VERSION` is `platform_fee_3_75_percent_89c_v2`. Older orders carry `platform_fee_10_percent_v1`. Bump it whenever the rate or rounding changes.
+- The fee includes card processing, which Stripe charges the platform on destination charges. The society absorbs the fee, so buyers pay the price shown. On a $20.00 ticket the society receives $18.36 and Thunderstrux keeps $1.64.
+- Refunds return the fee (`refund_application_fee`) while Stripe keeps its processing fee (PAY-008, accepted risk).
+- Paid prices start at `minPaidPrice` (50 cents, Stripe's smallest AUD card payment). Prices are 0 or at least 50 cents (`priceAmountSchema` in `lib/validators/price.ts`, `isBelowStripeMinimum`).
+
+## Required conditions for checkout
+
+Ticket checkout checks, under the buyer, event and ticket type locks ([[Payment Lifecycle]]); the `reason` in each 4xx detail is the kind:
+
+| Condition | Refusal |
+| --- | --- |
+| A verified member account (organisation accounts get 400), or a live guest checkout session with its CSRF token | 401/403 |
+| The event exists; a members-only event needs the buyer's `members_only_events` entitlement | 404 `event_not_found` |
+| Event `published` | 400 `event_draft` |
+| Sales open | 400 `sales_closed` |
+| Ticket type belongs to the event | 404 `ticket_type_not_found` |
+| Sellable stock (`sellableQuantity`) | 400 `sold_out`, 400 `insufficient_availability` |
+| A paid price needs `isOrganisationStripeReady` | 400 `stripe_not_ready` ("Stripe not connected"; the detail says whether there is no account or charges are disabled) |
+| `expectedUnitPrice` equals the locked price | 409 `quote_changed` |
+| Paid only: the buyer's live holds on the event plus this quantity stay within `maxTicketsPerOrder` (10), a member by account and a guest by identity (SEC-005) | 409 `purchase_in_progress` |
+| Same idempotency key, different selection | 409 `idempotency_conflict` |
+| `STRIPE_SECRET_KEY` configured | 503 "Payments are unavailable right now" |
+
+A free price completes without reading any Stripe configuration. Commerce checkout needs `isOrganisationStripeReady` only for a paid total (`stripe_not_ready`).
+
+## Webhooks
+
+| Endpoint | Secret | Events handled |
+| --- | --- | --- |
+| `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` |
+| `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.updated`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
+
+Both endpoints run the same checks, in order:
+
+1. No `stripe-signature` header: 400, log `stripe.webhook.signature_failed` (`stripe_connect.webhook.signature_failed` on Connect), metric `stripe_webhook_signature_failures_total`, alert `stripe_webhook_signature_failure`.
+2. Read the raw body with `request.text()`. A missing key or secret is 503, log `stripe.webhook.configuration_error` (`stripe_connect.webhook.configuration_error`).
+3. `webhooks.constructEvent` fails: 400 with the same log, metric and alert.
+4. Log `stripe.webhook.received` (`stripe_connect.webhook.received`) with event id, type and `api_version`.
+5. `warnOnVersionMismatch`: an event on another API version logs `stripe.webhook.version_mismatch` and alerts `stripe_webhook_version_mismatch` (deduplicated per endpoint), then is still handled. Replace that endpoint.
+6. `event.livemode` differs from the key's mode: 200 `{ received: true, ignored: "mode_mismatch" }`, log `stripe.webhook.mode_mismatch`, alert `stripe_webhook_mode_mismatch`, nothing changes.
+7. Route the event (below). An unhandled type answers 200 (payments logs `stripe.webhook.ignored`). A handler error answers 500, so Stripe retries.
+
+Payments routing:
+
+| Event | Goes to |
+| --- | --- |
+| `checkout.session.*` whose Session `metadata.family` is set | `reconcileCommerceCheckoutSession` or `reconcileExpiredCommerceSession` (`lib/commerce/reconciliation.ts`) |
+| `checkout.session.*` without `family` whose Session belongs to a `CommerceOrder` | ignored: log `commerce.webhook.ignored`, alert `commerce_webhook_identity_mismatch` (`commerce_session_without_family`) |
+| `checkout.session.completed` (ticket) | `reconcileCompletedCheckoutSessionWithSideEffects`: reads the PaymentIntent's `transfer_data.destination` from Stripe before any lock, then fulfils |
+| `checkout.session.expired` (ticket) | `reconcileExpiredCheckoutSession` |
+| `refund.*` with `metadata.refundRequestId` | `reconcileOrderRefundEvent` (`lib/payments/order-refunds.ts`) |
+| `refund.*` with `metadata.compensationRefundJobId` | `reconcileRefundEvent` (`lib/payments/compensation-refunds.ts`) |
+| any other `refund.*` (made outside Thunderstrux) | `reconcileCommerceExternalRefundEvent`, else `reconcileExternalRefundEvent` |
+| `charge.dispute.*` | `reconcileCommerceDisputeEvent`, else `reconcileDisputeEvent` |
+
+What each handler does to orders, and its checks (amount, currency, metadata, destination, the order's bound Session), is in [[Payment Lifecycle]]. Identity alerts raised there: `payment_reconciliation_ambiguous_order`, `ticket_webhook_identity_mismatch` (a paid Session that isn't the order's, PAY-010), `commerce_webhook_identity_mismatch`, `purchase_dispute_unmatched`, `paid_but_unfulfilled_compensation_required`.
+
+**Idempotency.** Stripe may deliver twice and out of order.
+- Checkout events are idempotent through order state under row locks.
+- Refund and dispute events are journalled once by event id in `StripeRefundWebhookEvent`, and project Stripe's current state as re-read.
+- `account.updated` and `payout.*` re-read the object from Stripe, so a late event can't restore an older state.
+- Every order transition stores `stripeEventId` in the order history.
+
+Handlers do their work before answering 2xx (PAY-007, accepted risk). The hosted endpoints must subscribe to every event above ([[Production Operations]]); refund and dispute subscription is part of the PAY-002 gate.
+
+**Development fallback.** Outside production, `/success?session_id=` retrieves the Session and, if it is paid, runs the same fulfilment (`dev_success_fallback`), because Stripe redirects there even without local webhook forwarding. In production the page only shows the order's real state, and only to its buyer.
+
+## Local Stripe CLI
+
+Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` ([[Environment Variables]]). Then:
 
 ```bash
 stripe login
+stripe listen --latest \
+  --events checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,account.updated,payout.paid,payout.failed,payout.canceled,payout.updated \
+  --forward-to localhost:3000/api/payments/webhook \
+  --forward-connect-to localhost:3000/api/stripe/connect/webhook
 ```
 
-Forward Checkout webhooks:
+- Put the printed `whsec_...` in both webhook secrets; it belongs to this listener only, not to a Dashboard endpoint. `--latest` sends events on the pinned version; without it events use the account's default version and raise `stripe_webhook_version_mismatch`.
+- `.env` changes need `pnpm docker:restart` (it recreates the app; a plain restart keeps old env). Check the loaded secret without printing it: `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"`.
+- **End to end:** connect a test Express account until it can take payments, buy from a published event's checkout button, then check `/tickets`, `/dashboard/orders` and the ticket type's remaining stock. A paid checkout logs `stripe.webhook.received`, then "Stripe checkout order matched", "Stripe checkout reconciliation validation passed", "Stripe checkout inventory updated" and "Stripe checkout tickets created".
+- `stripe trigger checkout.session.completed` only tests signature plumbing: its Session has none of this app's metadata, so reconciliation logs order not found and changes nothing.
+- **Duplicate delivery:** `stripe events resend evt_... --webhook-endpoint=we_...` against a registered test endpoint. Triggering twice makes two different events. A replay must leave one paid order, `quantity` tickets and one stock decrement.
+- Logs: `stripe logs tail` and `docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f app`.
 
-```bash
-stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:3000/api/payments/webhook
-```
+## Traps
 
-Set the printed secret as:
+- Never mark an order paid from a browser redirect. Only a signed webhook fulfils in production.
+- Adding a non-card payment method first needs `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` handling, because ticket fulfilment requires `payment_status = paid`.
+- Never put `family` in ticket Session metadata: it routes the event to commerce.
+- Checkout readiness is the charges flag, not `READY`. Don't gate selling on the state.
+- A fee change without a new `PLATFORM_FEE_POLICY_VERSION` makes old and new orders indistinguishable.
+- A new handled event type must also be subscribed on the hosted endpoint and added to the staging listener's `--events`.
+- Destination charges need the society's account to keep `transfers` and `card_payments`; Express creation requests both.
 
-```text
-STRIPE_WEBHOOK_SECRET=
-```
+## Failure and recovery
 
-The `STRIPE_WEBHOOK_SECRET` must be the `whsec_...` printed by this exact `stripe listen` process. A Dashboard webhook secret and a Stripe CLI forwarding secret are different.
+- **`PLATFORM_NOT_READY`:** finish the platform's Connect profile in Stripe, then Retry after completion.
+- **`ERROR`:** Stripe was unreachable; Try again. Sales follow the last flags meanwhile.
+- **Disconnect refused:** the dialog shows how many orders are open; wait for them to finish.
+- **Reconnect a previously disconnected account** (disconnect never deletes it): set it back, then Refresh status on `/dashboard/settings`.
 
-After changing `.env`, recreate the app container. `docker compose restart app` does not reload env values:
+  ```sql
+  UPDATE "Organisation" SET "stripeAccountId" = 'acct_...', "stripeAccountStatus" = 'CONNECTED_INCOMPLETE',
+    "stripeChargesEnabled" = false, "stripePayoutsEnabled" = false, "stripeDetailsSubmitted" = false
+  WHERE "slug" = '<society-slug>';
+  ```
+- **`society_payout_failed`:** the society fixes its bank details in the Express dashboard. The next hourly check pays the balance once the UTC day has no payout.
+- **Version or mode mismatch alerts:** recreate the endpoint on the pinned version, or fix the key or endpoint pairing ([[Production Operations]]). Signature failures: [[Troubleshooting]].
 
-```bash
-docker compose up -d --force-recreate app
-```
+## Related
 
-Verify the loaded prefix without printing the full secret:
-
-```bash
-docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"
-```
-
-Forward Connect webhooks in a second terminal if testing onboarding account updates:
-
-```bash
-stripe listen --forward-to localhost:3000/api/stripe/connect/webhook
-```
-
-Set the printed secret as:
-
-```text
-STRIPE_CONNECT_WEBHOOK_SECRET=
-```
-
-Minimum end-to-end local test:
-
-1. Sign in as `engineering.org@example.com`.
-2. Complete or simulate Stripe Connect readiness for `Engineering Society`.
-3. Visit a published event detail page.
-4. Buy a ticket through Stripe Checkout.
-5. Confirm `/tickets` shows a paid order and ticket IDs.
-6. Confirm `/dashboard/orders` shows the order.
-7. Confirm ticket type inventory decreased.
-
-Important: the real end-to-end test must start from the app checkout button. Generic `stripe trigger` events verify webhook plumbing, but they do not prove local order reconciliation because they usually do not contain this app's real `orderId`, `eventId`, `ticketTypeId`, and `quantity` metadata.
-
-Webhook plumbing smoke tests:
-
-```bash
-stripe trigger checkout.session.completed
-stripe trigger checkout.session.expired
-```
-
-Expected app logs for a real paid checkout:
-
-- `stripe.webhook.received`
-- `Stripe checkout order matched`
-- `Stripe checkout reconciliation validation passed`
-- `Stripe checkout inventory updated`
-- `Stripe checkout tickets created`
-
-Expired-session local test:
-
-1. Start forwarding:
-
-```bash
-stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:3000/api/payments/webhook
-```
-
-2. Create a real Checkout Session by starting checkout in the app.
-3. Let the Checkout Session expire in Stripe test mode, or expire it from Stripe tooling/Dashboard where available.
-4. Confirm the forwarded event type is `checkout.session.expired`.
-5. Confirm the matching local order becomes `expired`.
-6. Confirm normal expiry does not set `failureReason`.
-7. Confirm the reservation becomes `expired`.
-8. Confirm ticket inventory is unchanged.
-
-Expected app logs for an expired checkout:
-
-- `stripe.webhook.received`
-- `Stripe checkout expired order matched`
-- `Stripe checkout expired order marked expired`
-
-Generic CLI trigger:
-
-```bash
-stripe trigger checkout.session.expired
-```
-
-The generic trigger verifies endpoint/signature plumbing, but it usually will not match a local order unless the payload metadata is customised to include a real local `orderId`.
-
-Duplicate delivery test:
-
-```bash
-stripe events resend evt_... --webhook-endpoint=we_...
-```
-
-Use a real event id from the Stripe Dashboard or CLI output and the webhook endpoint id from Stripe Workbench. This tests duplicate delivery of the same Stripe event. Triggering `checkout.session.completed` twice creates separate test events and is not a duplicate-delivery test.
-
-For a local-only CLI listener without a registered webhook endpoint, duplicate handling can still be validated at code level by replaying the same signed payload or by using a registered test webhook endpoint with Stripe Dashboard resend. The expected result is:
-
-- order remains `paid`
-- ticket count remains equal to `Order.quantity`
-- ticket type inventory is decremented once only
-- app logs show the paid/idempotent path rather than creating more tickets
-
-Runtime debugging:
-
-```bash
-stripe logs tail
-docker compose logs -f app
-```
-
-If webhook signature verification fails:
-
-- confirm `STRIPE_WEBHOOK_SECRET` starts with `whsec_`
-- confirm it came from the active `stripe listen` process
-- recreate the app container after changing `.env`
-- do not use a Dashboard endpoint secret for local CLI forwarding unless using that exact registered endpoint flow
-- compare the container environment secret prefix with the Stripe CLI `whsec_...` prefix using the safe command above
-
-Useful debug commands:
-
-```bash
-docker compose logs -f app
-docker compose build app
-```
+[[Payment Lifecycle]] · [[E2E and Staging Payments]] · [[Production Operations]] · [[Route Security Inventory]] · [[Audit Coverage]] · [[Troubleshooting]] · [[Glossary]]

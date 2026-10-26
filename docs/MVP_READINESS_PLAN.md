@@ -16,10 +16,10 @@ Read the complete PRD, relevant living references and current implementations: P
 
 Relevant references:
 
-- [Documentation Index](obsidian/Documentation%20Index.md), [Project Handover](obsidian/Project%20Handover.md), [Engineering Delivery Workflow](obsidian/Engineering%20Delivery%20Workflow.md), [Issue Register](obsidian/Non-Blocking%20Issue%20Register.md).
+- [Documentation Index](obsidian/Documentation%20Index.md), [Project Handover](obsidian/Project%20Handover.md), [Engineering Delivery Workflow](obsidian/Engineering%20Delivery%20Workflow.md), [Issue Register](obsidian/Issue%20and%20Defect%20Register.md).
 - [Codebase Map](obsidian/Thunderstrux%20Codebase%20Map.md), [Architecture](obsidian/Architecture%20Overview.md), [Database and Multi Tenancy](obsidian/Database%20and%20Multi%20Tenancy.md), [Authentication](obsidian/Authentication%20and%20Dashboard%20Access.md), [Event Lifecycle](obsidian/Event%20Lifecycle.md).
 - [Stripe Payments](obsidian/Stripe%20Payments%20and%20Connect.md), [Payment Lifecycle](obsidian/Payment%20Lifecycle.md), [Email Delivery](obsidian/Email%20Delivery%20Implementation.md), [UI Rules](obsidian/UI%20Architecture%20Rules.md).
-- [Development Workflow](obsidian/Development%20Workflow.md), [E2E and Staging Payments](obsidian/E2E%20and%20Staging%20Payments.md), [Production Operations](obsidian/Production%20Operations.md), [Docker Assessment](obsidian/Docker%20Architecture%20Assessment%202026-09-29.md).
+- [Development Workflow](obsidian/Development%20Workflow.md), [E2E and Staging Payments](obsidian/E2E%20and%20Staging%20Payments.md), [Production Operations](obsidian/Production%20Operations.md), [Docker Assessment](obsidian/History/Docker%20Architecture%20Assessment%202026-09-29.md).
 
 Verified documentation discrepancies: proxy.ts currently redirects anonymous event-detail pages to login; attendance routes use tickets:check_in and write actor audits; staff capabilities come from rolePermissions, not a stored arbitrary per-user permission array. Fix affected living references in their implementation PRs. No hosted/provider state was audited for this assessment.
 

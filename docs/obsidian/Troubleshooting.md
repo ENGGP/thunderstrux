@@ -1,851 +1,182 @@
 ---
 status: living
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Development Workflow]]", "[[Dependency Automation]]"]
-sources: [scripts/doctor-dev.mjs, scripts/integration-test-guards.mjs]
+related: ["[[Development Workflow]]", "[[Environment Variables]]", "[[Seeding and Data]]", "[[Stripe Payments and Connect]]", "[[Authentication and Dashboard Access]]"]
+sources: [scripts/doctor-dev.mjs, scripts/recreate-dev-app.mjs, scripts/clean-next-dev.mjs, scripts/integration-test-guards.mjs, lib/ops/readiness.ts, lib/auth/secret.ts, lib/stripe/connect.ts, components/settings/stripe-connect-settings.tsx]
 ---
 
 # Troubleshooting
 
-## Dependency audit failures
+**Owns:** live failure symptoms on a local or preview stack, each as symptom → cause → fix.
+**Read when:** something local is broken and you want the known cause before debugging.
+**Not here:** how the stack is built and what each command does ([[Development Workflow]]); variable meanings ([[Environment Variables]]); production incidents, alerts and recovery ([[Production Operations]]); Connect states in full ([[Stripe Payments and Connect]]).
 
-The old 41-finding audit is historical; [[Dependency Automation]] records the patched baseline, verification, and update policy. Run `pnpm audit --audit-level high` from the updated checkout. For a new failure, capture the advisory, installed version and every dependency path, update the affected parent or reviewed transitive resolution, then repeat compatibility validation. Do not suppress advisories or disable audit errors. A failed historical GitHub run will remain failed until a new run audits the updated commit. Existing Docker images and host node_modules must be refreshed separately.
+## Code
 
-## Account Links, Verification And Revoked Sessions
+| Concern | Where |
+| --- | --- |
+| Read-only dev report | `scripts/doctor-dev.mjs` (`pnpm dev:doctor`, run in the app container) |
+| Dev app recreate with fresh dependencies | `scripts/recreate-dev-app.mjs` (`pnpm docker:restart`, `pnpm docker:rebuild`) |
+| Readiness checks | `lib/ops/readiness.ts` (`GET /api/health/ready`) |
 
-- Signup/recovery returning 202 accepted is intentionally generic; it does not imply a new account, automatic login or inbox delivery. Inspect private notification status and worker configuration without printing link payloads.
-- Verification/reset/email-change links need explicit POST and must match purpose, latest issuance, expiry and live email/authVersion. Fragment capture survives router hydration; do not move raw tokens into query callbacks or browser storage. Request a new link after completion/expiry rather than replaying one.
-- Required security limits fail closed: confirm Redis is enabled/reachable, trusted origins match and the notification key/provider are configured. Private Docker capture is isolated test evidence, not a real delivery service.
-- Password/email changes and closure revoke old sessions. Sign in again after password/email changes; an enrolled authenticator needs a login-bound grant even when staff MFA enforcement is off. Closed accounts cannot sign in or be reopened through the app/seed.
-- Closure blockers require actual ownership/payment/purchase resolution; a manual refund flag is not provider proof.
+## Rules
 
-Contracts: [[Authentication and Dashboard Access]], [[API Reference]], [[Email Delivery Implementation]]. Deployment/rollback: [[Production Operations]].
+- `DC` below means `docker compose -f docker-compose.yml -f docker-compose.dev.yml`. Use it for every dev-stack command.
+- **Trap:** `docker compose up -d --force-recreate app` (base file only) replaces the dev app with the production web container: no source mount, `NODE_ENV=production`, the old image. To reload env or code, use `pnpm docker:restart`.
+- Diagnose first with `DC exec app pnpm dev:doctor`. It changes nothing.
+- Never `down -v`, delete volumes, or reseed to fix a stale app. Keep database, Redis and `asset_data` volumes.
 
-## HTTPS Tunnel Redirect Loop
+## Docker and Next dev
 
-If a signed-in dashboard, account or event URL alternates between itself and `/login?callbackUrl=...`, check the shared proxy rather than clearing all cookies. The login page can see the HTTPS secure session while a proxy using Auth.js's default non-secure cookie name sees no session. `proxy.ts` now derives `secureCookie` from `AUTH_URL`, `NEXTAUTH_URL` or the request URL, matching the issuer. Keep the preview's auth/public URLs set to `https://thunderstrux.mistayu.com` and the tunnel service at the preview's loopback port (`http://127.0.0.1:3090`, README, Public Preview).
+**Route exists in source but dev returns 404.**
+- Cause: first rule out a guard. Management pages give a concealed 404 to members, other societies and staff without the permission (`lib/auth/page-access.ts`), and `check_in_staff` get 404 on drafts. Otherwise the dev route manifest is stale: Turbopack or a OneDrive/Windows file lock kept an old `.next/dev`.
+- Check: `DC exec app sh -lc "grep -c 'events/\[eventId\]' .next/dev/server/app-paths-manifest.json"`, and the app log for the `scripts/clean-next-dev.mjs` warning "Unable to clear volatile Next.js cache paths".
+- Fix: stop any host Node process holding `.next`, delete `.next` on the host, then `pnpm docker:restart`. If it recurs, try `pnpm dev:webpack` in the container.
 
-After changing the proxy, restart the app (the preview redeploys through `pnpm ops:deploy`; the local dev app restarts with `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart app`). Refresh the affected URL after restart. Existing valid HTTPS sessions work; revoked, expired or invalid sessions still require fresh login. Do not disable secure cookies, live identity checks or CSRF to work around a redirect loop.
+**Page shows old UI after a source change.**
+- Cause: browser cache, a missed poll, stale `.next`, or the container is not on the bind mount.
+- Check: search source for the stale text (`rg -n "exact text" app components`), then `DC exec app cat <file>` to compare the container copy, then search `.next`.
+- Fix in order: hard refresh; `pnpm docker:restart`; delete `.next` and restart. If the container copy differs, it was started from the base file: `pnpm docker:dev:clean`.
 
-## Sign In Does Nothing In Local Docker
+**Layout or classes look like an old stylesheet; hydration warning shows old class names on the client side.**
+- Cause: polling missed a newly added file, so Tailwind didn't recompile, or the browser kept old JavaScript.
+- Fix: hard reload (Ctrl+Shift+R); if it persists, `pnpm docker:restart`.
 
-Symptom: on `http://127.0.0.1:3080/login` (or any page) buttons do nothing, and the sign-in form reloads as `GET /login?` with no sign-in request. The page's JavaScript loaded but never took over.
+**`Cannot resolve` a module that exists, `@redis/client` missing, or Prisma Client missing or out of date.**
+- Cause: the `node_modules` volume masks the image's dependencies, so a rebuilt image alone changes nothing.
+- Fix: `pnpm docker:rebuild`. It rebuilds the image, deletes only the labelled `node_modules` volume, recreates the app, regenerates Prisma Client, deploys migrations, and checks `@redis/client` and `@prisma/client` import. Don't edit a valid import to work around it.
 
-Cause: Next 16 blocks its dev resources, including the HMR socket, for any host not in `allowedDevOrigins`, and the page then never hydrates. The app log says `Blocked cross-origin request to Next.js dev resource /_next/hmr from "127.0.0.1"`.
+**Buttons do nothing; sign-in form reloads as `GET /login?`.**
+- Cause: the page never hydrated because Next blocks dev resources (HMR) for hosts not in `allowedDevOrigins`. The log says `Blocked cross-origin request to Next.js dev resource`.
+- Fix: open the app at `127.0.0.1` or `localhost`. For another local name, add it to `allowedDevOrigins` in `next.config.ts`. Never add a public host (SEC-014).
 
-Fix: `next.config.ts` allows `127.0.0.1` and `localhost` (22 Oct 2026). Since SEC-014 it lists no public host: the dev app is never tunnelled, and the public preview runs the production build. To open the dev app at another local name, add it there; Next restarts itself when the file changes. Production builds ignore this setting.
+**Writes fail 403 "Untrusted request origin".**
+- Cause: the page's origin isn't `NEXT_PUBLIC_APP_URL` or in `TRUSTED_APP_ORIGINS`. Typical: `.env` says `http://127.0.0.1:3080` and the browser is on `localhost:3080`. The log shows `trusted_origin.rejected`.
+- Fix: browse at the host `.env` names, or add the other origin to `TRUSTED_APP_ORIGINS` and `pnpm docker:restart`.
 
-## UI Change Not Visible
+**`pnpm dev` exits: "Thunderstrux is configured for Docker-first development".**
+- Cause: `next dev` on the host with `DATABASE_URL` on `db:5432`.
+- Fix: run in Docker (`pnpm docker:dev`). For one-off host debugging only: `THUNDERSTRUX_ALLOW_HOST_DEV=1` and a `localhost:5433` URL. The message's own advice (`docker compose up -d`, port 3000) starts the production image; ignore it.
 
-For Package 3 society pages, check `/societies`, `/societies/[orgSlug]` and `/dashboard/settings/profile`. Member staff start personal; select the permitted society before management. The shared header uses fixed h-16 height and mobile account Menu; the organisation menu is separate. Joined lists/search badges refresh after mutations and obsolete search responses are ignored. A stale Joined badge should not be worked around by editing staff or purchase rows.
+**Compose exits before start: `DATABASE_URL is required` (or `AUTH_SECRET`, `AUTH_URL`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`).**
+- Cause: `.env` missing or the value empty; the base file requires them at interpolation.
+- Fix: fill `.env` from `.env.example`, then `pnpm docker:dev`.
 
-Profile 409 means another save advanced profileVersion. The form keeps the unsaved edits and offers two choices: `Save my version` re-reads the latest version and saves the edits over it, and `Reload latest profile` discards them after a confirmation dialog. Private account email is not the public support email. Incomplete public profiles remain visible; profile completion does not enable Stripe charges.
+**Homepage 500.**
+- Cause: app run on the host (`db:5432` doesn't resolve), migrations not applied, or the database empty after a reset (an empty database shows the empty state, not a 500).
+- Check: `DC ps`, `DC logs --tail=80 app`, `DC exec app pnpm dev:doctor`.
+- Fix: `pnpm docker:dev`; pending migrations apply on startup (or `DC exec app pnpm prisma:migrate:deploy`); reseed if needed ([[Seeding and Data]]).
 
-If images fail, start the local object-store service using the dev Compose files, verify current migrations/dependencies, then use bounded `pnpm assets:maintain --objects` or `--integrity` inside the app. Private previews require kind permission/MFA; public GET requires a ready image actually referenced by public content. Unattached/deleted images correctly return 404. Retain asset_data and database metadata together; do not reset volumes or make arbitrary bucket objects public. [[Society Profiles and Assets]] owns safe recovery.
+**`/api/health/ready` returns 503 `unavailable`.**
+- Cause, in check order: `NOTIFICATION_ENCRYPTION_KEY` missing or not 32 bytes; `LEGACY_ORGANISATION_ACCESS_MODE` invalid (or unset in production); MFA mode not `off` without a valid key and `RATE_LIMIT_ENABLED=true`; the migration in `config/schema-contract.json` not applied; Redis unreachable while rate limiting is on. The body never says which.
+- Fix: `DC exec app pnpm dev:doctor` (MFA, rate limiting, migrations), then check those variables ([[Environment Variables]]).
 
-Most likely causes:
+**Images fail to upload or show; 503 "Image storage is not configured" or "temporarily unavailable".**
+- Cause: `object-store` isn't running (`pnpm docker:restart` starts only `app`, `db`, `redis`) or `ASSET_STORAGE_*` is unset.
+- Fix: `DC up -d --build object-store`. Bounded checks: `DC exec app pnpm assets:maintain --objects` or `--integrity`. Unattached or deleted images correctly return 404. Recovery: [[Society Profiles and Assets]].
 
-- Browser cache.
-- Docker dev server did not detect the file change.
-- Stale `.next` output.
-- The container is not seeing the host file.
+**`pnpm build` throws "Do not run pnpm build inside a running container".**
+- Cause: `NODE_ENV=production` with `THUNDERSTRUX_RUNTIME_CONTAINER=true`. Intended.
+- Fix: rebuild the image (`pnpm docker:build`) or use the baseline runner.
 
-Diagnosis order:
+**`tsc` errors inside `.next/types` or `.next/dev/types`.**
+- Cause: stale generated route types, which `tsconfig.json` includes after a dev run.
+- Fix: `pnpm typecheck` (runs `next typegen` first) in the container, or delete `.next` and restart.
 
-1. Search the source for the exact visible stale text.
-2. Compare host and container copies of the file.
-3. Search `.next` for the stale text.
-4. Refresh the route and inspect runtime HTML.
+**Hydration warning naming `data-gr-ext-installed`, `data-new-gr-c-s-check-loaded` or similar on `<body>`.**
+- Cause: a browser extension (Grammarly) edits the page before React hydrates. Not an app bug. Fix: ignore, or test in a clean profile.
 
-Useful commands:
+## Auth and sessions
 
-```bash
-rg -n --hidden --no-ignore "Exact stale text" .
-docker compose exec app cat 'app/(dashboard)/dashboard/page.tsx'
-```
+**Startup fails: "AUTH_SECRET must be set to a random value…" or "…at least 32 characters in production."**
+- Cause: `AUTH_SECRET` empty, a known placeholder, or short in production (SEC-016; `lib/auth/secret.ts`).
+- Fix: `openssl rand -base64 32` into `.env`, then `pnpm docker:restart`.
 
-## Stale Next.js Output In Docker
+**Signed-in page bounces between itself and `/login?callbackUrl=…` behind an HTTPS tunnel or proxy.**
+- Cause: cookie-name mismatch. Auth.js issues `__Secure-` cookies when its public URL is https; `proxy.ts` decides with `publicOriginIsHttps` from `AUTH_URL`, then `NEXTAUTH_URL`, then the request URL.
+- Fix: set `AUTH_URL`, `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` to the https address and redeploy. Don't disable secure cookies or CSRF.
 
-Observed issue:
+**Signup, verification, reset, password change or guest email answers 503.**
+- Cause: `RATE_LIMIT_ENABLED` isn't `true` or Redis is down (these routes require protection), or `NOTIFICATION_ENCRYPTION_KEY` is missing.
+- Fix: `RATE_LIMIT_ENABLED=true` with the Compose `redis`, a valid key, `pnpm docker:restart`.
 
-- Source was correct.
-- Browser still showed old dashboard UI.
-- Old JSX remained in `.next` output.
-- A nested App Router route existed in source and production manifests but returned 404 in dev because `.next/dev/server/app-paths-manifest.json` was stale.
+**Signup or recovery returns 202 but no email arrives.**
+- Cause: 202 is deliberately generic. Nothing delivers in dev until the notification worker runs.
+- Fix: `DC exec app pnpm notifications:process`. With no `RESEND_API_KEY`/`EMAIL_FROM` the job records a configuration failure. Request a fresh link rather than replaying one; links need an explicit POST and must match the latest issuance.
 
-Current mitigation:
+**Signed out after a password or email change.** Intended: the change bumps `authVersion` and revokes sessions. Sign in again. An enrolled authenticator still needs its login-bound MFA step even with enforcement `off`.
 
-- `pnpm dev` runs `node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`
-- `pnpm dev:webpack` runs the same startup checks with webpack as a fallback if Turbopack becomes unstable.
-- `pnpm dev:doctor` prints a read-only report for stale dev metadata and localhost reachability.
-- `scripts/clean-next-dev.mjs` clears `.next/dev` and `.next/types` before dev startup.
-- If Windows/Docker file locking returns `EPERM`, `EBUSY`, or `EACCES`, the script warns and continues startup so Docker dev is not blocked.
-- Docker enables `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING`
-- `next.config.ts` sends production build output to `.next-build` so `pnpm build` does not clobber live dev output under `.next`
+**`/mfa` fails because `public.UserMfa` does not exist.**
+- Cause: migrations behind the code.
+- Fix: `DC exec app pnpm dev:doctor`; if migrations are pending, `DC exec app pnpm prisma:migrate:deploy`; if the doctor says the container is stale, `pnpm docker:restart`. Then `curl --fail http://127.0.0.1:3080/api/health/ready`. Never create the table by hand or mark a migration applied. (DEF-001, [[Resolved Defects]].)
 
-Fix order:
+**Staff action answers 503 "Staff verification is unavailable".**
+- Cause: `MFA_ENFORCEMENT_MODE` not `off` without a valid `MFA_ENCRYPTION_KEY` or with rate limiting off. Fix: correct the variables ([[Environment Variables]]).
 
-1. Hard refresh browser.
-2. `pnpm docker:restart`
-3. Clear `.next`
-4. Recreate containers
+## Database and migrations
 
-## App Router Route Exists But Returns 404
+**Integration runner: "Refusing integration database access: use a PostgreSQL URL with a single database name ending in "_test"."**
+- Cause: `INTEGRATION_DATABASE_URL`, `TEST_DATABASE_URL` or (in `tests/helpers/db-reset.ts`) `DATABASE_URL` names a non-`_test` database.
+- Fix: point at a disposable `_test` database. Never at `thunderstrux`.
 
-Observed with:
+**`tests/integration/redis-runtime.test.ts` throws "INTEGRATION_REDIS_URL must identify the run-owned test Redis".**
+- Cause: whole suite run outside the baseline. Fix: run `node scripts/run-e2e.mjs baseline`, or run only the files you need ([[Development Workflow#Tests locally]]).
 
-```text
-/dashboard/events/[eventId]/edit
-```
+**`pnpm prisma:migrate` (or `pnpm docker:migrate`) offers to reset the database.**
+- Cause: drift between the database and migration history. Answering yes wipes the dev database. Fix: say no; inspect the drift; use `pnpm prisma:migrate:deploy` for existing migrations.
 
-Legacy compatibility route:
+**Users, events or orders gone.**
+- Cause: `pnpm docker:reset` or `down -v` deleted `postgres_data`.
+- Fix: `pnpm docker:dev`, then `DC exec app pnpm seed` ([[Seeding and Data]]). Business data needs a real restore ([[Production Operations]]).
 
-```text
-/dashboard/engineering-society/events/[eventId]/edit
-```
+## Stripe
 
-Source was correct:
+**Checkout answers 400 "Stripe not connected".**
+- Cause: the event's society has no connected account or charges aren't enabled (`stripe_not_ready`; `lib/payments/checkout-creation.ts`). Free tickets still work.
+- Fix: as a society owner or admin (`stripe:manage`), open `/dashboard/settings` and use Connect Stripe, Continue Stripe setup or Fix in Stripe, then Refresh status. States: [[Stripe Payments and Connect#Connect account states]].
 
-```text
-components/events/events-list.tsx
-app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx
-```
+**Settings show "Stripe platform setup required" (`PLATFORM_NOT_READY`), or Stripe says "You can only create new accounts if you've signed up for Connect".**
+- Cause: the platform account behind `STRIPE_SECRET_KEY` hasn't enabled Connect or finished its platform profile. Both errors are mapped to `PLATFORM_NOT_READY`; no account is created. Seeded Payments Lab starts here.
+- Fix: complete `https://dashboard.stripe.com/settings/connect/platform-profile`, then Retry after completion. Disconnect Stripe account resets it to `NOT_CONNECTED`.
 
-The generated production manifests contained the route, but the dev manifest did not:
+**Connect or settings routes answer 503 "Stripe is not configured. Check STRIPE_SECRET_KEY…"; checkout answers 503 "Payments are unavailable right now".**
+- Cause: `STRIPE_SECRET_KEY` empty in the container, or a live key outside production. Fix: set a test key in `.env`, `pnpm docker:restart`.
 
-```text
-.next/dev/server/app-paths-manifest.json
-```
-
-Diagnosis:
-
-```bash
-docker compose exec app sh -lc "grep -n 'events/.*/edit\|events/\[eventId\]/edit\|events/new' .next/dev/server/app-paths-manifest.json .next/dev/types/routes.d.ts 2>/dev/null || true"
-```
-
-Permanent fixes now in code:
-
-- `app/(dashboard)/dashboard/events/layout.tsx` exists as an explicit pass-through route boundary for current nested event pages.
-- `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx` remains for legacy redirect route stability.
-- `package.json` uses `node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0`.
-- `package.json` also includes `pnpm dev:webpack` for a Docker-safe webpack fallback and `pnpm dev:doctor` for read-only diagnosis.
-- `scripts/clean-next-dev.mjs` clears `.next/dev` and `.next/types` so restarting the app cannot reuse stale dev route metadata or volatile generated type files.
-- `next.config.ts` uses `.next-build` for production builds and `.next` for dev output.
-- `.gitignore` ignores both `.next/` and `.next-build/`.
-- `.dockerignore` ignores `.next-build/` so Docker build context does not include generated production artifacts.
-
-If it happens again, first inspect the dev manifest:
-
-```bash
-docker compose exec app sh -lc "cat .next/dev/server/app-paths-manifest.json"
-```
-
-It must include:
-
-```text
-/(dashboard)/dashboard/events/[eventId]/page
-/(dashboard)/dashboard/events/[eventId]/edit/page
-/(dashboard)/dashboard/events/new/page
-/(dashboard)/dashboard/events/page
-/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page
-/(dashboard)/dashboard/[orgSlug]/events/new/page
-/(dashboard)/dashboard/[orgSlug]/events/page
-```
-
-Recovery:
-
-```powershell
-docker compose down
-docker compose run --rm app sh -lc "rm -rf .next .next-build"
-docker compose up --build --force-recreate -d
-```
-
-Then recheck the route. If the route is registered but the page still 404s, inspect the page-level guards:
-
-- `app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
-- `app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx`
-- `requireCurrentOrganisationAccount()`
-- event lookup by `eventId` and `organisationId`
-
-For a valid Engineering event and `engineering.org@example.com`, `/dashboard/events/[eventId]/edit` should return `200`. For member accounts such as `user2@example.com`, direct management URLs should not grant access.
-
-For the organiser analytics route:
-
-- `engineering.org@example.com` should receive `200` for an owned event at `/dashboard/events/[eventId]`.
-- `user2@example.com` should redirect to `/`.
-- An organisation account visiting `/events/[eventId]` should redirect to `/dashboard/events/[eventId]`.
-
-If clicking `Edit` navigates to `/dashboard/events/edit` without an event id, the source link or a stale client bundle is wrong. The correct current source link is:
-
-```tsx
-href={`/dashboard/events/${event.id}/edit`}
-```
-
-It lives in:
-
-```text
-components/events/event-actions.tsx
-components/events/event-tabs.tsx
-```
-
-Check browser hard refresh and confirm `EDIT EVENT ID:` logs a real id.
-
-## Event Edit Saves But Reopens With Old Data
-
-Observed on:
-
-```text
-/dashboard/events/[eventId]/edit
-```
-
-Symptom:
-
-- User changes event fields or ticket types.
-- Clicks `Save event`.
-- Reopening shows old data.
-
-Root cause found:
-
-- Sold-out ticket types can legitimately have `quantity = 0`.
-- The edit form and `PATCH /api/events/[eventId]` validator used the create-time rule `quantity >= 1`.
-- The API returned `400 VALIDATION_ERROR` before auth and Prisma transaction.
-- Because the failure surfaced generically, it looked like a persistence failure.
-
-Current fix:
-
-- `createTicketTypeSchema` still requires `quantity >= 1`.
-- `updateTicketTypeSchema` allows `quantity >= 0`.
-- `components/events/create-event-form.tsx` allows zero quantity only in edit mode.
-- Sold/issued ticket rows keep editable name, price, and quantity fields for future purchases.
-- Only removal is disabled for sold/issued ticket rows.
-- `PATCH /api/events/[eventId]` preserves omitted sold/issued ticket types instead of deleting them.
-- Failed PATCH responses are logged with the raw response body.
-- Successful saves call `router.refresh()` before redirecting back to the events list.
-
-Expected behavior:
-
-- Event title, description, location, start time, and end time can be edited even after sales.
-- Ticket type name, price, and quantity can be edited after sales for future purchases.
-- Ticket type removal is blocked once that ticket type has orders or issued tickets.
-- Existing orders keep historical `unitPrice` and `totalAmount`; changing `TicketType.price` does not recalculate old orders.
-- An order or ticket showing "(historical label unavailable)" after its ticket name was created before T10 recorded purchase-time names. The name shown is today's; the original is unknown and is not reconstructed.
-- Existing tickets keep their `ticketTypeId`.
-- Unsold ticket types on the same event remain editable/removable.
-
-Recent bug and fix:
-
-- Symptom: editing only event details failed with `400 Ticket type cannot be modified after sales`.
-- Root cause: previous frontend/backend logic treated sold ticket rows as immutable and the backend rejected protected-field differences.
-- Current fix: the frontend submits all edited ticket rows, and the backend updates included rows while only preserving sold/issued rows when omitted. The old rejection now applies to deletion/removal behavior only.
-
-Database verification examples:
-
-```bash
-docker compose exec db psql -U thunderstrux -d thunderstrux -c "SELECT id, title, description, location FROM \"Event\" WHERE id = 'event_id';"
-docker compose exec db psql -U thunderstrux -d thunderstrux -c "SELECT id, name, price, quantity FROM \"TicketType\" WHERE \"eventId\" = 'event_id' ORDER BY name;"
-```
-
-## Tailwind Classes Exist But Styling Does Not Apply
-
-Observed issue:
-
-- JSX contained classes such as `bg-red-500`, `rounded-xl`, `shadow-md`, and `text-white`
-- Rendered output did not show expected Tailwind styling
-
-Root cause that previously existed:
-
-- Tailwind v4 project was still using legacy v3-style CSS directives
-
-Correct setup:
-
-```css
-@config "../tailwind.config.js";
-@import "tailwindcss";
-```
-
-Files:
-
-```text
-app/globals.css
-tailwind.config.js
-```
-
-Verification:
-
-1. Confirm `app/layout.tsx` imports `./globals.css`.
-2. Confirm compiled CSS contains `text-white`, `bg-neutral-900`, and similar utilities.
-3. Confirm no late custom CSS overrides utility colors.
-
-Important current lesson:
-
-- A global `a { color: inherit; }` rule can override Tailwind text color utilities on `Link` elements if it lands after utilities.
-- The current fix is that the app-level anchor rule only removes underline, not color.
-
-## CSS Missing After Running Build In A Live Container
-
-Observed issue:
-
-- Pages rendered without Tailwind styling.
-- `app/layout.tsx` correctly imported `./globals.css`.
-- `app/globals.css` correctly used the Tailwind v4 entrypoint.
-- The HTML referenced a generated CSS chunk under `/_next/static/chunks/...css`.
-- The CSS file existed on disk under `.next-build/static/chunks`.
-- The running server returned `404` for that CSS URL.
-
-Root cause:
-
-- `pnpm build` was run inside an already-running production-like app container while `next start` was serving the previous `.next-build` manifest.
-- The build mutated `.next-build`, leaving the running server's in-memory build manifest and the files on disk out of sync.
-- Vitest did not cause the CSS failure; the test config is isolated to test execution.
-
-Fix:
-
-```bash
-docker compose up -d --force-recreate app
-```
-
-Verification:
-
-```powershell
-$html = (Invoke-WebRequest -Uri http://localhost:3080/ -UseBasicParsing).Content
-$href = ([regex]::Matches($html, 'href="([^"]+\.css[^"]*)"') | Select-Object -First 1).Groups[1].Value
-Invoke-WebRequest -Uri "http://localhost:3080$href" -UseBasicParsing
-```
-
-Expected result:
-
-- CSS request returns `200`.
-- Response body is non-empty.
-- Tailwind utilities are present in the compiled CSS.
-
-Prevention:
-
-- Do not keep using the same `next start` process after running `pnpm build` inside its container.
-- Recreate the app container after build validation, or rebuild/recreate the Docker image for production-path testing.
-
-## Button Text Is Invisible On Dark Buttons
-
-Observed issue:
-
-- `View events` and `New event` showed dark text on dark background
-
-Real root cause:
-
-- Global anchor color override was winning over `text-white`
-
-Current safe pattern for primary links/buttons: `Button`, or `buttonClasses()` on a link, from `components/ui/button.tsx`. Both set the text colour explicitly.
-
-If a dark link button shows dark text again, inspect `app/globals.css` before changing the button component.
-
-## Dashboard Layout Overlap
-
-Observed issue:
-
-- Fixed global header overlapped dashboard sidebar content
-- Slug/title content was hidden under the top bar
-
-Current layout structure:
-
-- Global `Navbar` is fixed at 60px, 72px from `md`
-- Root layout offsets content by the same amounts
-- From `lg` the dashboard is a two-column grid (`lg:grid-cols-[244px_minmax(0,1fr)]`); the sidebar column's contents are `lg:sticky lg:top-[72px]`
-- The verify-email banner sits above the grid, so it pushes the sidebar down instead of covering it
-
-If the sidebar renders as a full-width block above the page on a wide screen, the browser is using a stylesheet compiled before the layout classes existed. On the Windows bind-mounted development stack, polling can miss newly added files, so Tailwind does not recompile. Run `pnpm docker:restart` (or `docker compose restart app`) and reload; the production build is unaffected and the browser suite asserts the sidebar sits beside the content at 1280px.
-
-The same staleness can show as a hydration warning ("some attributes of the server rendered HTML didn't match the client properties") whose diff shows old class names on the client side: the page was rendered by the restarted server but the browser still ran JavaScript from before the change. Hard-reload the page (Ctrl+Shift+R); if it persists, restart the app as above. It is not a code defect when the client side of the diff matches source that no longer exists.
-
-If overlap returns, inspect:
-
-- `app/layout.tsx`
-- `components/layout/navbar.tsx`
-- `components/layout/dashboard-shell.tsx`
-
-## Duplicate Dashboard Controls
-
-Current intended structure:
-
-- DashboardShell owns capability-filtered navigation, including Settings and Payments, with route-aware active state
-- `/dashboard` renders the permitted organisation overview only for a selected live staff/legacy context
-- `/dashboard` renders personal member mode on fresh member logins, including named staff; the context selector explicitly changes mode
-- Legacy `/dashboard/[orgSlug]/*` routes redirect
-
-If stale or duplicate buttons appear:
-
-1. Search exact string across the repo.
-2. Search `.next`.
-3. Compare runtime HTML with source.
-4. Restart app / clear `.next`.
-
-## Duplicate Event Titles
-
-Recent issue:
-
-- Edit event route showed both `Edit Event` and `Edit event`
-
-Current correct state:
-
-- The route-level page no longer renders the top `Edit Event` heading
-- The single remaining title comes from `CreateEventForm` in edit mode
-
-If duplicate titles reappear, inspect:
-
-- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
-- `app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx`
-- `components/events/create-event-form.tsx`
-
-## `next-env.d.ts` Changes After Build Or Dev
-
-Next can rewrite `next-env.d.ts` depending on whether the last run was dev or build:
-
-```ts
-import "./.next/dev/types/routes.d.ts";
-```
-
-or:
-
-```ts
-import "./.next/types/routes.d.ts";
-```
-
-or, after a production build with the current `.next-build` dist directory:
-
-```ts
-import "./.next-build/types/routes.d.ts";
-```
-
-This is generated route-type metadata. It is not application behavior. If it appears in a diff after running `pnpm build` or `next dev`, decide whether to keep the generated state or exclude it from unrelated commits.
-
-## Docker File Sync
-
-Expected volumes in `docker-compose.dev.yml`:
-
-```yaml
-volumes:
-  - .:/app
-  - node_modules:/app/node_modules
-```
-
-Verify container sees latest file:
-
-```bash
-docker compose exec app cat 'app/(dashboard)/dashboard/page.tsx'
-```
-
-If host and container differ while using the dev override, inspect Docker Desktop file sharing and restart Docker. The base `docker-compose.yml` intentionally does not bind-mount source code; it serves the built image.
-
-If the app container was previously started through the base production-like Compose file and does not see current migrations or source files, use the explicit clean dev recovery command:
-
-```bash
-pnpm docker:dev:clean
-```
-
-This recreates the dev app container with bind mounts. It does not remove the Postgres volume.
-
-The `/app/node_modules` mount should be the named Compose volume `thunderstrux_node_modules`. If an anonymous hash-named volume appears, or a newly added package fails to resolve after an image rebuild, run `pnpm docker:restart`. The helper rebuilds the image, removes only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, and applies migrations. It preserves PostgreSQL and Redis data volumes.
-
-### New Source Module Exists But Turbopack Cannot Resolve It
-
-If the browser reports `Cannot resolve ./context` from lib/auth/access.ts after pulling new source, confirm lib/auth/context.ts exists both on the host and in `/app`. Compare the installed Next version inside the container with package.json. A running dev process and its dependency volume can remain stale even though the bind mount sees current files. Use `pnpm docker:restart`; its app recreation replaces only the verified dependency volume and normal startup clears volatile development cache. Do not change a valid import to mask stale runtime state. Back up the development database before startup applies pending migrations; preserve database/Redis volumes. Verify `/api/health/ready` and compilation of `/dashboard/settings` after recovery.
-
-Local recovery on 2026-10-10 found the file present but installed Next 16.3.5 versus pinned 16.3.8. The helper refreshed Next 16.3.8, generated Prisma Client and applied the invitation migration (31 -> 32 total). The pre-migration custom archive and its readable pg_restore listing were retained; this was an archive check, not another restore drill. Readiness then identified an absent notification key: no key and zero encrypted notification jobs existed, so a fresh development key was stored in ignored .env with a separate Windows-user-only key backup. Never replace a missing key when encrypted rows already exist; recover that key. Final readiness returned 200; dashboard/settings compiled and redirected unauthenticated requests to login, and the context API returned 401. No production activation or integration reset of development data occurred.
-
-### `@redis/client` Or Generated Prisma Client Is Missing
-
-This usually means the named dependency volume contains packages from an older image. Rebuilding the image alone does not replace files hidden by that mount. Use:
-
-```bash
-pnpm docker:restart
-```
-
-The helper verifies its target, rebuilds the development image, replaces only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, deploys migrations, and verifies that `@redis/client` and `@prisma/client` resolve. It preserves PostgreSQL and Redis volumes. Check readiness separately after startup. Do not use `docker compose down -v` for this recovery. See resolved defects `DEF-002` and `DEF-003` in [[Non-Blocking Issue Register]].
-
-### `/mfa` Reports That `public.UserMfa` Does Not Exist
-
-The application and database migration state are out of sync. Inspect the non-destructive report first:
-
-```bash
-docker compose exec app pnpm dev:doctor
-```
-
-If the report confirms pending migrations, deploy them:
-
-```bash
-docker compose exec app pnpm prisma:migrate:deploy
-```
-
-Then recreate the development app if the doctor reports a stale container or generated client:
-
-```bash
-pnpm docker:restart
-```
-
-Confirm readiness and the unauthenticated MFA redirect:
-
-```bash
-curl --fail http://localhost:3080/api/health/ready
-curl --head http://localhost:3080/mfa
-```
-
-Do not create the table manually or mark the migration applied without reviewing the database. See `DEF-001` in [[Non-Blocking Issue Register]].
-
-## Integration Test Reset Fails
-
-The integration runner should not require manual database reset.
-
-Current expected behavior:
-
-- resolves the test database URL from `INTEGRATION_DATABASE_URL`, `TEST_DATABASE_URL`, or the default container URL
-- refuses to run unless one simple database name ends in `_test`; the database must also be disposable and run-owned
-- runs `pnpm prisma migrate reset --force --skip-seed`
-- runs `pnpm prisma:generate`
-- runs Vitest sequentially
-
-Run integration tests from the dev stack:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm test:integration
-```
-
-If the runner refuses the database, inspect `INTEGRATION_DATABASE_URL` and `TEST_DATABASE_URL`. Do not point integration tests at the normal `thunderstrux` database.
-
-## Homepage Internal Server Error
-
-Common causes:
-
-- App was started on the host instead of inside Docker.
-- `DATABASE_URL` points at `db:5432`, which only resolves inside the Docker network.
-- Prisma migrations were not applied after schema changes.
-- Seed data has not been restored after a database reset.
-
-Expected local runtime:
-
-```bash
-pnpm docker:dev
-docker compose exec app pnpm seed
-pnpm docker:restart
-```
-
-Verify:
-
-```bash
-docker compose ps
-docker compose logs --tail=80 app
-docker compose build app
-```
-
-The homepage should return `200 OK` at:
-
-```text
-http://localhost:3080/
-```
-
-## Docker Compose Fails Before Starting App
-
-Symptoms:
-
-- `docker compose up` exits before the app service starts.
-- Output contains a required-variable message such as:
-
-```text
-DATABASE_URL is required
-AUTH_SECRET is required
-AUTH_URL is required
-NEXTAUTH_URL is required
-NEXT_PUBLIC_APP_URL is required
-```
-
-Reason:
-
-- The base `docker-compose.yml` requires core app runtime variables at Compose interpolation time.
-- This is intentional so missing `.env` values fail before migrations or `next start`.
-
-Fix:
-
-1. Check `.env` exists.
-2. Ensure these values are non-empty:
-
-```text
-DATABASE_URL
-AUTH_SECRET
-AUTH_URL
-NEXTAUTH_URL
-NEXT_PUBLIC_APP_URL
-```
-
-3. Recreate the app container after changes:
-
-```bash
-docker compose up -d --build --force-recreate app
-```
-
-Stripe variables may remain empty for non-payment local work.
-
-## Production Auth Secret Rejected
-
-Symptoms:
-
-- App startup or proxy initialization fails with one of:
-
-```text
-AUTH_SECRET must be a random value of at least 32 characters in production.
-AUTH_SECRET must be set to a random value. Generate one with: openssl rand -base64 32
-```
-
-Reason:
-
-- Production and development runtimes reject empty or placeholder auth secrets (SEC-016); production also rejects secrets shorter than 32 characters. Only tests and builds fall back.
-- `auth.ts` and `proxy.ts` both enforce this.
-
-Fix:
-
-1. Generate a real local secret:
-
-```bash
-openssl rand -base64 32
-```
-
-2. Set it in `.env`:
-
-```text
-AUTH_SECRET=generated_value
-```
-
-3. Recreate the app container:
-
-```bash
-docker compose up -d --force-recreate app
-```
-
-## Hydration Mismatch On `<body>`
-
-Warning attributes:
-
-```text
-data-new-gr-c-s-check-loaded
-data-gr-ext-installed
-data-gr-ext-disabled
-```
-
-Root cause:
-
-- Browser extensions such as Grammarly inject attributes into `<body>` before React hydrates
-
-This is not currently an app code bug.
-
-## Stripe Not Connected
-
-Checkout can fail with:
-
-```text
-Stripe not connected
-```
-
-Meaning:
-
-- Event exists
-- Ticket type exists
-- Event is published
-- Connected Stripe account is missing or not charges-enabled
-
-Fix:
-
-- Sign in as the organisation account that owns the event organisation
-- Go to `/dashboard/settings`
-- Complete Stripe Connect onboarding
-
-## Stripe Connect Account Exists But Payments Still Blocked
-
-Do not treat `stripeAccountId` as payment-ready.
-
-Current lifecycle states:
-
-- `NOT_CONNECTED`: no account is stored locally.
-- `PLATFORM_NOT_READY`: Stripe platform profile/setup is incomplete and account creation is blocked.
-- `CONNECTED_INCOMPLETE`: account exists but onboarding details are not submitted.
-- `RESTRICTED`: details are submitted but Stripe has not enabled charges.
-- `READY`: charges are enabled.
-- `ERROR`: Stripe status refresh failed.
-
-Checkout requires `stripeAccountId` and `stripeChargesEnabled = true`, so `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, and `ERROR` all block payment.
-
-Fix:
-
-1. Open `/dashboard/settings`.
-2. Click `Continue onboarding` or `Fix account`.
-3. Complete required Stripe steps.
-4. Click `Refresh status`.
-5. Confirm lifecycle state becomes `READY`.
-
-## Stripe API Key Changed
-
-Symptoms:
-
-- `.env` has a new `STRIPE_SECRET_KEY`.
-- Old organisations still have `stripeAccountId` from the previous Stripe account.
-- Status check may enter `ERROR`.
-
-Reason:
-
-- Stripe connected account IDs belong to the Stripe platform account that created them.
-- A new platform key may not be able to retrieve old connected accounts.
-
-Fix:
-
-1. Recreate Docker containers so env is reloaded:
-
-```bash
-docker compose down
-docker compose up --build -d
-```
-
-2. Open settings for the organisation.
-3. Click `Disconnect Stripe account`.
-4. Click `Connect Stripe Account` again.
-5. Complete onboarding with the new Stripe platform key.
-
-Verify env inside Docker without printing secrets:
-
-```powershell
-docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
-```
-
-## Stripe Webhook Returns 400
-
-Symptoms:
-
-- Stripe CLI shows events reaching the server.
-- Every event returns `400`.
-- Orders remain `pending`.
-- No tickets are created.
-
-Most common cause:
-
-- The app container is using a different `STRIPE_WEBHOOK_SECRET` than the active `stripe listen` process.
-
-Observed failure:
-
-```text
-No signatures found matching the expected signature for payload
-```
-
-Fix:
-
-1. Start the Checkout webhook listener:
-
-```bash
-stripe listen --forward-to localhost:3080/api/payments/webhook
-```
-
-2. Copy the printed `whsec_...` value into `.env` as `STRIPE_WEBHOOK_SECRET`.
-3. Recreate the app container. Restart alone does not reload env values:
-
-```bash
-docker compose up -d --force-recreate app
-```
-
-4. Confirm the container loaded the same prefix:
-
-```bash
-docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"
-```
-
-Expected logs after a valid signed event:
-
-```json
-{"level":"info","event":"stripe.webhook.received","requestBytes":1234}
-{"level":"info","event":"stripe.webhook.received","stripeEventId":"evt_...","eventType":"checkout.session.completed"}
-```
-
-Signed but unrelated events such as `charge.succeeded`, `payment_intent.succeeded`, and `transfer.created` should return `200 Ignored`.
-
-## Stripe Platform Setup Required
-
-The settings page can show:
-
-```text
-Stripe platform setup required
-```
-
-API response:
-
-```json
-{
-  "state": "PLATFORM_NOT_READY",
-  "message": "Stripe platform setup incomplete",
-  "actionRequired": "Complete Stripe Connect platform profile",
-  "actionUrl": "https://dashboard.stripe.com/settings/connect/platform-profile"
-}
-```
-
-Meaning:
-
-- The platform account behind `STRIPE_SECRET_KEY` cannot create Express accounts yet.
-- No connected account was created.
-- `stripeAccountStatus` is stored as `PLATFORM_NOT_READY`.
-
-Fix:
-
-1. Open `https://dashboard.stripe.com/settings/connect/platform-profile`.
-2. Complete Stripe Connect platform profile/responsibilities.
-3. Return to `/dashboard/settings`.
-4. Click `Retry after completion`.
-
-You may also click `Disconnect Stripe account` in this state to clear the local status back to `NOT_CONNECTED`.
-
-## Stripe Connect Is Not Enabled On The Stripe Account
-
-Exact Stripe error observed:
-
-```text
-You can only create new accounts if you've signed up for Connect, which you can do at https://dashboard.stripe.com/connect.
-```
-
-Failing call:
-
-```ts
-stripe.accounts.create({ type: "express" })
-```
-
-Fix:
-
-- Sign up for Stripe Connect on the Stripe account that owns `STRIPE_SECRET_KEY`.
-- Then retry `Connect Stripe Account`.
-
-## Reconnect To A Locally Disconnected Stripe Account
-
-Disconnect is local-only. It does not delete the Stripe account in Stripe, but it clears the local `stripeAccountId`.
-
-There is no UI flow to reconnect to that exact old account. To restore it manually, find the old `acct_...` id in Stripe Dashboard or logs and run:
+**`STRIPE_SECRET_KEY` changed to another platform; status shows "Status may be out of date" (`ERROR`).**
+- Cause: connected `acct_…` ids belong to the platform that created them. Disconnect also fails: it first calls `restoreStripePayoutSchedule` on the old account, which the new platform can't update, and it refuses while the society has open orders on that account.
+- Fix: switch back to the original key, or on a dev database only clear the link and reconnect:
 
 ```sql
-UPDATE "Organisation"
-SET
-  "stripeAccountId" = 'acct_old_account_id',
-  "stripeAccountStatus" = 'CONNECTED_INCOMPLETE',
-  "stripeChargesEnabled" = false,
-  "stripePayoutsEnabled" = false,
-  "stripeDetailsSubmitted" = false
+UPDATE "Organisation" SET "stripeAccountId" = NULL, "stripeAccountStatus" = 'NOT_CONNECTED',
+  "stripeChargesEnabled" = false, "stripePayoutsEnabled" = false, "stripeDetailsSubmitted" = false
 WHERE slug = 'engineering-society';
 ```
 
-Then open settings and click `Refresh status`.
+  (`DC exec db psql -U thunderstrux -d thunderstrux`.) This writes no audit row. To re-link a known old account instead, set its `acct_…` with status `CONNECTED_INCOMPLETE` and press Refresh status.
 
-## Data Missing After Reset
+**Webhooks return 400 "Invalid Stripe signature"; orders stay pending.**
+- Cause: the app's `STRIPE_WEBHOOK_SECRET` isn't the secret of the running `stripe listen` or Dashboard endpoint. `/api/stripe/connect/webhook` uses `STRIPE_CONNECT_WEBHOOK_SECRET`.
+- Fix: `stripe listen --forward-to 127.0.0.1:3080/api/payments/webhook`, copy its `whsec_…` into `.env`, `pnpm docker:restart`, then compare without printing it: `DC exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"`. A valid event logs `stripe.webhook.received`; unrelated types answer 200 `Ignored`. Missing secret is 503.
 
-Cause:
+**Webhook answers 200 with `ignored: "mode_mismatch"`.** A test-mode event reached a live-key deployment or the reverse; it is ignored and alerts `stripe_webhook_mode_mismatch`. Point the endpoint at the matching deployment.
 
-```bash
-docker compose down -v
-```
+**Test payment never completes without returning to `/success`.** The dev stack has no webhook endpoint unless you add one; see [[Development Workflow#Stripe on the dev app]].
 
-This removes the Postgres volume.
+## Email
 
-Restore:
+**Paid order has tickets but no email.**
+- Cause: the dev stack runs no workers; ticket emails wait in the outbox. Missing `RESEND_API_KEY` or `EMAIL_FROM` makes each attempt fail with a configuration error (fulfilment is unaffected).
+- Fix: `DC exec app pnpm email:outbox:process`. Outbox states and retries: [[Email Delivery Implementation]].
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --force-recreate -d
-docker compose exec app pnpm seed
-```
+## Tests
+
+**E2E run refuses: "Port 3100 is occupied; existing server will not be reused".** Stop whatever holds 3100; the runner never reuses a server.
+
+**Interrupted E2E or staging run.** Repeat `pnpm test:e2e:cleanup -- <run-id>` until it confirms cleanup; keep a payment recovery manifest and its volumes until recovery succeeds ([[E2E and Staging Payments]]).
+
+**`pnpm security:audit` fails.** Capture the advisory, version and every dependency path; update the parent or a reviewed override, then revalidate. Never suppress advisories ([[Dependency Automation]]).
+
+## Related
+
+[[Development Workflow]] · [[Environment Variables]] · [[Seeding and Data]] · [[Stripe Payments and Connect]] · [[Authentication and Dashboard Access]] · [[Production Operations]] · [[Email Delivery Implementation]]

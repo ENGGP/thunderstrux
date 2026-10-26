@@ -32,7 +32,7 @@ blob-report/
 
 # Local Codex workspace state
 .worktrees/
-docs/obsidian/.obsidian/workspace.json
+docs/.obsidian/workspace.json
 
 
 # Environment files

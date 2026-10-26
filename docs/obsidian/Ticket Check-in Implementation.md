@@ -1,109 +1,67 @@
 ---
 status: living
-last-reviewed: 2026-10-17
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Event Lifecycle]]", "[[Database and Multi Tenancy]]"]
-sources: [lib/tickets/check-in.ts, app/api/tickets]
+related: ["[[Event Lifecycle]]", "[[Payment Lifecycle]]", "[[Route Security Inventory]]", "[[Audit Coverage]]"]
+sources: [lib/tickets/check-in.ts, lib/tickets/http.ts, components/tickets/check-in-console.tsx]
 ---
 
 # Ticket Check-in Implementation
 
-This note documents the current organiser ticket check-in and check-out implementation. Read with [[API Reference]] and [[Database and Multi Tenancy]].
+**Owns:** admitting attendees: ticket attendance state, the check-in and check-out API, and the staff check-in console.
+**Read when:** changing check-in, the attendee list or its search, or what a ticket's validity means at the door.
+**Not here:** how tickets are issued, voided or put under review ([[Payment Lifecycle]]); event status ([[Event Lifecycle]]); the guard rules every route shares ([[Route Security Inventory]]).
 
-## State Model
+## Code
 
-Ticket attendance state is stored only on:
+| Concern | Where |
+| --- | --- |
+| List and search an event's tickets | `lib/tickets/check-in.ts`: `getOrganisationEventTickets(organisationId, eventId, { limit, cursor, direction, query })` |
+| Check in, check out | `lib/tickets/check-in.ts`: `checkInOrganisationTicket(organisationId, ticketId, actorUserId)`, `checkOutOrganisationTicket(...)` |
+| Error to HTTP mapping | `lib/tickets/http.ts`: `ticketRouteRules` |
+| Routes | `GET /api/events/[eventId]/tickets`, `POST /api/tickets/[ticketId]/check-in`, `POST /api/tickets/[ticketId]/check-out` |
+| Console | `components/tickets/check-in-console.tsx` on the page `/dashboard/events/[eventId]/tickets` |
+| Cursors | `lib/pagination/cursor.ts` |
+| Tests | `tests/integration/ticket-check-in.test.ts`, `tests/e2e/check-in.spec.ts` |
 
-```text
-Ticket.checkedInAt
-```
+## States
 
-Meaning:
+Attendance is one column, `Ticket.checkedInAt`: `null` is unused, a timestamp is checked in. Nothing else about a ticket changes at the door.
 
-- `null`: unused.
-- non-null timestamp: checked in.
+Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Payment Lifecycle]]):
 
-`Ticket.validity` (T10) is separate from attendance: only `active` tickets appear in the attendee list and its counts. Since T19b check-in or undo on a `void` or `refund_review` ticket is refused with its reason (`409`, `not_valid` or `under_review`) and the ticket's attendance record is left as it was; a search still finds such tickets so staff can say why they don't admit. Who checked a ticket in is read from its latest `ticket.checked_in` audit entry (no extra column). The list shows the ticket type name purchased with the order. There is no QR token. Check-in/out append an actor-attributed AuditLog transactionally; no order/Stripe state or ticket ownership is changed.
+| `validity` | Check in or out | 409 `reason` | Console verdict |
+| --- | --- | --- | --- |
+| `active` | allowed | `already_checked_in` / `not_checked_in` on a repeat | Valid (Check in) or Checked in (Undo check-in) |
+| `void` | refused, attendance kept | `not_valid` | Don't admit: refunded, cancelled or reversed after a dispute, with the date |
+| `refund_review` | refused, attendance kept | `under_review` | Under review: "Ask an owner or finance manager before admitting" |
 
-## APIs
+## Rules
 
-Routes:
+- **Authority:** `tickets:check_in` on the selected dashboard context, for all three routes. Missing permission or staff authority is 403 (`organisationAccessRule`).
+- **Tenant:** every read and write is scoped by `Ticket.event.organisationId`. `Ticket.organisationId` is stored (issuance copies `Event.organisationId`) but is never used for access. Another society's ticket is 404, the same as a missing one, so ids can't be probed.
+- **Drafts:** a `check_in_staff` member sees and acts on published events only; a draft event's tickets are 404 to them. Owners, admins and event managers see drafts.
+- **Guard order on check-in and check-out:** trusted origin, dashboard context, permission, rate limit `ticket_check_in_out` (300 a minute per society and action; fails open so a Redis fault never stops the door), then the session user. The list GET has no origin check or rate limit and answers `Cache-Control: no-store`.
+- **Concurrency:** one conditional update inside a transaction, on `checkedInAt` (null for check-in, set for check-out) and `validity = active`. If it touches no row, the ticket is re-read: voided meanwhile gives `not_valid`, otherwise the transition conflict. Two staff admitting one ticket at once get one 200 and one 409 `already_checked_in`.
+- **Audit:** each change writes `ticket.checked_in` or `ticket.checked_out` in the same transaction. "Checked in by" comes from the latest `ticket.checked_in` row, not a column. No order, Stripe or ownership state changes. Society History shows these rows under its check-ins filter ([[Audit Coverage]]).
+- **Conflicts:** a 409 body names the reason in its details: `[{ path: ["ticketId"], reason }]`. The console uses the reason to re-read the ticket and explain.
+- **Listing:** `limit` defaults to 25 and is capped at 100; `cursor` is opaque (`createdAt`, `id`); `direction` is `next` or `prev`. Order is `createdAt` then `id`, ascending. A bad cursor is 400. `counts` (`total`, `unused`, `checkedIn`) cover `active` tickets only, because void and under-review tickets admit no one.
+- **Search:** `q` is cut to 100 characters and used from 2. Either the whole query appears in the ticket or order id, or every word matches a buyer name or email: the order's purchase snapshot, the member's account, or the guest's email. A search includes void and under-review tickets, so staff can say why someone can't come in. Without a search the list shows only `active` tickets.
+- **No QR codes:** attendees are found by name, email or reference.
 
-- `GET /api/events/[eventId]/tickets`
-- `POST /api/tickets/[ticketId]/check-in`
-- `POST /api/tickets/[ticketId]/check-out`
+## Console behaviour
 
-Rules:
+- Phone first. It shows "{n} of {total} checked in" and a "Find a ticket" field that searches as you type, from 2 characters. A late answer to an older search never replaces a newer one.
+- One card per ticket shows: the buyer, the purchased ticket type name, the short reference with "n of m", and the email ("guest" on guest orders). Then comes the verdict and its button. Buttons name the attendee in screen-reader text ("Check in Alex Lee").
+- After any server answer the card re-reads its ticket (`?q={ticketId}`) and the page refreshes the counts.
+- With no answer in 10 seconds the card shows "Status unknown" and Reload ticket. It never claims a check-in it can't confirm, and a reload of one that did save shows it as already checked in.
 
-- Auth required.
-- Active staff authority or explicitly enabled legacy authority required.
-- The live tickets:check_in capability is required for listing and check-in/out.
-- Authority is verified server-side from `session.user` through live `OrganisationStaff` status and capabilities; the legacy owner path is used only when explicitly configured.
-- Ticket access is scoped through `Ticket.event.organisationId`.
-- `Ticket.organisationId` remains stored, but event ownership is the source of truth for ticket visibility and check-in/check-out authorization.
-- Webhook ticket issuance writes `Ticket.organisationId` from `Event.organisationId`, and logs/corrects the ticket organisation value if historical order data is inconsistent.
+## Traps
 
-Ticket listing pagination:
+- Don't authorise from `Ticket.organisationId` or a client-sent organisation; use the event's owner.
+- Don't change `validity` here. Refunds, disputes and cancellations own it, and they keep the attendance record as it was.
+- A new 409 reason needs a rule in `ticketRouteRules` and a verdict in the console, or staff see a generic error at the door.
 
-- `GET /api/events/[eventId]/tickets` defaults to `limit=25`.
-- Maximum `limit` is 100.
-- Supported query params are `limit`, `cursor`, `direction` and `q`.
-- `direction` is `next` or `prev`; default is `next`.
-- Cursors are opaque and encode the ticket `createdAt` and `id`, through the shared `lib/pagination/cursor.ts` helpers (T19b; this was one of the PAG-001 copies).
-- `q` (2 to 100 characters) searches this event's tickets by name, email, order or ticket reference: every word must match a buyer name or email field (purchase snapshot, member account or guest email), or the whole query appears in the ticket or order id. A search includes void and under-review tickets; shorter or empty `q` lists the tickets that admit.
-- Ordering is stable by `Ticket.createdAt ASC, Ticket.id ASC`.
-- The response includes `pageInfo` and global event ticket `counts`.
+## Related
 
-Invalid transitions (`409` with detail `reason`):
-
-- Checking in an already checked-in ticket: `already_checked_in`. Two staff admitting the same ticket at once get one `200` and one `409`.
-- Checking out an unused ticket: `not_checked_in`.
-- A void ticket: `not_valid`; an under-review (disputed) ticket: `under_review`.
-- Tickets belonging to another organisation, or a draft event's tickets for check-in staff, return `404`.
-
-The three routes map errors through `lib/tickets/http.ts` and `mapRouteError` (T19b, narrowing API-001).
-
-## Service Layer
-
-File:
-
-```text
-lib/tickets/check-in.ts
-```
-
-Important functions:
-
-- `getOrganisationEventTickets(organisationId, eventId, { limit, cursor, direction, query })`
-- `checkInOrganisationTicket(organisationId, ticketId, actorUserId)`
-- `checkOutOrganisationTicket(organisationId, ticketId, actorUserId)`
-
-Concurrency safety:
-
-- Check-in uses a conditional update where `checkedInAt = null` and `validity = active`.
-- Check-out uses a conditional update where `checkedInAt IS NOT null` and `validity = active`.
-- If the conditional update affects zero rows, the ticket is re-read: a ticket voided meanwhile is `not_valid`, otherwise the transition conflict.
-
-## UI
-
-File:
-
-```text
-components/tickets/check-in-console.tsx
-```
-
-The attendees page (`/dashboard/events/[eventId]/tickets`) is the check-in console (T19b, design round A2 batch 3), built phone first:
-
-- "{n} of {total} checked in", then a large "Find a ticket" field: results update as staff type, from 2 characters, and a late answer to an older search never replaces a newer one. With no search the page lists the tickets that admit, with Previous and Next cursor links.
-- One card per ticket: the buyer, the ticket type, the short reference and "n of m", the email (with "guest" for a guest order), and a verdict: Valid (Check in), Checked in ("Already checked in at {time} by {name}", Undo check-in), Don't admit (refunded or cancelled on a date, or reversed after a dispute; no button) or Under review ("Ask an owner or finance manager before admitting"; no button). Buttons name the attendee for screen readers.
-- After any answer from the server, the card re-reads the ticket (`?q={ticketId}`) and the page refreshes its counts. With no answer within 10 seconds it shows "Status unknown" and Reload ticket: it never claims a check-in it can't confirm, and reloading a check-in that did save shows it as already checked in.
-
-## Tests
-
-Coverage lives in:
-
-```text
-tests/integration/ticket-check-in.test.ts
-```
-
-The suite covers own-organisation visibility, member denial, cross-organisation denial, cursor pagination, invalid cursor handling, check-in, double check-in conflict, check-out, invalid check-out conflict, and order/payment state preservation. Since T19b it also covers two check-ins at once admitting once with the checker's name, refunded and disputed tickets refused with their reasons and attendance kept, search by name, email, order and ticket reference within one event, and check-in staff limited to published events. `tests/e2e/check-in.spec.ts` drives the console at 390 and 1280px, including a check-in whose answer is lost after it saved.
-It also covers inconsistent `Ticket.organisationId` data to confirm event ownership remains the access source of truth, plus webhook issuance consistency for newly created tickets.
+[[Event Lifecycle]] · [[Payment Lifecycle]] · [[Route Security Inventory]] · [[Audit Coverage]] · [[API Reference]]

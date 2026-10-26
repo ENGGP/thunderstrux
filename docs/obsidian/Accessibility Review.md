@@ -2,71 +2,68 @@
 status: living
 last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[UI Architecture Rules]]", "[[Route Security Inventory]]", "[[Engineering Delivery Workflow]]"]
-sources: [tests/e2e/accessibility.spec.ts, components/merchandise/pickup-action.tsx, app/layout.tsx, components/ui/responsive-table.tsx, components/purchases/money-summary.tsx, components/settings/staff-management.tsx]
+related: ["[[UI Architecture Rules]]", "[[Engineering Delivery Workflow]]", "[[Frontend and Backend Flow]]"]
+sources: [tests/e2e/accessibility.spec.ts, app/layout.tsx, app/globals.css, components/ui/confirm-dialog.tsx, components/ui/responsive-table.tsx, components/ui/input.tsx, components/analytics/bar-chart.tsx, scripts/run-e2e.mjs]
 ---
 
 # Accessibility Review
 
-The target is WCAG 2.2 AA (T40). This note records what is checked automatically, what was found and fixed, and what still needs a person.
+**Owns:** the accessibility target, what is checked automatically, the rules the UI follows to meet it, and what still needs a person.
+**Read when:** adding a page or control, changing a primitive, or updating axe or Playwright.
+**Not here:** the primitives and patterns themselves ([[UI Architecture Rules]]); when a browser campaign is required ([[Engineering Delivery Workflow]]); fixed findings ([[Resolved Defects]] and the evidence ledger in `docs/obsidian/History/`).
 
-## Checked on every browser campaign
+Target: WCAG 2.2 AA (T40).
 
-`tests/e2e/accessibility.spec.ts` runs axe (`@axe-core/playwright`, rules tagged WCAG 2.0, 2.1 and 2.2 A and AA) on every journey for its role:
+## Code
 
-- **Public:** home, Explore events, an event page, Societies, a society's page, memberships and shop, sign-in, sign-up, password reset and guest recovery.
-- **Member:** overview, My tickets, Purchases and a ticket purchase, My memberships and a membership order, Societies, Account settings, and an event checkout.
-- **Organiser:**
-  - the overview;
-  - events: list, new, Summary, Edit and Attendees;
-  - Calendar in month, week and agenda;
-  - Orders and an order;
-  - Analytics and History;
-  - memberships: plans, a plan, Members and a member;
-  - merchandise: products, a product, Pickups and an order;
-  - settings: Society profile, Staff, Payments and Email delivery.
+| Concern | Where |
+| --- | --- |
+| Scans and keyboard checks | `tests/e2e/accessibility.spec.ts` |
+| Runs in | the `browser` step of `node scripts/run-e2e.mjs` (with the other browser specs) |
+| Findings output | `test-results/a11y-public.json`, `a11y-member.json`, `a11y-organiser.json` (findings and overflow per page) |
+| Skip link, `main` target | `app/layout.tsx` |
+| Focus ring, reduced motion | `app/globals.css` |
 
-Each page is scanned at 390, 768 and 1280px, and at 640px, which is 1280px zoomed to 200%. It must also reflow without sideways scrolling at 320px. The same spec checks the keyboard:
+## Checked automatically
 
-- the first Tab reaches **Skip to content**, which moves focus to the page's `main`;
-- a confirmation dialog opened from the keyboard takes focus, closes on Escape and does nothing.
+- **Engine:** axe via `@axe-core/playwright`, tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`. Any violation fails the test.
+- **Widths:** each page is scanned at 390, 768 and 1280px, and at 640px (1280px zoomed to 200%). At those widths and at 320px the page must not scroll sideways (`scrollWidth` within the viewport).
+- **Public journeys:** `/`, `/events`, an event page, `/societies`, a society page with its memberships and merchandise tabs, `/login`, `/signup`, `/forgot-password`, `/guest/recover`.
+- **Member journeys:** `/dashboard`, `/tickets`, `/purchases` and a ticket purchase, `/memberships` and a membership order, `/dashboard/organisations`, `/account/settings`, and an event checkout.
+- **Organiser journeys (owner):** overview; events list, new, Summary, Edit, Attendees; Calendar in month, week and agenda; Orders and an order; Analytics; History; membership plans, a plan, Members and a member; merchandise products, a product, Pickups and an order; Society profile, Staff, Payments, Email delivery.
+- **Keyboard:** the first Tab on `/` reaches **Skip to content** and Enter moves focus to `main`; on `/dashboard/events` a confirmation opened from the keyboard (More, Unpublish) takes focus, closes on Escape and changes nothing.
 
-## Found and fixed (23 Oct 2026)
+A new page joins the matching journey list in the spec.
 
-| Finding | Where | Fix |
-| --- | --- | --- |
-| No way to skip the header and sidebar (2.4.1) | Every page | A Skip to content link, shown on focus, jumps to `main` (`id="main"`, `tabIndex={-1}` on every page's main) |
-| A paragraph inside a definition list (1.3.1) | Checkout and receipt summaries (`MoneySummary`) | The note sits after the list |
-| Wide tables that scroll sideways couldn't be reached by keyboard (2.1.1) | Every `ResponsiveTable` (Analytics, Orders, Members and others); event Summary's ticket table; Staff; Analytics' Who took part | The scroll area is a focusable region named after its table |
-| The page scrolled sideways on phones and at 200% zoom (1.4.10) | Staff settings | The outer grid lets its cards shrink; the tables scroll inside them |
+## Rules the UI follows
 
-Public journeys had no findings.
-
-## Found and fixed (26 Oct 2026)
-
-axe-core 4.14 (#189) flags an accessible name that doesn't contain the visible words (`label-content-name-mismatch`).
-
-| Finding | Where | Fix |
-| --- | --- | --- |
-| "Mark ready" and "Mark collected" were named "Mark order ABC123 ready to collect" and "Mark order ABC123 collected", so a voice-control user saying the visible words couldn't click them (2.5.3, DEF-046) | Merchandise Pickups and a merchandise order | The visible words come first and the order follows for screen readers only ("Mark ready for order ABC123"), as the check-in console does. The button is `relative`: hidden text positioned outside it escaped the table's scroll area and made the page scroll sideways at 768px (1.4.10) |
-
-Other buttons with their own names already start with their visible words. A dependency update to axe or Playwright needs a browser campaign before it merges: #189 didn't have one, so main failed.
-
-## Already in place
-
-- Labels sit in `<label>`; hints and errors are tied with `aria-describedby`, and errors set `aria-invalid`.
-- The focus ring is unlayered, so no utility removes it.
-- Results are `Notice`s with `role="status"` or `role="alert"`.
-- Dialogs are native `<dialog>`: `showModal()` traps focus and Escape cancels.
-- Every chart has a table with the same numbers, and the calendar's agenda lists what the grids show.
-- Controls are at least 44px tall.
-- `prefers-reduced-motion` shortens transitions.
-- The date picker works from the keyboard.
+- **Skip link:** every page's `<main id="main" tabIndex={-1}>` is the Skip to content target.
+- **Labels:** each control has a `<label>` holding only its label; hints and errors are tied with `aria-describedby`; an error sets `aria-invalid` (`components/ui/input.tsx`, `components/ui/date-field.tsx`).
+- **Label in name (2.5.3):** a button whose accessible name adds context starts with its visible words and adds the rest as screen-reader text ("Check in" + name, "Mark ready" + " for order ABC123"). Hidden text inside a scrolling table needs a `relative` button, or it escapes the scroll area and widens the page.
+- **Focus:** the ring is an unlayered 2px `--ts-focus` outline that no utility removes.
+- **Live regions:** results are `Notice`s with `role="status"` or `role="alert"`; nothing permanent on a page is a live region.
+- **Dialogs:** native `<dialog>` via `showModal()` traps focus; Escape cancels and never confirms.
+- **Scrolling content:** a container that scrolls sideways is a focusable region named after its content (`role="region"`, `tabIndex={0}`, `aria-label`), as `ResponsiveTable` does; page grids use `grid-cols-1` so wide tables scroll inside their card.
+- **Charts and grids:** a chart's accessible name lists every value (`components/analytics/bar-chart.tsx`); the calendar's agenda lists what the grids show.
+- **Definition lists** hold only `dt`/`dd` pairs; notes go after the list.
+- **Target size:** default controls are 44px (`Button` `md`, link tabs `min-h-11`); compact controls are smaller: `Button size="sm"` is 36px (`h-9`) and filter pills are 40px (`min-h-10`). Both clear WCAG 2.2 AA's 24px minimum.
+- **Motion:** `prefers-reduced-motion` shortens transitions.
+- **Date picker:** fully keyboard operable ([[UI Architecture Rules#Primitives]]).
+- **Link names** are unique on a page (the header owns `Explore events` and `Explore societies`).
 
 ## Still needs a person
 
-Scans and scripted keyboard checks don't prove that real people can use the product. These are open for the pilot (T44):
+Scans and scripted keys don't prove real people can use the product. Open for the pilot (T44):
 
-- a screen-reader pass with NVDA and Chrome, and with VoiceOver on iOS, through sign-up, an event checkout (member and guest), My tickets, check-in on a phone, creating and publishing an event, and a refund;
-- browser zoom at 200% and 400% on a real desktop, and text spacing overrides;
-- colour contrast in states the scans can't trigger (hover, disabled, focus on coloured backgrounds).
+- a screen-reader pass with NVDA and Chrome, and VoiceOver on iOS, through sign-up, an event checkout (member and guest), My tickets, check-in on a phone, creating and publishing an event, and a refund;
+- browser zoom at 200% and 400% on a real desktop, and text-spacing overrides;
+- colour contrast in states scans can't trigger (hover, disabled, focus on coloured backgrounds).
+
+## Traps
+
+- An axe or Playwright upgrade can add rules (axe-core 4.14 added `label-content-name-mismatch`); it needs a browser campaign before merge ([[Engineering Delivery Workflow]]).
+- Screen-reader-only text positioned outside a non-`relative` control escapes `overflow` containers and causes sideways scroll at 768px.
+
+## Related
+
+[[UI Architecture Rules]] · [[Frontend and Backend Flow]] · [[Engineering Delivery Workflow]] · [[Resolved Defects]]

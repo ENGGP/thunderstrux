@@ -1,246 +1,109 @@
 ---
 status: living
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Database and Multi Tenancy]]", "[[Authentication and Dashboard Access]]"]
-sources: [prisma/seed.mjs]
+related: ["[[Development Workflow]]", "[[Database and Multi Tenancy]]", "[[Authentication and Dashboard Access]]", "[[Troubleshooting]]"]
+sources: [prisma/seed.mjs, package.json]
 ---
 
 # Seeding and Data
 
-## Seed File
-
-Primary seed script:
-
-```text
-prisma/seed.mjs
-```
-
-Package scripts:
-
-```json
-"seed": "prisma db seed"
-"prisma:seed": "node prisma/seed.mjs"
-```
-
-Recommended command in Docker:
-
-```bash
-docker compose exec app pnpm seed
-```
-
-The script is intentionally idempotent and can be rerun after migrations or resets.
-
-## Account Lifecycle Prerequisites
-
-The seed also upserts named OrganisationStaff authority; the membership role list below describes join/legacy compatibility rows, not access grants. It does not set emailVerifiedAt or clear closedAt/disabledAt. Fresh seeded identities therefore remain unverified until the normal verification flow completes, and a seed rerun must not be treated as reopening a closed account. Purchases, joins, tenant bootstrap and invite acceptance require verification; management also observes live staff/MFA/legacy policy. See [[Authentication and Dashboard Access]].
-
-Seed credentials are synthetic development data. Seeding updates passwords and other core values, so run it only against an explicitly selected development/disposable database; do not use it as a production migration or closure-recovery tool.
-
-**Public origins (SEC-015).** When `AUTH_URL`, `NEXTAUTH_URL` or `NEXT_PUBLIC_APP_URL` names a non-loopback host, the seed refuses before writing anything unless `SEED_DEMO_PASSWORD` (at least 16 characters) is set, and then every seeded account uses that password instead of the published `password123`. This lets the public preview hold demo societies without an open owner login.
-
-It also writes accountUserId pointers and upserts active staff roles, so reseeding can undo a synthetic handover/revocation scenario. Never use seed as a business-data restore or to reactivate retired ownership. Normal Package 3 activation applied additive migrations without seed/reset. Seeded societies retain incomplete public defaults unless explicitly edited; seed does not provision logo/cover objects. Their names/profiles are still discoverable at `/organisations`.
-
-## Seed Guarantees
-
-Current behavior:
-
-- Users are upserted by `email`.
-- Organisations are upserted by `slug`.
-- Memberships are upserted by `(userId, organisationId)`.
-- Events are matched by `(organisationId, title)`.
-- Ticket types are matched by `(eventId, name)`.
-- Seeded orders are upserted by deterministic `stripeSessionId`.
-- Seeded paid orders ensure the expected number of `Ticket` rows exists.
-
-Running the seed again updates core values instead of blindly duplicating rows.
-
-## Seeded Users
-
-On loopback databases, all seeded users use:
-
-```text
-password123
-```
-
-Users:
-
-- `user1@example.com`
-- `user2@example.com`
-- `admin@example.com`
-- `event.manager@example.com`
-- `finance@example.com`
-- `content@example.com`
-- `member@example.com`
-- `empty@example.com`
-- `outsider@example.com`
-
-Organisation account users:
-
-- `engineering.org@example.com`
-- `arts.org@example.com`
-- `robotics.org@example.com`
-- `payments.lab@example.com`
-- `empty.org@example.com`
-
-## Seeded Organisations
-
-- `Engineering Society` / `engineering-society`
-- `Arts Society` / `arts-society`
-- `Robotics Club` / `robotics-club`
-- `Payments Lab` / `payments-lab`
-- `Empty Society` / `empty-society`
-
-Each seeded organisation is linked to its matching organisation account through `Organisation.accountUserId`.
-
-`Payments Lab` is seeded with:
-
-```text
-stripeAccountStatus = PLATFORM_NOT_READY
-stripeAccountId = null
-stripeChargesEnabled = false
-```
-
-This gives a stable local UI state for testing Stripe platform setup handling without creating a real Stripe account.
-
-## Seeded Memberships
-
-Organisation account compatibility memberships:
-
-- `engineering.org@example.com` -> `Engineering Society` -> `org_owner`
-- `arts.org@example.com` -> `Arts Society` -> `org_owner`
-- `robotics.org@example.com` -> `Robotics Club` -> `org_owner`
-- `payments.lab@example.com` -> `Payments Lab` -> `org_owner`
-- `empty.org@example.com` -> `Empty Society` -> `org_owner`
-
-Engineering Society:
-
-- `user1@example.com` -> `org_owner`
-- `admin@example.com` -> `org_admin`
-- `event.manager@example.com` -> `event_manager`
-- `finance@example.com` -> `finance_manager`
-- `content@example.com` -> `content_manager`
-- `member@example.com` -> `member`
-
-Other memberships:
-
-- `user2@example.com` -> `Arts Society` -> `member`
-- `admin@example.com` -> `Arts Society` -> `org_admin`
-- `event.manager@example.com` -> `Robotics Club` -> `org_owner`
-- `finance@example.com` -> `Payments Lab` -> `org_owner`
-- `empty@example.com` -> `Empty Society` -> `org_owner`
-- `outsider@example.com` has no memberships
-
-## Seeded Events
-
-Published public events:
-
-- `Engineering Society Launch Night`
-- `Engineering Sold Out Mixer`
-- `Arts Society Showcase`
-- `Robotics Build Night`
-- `Payments Lab Checkout Test`
-
-Draft dashboard-only events:
-
-- `Engineering Draft Workshop`
-- `Engineering No Ticket Draft`
-- `Arts Members Draft Critique`
-
-Event edge cases:
-
-- Multiple ticket types: `Engineering Society Launch Night`, `Arts Society Showcase`
-- Sold out ticket type: `Engineering Sold Out Mixer`
-- Draft with tickets: `Engineering Draft Workshop`
-- Draft without tickets: `Engineering No Ticket Draft`
-- Organisation with no events: `Empty Society`
-- Event under `PLATFORM_NOT_READY` org: `Payments Lab Checkout Test`
-
-## Seeded Orders And Tickets
-
-Seeded order edge cases:
-
-- Paid Engineering order with two issued tickets.
-- Failed Engineering order for the sold-out event.
-- Pending Arts order with a Stripe session id.
-
-These support:
-
-- Buyer `/tickets` page review.
-- Organiser `/dashboard/[orgSlug]/orders` review.
-- Event edit/delete restrictions after orders and tickets exist.
-- Webhook/idempotency UI and data inspection.
-
-Seeded orders use synthetic `stripeSessionId` values prefixed with `cs_seed_`. They are local test records, not real Stripe sessions.
-
-## Manual Edge-Case Paid Orders
-
-The local Docker database may also contain manually inserted paid orders with `stripeSessionId` values prefixed by:
-
-```text
-cs_seed_edge_
-```
-
-These were added to exercise dashboard and analytics edge cases:
-
-- multi-quantity paid orders
-- multiple paid ticket types on one event
-- low-price ticket revenue
-- unknown buyer display with `userId = null`
-- revenue-over-time across multiple days
-- confirmed reservations with matching ticket rows
-
-They are not currently part of `prisma/seed.mjs`. Running `docker compose down -v` removes them, and rerunning the seed will not recreate them unless they are later added to the seed script.
-
-## Important Interaction With Demo Public Events
-
-Public event reads are read-only:
-
-- If the database has zero published events, the public homepage shows an empty state.
-- Public runtime routes do not create organisations, events, ticket types, users, orders, reservations, tickets, or demo data.
-
-This means:
-
-- Public pages only look populated when real or seeded published events exist.
-- The seed remains the correct way to restore full development state.
-
-## What `down -v` Removes
-
-Do not use this command as routine recovery. With the development override, it also removes Redis, dependency and asset_data volumes; losing object bytes cannot be repaired by database-only restore or seed. Preserve metadata, object bytes and encryption keys together. [[Society Profiles and Assets]] and [[Production Operations]] own actual recovery.
-
-This command wipes the Postgres volume:
-
-```bash
-docker compose down -v
-```
-
-After that, users, organisations, memberships, events, ticket types, orders, and tickets are gone.
-
-## Synthetic Development Setup
-
-The following is synthetic development setup only, not backup restoration. Existing user/business data needs the verified database/object recovery procedures; these commands do not reconstruct that history.
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --force-recreate -d
-docker compose exec app pnpm seed
-```
-
-## Quick Verification
-
-After seeding:
-
-1. Sign in as `user1@example.com`.
-2. Visit `/dashboard`.
-3. Sign in as `engineering.org@example.com`.
-4. Visit `/dashboard/orders`.
-5. Visit homepage `/`.
-6. Visit `/tickets` as `user2@example.com`.
-7. Sign in as `payments.lab@example.com` and open `/dashboard/settings`.
-
-Expected:
-
-- Engineering dashboard resolves at `/dashboard` for `engineering.org@example.com`.
-- Engineering orders page shows paid and failed seeded order data.
-- Public homepage shows published events.
-- `user2@example.com` can see a seeded paid order/tickets in `/tickets`.
-- `payments.lab@example.com` can open `/dashboard/settings` and see the `PLATFORM_NOT_READY` Stripe Connect state.
+**Owns:** the demo data `prisma/seed.mjs` writes, how to run it safely, and what a volume wipe removes.
+**Read when:** you need local accounts and events, a page looks empty, or you are about to reseed or wipe the dev database.
+**Not here:** models and tenant rules ([[Database and Multi Tenancy]]); what each role may do ([[Authentication and Dashboard Access#Roles and permissions]]); real backup and restore ([[Production Operations]]); test fixtures (`tests/helpers/test-data.ts`).
+
+## Code
+
+| Concern | Where |
+| --- | --- |
+| Seed script | `prisma/seed.mjs` |
+| Run it | `pnpm seed` (`prisma db seed`, configured as `node prisma/seed.mjs` in `package.json`), `pnpm prisma:seed` (direct), `pnpm docker:seed` (`docker compose exec app pnpm seed`), `pnpm docker:db:sync` (migrate dev, generate, seed) |
+| Normal command | `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm seed` |
+
+## Rules
+
+- **Synthetic dev data only.** Run it against an explicitly chosen development or disposable database. It is not a migration, a restore, or a way to reopen or reassign anything.
+- **Public origins (SEC-015).** If `AUTH_URL`, `NEXTAUTH_URL` or `NEXT_PUBLIC_APP_URL` names a host other than `localhost`, `127.0.0.1` or `[::1]`, the seed exits before writing unless `SEED_DEMO_PASSWORD` has at least 16 characters; every seeded account then gets that password. On loopback every account uses `password123` (published in the README).
+- **Idempotent, and it overwrites.** Rerunning updates rather than duplicates:
+
+| Row | Matched by | Rerun overwrites |
+| --- | --- | --- |
+| `User` | `email` | password hash, `accountRole`, names, `onboardingCompletedAt` |
+| `Organisation` | `slug` | `name`, `accountUserId`, and Payments Lab's Stripe fields |
+| `OrganisationMember` | `(userId, organisationId)` | `role` |
+| `OrganisationStaff` | `(organisationId, userId)` | `role`, `status` (`active`), `acceptedAt` (now), `revokedAt` (null) |
+| `Event` | `(organisationId, title)` | description, times, location, `status`, `salesCloseAt` (= start) |
+| `TicketType` | `(eventId, name)` | `price`, `quantity` |
+| `Order` | `stripeSessionId` | status, amounts, timestamps; paid orders get exactly `quantity` tickets, others lose their tickets |
+
+- So a rerun resets passwords, re-activates revoked seeded staff and undoes a seeded handover. It never sets `emailVerifiedAt` or clears `closedAt`/`disabledAt`: seeded accounts start unverified (purchases, joins and invites need verification) and a closed account stays closed.
+- It creates no profile images, memberships plans, products, check-ins or audit rows. Seeded societies keep incomplete public profiles.
+- Event dates are relative to the day you seed (`futureDate`, `pastDate`), so reseeding moves them.
+
+## Accounts
+
+| Email | `accountRole` | Staff authority (`OrganisationStaff`, active) | Membership rows only |
+| --- | --- | --- | --- |
+| `engineering.org@example.com` | `organisation` | Engineering Society `owner` | Engineering `org_owner` |
+| `arts.org@example.com` | `organisation` | Arts Society `owner` | Arts `org_owner` |
+| `robotics.org@example.com` | `organisation` | Robotics Club `owner` | Robotics `org_owner` |
+| `payments.lab@example.com` | `organisation` | Payments Lab `owner` | Payments Lab `org_owner` |
+| `empty.org@example.com` | `organisation` | Empty Society `owner` | Empty `org_owner` |
+| `admin@example.com` | `member` | Engineering `admin` | Engineering and Arts `org_admin` |
+| `event.manager@example.com` | `member` | Engineering `event_manager`, Robotics `owner` | Engineering `event_manager`, Robotics `org_owner` |
+| `finance@example.com` | `member` | Engineering `finance_manager`, Payments Lab `owner` | Engineering `finance_manager`, Payments Lab `org_owner` |
+| `empty@example.com` | `member` | Empty Society `owner` | Empty `org_owner` |
+| `user1@example.com` | `member` | none | Engineering `org_owner` |
+| `content@example.com` | `member` | none | Engineering `content_manager` |
+| `member@example.com` | `member` | none | Engineering `member` |
+| `user2@example.com` | `member` | none | Arts `member` |
+| `outsider@example.com` | `member` | none | none |
+
+- Authority comes only from `OrganisationStaff` (or, while `LEGACY_ORGANISATION_ACCESS_MODE=allow`, an `organisation` account named on `Organisation.accountUserId`; `lib/staff/live-authority.ts`). Membership roles grant nothing. So `user1@`, `content@`, `member@` and `admin@` in Arts have no management access, although the seed's closing console table labels `user1@` "Engineering org_owner" and `content@` "Engineering content_manager" (OPS-006).
+- Each organisation account is linked through `Organisation.accountUserId`.
+- `outsider@` has no names and no `onboardingCompletedAt`.
+
+## Societies, events and orders
+
+| Society (slug) | Events | Notes |
+| --- | --- | --- |
+| Engineering Society (`engineering-society`) | Engineering Society Launch Night (published; General Admission $10 ×50, VIP $25 ×5); Engineering Sold Out Mixer (published; one type, quantity 0); Engineering Draft Workshop (draft, one type); Engineering No Ticket Draft (draft, no types) | Holds the paid and failed seed orders. |
+| Arts Society (`arts-society`) | Arts Society Showcase (published; Standard $15, Concession $8); Arts Members Draft Critique (draft; free Member Seat) | Holds the pending seed order. |
+| Robotics Club (`robotics-club`) | Robotics Build Night (published) | A second tenant's event. |
+| Payments Lab (`payments-lab`) | Payments Lab Checkout Test (published) | `stripeAccountStatus = PLATFORM_NOT_READY`, no account, charges off: the platform-setup state without a real Stripe account. |
+| Empty Society (`empty-society`) | none | A society with no events. |
+
+No society has a connected Stripe account, so paid checkout fails "Stripe not connected" until one is connected ([[Troubleshooting]]).
+
+| Order (`stripeSessionId`) | Buyer | Status |
+| --- | --- | --- |
+| `cs_seed_engineering_paid_order` | `user2@` | `paid`, 2 × General Admission, 2 tickets issued, yesterday |
+| `cs_seed_sold_out_failed_order` | `member@` | `failed` on the sold-out mixer |
+| `cs_seed_arts_pending_order` | `user1@` | `pending`, no tickets |
+
+Seed `cs_seed_…` ids are not real Stripe Sessions; Stripe lookups for them fail. The orders have `paymentKind = "stripe"` but none of the buyer snapshot fields (`buyerEmailSnapshot` and the rest), no `purchasedTicketTypeName` and no checkout attempt, so views fall back to live names and show the ticket type as "… (historical label unavailable)" (`lib/purchases/projection.ts`).
+
+## Quick check
+
+1. `engineering.org@example.com` → `/dashboard` (Engineering) and `/dashboard/orders`: the paid and failed orders.
+2. `user2@example.com` → `/tickets`: two tickets for the launch night.
+3. `payments.lab@example.com` → `/dashboard/settings`: "Stripe platform setup required".
+4. Signed out → `/` and `/societies` list the published events and societies. `/organisations` redirects to `/societies`; `/dashboard/[orgSlug]/orders` redirects to `/dashboard/orders` for staff.
+
+Public pages only read: with no published events the homepage shows its empty state, and nothing creates demo data at run time.
+
+## What `down -v` removes
+
+- `pnpm docker:reset` (`docker compose down -v`, base file) deletes `postgres_data` and `redis_data`: every user, society, event, order and ticket, plus rate-limit state.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v` also deletes `node_modules` and `asset_data` (uploaded image bytes). Database metadata and image bytes must be kept together; a seed recreates neither uploads nor any manually added rows.
+- Rebuild synthetic data afterwards with `pnpm docker:dev`, then the seed command above. This is not a restore: real data needs [[Production Operations]] and [[Society Profiles and Assets]].
+
+## Traps
+
+- Don't reseed to "fix" a staff, ownership or closure state you are testing; the seed silently resets seeded staff and passwords.
+- Rows you add by hand survive a reseed (the seed only touches its own keys) but not `down -v`.
+- `pnpm docker:db:sync` runs `prisma migrate dev`, which can offer to reset the database on drift.
+
+## Related
+
+[[Development Workflow]] · [[Database and Multi Tenancy]] · [[Authentication and Dashboard Access]] · [[Troubleshooting]] · [[Environment Variables]]

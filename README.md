@@ -1,266 +1,70 @@
 # Thunderstrux
 
-Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. It supports private account lifecycle, named staff and explicit dashboard context, safe society images, editable public profiles, anonymous society/event discovery, free society affiliation, ticket checkout and Stripe Connect.
+Thunderstrux is a Docker-based Next.js App Router platform for student societies. It covers:
+- accounts, named staff with live roles and MFA, and an explicit dashboard context;
+- society profiles and images, discovery and free joining;
+- events with free and paid tickets (members and verified guests), check-in, memberships and merchandise;
+- Stripe Connect payouts, analytics, a society calendar and an audit history.
 
-Last reviewed: 2026-10-12 against main `4a8024b` (Package 3 merged). Packages 1–3 are implemented and locally qualified; Package 4 ticket foundations is next. Paid memberships, merchandise, guest checkout and OpenClaw remain future work. Local development is activated; hosted release gates remain open. The [readiness ledger](docs/MVP_READINESS_PLAN.md) owns exact completion and validation evidence.
-
-Future coding agents and contributors should start with the [Documentation Index](docs/obsidian/Documentation%20Index.md), [Project Handover](docs/obsidian/Project%20Handover.md), and [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md).
+Coding agents and contributors start with [AGENTS.md](AGENTS.md), the [Documentation Index](docs/obsidian/Documentation%20Index.md) and the [Project Handover](docs/obsidian/Project%20Handover.md). The Index routes each kind of task to the notes and code to read. The handover says where the project stands and what blocks real users.
 
 ## Stack
 
-For isolated browser tests and guided real Stripe test-mode acceptance, see
-[E2E and Staging Payments](docs/obsidian/E2E%20and%20Staging%20Payments.md).
-Run `pnpm test:e2e` with Docker Desktop available; it uses a separate stack on port 3100.
+Next.js 16 App Router (Turbopack), React 19, Auth.js credentials, Prisma with PostgreSQL 16, Redis (Valkey when hosted) for rate limits, S3-compatible object storage for images, Tailwind CSS, Stripe Checkout and Connect Express, Resend for email, Docker Compose and pnpm. Exact versions are in `package.json` and `docker/`.
 
-- Next.js 16 App Router with Turbopack
-- React 19
-- Auth.js / NextAuth Credentials provider
-- Prisma
-- PostgreSQL 16
-- Tailwind CSS
-- Docker Compose
-- Stripe Checkout
-- Stripe Connect Express
-- pnpm
+## Local development
 
-## Local Development
-
-Development is Docker-only.
-
-The project `.env` uses:
-
-```text
-DATABASE_URL=postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
-```
-
-The host name `db` only resolves inside the Docker Compose network. Do not run host `next dev` with this `.env`; it will fail to connect to Postgres.
-
-Start the stack:
+Development is Docker-only. The `.env` database host `db` exists only inside the Compose network, so host `next dev` can't reach it. `pnpm dev` refuses to start outside Docker while `DATABASE_URL` points at `db:5432`.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+cp .env.example .env
 ```
-
-Open:
-
-```text
-http://localhost:3080
-```
-
-The dev stack is for loopback only: never put it behind a public hostname. `next dev` answers development endpoints to anyone who can reach it, and its seeded accounts share a published password (SEC-014, SEC-015). The container still listens on port 3000; APP_PORT only controls the host port.
-
-## Public Preview (pre-production)
-
-The public preview at `https://thunderstrux.mistayu.com` runs as project `ops-preview` since 2026-10-26 (release `cf913d5`). It runs the production build through the single-host deploy path in [Production Operations](docs/obsidian/Production%20Operations.md), as `thunderstrux.com` will later. It has its own project, database, Redis and workers, separate from the dev stack.
-
-1. Create an ignored `.env.preview` from `.env.example`:
-   - random `AUTH_SECRET` (at least 32 characters), `MFA_ENCRYPTION_KEY` and `NOTIFICATION_ENCRYPTION_KEY`: `openssl rand -base64 32`;
-   - `AUTH_URL`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL` and `TRUSTED_APP_ORIGINS` set to `https://thunderstrux.mistayu.com`, and `APP_PORT=3090`;
-   - `MFA_ENFORCEMENT_MODE=enforce`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, `RATE_LIMIT_ENABLED=true` and `RATE_LIMIT_TRUSTED_PROXY_HEADER=cf-connecting-ip`;
-   - Stripe **test** keys and the test-mode webhook secrets for the preview's endpoints (live keys are for `thunderstrux.com` only);
-   - email (`RESEND_API_KEY`, and `EMAIL_FROM` on a domain verified in the same Resend team as the key, e.g. `Thunderstrux <noreply@email.mistayu.com>`) and an S3-compatible bucket in the `ASSET_STORAGE_*` values (without a bucket everything works except image uploads);
-   - `DATABASE_URL` for the `db` service with the credentials in `.env.db`. The `ops-preview` project gets its own volume, so it starts as a fresh database, never the dev one.
-2. Deploy, then start the workers on the images that release recorded (without them, Compose would recreate the app from the default `thunderstrux-app:local` tag). A redeploy, including one only for a settings change, doesn't restart the workers, so run the second command after every deploy:
-
-   ```bash
-   pnpm ops:deploy -- --project ops-preview --env-file .env.preview --url http://127.0.0.1:3090 --release <git-sha>
-   ```
-
-   ```bash
-   release=tmp/operations/ops-preview/current-release.json
-   APP_IMAGE=$(node -p "require('./$release').candidateImageId") OPS_IMAGE=$(node -p "require('./$release').opsImageId") \
-     docker compose --env-file .env.preview -p ops-preview -f docker-compose.yml -f docker-compose.hardened.yml -f docker-compose.schedules.yml --profile workers \
-     up -d --no-deps email-worker notification-worker stale-order-worker compensation-worker checkout-recovery-worker monitor-worker
-   ```
-
-3. Point the Cloudflare Tunnel's public hostname at `http://127.0.0.1:3090`, and remove any route to `3080`. Then send a test event from each Stripe test-mode webhook destination and check for a 200.
-4. Optional demo content: run `node prisma/seed.mjs` in the preview's `migration` service with `SEED_DEMO_PASSWORD` (at least 16 characters). The seed refuses a public origin without it, and the accounts then use that password, not `password123`.
-
-Staff enrol an authenticator on first sign-in, as production requires.
-
-Database from host:
-
-```text
-postgresql://thunderstrux:thunderstrux@localhost:5433/thunderstrux?schema=public
-```
-
-Database from app container:
-
-```text
-postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
-```
-
-## Common Commands
 
 ```bash
-pnpm docker:up
-pnpm docker:restart
-docker compose exec app pnpm dev:doctor
-docker compose exec app pnpm dev:webpack
-docker compose exec app pnpm prisma:migrate
-docker compose exec app pnpm prisma:generate
-docker compose exec app pnpm seed
-docker compose build app
-pnpm docker:rebuild
-docker compose logs -f app
+pnpm docker:dev
 ```
 
-Equivalent package helpers exist for host use:
+- Open the address `.env` sets as `NEXT_PUBLIC_APP_URL`; `http://localhost:3080` with the example file.
+- Writes (forms, checkout) are accepted only from `NEXT_PUBLIC_APP_URL` and the origins in `TRUSTED_APP_ORIGINS`, so open exactly one of those addresses.
+- PostgreSQL is on `localhost:5433` from the host and `db:5432` inside the stack.
+- The dev stack is for loopback only. Never put it behind a public hostname: `next dev` answers development endpoints to anyone, and seeded accounts share a published password (SEC-014, SEC-015).
 
-```bash
-pnpm docker:up
-pnpm docker:restart
-pnpm docker:migrate
-pnpm docker:seed
-pnpm docker:db:sync
-pnpm docker:build
-pnpm docker:rebuild
-```
+Everyday commands, the full `pnpm` script list, tests, rebuilds and traps are in [Development Workflow](docs/obsidian/Development%20Workflow.md). Every environment variable is in [Environment Variables](docs/obsidian/Environment%20Variables.md). Problems and fixes are in [Troubleshooting](docs/obsidian/Troubleshooting.md).
 
-## Builds and App Recreation
+## Seeded accounts
 
-Do not run this against a running app container:
+The seed (`prisma/seed.mjs`, run by the dev stack) is for local loopback databases. On a public origin it refuses to run unless `SEED_DEMO_PASSWORD` (16+ characters) is set, and then uses it. Locally, every seeded account's password is `password123`.
 
-```bash
-docker compose exec app pnpm build
-```
+| Kind | Accounts |
+| --- | --- |
+| Society (organisation) accounts | `engineering.org@`, `arts.org@`, `robotics.org@`, `payments.lab@`, `empty.org@example.com` |
+| Member and staff test accounts | `user1@`, `user2@`, `admin@`, `event.manager@`, `finance@`, `content@`, `member@`, `empty@`, `outsider@example.com` |
 
-The production container serves the `.next-build` output through a running `next start` process. Running `pnpm build` inside that same container mutates `.next-build` while the server still has the previous build manifest in memory. That can desynchronise CSS/static chunks and routes, causing assets to return `404`.
+Which of these hold staff roles where is in [Seeding and Data](docs/obsidian/Seeding%20and%20Data.md). The seed's own console table overstates some of them (OPS-006).
 
-Use these commands instead:
+## Public preview
 
-```bash
-pnpm docker:build
-pnpm docker:rebuild
-```
+The public preview at `https://thunderstrux.mistayu.com` runs the production build as its own Compose project, `ops-preview`, separate from the dev stack. Its setup, deploy and worker commands are in [Production Operations](docs/obsidian/Production%20Operations.md#public-preview).
 
-If an in-container build was already run, recreate the app container:
+## Tests and delivery
 
-```bash
-pnpm docker:rebuild
-```
+- Every change goes through a PR to protected `main`, with local validation chosen by risk: [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md).
+- The isolated runner covers the production build, typecheck, integration tests, the browser campaign and real Stripe test mode: [E2E and Staging Payments](docs/obsidian/E2E%20and%20Staging%20Payments.md).
+- `pnpm docs:check` keeps the documentation linked and matched to the code.
 
-The development restart/rebuild helpers rebuild the app, replace only the labelled `node_modules` dependency-cache volume, regenerate Prisma Client, apply migrations, and then start the dev server. They preserve the PostgreSQL and Redis data volumes. Production uses the separate one-shot migration service through `pnpm ops:deploy`; ordinary production app startup does not run migrations.
-
-Society image storage uses the development object-store service and persistent `asset_data` volume. Normal development startup above includes it; when refreshing an older stack, start it before the app helper with `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build object-store`. Back up the database before pending migrations; preserve database, Redis and object bytes. Hosted S3 configuration and metadata/object recovery are covered in [Society Profiles and Assets](docs/obsidian/Society%20Profiles%20and%20Assets.md).
-
-## Account Model
-
-`User.accountRole` is either:
-
-- `member`
-- `organisation`
-
-Member accounts can complete a profile, join organisations, browse public events, buy tickets, and view `/tickets`.
-
-Member staff start in personal mode and explicitly select a live authorised society; selection never grants authority. Free affiliation is separate from paid entitlements and staff access. A verified organisation account bootstraps one primary society and opens resumable profile setup. Owner handover permanently retires the bootstrap pointer; retained active staff authority still blocks a second primary bootstrap.
-
-Organisation management normally uses an active `OrganisationStaff` record, its live role and permissions, and the canonical organisation resolved by the server. Named staff accounts, invitations, live revocation, TOTP MFA, recovery codes, and actor-attributed audit records are implemented.
-
-`Organisation.accountUserId` remains a deliberately controlled migration fallback for legacy organisation logins. Production rollout must enroll staff, enforce MFA, and set `LEGACY_ORGANISATION_ACCESS_MODE=deny` before shared access is considered retired. See [Authentication and Dashboard Access](docs/obsidian/Authentication%20and%20Dashboard%20Access.md) and [Production Readiness Verification](docs/obsidian/Production%20Readiness%20Verification%202026-09-22.md).
-
-## Seeded Accounts
-
-For local (loopback) databases only. On a public origin the seed needs `SEED_DEMO_PASSWORD` and uses it instead. All locally seeded accounts use:
+## Project structure
 
 ```text
-password123
+app/         App Router pages (app/**/page.tsx) and API routes (app/api/**/route.ts)
+components/  UI primitives (components/ui) and feature components
+lib/         Domain services: auth, events, payments, commerce, email, ops, ...
+prisma/      Schema, migrations and seed
+scripts/     Dev, test-runner, worker, operations and deploy scripts
+tests/       integration/, e2e/, runner/, setup/ and helpers/
+docker/      Dockerfiles and the container entrypoint
+deploy/      Single-host (Droplet) deployment files
+config/      Schema contract: the newest migration readiness requires
+docs/        Obsidian vault: obsidian/ (living notes), specs and plans
 ```
 
-Organisation accounts:
-
-- `engineering.org@example.com`
-- `arts.org@example.com`
-- `robotics.org@example.com`
-- `payments.lab@example.com`
-- `empty.org@example.com`
-
-Member/test accounts:
-
-- `user1@example.com`
-- `user2@example.com`
-- `admin@example.com`
-- `event.manager@example.com`
-- `finance@example.com`
-- `content@example.com`
-- `member@example.com`
-- `empty@example.com`
-- `outsider@example.com`
-
-## Main Routes
-
-Public:
-
-- `/`
-- `/societies`
-- `/societies/[orgSlug]`
-- `/events/[eventId]`
-- `/login`
-- `/signup`
-- `/verify-email`
-- `/forgot-password`
-- `/reset-password`
-- `/change-email`
-- `/staff/invites/accept`
-
-The public event API is anonymous, but `/events/[eventId]` HTML still requires authentication through the proxy; anonymous event detail is planned in T15. Society discovery/profile HTML is anonymous.
-
-Private account:
-
-- `/account/settings`
-- `/mfa`
-
-Member:
-
-- `/dashboard`
-- `/dashboard/organisations`
-- `/tickets`
-
-Organisation:
-
-- `/dashboard`
-- `/dashboard/create`
-- `/dashboard/events`
-- `/dashboard/events/new`
-- `/dashboard/events/[eventId]/edit`
-- `/dashboard/orders`
-- `/dashboard/settings`
-- `/dashboard/settings/profile`
-- `/dashboard/settings/staff`
-- `/dashboard/notifications`
-
-Legacy compatibility redirects:
-
-- `/dashboard/[orgSlug]`
-- `/dashboard/[orgSlug]/events`
-- `/dashboard/[orgSlug]/events/new`
-- `/dashboard/[orgSlug]/events/[eventId]/edit`
-- `/dashboard/[orgSlug]/orders`
-- `/dashboard/[orgSlug]/settings`
-
-## Next.js Stability Notes
-
-- Dev output writes to `.next`.
-- Production build output writes to `.next-build`.
-- `pnpm dev` clears `.next/dev` before startup.
-- `pnpm dev` uses Turbopack by default.
-- `pnpm dev:webpack` is the safe fallback if Turbopack route manifests or hot reload become unstable.
-- `pnpm dev:doctor` prints a read-only report for stuck dev-server symptoms and stale generated metadata.
-- `pnpm build` runs `scripts/prepare-next-build.mjs` and `prisma generate` before `next build`.
-- `pnpm build` is blocked inside the running production-like app container. Rebuild the image instead.
-- `tsconfig.json` must not include `.next/dev/types/**/*.ts`; stale dev route types can break production builds.
-- The current route guard uses `proxy.ts`, not deprecated `middleware.ts`.
-- Turbopack root is pinned in `next.config.ts` so unrelated lockfiles outside the repo do not affect workspace detection.
-- `scripts/assert-docker-runtime.mjs` warns by default, but blocks `pnpm dev` outside Docker when `.env` points at `db:5432`.
-
-## Project Structure
-
-```text
-app/           App Router pages and API routes
-components/    UI and feature components
-lib/           Auth, Prisma, validators, Stripe, client helpers
-prisma/        Schema, migrations, seed script
-docs/obsidian/ Internal codebase notes
-docker/        Dockerfile and container setup
-scripts/       Local development safety scripts
-```
+Each folder and module is described in [Thunderstrux Codebase Map](docs/obsidian/Thunderstrux%20Codebase%20Map.md), and every page in [Frontend and Backend Flow](docs/obsidian/Frontend%20and%20Backend%20Flow.md).

@@ -2,23 +2,33 @@
 status: living
 last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]", "[[Production Operations]]", "[[Accessibility Review]]"]
-sources: [docs/MVP_READINESS_PLAN.md, tests/e2e/journeys.spec.ts, scripts/run-e2e.mjs]
+related: ["[[E2E and Staging Payments]]", "[[Engineering Delivery Workflow]]", "[[Production Operations]]", "[[Accessibility Review]]", "[[Pre-hosting Candidate]]"]
+sources: [docs/MVP_READINESS_PLAN.md, docs/THUNDERSTRUX_PRD.md, tests/e2e/journeys.spec.ts, tests/e2e/permission-matrix.spec.ts, scripts/run-e2e.mjs, scripts/run-operations-tests.mjs]
 ---
 
 # Journey Qualification
 
-T44 qualifies every journey in section 7 of the MVP readiness plan against the release images, using production-mode settings:
-- the `web` image serves the app, and the `ops` image runs migrations and workers;
-- staff MFA is enforced in its own campaign step, and legacy organisation access is denied.
+**Owns:** the map from each product journey (section 7 of `docs/MVP_READINESS_PLAN.md`, from the PRD) to the tests that prove it, and what local qualification can and can't reach.
+**Read when:** changing a user journey, deleting or renaming a test that appears below, or deciding which campaign re-qualifies a change.
+**Not here:** how the campaigns run ([[E2E and Staging Payments]]); the operations rehearsal ([[Production Operations Hosting]]); which validation a change needs ([[Engineering Delivery Workflow]]); release gates ([[Pre-hosting Candidate]]). Dated qualification runs: [[Evidence Ledger]].
 
-This note maps each requirement to the test that proves it. A requirement is only marked covered when a test shows both its happy path and its denial.
+## Rules
 
-**How the evidence is produced.** The browser campaign (`node scripts/run-e2e.mjs`) builds the release pair locally, migrates from the ops image and runs Playwright against the web image. It uses synthetic accounts, signed Stripe webhooks, and captured email and object storage. The connected journeys (`tests/e2e/journeys.spec.ts`) run in its webhook step, which has a synthetic Stripe test key. The baseline (`node scripts/run-e2e.mjs baseline`) runs the integration suite. Real providers are T45's: Stripe test mode and Resend acceptance are observed in [[E2E and Staging Payments]], and Spaces is blocked until its values are set.
+- A requirement counts as covered only when a test shows both its happy path and its denial.
+- Qualification runs against the release images with production settings: the `web` image serves the app, the `ops` image migrates and runs workers, staff MFA is enforced in its own step, legacy organisation access is denied.
+- Names below are test files: e2e `<name>` is `tests/e2e/<name>.spec.ts`, integration `<name>` is `tests/integration/<name>.test.ts`. **Bold** marks the connected journeys in `tests/e2e/journeys.spec.ts` and the role matrix in `tests/e2e/permission-matrix.spec.ts`. "Operations rehearsal" is `pnpm ops:test` (`scripts/run-operations-tests.mjs`).
+- Renaming or deleting a listed test, or changing what it asserts, means updating its row in the same PR.
 
-**What the browser campaign can't reach.** It has no Stripe account. A paid checkout's Session is seeded as the app would create it, and Stripe's answers arrive as signed webhooks (`checkout.session.completed`, `refund.updated`). Ticket emails go straight to the email provider, so they are checked as queued jobs. Links a guest opens come from the captured notification emails (email confirmation, Find your purchase).
+## How the evidence is produced
 
-## T44a rows
+- **Browser campaign** (`pnpm test:e2e`): builds the release pair, migrates from the ops image and runs Playwright against the web image with synthetic accounts, signed Stripe webhooks, captured email and a local object store. `journeys.spec.ts` runs in the webhook step, which has a synthetic Stripe test key.
+- **Baseline** (`node scripts/run-e2e.mjs baseline`): the integration suite.
+- **Operations rehearsal:** deploy, workers, backup, fenced restore, rollback.
+- **Real providers:** Stripe test mode and Resend acceptance in [[E2E and Staging Payments]]; Spaces is blocked until its values are set (OPS-005).
+
+**What the browser campaign can't reach.** It has no Stripe account: a paid checkout's Session is seeded as the app would create it, and Stripe's answers arrive as signed webhooks (`checkout.session.completed`, `refund.updated`). Ticket emails go straight to the provider, so they are checked as queued jobs. Links a guest opens come from captured notification emails (email confirmation, Find your purchase).
+
+## Attendees and members
 
 | Journey | Requirement | Covered by |
 | --- | --- | --- |
@@ -57,9 +67,7 @@ This note maps each requirement to the test that proves it. A requirement is onl
 | | Pending, failed, refunded, compensation | integration `ticket-purchases`, `compensation-refunds`; e2e `purchases`, `order-refunds` |
 | | No other user's record | integration `ticket-purchases` (another member's order is the same 404) |
 
-**Found and fixed by T44a.** A guest's order page kept saying "You're going" after a refund, with an empty ticket list and the amount paid. The tickets had been voided, so the door was right to refuse them, but the page was wrong. The guest page now shows the same states as a member's purchase page through one shared component (`components/purchases/ticket-order-notice.tsx`): refunded, refund processing, disputed, payment review, cancelled. It shows door tickets only while they're valid. A refunded, disputed or cancelled order no longer shows the checkout stepper at Review or offers to keep its tickets in an account.
-
-## T44b rows
+## Societies and staff
 
 | Journey | Requirement | Covered by |
 | --- | --- | --- |
@@ -92,9 +100,9 @@ This note maps each requirement to the test that proves it. A requirement is onl
 | | Ready, collect, return, refund | e2e `merchandise` (Pickups; return and cancellation); integration `merchandise-after-sale` |
 | | Exactly-once stock effects | integration `merchandise-sale` (two buyers race for the last unit; the webhook takes stock once), `merchandise-after-sale` (a return restocks once) |
 | Calendar | Owner reads by month, week, agenda | e2e `calendar`; integration `calendar` (never another society's) |
-| Permission matrix | Every staff role against every dashboard page, two societies, enforced MFA | **e2e `permission-matrix`**: owner, admin, event manager, finance manager and check-in staff each set up MFA. Each then opens all 25 dashboard pages: 200 exactly when the role holds the page's permission, a concealed 404 otherwise. Another society's owner gets 404 for every record page and is refused the context and its API reads. The role map is `lib/permissions`. |
+| Permission matrix | Every staff role against every dashboard page, two societies, enforced MFA | **e2e `permission-matrix`**: owner, admin, event manager, finance manager and check-in staff each set up MFA. Each then opens every dashboard page: 200 exactly when the role holds the page's permission, a concealed 404 otherwise. Another society's owner gets 404 for every record page and is refused the context and its API reads. The role map is `lib/permissions`. |
 
-## T44c rows
+## Finance and operations
 
 | Journey | Requirement | Covered by |
 | --- | --- | --- |
@@ -111,42 +119,12 @@ This note maps each requirement to the test that proves it. A requirement is onl
 | | Provider reconciliation, then a fenced restart | **`ops:restore` pauses every worker in the restored copy**, and the operations rehearsal checks it. **Integration `recovery-fencing`**: a restored refund stays still while fenced; after resuming it settles from Stripe's own refund, with no second refund, one buyer notice and one history entry. A refund Stripe never received is sent once under its fixed idempotency key |
 | | No duplicate external effects | integration `recovery-fencing`, `compensation-refunds` (polls after a missed webhook without another refund), `checkout-attempt-recovery` (same key, never a second Session), `email-outbox` and `notification-outbox` (provider keys); e2e `webhooks` (concurrent replay fulfils once), `journeys` (a refund event sent twice voids once) |
 
-**Found and fixed by T44c.** The recovery runbook relied on a restored copy inheriting a pause from the database it replaced. That only works if the backup was taken while workers were paused, and a disaster backup usually wasn't. So a restored copy could start its workers and act again on refunds or emails the old database had already sent. `pnpm ops:restore` now pauses every worker in each verified copy itself, and a copy that can't be fenced is quarantined.
+## Not covered here
 
-## Combined qualification (T44d)
+- Real providers beyond Stripe test mode and Resend acceptance: inbox delivery, Spaces (OPS-005), hosted webhooks.
+- Real users (H06) and certified accessibility ([[Accessibility Review]]).
+- The assistant (OpenClaw) is deferred.
 
-On 23 Oct 2026, four campaigns qualified every row above on one commit: revision `3ccada0fa8d7eca9e7f7416ee43e4b30de003784`, with the working tree matching it (`treeMatchesRevision`).
+## Related
 
-All four share:
-- the schema `20261112010000_worker_leases`, migration chain digest `589d805fc6907d2f987cf961d95ca1334f8f0eaedcb6e2149efcc29d4fdc3765`;
-- staff MFA enforced in the MFA step and legacy organisation access denied.
-
-Each campaign built the release pair from that revision and recorded it. Image ids differ between campaigns because each built its own pair, and Docker builds aren't byte-for-byte reproducible. The revision, size and migration digest match.
-
-| Campaign | Run | Web image | Ops image | Result |
-| --- | --- | --- | --- | --- |
-| Baseline: build, guards, typecheck, integration, audit | `baseline-b2ff8cf634def9f550fa6665` | `sha256:a924f76828b2…` (387.1 MiB) | `sha256:295cb87d3853…` (939.4 MiB) | 41/41 runner guards, 634/634 integration tests in 95 files, no known vulnerabilities |
-| Browser: MFA, desktop/mobile, webhook steps | `browser-7d05b953af18e5356cfdd5dc` | `sha256:567a5f2c039d…` (387.1 MiB) | `sha256:c48d362dbd13…` (939.4 MiB) | 9 MFA-step (including the permission matrix), 65 desktop/mobile and 10 webhook-step (including both journeys) checks passed |
-| Operations: deploy, workers, backup, fenced restore, rollback | `ops-17701f7891` | `sha256:76ebe059a2d2…` | `sha256:4c417c5a6cc2…` | Passed: worker contract with 3 alerts received; the restored copy verified and fenced (`workersPaused: true`); rollback; a failed migration left writers stopped |
-| Droplet: deploy, upgrade, rollback, failed release | `droplet-707dfb0351` | releases one and two built from the same revision | | Passed in the required step order |
-
-Every run cleaned up after itself. Each e2e run's `manifest.json` records its pair (`release`), and the operations run prints its `releasePair`.
-
-**Defects found by T44, all fixed and covered by tests:**
-- **DEF-024:** a guest's order page said "You're going" after a refund (T44a).
-- **DEF-025:** a restored copy didn't inherit the worker pause, so it could act again on refunds or emails the old database had already sent (T44c).
-- **DEF-026:** the web image built the app's origin into its server code, so one image served only the domain it was built for (T44d).
-
-**Not covered here.** OpenClaw is deferred. Real providers are covered by T45 ([[E2E and Staging Payments]]; Spaces blocked), and real users come in H06.
-
-## Re-qualification (26 Oct 2026)
-
-#189 updated axe-core to 4.14 without a browser run. Its new Label in Name check failed the desktop step on main (DEF-046), so the steps after it hadn't run since, including the webhook step with both connected journeys. #193 fixed it and re-ran the baseline and the browser campaign on `4bbd6f9` with its changes (`treeMatchesRevision: false`):
-
-| Campaign | Run | Result |
-| --- | --- | --- |
-| Baseline | `baseline-b804a38b50797943158c3f63` | 44/44 runner guards, typecheck, 748/748 integration tests in 105 files, no known vulnerabilities |
-| Browser | `browser-872deb2b8ed7d8950f19d919` | Failed on two faults in the first pickup fix: a stray space in the button's name, and hidden text widening the Pickups page at 768px |
-| Browser | `browser-c94009db98b26f9a705ca590` | 9 MFA-step, 69 desktop/mobile and 10 webhook-step checks passed, including both journeys |
-
-The operations and Droplet rehearsals weren't rerun, because nothing they cover changed.
+[[E2E and Staging Payments]] · [[Production Operations]] · [[Engineering Delivery Workflow]] · [[Pre-hosting Candidate]] · [[Accessibility Review]]

@@ -1,65 +1,132 @@
 ---
 status: living
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[API Reference]]", "[[Database and Multi Tenancy]]", "[[Production Operations]]"]
-sources: [lib/assets, lib/organisations, prisma/schema.prisma, docker-compose.dev.yml]
+related: ["[[Database and Multi Tenancy]]", "[[Event Lifecycle]]", "[[Memberships and Merchandise]]", "[[Route Security Inventory]]", "[[Production Operations]]"]
+sources: [lib/assets/service.ts, lib/assets/storage.ts, lib/assets/image.ts, lib/assets/references.ts, lib/assets/maintenance.ts, lib/organisations/profile.ts, lib/organisations/join.ts, lib/organisations/discovery.ts, lib/organisations/bootstrap.ts, lib/organisations/authority.ts, scripts/maintain-assets.mjs, docker-compose.dev.yml]
 ---
 
 # Society Profiles and Assets
 
-Package 3 follows dependency order: safe assets (T07), profiles/onboarding (T08), then discovery/join (T09). Implementation is not hosted activation; qualification evidence belongs in the readiness ledger and PR.
+**Owns:** society creation (bootstrap), the public profile and its editor, the society directory and free join/leave, and the image (asset) contract: upload, sanitisation, quotas, references, delivery, cleanup and storage.
+**Read when:** changing a society's public fields, discovery or joining, or anything that stores or serves an image.
+**Not here:** staff roles and invites ([[Authentication and Dashboard Access]]); paid memberships ([[Memberships and Merchandise]]); event images on events ([[Event Lifecycle#Hero image]]); guard order and rate-limit numbers ([[Route Security Inventory]]); storage env vars ([[Environment Variables]]); backups ([[Production Operations]]).
 
-## Profiles and Onboarding
+## Code
 
-`/dashboard/settings/profile` requires live organisation settings authority and staff MFA. Its four steps save identity, optional branding and public operating policies, then show completion and links to implemented staff/security/payment settings. Saves retain unsaved local edits on failure; an optimistic version conflict requires an explicit reload, with confirmation before discarding edits. Continuing between steps keeps edits; save publishes the supplied profile fields.
+| Concern | Where |
+| --- | --- |
+| Upload, delete, preview, public and member delivery | `lib/assets/service.ts`: `uploadAsset`, `deleteAsset`, `previewAsset`, `assetBytes`, `publicAsset`, `memberEventAsset`, `assetPermission`, `assetKinds` |
+| Decode and re-encode | `lib/assets/image.ts`: `sanitiseImage`, `readImageForm`, `MAX_IMAGE_BYTES`, `AssetError` |
+| Object storage client | `lib/assets/storage.ts`: `assetStorage` |
+| What references an image | `lib/assets/references.ts`: `assetPublicReferenced`, `assetReferenced` |
+| Cleanup and inspection | `lib/assets/maintenance.ts`: `maintainAssets`, `inspectAssetObjects`, `inspectAssets`; CLI `scripts/maintain-assets.mjs` (`pnpm assets:maintain`) |
+| Profile read and save | `lib/organisations/profile.ts`: `profileSchema`, `readProfile`, `updateProfile`, `readChargeReadiness`, `readTimeZone` |
+| Public profile | `lib/organisations/public-organisations.ts`: `publicOrganisation`, `publicProfileSelect` |
+| Directory search | `lib/organisations/discovery.ts`: `discoveryInput`, `discoverOrganisations` |
+| Join and leave | `lib/organisations/join.ts`: `setSocietyJoin`, `joinedOrganisationIds` |
+| Create a society | `lib/organisations/bootstrap.ts`: `bootstrapOrganisation` |
+| Locks with live authority | `lib/organisations/authority.ts`: `lockOrganisationActor`, `organisationIdBySlug` |
+| Route helpers | `lib/organisations/http.ts`: `organisationActor`, `organisationError` |
+| Dashboard overview data | `lib/organisations/overview.ts`: `getOrganisationOverview`, `getDoorDay`, `upcomingEventCounts` |
+| Routes | `POST /api/orgs`, `GET`/`PATCH /api/orgs/[orgSlug]/profile`, `POST /api/orgs/[orgSlug]/join`, `POST /api/orgs/[orgSlug]/leave`, `GET /api/orgs/search`, `GET /api/public/organisations/search`, `POST /api/orgs/[orgSlug]/assets`, `GET`/`DELETE /api/orgs/[orgSlug]/assets/[assetId]`, `GET /api/public/assets/[assetId]` |
+| Pages | `/dashboard/settings/profile`, `/dashboard/organisations`, `/societies`, `/societies/[orgSlug]` |
+| UI | `components/settings/society-profile.tsx`, `components/organisations/society-header.tsx` |
+| Tests | `tests/integration/assets.test.ts`, `tests/integration/society-profiles.test.ts`, `tests/integration/society-discovery.test.ts`, `tests/integration/event-hero.test.ts` |
 
-Profile completion requires a name, description and separately supplied valid public contact email. Existing profiles remain discoverable while incomplete. Contact does not default to the account's private email. Optional refund/pickup policies and IANA timezone are public; these fields do not change existing checkout/refund rules or Stripe readiness. Slug, tenant owner, Stripe fields and server completion/version timestamps cannot be edited through PATCH.
+## Creating a society
 
-`GET/PATCH /api/orgs/[orgSlug]/profile` exposes an explicit profile DTO. PATCH accepts the full editable field set plus expectedProfileVersion, bounds the body, requires origin/CSRF and fail-closed rate protection, then rechecks live session/permission/MFA under User -> Organisation -> sorted Asset locks. Version conflicts return 409; valid ready logo/cover images must match both society and slot. Composite database foreign keys additionally prevent cross-tenant references. Attaching clears the orphan clock; detaching starts a new 24-hour grace. Public delivery and all-reference deletion checks are separate predicates so future private content cannot accidentally become public.
+`POST /api/orgs` (`bootstrapOrganisation`) for a verified `organisation` account: trusted origin, rate bucket `organisation_create`, `createOrganisationSchema`; a name or slug with no letters or numbers is 400.
 
-Bootstrap reserves the verified organisation account under its User lock and locks existing societies in ID order. Either a retained bootstrap pointer or active staff authority blocks another primary society, including after handover retires the pointer. Historical revoked rows alone do not block a new primary. Bootstrap creates the compatibility join row, active named owner and audit atomically; only slug uniqueness conflicts are retried. The new society clears stale dashboard context and opens profile setup. Handover never restores a retired pointer.
+- Under the User lock it finds societies the account already points to (`accountUserId`) or holds active staff on, locks them in id order, and refuses if any exist. Revoked staff rows alone don't block. Handover never restores a retired pointer, so it can't re-enable a second society.
+- Creates the society (with `accountUserId`, which also satisfies DEF-040), an `org_owner` join row, an active `owner` staff row and `organisation.created` in one transaction. Only a slug collision is retried, with a numeric suffix.
+- The 201 response deletes the dashboard context cookie, so a stale context can't hide the new society; the dashboard then opens profile setup.
 
-Public `/societies/[orgSlug]` uses a whitelisted profile DTO and at most 50 upcoming published events. All text is escaped. The header (`components/organisations/society-header.tsx`) shows Overview and Events tabs, Memberships (`/societies/[orgSlug]/memberships`, T24a) only while a plan is on sale, and Merchandise (`/societies/[orgSlug]/merchandise`, T26) only while a product is on sale; signed-in members see `Joined` and, separately, `Member until` while a membership runs. See [[Memberships and Merchandise]]. Namespaced purple tokens in app/globals.css apply to these society surfaces and the explicit society button variant; existing button defaults and other pages keep their current styling.
+## Profiles and onboarding
 
-Apply 20261011020000_society_profiles before the profile app release. Its fields/defaults are additive; existing societies gain empty public contact/policies and Australia/Brisbane timezone. Keep fields/references when rolling code back. Recovery verifies profile completion/version/contact and logo metadata/object association together.
+- **Editor:** `/dashboard/settings/profile` (`organisation:settings` and staff MFA). Four steps: identity, branding, policies, finish. Continuing keeps edits; save writes the whole profile. The finish step shows completion, charge readiness as last recorded from Stripe (only with `stripe:manage`) and team size (only with `staff:manage`).
+- **Fields** (`profileSchema`): name 1 to 120, description up to 5000, `supportEmail` (blank or an email), `refundPolicy` and `pickupPolicy` up to 5000, `timeZone` (an IANA zone from the server's list; the stored value is always offered), `logoAssetId`, `coverAssetId`, plus `expectedProfileVersion`. Slug, owner, Stripe fields, completion and version can't be set by PATCH. `Organisation_profile_bounds_chk` backs the lengths.
+- **Completion:** `onboardingCompletedAt` is set when name, description and a separately supplied `supportEmail` are present, and cleared if one is removed. Contact never defaults to an account's private email. Incomplete profiles stay public and listed.
+- **Save** (`PATCH /api/orgs/[orgSlug]/profile`): trusted origin, rate bucket `organisation_profile`, 80,000-byte body cap, then under User, Organisation and sorted Asset locks it rechecks live authority and MFA, compares `profileVersion` (409 on a stale one), and accepts a logo or cover only if it is a ready, undeleted asset of this society with the matching `kind`. Audits `organisation.profile_updated` with the changed field names.
+- **Pickup details:** a society can't clear `pickupPolicy` while any merchandise product is published (400), because buyers must always see them.
+- **Conflict UI:** a stale save keeps the editor's values and offers Save my version (re-reads the latest `profileVersion` and saves over it) or Reload latest profile (discards after confirmation).
+- `timeZone` (default `Australia/Brisbane`) drives every society date: events, plans, analytics, the calendar.
 
-## Discovery and Free Affiliation
+## Public profile and directory
 
-`/societies` is an anonymous directory, linked from the responsive shared navbar. Cards expose name, slug, a bounded description, public logo and the next upcoming published event. Incomplete profiles remain visible. Search treats wildcard characters literally, bounds queries to 120 characters and pages to 50 societies (default 25), and orders by name then ID. Opaque forward cursors are bound to the same query; the first-page link resets navigation. Empty, loading, invalid-cursor and recoverable error states are explicit.
+- **Profile page** `/societies/[orgSlug]` uses `publicProfileSelect` (whitelisted fields) and lists at most 50 upcoming published `public` events. Text is escaped. `components/organisations/society-header.tsx` shows cover, logo and name, the viewer's Joined badge and, separately, Member until while a membership runs, then the tabs: Overview, Events, Memberships (only while a plan is on sale) and Merchandise (only while a product is on sale) ([[Memberships and Merchandise]]). No cover shows a neutral placeholder; no logo shows the society's initial. Society surfaces use namespaced tokens ([[UI Architecture Rules]]).
+- **Directory** `/societies` (anonymous): name, slug, description cut to 240 characters, logo and the next upcoming public published event. Search matches name or slug, case-insensitive, with `%`, `_` and `\` taken literally; queries up to 120 characters; `limit` 1 to 50 (default 25); ordered by name then id; opaque forward cursors bound to the query. Invalid input is 400.
+- `GET /api/public/organisations/search` carries no join state, contact, staff, Stripe or roster fields and is cacheable (`public, max-age=60`). `GET /api/orgs/search` adds the caller's `joined` flags, answers `private, no-store`, and keeps its original envelope unless `limit` or `cursor` is sent.
 
-The public search API contains no join state, account contact, staff, Stripe or private roster fields. The authenticated search endpoint preserves its original default response envelope; explicit limit/cursor requests opt into pagination. Its joined flags and the dynamic profile join control belong only to the current caller and cannot enter public response caches.
+## Joining and leaving
 
-Anonymous profile visitors sign in with a return callback; unverified accounts are offered verification. Neither navigation nor authentication automatically joins a society. Verified member accounts explicitly join; organisation accounts do not. A Joined badge means free affiliation, not paid benefits or staff authority. `/dashboard/organisations` manages joins, including for named member staff without changing their selected staff context.
+- Joining is free affiliation (`OrganisationMember`, role `member`): the Joined badge, never staff authority, member prices or members-only access.
+- `POST /api/orgs/[orgSlug]/join` needs a verified `member` account; `POST /api/orgs/[orgSlug]/leave` needs a `member` account. Both: trusted origin and rate bucket `organisation_join_leave`. Organisation accounts are refused; unverified accounts are offered verification.
+- `setSocietyJoin` locks and rechecks the User, then the Organisation, and upserts or deletes only the caller's row. Repeats are idempotent.
+- Leaving keeps staff authority, orders, tickets and paid memberships. Navigation or sign-in never joins anyone.
+- `/dashboard/organisations` manages joins, including for member accounts who are also staff, without changing their selected staff context.
 
-Join and leave retain origin/CSRF, session, account-role and rate checks. The service locks and rechecks the live User before the Organisation; idempotent upsert/delete affects only that caller's OrganisationMember row. Leave preserves staff authority, other users, paid orders and tickets. Paid MembershipGrant does not exist yet; its survival regression belongs to T22/T24 when that model is introduced. Client refresh synchronises joined lists, and obsolete search responses cannot replace newer results.
+## Asset contract
 
-T09 adds no schema, provider or worker change. Rollback reverts app code while retaining joins and the additive T07/T08 schema and object storage.
+### Upload
 
-## Safe Asset Contract
+`POST /api/orgs/[orgSlug]/assets?kind=logo|cover|event|product` with one multipart `file`.
 
-`POST /api/orgs/[orgSlug]/assets?kind=logo|cover|event|product` accepts one multipart `file`. Logo/cover requires organisation settings permission, event requires event management and product requires merchandise management. Requests retain trusted origin/CSRF, live identity, staff authority, MFA and fail-closed upload protection. Actor and tenant upload buckets each allow 20 attempts/hour. Delete allows 30 requests/10 minutes per actor/tenant. Quotas reserve pending and retained objects under tenant locks: 100 assets and 250 MiB per society.
+- Permission by kind (`assetPermission`): `logo` and `cover` need `organisation:settings`, `event` needs `events:manage`, `product` needs `merchandise:manage`. Trusted origin, live staff authority, MFA, and the `asset_upload` rate bucket checked per actor and per society, failing closed ([[Route Security Inventory#Rate limits]]).
+- Input: JPEG, PNG or WebP, at most 5 MiB (`MAX_IMAGE_BYTES`; the form reader allows 64 KiB of multipart overhead), static, at most 4096 × 4096. Structural checks refuse trailing data and mismatched declarations. `sharp` decodes strictly and re-encodes to static WebP without metadata.
+- Quota per society, counted under the Organisation lock over undeleted assets: 100 images and 250 MiB (429 "Society image storage quota reached").
+- The object key is `assets/{uuid}.webp`; filenames and URLs never become keys.
+- Two transactions around the upload: reserve a `pending` row (with the quota check), put the bytes and verify them with a HEAD outside any lock, then under User, Organisation and Asset locks recheck the session version, authority and MFA and mark `ready` with `asset.uploaded`. Any failure marks the row `failed` and keeps its key so cleanup can remove the bytes.
+- Uploading never makes an image public.
 
-JPEG/PNG/WebP input is limited to 5 MiB and 4096 by 4096 decoded dimensions. Structural checks reject trailing payloads and invalid format declarations; strict decoding/re-encoding emits static WebP without original metadata. Original filenames/remote URLs never become object keys. PostgreSQL stores metadata and ownership; S3-compatible storage holds only processed bytes.
+### References
 
-`GET /api/orgs/[orgSlug]/assets/[assetId]` is an authorised preview with private/no-store headers. `DELETE` denies referenced or uploading assets and creates an audited tombstone before deleting bytes. Repeat deletion recovers interrupted storage deletion without duplicate audit entries. Uploaded images are not automatically public.
+`lib/assets/references.ts` holds the two predicates; keep them separate so a new private reference can't become public by accident.
 
-`GET /api/public/assets/[assetId]` serves only ready images referenced by public content (a members-only event's image goes, uncached and private, only to members it is open to; T24b2), with an explicit WebP content type, nosniff, content-hash ETag and five-minute cache lifetime. Unattached/pending/deleted assets return 404. Public references are society logos and covers and, since T11b, the hero image of a published, non-members-only event (`Event.heroAssetId`). Since T25 the photos of a published product are public too. Any event or product reference, published or not, keeps an image from deletion and cleanup. A society can't clear its pickup details (`pickupPolicy`) while it has products on sale. Other uploads remain private previews.
+| Predicate | True when |
+| --- | --- |
+| `assetPublicReferenced` | A society's logo or cover; the hero image of a published, not members-only event; a photo of a published product |
+| `assetReferenced` | Any of the above, or any event hero or product photo, published or not |
 
-Uploads move pending -> ready only after storage verification and a transaction rechecking session version, live permission and MFA. Provider/authority failures retain a failed record/key for recovery. No provider call occurs while database locks are held. Lock ordering is User -> Organisation -> Asset, and Event -> Asset when an event attaches its image ([[Event Lifecycle]]).
+Composite foreign keys (`(assetId, organisationId)`) make the database refuse another society's image on a profile, event or product. Every attach or detach refreshes `unreferencedAt` (null while referenced, now when the last reference goes).
 
-## Local Storage and Recovery
+### Delivery
 
-Local activation on 2026-10-12 preserved development database/Redis and prior backups, refreshed the app dependency cache and applied all 34 migrations after verifying a private database archive. The patched object store now uses persistent thunderstrux_asset_data; bounded object inspection passes. Anonymous directory/profile/read APIs and protected/missing-image denials pass. [[Project Handover 2026-10-12]] records archive/hash and evidence paths. Hosted activation remains separate.
+- **Private preview** `GET /api/orgs/[orgSlug]/assets/[assetId]`: authenticates before saying whether the image exists, needs the permission for its kind, serves ready images only, `private, no-store`, `nosniff`.
+- **Public** `GET /api/public/assets/[assetId]`: serves a ready image only while `assetPublicReferenced` holds, as `image/webp` with `nosniff`, ETag = the content hash and `public, max-age=300`. Anything else is 404.
+- **Members-only event images** are not public: the same route serves them only to a signed-in verified member whose live membership of that society carries `members_only_events` (`memberEventAsset`), as `private, no-store`, never on the shared cached path.
+- **Bytes are checked:** `assetBytes` refuses an object whose size or SHA-256 differs from the row (404).
+- **SEC-021:** a matching `If-None-Match` is 304 and a HEAD is 200 with `Content-Length`, both answered from the row without reading storage. `assetStorage` keeps one S3 client (one connection pool) per process and configuration; every call has a 10-second timeout, and provider errors map to 503 without echoing the provider message.
 
-Development Compose builds SeaweedFS 4.48 from checksum-pinned upstream source with digest-pinned Go 1.27.2/Alpine images and the patched x/net 0.60.0 dependency. The upstream binary failed the initial fixable high/critical scan, so it is not the delivery image. The local image uses S3 authentication, a non-root/read-only runtime and a persistent `asset_data` volume. Its synthetic credentials are local-only and the storage ports are not published. Restarting the app must preserve the volume. Existing development resources are not recreated by validation.
+### Delete and cleanup
 
-Hosted storage uses ASSET_STORAGE_ENDPOINT, ASSET_STORAGE_BUCKET, ASSET_STORAGE_REGION and ASSET_STORAGE_PATH_STYLE. Combine `docker-compose.hosted.yml` with `docker-compose.assets.hosted.yml` to mount the two external storage secrets. ASSET_STORAGE_ACCESS_KEY and ASSET_STORAGE_SECRET_KEY remain server-only; the container entrypoint also supports their `_FILE` forms. Actual secret mounts, bucket configuration, HTTPS and provider acceptance must be supplied and verified before hosted activation. Do not put storage values in NEXT_PUBLIC variables or commit credentials.
+- `DELETE /api/orgs/[orgSlug]/assets/[assetId]` (rate bucket `asset_delete`): 409 while referenced or still uploading. It marks the row `deleted` with `asset.deleted`, then deletes the bytes and sets `deletedAt`. A repeat finishes an interrupted storage delete without a second audit row.
+- `pnpm assets:maintain` (`maintainAssets`) is a dry run by default; `--apply` deletes rows marked `deleted` and images unreferenced for 24 hours, under Organisation and Asset locks, rechecking references, auditing `asset.orphan_removed`. It processes 100 rows per run and prints `nextCursor` for `--cursor`. `--objects` lists bucket objects with no row (never deletes them); `--integrity` checks ready objects' size and hash. Never delete unfamiliar bucket objects automatically.
 
-Run `pnpm assets:maintain` inside the configured Docker environment for a bounded dry-run; add `--apply` to delete eligible unreferenced objects after a 24-hour grace. A run processes at most 100 rows and emits a nextCursor, accepted through `--cursor`. Deleted tombstones retry immediately. `--objects` performs bounded object-to-metadata inspection without deletion; `--integrity` checks ready object size/hash against its metadata. Never delete unfamiliar bucket objects automatically.
+## Storage and recovery
 
-Apply the additive asset migration once before rolling out its app code. Back up both PostgreSQL metadata and object bytes; database-only restore does not restore images. Pause uploads/cleanup during recovery, restore into isolated targets and verify hashes/ownership before resuming. Keep additive tables and object bytes on code rollback. Hosted scheduling and off-machine backup/restore remain activation gates.
+- **Development:** `docker-compose.dev.yml` runs an `object-store` service built from `docker/Dockerfile.assets` (S3-compatible, authenticated, non-root, read-only filesystem, ports not published) with the persistent `asset_data` volume, and points the app at bucket `thunderstrux-assets`. Its credentials are local-only. Keep the volume across restarts.
+- **Hosted:** combine `docker-compose.hosted.yml` with `docker-compose.assets.hosted.yml`, which mounts the access and secret keys as Docker secrets (`_FILE` forms read by `docker/entrypoint.sh`). Storage values never go in `NEXT_PUBLIC_*` variables ([[Environment Variables]]).
+- **Backups need both halves:** the `Asset` rows in Postgres and the object bytes. A database-only restore leaves images 404 (`assetBytes` fails the size and hash check). Pause uploads and cleanup during recovery, restore into isolated targets, then run `pnpm assets:maintain -- --integrity` and `--objects` before resuming ([[Production Operations]]).
+- Rolling code back keeps the additive asset and profile columns and the object bytes.
 
-## Editor Behaviour After The Specification-Alignment Refactor
+## Traps
 
-The society timezone is chosen from the server's IANA list (the stored value is always offered). A version conflict keeps the editor's unsaved values and offers `Save my version`, which re-reads the latest `profileVersion` and saves over it, or `Reload latest profile`, which discards them after confirmation. The Finish step lists profile completion, charge readiness as last recorded from Stripe (shown only with `stripe:manage`) and team size (shown only with `staff:manage`). The public profile shows a neutral placeholder when no cover is set and the society's initial when no logo is set.
+- Don't serve image bytes on a 304 or HEAD path; answer from the row (SEC-021).
+- Don't make `assetReferenced` and `assetPublicReferenced` one function.
+- Don't create an `S3Client` per request; use `assetStorage()`.
+- A new image kind needs a permission in `assetPermission`, a reference in both predicates, and a composite foreign key.
+- Lock order for asset writes: User, Organisation, then Asset (sorted when several); an event locks its Event before the Asset ([[Database and Multi Tenancy#Lock order]]).
+
+## Failure and recovery
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| 503 "Image storage is not configured" | Missing bucket or keys, or an endpoint without `http(s)://` | Set the storage env vars ([[Environment Variables]]) |
+| 503 "Image storage is temporarily unavailable" | Provider error or 10-second timeout | Check the object store; rows stay `pending` or `failed` and are retried or cleaned |
+| Images 404 after a restore | Bytes missing or different from the row | Restore the object store; check with `--integrity` |
+| 429 on upload | Quota or `asset_upload` bucket | Remove unused images or wait |
+
+## Related
+
+[[Database and Multi Tenancy]] · [[Event Lifecycle]] · [[Memberships and Merchandise]] · [[Authentication and Dashboard Access]] · [[Route Security Inventory]] · [[Audit Coverage]] · [[Production Operations]] · [[Environment Variables]]

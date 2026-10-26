@@ -2,7 +2,7 @@
 status: historical
 last-reviewed: 2026-10-16
 owner: engineering
-related: ["[[Project Handover]]", "[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-12]]"]
+related: ["[[Project Handover]]", "[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Issue and Defect Register]]", "[[Project Handover 2026-10-12]]"]
 sources: [package.json, prisma/schema.prisma]
 ---
 
@@ -10,11 +10,11 @@ sources: [package.json, prisma/schema.prisma]
 
 **Archived 2026-10-16 when the session that began on 2026-10-15 at main `33e84ce` replaced it. [[Project Handover]] is the current handover; the content below is the handover as it stood at `33e84ce`, retained unchanged as dated evidence and no longer maintained. "This session" below means the session that began on 2026-10-12. The design-system re-sync completed afterwards is recorded in the current handover.**
 
-This was the only current handover. It covers the session that began on **2026-10-12 at main `b82198d`**: the specification-alignment refactor described below. Delivery from PR #31 to PR #53, with its run IDs and qualification evidence, is retained in [[Project Handover 2026-10-12]]. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
+This was the only current handover. It covers the session that began on **2026-10-12 at main `b82198d`**: the specification-alignment refactor described below. Delivery from PR #31 to PR #53, with its run IDs and qualification evidence, is retained in [[Project Handover 2026-10-12]]. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Issue and Defect Register]] for open risks.
 
 ## Current State
 
-**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Packages 1, 2 and 3 (T01–T09) are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Package | Tasks | Delivered capability | Evidence |
 | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ Redis client qualification (2026-10-13): [PR #52](https://github.com/ENGGP/thund
 
 ## Specification-Alignment Refactor (this session)
 
-**Purpose.** Make the code match the [PRD](../THUNDERSTRUX_PRD.md), [UX Specification](../THUNDERSTRUX_UX_USER_FLOW_SPEC.md), [Database Specification](../THUNDERSTRUX_DATABASE_ARCHITECTURE_AND_SCHEMA_SPEC.md) and [Visual Design](../THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) for everything owned by T01–T09, with the visual system applied to every existing screen. No T10+ feature is built, no schema migration is added, and domain, security and payment behaviour is unchanged.
+**Purpose.** Make the code match the [[THUNDERSTRUX_PRD|PRD]], [[THUNDERSTRUX_UX_USER_FLOW_SPEC|UX Specification]], [[THUNDERSTRUX_DATABASE_ARCHITECTURE_AND_SCHEMA_SPEC|Database Specification]] and [[THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]] for everything owned by T01–T09, with the visual system applied to every existing screen. No T10+ feature is built, no schema migration is added, and domain, security and payment behaviour is unchanged.
 
 **Maintainer decisions (2026-10-12).**
 
@@ -84,7 +84,7 @@ Redis client qualification (2026-10-13): [PR #52](https://github.com/ENGGP/thund
 
 **Rebase note.** After #54 and the Renovate change #51 merged, PRs 2 to 5 were rebased onto main `f753ba9` on 2026-10-12. The revisions named in the rows above are the commits that were tested before the rebase; `git diff` between each tested commit and its rebased equivalent contains only the four `.github/workflows` files changed by #51, so the recorded runs still cover the PR heads.
 
-**Findings registered rather than changed.** PR 2 records the six copies of the active-staff-or-legacy-owner predicate (AUTHZ-001), four cursor implementations (PAG-001) and the remaining manual error mapping in event, order, ticket, Connect and payment routes (API-001) in [[Non-Blocking Issue Register]]. They are security- or payment-sensitive and belong to focused changes. PR 2 also fixes DEF-023: one `AUTH_SECRET` resolver for auth.ts and proxy.ts, and legacy `/dashboard/[orgSlug]` links that check live permissions.
+**Findings registered rather than changed.** PR 2 records the six copies of the active-staff-or-legacy-owner predicate (AUTHZ-001), four cursor implementations (PAG-001) and the remaining manual error mapping in event, order, ticket, Connect and payment routes (API-001) in [[Issue and Defect Register]]. They are security- or payment-sensitive and belong to focused changes. PR 2 also fixes DEF-023: one `AUTH_SECRET` resolver for auth.ts and proxy.ts, and legacy `/dashboard/[orgSlug]` links that check live permissions.
 
 **Claude Design sync (2026-10-13).** The eight `components/ui/` primitives are published to the claude.ai/design project "Thunderstrux UI" (project ID 6075c42a-6f43-4f56-8d3c-6554004a550a). Sync inputs live in `.design-sync/` (config, previews, conventions, `build-css.mjs`); `.design-sync/NOTES.md` holds the repo quirks and re-sync risks. It does not touch application code, and only the visual design spec from `docs/` is uploaded. Re-sync after changing `components/ui/*` or the `--ts-*` tokens in `app/globals.css`, and re-check `.design-sync/conventions.md` names.
 
@@ -98,7 +98,7 @@ The maintainer approved a Claude Design redesign (canvas "Thunderstrux redesign"
 - **PR4** (`codex/redesign-member-public-screens`): member, public and sign-in screens. Account settings (section links, signed-in summary, authenticator row only for eligible people), member overview (profile prompt instead of an inline form), My tickets (cards, short references, skeleton), the event buy box (one choice, one quantity, `Buy tickets`, verify prompt), signup order, staff authenticator setup, notices across the sign-in and account forms, skeletons for home and the public loading states. `scripts/staging-driver.mjs` now uses a verified buyer and the new button name.
 - **PR5** (`codex/redesign-specs-and-design-sync`): `THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md` section 16 and `THUNDERSTRUX_UX_USER_FLOW_SPEC.md` section 24 record the implemented redesign and its deviations (status colours, navigation, components, feedback and loading rules, event workspace tabs); part of T34's navigation landed early. `.design-sync/` inputs now cover `Skeleton`, `ListSkeleton`, `Icon` and the `Notice` action slot.
 - **Next:** the maintainer runs `/design-sync` to push the updated primitives and the visual spec to the "Thunderstrux UI" design-system project; the sync tool runs only inside that user-started skill.
-- Defects found during the audit and kept out of the redesign are EVT-001, EVT-002, EVT-003, PUB-001 and ORD-001 in [[Non-Blocking Issue Register]].
+- Defects found during the audit and kept out of the redesign are EVT-001, EVT-002, EVT-003, PUB-001 and ORD-001 in [[Issue and Defect Register]].
 
 ## Next Safe Actions
 

@@ -451,7 +451,7 @@ New browser specs grow with the waves and become T44's journeys: `events-builder
 
 ## 8. Documentation in each PR
 
-- Always: the readiness plan task and evidence, [Project Handover](obsidian/Project%20Handover.md) current state and next action, the [issue register](obsidian/Non-Blocking%20Issue%20Register.md) for items absorbed or found, API Reference for new routes, Database and Multi Tenancy for schema.
+- Always: the readiness plan task and evidence, [Project Handover](obsidian/Project%20Handover.md) current state and next action, the [issue register](obsidian/Issue%20and%20Defect%20Register.md) for items absorbed or found, API Reference for new routes, Database and Multi Tenancy for schema.
 - UI PRs: [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md), [visual design](THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) section 16 and [UX specification](THUNDERSTRUX_UX_USER_FLOW_SPEC.md) section 24.
 - By subsystem: Event Lifecycle (T11, T12, T15), Payment Lifecycle and Stripe Payments and Connect (T13, T14, T17, T18, T21), Ticket Check-in Implementation (T19b), Email Delivery Implementation (T16, T30 and every task adding a template), Society Profiles and Assets (T24a, T26), Production Operations (T14b, T42, T43).
 - New living notes, added to the Documentation Index when created: Guest Access (T16), Memberships and Merchandise (T20–T28), Analytics and Calendar (T31–T33), OpenClaw (T35–T37, when it is scheduled).

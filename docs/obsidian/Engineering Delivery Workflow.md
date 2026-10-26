@@ -2,11 +2,15 @@
 status: living
 last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Development Workflow]]", "[[Non-Blocking Issue Register]]"]
+related: ["[[Development Workflow]]", "[[Issue and Defect Register]]"]
 sources: [AGENTS.md, package.json]
 ---
 
 # Engineering Delivery Workflow
+
+**Owns:** how a change is branched, validated by risk, reviewed, cleaned up and merged.
+**Read when:** before you validate or deliver any change.
+**Not here:** how to run the commands ([[Development Workflow]], [[E2E and Staging Payments]]); open risks ([[Issue and Defect Register]]).
 
 This is the minimum delivery workflow for a solo-maintained startup. Keep routine work lightweight while preserving tenant, authentication, payment, data, migration, and production safety. Deliver changes through a focused pull request to protected `main`, supported by proportionate local validation. GitHub test checks are not required for merge; test workflows are available for optional manual dispatch.
 
@@ -31,7 +35,7 @@ Keep execution and reporting concise: read relevant references once, use targete
 - Keep protected routes responsible for transport and security checks. Put domain transactions, persistence, recovery, and provider composition in application services.
 - For a defect, add a failing reproducer when practical, make the narrowest justified fix, and retain regression coverage. Document why when a reproducer is unsafe or impractical.
 - Prefer additive migrations. Audit existing data, verify a backup for non-disposable data, test the full migration chain, and document release/rollback compatibility.
-- Do not widen the task for unrelated findings. Record a confirmed non-blocking issue in [[Non-Blocking Issue Register]] with impact, evidence, and next action.
+- Do not widen the task for unrelated findings. Record a confirmed non-blocking issue in [[Issue and Defect Register]] with impact, evidence, and next action.
 - Never commit secrets, generated caches, local Obsidian workspace state, test artifacts, or unrelated changes.
 
 ## 3. Validate By Risk

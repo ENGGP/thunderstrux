@@ -1,183 +1,114 @@
 ---
 status: living
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Architecture Overview]]", "[[Project Handover]]"]
-sources: [app, lib, package.json]
+related: ["[[Architecture Overview]]", "[[Frontend and Backend Flow]]", "[[Documentation Index]]"]
+sources: [app, components, lib, prisma, scripts, tests, docker, deploy, config, .github, .design-sync, package.json]
 ---
 
 # Thunderstrux Codebase Map
 
-## Dependency remediation record
+**Owns:** where code lives: every top-level directory and root file that matters, and one line for every entry directly under `lib/` and `components/` with its key files.
+**Read when:** looking for where something is implemented, or deciding where new code goes.
+**Not here:** how the pieces fit and the invariants ([[Architecture Overview]]); which page is which ([[Frontend and Backend Flow]]); scripts and commands in use ([[Development Workflow]], [[Production Operations]]).
 
-[[Dependency Automation]] records the current security baseline, audit results, rollout limits, and scoped Prisma override. `package.json` owns exact pins; `pnpm-lock.yaml` owns resolved transitive versions. `tests/integration/dependency-security.test.ts` adds actual Auth.js and Prisma-config compatibility coverage. [[Dependency Advisory Triage 2026-09-18]] retains the original advisory inventory as historical evidence.
+Thunderstrux is a Docker-first Next.js App Router app for student societies: events and tickets, memberships, merchandise, Stripe Connect payouts, staff and audit. Start with [[Documentation Index]] and [[Project Handover]].
 
-Thunderstrux is a Docker-based Next.js App Router SaaS for student societies. The current product scope is:
+## Top level
 
-- Email/password authentication, verification, recovery, private settings, email change and permanent closure (T02-T04).
-- Account roles `member` and legacy `organisation`; named organisation staff authority is stored separately from join membership.
-- Member profile onboarding, organisation search/join/leave, public organisation details, public event browsing, ticket purchase, and `/tickets`.
-- Legacy organisation accounts manage their bootstrap organisation; named staff can manage permitted organisations through `/dashboard`.
-- Organisation management routes under `/dashboard/events`, `/dashboard/orders`, and `/dashboard/settings`.
-- Organiser order detail, manual refund flag, Stripe session visibility, and paid-order email resend.
-- Organiser event ticket visibility, manual attendee check-in, and check-out.
-- Legacy `/dashboard/[orgSlug]/*` routes retained as compatibility redirects.
-- Event creation, editing, publishing, unpublishing, and deletion rules.
-- Public event discovery and public event detail pages.
-- Stripe Checkout ticket purchase flow for published events.
-- Stripe Connect Express lifecycle with state-based onboarding UX.
-- Webhook-driven order reconciliation, ticket issuance, and inventory reduction.
-- Ticket delivery email after successful webhook fulfilment, with manual resend tracking.
-- Idempotent development seed data.
+| Path | What lives there |
+| --- | --- |
+| `app/` | App Router pages, layouts and `app/api/**/route.ts` handlers. Route groups `(public)` and `(dashboard)` don't appear in URLs. `app/layout.tsx` (session provider, header, fonts, skip link), `app/globals.css` (tokens), `app/error.tsx`, `app/not-found.tsx`. Page map: [[Frontend and Backend Flow]]; routes: [[API Reference]] |
+| `components/` | React components by feature; primitives in `components/ui/` |
+| `lib/` | Application services and shared helpers (below). Nothing in `app/` imports Prisma; it calls these |
+| `prisma/` | `prisma/schema.prisma`, `prisma/migrations/` (additive, applied by the one-shot migration job), `prisma/seed.mjs` (idempotent dev seed). See [[Database and Multi Tenancy]], [[Seeding and Data]] |
+| `scripts/` | Node entry points: workers (`scripts/process-email-outbox.mjs`, `scripts/process-stale-orders.mjs` and the other `process-*` files, each a `.mjs` launcher for a `.ts` body), test runners (`scripts/run-e2e.mjs`, `scripts/run-integration-tests.mjs`, `scripts/run-operations-tests.mjs`) and their guards, operations (`scripts/operations.mjs`, `scripts/droplet.mjs`, `scripts/release-pair.mjs`, `scripts/every-minute.mjs`), maintenance (`scripts/audit-db-integrity.mjs`, `scripts/repair-organisation-drift.mjs`, `scripts/maintain-assets.mjs`), dev helpers (`scripts/clean-next-dev.mjs`, `scripts/doctor-dev.mjs`), and `scripts/check-docs.mjs` |
+| `tests/integration/` | Vitest suites against a disposable `_test` database, run sequentially |
+| `tests/e2e/` | Playwright specs and `tests/e2e/fixtures.ts`; run by `scripts/run-e2e.mjs` |
+| `tests/runner/` | `node:test` checks of scripts, compose and config (guards, schema contract, runtime origin, docs checker) |
+| `tests/setup/` | `tests/setup/integration.setup.ts`: Vitest setup that pins test env and resets the database |
+| `tests/helpers/` | Integration helpers: auth, `db-reset.ts` (refuses non-`_test` URLs), HTTP, Stripe mocks, MFA, guest, staff invites, test data, `render.ts` (`renderPage`) |
+| `docker/` | `docker/Dockerfile` (targets `web`, `ops`, `development`), `docker/Dockerfile.assets` (SeaweedFS), `docker/Dockerfile.e2e`, `docker/entrypoint.sh` (loads `*_FILE` secrets, then `exec`) |
+| `deploy/` | `deploy/droplet/`: Caddyfile, cloud-init, droplet compose and config example for the hosted Droplet ([[Production Operations]]) |
+| `config/` | `config/schema-contract.json`: the newest migration readiness requires |
+| `.github/` | `.github/workflows/` (dependency validation, browser E2E, operations, release images, security audit) and the PR template |
+| `.design-sync/` | Design-sync config, previews and notes for `components/ui/` ([[UI Architecture Rules#Design sync]]) |
+| `docs/` | PRD, readiness and delivery plans, design and database specs; `docs/obsidian/` is the living vault, `docs/obsidian/History/` dated notes |
+| `proxy.ts` | Next proxy: redirects anonymous `/dashboard` and `/account` requests to `/login` |
+| `auth.ts` | Auth.js configuration: credentials provider, JWT `authVersion`, live session callback |
+| `next.config.ts` | Standalone output to `.next-build` in production, security headers, `/api` cache policy, `/organisations` redirects |
+| `docker-compose.yml` | Production-like base: `app`, `migration`, `workers`-profile jobs, `db`, `redis` |
+| `docker-compose.dev.yml` | Dev overlay: source mounts, polling, migrations then `pnpm dev`, object store |
+| `docker-compose.schedules.yml`, `docker-compose.hosted.yml`, `docker-compose.hardened.yml`, `docker-compose.assets.hosted.yml`, `docker-compose.operations.yml`, `docker-compose.e2e.yml` | Schedules, hosted secrets, hardening, hosted asset storage, operations rehearsals, browser campaign stack |
+| `package.json` | Scripts and exact dependency pins (Node and pnpm versions too) |
+| `.env.example`, `.env.hosted.example`, `.env.db.example` | Env templates ([[Environment Variables]]) |
+| `tsconfig.json`, `vitest.config.ts`, `playwright.config.ts`, `tailwind.config.js`, `postcss.config.mjs`, `renovate.json`, `next-auth.d.ts` | Tool configuration and Auth.js type augmentation |
 
-Not implemented:
+## lib
 
-- QR codes.
+| Entry | What | Key files |
+| --- | --- | --- |
+| `lib/analytics` | Society metrics and ranges in the society zone | `metrics.ts` (`ticketMetrics`, `eventTicketTypeMetrics`, `societySales`, `analyticsAccess`), `range.ts` |
+| `lib/api` | Route plumbing: error envelope and mapper, bounded body reads, shared guard rules | `errors.ts` (`mapRouteError`), `request.ts`, `route-rules.ts` |
+| `lib/app-url.ts` | Public origin read at run time (`appUrl`) | |
+| `lib/assets` | Image upload, sanitising, S3 storage, references, maintenance | `service.ts`, `image.ts`, `storage.ts`, `references.ts`, `maintenance.ts` |
+| `lib/audit` | Society History from `AuditLog` rows | `history.ts` (`readHistory`, `historyCategories`) |
+| `lib/auth` | Sessions, guards, account lifecycle, context selection | `access.ts`, `page-access.ts`, `live-session.ts`, `context.ts`, `account-lifecycle.ts`, `account-closure.ts`, `account-settings.ts`, `email-change.ts`, `credentials.ts`, `secret.ts` |
+| `lib/client` | Browser fetch helpers | `api.ts` (`fetchJson`, `fetchWithCsrf`), `checkout.ts` (`waitForAttempt`), `orgs.ts`, `sign-out.ts` |
+| `lib/commerce` | Membership and merchandise orders, checkout, webhooks, family registry | `orders.ts`, `checkout.ts`, `families.ts`, `reconciliation.ts`, `binding.ts`, `payment-recovery.ts`, `http.ts` |
+| `lib/date-input.ts` | Parsing and formatting for the house date picker | |
+| `lib/db` | Prisma client and organisation scope helpers | `index.ts` (`prisma`), `organisation-scope.ts`, `organisation-drift.ts` |
+| `lib/email` | Ticket email, notification outbox, templates, encryption | `ticket-delivery.ts`, `ticket-email-outbox.ts`, `notification-outbox.ts`, `templates.ts`, `notification-crypto.ts` |
+| `lib/events` | Event lifecycle, inventory locks, readiness, public reads, calendar | `event-lifecycle.ts`, `inventory.ts`, `event-readiness.ts`, `public-events.ts`, `explore-filters.ts`, `calendar.ts`, `event-changes.ts`, `http.ts` |
+| `lib/format.ts` | Money, dates in a zone (default `Australia/Brisbane`), order references | |
+| `lib/guest` | Verified guest sessions, guest CSRF, claim into an account | `guest-access.ts`, `guest-csrf.ts`, `guest-claim.ts` |
+| `lib/memberships` | Plans, offers, grants, roster, revocation, reminders | `plans.ts`, `offers.ts`, `grants.ts`, `roster.ts`, `revocation.ts`, `reminders.ts`, `http.ts` |
+| `lib/merchandise` | Catalogue, shop, basket, sale family, pickups, after-sale | `catalogue.ts`, `shop.ts`, `basket.ts`, `sale.ts`, `pickups.ts`, `after-sale.ts`, `http.ts` |
+| `lib/ops` | Logging, metrics, alerts, readiness, worker contract, monitor, integrity audit | `logger.ts`, `alerts.ts`, `metrics.ts`, `worker.ts` (`runWorker`), `monitor.ts`, `readiness.ts`, `integrity-audit.ts` |
+| `lib/orders` | Staff order reads and actions, member ticket orders, stale order expiry | `grouped-orders.ts`, `order-detail.ts`, `member-tickets.ts`, `stale-orders.ts`, `buyer-identity.ts` |
+| `lib/organisations` | Bootstrap, profiles, public reads, discovery, joins, overview | `profile.ts`, `public-organisations.ts`, `discovery.ts`, `join.ts`, `overview.ts`, `bootstrap.ts`, `authority.ts`, `http.ts` |
+| `lib/pagination` | Opaque timestamp cursors and page options | `cursor.ts` |
+| `lib/payments` | Ticket checkout, attempts and recovery, reconciliation, lifecycle journal, refunds, disputes, compensation, free orders | `checkout-creation.ts`, `checkout-attempts.ts`, `checkout-reconciliation.ts`, `checkout-fulfilment-orchestrator.ts`, `order-lifecycle.ts`, `order-refunds.ts`, `purchase-disputes.ts`, `compensation-refunds.ts`, `dispute-reversals.ts`, `free-ticket-issuance.ts` |
+| `lib/payouts` | Manual payouts after events and the money held back | `payouts.ts` (`processPayoutBatch`), `release.ts` |
+| `lib/permissions` | Roles and the permission matrix | `index.ts` |
+| `lib/purchases` | Buyer purchase reads, projection to buyer-facing status, pending-checkout actions | `ticket-purchases.ts`, `projection.ts`, `pending-checkout.ts`, `pending-checkout-http.ts` |
+| `lib/security` | Origin and CSRF guard, rate limits, staff MFA, safe return paths, token cleanup | `request-guard.ts`, `csrf.ts`, `rate-limit.ts`, `staff-mfa.ts`, `safe-return-path.ts`, `token-cleanup.ts` |
+| `lib/staff` | Live staff authority, staff management, invitations, owner handover | `live-authority.ts`, `management.ts`, `invites.ts`, `invite-http.ts`, `handover.ts` |
+| `lib/stripe` | Stripe client, Connect lifecycle, fees, API version | `index.ts` (`getStripe`), `connect.ts`, `fees.ts` (`calculatePlatformFee`), `version.ts`, `http.ts` |
+| `lib/tickets` | Reservations and purchase transaction options, check-in | `reservations.ts`, `check-in.ts`, `http.ts` |
+| `lib/transaction-conflict.ts` | Recognises retryable PostgreSQL conflicts (`isTransactionConflict`) | |
+| `lib/validators` | zod request schemas | `events.ts`, `payments.ts`, `auth.ts`, `orgs.ts`, `staff.ts`, `stripe-connect.ts`, `price.ts`, `slug.ts` |
+| `lib/zoned-time.ts` | Wall-clock times in a society zone (`zonedCandidates`, `zoneCity`) | |
 
-Safe society image uploads, private previews and recoverable deletion are implemented in `lib/assets` and scoped organisation APIs (T07). T08 attaches ready profile logos/covers. See [[Society Profiles and Assets]].
+## components
 
-T08 adds `lib/organisations/bootstrap.ts`, `profile.ts` and `public-organisations.ts`, scoped profile APIs and `/dashboard/settings/profile`. Organisation settings authority controls editable public profile fields; optimistic versions and ready tenant-owned image references protect concurrent edits. Existing society detail URLs remain stable.
+| Entry | What | Key files |
+| --- | --- | --- |
+| `components/account` | Account settings forms | `member-profile-form.tsx`, `change-password-form.tsx`, `change-email-form.tsx`, `notification-preferences-form.tsx`, `close-account-form.tsx` |
+| `components/analytics` | Charts | `bar-chart.tsx` |
+| `components/auth` | Sign-in, signup, verification, recovery, email change, staff invite and MFA forms | `credentials-login-form.tsx`, `signup-form.tsx`, `staff-mfa-form.tsx`, `account-link-token.ts` |
+| `components/calendar` | Society calendar grids and date helpers | `calendar-views.tsx`, `layout.ts` |
+| `components/commerce` | Shared commerce notices | `stripe-review-notice.tsx` |
+| `components/events` | Event builder, workspace header and actions, public event view and buy box, cards | `create-event-form.tsx`, `event-tabs.tsx`, `event-actions.tsx`, `public-event-view.tsx`, `public-ticket-purchase.tsx`, `event-card.tsx`, `date-rail.tsx`, `readiness-checklist.tsx`, `members-only-gate.tsx`, `explore-filter-fields.tsx` |
+| `components/guest` | Guest email, access and claim | `guest-email-form.tsx`, `guest-access-form.tsx`, `guest-claim.tsx` |
+| `components/layout` | Header, footer, shells, page header, switcher, verify banner | `navbar.tsx`, `site-footer.tsx`, `dashboard-shell.tsx`, `personal-shell.tsx`, `auth-shell.tsx`, `checkout-shell.tsx`, `page-header.tsx`, `context-selector.tsx`, `verify-email-banner.tsx`, `auth-session-provider.tsx` |
+| `components/memberships` | Plan form, checklist and actions; member actions; checkout action | `plan-form.tsx`, `plan-actions.tsx`, `plan-checklist.tsx`, `membership-actions.tsx`, `membership-checkout-action.tsx` |
+| `components/merchandise` | Shop, basket, checkout, product form and actions, pickup and order actions | `shop.tsx`, `checkout.tsx`, `product-form.tsx`, `product-actions.tsx`, `pickup-action.tsx`, `order-actions.tsx` |
+| `components/orders` | Staff order detail actions | `order-detail-actions.tsx`, `order-review-actions.tsx` |
+| `components/organisations` | Society cards, header, join controls, search, joined list, creation | `society-header.tsx`, `society-join-card.tsx`, `society-join.tsx`, `society-card.tsx`, `organisation-search.tsx`, `member-organisations-list.tsx`, `create-organisation-form.tsx` |
+| `components/public` | Policy page layout for Fees, Help, Privacy | `policy-page.tsx` |
+| `components/purchases` | Ticket checkout action, money summary, payment poller, unpaid-order actions and notices | `checkout-action.tsx`, `money-summary.tsx`, `payment-status-poller.tsx`, `unpaid-order-actions.tsx`, `unpaid-order-notice.tsx`, `ticket-order-notice.tsx` |
+| `components/settings` | Society profile, staff, handover, Stripe Connect, payouts, failed emails | `society-profile.tsx`, `staff-management.tsx`, `staff-handover.tsx`, `stripe-connect-settings.tsx`, `payouts-card.tsx`, `failed-notifications.tsx` |
+| `components/tickets` | Check-in console and the buyer's ticket face | `check-in-console.tsx`, `ticket-face.tsx` |
+| `components/ui` | Shared primitives ([[UI Architecture Rules#Primitives]]) | `button.tsx`, `input.tsx`, `date-field.tsx`, `notice.tsx`, `status-badge.tsx`, `link-tabs.tsx`, `responsive-table.tsx`, `confirm-dialog.tsx`, `empty-state.tsx`, `filter-bar.tsx`, `audit-timeline.tsx`, `skeleton.tsx`, `card.tsx`, `icon.tsx` |
 
-T09 adds `lib/organisations/discovery.ts` for public-safe literal/cursor reads and `join.ts` for live account-locked free affiliations. `/societies` and the shared navbar expose anonymous discovery; dynamic profile controls require explicit verified joins. `/dashboard/organisations` synchronises the personal joined list and paged search badges after refresh. Default authenticated search responses retain their compatibility envelope.
+## Traps
 
-Named staff users, invites, audit logs, per-user permissions, staged TOTP MFA, and provider-verified compensation refunds are implemented. Legacy organisation logins remain a controlled migration fallback. `OrganisationMember` remains join state, not management authority. Manual refund marking is still local bookkeeping; the separate compensation workflow verifies actual Stripe refunds.
+- `app/(dashboard)/dashboard/events/layout.tsx` and `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx` are pass-through layouts kept on purpose as explicit route boundaries; don't delete them as dead code ([[Troubleshooting]]).
+- Worker entry points import only database-level modules (no HTTP auth or CSRF config); keep new worker code out of `lib/*/http.ts` and route helpers.
+- Feature components import `next/*` and server `lib/*`; only `components/ui/` stays self-contained enough for design sync.
+- Production builds write `.next-build`, dev writes `.next`; never point one at the other.
 
-## Start Here
+## Related
 
-Read these in order:
-
-1. [[Documentation Index]]
-2. [[Project Handover]]
-3. [[Engineering Delivery Workflow]]
-4. [[Non-Blocking Issue Register|Issue and Defect Register]]
-5. [[Architecture Overview]]
-6. [[Development Workflow]]
-7. The living reference for the subsystem being changed
-
-## Key Directories
-
-```text
-app/
-  layout.tsx                         Root layout, session provider, global navbar
-  page.tsx                           Public homepage: upcoming events and societies
-  (public)/events/[eventId]/         Public event detail route
-  (public)/societies/            Anonymous bounded society directory
-  (public)/societies/[orgSlug]/  Public-safe organisation details route
-  (dashboard)/dashboard/             Role-aware dashboard route group
-    page.tsx                         Member dashboard or organisation dashboard
-    create/page.tsx                  Organisation onboarding
-    organisations/page.tsx           Member organisation search/join
-    events/                          Slugless organisation event management
-    events/[eventId]/tickets/        Event ticket list, check-in, and check-out page
-    orders/page.tsx                  Slugless organisation order review
-    orders/[orderId]/page.tsx        Organiser order detail
-    settings/page.tsx                Slugless organisation settings
-    settings/profile/page.tsx        Resumable public society profile
-    settings/staff/page.tsx          Private invitations and owner handover
-    notifications/page.tsx           Tenant-scoped business-job recovery
-    [orgSlug]/                       Legacy redirects
-  api/                               Route handlers
-
-components/
-  account/                           Member profile, password, email-change and closure forms
-  auth/                              Login/signup and verification/recovery/email-link forms
-  events/                            Event list, event form, public checkout UI
-  layout/                            Navbar, footer, session provider, DashboardShell, PersonalShell, context switcher
-  organisations/                     Society creation, search, joined list and public profile Join control
-  settings/                          Society profile, staff, Stripe Connect and notification recovery UI
-  tickets/                           Ticket check-in/check-out controls
-  ui/                                Small reusable primitives
-
-lib/
-  auth/                              Auth/session and account/organisation access helpers
-  assets/                            Safe image processing, S3, references and maintenance
-  organisations/                     Bootstrap, profiles, public discovery and joins
-  api/                               API error envelope, mapRouteError and shared guard rules
-  client/                            Frontend fetch helpers
-  format.ts                          Shared money and date formatting
-  db/                                Prisma client and organisation scoping helpers
-  email/                             Ticket delivery plus encrypted notification intents, token fences and workers
-  security/                          Origin/CSRF, Redis limits and MFA
-  staff/                             Atomic staff authority updates
-  events/                            Public reads, analytics, and event lifecycle use cases
-  orders/                            Scoped order operations, member ticket reads and stale pending cleanup
-  payments/                          Checkout, reconciliation, and lifecycle history use cases
-  purchases/                         Purchase status projection and purchase-snapshot labels (T10)
-  permissions/                       Live staff capability mapping and legacy compatibility helpers
-  stripe/                            Stripe SDK, Connect application service, and fees
-  tickets/                           Reservations and ticket attendance service
-  validators/                        Zod schemas
-
-prisma/
-  schema.prisma                      Database schema
-  seed.mjs                           Idempotent local development seed
-  migrations/                        Applied schema migrations
-
-tests/
-  helpers/                           Integration test auth, DB, HTTP, Stripe, and data helpers
-  integration/                       Functional/API integration test suites
-  setup/                             Vitest integration setup and runtime guards
-
-docs/obsidian/
-  *.md                               Internal project documentation
-```
-
-## High-Value Rules
-
-- `Organisation` remains the tenant/payment/event/order boundary.
-- Organisation dashboard access comes from active named `OrganisationStaff` authority, with an explicitly configured legacy-owner fallback during migration.
-- Member join relationships use `OrganisationMember`.
-- `OrganisationMember` is not MVP staff access.
-- Navigation for organisation dashboards belongs in `components/layout/dashboard-shell.tsx`.
-- Private APIs must derive access from the authenticated session and server-side database ownership checks.
-- No file under `app/` imports Prisma; pages and routes call `lib` services.
-- Security-sensitive API routes are thin adapters: guards and HTTP mapping stay in routes; domain decisions, persistence, transactions, recovery, and external provider composition stay in application services.
-- Do not trust frontend `organisationId` or `x-org-id` as authority. They are inputs, not trust boundaries.
-- Organiser ticket and order access should use event ownership as the source of truth: `Ticket.event.organisationId` and `Order.event.organisationId`.
-- `Ticket.organisationId` and `Order.organisationId` remain denormalized storage and should not be trusted alone for access decisions.
-- Production payment fulfilment happens only from Stripe webhooks.
-- Non-production `/success?session_id=...` can call the shared reconciliation helper when local webhook forwarding is missing.
-- Ticket delivery email is enqueued only after paid webhook fulfilment and ticket issuance.
-- Automatic email enqueue is part of the fulfilment transaction: insertion failure rolls fulfilment back. Later provider/worker failure never reverses committed payment or tickets.
-- Ticket check-in/out mutate attendance and append an actor-attributed AuditLog in the same transaction; they do not change payment or ticket ownership.
-- Tailwind uses the v4 CSS entrypoint in `app/globals.css`.
-- Base Docker Compose is production-like; Docker development uses `docker-compose.dev.yml` with Turbopack plus polling.
-- Production migrations run once through the Compose `migration` service before app rollout. The entrypoint only executes its supplied command. Development startup deploys migrations before Next dev starts.
-- Base Docker Compose requires core app env values before startup and restarts the app with `restart: unless-stopped`.
-- Dev Compose explicitly sets `THUNDERSTRUX_RUNTIME_CONTAINER=false`; production-like runtime sets it to `true`.
-- Integration tests run through Vitest against the disposable `thunderstrux_test` database, never the normal development database.
-- Integration tests must stay sequential because they reset shared database state.
-- `pnpm dev` clears volatile `.next/dev` and `.next/types` before startup via `scripts/clean-next-dev.mjs`.
-- Production builds write to `.next-build`; dev writes to `.next`.
-- Recreate the app container after running `pnpm build` inside a live production-like `next start` container, because `.next-build` can change while the server still holds the old build manifest.
-- Keep explicit events route boundaries for both current and legacy event routes:
-  - `app/(dashboard)/dashboard/events/layout.tsx`
-  - `app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx`
-- Stripe Connect readiness is represented by lifecycle states, not by the word "connected" alone.
-- Current Stripe Connect states are `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
-
-## Current UI State
-
-- Global header is 60px high (72px from `md`) with Explore events and Explore societies for everyone and a mobile Menu; components/layout/navbar.tsx owns it. app/globals.css is the only token source. [[UI Architecture Rules]] owns the details.
-- Organisation dashboard shell uses a deep-plum sidebar column from `lg` whose contents stick below the global header; it shows the organisation name and the `Workspace` switcher. Pages render their own `h1` through components/layout/page-header.tsx. Personal pages use components/layout/personal-shell.tsx.
-- Organisation dashboard primary route is `/dashboard`.
-- Sidebar capability-filters Overview, Events, Orders, then Settings (Society profile, Staff, Payments, Email delivery) with longest-route active state. Protected pages independently enforce authority.
-- Status colours are tokens in app/globals.css (text, `-bg`, `-border`, `-icon` per role); `components/ui/notice.tsx`, `components/ui/status-badge.tsx` and `components/ui/icon.tsx` use them. The verify-email reminder is `components/layout/verify-email-banner.tsx`.
-- `/dashboard/events` is server-rendered (views, search, sold and left) from `listDashboardEvents`; every page of one event shares `EventWorkspaceHeader` and its tabs (components/events/event-tabs.tsx), and `components/events/event-actions.tsx` holds Publish, Edit and the More menu. Data read after the guards streams behind `components/ui/skeleton.tsx`.
-- Order rows link to organiser order detail.
-- Member dashboard does not use the organisation management sidebar.
-- Buttons come from components/ui/button.tsx; the primary action is the brand purple.
-- The Payments page (`/dashboard/settings`) renders a state-based Connect panel with connect, platform settings, retry, continue onboarding, fix account, open dashboard, refresh status, and local disconnect controls.
-
-## Current Known Quirks
-
-- `DashboardShell` controls the shared organisation sidebar; do not duplicate navigation in new dashboard pages.
-- `/organisations` and `/organisations/[orgSlug]` are permanent redirects to `/societies` (next.config.ts).
-- `app/page.tsx` uses `export const dynamic = "force-dynamic"` to avoid stale homepage output during development.
-- Stripe account disconnect is local-only. It clears Thunderstrux organisation Stripe fields but does not delete the account in Stripe. Reconnecting the same old account requires manually restoring the old `acct_...` id in the DB.
-- Event edit routes rely on explicit pass-through `events/layout.tsx` files because Next dev route registration was unreliable for nested event routes without them in the local Docker/Windows/OneDrive setup.
-- Edit mode allows ticket type quantity `0`; create mode does not. This supports sold-out inventory while still preventing zero-inventory new events.
-- Ticket types with orders or issued tickets can have name, price, and quantity edited for future purchases, but cannot be removed.
-- Manual refund is a local order flag only and does not interact with Stripe.
-- Ticket email delivery requires `RESEND_API_KEY` and `EMAIL_FROM` when the outbox worker sends provider email; without them, fulfilment and resend queueing still succeed and worker failure records delivery error state.
-- Prefer the isolated local baseline runner for integration tests; it includes tests and a run-owned disposable database without mounting development dependencies.
+[[Architecture Overview]] · [[Frontend and Backend Flow]] · [[UI Architecture Rules]] · [[Development Workflow]] · [[Production Operations]] · [[Database and Multi Tenancy]]

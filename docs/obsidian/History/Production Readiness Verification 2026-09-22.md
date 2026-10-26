@@ -2,14 +2,14 @@
 status: historical
 last-reviewed: 2026-10-09
 owner: engineering
-related: ["[[Production Operations]]", "[[Non-Blocking Issue Register]]"]
+related: ["[[Production Operations]]", "[[Issue and Defect Register]]"]
 ---
 
 # Production Readiness Verification — 2026-09-22
 
 > Historical evidence and assessment: retain the original dated findings below. Current state and policy are in [[Project Handover]], [[Engineering Delivery Workflow]] and the relevant living reference. This review classifies the note; it does not rerun or renew its old evidence.
 
-This is the dated evidence ledger for all 19 items in the historical remediation programme, now superseded by [[../MVP_READINESS_PLAN]]. PR #18 merged this repository implementation on 2026-09-28. The ledger separates repository behavior from live production activation. A passing local or CI test is not evidence that a hosted scheduler, alert route, backup, or Stripe delivery is active.
+This is the dated evidence ledger for all 19 items in the historical remediation programme, now superseded by [[MVP_READINESS_PLAN]]. PR #18 merged this repository implementation on 2026-09-28. The ledger separates repository behavior from live production activation. A passing local or CI test is not evidence that a hosted scheduler, alert route, backup, or Stripe delivery is active.
 
 | Item | Repository evidence and result | Remaining release gate |
 | --- | --- | --- |

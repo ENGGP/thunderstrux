@@ -43,11 +43,13 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 | `PATCH /api/events/[eventId]/publish` | same | `event.published`, `event.unpublished` | — |
 | `PATCH /api/events/[eventId]/sales` | same | `event.sales_closed`, `event.sales_reopened` | — |
 | `DELETE /api/events/[eventId]` | same | `event.deleted` (title) | — |
+| `POST /api/events/[eventId]/cancel` | `lib/events/event-cancellation.ts` | `event.cancelled`, plus per order `order.refund_requested` or `order.free_cancelled` (`by: "event"`) | reason, refunds queued, free registrations cancelled, holders notified, skipped orders with why |
 | `POST /api/tickets/[ticketId]/check-in`, `check-out` | `lib/tickets/check-in.ts` | `ticket.checked_in`, `ticket.checked_out` | ticket reference |
 | `POST /api/orders/[orderId]/refunds` | `lib/payments/order-refunds.ts` | `order.refund_requested`; outcome below | amount, reason |
 | `PATCH /api/orders/[orderId]/refund-manual` | `lib/orders/order-detail.ts` | `order.manual_refund_marked` | — |
 | `POST /api/orders/[orderId]/review` | `lib/payments/purchase-disputes.ts`, `lib/commerce/payment-recovery.ts` | `order.dispute_resolved` (restore tickets); `order.external_refund_reviewed` or, for a commerce order id, `commerce_order.external_refund_reviewed` | reason, tickets valid again |
-| `POST /api/orders/[orderId]/cancel` | `lib/payments/free-cancellation.ts` | `order.free_cancelled` | reason, tickets voided |
+| `POST /api/orders/[orderId]/cancel` | `lib/payments/free-cancellation.ts` | `order.free_cancelled` (`by: "staff"`) | reason, tickets voided |
+| `POST /api/purchases/tickets/[orderId]/cancel-registration` | same | `order.free_cancelled` (`by: "buyer"`; actor the member, or none for a guest) | tickets voided, places returned |
 | `POST /api/orders/[orderId]/compensation-refund/confirm` | `lib/payments/compensation-refunds.ts` | `order.compensation_refund_confirmed` | — |
 | `POST /api/orders/[orderId]/resend` | `lib/email/ticket-email-outbox.ts` | `order.ticket_email_queued` | — |
 | `POST /api/orders/[orderId]/email-jobs/[jobId]/requeue` | same | `email_outbox.requeued` | reason |

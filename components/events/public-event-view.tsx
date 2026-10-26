@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PublicTicketPurchase, type BuyBoxViewer } from "@/components/events/public-ticket-purchase";
 import { Icon } from "@/components/ui/icon";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type { PublicEventDetail } from "@/lib/events/public-events";
 import { formatDateRange, formatDateTime } from "@/lib/format";
 import { zoneCity } from "@/lib/zoned-time";
@@ -56,6 +57,7 @@ export function PublicEventView({
               {organisation.name}
             </Link>
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{event.title}</h1>
+            {event.cancelled ? <StatusBadge label="Event cancelled" status="cancelled" /> : null}
             {event.membersOnly ? (
               <p className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-ink-soft">
                 <Icon className="text-brand" name="lock" size={16} />
@@ -70,7 +72,7 @@ export function PublicEventView({
               <span>
                 {formatDateRange(event.startTime, event.endTime, timeZone)}
                 <span className="block text-sm text-ink-muted">{zoneCity(timeZone)}</span>
-                {preview ? null : (
+                {preview || event.cancelled ? null : (
                   <a className="block text-sm font-semibold text-brand underline underline-offset-4" href={googleCalendarHref(event)} rel="noopener noreferrer" target="_blank">
                     Add to Google Calendar
                   </a>
@@ -116,6 +118,7 @@ export function PublicEventView({
             societySlug={organisation.slug}
             salesCloseLabel={event.salesCloseAt ? formatDateTime(event.salesCloseAt, { timeZone }) : undefined}
             salesOpen={event.salesOpen ?? true}
+            cancelled={event.cancelled}
             society={organisation.name}
             ticketTypes={event.ticketTypes}
             viewer={viewer}

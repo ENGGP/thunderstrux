@@ -355,7 +355,8 @@ export async function reconcileCompletedCheckoutSession(
       },
       event: {
         select: {
-          organisationId: true
+          organisationId: true,
+          cancelledAt: true
         }
       },
       tickets: {
@@ -888,6 +889,17 @@ export async function reconcileCompletedCheckoutSession(
         mismatchReason: "Stripe recorded a refund or dispute before the order was fulfilled",
         externalRefundedAmount: localOrder.externalRefundedAmount,
         disputeStatus: localOrder.disputeStatus
+      }, {
+        releaseActiveReservation: true
+      });
+      return;
+    }
+
+    // A payment that lands after the society cancelled the event (EVT-004)
+    // issues nothing; it goes back like any payment that can't be filled.
+    if (localOrder.event.cancelledAt) {
+      await markCompensationRequired("event_cancelled_before_fulfilment", {
+        mismatchReason: "The event was cancelled before the payment was confirmed"
       }, {
         releaseActiveReservation: true
       });

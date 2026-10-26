@@ -122,7 +122,7 @@ export async function getDoorDay(organisationId: string, timeZone: string, now =
 // Published public events still to come, per society, for the personal Overview.
 export async function upcomingEventCounts(organisationIds: string[], now = new Date()) {
   const rows = organisationIds.length
-    ? await prisma.event.groupBy({ by: ["organisationId"], where: { organisationId: { in: organisationIds }, status: "published", visibility: "public", startTime: { gt: now } }, _count: { _all: true } })
+    ? await prisma.event.groupBy({ by: ["organisationId"], where: { organisationId: { in: organisationIds }, status: "published", visibility: "public", cancelledAt: null, startTime: { gt: now } }, _count: { _all: true } })
     : [];
   return new Map(rows.map((row) => [row.organisationId, row._count._all]));
 }

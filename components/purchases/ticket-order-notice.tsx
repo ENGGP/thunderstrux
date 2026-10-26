@@ -2,12 +2,12 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Notice } from "@/components/ui/notice";
 import { formatDate, formatMoney } from "@/lib/format";
-import { ticketOrderProjection } from "@/lib/purchases/projection";
+import { releasedByBuyer, ticketOrderProjection } from "@/lib/purchases/projection";
 
-type Order = Parameters<typeof ticketOrderProjection>[0] & {
+type Order = Parameters<typeof ticketOrderProjection>[0] & Parameters<typeof releasedByBuyer>[0] & {
   totalAmount: number;
   externalRefundedAmount?: number;
-  event: { id: string; organisation: { name: string } };
+  event: { id: string; cancelledAt?: Date | null; organisation: { name: string } };
   refundRequests: Array<{ amount: number; resolvedAt: Date | null }>;
 };
 
@@ -32,8 +32,11 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
       </Notice>
     );
   }
-  if (projection === "refund-processing") return <Notice role="status" title="Refund processing"><p>{society} has started a refund. Banks usually take 5 to 10 business days once it goes through.</p></Notice>;
-  if (projection === "cancelled") return <Notice title="Cancelled by the society"><p>{society} cancelled this free registration. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p></Notice>;
+  if (projection === "refund-processing") return <Notice role="status" title="Refund processing"><p>{order.event.cancelledAt ? `${society} cancelled this event and` : society} has started a refund. Banks usually take 5 to 10 business days once it goes through.</p></Notice>;
+  if (projection === "cancelled") {
+    if (releasedByBuyer(order)) return <Notice title="You cancelled this registration"><p>Your place went back to {society} for someone else, and the tickets are no longer valid.</p></Notice>;
+    return <Notice title={order.event.cancelledAt ? "Event cancelled" : "Cancelled by the society"}><p>{society} cancelled this {order.event.cancelledAt ? "event" : "free registration"}. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p></Notice>;
+  }
   if (projection === "disputed") return <Notice title="Payment disputed" tone="warning"><p>Your bank has disputed this payment, so the tickets are under review. Contact {society} before the event.</p></Notice>;
   if (projection === "review") {
     return order.requiresCompensationReview ? (

@@ -18,7 +18,7 @@ export async function publicOrganisation(slug: string) {
     select: {
       ...publicProfileSelect,
       events: {
-        where: { status: "published", visibility: "public", startTime: { gte: new Date() } },
+        where: { status: "published", visibility: "public", cancelledAt: null, startTime: { gte: new Date() } },
         take: 50,
         orderBy: [{ startTime: "asc" }, { id: "asc" }],
         select: { id: true, title: true, startTime: true, location: true, heroAssetId: true },

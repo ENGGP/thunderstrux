@@ -245,7 +245,8 @@ Thunderstrux should provide a safe checkout flow for ticket purchases.
 - Payment completion should result in ticket issuance.
 - Failed, expired, or incomplete payments should not issue tickets.
 - The system should avoid duplicate fulfilment.
-- Free purchases support audited whole-order local cancellation without a provider refund; retain purchase/attendance/collection history, revoke the relevant entitlement, and keep any stock restoration a separately reviewed action.
+- Free purchases support audited whole-order local cancellation without a provider refund; retain purchase/attendance/collection history and revoke the relevant entitlement. Stock comes back only when the buyer releases their own free ticket registration before the event (product decision 2026-10-27, EVT-005: Luma and Humanitix free an attendee's spot so a capped free event can fill it); a staff cancellation leaves restocking to a separate reviewed edit, because staff may be removing someone who shouldn't have had the place.
+- Organisers can cancel a published event with sales in one confirmed action that refunds every paid order, cancels free registrations and emails every ticket holder (product decision 2026-10-27, EVT-004, as Luma and Eventbrite do).
 - Organisers should be able to review orders.
 - Order records should preserve important purchase details.
 

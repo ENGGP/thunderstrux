@@ -60,14 +60,14 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Join / leave | origin → member account → (join only) verified → `organisation_join_leave` |
 | Stripe Connect | origin → `requireStripeConnectCapability` (`stripe:manage` somewhere, +MFA) → body → `organisationId` → `stripe:manage` on it (+MFA) → `stripe_connect_mutation` → `staff_mfa_verify` when a code is sent. Status `GET`: capability → target |
 | Checkout (`payments/checkout/*`) | origin → body → guest branch (no login and a guest cookie: `checkout` session → guest CSRF → `checkout_create`) or member branch (verified → member account → `checkout_create`) |
-| Buyer cancel (`purchases/tickets/[orderId]/cancel`, `commerce/orders/[orderId]/cancel`) | origin → order → guest (guest CSRF) or sign-in → buyer owns it (else 404) → `checkout_create` |
+| Buyer cancel (`purchases/tickets/[orderId]/cancel`, `purchases/tickets/[orderId]/cancel-registration`, `commerce/orders/[orderId]/cancel`) | origin → order → guest (guest CSRF) or sign-in → buyer owns it (else 404) → `checkout_create` (`authorizeBuyer` in `lib/purchases/pending-checkout-http.ts`) |
 | Buyer reads (status, attempts, commerce order) | session or guest session → ownership (else 404); no origin check, no rate limit |
 | Webhooks | Stripe signature on the raw body; nothing else |
 
 ## Rules
 
 - **Authority is live.** Staff permission is read from `OrganisationStaff` on every request through `requireOrganisationPermission` and `liveStaffRole` ([[Authentication and Dashboard Access#Roles and permissions]]), never from the session or a client id. The tenant is the canonical owner (an event's society, a commerce order's society, the selected dashboard context, or a slug), never a body field taken on trust. Another society's ids answer the same 404 as a missing one.
-- **Fresh staff code.** Outside MFA mode `off`, ticket refunds and free cancellations, membership revoke, cancel and refund, merchandise refund and free cancellation, and the Connect dashboard link and disconnect each need an authenticator code in the body, verified at the route (`verifyStaffMfa`), not only the login grant.
+- **Fresh staff code.** Outside MFA mode `off`, cancelling an event (one code for all its refunds, `requireFreshStaffMfa` in `lib/security/fresh-staff-mfa.ts`), ticket refunds and free cancellations, membership revoke, cancel and refund, merchandise refund and free cancellation, and the Connect dashboard link and disconnect each need an authenticator code in the body, verified at the route (`verifyStaffMfa`), not only the login grant.
 - **Errors.** Every route maps failures through `mapRouteError` (directly or through its family helper). Unknown errors answer a generic 500 and log `api.request_failed` with the operation and error class only. Exempt: Auth.js, both Stripe webhooks, `health`, `health/ready`, `security/csrf`.
 - **Bounds.** Prices follow `lib/validators/price.ts` (free, or 50 to 99,999,999 cents, Stripe's largest charge); ticket stock and capacity stop at 1,000,000 (`lib/validators/events.ts`), merchandise stock at 100,000; commerce totals are summed in `BigInt` and capped at 2,147,483,647 (`lib/commerce/orders.ts`).
 
@@ -165,6 +165,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET`/`POST` `/api/me/context` | signed in; staff selection `events:read` +MFA |
 | `GET` `/api/me/mfa/status`; `POST` `/api/me/mfa/setup`, `/api/me/mfa/confirm`, `/api/me/mfa/verify` | signed in, staff-eligible; writes: origin, MFA config, MFA limits |
 | `GET`/`POST` `/api/events`; `GET`/`PATCH`/`DELETE` `/api/events/[eventId]`; `PATCH` `/api/events/[eventId]/publish`, `/api/events/[eventId]/sales` | `events:manage` +MFA; writes: origin, ctx |
+| `POST` `/api/events/[eventId]/cancel` | origin, ctx, `events:manage` and `orders:refund` +MFA, typed title, fresh code (`staff_mfa_verify` when sent) |
 | `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
 | `GET` `/api/orders`, `/api/orders/[orderId]` | ctx, `orders:read` +MFA |
 | `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds and cancel also code |
@@ -192,7 +193,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `POST` `/api/stripe/connect/onboard`, `/api/stripe/connect/continue`, `/api/stripe/connect/dashboard`, `/api/stripe/connect/disconnect`; `GET` `/api/stripe/connect/status` | `stripe:manage` +MFA; writes: origin, `stripe_connect_mutation`, and a fresh code (onboarding, the dashboard and disconnect can change where money goes) |
 | `POST` `/api/payments/checkout/event`, `/api/payments/checkout/membership`, `/api/payments/checkout/merchandise` | origin, verified member or guest `checkout` session + guest CSRF (not membership), `checkout_create` |
 | `GET` `/api/payments/checkout/attempts/[attemptId]` | the attempt's own member or guest session |
-| `POST` `/api/purchases/tickets/[orderId]/cancel`, `/api/commerce/orders/[orderId]/cancel` | origin, buyer or guest session + guest CSRF, `checkout_create` |
+| `POST` `/api/purchases/tickets/[orderId]/cancel`, `/api/purchases/tickets/[orderId]/cancel-registration`, `/api/commerce/orders/[orderId]/cancel` | origin, buyer or guest session + guest CSRF, `checkout_create` |
 | `GET` `/api/purchases/tickets/[orderId]/status`, `/api/commerce/orders/[orderId]` | buyer or guest session; commerce also staff `orders:read` |
 | `POST` `/api/payments/webhook`, `/api/stripe/connect/webhook` | Stripe signature |
 | `GET` `/api/public/events`, `/api/public/events/[eventId]`, `/api/public/organisations/search` | public |

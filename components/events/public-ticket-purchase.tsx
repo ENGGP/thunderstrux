@@ -54,6 +54,7 @@ export function PublicTicketPurchase({
   society = "This society",
   viewer = "member",
   salesOpen = true,
+  cancelled = false,
   salesCloseLabel,
   memberPlan = null,
   societySlug,
@@ -66,6 +67,8 @@ export function PublicTicketPurchase({
   society?: string;
   viewer?: BuyBoxViewer;
   salesOpen?: boolean;
+  // The society cancelled the event (EVT-004).
+  cancelled?: boolean;
   salesCloseLabel?: string;
   // The organiser's draft preview: the same box with buying turned off.
   preview?: boolean;
@@ -121,6 +124,15 @@ export function PublicTicketPurchase({
         <p className="text-sm text-ink-soft" id="preview-why">
           Buying is off in preview. After you publish, buyers see each ticket&apos;s live availability here.
         </p>
+      </Box>
+    );
+  }
+
+  if (cancelled) {
+    return (
+      <Box badge={<StatusBadge label="Event cancelled" status="cancelled" />}>
+        <p className="text-ui text-ink">{society} cancelled this event, so tickets aren&apos;t on sale.</p>
+        <p className="text-sm text-ink-soft">Had a ticket? Paid orders are refunded in full and free registrations cancelled; we&apos;ve emailed every ticket holder.</p>
       </Box>
     );
   }

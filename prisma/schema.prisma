@@ -304,6 +304,10 @@ model Event {
   // Compare-and-swap version for edits, publication and sales changes.
   version        Int         @default(1)
   compensationRefundMode CompensationRefundMode @default(manual_review)
+  // EVT-004: a published event the society cancelled. Sales are closed and its
+  // paid orders refunded through the refund worker; the event stays for history.
+  cancelledAt        DateTime?
+  cancellationReason String?
   createdAt      DateTime    @default(now())
   // Optional 16:9 event image: a ready `event` asset of the same society (T11b).
   heroAssetId    String?
@@ -936,6 +940,7 @@ enum OrderLifecycleSource {
   refund_worker
   checkout_recovery
   legacy
+  buyer_action
 }
 
 model NotificationOutbox {

@@ -67,7 +67,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 `NotificationOutbox` carries every other email. `enqueueNotification(tx, …)` runs inside the business transaction; the worker calls the provider after commit.
 
 - **Unique intent:** `(eventKey, recipient, templateVersion)`. A repeat insert does nothing, so each key below is sent at most once per recipient.
-- **Privacy:** `business_notice` jobs are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
+- **Privacy:** `business_notice` and `event_cancelled` jobs (`businessTemplates`) are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
 - **Frozen content:** subject, text, HTML and sender (`EMAIL_FROM`) are rendered once at enqueue and encrypted with AES-256-GCM (`encryptNotification`). The key is `NOTIFICATION_ENCRYPTION_KEY`, 32 bytes in base64; the job id is the authenticated data, and decryption requires the full 16-byte tag. Readiness (`lib/ops/readiness.ts`) and every token-issuing path refuse a missing or invalid key. Hosted services read it through `NOTIFICATION_ENCRYPTION_KEY_FILE`.
 - **Links** (`payload.link`) must be on the configured app origin, `https` (or `http` on localhost), without credentials.
 - **Statuses** (a string with a database check): `pending`, `processing`, `sent`, `failed`, `cancelled`.
@@ -84,7 +84,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 
 ## Templates
 
-`notificationTemplateSchema` in `lib/email/templates.ts`. A `business_notice` may set its own `subject` (up to 200 characters, line breaks folded to a space so one organiser title can't fail a fan-out, SEC-003); the others have fixed subjects.
+`notificationTemplateSchema` in `lib/email/templates.ts`. A `business_notice` or `event_cancelled` may set its own `subject` (up to 200 characters, line breaks folded to a space so one organiser title can't fail a fan-out, SEC-003); the others have fixed subjects.
 
 | Template | Sent for |
 | --- | --- |
@@ -98,6 +98,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | `business_notice` | Every society notice: receipts, refunds, cancellations, pickups, event changes, membership notices, payment review |
 | `guest_access` | Guest email confirmation (30-minute link) |
 | `guest_order_link` | Find your purchase, and a guest's merchandise receipt (24-hour link) |
+| `event_cancelled` | A society cancelled an event: one to each ticket holder, with the society's message and what happens to their money (EVT-004) |
 
 ## Notification worker
 
@@ -135,6 +136,8 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | Compensation refund confirmed (ticket) | `compensation-refund/{jobId}` | `business_notice` | `tests/integration/compensation-refunds.test.ts` |
 | Free ticket registration cancelled | `cancellation/{orderId}` | `business_notice` | `tests/integration/free-cancellation.test.ts` |
 | Payment review (ticket or commerce) | `payment-review/{orderId}` | `business_notice` | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/commerce-checkout.test.ts` |
+| Event cancelled (one per holder; each refund then sends its own `refund/{requestId}`) | `event-cancelled/{eventId}/{orderId}` | `event_cancelled` | `tests/integration/event-cancellation.test.ts` |
+| Buyer released a free registration | `cancellation/{orderId}` | `business_notice` | `tests/integration/event-cancellation.test.ts` |
 | Material event change | `event-change/{eventId}/{version}/{orderId}` | `business_notice` | `tests/integration/notification-matrix.test.ts`, `tests/e2e/event-builder.spec.ts` |
 
 - **Payment review** tells the buyer they have no tickets or items yet and what happens next: an automatic full refund, or the society's review. It carries no provider detail.

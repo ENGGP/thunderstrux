@@ -3,8 +3,10 @@ import { appUrl } from "@/lib/app-url";
 
 export const notificationTemplateSchema = z.enum([
   "verify_account", "reset_password", "password_changed", "email_change_requested",
-  "email_changed", "account_closed", "staff_invite", "business_notice", "guest_access", "guest_order_link"
+  "email_changed", "account_closed", "staff_invite", "business_notice", "guest_access", "guest_order_link", "event_cancelled"
 ]);
+// Society notices: tenant-owned, listed and requeued on the society's Notifications page.
+export const businessTemplates: readonly NotificationTemplate[] = ["business_notice", "event_cancelled"];
 export type NotificationTemplate = z.infer<typeof notificationTemplateSchema>;
 export const notificationPayloadSchema = z.object({
   message: z.string().min(1).max(2000),
@@ -25,7 +27,9 @@ const subjects: Record<NotificationTemplate, string> = {
   staff_invite: "Your Thunderstrux staff invitation",
   business_notice: "Thunderstrux notification",
   guest_access: "Confirm your email to continue your order",
-  guest_order_link: "Your Thunderstrux order"
+  guest_order_link: "Your Thunderstrux order",
+  // EVT-004: one per ticket holder when a society cancels an event; the subject names the event.
+  event_cancelled: "Event cancelled"
 };
 export function escapeEmailHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -43,7 +47,7 @@ export function renderNotification(template: NotificationTemplate, input: unknow
     }
   }
   return {
-    subject: (template === "business_notice" && payload.subject) || subjects[template],
+    subject: (businessTemplates.includes(template) && payload.subject) || subjects[template],
     text: `${payload.message}${payload.link ? `\n\n${payload.link}` : ""}`,
     html: `<p>${escapeEmailHtml(payload.message)}</p>${payload.link ? `<p><a href="${escapeEmailHtml(payload.link)}">Continue</a></p>` : ""}`
   };

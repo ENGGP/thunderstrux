@@ -42,6 +42,13 @@ export class EventLifecycleConflictError extends Error {
   }
 }
 
+// A cancelled event (EVT-004) keeps its page and history but changes no more.
+function refuseCancelled(event: { cancelledAt: Date | null }) {
+  if (event.cancelledAt) {
+    throw new EventLifecycleValidationError("This event was cancelled", [{ path: ["eventId"], message: "A cancelled event can't be edited, published or put back on sale" }]);
+  }
+}
+
 // The image must be a ready event image of this society. Callers hold the
 // Event lock (or are creating the event); the Asset row is locked after it.
 async function assertHeroAsset(tx: Prisma.TransactionClient, organisationId: string, heroAssetId: string) {
@@ -124,6 +131,7 @@ const dashboardEventSelect = {
   version: true,
   capacity: true,
   heroAssetId: true,
+  cancelledAt: true,
   ticketTypes: { select: { id: true, price: true, quantity: true } },
   organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true, timeZone: true } },
   _count: { select: { orders: true, tickets: true } }
@@ -155,6 +163,7 @@ function toDashboardEvent(
     version: event.version,
     capacity: event.capacity,
     heroAssetId: event.heroAssetId,
+    cancelledAt: event.cancelledAt,
     timeZone: event.organisation.timeZone,
     ticketTypeCount: event.ticketTypes.length,
     remaining,
@@ -175,7 +184,14 @@ function toDashboardEvent(
     deleteBlocker:
       event._count.orders > 0 || event._count.tickets > 0
         ? "Events with orders or tickets cannot be deleted."
-        : null
+        : null,
+    // Mirrors cancelOrganisationEvent (lib/events/event-cancellation.ts).
+    cancelBlocker:
+      event.status !== "published"
+        ? "Only a published event can be cancelled. Delete a draft instead."
+        : event.endTime <= now
+          ? "This event has ended. Refund single orders from Orders."
+          : null
   };
 }
 
@@ -455,6 +471,7 @@ export async function updateOrganisationEvent(
       startTime: true,
       salesCloseAt: true,
       capacity: true,
+      cancelledAt: true,
       ticketTypes: { select: { id: true } }
     }
   });
@@ -462,6 +479,7 @@ export async function updateOrganisationEvent(
   if (!existingEvent) {
     throw new EventLifecycleNotFoundError();
   }
+  refuseCancelled(existingEvent);
 
   if (existingEvent.version !== input.version) {
     throw new EventLifecycleConflictError();
@@ -716,6 +734,7 @@ const transitionSelect = {
   salesCloseAt: true,
   saleState: true,
   visibility: true,
+  cancelledAt: true,
   ticketTypes: { select: { id: true, price: true, quantity: true } },
   organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
   _count: { select: { orders: true } }
@@ -746,6 +765,7 @@ export async function setOrganisationEventPublication(
   const event = await findTransitionEvent(organisationId, eventId);
 
   if (event.status !== targetStatus) {
+    refuseCancelled(event);
     if (event.version !== version) {
       throw new EventLifecycleConflictError();
     }
@@ -819,6 +839,7 @@ export async function setOrganisationEventSaleState(
   const event = await findTransitionEvent(organisationId, eventId);
 
   if (event.saleState !== saleState) {
+    refuseCancelled(event);
     if (event.version !== version) {
       throw new EventLifecycleConflictError();
     }

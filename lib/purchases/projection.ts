@@ -36,14 +36,21 @@ export function purchasedTicketTypeLabel(purchasedName: string | null, currentNa
   return purchasedName ?? `${currentName} (historical label unavailable)`;
 }
 
+// Whether the buyer released a free registration themselves (EVT-005). Staff
+// cancellations always record who did it; a guest buyer has no account. Unknown
+// (not selected) reads as staff.
+export function releasedByBuyer(order: { cancelledByUserId?: string | null; userId?: string | null }) {
+  return order.cancelledByUserId !== undefined && (order.cancelledByUserId === null || order.cancelledByUserId === order.userId);
+}
+
 // The words a buyer sees for their own order (design round A2 batch 3): the
 // same states staff see, said from the buyer's side.
-export function buyerPurchaseBadge(order: Parameters<typeof ticketOrderProjection>[0]): { status: TicketOrderProjection; label?: string } {
+export function buyerPurchaseBadge(order: Parameters<typeof ticketOrderProjection>[0] & Parameters<typeof releasedByBuyer>[0]): { status: TicketOrderProjection; label?: string } {
   const projection = ticketOrderProjection(order);
   if (projection === "failed" || projection === "expired") return { status: "expired", label: "Didn't complete" };
   // Unpaid until Stripe says otherwise (round E1); the order page asks Stripe and may say Confirming.
   if (projection === "processing") return { status: projection, label: "Waiting for payment" };
-  if (projection === "cancelled") return { status: projection, label: "Cancelled by the society" };
+  if (projection === "cancelled") return { status: projection, label: releasedByBuyer(order) ? "You cancelled" : "Cancelled by the society" };
   // Payment review is either a charge awaiting compensation or a partial refund made in Stripe.
   if (projection === "review") return { status: projection, label: order.requiresCompensationReview ? "Payment issue" : "Partly refunded" };
   return { status: projection };

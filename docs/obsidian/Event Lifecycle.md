@@ -3,12 +3,12 @@ status: living
 last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[API Reference]]", "[[Ticket Check-in Implementation]]", "[[Memberships and Merchandise]]", "[[Society Profiles and Assets]]"]
-sources: [lib/events/event-lifecycle.ts, lib/events/event-readiness.ts, lib/events/inventory.ts, lib/events/public-events.ts, lib/events/event-changes.ts, lib/validators/events.ts, components/events/create-event-form.tsx, app/api/events]
+sources: [lib/events/event-lifecycle.ts, lib/events/event-cancellation.ts, lib/events/event-readiness.ts, lib/events/inventory.ts, lib/events/public-events.ts, lib/events/event-changes.ts, lib/validators/events.ts, components/events/create-event-form.tsx, app/api/events]
 ---
 
 # Event Lifecycle
 
-**Owns:** event statuses, visibility, sales open and close, capacity and ticket types, the event builder, publish and unpublish, the edit boundary, inventory locks, delete rules and the public event reads.
+**Owns:** event statuses, visibility, sales open and close, capacity and ticket types, the event builder, publish and unpublish, the edit boundary, inventory locks, cancelling an event, delete rules and the public event reads.
 **Read when:** changing how events are created, edited, published or sold, what stock means, or who can see an event.
 **Not here:** orders, holds and refunds ([[Payment Lifecycle]]); request and response shapes ([[API Reference]]); check-in ([[Ticket Check-in Implementation]]); member prices and members-only access ([[Memberships and Merchandise]]); image delivery ([[Society Profiles and Assets]]); event metrics ([[Analytics and Calendar]]); page guards ([[Frontend and Backend Flow]]).
 
@@ -17,6 +17,7 @@ sources: [lib/events/event-lifecycle.ts, lib/events/event-readiness.ts, lib/even
 | Concern | Where |
 | --- | --- |
 | Create, edit, publish, sales, delete | `lib/events/event-lifecycle.ts`: `createOrganisationEvent`, `updateOrganisationEvent`, `setOrganisationEventPublication`, `setOrganisationEventSaleState`, `deleteOrganisationEvent` |
+| Cancel an event with sales (EVT-004) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` |
 | Dashboard reads | `lib/events/event-lifecycle.ts`: `listDashboardEvents` (views `upcoming`, `drafts`, `past`, `all`), `getDashboardEvent`, `getOrganisationEventForEditing` |
 | Publish readiness and per-type buyability | `lib/events/event-readiness.ts`: `eventReadiness`, `salesOpen` |
 | Locks and sellable stock | `lib/events/inventory.ts`: `lockEventInventory`, `readEventInventory`, `sellableQuantity` |
@@ -24,10 +25,10 @@ sources: [lib/events/event-lifecycle.ts, lib/events/event-readiness.ts, lib/even
 | Time and place change notices | `lib/events/event-changes.ts`: `recordEventChange`, `fanOutEventChanges` |
 | Validation | `lib/validators/events.ts`: `createEventSchema`, `updateEventSchema`, `eventPublicationSchema`, `eventSaleStateSchema`; prices `lib/validators/price.ts` |
 | Error mapping | `lib/events/http.ts`: `eventRouteRules` |
-| Routes | `POST /api/events`, `GET /api/events`, `GET`/`PATCH`/`DELETE /api/events/[eventId]`, `PATCH /api/events/[eventId]/publish`, `PATCH /api/events/[eventId]/sales`, `GET /api/public/events`, `GET /api/public/events/[eventId]` |
+| Routes | `POST /api/events`, `GET /api/events`, `GET`/`PATCH`/`DELETE /api/events/[eventId]`, `PATCH /api/events/[eventId]/publish`, `PATCH /api/events/[eventId]/sales`, `POST /api/events/[eventId]/cancel`, `GET /api/public/events`, `GET /api/public/events/[eventId]` |
 | Builder and actions | `components/events/create-event-form.tsx`, `components/events/event-actions.tsx`, `components/events/readiness-checklist.tsx` |
 | Pages | `/dashboard/events`, `/dashboard/events/new`, `/dashboard/events/[eventId]`, `/dashboard/events/[eventId]/edit`, `/dashboard/events/[eventId]/preview`, `/events/[eventId]` |
-| Tests | `tests/integration/event-lifecycle.test.ts`, `tests/integration/event-policy.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/event-hero.test.ts`, `tests/integration/dashboard-events.test.ts`, `tests/integration/public-event-pages.test.ts`, `tests/integration/members-only-events.test.ts` |
+| Tests | `tests/integration/event-lifecycle.test.ts`, `tests/integration/event-policy.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/event-hero.test.ts`, `tests/integration/dashboard-events.test.ts`, `tests/integration/public-event-pages.test.ts`, `tests/integration/members-only-events.test.ts`, `tests/integration/event-cancellation.test.ts` |
 
 ## States
 
@@ -40,7 +41,9 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 | `saleState` + `salesCloseAt` | `open`, `closed` + a time | Tickets sell only while published, `saleState = open` and now is before `salesCloseAt`. Closing sales doesn't unpublish. |
 | `capacity` | null or a positive number | Optional event-wide ceiling, separate from each type's remaining `quantity`. |
 
-`version` increases on every edit, publish, unpublish and sales change. Each action sends the version it loaded; a stale one is 409 ("This event changed since you opened it"), never an overwrite.
+`cancelledAt` (with `cancellationReason`) marks a published event the society cancelled; it is set once and never cleared. A cancelled event stays `published` so buyers keep its page, but nothing about it can change again.
+
+`version` increases on every edit, publish, unpublish, sales change and cancellation. Each action sends the version it loaded; a stale one is 409 ("This event changed since you opened it"), never an overwrite.
 
 ## Rules
 
@@ -98,6 +101,20 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 `PATCH /api/events/[eventId]/sales` with `{ saleState, version }` closes or reopens sales without touching `status`. Reopening after `salesCloseAt` has passed is 400 on `salesCloseAt` ("Move the sales close time later before reopening sales"). Audits `event.sales_closed` / `event.sales_reopened`.
 
+### Cancelling
+
+`POST /api/events/[eventId]/cancel` (`cancelOrganisationEvent`) cancels a published event that hasn't ended. It needs `events:manage` and `orders:refund`, the event title typed back, a message to ticket holders, and one fresh authenticator code for the whole event.
+
+- **One transaction under the event lock** (all ticket types, then each order), so no checkout, fulfilment or edit interleaves: `cancelledAt`, `cancellationReason`, `saleState = closed`, `version` + 1.
+- **Paid Stripe orders:** each gets a `RefundRequest` through `openOrderRefund`, the same checks and fence as a staff refund, left `pending` for the refunds worker ([[Payment Lifecycle Refunds and Disputes#Order refunds]]). Tickets stay valid until Stripe confirms each refund, then are voided as with any refund. Orders it can't refund are skipped and returned in `skipped` with the reason: `disputed` (the bank settles it), `already_refunded`, `in_progress`, `not_refundable` (in compensation or marked refunded outside Thunderstrux).
+- **Free registrations** are cancelled with `cancelFreeOrder` (no stock back: nothing sells again).
+- **Holders:** every order that still had a valid ticket gets one `event_cancelled` email with the society's message and what happens to their money ([[Email Delivery Implementation]]).
+- **Late payments:** a checkout still open at cancellation can't issue tickets: fulfilment sees `cancelledAt` under the event lock and sends the payment to compensation (`event_cancelled_before_fulfilment`, [[Payment Lifecycle]]).
+- **Afterwards:** edits, publish changes and reopening sales are refused (400 "This event was cancelled"); the Edit page shows a notice instead of the form. The event leaves Explore, society profiles and discovery counts; its own page and buyers' order pages say it was cancelled. A repeat answers `already_cancelled`.
+- Audits `event.cancelled` with the counts and skipped orders, plus each order's own `order.refund_requested` or `order.free_cancelled`.
+- **Why one code and the worker:** refunding one order at a time took a fresh code each, so a 300-ticket event took hours (EVT-004). Luma and Eventbrite cancel with one confirmation that refunds everyone and emails attendees; the worker spreads the Stripe calls and retries unknown answers. Only before the end: payouts wait until two days after the event, so the society's balance still holds the money to refund.
+- **Not done here:** memberships and merchandise aren't event-owned and are untouched; check-in doesn't separately refuse a cancelled event (its tickets are voided as refunds land).
+
 ### Editing
 
 `PATCH /api/events/[eventId]` (`updateEventSchema`) updates fields and synchronises ticket types under the event lock. It never changes `status` or `saleState`.
@@ -136,19 +153,20 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 ### Public reads
 
-- `GET /api/public/events` (`getPublishedEvents`): published, `public`, not yet ended (PUB-001), ordered by start with cursor pages. No auth; no demo data; no stale-order cleanup.
+- `GET /api/public/events` (`getPublishedEvents`): published, `public`, not cancelled, not yet ended (PUB-001), ordered by start with cursor pages. No auth; no demo data; no stale-order cleanup.
 - `GET /api/public/events/[eventId]` (`getPublishedEventDetail`): published, `public` or `unlisted`; never `members_only`.
 - `/events/[eventId]` reads through `getEventForViewer`: drafts and wrong ids are 404; a members-only event opens only for a verified member whose live membership of the society carries `members_only_events`, and everyone else gets the gate ([[Memberships and Merchandise]]). Prices per viewer come from `priceForViewer`. The buyer's confirmation page uses `getBookedEventDetail`, so a ticket holder keeps the page.
-- Society profiles list up to 50 upcoming public events ([[Society Profiles and Assets]]).
+- Society profiles list up to 50 upcoming public events, never cancelled ones ([[Society Profiles and Assets]]).
+- A cancelled event's detail still reads (`cancelled: true`): the page shows "Event cancelled" and the buy box sells nothing.
 - Demo events come only from `prisma/seed.mjs`, never from a public read ([[Seeding and Data]]).
 - Contracts: [[API Reference]].
 
 ### Dashboard surfaces
 
-- `/dashboard/events` (`events:read`) lists events with a selling badge (Sales open, Sold out, Sales closed), "Link only" for unlisted, and times in the society zone; sales columns need `analytics:read`.
+- `/dashboard/events` (`events:read`) lists events with a selling badge (Sales open, Sold out, Sales closed, Event cancelled), "Link only" for unlisted, and times in the society zone; sales columns need `analytics:read`.
 - `/dashboard/events/[eventId]` (`analytics:read`) shows details, the ticket table (price, sold, held, left), a Capacity tile, and for a draft the readiness checklist with links to the field or payment setup. More offers Close sales and Reopen sales. Money needs `orders:read` too ([[Analytics and Calendar]]).
 - `/dashboard/events/[eventId]/preview` (`events:manage`) renders a draft as the public page under "Draft preview" with buying off; a published event redirects to its public page.
-- `components/events/event-actions.tsx` shows Publish, Unpublish and Delete with confirmation and the reason an action is disabled; the routes still enforce the rules.
+- `components/events/event-actions.tsx` shows Publish, Unpublish and Delete with confirmation and the reason an action is disabled; the routes still enforce the rules. On the event's own page, staff who may also refund see "Cancel event" (typed title, message, code; `cancelBlocker` says why it's unavailable). A cancelled event shows no actions.
 - Legacy `/dashboard/[orgSlug]/events/...` pages redirect to the slugless routes.
 
 ## Traps
@@ -165,7 +183,8 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 | --- | --- | --- |
 | 409 on save | Stale `version`, or stock moved while editing | Reload; the form keeps the edits on screen |
 | Publish 400 with blockers | Readiness failed | Fix each `field` named; paid-only events need payments set up |
-| Can't unpublish or delete | Orders or tickets exist | Close sales instead |
+| Can't unpublish or delete | Orders or tickets exist | Close sales instead, or Cancel event to refund everyone |
+| Cancel event reports skipped orders | Disputed, already refunded, or in compensation | Settle each in Orders; a dispute is settled by the bank |
 
 ## Related
 

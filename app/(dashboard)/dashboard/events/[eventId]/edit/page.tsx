@@ -47,6 +47,15 @@ export default async function EditEventPage({
     throw error;
   }
 
+  if (event.cancelledAt) {
+    return (
+      <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
+        <EventWorkspaceHeader active="edit" event={event} staffRole={organisation.staffRole} />
+        <Notice title="This event was cancelled">It can&apos;t be edited any more. Its orders, refunds and attendance stay in Orders and History.</Notice>
+      </DashboardShell>
+    );
+  }
+
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <EventWorkspaceHeader active="edit" event={event} staffRole={organisation.staffRole} />

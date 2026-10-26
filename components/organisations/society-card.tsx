@@ -16,7 +16,7 @@ export function SocietyCard({
   nextEvent
 }: SocietyCardProps) {
   return (
-    <article className="relative flex gap-4 rounded-card border border-line bg-surface p-5 transition-shadow duration-150 hover:shadow-card">
+    <article className="relative flex gap-4 rounded-card border border-line bg-surface p-5 hover:shadow-card">
       {logoAssetId ? (
         <img
           alt=""

@@ -102,7 +102,7 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   const big = "min-h-14 w-full text-lg md:w-auto md:min-h-11 md:text-ui";
 
   return (
-    <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 transition-colors duration-150 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
+    <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-3 md:block">
           <h3 className="font-display text-[22px] font-semibold leading-tight text-ink [overflow-wrap:anywhere] md:text-lg">{name}</h3>

@@ -121,7 +121,7 @@ export function DashboardShell({
           <details className="group mt-3 lg:hidden">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-control border border-white/50 px-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
               Society menu
-              <Icon className="transition-transform group-open:rotate-180" name="chevronDown" size={16} />
+              <Icon className="group-open:rotate-180" name="chevronDown" size={16} />
             </summary>
             <div className="mt-4 pb-2">{menu}</div>
           </details>

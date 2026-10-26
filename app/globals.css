@@ -67,14 +67,15 @@
   --container-admin: 1420px;
 }
 
-/* Motion: entries only (menus, dialog, result notices, phone buy bar); exits are
-   instant so a chosen action never waits on a fade. Used as ease-out and animate-*. */
+/* Motion: menus and the dialog animate in and close instantly, so a chosen action
+   never waits on a fade. The phone buy bar is the one drawer: it slides both ways.
+   Used as ease-out, ease-drawer and animate-*. */
 @theme {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --animate-pop-in: pop-in 160ms var(--ease-out);
   --animate-dialog-in: pop-in 200ms var(--ease-out);
   --animate-fade-in: fade-in 200ms var(--ease-out);
-  --animate-sheet-up: sheet-up 240ms var(--ease-out);
 
   @keyframes pop-in {
     from {
@@ -85,11 +86,6 @@
   @keyframes fade-in {
     from {
       opacity: 0;
-    }
-  }
-  @keyframes sheet-up {
-    from {
-      translate: 0 100%;
     }
   }
 }

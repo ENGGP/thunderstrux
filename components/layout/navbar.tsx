@@ -107,7 +107,7 @@ export default function Navbar() {
             </summary>
             <nav
               aria-label="Menu"
-              className="absolute right-0 top-full mt-2 grid w-56 origin-top-right animate-pop-in gap-1 rounded-card border border-line bg-surface p-2 shadow-float"
+              className="absolute right-0 top-full mt-2 grid w-56 gap-1 rounded-card border border-line bg-surface p-2 shadow-float"
             >
               {[...exploreLinks, ...accountLinks].map((link) => (
                 <Link

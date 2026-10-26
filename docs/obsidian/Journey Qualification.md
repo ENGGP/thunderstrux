@@ -141,7 +141,7 @@ Every run cleaned up after itself. Each e2e run's `manifest.json` records its pa
 
 ## Re-qualification (26 Oct 2026)
 
-#189 updated axe-core to 4.14 without a browser run. Its new Label in Name check failed the desktop step on main (DEF-046), so the steps after it hadn't run since, including the webhook step with both connected journeys. The test audit findings PR fixed it and re-ran the baseline and the browser campaign on `4bbd6f9` with its changes (`treeMatchesRevision: false`):
+#189 updated axe-core to 4.14 without a browser run. Its new Label in Name check failed the desktop step on main (DEF-046), so the steps after it hadn't run since, including the webhook step with both connected journeys. #193 fixed it and re-ran the baseline and the browser campaign on `4bbd6f9` with its changes (`treeMatchesRevision: false`):
 
 | Campaign | Run | Result |
 | --- | --- | --- |

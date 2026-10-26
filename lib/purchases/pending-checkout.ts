@@ -18,19 +18,21 @@ export type PendingCheckout =
 type Purchase = { kind: "ticket" | "commerce"; id: string };
 
 // The Session and hold of an order still pending, or null once it isn't.
+// `eventCancelled`: its event was cancelled (EVT-006), so nothing is paid any more.
 export async function pendingCheckoutFacts({ kind, id }: Purchase) {
   if (kind === "ticket") {
-    const order = await prisma.order.findUnique({ where: { id }, select: { status: true, stripeSessionId: true, reservation: { select: { expiresAt: true } } } });
-    return order?.status === "pending" ? { stripeSessionId: order.stripeSessionId, holdEndsAt: order.reservation?.expiresAt ?? null } : null;
+    const order = await prisma.order.findUnique({ where: { id }, select: { status: true, stripeSessionId: true, reservation: { select: { expiresAt: true } }, event: { select: { cancelledAt: true } } } });
+    return order?.status === "pending" ? { stripeSessionId: order.stripeSessionId, holdEndsAt: order.reservation?.expiresAt ?? null, eventCancelled: order.event.cancelledAt !== null } : null;
   }
   const order = await prisma.commerceOrder.findUnique({ where: { id }, select: { status: true, stripeSessionId: true, expiresAt: true } });
-  return order?.status === "pending" ? { stripeSessionId: order.stripeSessionId, holdEndsAt: order.expiresAt } : null;
+  return order?.status === "pending" ? { stripeSessionId: order.stripeSessionId, holdEndsAt: order.expiresAt, eventCancelled: false } : null;
 }
 
 export async function pendingCheckoutState(purchase: Purchase, now = new Date()): Promise<PendingCheckout | null> {
   const facts = await pendingCheckoutFacts(purchase);
   if (!facts) return null;
-  const held = facts.holdEndsAt && facts.holdEndsAt > now ? facts.holdEndsAt : null;
+  // A cancelled event's unpaid order is never offered its payment page again.
+  const held = facts.holdEndsAt && facts.holdEndsAt > now && !facts.eventCancelled ? facts.holdEndsAt : null;
   if (!facts.stripeSessionId) return held ? { state: "waiting", holdEndsAt: held, paymentUrl: null } : { state: "ended" };
   try {
     const session = await getStripe().checkout.sessions.retrieve(facts.stripeSessionId);

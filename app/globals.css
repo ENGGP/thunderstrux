@@ -67,6 +67,33 @@
   --container-admin: 1420px;
 }
 
+/* Motion: entries only (menus, dialog, result notices, phone buy bar); exits are
+   instant so a chosen action never waits on a fade. Used as ease-out and animate-*. */
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-pop-in: pop-in 160ms var(--ease-out);
+  --animate-dialog-in: pop-in 200ms var(--ease-out);
+  --animate-fade-in: fade-in 200ms var(--ease-out);
+  --animate-sheet-up: sheet-up 240ms var(--ease-out);
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-up {
+    from {
+      translate: 0 100%;
+    }
+  }
+}
+
 @layer base {
   :root {
     color-scheme: light;

@@ -1,9 +1,9 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[UI Architecture Rules]]", "[[Engineering Delivery Workflow]]", "[[Frontend and Backend Flow]]"]
-sources: [tests/e2e/accessibility.spec.ts, app/layout.tsx, app/globals.css, components/ui/confirm-dialog.tsx, components/ui/responsive-table.tsx, components/ui/input.tsx, components/analytics/bar-chart.tsx, scripts/run-e2e.mjs]
+sources: [tests/e2e/accessibility.spec.ts, playwright.config.ts, app/layout.tsx, app/globals.css, components/ui/confirm-dialog.tsx, components/ui/responsive-table.tsx, components/ui/input.tsx, components/analytics/bar-chart.tsx, scripts/run-e2e.mjs]
 ---
 
 # Accessibility Review
@@ -47,7 +47,7 @@ A new page joins the matching journey list in the spec.
 - **Charts and grids:** a chart's accessible name lists every value (`components/analytics/bar-chart.tsx`); the calendar's agenda lists what the grids show.
 - **Definition lists** hold only `dt`/`dd` pairs; notes go after the list.
 - **Target size:** default controls are 44px (`Button` `md`, link tabs `min-h-11`); compact controls are smaller: `Button size="sm"` is 36px (`h-9`) and filter pills are 40px (`min-h-10`). Both clear WCAG 2.2 AA's 24px minimum.
-- **Motion:** `prefers-reduced-motion` shortens transitions.
+- **Motion:** `prefers-reduced-motion` shortens transitions and entry animations to nothing ([[UI Architecture Rules#Motion]]). The browser campaign runs with `reducedMotion: 'reduce'` (`playwright.config.ts`), so axe never scans a half-faded dialog or notice; check motion itself by hand.
 - **Date picker:** fully keyboard operable ([[UI Architecture Rules#Primitives]]).
 - **Link names** are unique on a page (the header owns `Explore events` and `Explore societies`).
 

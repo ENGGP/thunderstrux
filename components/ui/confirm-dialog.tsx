@@ -44,7 +44,7 @@ export function ConfirmDialog({
   return (
     <dialog
       aria-labelledby={titleId}
-      className="m-auto w-[min(92vw,520px)] rounded-card border border-line bg-surface p-6 text-ink shadow-float backdrop:bg-brand-ink/40"
+      className="m-auto w-[min(92vw,520px)] animate-dialog-in rounded-card border border-line bg-surface p-6 text-ink shadow-float backdrop:animate-fade-in backdrop:bg-brand-ink/40"
       onCancel={(event) => {
         // Escape cancels; it never confirms, and not while a request is in flight.
         event.preventDefault();

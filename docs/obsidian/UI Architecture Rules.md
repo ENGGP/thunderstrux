@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Accessibility Review]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navbar.tsx, components/layout/site-footer.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/events/event-tabs.tsx, components/settings/stripe-connect-settings.tsx, .design-sync/config.json]
@@ -35,7 +35,8 @@ sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navb
 - Widths: `max-w-auth`, `max-w-read`, `max-w-checkout`, `max-w-personal`, `max-w-page`, `max-w-admin` (values in `app/globals.css`).
 - No raw palette classes (`bg-neutral-900`, `text-purple-600`) and no hex colours in components.
 - Bare `border` draws the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
-- The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` shortens every transition.
+- The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` shortens every transition and animation.
+- Motion tokens sit in their own `@theme` block: `ease-out` is the strong curve `cubic-bezier(0.23, 1, 0.32, 1)`, and `animate-pop-in` (160ms), `animate-dialog-in` (200ms), `animate-fade-in` (200ms) and `animate-sheet-up` (240ms) are entry keyframes. Where they are used: [[#Motion]].
 - `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through `next/font`; they are downloaded at build time and served by the app.
 - No dark mode. No icon library: `components/ui/icon.tsx` holds the outline icons, always decorative beside text.
 
@@ -118,6 +119,21 @@ Each page renders its shell after its guards pass; shells are never in route-gro
 - **Dates:** in the society's IANA zone (`formatDateTime`, `zoneCity`), default `Australia/Brisbane`; name the zone where times are listed. Order references are the last six id characters, upper case (`orderReference`).
 - **Confirmations:** destructive or irreversible actions use `ConfirmDialog` naming what happens and what it does not undo; results report through a `Notice` with a live role.
 - **Concurrency:** a version conflict (409) keeps the user's edits and offers a reload (profile also offers `Save my version`); unsaved-change guards ask before leaving.
+
+## Motion
+
+Motion shows where something came from or confirms that a change happened, and only after the server has answered (visual spec 2.4). Only `opacity`, `scale` and `translate` animate. **Entries animate; exits are instant:** `ConfirmDialog` unmounts its body on close, a chosen menu action shouldn't wait on a fade, and the phone buy bar hands over to the box's own button.
+
+| Where | Motion |
+| --- | --- |
+| `buttonClasses()` and the check-in button | Press: scale to 97% over 150ms (`active:not-disabled:scale-97`) |
+| `EventActions` More menu, navbar `Menu`, `DateField` calendar | `animate-pop-in`, from the trigger (`placeMenu` sets the origin above or below) |
+| `ConfirmDialog` | `animate-dialog-in` from the centre; the backdrop fades in |
+| `Notice` with a `role` | `animate-fade-in`; notices without a role are guidance and stay still |
+| Check-in card | Its colours cross-fade over 150ms when the saved state changes |
+| Phone buy bar | `animate-sheet-up` from the bottom edge |
+
+Deliberately still: page and tab changes (back-office pages open hundreds of times a day), list rows and search results (data people act on doesn't move), date-picker month changes (keyboard driven), `<details>` disclosures (height would move layout; the chevron turns), and payment or check-in success: no spinners, no celebration (visual spec 12.2). The skeleton pulses only when motion is allowed.
 
 ## Overview content
 

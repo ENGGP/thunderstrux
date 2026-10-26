@@ -14,7 +14,9 @@ export default defineConfig({
     baseURL: 'http://localhost:3100',
     trace: 'off',
     screenshot: 'off',
-    video: 'off'
+    video: 'off',
+    // Entry animations finish instantly, so axe never scans a half-faded dialog or notice.
+    reducedMotion: 'reduce'
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },

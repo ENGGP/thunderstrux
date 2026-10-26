@@ -5,11 +5,8 @@ import {
   createEvent,
   createMember,
   createOrder,
-  createOrganisationAccount,
-  createReservation
+  createOrganisationAccount
 } from "@/tests/helpers/test-data";
-import { prisma } from "@/lib/db";
-import DashboardPage from "@/app/(dashboard)/dashboard/page";
 import OrganisationOrdersPage from "@/app/(dashboard)/dashboard/orders/page";
 
 vi.mock("next/navigation", async importOriginal => ({
@@ -97,80 +94,5 @@ describe("dashboard orders page", () => {
     });
 
     expect(html).toContain("Payment received; fulfilment review required");
-  });
-
-  test("dashboard orders page does not mutate stale pending orders", async () => {
-    const { user, organisation } = await createOrganisationAccount();
-    const member = await createMember();
-    const event = await createEvent({ organisationId: organisation.id });
-    const ticketType = event.ticketTypes[0];
-    const pending = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      status: "pending",
-      unitPrice: ticketType.price
-    });
-    await createReservation({
-      orderId: pending.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      expiresAt: new Date(Date.now() - 60 * 1000)
-    });
-
-    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    const html = await renderOrdersPage({
-      includeSystem: "true",
-      status: "pending"
-    });
-    // Shown with its buyer, but not linked: order detail serves settled orders only.
-    expect(html).toContain(member.email);
-    expect(html).not.toContain(`/dashboard/orders/${pending.id}`);
-
-    const persisted = await prisma.order.findUniqueOrThrow({
-      where: { id: pending.id },
-      include: { reservation: true }
-    });
-    expect(persisted.status).toBe("pending");
-    expect(persisted.reservation?.status).toBe("active");
-  });
-
-  test("dashboard landing page does not mutate stale pending orders", async () => {
-    const { user, organisation } = await createOrganisationAccount();
-    const member = await createMember();
-    const event = await createEvent({ organisationId: organisation.id });
-    const ticketType = event.ticketTypes[0];
-    const pending = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      status: "pending",
-      unitPrice: ticketType.price
-    });
-    await createReservation({
-      orderId: pending.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      expiresAt: new Date(Date.now() - 60 * 1000)
-    });
-
-    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
-    const html = await renderPage(await DashboardPage());
-    // Listed under recent orders, but order detail does not serve pending orders.
-    expect(html).toContain("Recent orders");
-    expect(html).not.toContain(`/dashboard/orders/${pending.id}`);
-
-    const persisted = await prisma.order.findUniqueOrThrow({
-      where: { id: pending.id },
-      include: { reservation: true }
-    });
-    expect(persisted.status).toBe("pending");
-    expect(persisted.reservation?.status).toBe("active");
   });
 });

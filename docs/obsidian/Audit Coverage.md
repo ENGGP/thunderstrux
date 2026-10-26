@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[UI Architecture Rules]]"]
 sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, prisma/migrations/20261110010000_audit_actor_role/migration.sql, tests/integration/history.test.ts]
@@ -9,6 +9,8 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 # Audit Coverage
 
 Which mutations write an `AuditLog` row, what each row holds, and how the society History (`/dashboard/history`, T38) shows it. This closes AUD-001. Add a row here whenever a new mutation route arrives.
+
+The 2026-10-26 test audit added a row check (action, actor and target) for each action that no test checked, in the integration test that makes the change. A new action gets the same check.
 
 ## Rules
 

@@ -135,6 +135,8 @@ describe("disputes", () => {
     expect(ticketOrderProjection(restored)).toBe("paid");
     expect(await prisma.purchaseDispute.findFirstOrThrow({ where: { orderId: fixture.order.id } })).toMatchObject({ resolvedByUserId: fixture.owner.user.id, resolutionReason: "Stripe closed it in our favour." });
     expect(await historyOf(fixture.order.id)).toEqual(["dispute_opened", "dispute_closed", "dispute_resolved"]);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.dispute_resolved", targetId: fixture.order.id } }))
+      .toMatchObject({ organisationId: fixture.owner.organisation.id, actorUserId: fixture.owner.user.id, metadata: expect.objectContaining({ reason: "Stripe closed it in our favour." }) });
     // A late event after the restore is history only.
     await reconcileDisputeEvent(signedEvent("charge.dispute.updated", disputeObject(fixture, "won")));
     expect((await orderState(fixture.order.id)).disputeStatus).toBeNull();
@@ -218,6 +220,10 @@ describe("refunds made outside Thunderstrux", () => {
 
     expect((await reviewAs(fixture, { action: "mark_reviewed" })).status).toBe(200);
     expect(ticketOrderProjection(await orderState(fixture.order.id))).toBe("paid");
+    // Stripe's report is recorded as no one's step; the review as the staff member's.
+    const audit = (action: string) => prisma.auditLog.findFirstOrThrow({ where: { action, targetId: fixture.order.id } });
+    expect(await audit("order.external_refund_recorded")).toMatchObject({ organisationId: fixture.owner.organisation.id, actorUserId: null });
+    expect(await audit("order.external_refund_reviewed")).toMatchObject({ organisationId: fixture.owner.organisation.id, actorUserId: fixture.owner.user.id });
 
     // Refund the rest: Stripe already holds the dashboard refund, which is exactly the part left out.
     stripe.create.mockImplementation(async (params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("re"), status: "succeeded", amount: params.amount, currency: "aud", payment_intent: fixture.intentId, metadata: params.metadata }));

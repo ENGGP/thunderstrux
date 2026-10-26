@@ -247,6 +247,7 @@ Since T42 every scheduled command runs under one contract (`lib/ops/worker.ts`):
 | `queue_backlog_high` ticket holds | an expired hold is still active 10 minutes later | Check the stale-orders job; the held stock stays unavailable until it runs. |
 | `queue_backlog_high` commerce checkouts | a pending commerce checkout is 30 minutes past its expiry | Check the stale-orders job. |
 | `queue_processing_stuck` | an item has been processing for over 15 minutes | Lease recovery should requeue it; if it doesn't, inspect the item before requeueing. |
+| `ticket_webhook_identity_mismatch`, `commerce_webhook_identity_mismatch` | a Stripe Session names an order it can't belong to: the order holds another Session (PAY-010), or for commerce the family, society or order doesn't match | Nothing was issued for it. Find the payment in Stripe's Dashboard. If it was charged and the order was paid on its own Session, refund the stray payment there; no order records it. |
 
 ## Recovery runbook
 

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Development Workflow]]", "[[Non-Blocking Issue Register]]"]
 sources: [AGENTS.md, package.json]
@@ -43,7 +43,7 @@ Always run `git diff --check`. Run `pnpm docs:check` when documentation changes.
 | Documentation only | Markdown, prose, links, or agent instructions without executable/configuration changes | Docs checker, diff check, and review of links and current claims. No typecheck, build, integration, browser, operations, or other functionality tests |
 | Low | Copy or isolated styling | Focused visual/accessibility review; affected component/browser check only when interaction or layout risk warrants it |
 | Standard | UI behavior, ordinary API/domain logic, or contained refactoring | Focused regression and relevant denial cases, typecheck; production build for build/rendering/import changes, affected integration/browser coverage where behavior crosses those boundaries |
-| High | Auth, tenancy, security, payments, workers, schema/data, dependencies, or operations | Relevant Standard checks plus affected failure/concurrency/idempotency coverage. Full integration for shared domain/security/schema/runtime dependency changes; full E2E for shared authentication/checkout/navigation changes. Migration/integrity/restore, audit/image scan, provider campaign, or operations rehearsal only for the corresponding changed boundary |
+| High | Auth, tenancy, security, payments, workers, schema/data, dependencies, or operations | Relevant Standard checks plus affected failure/concurrency/idempotency coverage. Full integration for shared domain/security/schema/runtime dependency changes; full E2E for shared authentication/checkout/navigation changes, and for a browser test tool update (Playwright, axe), because it changes what the campaign checks (DEF-046). Migration/integrity/restore, audit/image scan, provider campaign, or operations rehearsal only for the corresponding changed boundary |
 
 Use the existing local entrypoints; do not rewrite tests merely to move execution off GitHub:
 

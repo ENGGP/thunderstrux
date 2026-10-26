@@ -1198,11 +1198,19 @@ describe("webhook reconciliation", () => {
     expect(await state()).toMatchObject({ status: "failed", requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
   });
 
-  // Current behaviour, recorded as PAY-010: no alert and no compensation for such a payment.
-  test("a paid session that names an order recorded with another session is ignored and changes nothing", async () => {
+  // PAY-010: the payment issues nothing and a person refunds it in Stripe.
+  test("a paid session that names an order recorded with another session changes nothing and alerts a person; an unpaid one doesn't", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const mismatchAlerts = () => error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"ticket_webhook_identity_mismatch"'));
     const { order, session, state } = await pendingWithHold();
+    expect(await reconcileCompletedCheckoutSession(session({ id: "cs_not_this_orders_session", paymentStatus: "unpaid" }))).toEqual({ status: "ignored", orderId: order.id, reason: "session_mismatch" });
+    expect(mismatchAlerts()).toEqual([]);
+
     expect(await reconcileCompletedCheckoutSession(session({ id: "cs_not_this_orders_session" }))).toEqual({ status: "ignored", orderId: order.id, reason: "session_mismatch" });
     expect(await state()).toMatchObject({ status: "pending", requiresCompensationReview: false, tickets: [], reservation: { status: "active" } });
+    expect(mismatchAlerts().map((line) => JSON.parse(line))).toEqual([
+      expect.objectContaining({ reason: "session_mismatch", orderId: order.id, stripeSessionId: "cs_not_this_orders_session", orderStripeSessionId: order.stripeSessionId })
+    ]);
   });
 
   test("a paid session for no known order is ignored", async () => {

@@ -18,6 +18,8 @@ export type OperationalAlertName =
   | "dispute_reversal_unresolved"
   | "society_payout_failed"
   | "commerce_webhook_identity_mismatch"
+  // PAY-010: a paid ticket Session that isn't the one bound to its order.
+  | "ticket_webhook_identity_mismatch"
   | "db_migration_failed"
   | "app_healthcheck_failed"
   // Worker contracts (T42).

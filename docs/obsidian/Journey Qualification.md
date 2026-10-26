@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-24
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]", "[[Production Operations]]", "[[Accessibility Review]]"]
 sources: [docs/MVP_READINESS_PLAN.md, tests/e2e/journeys.spec.ts, scripts/run-e2e.mjs]
@@ -44,7 +44,7 @@ This note maps each requirement to the test that proves it. A requirement is onl
 | Member attendance | Free tickets | e2e `free-tickets` |
 | | Paid tickets | e2e `webhooks` (signed fulfilment exactly once under concurrent replay), `purchases` (success page confirms until the webhook lands) |
 | | Member price | **e2e `journeys`**: standard price until a paid membership, member price after; integration `member-prices` |
-| | Stock and quote races | e2e `checkout-states` (price changed, sold out, fewer left, sales closed); integration `checkout-reservations` |
+| | Stock and quote races | e2e `checkout-states` (price changed, sold out, fewer left, sales closed); integration `inventory-locks` (buyers racing for the last seat, a price changed before any hold, sales closing mid-checkout, a 30-buyer rush), `checkout-reservations` (live holds reduce availability) |
 | | Decline, cancel, expiry | Card payments are declined inside Stripe's page; the buyer retries or leaves. e2e `webhooks` (expiry releases the hold), integration `ticket-purchases` (the cancel page names the order only to its buyer) |
 | | Wallet, email, replay | e2e `purchases` (wallet of ticket faces), `webhooks` (replay fulfils once, one email job); integration `email-outbox` |
 | | Void ticket denied at check-in | e2e `check-in` (refunded ticket shows Don't admit), **`journeys`** |
@@ -138,3 +138,15 @@ Every run cleaned up after itself. Each e2e run's `manifest.json` records its pa
 - **DEF-026:** the web image built the app's origin into its server code, so one image served only the domain it was built for (T44d).
 
 **Not covered here.** OpenClaw is deferred. Real providers are covered by T45 ([[E2E and Staging Payments]]; Spaces blocked), and real users come in H06.
+
+## Re-qualification (26 Oct 2026)
+
+#189 updated axe-core to 4.14 without a browser run. Its new Label in Name check failed the desktop step on main (DEF-046), so the steps after it hadn't run since, including the webhook step with both connected journeys. #193 fixed it and re-ran the baseline and the browser campaign on `4bbd6f9` with its changes (`treeMatchesRevision: false`):
+
+| Campaign | Run | Result |
+| --- | --- | --- |
+| Baseline | `baseline-b804a38b50797943158c3f63` | 44/44 runner guards, typecheck, 748/748 integration tests in 105 files, no known vulnerabilities |
+| Browser | `browser-872deb2b8ed7d8950f19d919` | Failed on two faults in the first pickup fix: a stray space in the button's name, and hidden text widening the Pickups page at 768px |
+| Browser | `browser-c94009db98b26f9a705ca590` | 9 MFA-step, 69 desktop/mobile and 10 webhook-step checks passed, including both journeys |
+
+The operations and Droplet rehearsals weren't rerun, because nothing they cover changed.

@@ -123,8 +123,8 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(JSON.stringify(await parseJsonResponse(late))).toContain("Move the sales close time");
   });
 
-  test("a repeated publish is a no-op and a stale version is a conflict", async () => {
-    const { organisation } = await signedInOrganiser(true);
+  test("a repeated publish is a no-op, a stale version is a conflict, and an unsold event goes back to draft on record", async () => {
+    const { organisation, user } = await signedInOrganiser(true);
     const event = await createEvent({ organisationId: organisation.id });
 
     expect((await publish(event.id, { targetStatus: "published", version: 1 })).status).toBe(200);
@@ -137,6 +137,9 @@ describe("event policy, readiness and explicit transitions", () => {
     expect(stale.status).toBe(409);
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).status).toBe("published");
     expect((await publish(event.id, { targetStatus: "draft" })).status).toBe(400);
+
+    expect((await publish(event.id, { targetStatus: "draft", version: 2 })).status).toBe(200);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { targetId: event.id, action: "event.unpublished" } })).toMatchObject({ organisationId: organisation.id, actorUserId: user.id });
   });
 
   test("two edits from the same loaded version: one saves, the other gets a conflict", async () => {

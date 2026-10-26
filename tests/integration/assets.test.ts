@@ -62,7 +62,9 @@ test("upload, private preview and deletion preserve tenant boundaries and audit 
   await deleteAsset(own.user, own.organisation.id, asset.id, storage);
   await deleteAsset(own.user, own.organisation.id, asset.id, storage);
   expect(objects.size).toBe(0);
-  expect(await prisma.auditLog.count({ where: { targetId: asset.id } })).toBe(2);
+  // The upload and one deletion, however often it is repeated.
+  expect((await prisma.auditLog.findMany({ where: { targetId: asset.id }, orderBy: { createdAt: "asc" } })).map((row) => [row.action, row.actorUserId, row.organisationId]))
+    .toEqual([["asset.uploaded", own.user.id, own.organisation.id], ["asset.deleted", own.user.id, own.organisation.id]]);
 });
 test("failed provider work and revoked authority never make an image ready; delayed GC recovers bytes", async () => {
   const own = await createOrganisationAccount(); const { storage, objects } = memoryStorage();
@@ -76,7 +78,10 @@ test("failed provider work and revoked authority never make an image ready; dela
   expect((await maintainAssets({ storage, dryRun: false })).eligible).toBe(0);
   await prisma.asset.update({ where: { id: failed.id }, data: { unreferencedAt: new Date(Date.now() - 25 * 3600000) } });
   expect((await maintainAssets({ storage })).eligible).toBe(1); expect(objects.size).toBe(1);
+  expect(await prisma.auditLog.count({ where: { targetId: failed.id, action: "asset.orphan_removed" } })).toBe(0);
   expect((await maintainAssets({ storage, dryRun: false })).eligible).toBe(1); expect(objects.size).toBe(0);
+  expect(await prisma.auditLog.findMany({ where: { targetId: failed.id, action: "asset.orphan_removed" } }))
+    .toEqual([expect.objectContaining({ organisationId: own.organisation.id, actorUserId: null, metadata: { kind: "logo" } })]);
 });
 test("quota reservations serialize concurrent uploads and missing objects fail safely", async () => {
   const own = await createOrganisationAccount(); const { storage, objects } = memoryStorage();

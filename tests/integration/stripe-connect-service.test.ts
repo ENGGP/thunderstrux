@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
 import { prisma } from "@/lib/db";
 import {
@@ -45,6 +45,9 @@ function accountUpdated(account: Record<string, unknown>) {
 }
 
 describe("Stripe Connect application service", () => {
+  // Each test sees only its own Stripe calls.
+  beforeEach(() => { for (const mock of Object.values(stripeMocks)) mock.mockReset(); });
+
   test("returns canonical local states without Stripe I/O", async () => {
     const disconnected = await createOrganisationAccount();
     const blocked = await createOrganisationAccount();
@@ -62,46 +65,65 @@ describe("Stripe Connect application service", () => {
     expect(stripeMocks.retrieveAccount).not.toHaveBeenCalled();
   });
 
-  test("refreshes and persists connected-account readiness", async () => {
+  test("refreshes and persists readiness: ready, restricted while charges are off, incomplete until details are in", async () => {
     const { organisation } = await createOrganisationAccount({
       stripeReady: true
     });
-    stripeMocks.retrieveAccount.mockResolvedValueOnce({
-      id: organisation.stripeAccountId,
-      details_submitted: true,
-      charges_enabled: true,
-      payouts_enabled: false,
-      requirements: {
-        currently_due: [],
-        eventually_due: ["external_account"],
-        disabled_reason: null
-      }
-    });
+    const cases = [
+      { details_submitted: true, charges_enabled: true, state: "READY", requirements: { currently_due: [], eventually_due: ["external_account"], disabled_reason: null } },
+      { details_submitted: true, charges_enabled: false, state: "RESTRICTED", requirements: { currently_due: ["individual.verification.document"], eventually_due: [], disabled_reason: "requirements.past_due" } },
+      { details_submitted: false, charges_enabled: false, state: "CONNECTED_INCOMPLETE", requirements: { currently_due: ["business_profile.url"], eventually_due: [], disabled_reason: "requirements.past_due" } }
+    ] as const;
 
-    await expect(
-      getOrganisationStripeConnectStatus(organisation.id)
-    ).resolves.toMatchObject({
-      accountId: organisation.stripeAccountId,
-      state: "READY",
-      ready: true,
-      payouts_enabled: false
-    });
-    await expect(
-      prisma.organisation.findUniqueOrThrow({
-        where: { id: organisation.id },
-        select: {
-          stripeAccountStatus: true,
-          stripeChargesEnabled: true,
-          stripePayoutsEnabled: true,
-          stripeDetailsSubmitted: true
-        }
-      })
-    ).resolves.toEqual({
-      stripeAccountStatus: "READY",
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: true
-    });
+    for (const { state, requirements, ...flags } of cases) {
+      stripeMocks.retrieveAccount.mockResolvedValueOnce({ id: organisation.stripeAccountId, payouts_enabled: false, requirements, ...flags });
+      // What the Payments page shows: only a ready account sells, and Stripe's own next steps.
+      await expect(
+        getOrganisationStripeConnectStatus(organisation.id)
+      ).resolves.toMatchObject({
+        accountId: organisation.stripeAccountId,
+        state,
+        ready: state === "READY",
+        payouts_enabled: false,
+        currently_due: requirements.currently_due,
+        disabled_reason: requirements.disabled_reason,
+        dashboard_available: flags.details_submitted
+      });
+      await expect(
+        prisma.organisation.findUniqueOrThrow({
+          where: { id: organisation.id },
+          select: {
+            stripeAccountStatus: true,
+            stripeChargesEnabled: true,
+            stripePayoutsEnabled: true,
+            stripeDetailsSubmitted: true
+          }
+        })
+      ).resolves.toEqual({
+        stripeAccountStatus: state,
+        stripeChargesEnabled: flags.charges_enabled,
+        stripePayoutsEnabled: false,
+        stripeDetailsSubmitted: flags.details_submitted
+      });
+    }
+  });
+
+  test("a Stripe platform not yet signed up for Connect marks the society as waiting on the platform; other errors aren't mistaken for it", async () => {
+    const { organisation, user } = await createOrganisationAccount();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    stripeMocks.createAccount.mockRejectedValueOnce(Object.assign(
+      new Error("You can only create new accounts if you've signed up for Connect, which you can learn how to do at https://stripe.com/docs/connect."),
+      { type: "StripeInvalidRequestError" }
+    ));
+
+    await expect(startOrganisationStripeOnboarding(organisation.id, user.id)).rejects.toMatchObject({ name: "StripeConnectPlatformNotReadyError", state: "PLATFORM_NOT_READY" });
+    expect(await prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id }, select: { stripeAccountId: true, stripeAccountStatus: true, stripeChargesEnabled: true } }))
+      .toEqual({ stripeAccountId: null, stripeAccountStatus: "PLATFORM_NOT_READY", stripeChargesEnabled: false });
+    expect(stripeMocks.createAccountLink).not.toHaveBeenCalled();
+    expect(await prisma.auditLog.count({ where: { organisationId: organisation.id, action: "stripe_connect.account_created" } })).toBe(0);
+
+    stripeMocks.createAccount.mockRejectedValueOnce(new Error("Too many requests"));
+    await expect(startOrganisationStripeOnboarding(organisation.id, user.id)).rejects.toThrow("Too many requests");
   });
 
   test("composes onboarding for an existing connected account", async () => {

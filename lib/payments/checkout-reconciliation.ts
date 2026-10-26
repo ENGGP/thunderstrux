@@ -411,6 +411,13 @@ export async function reconcileCompletedCheckoutSession(
       discoveredOrder.stripeSessionId &&
       discoveredOrder.stripeSessionId !== session.id
     ) {
+      // PAY-010: money taken on a Session the order isn't bound to (a replay after
+      // Stripe's 24-hour key expiry) issues nothing; a person refunds it in Stripe.
+      if (session.payment_status === "paid") {
+        const details = { stripeEventId, orderId: discoveredOrder.id, stripeSessionId: session.id, orderStripeSessionId: discoveredOrder.stripeSessionId };
+        logError("stripe.webhook.reconciliation_failed", { message: "Paid Stripe session is not the order's session", ...details });
+        emitOperationalAlert("ticket_webhook_identity_mismatch", { reason: "session_mismatch", ...details });
+      }
       result = {
         status: "ignored",
         orderId: discoveredOrder.id,

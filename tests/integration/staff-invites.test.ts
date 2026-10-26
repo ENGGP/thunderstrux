@@ -88,6 +88,10 @@ test("resend rotates token/version and fences claimed mail; revoke cancels the r
   await manageOrganisationStaffInvite(actor(data.user), data.organisation.id, invite.invite.id, "revoke");
   await expect(acceptOrganisationStaffInvite({ token: replacement, actor: actor(data.recipient) })).rejects.toThrow("unavailable");
   expect(await prisma.notificationOutbox.count({ where: { status: "cancelled" } })).toBe(2);
+  expect((await prisma.auditLog.findMany({ where: { targetId: invite.invite.id, action: { in: ["staff.invite.resent", "staff.invite.revoked"] } }, orderBy: { createdAt: "asc" } }))
+    .map((row) => [row.action, row.actorUserId, row.organisationId])).toEqual([
+    ["staff.invite.resent", data.user.id, data.organisation.id], ["staff.invite.revoked", data.user.id, data.organisation.id]
+  ]);
 });
 test("accept/resend and accept/revoke races serialize with one winning mutation", async () => {
   for (const action of ["resend", "revoke"] as const) {

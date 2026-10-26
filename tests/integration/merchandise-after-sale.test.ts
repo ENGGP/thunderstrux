@@ -88,7 +88,7 @@ describe("merchandise after the sale", () => {
   });
 
   test("a free order is cancelled once, never refunded, and a collected or paid one can't be cancelled", async () => {
-    const { organisation, variant, order } = await society();
+    const { organisation, user, variant, order } = await society();
     const free = await order({ free: true, quantity: 1 });
     const done = await order({ free: true, quantity: 1, pickupStatus: "collected" });
     const paid = await order();
@@ -101,6 +101,8 @@ describe("merchandise after the sale", () => {
     expect(await prisma.refundRequest.count({ where: { commerceOrderId: free.id } })).toBe(0);
     expect(await prisma.notificationOutbox.count({ where: { eventKey: `merchandise-cancelled/${free.id}` } })).toBe(1);
     expect(await prisma.commerceLifecycleEvent.count({ where: { commerceOrderId: free.id, type: "free_cancelled" } })).toBe(1);
+    expect(await prisma.auditLog.findMany({ where: { action: "merchandise_order.free_cancelled", targetId: free.id } }))
+      .toEqual([expect.objectContaining({ organisationId: organisation.id, actorUserId: user.id, metadata: { reason: "Ordered twice by mistake." } })]);
     expect((await listPickups(organisation.id, { stage: "prepare" })).orders.map((row) => row.id)).toEqual([paid.id]);
     expect(await stock(variant.id)).toBe(3);
 
@@ -110,7 +112,7 @@ describe("merchandise after the sale", () => {
   });
 
   test("a return restocks once when asked, never more than was bought, and other societies and staff without the permission get nothing", async () => {
-    const { organisation, variant, order } = await society();
+    const { organisation, user, variant, order } = await society();
     const bought = await order({ quantity: 2, pickupStatus: "collected" });
     const lineId = bought.lines[0].id;
     const body = (overrides: Record<string, unknown> = {}) => ({ lineId, quantity: 1, restock: true, reason: "Clip broken.", operationKey: unique("return-key-0000"), ...overrides });
@@ -128,6 +130,8 @@ describe("merchandise after the sale", () => {
     expect(view?.lines[0]).toMatchObject({ quantity: 2, returned: 2 });
     expect(view?.merchandiseReturns.map((row) => row.restocked)).toEqual([true, false]);
     expect(await prisma.commerceLifecycleEvent.count({ where: { commerceOrderId: bought.id, type: "return_recorded" } })).toBe(2);
+    expect((await prisma.auditLog.findMany({ where: { action: "merchandise_order.return_recorded", targetId: bought.id }, orderBy: { createdAt: "asc" } })).map((row) => [row.actorUserId, row.metadata]))
+      .toEqual([[user.id, expect.objectContaining({ quantity: 1, restocked: true })], [user.id, expect.objectContaining({ quantity: 1, restocked: false })]]);
 
     const other = await createOrganisationAccount();
     setMockSession({ userId: other.user.id, email: other.user.email, accountRole: "organisation" });

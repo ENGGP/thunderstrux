@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { GET as statusRoute } from "@/app/api/purchases/tickets/[orderId]/status/route";
+import ConfirmedPage from "@/app/(public)/events/[eventId]/checkout/confirmed/page";
 import CancelPage from "@/app/cancel/page";
 import PurchasesPage from "@/app/purchases/page";
 import SuccessPage from "@/app/success/page";
@@ -92,6 +93,27 @@ describe("purchases and order status", () => {
     expect(paid).toContain("they&#x27;re in My tickets now");
     await prisma.order.update({ where: { id: fixture.order.id }, data: { ticketEmailSentAt: new Date() } });
     expect(await success()).toContain(`We&#x27;ve emailed them to ${fixture.buyer.email}`);
+  });
+
+  test("the confirmed page shows only the buyer's own paid order for that event; anything else is the same 404 and signed out goes to login", async () => {
+    const fixture = await pendingPurchase();
+    const otherEvent = await createEvent({ organisationId: fixture.owner.organisation.id, status: "published" });
+    const confirmed = (eventId: string, orderId?: string) => ConfirmedPage({ params: Promise.resolve({ eventId }), searchParams: Promise.resolve({ orderId }) });
+    const notFound = { digest: expect.stringContaining("NEXT_HTTP_ERROR_FALLBACK;404") };
+
+    clearMockSession();
+    await expect(confirmed(fixture.event.id, fixture.order.id)).rejects.toMatchObject({ digest: expect.stringContaining(`/login?callbackUrl=${encodeURIComponent(`/events/${fixture.event.id}`)}`) });
+    asMember(fixture.buyer);
+    // Not confirmed until the webhook has paid it.
+    await expect(confirmed(fixture.event.id, fixture.order.id)).rejects.toMatchObject(notFound);
+    await fulfil(fixture);
+    const page = await renderPage(await confirmed(fixture.event.id, fixture.order.id));
+    expect(page).toContain("Booking confirmed");
+    for (const ticket of await prisma.ticket.findMany({ where: { orderId: fixture.order.id } })) expect(page).toContain(`Ticket ${ticket.id.slice(-6)}`);
+    await expect(confirmed(otherEvent.id, fixture.order.id)).rejects.toMatchObject(notFound);
+    await expect(confirmed(fixture.event.id)).rejects.toMatchObject(notFound);
+    asMember(fixture.stranger);
+    await expect(confirmed(fixture.event.id, fixture.order.id)).rejects.toMatchObject(notFound);
   });
 
   test("the cancel page names the order only to its buyer", async () => {

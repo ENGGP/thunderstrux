@@ -58,9 +58,9 @@ The public preview at `https://thunderstrux.mistayu.com` runs as project `ops-pr
    - `AUTH_URL`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL` and `TRUSTED_APP_ORIGINS` set to `https://thunderstrux.mistayu.com`, and `APP_PORT=3090`;
    - `MFA_ENFORCEMENT_MODE=enforce`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, `RATE_LIMIT_ENABLED=true` and `RATE_LIMIT_TRUSTED_PROXY_HEADER=cf-connecting-ip`;
    - Stripe **test** keys and the test-mode webhook secrets for the preview's endpoints (live keys are for `thunderstrux.com` only);
-   - email (`RESEND_API_KEY`, `EMAIL_FROM`) and an S3-compatible bucket in the `ASSET_STORAGE_*` values (without a bucket everything works except image uploads);
+   - email (`RESEND_API_KEY`, and `EMAIL_FROM` on a domain verified in the same Resend team as the key, e.g. `Thunderstrux <noreply@email.mistayu.com>`) and an S3-compatible bucket in the `ASSET_STORAGE_*` values (without a bucket everything works except image uploads);
    - `DATABASE_URL` for the `db` service with the credentials in `.env.db`. The `ops-preview` project gets its own volume, so it starts as a fresh database, never the dev one.
-2. Deploy, then start the workers on the images that release recorded (without them, Compose would recreate the app from the default `thunderstrux-app:local` tag):
+2. Deploy, then start the workers on the images that release recorded (without them, Compose would recreate the app from the default `thunderstrux-app:local` tag). A redeploy, including one only for a settings change, doesn't restart the workers, so run the second command after every deploy:
 
    ```bash
    pnpm ops:deploy -- --project ops-preview --env-file .env.preview --url http://127.0.0.1:3090 --release <git-sha>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { formatMoneyInput, parseMoneyInput } from "@/lib/format";
-import { toZonedInput, zoneLabel, zonedCandidates } from "@/lib/zoned-time";
+import { dateFilterBound, toZonedInput, zoneLabel, zonedCandidates } from "@/lib/zoned-time";
 
 describe("society wall-clock times", () => {
   test("round-trips an ordinary time in a zone without daylight saving", () => {
@@ -48,5 +48,13 @@ describe("price inputs", () => {
   test("formats cents for the input", () => {
     expect(formatMoneyInput(1500)).toBe("15.00");
     expect(formatMoneyInput(7)).toBe("0.07");
+  });
+
+  test("a filter day starts and ends in the zone, across daylight saving (DEF-049)", () => {
+    // Sydney moves to AEDT (UTC+11) on 4 October 2026.
+    expect(dateFilterBound("2026-10-04", "Australia/Sydney").toISOString()).toBe("2026-10-03T14:00:00.000Z");
+    expect(dateFilterBound("2026-10-04", "Australia/Sydney", { endOfDay: true }).toISOString()).toBe("2026-10-04T12:59:59.999Z");
+    expect(dateFilterBound("2026-10-23T08:00:00.000Z", "Australia/Sydney").toISOString()).toBe("2026-10-23T08:00:00.000Z");
+    expect(Number.isNaN(dateFilterBound("2026-02-30", "Australia/Sydney").getTime())).toBe(true);
   });
 });

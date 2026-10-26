@@ -60,7 +60,7 @@ Start it with `pnpm docker:dev` (foreground, `--build`) or `pnpm docker:up` (det
 | `db` | Postgres, also published on `127.0.0.1:5433`. |
 | `redis` | Not published. Used only when `RATE_LIMIT_ENABLED=true`. |
 | `object-store` | Local S3-compatible store (`docker/Dockerfile.assets`), bucket `thunderstrux-assets`, volume `asset_data`. Not published. |
-| `migration` | Also starts, because it has no profile: builds the ops image and runs `prisma migrate deploy` once (OPS-006). The app command migrates anyway. |
+| `migration` | Not started: `docker-compose.dev.yml` puts it in profile `tools`, because the app command migrates itself. `pnpm ops:*` runs it by name. |
 | workers | Not started. The dev stack runs no workers; run one batch by hand (Commands). |
 
 **Ports and origin.** The app is published on `127.0.0.1:${APP_PORT:-3000}` to container port `${PORT:-3000}`; `.env.example` sets `APP_PORT=3080`. Cookie-authenticated writes accept only `NEXT_PUBLIC_APP_URL` and `TRUSTED_APP_ORIGINS` (`lib/security/request-guard.ts`). The maintained local `.env` sets every app URL to `http://127.0.0.1:3080`, so that is the dev origin: a write sent from `http://localhost:3080` is refused 403 "Untrusted request origin" (`trusted_origin.rejected`), and sessions are per host. `.env.example` still says `localhost:3080`; use whichever host your `.env` names.
@@ -202,7 +202,6 @@ Run app-side commands in the dev container: `docker compose -f docker-compose.ym
 | `pnpm docker:seed` | `docker compose exec app pnpm seed` | Seed in the running app. |
 | `pnpm docker:db:sync` | `docker:migrate`, `prisma:generate`, `seed` in the running app | After pulling schema changes on a dev database. |
 | `pnpm docker:reset` | `docker compose down -v` | **Destructive:** deletes the database and Redis volumes. |
-| `pnpm docker:prod` | `scripts/operations.mjs deploy` | **Unusable as written:** no arguments, so it fails with `--project is required` (OPS-006). Use `pnpm ops:deploy -- …`. |
 | `pnpm docker:hosted:check` | `scripts/check-hosted-compose.mjs --env-file <file>` | Validate the hosted Compose contract. |
 
 Other helpers: `scripts/release-pair.mjs`, `scripts/rehearse-assets.mjs`, `scripts/rehearse-upgrade.mjs`, `scripts/every-minute.mjs`, `scripts/mail-capture.mjs`, `scripts/seed-notification-e2e.mjs`, `scripts/seed-operations-verification.mjs`, `scripts/staging-driver.mjs`, `scripts/staging-payments.mjs`, `scripts/verify-restored-database.mjs`, `scripts/fence-restored-identity.sql`, `scripts/operations-guards.mjs`, `scripts/container-config.mjs`, `scripts/e2e-ci-summary.mjs`, `scripts/process-operations-monitor.mjs`: see [[Production Operations]] and [[E2E and Staging Payments]].

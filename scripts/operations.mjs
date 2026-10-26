@@ -26,11 +26,13 @@ import {
   migrationDigest
 } from "./operations-guards.mjs";
 import { describeReleasePair, gitRevision } from "./release-pair.mjs";
+import { workerServices } from "./droplet.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baseCompose = resolve(root, "docker-compose.yml");
 const hardenedCompose = resolve(root, "docker-compose.hardened.yml");
 const operationsCompose = resolve(root, "docker-compose.operations.yml");
+const schedulesCompose = resolve(root, "docker-compose.schedules.yml");
 const commandName = process.argv[2];
 const args = process.argv.slice(3);
 
@@ -279,6 +281,8 @@ async function deploy(ctx) {
   let migrationStarted = false;
   let previousImageId = null;
   let writersRestored = false;
+  let released = false;
+  let runningWorkers = [];
   const activeEnvFile = join(ctx.stateDir, "active.env");
   const releaseManifestFile = join(ctx.stateDir, "current-release.json");
   const hasActiveEnv = await stat(activeEnvFile).then(() => true).catch(() => false);
@@ -308,6 +312,11 @@ async function deploy(ctx) {
       : null;
     console.error(`Operations deploy: previous release ${previousImageId ? "found" : "not found"}`);
     if (previousContainer) await compose(ctx, ["stop", "-t", "30", "app"]);
+    // OPS-007: scheduled workers write too, so they stop with the app before the
+    // backup and migration, and come back on the release's ops image.
+    runningWorkers = (await compose(ctx, ["--profile", "workers", "ps", "--status", "running", "--services"], { capture: true }))
+      .split(/\s+/).filter((service) => workerServices.includes(service));
+    if (runningWorkers.length) await compose(ctx, ["--profile", "workers", "stop", "-t", "60", ...runningWorkers]);
     console.error("Operations deploy: creating pre-migration backup");
     const backupResult = await backup(ctx);
     migrationStarted = true;
@@ -368,15 +377,26 @@ async function deploy(ctx) {
     await rename(pendingEnv, activeEnvFile);
     await writeFile(releaseManifestFile, JSON.stringify(manifest, null, 2), { mode: 0o600 });
     console.error("Operations deploy: release recorded");
+    released = true;
+    if (runningWorkers.length) {
+      console.error("Operations deploy: restarting scheduled workers on the release's ops image");
+      await compose(ctx, ["-f", schedulesCompose, "--profile", "workers", "up", "-d", "--no-deps", "--force-recreate", ...runningWorkers], { env: deploymentEnv });
+    }
     console.log(JSON.stringify({ status: "deployed", release, candidateImageId, opsImageId: pair.ops.id }));
   } catch (error) {
-    if (migrationStarted && !writersRestored) {
+    if (released) {
+      console.error(`Release ${release} is live, but its scheduled workers did not restart; start them on the recorded ops image.`);
+    } else if (migrationStarted && !writersRestored) {
       console.error("Migration began; writers remain stopped until the database state is inspected.");
-    } else if (previousImageId) {
-      const recoveryContext = hasActiveEnv ? contextWithEnvFile(ctx, activeEnvFile) : ctx;
-      await compose(recoveryContext, ["up", "-d", "--no-build", "--force-recreate", "app"], {
-        env: { ...process.env, APP_IMAGE: previousManifest?.imageRef ?? previousImageId }
-      }).catch(() => {});
+    } else {
+      if (previousImageId) {
+        const recoveryContext = hasActiveEnv ? contextWithEnvFile(ctx, activeEnvFile) : ctx;
+        await compose(recoveryContext, ["up", "-d", "--no-build", "--force-recreate", "app"], {
+          env: { ...process.env, APP_IMAGE: previousManifest?.imageRef ?? previousImageId }
+        }).catch(() => {});
+      }
+      // The stopped workers are the previous release's containers, unchanged.
+      if (runningWorkers.length) await compose(ctx, ["--profile", "workers", "start", ...runningWorkers]).catch(() => {});
     }
     throw error;
   } finally {

@@ -15,9 +15,9 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 
 ## Current state
 
-**2026-10-26, main `912e49b`.** This session began on 2026-10-25 at `1bc34ef`.
+**2026-10-26, main `183b2e2`.** This session began on 2026-10-25 at `1bc34ef`.
 - T01 to T46 are delivered and locally qualified, apart from the assistant (T35 to T37), which the founder deferred. [[Pre-hosting Candidate]] is the candidate record.
-- This session delivered the codebase audit fixes, the UI audit and design sync, the security audit remediation (T47 to T53) and the test audit. The last code change is `bc21753` (#193). The documentation audit (`codex/docs-audit-cleanup`) is in review; it changes no app code.
+- This session delivered the codebase audit fixes, the UI audit and design sync, the security audit remediation (T47 to T53) and the test audit. The documentation audit (#195) rewrote the notes and registered 17 items; #196 fixes 16 of them (DEBT-001, a cleanup, is left).
 
 **Snapshot at `912e49b`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -86,7 +86,8 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
 | #192 | Test audit tiers 2 and 3; standalone ticket-type route removed (DEF-044, DEF-045) |
 | #193 | Test audit findings (DEF-046, PAY-010, SEC-027) |
 | #50, #183 to #186, #188, #189 | Renovate updates: container digests, postcss, golang, stripe 23.0.1, caddy, axe-core 4.14. axe-core 4.14 failed the browser campaign until #193 (DEF-046). |
-| this PR | Documentation audit: vault root at `docs/`, notes rewritten for agent readers, stricter `pnpm docs:check`, resolved defects moved to History, 17 new register items |
+| #195 | Documentation audit: vault root at `docs/`, notes rewritten for agent readers, stricter `pnpm docs:check`, resolved defects moved to History, 17 new register items |
+| #196 | Documentation-audit fixes: deploy stops and restarts workers (OPS-007), ticket email zone and wording, order date filters in the society's zone, refund, payout, analytics, dispute-reversal and disconnect fixes, bounded request bodies, config faults (DEF-047 to DEF-052, PAY-011 to PAY-015, SEC-028, API-002, AUD-002, OPS-006) |
 
 ## Next safe actions
 
@@ -95,7 +96,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts.
-2. **Bug-fix PR** for the documentation audit's findings, with regression tests: OPS-007, DEF-047 to DEF-052, PAY-011 to PAY-015, SEC-028, API-002, AUD-002 and OPS-006. DEBT-001 can follow in a small cleanup PR. Until OPS-007 is fixed, pause or stop the workers before `pnpm ops:deploy` on `ops-preview`.
+2. **DEBT-001 cleanup PR:** the dead and redundant code the documentation audit listed. Small; no behaviour change.
 3. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].
    - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]].
    - Pass PAY-002 on the hosted endpoint.

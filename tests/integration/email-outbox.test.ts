@@ -121,9 +121,9 @@ describe("ticket email outbox", () => {
       orderId: order.id, mode: "automatic", status: "failed", attempts: 5
     } });
     const other = await createOrganisationAccount();
-    const call = () => requeueEmailRoute(jsonRequest(
+    const call = (body: unknown = { reason: "Provider issue resolved" }) => requeueEmailRoute(jsonRequest(
       `http://localhost/api/orders/${order.id}/email-jobs/${job.id}/requeue`,
-      { reason: "Provider issue resolved" }),
+      body),
       { params: Promise.resolve({ orderId: order.id, jobId: job.id }) }
     );
     setMockSession({ userId: other.user.id, email: other.user.email,
@@ -131,6 +131,11 @@ describe("ticket email outbox", () => {
     expect((await call()).status).toBe(404);
     setMockSession({ userId: actor.id, email: actor.email,
       accountRole: "organisation" });
+    // SEC-028: a short or missing reason is a 400, and an oversized body is refused unread.
+    expect((await call({ reason: "short" })).status).toBe(400);
+    expect((await call({})).status).toBe(400);
+    expect((await call({ reason: "x".repeat(100_001) })).status).toBe(400);
+    expect((await prisma.emailOutbox.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("failed");
     expect((await call()).status).toBe(200);
     expect((await call()).status).toBe(409);
     await expect(prisma.auditLog.findFirstOrThrow({ where: { targetId: job.id } }))

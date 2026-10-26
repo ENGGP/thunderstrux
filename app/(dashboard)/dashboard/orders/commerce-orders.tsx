@@ -13,6 +13,7 @@ import { commerceOrderFilters, commerceProductOptions, listOrganisationCommerceO
 import { formatDateTime, formatPrice, formatTerm } from "@/lib/format";
 import { PaginationError, type ParsedPaginationOptions } from "@/lib/pagination/cursor";
 import { readTimeZone } from "@/lib/organisations/profile";
+import { dateFilterBound } from "@/lib/zoned-time";
 import { orderReference } from "@/lib/payments/order-refunds";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
 
@@ -40,7 +41,7 @@ export async function CommerceOrders({
   const search = params.search?.trim().slice(0, 200) || undefined;
   const date = (value: string | undefined, end: boolean) => {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-    const parsed = new Date(`${value}T${end ? "23:59:59.999" : "00:00:00.000"}Z`);
+    const parsed = dateFilterBound(value, timeZone, { endOfDay: end });
     return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   };
   const options = { filter, search, productId: params.productId || undefined, startDate: date(params.startDate, false), endDate: date(params.endDate, true) };

@@ -366,6 +366,19 @@ try {
   await compose(["start", "redis"]);
   await waitReady(origin);
 
+  // OPS-007: a scheduled worker stops for each deploy and comes back on the release's ops image.
+  const scheduledWorker = "stale-order-worker";
+  const workerContainer = async () => (await compose(["--profile", "workers", "ps", "-q", "--status", "running", scheduledWorker], { capture: true })).trim();
+  await compose(["-f", resolve(root, "docker-compose.schedules.yml"), "--profile", "workers", "up", "-d", "--no-deps", scheduledWorker], { env: { ...process.env, OPS_IMAGE: release.opsImageId } });
+  const workerBefore = await workerContainer();
+  if (!workerBefore) throw new Error("Scheduled worker did not start");
+  await operation("deploy", ["--url", origin, "--release", `${project}-one`, "--skip-build"]);
+  const workerAfter = await workerContainer();
+  if (!workerAfter || workerAfter === workerBefore) throw new Error("Deploy did not recreate the scheduled worker");
+  const workerImage = (await docker(["inspect", "--format", "{{.Image}}", workerAfter], { capture: true })).trim();
+  const workerCommand = await docker(["inspect", "--format", "{{json .Config.Cmd}}", workerAfter], { capture: true });
+  if (workerImage !== release.opsImageId || !workerCommand.includes("every-minute.mjs")) throw new Error("Scheduled worker did not return on the release's ops image and schedule");
+
   const badRuntime = runtime.replace("RATE_LIMIT_REDIS_URL=redis://redis:6379", "RATE_LIMIT_REDIS_URL=redis://unreachable:6379");
   await writeFile(badRuntimeFile, badRuntime, { mode: 0o600 });
   const candidateTag = `thunderstrux-app:${project}-bad`;
@@ -373,7 +386,8 @@ try {
   badComposeFiles[badComposeFiles.indexOf(runtimeFile)] = badRuntimeFile;
   await docker([...badComposeFiles, "build", "app", "migration"], { env: { ...process.env, APP_IMAGE: candidateTag, OPS_IMAGE: `thunderstrux-ops:${project}-bad` } });
   const candidateImageId = await docker(["image", "inspect", "--format", "{{.Id}}", candidateTag], { capture: true });
-  const previousImageId = await docker(["inspect", "--format", "{{.Image}}", appContainer.trim()], { capture: true });
+  // The redeploy above recreated the app, so read the container running now.
+  const previousImageId = await docker(["inspect", "--format", "{{.Image}}", (await compose(["ps", "-q", "app"], { capture: true })).trim()], { capture: true });
   await writeFile(compatibilityFile, JSON.stringify({
     candidateImageId: candidateImageId.trim(),
     previousImageId: previousImageId.trim(),
@@ -390,6 +404,7 @@ try {
     throw new Error(`Rollback evidence missing: ${rollbackOutput.slice(-1000)}`);
   }
   await waitReady(origin);
+  if (await workerContainer() !== workerAfter) throw new Error("Rollback did not restart the previous release's scheduled worker");
 
   await compose(["exec", "-T", "db", "sh", "-c", `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "INSERT INTO \"_prisma_migrations\" (id, checksum, migration_name, logs, started_at, applied_steps_count) VALUES ('ops_failed', 'invalid', 'ops_intentional_failure', 'rehearsal', now(), 0)"`]);
   const migrationFailure = await operation("deploy", [
@@ -402,6 +417,7 @@ try {
   }
   const runningApp = await compose(["ps", "-q", "--status", "running", "app"], { capture: true });
   if (runningApp.trim()) throw new Error("App remained running after migration failure");
+  if (await workerContainer()) throw new Error("Scheduled worker remained running after migration failure");
   passed = true;
   console.log(JSON.stringify({ status: "passed", project, restore: backupRecord.archive }));
 } finally {

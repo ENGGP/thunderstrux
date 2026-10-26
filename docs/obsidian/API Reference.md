@@ -86,7 +86,7 @@ What each flow does, and its token rules: [[Authentication and Dashboard Access#
 
 ## Staff MFA and dashboard context
 
-MFA writes answer 503 "Staff verification is unavailable" unless `MFA_ENCRYPTION_KEY` and `RATE_LIMIT_ENABLED=true` are set; confirm and verify answer 401 when the session has no login id. Their bodies are read with raw `request.json()` (SEC-028).
+MFA writes answer 503 "Staff verification is unavailable" unless `MFA_ENCRYPTION_KEY` and `RATE_LIMIT_ENABLED=true` are set; confirm and verify answer 401 when the session has no login id. Their bodies are a strict `{code}` read through `validateJson`, so the 100 KB cap applies.
 
 | Route | Auth, bucket | Body | Success | Errors |
 | --- | --- | --- | --- | --- |
@@ -117,7 +117,7 @@ Session purposes and the claim rules: [[Authentication and Dashboard Access#Gues
 
 - A new route goes in this note's family index and in the right part note, with its bucket here by name and its check row in [[Route Security Inventory#Per-route checks]].
 - Never answer 403 where a foreign id could be probed; use the 404 the family already uses.
-- Keep provider and server configuration out of messages: Stripe errors map to generic text. The Connect 503 is the known exception (API-002, [[API Reference Commerce]]).
+- Keep provider and server configuration out of messages: Stripe errors map to generic text.
 
 ## Related
 

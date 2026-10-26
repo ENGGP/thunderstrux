@@ -233,6 +233,11 @@ describe("staff MFA", () => {
     expect(started.status).toBe(200);
     const { secret } = await parseJsonResponse(started);
     const step = Math.floor(Date.now() / 30_000);
+    // SEC-028: bodies are bounded and strict before any code is checked.
+    for (const [route, path] of [[confirmRoute, "confirm"], [verifyRoute, "verify"]] as const) {
+      expect((await call(route, path, { code: totpCode(secret, step), padding: "x".repeat(100_001) })).status).toBe(400);
+      expect((await call(route, path, { code: totpCode(secret, step), extra: true })).status).toBe(400);
+    }
     expect((await call(confirmRoute, "confirm", { code: totpCode(secret, step + 10) })).status).toBe(400);
     const confirmed = await call(confirmRoute, "confirm", { code: totpCode(secret, step) });
     expect(confirmed.status).toBe(200);

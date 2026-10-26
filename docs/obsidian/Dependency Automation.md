@@ -74,7 +74,7 @@ Manual dispatch only. GitHub checks are optional and not merge requirements (VAL
 
 | Job | Runs |
 | --- | --- |
-| `static-validation` | frozen install; `git diff --exit-code -- pnpm-lock.yaml`; `pnpm docs:check`; `pnpm prisma:generate`; `pnpm typecheck`; hadolint on `docker/Dockerfile` and `docker/Dockerfile.e2e` only, not `docker/Dockerfile.assets` (OPS-006); Compose `config` for base + dev, base + hardened, `scripts/check-hosted-compose.mjs` against `.env.hosted.example`, and the full Droplet stack; builds the `web` and `ops` pair and checks budgets with `scripts/release-pair.mjs`; Trivy on both |
+| `static-validation` | frozen install; `git diff --exit-code -- pnpm-lock.yaml`; `pnpm docs:check`; `pnpm prisma:generate`; `pnpm typecheck`; hadolint on `docker/Dockerfile`, `docker/Dockerfile.e2e` and `docker/Dockerfile.assets`; Compose `config` for base + dev, base + hardened, `scripts/check-hosted-compose.mjs` against `.env.hosted.example`, and the full Droplet stack; builds the `web` and `ops` pair and checks budgets with `scripts/release-pair.mjs`; Trivy on both |
 | `integration-tests` | PostgreSQL 16 (`thunderstrux_test`) and Redis services; `pnpm test` with `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` |
 | `production-build` | `pnpm build` with non-secret placeholders matching the Docker builder |
 

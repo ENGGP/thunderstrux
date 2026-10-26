@@ -76,9 +76,9 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 | Refund made outside Thunderstrux | `order.external_refund_recorded`, `commerce_order.external_refund_recorded` | Stripe |
 | Lost dispute money taken back (refunds worker, `lib/payments/dispute-reversals.ts`, PAY-004) | `order.dispute_funds_recovered`, `commerce_order.dispute_funds_recovered` | Thunderstrux |
 | Paid but unfulfilled ticket order (`lib/payments/checkout-reconciliation.ts`) | `order.compensation_refund_queued` (automatic refund) or `order.compensation_refund_review_required` | Thunderstrux |
-| Compensation refunds worker (`lib/payments/compensation-refunds.ts`) | `order.compensation_refund_started`; `order.compensation_refund_review_required` when it gives up | Thunderstrux |
-| Compensation outcome, worker or webhook (`` order.compensation_${state} ``) | `order.compensation_refunded`, `order.compensation_refund_failed`, `order.compensation_refund_pending`; worker also `order.compensation_review_required` | Stripe |
-| Paid but unfulfilled commerce order (`lib/commerce/payment-recovery.ts`) | `commerce_order.compensation_refund_queued` | Stripe (not in the automatic list) |
+| Compensation refunds worker (`lib/payments/compensation-refunds.ts`) | `order.compensation_refund_started`; `order.compensation_refund_review_required` when it gives up; `order.compensation_review_required` when a refund stays pending past its tries | Thunderstrux |
+| Compensation outcome, worker or webhook (`` order.compensation_${state} ``) | `order.compensation_refunded`, `order.compensation_refund_failed`, `order.compensation_refund_pending` | Stripe |
+| Paid but unfulfilled commerce order (`lib/commerce/payment-recovery.ts`) | `commerce_order.compensation_refund_queued` | Thunderstrux |
 | Unused image cleanup (`lib/assets/maintenance.ts`) | `asset.orphan_removed` | Thunderstrux |
 
 ### Templated actions

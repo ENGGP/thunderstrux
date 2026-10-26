@@ -42,7 +42,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Account security (`me/account/password`, `me/account/email/*`, `POST me/account/closure`) | origin → sign-in (live `authVersion`) → `account_security_change` → body → email confirm only: `account_token_ip`/`account_token_digest` → service (current password, enrolled MFA) |
 | Profile, notification preferences | origin → body → sign-in → service (no rate limit) |
 | Dashboard context `POST me/context` | origin → body → sign-in → login id present → staff mode: `events:read` + MFA on the target |
-| Staff MFA (`me/mfa/setup`, `confirm`, `verify`) | origin → config (`MFA_ENCRYPTION_KEY`, `RATE_LIMIT_ENABLED=true`, else 503) → sign-in → `staff_mfa_setup` / `staff_mfa_verify` → raw body (SEC-028) |
+| Staff MFA (`me/mfa/setup`, `confirm`, `verify`) | origin → config (`MFA_ENCRYPTION_KEY`, `RATE_LIMIT_ENABLED=true`, else 503) → sign-in → `staff_mfa_setup` / `staff_mfa_verify` → bounded strict body |
 | Event writes (`PATCH`/`DELETE events/[eventId]`, `publish`, `sales`) | origin → dashboard context (+MFA) → `events:manage` → sign-in → body |
 | `POST /api/events` | origin → body → `events:manage` on the body's `organisationId` → sign-in |
 | Event reads (`GET events`, `GET events/[eventId]`) | `orgId` query → `events:manage` |
@@ -50,7 +50,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Staff order decisions (`refunds`, `cancel`, `review`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service |
 | `refund-manual` | origin → context → `orders:refund_mark` → sign-in |
 | `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → sign-in |
-| Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → raw body (SEC-028) → sign-in |
+| Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → bounded strict body → sign-in |
 | `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in (no rate limit) |
 | Society slug routes (`organisationActor`: profile, assets, calendar, memberships, merchandise) | origin (writes) → sign-in → slug → permission (+MFA) → rate limit where one applies → body |
 | Staff end routes (membership revoke/cancel/refund, merchandise refund/cancel) | as slug routes, then `staff_mfa_verify` when a code is sent → fresh code unless `off` |
@@ -130,7 +130,6 @@ Not rate limited: public reads (abusive read volume belongs to the hosting edge)
 
 - `validateJson` → `readJsonBody` reads at most 100,000 bytes (a larger `Content-Length` is refused before reading; the stream stops past the cap): 400 `Request body is too large`; bad JSON is 400 `Request body must be valid JSON`. Validation answers carry at most 20 issues.
 - Profile `PATCH` reads with an 80,000-byte cap and answers 413. Asset upload reads multipart through `readImageForm` ([[Society Profiles and Assets]]).
-- SEC-028: four routes read `request.json()` without the size cap: `me/mfa/confirm`, `me/mfa/verify`, `notifications/[jobId]/requeue` (which then applies a strict schema), `orders/[orderId]/email-jobs/[jobId]/requeue` (a short reason surfaces as 409 from the service).
 - Most body schemas are `.strict()` (unknown keys 400). These strip unknown keys instead: `lib/validators/events.ts` (event create, update, publish, sales), `lib/validators/payments.ts:createEventCheckoutSchema`, `lib/validators/stripe-connect.ts`, `lib/validators/orgs.ts:createOrganisationSchema`, `lib/validators/auth.ts:signupSchema` and `memberProfileSchema`, `lib/validators/staff.ts:updateStaffSchema`, and the compensation confirm schema.
 
 ## Headers and caching

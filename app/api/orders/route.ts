@@ -18,6 +18,8 @@ import {
   getGroupedOrganisationOrdersWithContext,
   parseOrderStatusFilter
 } from "@/lib/orders/grouped-orders";
+import { readTimeZone } from "@/lib/organisations/profile";
+import { dateFilterBound } from "@/lib/zoned-time";
 import {
   PaginationError,
   parsePaginationOptions
@@ -26,13 +28,14 @@ import {
 function parseDateParam(
   value: string | null,
   field: string,
+  timeZone: string,
   { endOfDay = false }: { endOfDay?: boolean } = {}
 ) {
   if (!value) {
     return { date: undefined };
   }
 
-  const date = new Date(value);
+  const date = dateFilterBound(value, timeZone, { endOfDay });
 
   if (Number.isNaN(date.getTime())) {
     return {
@@ -40,10 +43,6 @@ function parseDateParam(
         { path: [field], message: `${field} must be a valid date` }
       ])
     };
-  }
-
-  if (endOfDay && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    date.setUTCHours(23, 59, 59, 999);
   }
 
   return { date };
@@ -61,8 +60,9 @@ export async function GET(request: Request) {
     const eventId = searchParams.get("eventId")?.trim() || undefined;
     const search = searchParams.get("search")?.trim() || undefined;
     const pagination = parsePaginationOptions(searchParams);
-    const startDateResult = parseDateParam(searchParams.get("startDate"), "startDate");
-    const endDateResult = parseDateParam(searchParams.get("endDate"), "endDate", {
+    const timeZone = await readTimeZone(organisation.id);
+    const startDateResult = parseDateParam(searchParams.get("startDate"), "startDate", timeZone);
+    const endDateResult = parseDateParam(searchParams.get("endDate"), "endDate", timeZone, {
       endOfDay: true
     });
 

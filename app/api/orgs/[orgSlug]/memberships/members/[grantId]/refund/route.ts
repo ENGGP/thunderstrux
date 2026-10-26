@@ -9,7 +9,7 @@ type Context = { params: Promise<{ orgSlug: string; grantId: string }> };
 export async function POST(request: Request, context: Context) {
   const { orgSlug, grantId } = await context.params;
   return staffEndRoute(
-    request, orgSlug, "orders:refund", "refund",
+    request, orgSlug, "orders:refund", "memberships.refund",
     (organisationId, actor, { reason, confirmation = "" }) => refundMembership({ organisationId, grantId, actor, reason, confirmation }),
     (result) => ((result as { status: string }).status === "succeeded" ? 200 : 202)
   );

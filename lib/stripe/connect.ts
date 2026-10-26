@@ -5,6 +5,7 @@ import type { ApiErrorDetail } from "@/lib/api/errors";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
 import { manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
+import { logWarn } from "@/lib/ops/logger";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 
 export type StripeConnectState =
@@ -70,6 +71,20 @@ export class StripeDisconnectBlockedError extends Error {
     );
     this.name = "StripeDisconnectBlockedError";
   }
+}
+
+export class StripeDisconnectUnavailableError extends Error {
+  constructor() {
+    super("Stripe couldn't be reached to disconnect this account. Nothing was changed. Try again later.");
+    this.name = "StripeDisconnectUnavailableError";
+  }
+}
+
+// Stripe answers 403 for an account this platform's key can't see: one made
+// under another platform key, or deleted (PAY-015).
+function isAccountOutOfReach(error: unknown) {
+  const failure = error as { type?: unknown; code?: unknown; message?: unknown } | null;
+  return failure?.type === "StripePermissionError" && (failure.code === "account_invalid" || /does not have access to account/i.test(String(failure.message)));
 }
 
 // Orders that still depend on the connected account: being paid, under review,
@@ -414,7 +429,17 @@ export async function disconnectAccount(
   if (linked?.stripeAccountId) {
     const open = await countOpenObligations(prisma, orgId, linked.stripeAccountId);
     if (open > 0) throw new StripeDisconnectBlockedError(open);
-    await restoreStripePayoutSchedule(linked.stripeAccountId);
+    try {
+      await restoreStripePayoutSchedule(linked.stripeAccountId);
+    } catch (error) {
+      // An account out of this platform's reach has no schedule to give back,
+      // so it is unlinked here; nothing else could ever unlink it.
+      if (!isAccountOutOfReach(error)) {
+        const type = (error as { type?: unknown } | null)?.type;
+        throw typeof type === "string" && type.startsWith("Stripe") ? new StripeDisconnectUnavailableError() : error;
+      }
+      logWarn("stripe_connect.disconnect_account_out_of_reach", { organisationId: orgId, stripeAccountId: linked.stripeAccountId });
+    }
   }
 
   await prisma.$transaction(async (tx) => {

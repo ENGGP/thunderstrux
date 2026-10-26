@@ -61,9 +61,9 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
 
 **What isn't in refunds:** ticket compensation refunds (they are `CompensationRefundJob`, not `RefundRequest`, and their orders were never gross); refunds made in Stripe's dashboard (recorded on the order without a date); the manual "refunded outside Thunderstrux" mark. Nothing is called profit or payout: Thunderstrux doesn't know Stripe's processing costs.
 
-**Known errors (PAY-011):**
-- Commerce refunds count every succeeded `RefundRequest`, including the automatic compensation refund of an order that was never fulfilled and so never in gross. Net sales and fees for memberships or merchandise can drop below zero.
-- After a partial refund made in Stripe, "refund the rest" refunds less than the order, but fees reversed still subtract the order's whole `feeAmount`, though Stripe returns the application fee pro rata.
+**Refunds count only for fulfilled orders.** A commerce compensation refund is a `RefundRequest` too, but its order was never fulfilled and so never in gross; counting it would push net sales and fees below zero.
+
+**Fees reversed are pro rata:** each refund reverses `round(feeAmount × refund amount ÷ totalAmount)` of its order's fee, as Stripe's `refund_application_fee` returns it. So "Refund the rest" after a partial refund in Stripe reverses only the rest's share.
 
 ## Reads
 

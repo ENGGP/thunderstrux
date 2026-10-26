@@ -7,7 +7,7 @@ type Context = { params: Promise<{ orgSlug: string; orderId: string }> };
 // collected (orders:refund); never a refund. A repeat answers the first result.
 export async function POST(request: Request, context: Context) {
   const { orgSlug, orderId } = await context.params;
-  return staffEndRoute(request, orgSlug, "orders:refund", "merchandise_cancel", (organisationId, actor, { reason }) =>
+  return staffEndRoute(request, orgSlug, "orders:refund", "merchandise.free_cancel", (organisationId, actor, { reason }) =>
     cancelFreeMerchandiseOrder({ organisationId, orderId, actor, reason })
   );
 }

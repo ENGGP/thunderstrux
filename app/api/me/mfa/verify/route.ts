@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { badRequest, forbidden, mapRouteError, routeErrorRule, serviceUnavailable, unauthorized } from "@/lib/api/errors";
 import { authenticationRule } from "@/lib/api/route-rules";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
+import { validateJson } from "@/lib/validators";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
@@ -18,9 +20,10 @@ export async function POST(request: Request) {
     const limit = await enforceRateLimit({ policy: "staff_mfa_verify", request,
       keyParts: [user.id] });
     if (limit) return limit;
-    const body = await request.json().catch(() => null);
-    if (!body || typeof body.code !== "string") return badRequest("MFA code is required");
-    await verifyStaffMfa(user.id, body.code, digest);
+    // Bounded like every JSON body (SEC-028).
+    const body = await validateJson(request, z.object({ code: z.string() }).strict());
+    if (!body.success) return badRequest("MFA code is required");
+    await verifyStaffMfa(user.id, body.data.code, digest);
     return NextResponse.json({ verified: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return mapRouteError(error, { operation: "mfa.verify", request, rules: [

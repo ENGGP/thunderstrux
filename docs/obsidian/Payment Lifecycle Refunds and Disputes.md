@@ -60,8 +60,8 @@ A `RefundRequest` refunds one ticket order or one commerce order (database check
    - `succeeded` on commerce: `refundStatus = refunded`, review cleared, every membership it bought revoked (`Refunded: {reason}`, by the requester), an uncollected pickup cancelled, and the buyer's notice. Stock comes back only through a return.
    - `pending`: the fence stays; `refund_pending` once, polled every minute.
    - `failed`, `canceled`, a verification mismatch or a definite refusal: request `failed`, fence lifted, `refund_failed`. Tickets stay valid and memberships active.
-5. **No answer:** the request becomes `uncertain`. The worker (`processOrderRefundBatch`) claims due `pending` and `uncertain` requests with a 10-minute lease and looks up the request's own refund at Stripe before sending the same key again. Once a PaymentIntent was recorded the refund may exist, so a failed lookup or refusal keeps it `uncertain` rather than failing it; Stripe's signed outcome settles it (SEC-011). After 6 attempts it stops asking Stripe, keeps the fence and alerts `order_refund_unresolved` every hour (PAY-013).
-6. **Webhook** (`refund.*` with `refundRequestId`): the refund must name the request's purchase (and not the other kind), match amount, currency and the recorded PaymentIntent. It is journalled once in `StripeRefundWebhookEvent` and then applied as above.
+5. **No answer:** the request becomes `uncertain`. The worker (`processOrderRefundBatch`) claims due `pending` and `uncertain` requests with a 10-minute lease and looks up the request's own refund at Stripe before sending the same key again. Once a PaymentIntent was recorded the refund may exist, so a failed lookup or refusal keeps it `uncertain` rather than failing it; Stripe's signed outcome settles it (SEC-011). After 6 attempts it keeps the fence, alerts `order_refund_unresolved` and asks Stripe hourly instead of every minute, so a late answer still settles it.
+6. **Webhook** (`refund.*` with `refundRequestId`): the refund must name the request's purchase (and not the other kind), match amount, currency and the recorded PaymentIntent. It is journalled in `StripeRefundWebhookEvent` in the transaction that applies it, so a delivery that fails to apply is applied by Stripe's retry instead of being dropped as a duplicate.
 
 The order keeps `status = paid`; lists show Refund processing or Refunded.
 
@@ -132,7 +132,7 @@ On destination charges Stripe takes a lost dispute's amount and fee from the pla
 | `succeeded` | `stripeTransferReversalId` and `reversalAmount` stored; `dispute_funds_recovered` appended, audit `order.dispute_funds_recovered` or `commerce_order.dispute_funds_recovered` |
 | `failed` | No transfer, destination or currency mismatch with the seller snapshot, nothing left to reverse, or a definite refusal; alert `dispute_reversal_unresolved`. A person settles it in Stripe's Dashboard |
 
-`processDisputeReversalBatch` runs after the refund batches. It claims a row with a 10-minute lease, reads the charge's transfer, and looks for its own reversal (metadata `disputeId`) before creating one. It reverses min(dispute amount, transfer amount − already reversed), with metadata `disputeId` plus `orderId` or `commerceOrderId` and key `dispute-reversal:<disputeId>`. It doesn't touch the application fee. After 6 attempts it never asks Stripe again and only re-alerts `dispute_reversal_unresolved` each hour, while payouts keep holding the amount until the 80-day cap (PAY-013).
+`processDisputeReversalBatch` runs after the refund batches. It claims a row with a 10-minute lease, reads the charge's transfer, and looks for its own reversal (metadata `disputeId`) before creating one. It reverses min(dispute amount, transfer amount − already reversed), with metadata `disputeId` plus `orderId` or `commerceOrderId` and key `dispute-reversal:<disputeId>`. It doesn't touch the application fee. After 6 unknown outcomes it alerts `dispute_reversal_unresolved` and keeps looking the reversal up hourly; payouts hold the amount until it settles or the 80-day cap.
 
 ## Free cancellation
 
@@ -150,11 +150,10 @@ Free memberships and free merchandise orders cancel the same way through their o
 - Never send a refund key twice without first looking for its refund at Stripe; an uncertain request may already have moved money.
 - An outside refund that is partial is never treated as full. Analytics don't see outside refunds at all ([[Analytics and Calendar]]).
 - Refunds return the platform fee (`refund_application_fee`); Stripe keeps its processing fee (PAY-008).
-- Ticket resends check paid status, disputes and cancellation, but not `refundStatus` (DEF-050).
 
 ## Failure and recovery
 
-- **`order_refund_unresolved`:** the request is still uncertain after 6 tries and the fence stays. Check Stripe for a refund with that `refundRequestId`; there is no tool to settle it by hand (PAY-013).
+- **`order_refund_unresolved`:** the request is still uncertain after 6 tries and the fence stays; the worker keeps asking Stripe hourly. Check Stripe for a refund with that `refundRequestId`; there is no tool to settle it by hand.
 - **`dispute_reversal_unresolved`:** reverse the transfer in Stripe's Dashboard, or decide not to.
 - **Compensation `refund_failed` or `review_required`:** refund in Stripe's Dashboard, then confirm the refund id on the order page.
 - **`purchase_dispute_unmatched`:** the dispute's payment didn't verify as any order's; investigate in Stripe.

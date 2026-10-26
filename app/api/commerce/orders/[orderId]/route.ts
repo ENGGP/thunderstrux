@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { forbidden, mapRouteError, notFound, routeErrorRule } from "@/lib/api/errors";
-import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
+import { authenticationRule, organisationAccessRule, staleSessionRule } from "@/lib/api/route-rules";
 import {
   OrganisationAccessError,
   getCurrentOrganisationAccount,
@@ -48,7 +48,8 @@ export async function GET(request: Request, context: RouteContext) {
     return mapRouteError(error, {
       operation: "commerce.order.read",
       request,
-      rules: [authenticationRule, staleSessionRule, routeErrorRule(MfaRequiredError, (failure) => forbidden(failure.message))]
+      // An expired staff grant is a StaffMfaRequiredError, an OrganisationAccessError (DEF-048).
+      rules: [authenticationRule, staleSessionRule, organisationAccessRule, routeErrorRule(MfaRequiredError, (failure) => forbidden(failure.message))]
     });
   }
 }

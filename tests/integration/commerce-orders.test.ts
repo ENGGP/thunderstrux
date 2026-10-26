@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { GET as commerceOrderRoute } from "@/app/api/commerce/orders/[orderId]/route";
 import { prisma } from "@/lib/db";
 import {
@@ -129,6 +129,16 @@ describe("commerce orders", () => {
     const other = await createOrganisationAccount();
     setMockSession({ userId: other.user.id, email: other.user.email, accountRole: "organisation" });
     expect((await read(order.id)).status).toBe(404);
+  });
+
+  test("staff without a current authenticator grant get 403, not a server error (DEF-048)", async () => {
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
+    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    const { society, merch } = await shopFixture();
+    const order = await merch();
+    setMockSession({ userId: society.user.id, email: society.user.email, accountRole: "organisation" });
+    expect((await read(order.id)).status).toBe(403);
   });
 
   test("the buyer's list pages newest first and stays stable when orders share a timestamp", async () => {

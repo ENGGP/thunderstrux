@@ -94,7 +94,7 @@ Extra rules outside the matrix: only an `owner` may invite an owner, change an o
 | `redirectLegacyOrganisationPage` | `/dashboard/[orgSlug]/*`: authorise that slug, forward to the slugless page only if it is the selected context, else `/dashboard`; a GET never changes context | `notFound()` |
 | `lockOrganisationActor(tx, actor, id, permission)` | inside a service transaction: lock User then Organisation, recheck version, role and MFA grant | as above |
 
-`StaffMfaRequiredError` extends `OrganisationAccessError`, not `MfaRequiredError`, so `organisationAccessRule` maps it to 403. A route whose rules name only `MfaRequiredError` lets it fall to 500: `GET /api/commerce/orders/[orderId]` does this for staff whose grant expired (DEF-048).
+`StaffMfaRequiredError` extends `OrganisationAccessError`, not `MfaRequiredError`, so `organisationAccessRule` maps it to 403. A route whose rules name only `MfaRequiredError` would let it fall to 500, so a route that reaches `requireCurrentOrganisationAccount` includes `organisationAccessRule`.
 
 ## Sessions
 
@@ -183,7 +183,7 @@ Extra rules outside the matrix: only an `owner` may invite an owner, change an o
 ## Traps
 
 - Don't check `accountRole === "organisation"` for management power; call `requireOrganisationPermission` or `organisationActor`.
-- A route that maps only `MfaRequiredError` turns an expired staff grant into a 500 (DEF-048); include `organisationAccessRule` or map `StaffMfaRequiredError`.
+- A route that maps only `MfaRequiredError` turns an expired staff grant into a 500; include `organisationAccessRule` or map `StaffMfaRequiredError`.
 - Adding a permission means adding it to `organisationPermissions`, each role's list, this matrix, and the route or page that checks it.
 - Rolling back past the account migrations (password recovery, email change, closure) leaves an older build that can't enforce session revocation or the closure fences; pause account changes first ([[Production Operations]]).
 

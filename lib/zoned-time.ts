@@ -44,6 +44,21 @@ export function zonedCandidates(local: string, timeZone: string): Date[] {
     .sort((a, b) => a.getTime() - b.getTime());
 }
 
+// The first instant of a `YYYY-MM-DD` day in the zone, or 1 am where midnight is skipped.
+export const startOfZonedDay = (day: string, timeZone: string): Date | undefined =>
+  zonedCandidates(`${day}T00:00`, timeZone)[0] ?? zonedCandidates(`${day}T01:00`, timeZone)[0];
+export const nextDay = (day: string) => new Date(Date.parse(`${day}T12:00:00Z`) + DAY).toISOString().slice(0, 10);
+
+// A date filter's inclusive bound. A `YYYY-MM-DD` day starts and ends in the
+// society's zone, as its date pickers show it (DEF-049); anything else is read
+// as an instant. A value that is neither gives an Invalid Date.
+export function dateFilterBound(value: string, timeZone: string, { endOfDay = false } = {}) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(value);
+  const start = startOfZonedDay(value, timeZone);
+  if (!start) return new Date(Number.NaN);
+  return endOfDay ? new Date(startOfZonedDay(nextDay(value), timeZone)!.getTime() - 1) : start;
+}
+
 function zoneName(timeZone: string, at: Date, timeZoneName: "short" | "shortOffset") {
   return new Intl.DateTimeFormat("en-AU", { timeZone, timeZoneName })
     .formatToParts(at)

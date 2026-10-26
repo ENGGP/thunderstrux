@@ -43,6 +43,7 @@ jobs:
         run: |
           docker run --rm -i hadolint/hadolint:v2.14.0-alpine@sha256:7aba693c1442eb31c0b015c129697cb3b6cb7da589d85c7562f9deb435a6657c hadolint - < docker/Dockerfile
           docker run --rm -i hadolint/hadolint:v2.14.0-alpine@sha256:7aba693c1442eb31c0b015c129697cb3b6cb7da589d85c7562f9deb435a6657c hadolint - < docker/Dockerfile.e2e
+          docker run --rm -i hadolint/hadolint:v2.14.0-alpine@sha256:7aba693c1442eb31c0b015c129697cb3b6cb7da589d85c7562f9deb435a6657c hadolint - < docker/Dockerfile.assets
       - name: Validate Compose contracts
         run: |
           cat > .env <<'EOF'

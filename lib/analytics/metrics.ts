@@ -13,10 +13,12 @@ import { bucketOf, endOf, within, zeroFill, type AnalyticsRange } from "./range"
 // Definitions:
 // - Gross: fulfilled, Stripe-paid, positive totals by fulfilment time. Pending,
 //   failed, expired, payment-review and free orders are not money.
-// - Refunds: Stripe-confirmed refunds by the time they were confirmed. A
-//   refund always covers a whole order and reverses its platform fee. Refunds
-//   made outside Thunderstrux (reported on the order) and compensation refunds
-//   of orders never fulfilled are not in these numbers.
+// - Refunds: Stripe-confirmed refunds of fulfilled orders by the time they were
+//   confirmed. A refund reverses its share of the order's platform fee, pro
+//   rata as Stripe returns it, so "Refund the rest" after a partial refund in
+//   Stripe reverses only the rest's share (PAY-011). Refunds made outside
+//   Thunderstrux (reported on the order) and compensation refunds of orders
+//   never fulfilled, which were never sales, are not in these numbers.
 // - Net sales: gross less refunds over the same days. A refund of an earlier
 //   sale lowers the period it happened in, so a period can be negative.
 // - Platform fees: fees on gross less fees reversed by refunds. Thunderstrux
@@ -31,6 +33,8 @@ const n = (value: unknown) => Number(value ?? 0);
 const money = (access: AnalyticsAccess, value: unknown) => (access.financial ? n(value) : null);
 const sum = <Row,>(rows: Row[], key: keyof Row) => rows.reduce((total, row) => total + Number(row[key]), 0);
 const paidMoney = (alias: "o" | "c") => Prisma.raw(`${alias}."paymentKind" = 'stripe' AND ${alias}."totalAmount" > 0`);
+// The platform fee a refund gives back: Stripe's refund_application_fee returns it pro rata.
+const feeReversed = (alias: "o" | "c") => Prisma.raw(`coalesce(sum(round(${alias}."feeAmount"::numeric * r."amount" / nullif(${alias}."totalAmount", 0))), 0)`);
 const utcNow = (now: Date) => Prisma.sql`(${now.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
 
 function moneySeries<Row extends { start: string; gross: number; refunded: number; fees: number; feesReversed: number }>(access: AnalyticsAccess, rows: Row[]) {
@@ -86,9 +90,9 @@ export async function ticketMetrics(organisationId: string, range: AnalyticsRang
       GROUP BY 1`,
     prisma.$queryRaw<Bucketed[]>`
       SELECT ${bucketOf(Prisma.sql`r."resolvedAt"`, range)} AS bucket, count(*) AS refunds,
-        coalesce(sum(r."amount"), 0) AS refunded, coalesce(sum(o."feeAmount"), 0) AS "feesReversed"
+        coalesce(sum(r."amount"), 0) AS refunded, ${feeReversed("o")} AS "feesReversed"
       FROM "RefundRequest" r JOIN "Order" o ON o."id" = r."orderId" JOIN "Event" e ON e."id" = o."eventId"
-      WHERE ${owned} AND r."status" = 'succeeded' AND ${within(Prisma.sql`r."resolvedAt"`, range)}
+      WHERE ${owned} AND r."status" = 'succeeded' AND o."fulfilledAt" IS NOT NULL AND ${within(Prisma.sql`r."resolvedAt"`, range)}
       GROUP BY 1`,
     prisma.$queryRaw<Bucketed[]>`
       SELECT ${bucketOf(Prisma.sql`o."createdAt"`, range)} AS bucket, count(*) AS started,
@@ -169,7 +173,7 @@ export async function eventTicketTypeMetrics(organisationId: string, eventId: st
     LEFT JOIN (
       SELECT o."ticketTypeId", sum(r."amount") AS refunded
       FROM "RefundRequest" r JOIN "Order" o ON o."id" = r."orderId"
-      WHERE o."eventId" = ${eventId} AND r."status" = 'succeeded'
+      WHERE o."eventId" = ${eventId} AND r."status" = 'succeeded' AND o."fulfilledAt" IS NOT NULL
       GROUP BY 1
     ) rf ON rf."ticketTypeId" = tt."id"
     WHERE tt."eventId" = ${eventId} AND e."organisationId" = ${organisationId}
@@ -215,9 +219,9 @@ async function commerceSales(organisationId: string, kind: "membership" | "merch
       GROUP BY 1`,
     prisma.$queryRaw<Bucketed[]>`
       SELECT ${bucketOf(Prisma.sql`r."resolvedAt"`, range)} AS bucket, count(*) AS refunds,
-        coalesce(sum(r."amount"), 0) AS refunded, coalesce(sum(c."feeAmount"), 0) AS "feesReversed"
+        coalesce(sum(r."amount"), 0) AS refunded, ${feeReversed("c")} AS "feesReversed"
       FROM "RefundRequest" r JOIN "CommerceOrder" c ON c."id" = r."commerceOrderId"
-      WHERE c."organisationId" = ${organisationId} AND c."kind" = ${kind}::"CommerceKind" AND r."status" = 'succeeded'
+      WHERE c."organisationId" = ${organisationId} AND c."kind" = ${kind}::"CommerceKind" AND r."status" = 'succeeded' AND c."fulfilledAt" IS NOT NULL
         AND ${within(Prisma.sql`r."resolvedAt"`, range)}
       GROUP BY 1`
   ]);

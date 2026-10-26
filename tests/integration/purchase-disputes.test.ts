@@ -390,8 +390,9 @@ describe("lost dispute recovery", () => {
     expect(await historyOf(fixture.order.id)).toEqual(["dispute_opened", "dispute_closed"]);
   });
 
-  test("after six unknown outcomes the worker stops calling Stripe, alerts, and checks back hourly", async () => {
+  test("after six unknown outcomes the worker alerts and keeps looking the reversal up at Stripe hourly until it settles (PAY-013)", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const fixture = await paidOrder();
     transferIs(fixture);
     await loseDispute(fixture);
@@ -399,13 +400,21 @@ describe("lost dispute recovery", () => {
       where: { stripeDisputeId: `dp_${fixture.order.id}` },
       data: { reversalStatus: "uncertain", reversalAttempts: 6, reversalLastError: "provider_unknown" }
     });
+    stripe.charge.mockClear();
+    stripe.charge.mockRejectedValueOnce(new Error("socket hang up"));
     const now = new Date(Date.now() + 1000);
     expect(await processDisputeReversalBatch(25, now)).toMatchObject({ results: [{ status: "unresolved" }] });
     const row = await disputeRow(fixture);
     expect(row).toMatchObject({ reversalStatus: "uncertain", reversalLastError: "provider_unresolved", reversalProcessingToken: null, reversalAttempts: 7 });
     expect(row.reversalNextAttemptAt).toEqual(new Date(now.getTime() + 60 * 60_000));
     expect(unresolvedAlerts(error)).toEqual([expect.objectContaining({ reason: "provider_unresolved" })]);
-    expect(stripe.charge).not.toHaveBeenCalled();
+    expect(stripe.charge).toHaveBeenCalledTimes(1);
     expect(stripe.reverse).not.toHaveBeenCalled();
+
+    // An hour later Stripe answers, and the reversal an earlier attempt made is found, not sent again.
+    stripe.reversals.mockResolvedValue({ data: [{ id: "trr_late", amount: 3000, metadata: { disputeId: `dp_${fixture.order.id}`, orderId: fixture.order.id } }] });
+    expect(await processDisputeReversalBatch(25, new Date(now.getTime() + 60 * 60_000))).toMatchObject({ results: [{ status: "succeeded" }] });
+    expect(stripe.reverse).not.toHaveBeenCalled();
+    expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "succeeded", stripeTransferReversalId: "trr_late" });
   });
 });

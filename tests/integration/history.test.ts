@@ -140,6 +140,16 @@ describe("History (T38)", () => {
     expect(JSON.stringify(recovered)).not.toMatch(/dp_SENTINEL|trr_SENTINEL/);
   });
 
+  test("steps Thunderstrux takes itself without a person read as Thunderstrux, not Stripe (AUD-002)", async () => {
+    const { organisation } = await createOrganisationAccount();
+    for (const [action, targetType] of [["commerce_order.compensation_refund_queued", "CommerceOrder"], ["order.compensation_review_required", "Order"]]) {
+      await prisma.auditLog.create({ data: { organisationId: organisation.id, action, targetType, targetId: `cm${action}` } });
+    }
+    const { entries } = await readHistory(organisation.id, {}, zone);
+    expect(entries.map((entry) => entry.actor.kind)).toEqual(["thunderstrux", "thunderstrux"]);
+    expect((await readHistory(organisation.id, { who: "stripe" }, zone)).entries).toEqual([]);
+  });
+
   // Every action the app writes, with the dynamic families spelled out.
   const recordedActions = [
     "event.created", "event.updated", "event.published", "event.unpublished", "event.sales_closed", "event.sales_reopened", "event.deleted",

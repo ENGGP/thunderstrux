@@ -78,7 +78,8 @@ export function collectReferences(text) {
   let match;
 
   while ((match = wikiPattern.exec(content))) {
-    const cleaned = cleanTarget(match[1].split("|")[0]);
+    // Inside a table Obsidian escapes the alias pipe as `\|`.
+    const cleaned = cleanTarget(match[1].split(/\\?\|/)[0]);
     if (cleaned.target || cleaned.anchor) references.push({ kind: "wiki", ...cleaned });
   }
   while ((match = markdownPattern.exec(content))) {

@@ -8,6 +8,10 @@ sources: [AGENTS.md, package.json]
 
 # Engineering Delivery Workflow
 
+**Owns:** how a change is branched, validated by risk, reviewed, cleaned up and merged.
+**Read when:** before you validate or deliver any change.
+**Not here:** how to run the commands ([[Development Workflow]], [[E2E and Staging Payments]]); open risks ([[Issue and Defect Register]]).
+
 This is the minimum delivery workflow for a solo-maintained startup. Keep routine work lightweight while preserving tenant, authentication, payment, data, migration, and production safety. Deliver changes through a focused pull request to protected `main`, supported by proportionate local validation. GitHub test checks are not required for merge; test workflows are available for optional manual dispatch.
 
 ## 1. Start From Known State

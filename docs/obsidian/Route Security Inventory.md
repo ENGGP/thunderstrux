@@ -1,64 +1,213 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Audit Coverage]]", "[[Authentication and Dashboard Access]]", "[[API Reference]]", "[[Production Operations]]"]
-sources: [lib/api/errors.ts, lib/api/route-rules.ts, lib/security/request-guard.ts, lib/security/rate-limit.ts, lib/security/token-cleanup.ts, next.config.ts, tests/integration/route-contract.test.ts, tests/integration/security-headers.test.ts, tests/integration/security-limits.test.ts, tests/e2e/security-headers.spec.ts]
+related: ["[[API Reference]]", "[[Authentication and Dashboard Access]]", "[[Audit Coverage]]", "[[Production Operations]]"]
+sources: [lib/security/request-guard.ts, lib/security/csrf.ts, lib/security/rate-limit.ts, lib/api/request.ts, lib/api/errors.ts, lib/api/route-rules.ts, lib/security/token-cleanup.ts, next.config.ts, tests/integration/route-contract.test.ts, tests/integration/security-headers.test.ts, tests/integration/security-limits.test.ts, tests/integration/rate-limit.test.ts]
 ---
 
 # Route Security Inventory
 
-What every API route checks, and in which order (T39). [[Audit Coverage]] lists what each change records. `tests/integration/route-contract.test.ts` fails if a new route skips the central error mapper or, when it changes data, the origin check.
+**Owns:** what every API route checks and in which order: trusted origin and CSRF, rate-limit policies and their numbers, client IP keys, body caps, security headers and caching, and the per-route check table.
+**Read when:** adding or changing an API route, a limit, a header, or anything a request must pass before it reaches a service.
+**Not here:** request and response shapes ([[API Reference]]); roles, permissions, sessions and MFA ([[Authentication and Dashboard Access]]); what each change records ([[Audit Coverage]]); log events and alerts ([[Production Operations#Logs, metrics and alerts]]).
 
-## Rules every route follows
+## Code
 
-- **Order of checks.** Origin first (`enforceTrustedMutationRequest` for every write; guest pages also send a guest CSRF token), then the rate limit where one applies, then sign-in, then the body against a strict schema, then live authority. The service rechecks authority under its row lock before it writes. A refused request writes nothing.
-- **Authority is live.** Staff permission is read from `OrganisationStaff` on every request (`requireOrganisationPermission`, `organisationActor`, `lockOrganisationActor`), never from the session or a client id. The tenant comes from the canonical owner (an event's society, a commerce order's society), never from the request body. Another society's ids answer the same 404 as a missing one.
-- **Staff MFA.** Where enforcement is on, staff permission checks need a fresh authenticator grant. Refunds, membership revocations, merchandise refunds and cancellations, and Stripe disconnect ask for a code again (`staff_mfa_verify`).
-- **Errors.** Every route maps failures through `mapRouteError` (directly or through its family's `http` helper). Known errors map to the documented status and message. Anything else answers a generic 500 and logs only the error's class and the operation, never the error object, its message, the request body or provider data. The exceptions are Auth.js, the two Stripe webhooks, health and readiness, and the CSRF token route, which keep their own response contracts.
-- **Caching.** Every `/api` answer except `/api/public/*` and `/api/health*` is `Cache-Control: private, no-store` by default (`next.config.ts`). Public reads set their own short public caching.
-- **Headers.** Every response carries a Content-Security-Policy, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a restrictive `Permissions-Policy` and, in production, HSTS.
-  - The CSP allows scripts, styles, images (including `data:` and `blob:` previews), fonts and requests only from this site.
-  - It forbids framing in both directions, plugins and form posts elsewhere.
-  - Stripe Checkout and Connect onboarding are reached by navigation, so they need no allowance.
-  - Scripts still allow `'unsafe-inline'` for Next's bootstrap until pages take a per-request nonce.
-  - Every browser test fails if the CSP blocks anything.
-- **Bounds.**
-  - Bodies are strict schemas with string, array and number limits.
-  - Ticket and member prices stop at 99,999,999 cents (Stripe's largest charge) and ticket stock at 1,000,000. Membership and merchandise prices have the same cap, merchandise stock stops at 100,000, and commerce totals are checked in `BigInt`.
-  - So no total leaves a 32-bit integer.
-- **Rate limits.** The policies are in `lib/security/rate-limit.ts`. Account, token, invite, upload, MFA and guest policies fail closed (503 when Redis is unavailable); checkout, resend and check-in fail open so a Redis outage doesn't stop sales or the door. Client IPs come only from the single edge-owned header; proxy chains are refused.
-- **Tokens.** Sign-in, reset, verification and email-change tokens, guest access grants and staff MFA grants are stored as digests and expire. Rows more than 30 days past expiry are deleted 500 at a time by the notification worker each minute (`lib/security/token-cleanup.ts`); rows that point at them are set to null.
+| Concern | Where |
+| --- | --- |
+| Trusted origin and session CSRF | `lib/security/request-guard.ts`: `enforceTrustedMutationRequest`, `trustedRequestOrigin` |
+| CSRF token | `lib/security/csrf.ts`: `createCsrfTokenForRequest`, `verifyCsrfTokenForRequest`, header `x-thunderstrux-csrf-token`; issued by `GET /api/security/csrf` |
+| Guest CSRF | `lib/guest/guest-csrf.ts`: `verifyGuestCsrf`, header `x-thunderstrux-guest-csrf` |
+| Rate limits | `lib/security/rate-limit.ts`: `enforceRateLimit`, `getRateLimitClientIp`, `clientKey`, `policies` |
+| Account-link limits | `lib/auth/lifecycle-http.ts`: `lifecycleIpLimit`, `lifecycleEmailLimit`, `lifecycleRedemptionLimit` |
+| Body reading | `lib/api/request.ts`: `readJsonBody`, `parseJsonBody`, `validateJson` |
+| Error envelope | `lib/api/errors.ts`: `mapRouteError`, `apiError`; shared rules `lib/api/route-rules.ts` |
+| Headers, default caching | `next.config.ts`: `securityHeaders`, `contentSecurityPolicy`, `headers()` |
+| Expired token cleanup | `lib/security/token-cleanup.ts`: `cleanUpExpiredTokens` |
+| Contract test | `tests/integration/route-contract.test.ts` fails a route that skips `mapRouteError` or, when it writes, the origin check (its exemption lists name each exception and why) |
+| Tests | `tests/integration/security-limits.test.ts`, `tests/integration/rate-limit.test.ts`, `tests/integration/security-headers.test.ts`, `tests/e2e/security-headers.spec.ts` |
 
-## Families
+## Guard order
 
-| Family | Routes | Authority | Rate policy | Notes |
+There is no one universal order. Each family runs its checks in this order; a refused request writes nothing, and the owning service rechecks authority under its row lock (`lockOrganisationActor` in `lib/organisations/authority.ts`) before it writes.
+
+| Family | Order |
+| --- | --- |
+| Sign-up and link requests (`auth/signup`, `auth/verification/request`, `auth/password/request`) | origin → `signup_ip` → body → `signup_email` (per purpose) → service |
+| Link redemption (`auth/verification/confirm`, `auth/password/confirm`) | origin → body → `account_token_ip` → `account_token_digest` → service |
+| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → one `email` field (else 400, SEC-007) → `login_ip_email` → Auth.js (its own CSRF) |
+| Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
+| Guest redemption (`guest/email/confirm`) | origin → body → `guest_token_ip` → `guest_token_digest` → service |
+| Account security (`me/account/password`, `me/account/email/*`, `POST me/account/closure`) | origin → sign-in (live `authVersion`) → `account_security_change` → body → email confirm only: `account_token_ip`/`account_token_digest` → service (current password, enrolled MFA) |
+| Profile, notification preferences | origin → body → sign-in → service (no rate limit) |
+| Dashboard context `POST me/context` | origin → body → sign-in → login id present → staff mode: `events:read` + MFA on the target |
+| Staff MFA (`me/mfa/setup`, `confirm`, `verify`) | origin → config (`MFA_ENCRYPTION_KEY`, `RATE_LIMIT_ENABLED=true`, else 503) → sign-in → `staff_mfa_setup` / `staff_mfa_verify` → raw body (SEC-028) |
+| Event writes (`PATCH`/`DELETE events/[eventId]`, `publish`, `sales`) | origin → dashboard context (+MFA) → `events:manage` → sign-in → body |
+| `POST /api/events` | origin → body → `events:manage` on the body's `organisationId` → sign-in |
+| Event reads (`GET events`, `GET events/[eventId]`) | `orgId` query → `events:manage` |
+| Check-in, check-out | origin → dashboard context → `tickets:check_in` → `ticket_check_in_out` → sign-in |
+| Staff order decisions (`refunds`, `cancel`, `review`) | origin → context → permission → sign-in → body → `staff_mfa_verify` when a code is sent → fresh code unless MFA mode `off` → service |
+| `refund-manual` | origin → context → `orders:refund_mark` → sign-in |
+| `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → sign-in |
+| Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → raw body (SEC-028) → sign-in |
+| `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in (no rate limit) |
+| Society slug routes (`organisationActor`: profile, assets, calendar, memberships, merchandise) | origin (writes) → sign-in → slug → permission (+MFA) → rate limit where one applies → body |
+| Staff end routes (membership revoke/cancel/refund, merchandise refund/cancel) | as slug routes, then `staff_mfa_verify` when a code is sent → fresh code unless `off` |
+| Staff management | list: slug → `staff:manage`. `PATCH`: origin → body → sign-in → slug → `staff:manage`. Invites: origin → body → verified → slug → `staff:manage` (owner role needs an owner) → invite limits. Handover: origin → body → verified → slug → owner → `account_security_change` |
+| Invite acceptance | origin → body → `account_token_ip` → `account_token_digest` (keys prefixed `staff_invite`) → verified |
+| Society bootstrap `POST /api/orgs` | origin → organisation account → verified → `organisation_create` → body |
+| Join / leave | origin → member account → (join only) verified → `organisation_join_leave` |
+| Stripe Connect | origin → `requireStripeConnectCapability` (`stripe:manage` somewhere, +MFA) → body → `organisationId` → `stripe:manage` on it (+MFA) → `stripe_connect_mutation` → `staff_mfa_verify` when a code is sent. Status `GET`: capability → target |
+| Checkout (`payments/checkout/*`) | origin → body → guest branch (no login and a guest cookie: `checkout` session → guest CSRF → `checkout_create`) or member branch (verified → member account → `checkout_create`) |
+| Buyer cancel (`purchases/tickets/[orderId]/cancel`, `commerce/orders/[orderId]/cancel`) | origin → order → guest (guest CSRF) or sign-in → buyer owns it (else 404) → `checkout_create` |
+| Buyer reads (status, attempts, commerce order) | session or guest session → ownership (else 404); no origin check, no rate limit |
+| Webhooks | Stripe signature on the raw body; nothing else |
+
+## Rules
+
+- **Authority is live.** Staff permission is read from `OrganisationStaff` on every request through `requireOrganisationPermission` and `liveStaffRole` ([[Authentication and Dashboard Access#Roles and permissions]]), never from the session or a client id. The tenant is the canonical owner (an event's society, a commerce order's society, the selected dashboard context, or a slug), never a body field taken on trust. Another society's ids answer the same 404 as a missing one.
+- **Fresh staff code.** Outside MFA mode `off`, ticket refunds and free cancellations, membership revoke, cancel and refund, merchandise refund and free cancellation, and the Connect dashboard link and disconnect each need an authenticator code in the body, verified at the route (`verifyStaffMfa`), not only the login grant.
+- **Errors.** Every route maps failures through `mapRouteError` (directly or through its family helper). Unknown errors answer a generic 500 and log `api.request_failed` with the operation and error class only. Exempt: Auth.js, both Stripe webhooks, `health`, `health/ready`, `security/csrf`.
+- **Bounds.** Prices follow `lib/validators/price.ts` (free, or 50 to 99,999,999 cents, Stripe's largest charge); ticket stock and capacity stop at 1,000,000 (`lib/validators/events.ts`), merchandise stock at 100,000; commerce totals are summed in `BigInt` and capped at 2,147,483,647 (`lib/commerce/orders.ts`).
+
+## Trusted origin and CSRF
+
+`enforceTrustedMutationRequest(request)` (every write except the webhooks, Auth.js and `merchandise/quote`):
+
+- An `Origin` header must be exactly a serialised origin in the trusted set: `NEXT_PUBLIC_APP_URL` plus `TRUSTED_APP_ORIGINS` (comma list). `Origin: null` is refused.
+- With no `Origin`, a `Referer` must have a trusted origin. With neither, the request is refused.
+- Then, if the request carries an Auth.js session cookie, header `x-thunderstrux-csrf-token` must match. The token is `v1.<hour>.<hmac>` over the session cookie (chunks joined in order, first duplicate wins, SEC-027) and is valid for the current UTC hour only.
+- Skipped for the eight token-authority paths, so a stale login cookie can't block them: `auth/signup`, `auth/verification/request`, `auth/verification/confirm`, `auth/password/request`, `auth/password/confirm`, `guest/email/request`, `guest/email/confirm`, `guest/recover`.
+- Refusals are 403 `Untrusted request origin` or `Invalid CSRF token`, logged as `trusted_origin.rejected` with the reason.
+- Guest writes (checkout, buyer cancel) check `verifyGuestCsrf` against the guest session id instead.
+- `trustedRequestOrigin` picks where Stripe returns the browser (Checkout success/cancel, Connect return/refresh): a trusted `Origin`, else the app URL, never the `Host` header. Emails and workers always use `NEXT_PUBLIC_APP_URL`.
+
+## Rate limits
+
+`enforceRateLimit({ policy, request, keyParts, required })` is a Redis fixed window (`INCR` + `EXPIRE`).
+
+- **Switch.** Off unless `RATE_LIMIT_ENABLED=true`. When off, a call with `required: true` answers 503 and any other call passes. Hosted compose must set it (`scripts/container-config.mjs` refuses otherwise), so login, organisation-create, profile and MFA-verify limits, which are not `required`, are only off in local development.
+- **Fail mode** applies when enabled and Redis fails: `closed` answers 503 `Request protection is temporarily unavailable`; `open` logs `rate_limit.backend_unavailable` and lets the request through.
+- **Over the limit:** 429 `RATE_LIMITED` with `Retry-After`; logged `rate_limit.rejected` with policy, method and the path with ids replaced by `:id`.
+- **Keys** are `policy:keyParts` hashed with SHA-256 under `RATE_LIMIT_KEY_PREFIX` (default `thunderstrux`). No raw email, user, order or IP reaches Redis or logs.
+- **Redis client:** 1.5 s connect and command timeouts, three reconnects, offline queue off.
+
+| Policy | Limit / window | Fail | Key parts | Routes |
 | --- | --- | --- | --- | --- |
-| Sign-up and recovery | `auth/signup`, `auth/password/request`, `auth/verification/request` | Public | `signup_ip`, `signup_email` (closed) | The same answer whether or not the address has an account. `signup_email` is keyed per purpose, so signup or verification requests can't use up the reset budget. |
-| Token redemption | `auth/password/confirm`, `auth/verification/confirm` | The token (verification also needs the account's password) | `account_token_ip`, `account_token_digest` (closed) | Single use; a used, expired or replaced token is refused. |
-| Sign-in | `auth/[...nextauth]` | Auth.js | `login_ip_email`, `login_ip_global` (closed) | Auth.js CSRF and responses. More than one `email` field is refused before Auth.js. |
-| Account | `me/account`, `me/profile`, `me/notification-preferences`, `me/context` | Signed in, live session version | `account_security_change` (closed) for password, email change and closure | Changing password or email signs other devices out. |
-| Staff MFA | `me/mfa/setup`, `confirm`, `verify`, `status` | Signed in | `staff_mfa_setup`, `staff_mfa_verify` (closed) | Grants are bound to the session. |
-| Events | `events`, `events/[eventId]` (+`publish`, `sales`) | `events:manage` (reads `events:read`) | — | Version compare-and-swap; inventory lock on edits. |
-| Attendance | `events/[eventId]/tickets`, `tickets/[ticketId]/check-in`, `check-out` | `tickets:check_in` | `ticket_check_in_out` (open) | One state change wins when two volunteers act. |
-| Calendar | `orgs/[orgSlug]/calendar` | `events:read`; drafts need `events:manage`, membership endings `members:read` | — | Range of at most 93 days. |
-| Ticket orders | `orders`, `orders/[orderId]` (+`refunds`, `cancel`, `review`, `refund-manual`, `resend`, `email-jobs/…/requeue`, `compensation-refund/confirm`) | `orders:read`, `orders:refund`, `orders:refund_mark`, `orders:email_resend` | `order_resend` (open); `staff_mfa_verify` for refunds and cancellations | Refunds are webhook-confirmed. |
-| Commerce orders | `commerce/orders/[orderId]` (+`cancel`, the buyer cancelling an unpaid order), memberships and merchandise order actions | Buyer or guest session; staff `orders:read`, `memberships:manage`, `merchandise:fulfil` | `staff_mfa_verify` for refunds, revocations and cancellations | |
-| Membership plans | `orgs/[orgSlug]/memberships` (+`[planId]`, `publish`, `archive`) | `memberships:manage` | — | |
-| Merchandise | `orgs/[orgSlug]/merchandise` (+`[productId]`, `publish`, `archive`, `restore`, `pickups`, `orders/…`) | `merchandise:manage`, `merchandise:fulfil` | — | Stock can't go below checkout holds. |
-| Society | `orgs` (create), `orgs/[orgSlug]`, `profile`, `assets`, `assets/[assetId]` | Verified organisation account to create; `organisation:settings` and the asset's permission after | `organisation_create`, `organisation_profile`, `asset_upload`, `asset_delete` (closed) | Images are re-encoded and size-checked. |
-| Joining | `orgs/[orgSlug]/join`, `leave` | Verified member account | `organisation_join_leave` | A free join only; no staff authority. |
-| Staff | `orgs/[orgSlug]/staff`, `staff/[staffId]`, `staff/handover`, `staff/invites` (+`resend`, `revoke`), `staff/invites/accept` | `staff:manage`; owner changes need an owner; the invitee's verified account and token to accept | `staff_invite_actor`, `staff_invite_email`, `account_security_change`, `account_token_*` (closed) | At least one active owner always remains. |
-| Email delivery | `notifications`, `notifications/[jobId]/requeue` | `orders:email_resend` | `order_resend` (open) | |
-| Stripe Connect | `stripe/connect/onboard`, `continue`, `dashboard`, `disconnect`, `status` | `stripe:manage` | `stripe_connect_mutation`; `staff_mfa_verify` to open the dashboard or disconnect, each of which needs a fresh code | No provider messages reach the browser. |
-| Checkout | `payments/checkout/event`, `membership`, `merchandise`, `payments/checkout/attempts/[attemptId]` | Verified member, or a guest session with its CSRF token | `checkout_create` (open), keyed on the buyer (account or guest email) and event or family, not the client address | Idempotency key; prices re-read under lock; per-buyer hold caps. |
-| Guest access | `guest/email/request`, `guest/email/confirm`, `guest/recover`, `guest/session`, `guest/orders/[orderId]/claim` | Public with rate limits; the guest session; a signed-in member to claim | `guest_email_ip`, `guest_email_address`, `guest_token_ip`, `guest_token_digest` (closed) | The same answer for any address. |
-| Purchases | `purchases/tickets/[orderId]/status`, `purchases/tickets/[orderId]/cancel` | The buyer or the guest session that may open it (cancel: trusted origin with the session or guest CSRF token) | `checkout_create` (open) for cancel | Everyone else gets the same 404. Cancel asks Stripe to close the payment page before releasing the hold. |
-| Public reads | `public/events`, `public/events/[eventId]`, `public/organisations/search`, `orgs/search`, `public/assets/[assetId]`, `merchandise/quote` | Public (members-only events and their images only to members) | — | No app rate limit: abusive read volume is for the hosting edge (T42). |
-| Webhooks | `payments/webhook`, `stripe/connect/webhook` | Stripe signature | — | Idempotent by event id; Stripe's own response contract. |
-| Health | `health`, `health/ready`, `security/csrf` | Public; CSRF issues a token to the session | — | No data. |
+| `login_ip_global` | 50 / 10 min | closed | IP | credentials sign-in (not required) |
+| `login_ip_email` | 10 / 10 min | closed | IP, email | credentials sign-in (not required) |
+| `signup_ip` | 25 / 1 h | closed | IP (one bucket for all three) | signup, verification request, password request |
+| `signup_email` | 3 / 1 h | closed | purpose (`signup`, `verification`, `password_reset`), email | same three; one bucket per purpose (SEC-026) |
+| `account_token_ip` | 50 / 10 min | closed | IP; invites `staff_invite`, IP | verification confirm, password confirm, email-change confirm, invite accept |
+| `account_token_digest` | 10 / 10 min | closed | token digest; invites `staff_invite`, digest | same |
+| `account_security_change` | 5 / 1 h | closed | user | password change, email request/confirm/cancel, closure, owner handover |
+| `organisation_create` | 5 / 1 h | closed | user, IP | `POST /api/orgs` (not required) |
+| `checkout_create` | 5 / 10 min | open | user, event or family; `guest`, guest identity, event or family; `cancel`, order | ticket, membership and merchandise checkout; buyer cancel |
+| `order_resend` | 10 / 15 min | open | society, order or job | resend, email-job requeue, notification requeue |
+| `organisation_join_leave` | 30 / 10 min | open | user, slug, `join`/`leave` | join, leave |
+| `ticket_check_in_out` | 300 / 1 min | open | society, `check-in`/`check-out` | check-in, check-out |
+| `stripe_connect_mutation` | 20 / 10 min | open | society, action | Connect onboard, continue, dashboard, disconnect |
+| `staff_invite_actor` | 20 / 1 h | closed | actor, society | invite create, resend, revoke |
+| `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
+| `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
+| `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm and verify; every fresh-code action when a code is sent (not required) |
+| `asset_upload` | 20 / 1 h | closed | `actor`, user; and `tenant`, society (two buckets) | asset upload |
+| `asset_delete` | 30 / 10 min | closed | user, society | asset delete |
+| `organisation_profile` | 30 / 10 min | closed | user, society | profile `PATCH` (not required) |
+| `guest_email_ip` | 20 / 1 h | closed | IP; recovery adds `recover` | guest link request, Find your purchase |
+| `guest_email_address` | 3 / 1 h | closed | email; recovery adds `recover` | same |
+| `guest_token_ip` | 50 / 10 min | closed | IP | guest link redemption |
+| `guest_token_digest` | 10 / 10 min | closed | token digest | guest link redemption |
 
-## Residual items
+Not rate limited: public reads (abusive read volume belongs to the hosting edge), `merchandise/quote`, `payments/checkout/attempts/[attemptId]`, buyer status reads, event and staff writes not listed above, the webhooks.
 
-- Script CSP keeps `'unsafe-inline'`. A per-request nonce would make every page dynamic; revisit with T43's hosting work.
-- Public reads have no app-level rate limit; the hosting edge owns that (T42).
+### Client IP
+
+`getRateLimitClientIp` reads one header, `RATE_LIMIT_TRUSTED_PROXY_HEADER` (default `x-forwarded-for`), which the edge must overwrite with a single address. A bad header name, a missing value or a comma-separated chain all map to the shared key `unknown`; they are not refused, so such clients share one bucket. `clientKey` strips an IPv6 zone, maps `::ffff:a.b.c.d` to the IPv4 address and groups other IPv6 addresses by /64.
+
+## Request bodies
+
+- `validateJson` → `readJsonBody` reads at most 100,000 bytes (a larger `Content-Length` is refused before reading; the stream stops past the cap): 400 `Request body is too large`; bad JSON is 400 `Request body must be valid JSON`. Validation answers carry at most 20 issues.
+- Profile `PATCH` reads with an 80,000-byte cap and answers 413. Asset upload reads multipart through `readImageForm` ([[Society Profiles and Assets]]).
+- SEC-028: four routes read `request.json()` with no cap or schema: `me/mfa/confirm`, `me/mfa/verify`, `notifications/[jobId]/requeue` (then a strict `safeParse`), `orders/[orderId]/email-jobs/[jobId]/requeue` (a short reason surfaces as 409 from the service).
+- Most body schemas are `.strict()` (unknown keys 400). These strip unknown keys instead: `lib/validators/events.ts` (event create, update, publish, sales), `lib/validators/payments.ts:createEventCheckoutSchema`, `lib/validators/stripe-connect.ts`, `lib/validators/orgs.ts:createOrganisationSchema`, `lib/validators/auth.ts:signupSchema` and `memberProfileSchema`, `lib/validators/staff.ts:updateStaffSchema`, and the compensation confirm schema.
+
+## Headers and caching
+
+- `next.config.ts` adds to every path: `Content-Security-Policy` (`default-src 'self'`; scripts `'self' 'unsafe-inline'`, plus `'unsafe-eval'` in development; images also `data:` and `blob:`; `connect-src 'self'`, plus `ws:`/`wss:` in development; `frame-src`, `frame-ancestors`, `object-src` `'none'`; `form-action 'self'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy` that turns off camera, microphone, geolocation, payment and USB, and outside development `Strict-Transport-Security` (one year, subdomains).
+- Stripe is reached by navigation, so the CSP needs no Stripe allowance. Every browser test fails on a CSP violation.
+- `/api/*` gets `Cache-Control: private, no-store` unless the path starts with `public/` or `health`. Routes that set their own: `GET /api/public/organisations/search` `public, max-age=60`; `GET /api/public/assets/[assetId]` `public, max-age=300` for a shared image and `private, no-store` for a members-only event image, with an `ETag` and 304; `GET /api/health/ready` `no-store`. `GET /api/public/events` and `GET /api/public/events/[eventId]` set none.
+- `images.unoptimized`: `/_next/image` answers 404, so the server never keeps or transcodes withdrawn images.
+
+## Tokens at rest
+
+Sign-in, reset, verification and email-change tokens, guest access grants and staff MFA grants are stored as digests and expire. The stale-orders worker deletes MFA grants at expiry (`deleteExpiredMfaGrants`, 500 a run); the notification worker deletes auth tokens, guest grants and MFA grants 30 days past expiry, 500 of each a run, and logs `security.tokens.cleaned` ([[Production Operations]]).
+
+## Per-route checks
+
+Methods in backticks; "ctx" is the selected dashboard context ([[Authentication and Dashboard Access#Dashboard context]]); "+MFA" is the login grant when enforcement is on; "code" is a fresh authenticator code.
+
+| Route | Checks |
+| --- | --- |
+| `GET` `/api/health`, `GET` `/api/health/ready` | public; no data |
+| `GET` `/api/security/csrf` | live session |
+| `GET`/`POST` `/api/auth/[...nextauth]` | Auth.js; login limits on the credentials callback |
+| `POST` `/api/auth/signup`, `/api/auth/verification/request`, `/api/auth/password/request` | origin, `signup_ip`, `signup_email` |
+| `POST` `/api/auth/verification/confirm`, `/api/auth/password/confirm` | origin, account token limits |
+| `POST` `/api/guest/email/request`, `/api/guest/recover` | origin, guest email limits |
+| `POST` `/api/guest/email/confirm` | origin, guest token limits |
+| `GET` `/api/guest/session` | guest cookie |
+| `POST` `/api/guest/orders/[orderId]/claim` | origin + CSRF, signed in, verified, guest session opens the order |
+| `GET` `/api/me/account` | live session |
+| `POST` `/api/me/account/password`, `/api/me/account/email/request`, `/api/me/account/email/confirm`, `/api/me/account/email/cancel`; `GET`/`POST` `/api/me/account/closure` | live session; writes: origin + CSRF, `account_security_change`, current password, enrolled MFA |
+| `PATCH` `/api/me/profile` | origin + CSRF, member account |
+| `PATCH` `/api/me/notification-preferences` | origin + CSRF, signed in |
+| `GET`/`POST` `/api/me/context` | signed in; staff selection `events:read` +MFA |
+| `GET` `/api/me/mfa/status`; `POST` `/api/me/mfa/setup`, `/api/me/mfa/confirm`, `/api/me/mfa/verify` | signed in, staff-eligible; writes: origin, MFA config, MFA limits |
+| `GET`/`POST` `/api/events`; `GET`/`PATCH`/`DELETE` `/api/events/[eventId]`; `PATCH` `/api/events/[eventId]/publish`, `/api/events/[eventId]/sales` | `events:manage` +MFA; writes: origin, ctx |
+| `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
+| `GET` `/api/orders`, `/api/orders/[orderId]` | ctx, `orders:read` +MFA |
+| `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds and cancel also code |
+| `PATCH` `/api/orders/[orderId]/refund-manual` | origin, ctx, `orders:refund_mark` +MFA |
+| `POST` `/api/orders/[orderId]/resend`, `/api/orders/[orderId]/email-jobs/[jobId]/requeue` | origin, ctx, `orders:email_resend` +MFA, `order_resend` |
+| `POST` `/api/orders/[orderId]/compensation-refund/confirm` | origin, ctx, `orders:refund` +MFA, Stripe refund evidence |
+| `GET` `/api/notifications`; `POST` `/api/notifications/[jobId]/requeue` | ctx, `orders:email_resend` +MFA; requeue: origin, `order_resend` |
+| `GET` `/api/orgs`; `POST` `/api/orgs` | signed in; create: origin, verified organisation account, `organisation_create` |
+| `GET` `/api/orgs/search` | member account |
+| `GET` `/api/orgs/[orgSlug]` | any live staff role in it, or a member join |
+| `POST` `/api/orgs/[orgSlug]/join`, `/api/orgs/[orgSlug]/leave` | origin, member account (join: verified), `organisation_join_leave` |
+| `GET`/`PATCH` `/api/orgs/[orgSlug]/profile` | `organisation:settings` +MFA; `PATCH`: origin, `organisation_profile` |
+| `POST` `/api/orgs/[orgSlug]/assets`; `GET`/`DELETE` `/api/orgs/[orgSlug]/assets/[assetId]` | the kind's permission +MFA; writes: origin, `asset_upload` / `asset_delete` |
+| `GET` `/api/orgs/[orgSlug]/calendar` | `events:read` +MFA (drafts follow `events:manage`, membership ends `members:read`) |
+| `GET`/`POST` `/api/orgs/[orgSlug]/memberships`; `PATCH` `/api/orgs/[orgSlug]/memberships/[planId]`; `POST` `/api/orgs/[orgSlug]/memberships/[planId]/publish`, `/api/orgs/[orgSlug]/memberships/[planId]/archive` | `memberships:manage` +MFA; writes: origin |
+| `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/revoke` | origin, `memberships:manage` +MFA, code |
+| `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/cancel`, `/api/orgs/[orgSlug]/memberships/members/[grantId]/refund` | origin, `orders:refund` +MFA, code |
+| `GET`/`POST` `/api/orgs/[orgSlug]/merchandise`; `GET`/`PATCH` `/api/orgs/[orgSlug]/merchandise/[productId]`; `POST` `/api/orgs/[orgSlug]/merchandise/[productId]/publish`, `/api/orgs/[orgSlug]/merchandise/[productId]/archive`, `/api/orgs/[orgSlug]/merchandise/[productId]/restore` | `merchandise:manage` +MFA; writes: origin |
+| `POST` `/api/orgs/[orgSlug]/merchandise/pickups/[orderId]`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/returns` | origin, `merchandise:fulfil` +MFA |
+| `POST` `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/refund`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/cancel` | origin, `orders:refund` +MFA, code |
+| `GET` `/api/orgs/[orgSlug]/staff`; `PATCH` `/api/orgs/[orgSlug]/staff/[staffId]` | `staff:manage` +MFA; `PATCH`: origin, owner rows need an owner |
+| `POST` `/api/orgs/[orgSlug]/staff/invites`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/resend`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/revoke` | origin, verified, `staff:manage` +MFA, invite limits |
+| `POST` `/api/orgs/[orgSlug]/staff/handover` | origin, verified, owner +MFA, `account_security_change`, current password |
+| `POST` `/api/staff/invites/accept` | origin, account token limits, verified invitee |
+| `POST` `/api/stripe/connect/onboard`, `/api/stripe/connect/continue`, `/api/stripe/connect/dashboard`, `/api/stripe/connect/disconnect`; `GET` `/api/stripe/connect/status` | `stripe:manage` +MFA; writes: origin, `stripe_connect_mutation`; dashboard and disconnect: code |
+| `POST` `/api/payments/checkout/event`, `/api/payments/checkout/membership`, `/api/payments/checkout/merchandise` | origin, verified member or guest `checkout` session + guest CSRF (not membership), `checkout_create` |
+| `GET` `/api/payments/checkout/attempts/[attemptId]` | the attempt's own member or guest session |
+| `POST` `/api/purchases/tickets/[orderId]/cancel`, `/api/commerce/orders/[orderId]/cancel` | origin, buyer or guest session + guest CSRF, `checkout_create` |
+| `GET` `/api/purchases/tickets/[orderId]/status`, `/api/commerce/orders/[orderId]` | buyer or guest session; commerce also staff `orders:read` |
+| `POST` `/api/payments/webhook`, `/api/stripe/connect/webhook` | Stripe signature |
+| `GET` `/api/public/events`, `/api/public/events/[eventId]`, `/api/public/organisations/search` | public |
+| `GET` `/api/public/assets/[assetId]` | public image, or a members-only event image to a member it is open to |
+| `POST` `/api/merchandise/quote` | public, no origin check (changes nothing) |
+
+## Traps
+
+- A new write route needs `enforceTrustedMutationRequest` (or the guest CSRF check) and `mapRouteError`, or `tests/integration/route-contract.test.ts` fails.
+- A new account or token flow must pass `required: true`, or it runs unlimited when `RATE_LIMIT_ENABLED` is off.
+- Don't key a limit on the client IP where the buyer or actor is known; a shared proxy maps many people to `unknown`.
+- A new anonymous token endpoint must be added to the CSRF skip list in `lib/security/request-guard.ts`, or a stale login cookie blocks it.
+- Script CSP keeps `'unsafe-inline'` until pages take a per-request nonce, which would make every page dynamic.
+
+## Related
+
+[[API Reference]] · [[Authentication and Dashboard Access]] · [[Audit Coverage]] · [[Production Operations]] · [[Society Profiles and Assets]]

@@ -2,798 +2,224 @@
 status: living
 last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Engineering Delivery Workflow]]", "[[Seeding and Data]]"]
-sources: [package.json, docker-compose.dev.yml, scripts/run-e2e.mjs]
+related: ["[[Engineering Delivery Workflow]]", "[[Environment Variables]]", "[[Troubleshooting]]", "[[Seeding and Data]]", "[[Production Operations]]", "[[E2E and Staging Payments]]"]
+sources: [package.json, docker-compose.yml, docker-compose.dev.yml, docker/Dockerfile, next.config.ts, tsconfig.json, scripts/recreate-dev-app.mjs, scripts/prepare-next-build.mjs, scripts/run-integration-tests.mjs, scripts/run-e2e.mjs]
 ---
 
 # Development Workflow
 
-For the end-to-end engineering, review, validation, and PR sequence used by the recent remediation slices, start with [[Engineering Delivery Workflow]] and the latest [[Project Handover]]. This page holds local Docker and command details.
+**Owns:** local development: the Docker dev stack, startup, recreate and clean rules, generated Next files, Tailwind, running tests locally, and every `package.json` script.
+**Read when:** setting up or recovering the local stack, choosing a command, or running tests on your machine.
+**Not here:** branching, risk classes and what validation a change needs ([[Engineering Delivery Workflow]]); every env var ([[Environment Variables]]); symptoms and fixes ([[Troubleshooting]]); demo data ([[Seeding and Data]]); hosted deploys, workers in production, logs and alerts ([[Production Operations]]); the E2E and staging runners in depth ([[E2E and Staging Payments]]); dependency policy ([[Dependency Automation]]).
 
-## Dependency security validation
+## Code
 
-See [[Dependency Automation]] for the current security baseline, Prisma override, and removal condition. Run `pnpm install --frozen-lockfile`, `pnpm prisma:generate`, `pnpm typecheck`, `pnpm test` against a disposable `_test` PostgreSQL database, `pnpm build`, and `pnpm audit --audit-level high`. The audit includes development dependencies and must exit zero. A lockfile-only update does not refresh host node_modules or a running Docker dependency volume. Preserve database volumes when updating dependencies.
+| Concern | Where |
+| --- | --- |
+| Production-like runtime, workers, Postgres, Redis | `docker-compose.yml` |
+| Dev override (source mount, dev image, object store) | `docker-compose.dev.yml` |
+| Image stages `deps`, `builder`, `development`, `ops`, `web` | `docker/Dockerfile` |
+| Local S3-compatible image store | `docker/Dockerfile.assets` (service `object-store`) |
+| `_FILE` secret loading in release images | `docker/entrypoint.sh` |
+| Dev start guards | `scripts/assert-docker-runtime.mjs`, `scripts/clean-next-dev.mjs` |
+| Read-only dev report | `scripts/doctor-dev.mjs` (checks in `scripts/dev-doctor-guards.mjs`) |
+| Recreate the dev app | `scripts/recreate-dev-app.mjs` |
+| Build pre-step | `scripts/prepare-next-build.mjs` |
+| Integration runner and its URL guard | `scripts/run-integration-tests.mjs`, `scripts/integration-test-guards.mjs` |
+| Isolated baseline, browser and staging runner | `scripts/run-e2e.mjs`, `scripts/e2e-guards.mjs`, `docker-compose.e2e.yml` |
+| Docs checker | `scripts/check-docs.mjs` |
+| Dev/build output split, dev origins, security headers | `next.config.ts` |
 
-## Standard Local Setup
+## Prerequisites
 
-### Safe baseline verification
+- Docker Desktop with Compose. Development runs in containers; the host needs no `node_modules`.
+- Node and pnpm on the host only for host-side helpers (`pnpm docker:*`, `pnpm docs:check`, `node scripts/run-e2e.mjs`). The pnpm version is pinned in `docker/Dockerfile`.
+- `.env` copied from `.env.example` and `.env.db` from `.env.db.example`. Set a real `AUTH_SECRET` (`openssl rand -base64 32`) and a `NOTIFICATION_ENCRYPTION_KEY` (32 bytes, base64), or readiness answers 503. Values: [[Environment Variables]].
 
-Start from refreshed local `main` and create a `codex/...` branch in the primary folder as specified by [[Engineering Delivery Workflow]]. Run `node scripts/run-e2e.mjs baseline` for isolated production builds, the runner guard tests (`pnpm test:e2e:guards`, which include the readiness schema-contract check), typecheck, the full integration suite and dependency audit. Use `pnpm test:e2e` for browser/signed-webhook coverage and `pnpm ops:test` for disposable recovery rehearsal. These projects do not reuse development data or its dependency volume.
+## Compose files
 
-The integration launcher and SQL reset helper share one URL guard: PostgreSQL only, a single simple database name ending in `_test`, with connection parameters such as `schema=public` retained. A name such as `project_test_archive` is refused before Prisma reset or SQL. The launcher retains precedence `INTEGRATION_DATABASE_URL`, then `TEST_DATABASE_URL`, then its disposable default; the reset helper checks `DATABASE_URL`. E2E fixtures retain their stricter exact Compose URL requirement. A `_test` name is a necessary guard, not evidence that an arbitrary external database is disposable: use only explicitly run-owned test infrastructure.
+| File | Role |
+| --- | --- |
+| `docker-compose.yml` | Base. Project name `thunderstrux`. `app` (web image, `node server.js`), `migration` (ops image, `prisma migrate deploy`, no profile), six workers under profile `workers`, `db` (Postgres, volume `postgres_data`), `redis` (volume `redis_data`). |
+| `docker-compose.dev.yml` | Dev override on top of the base. |
+| `docker-compose.e2e.yml` | Isolated baseline, browser and staging runs (`scripts/run-e2e.mjs`). Test service `tests`. |
+| `docker-compose.operations.yml` | Disposable operations rehearsal (`pnpm ops:test`, `--rehearsal`). |
+| `docker-compose.hardened.yml` | Resource and security limits used by `pnpm ops:deploy`. |
+| `docker-compose.hosted.yml`, `docker-compose.assets.hosted.yml`, `docker-compose.schedules.yml` | Hosted contract, hosted image storage, every-minute worker loops. |
+| `deploy/droplet/docker-compose.droplet.yml` | Pilot host overlay (Caddy, backups). |
 
-The real Redis integration regression also requires `INTEGRATION_REDIS_URL` pointing to a run-owned disposable Redis service. The baseline Docker runner and manual Dependency Validation job provide it automatically. It uses a random key prefix and deletes only those keys; its TCP outage fixture interrupts only the test client's connections. Never supply development or production Redis for integration tests.
+Hosted, hardened, schedules and Droplet files: [[Production Operations]].
 
-### Integration test speed (2026-10-17)
+## Dev stack
 
-**Current state: the original, slower reset is active; the fast reset is kept but switched off.** By the maintainer's decision, the suite again empties the database with the original `TRUNCATE ... RESTART IDENTITY CASCADE` of the same table list, and gives every fixture user its own bcrypt hash of the test password, exactly as before PR #93. The fast path below is still in `tests/helpers/db-reset.ts` and `tests/helpers/test-data.ts` and runs only when the test process has `THUNDERSTRUX_FAST_TEST_RESET=1`. Nothing sets it today: the baseline runner (`node scripts/run-e2e.mjs baseline`) does not pass it, so turning it on for the baseline means adding `THUNDERSTRUX_FAST_TEST_RESET: "1"` to the runner's `environment` in `docker-compose.e2e.yml`; for a local `vitest run`, set it in the shell.
+Start it with `pnpm docker:dev` (foreground, `--build`) or `pnpm docker:up` (detached, no build). Both use `-f docker-compose.yml -f docker-compose.dev.yml`. Plain `docker compose up` uses the base file only and starts the production web image instead.
 
-| Mode | Reset | Fixture password | Integration suite | Evidence |
-| --- | --- | --- | --- | --- |
-| Default (active) | `TRUNCATE` of the listed tables | One bcrypt hash per user | 582.7 s (9.7 min); whole baseline 11 min | `p216-0dca1807d327a688b829f716` on `b60c980`, 511/511 in 67 files, clean audit |
-| Fast (switched off) | Children-first `DELETE` planned from the foreign keys | One shared bcrypt hash per run | 70.6 s; whole baseline 2.6 min | `p216-8aeddde4a63a314200b94b0c` on `9d3aeb9` (PR #93), 511/511 in 67 files; still passes when switched on (`test-database-safety`, `commerce-orders`, `account-closure`: 26 tests in 5 s) |
+| Service | In the dev stack |
+| --- | --- |
+| `app` | Image `${DEV_APP_IMAGE:-thunderstrux-app:dev}`, Dockerfile target `development` (dependencies only; source is the bind mount `.:/app`). `node_modules` is the named volume `node_modules` (`thunderstrux_node_modules`). Command `sh -c "pnpm prisma:generate && pnpm prisma:migrate:deploy && pnpm dev"`. `NODE_ENV=development`, `THUNDERSTRUX_RUNTIME_CONTAINER=false`, `WATCHPACK_POLLING` and `CHOKIDAR_USEPOLLING` on. Image storage points at `object-store`. |
+| `db` | Postgres, also published on `127.0.0.1:5433`. |
+| `redis` | Not published. Used only when `RATE_LIMIT_ENABLED=true`. |
+| `object-store` | Local S3-compatible store (`docker/Dockerfile.assets`), bucket `thunderstrux-assets`, volume `asset_data`. Not published. |
+| `migration` | Also starts, because it has no profile: builds the ops image and runs `prisma migrate deploy` once (OPS-006). The app command migrates anyway. |
+| workers | Not started. The dev stack runs no workers; run one batch by hand (Commands). |
 
-Keep in mind with the default: its `TRUNCATE` table list is maintained by hand, so a new model must be added to it (the `test-database-safety` test fails if a model is left out). The fast path reads tables from the database and needs no list. What follows describes the fast path, its upsides and its limits.
+**Ports and origin.** The app is published on `127.0.0.1:${APP_PORT:-3000}` to container port `${PORT:-3000}`; `.env.example` sets `APP_PORT=3080`. Cookie-authenticated writes accept only `NEXT_PUBLIC_APP_URL` and `TRUSTED_APP_ORIGINS` (`lib/security/request-guard.ts`). The maintained local `.env` sets every app URL to `http://127.0.0.1:3080`, so that is the dev origin: a write sent from `http://localhost:3080` is refused 403 "Untrusted request origin" (`trusted_origin.rejected`), and sessions are per host. `.env.example` still says `localhost:3080`; use whichever host your `.env` names.
 
-Before every integration test, `tests/helpers/db-reset.ts` empties the disposable `_test` database, and fixture users are created by `tests/helpers/test-data.ts`. Two changes made the suite about ten times faster with the same tests, the same assertions and the same code paths:
+**Database URLs.** In containers: `postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public`. From the host (dev stack only): the same on `localhost:5433`.
 
-- **Children-first `DELETE` instead of `TRUNCATE`.** The reset used `TRUNCATE ... RESTART IDENTITY CASCADE`, which replaces the files of every table and index and took about 480 ms per test whether the database held ten rows or none: about 4 of the suite's 11 minutes. It now runs one `DO` block of `DELETE` statements, about 4 ms. The order is planned once per run from the database's own foreign keys, children before parents, so no `ON DELETE SET NULL` or `CASCADE` action fires and the update-guarding triggers (append-only commerce history, fixed purchase snapshots, buyer capture, account closure) never see a write. The one key cycle, an organisation's logo and cover pointing at its assets and each asset pointing back, is broken first by clearing those nullable columns. A future cycle with nothing nullable to clear falls back to the old `TRUNCATE`.
-- **One shared password hash.** Every fixture user hashed `password123` with bcrypt (about 60 ms each, several users per test). The hash is now made once per run and reused. It is still a real bcrypt hash, so sign-in, password change, recovery and closure tests still go through the normal password check; signup and password changes still hash through application code.
+**Loopback only.** Don't tunnel the dev app to a public domain: `next dev` answers its development endpoints to anyone who reaches it (SEC-014), and `next.config.ts` `allowedDevOrigins` lists only `127.0.0.1` and `localhost`. The public preview runs the production build ([[Production Operations]]).
 
-Measured: the integration suite went from 674 s (baseline `p216-3a8e989002acb0b37bee0c5a`) to 70.6 s (baseline `p216-8aeddde4a63a314200b94b0c`), and the whole baseline from about 13.5 to 2.6 minutes, with all 511 tests in 67 files passing both times.
+**Env in dev.** Compose passes the variables listed in `docker-compose.yml`; `next dev` also reads the bind-mounted `.env` for any variable Compose left unset (so `PLATFORM_SUPPORT_EMAIL` reaches the dev app but not the base web image). Release images contain no `.env` (`.dockerignore`). The `development` target has no entrypoint, so `_FILE` secrets work only in release images.
 
-Upsides: each test still starts from an empty database; the reset needs no table list (a new table is covered automatically, and `test-database-safety.test.ts` still checks that every model is empty after a reset); nothing about test isolation, ordering or parallelism changed.
+## Startup
 
-Downsides and limits:
+`pnpm dev` (the dev command's last step) runs:
 
-- `DELETE` does not reset sequences (`RESTART IDENTITY`). Every id is a cuid string, so nothing depends on them; a future integer id would keep counting across tests.
-- The reset plan is computed once per run. A test that adds a table or foreign key at run time would not be covered; none do.
-- A future trigger that blocks `DELETE`, or an `UPDATE` trigger on a table in a key cycle, would make the reset fail loudly rather than silently: fix the plan or the trigger then.
-- Fixture users share one stored hash, so a test comparing two fixture users' hashes would see them equal. None does; a test needing distinct hashes should hash its own.
-- Large tables would make `DELETE` slower than `TRUNCATE`; test data stays tiny, so this does not arise.
+1. `scripts/assert-docker-runtime.mjs --block-next-dev`: if `DATABASE_URL` (or `.env`) uses `@db:5432/` and the process is not in Docker (no `/.dockerenv`), it exits 1. `THUNDERSTRUX_ALLOW_HOST_DEV=1` overrides it for one-off host debugging with a `localhost` URL. Without `--block-next-dev` it only warns.
+2. `scripts/clean-next-dev.mjs`: deletes `.next/dev` and `.next/types` so stale route manifests and generated types never survive a restart. It refuses any other path and never touches `.next-build`. On `EPERM`, `EBUSY` or `EACCES` (Windows/OneDrive locks) it warns and lets startup continue.
+3. `next dev --turbopack --hostname 0.0.0.0`. `pnpm dev:webpack` is the same with webpack, a fallback when Turbopack hot reload or route manifests misbehave.
 
-Not done, and why: running test files in parallel (one database per worker) would cut the remaining 70 s further but needs per-worker Redis prefixes and fixes for shared module state, which is a bigger and riskier change; a fixture that signs browser tests in without the login form would speed up `pnpm test:e2e` but stop most browser tests exercising the real sign-in.
+Polling is on because bind-mount file events don't cross into the container on Windows. Polling can still miss newly added files; restart the app then.
 
-Do not run type generation/builds in an active production server container or integration resets in the development stack. Prefer the isolated baseline runner so generated Next/Prisma metadata remains inside its container. Record actual revision/counts/run IDs and cleanup rather than copying historical test totals. Run the runner safety suite with `pnpm test:e2e:guards`; unsafe database and occupied-port regressions require no real database or provider credentials.
+## Build output and generated types
 
-Port 3100 conflicts are refused before creating an E2E run. Run IDs are `baseline-`, `browser-` or `staging-` followed by 24 hex characters, and operations rehearsals are `ops-` followed by 10 (see [[E2E and Staging Payments]]). Cleanup uses generated project IDs and ownership checks; repeat `pnpm test:e2e:cleanup -- <run-id>` to verify a completed run. Preserve interrupted payment recovery manifests and their required volumes until recovery succeeds. Never delete unrelated Docker resources or the entire `tmp` tree.
+- `next.config.ts`: `distDir` is `.next` in dev and `.next-build` when `NODE_ENV=production`, so a build never clobbers the running dev server's manifests. Production builds use `output: "standalone"`; the `web` image copies `.next-build/standalone` and `.next-build/static` and runs `node server.js` with no pnpm.
+- `pnpm build` = `scripts/prepare-next-build.mjs`, `pnpm prisma:generate`, `next build`. The pre-step:
+  - throws when `NODE_ENV=production` and `THUNDERSTRUX_RUNTIME_CONTAINER=true` (a runtime container must be rebuilt, not built in);
+  - **rewrites the tracked `tsconfig.json`**: removes `.next/types/**/*.ts` and `.next/dev/types/**/*.ts` from `include` and adds `next-env.d.ts`, `**/*.ts`, `**/*.tsx`, `.next-build/types/**/*.ts`. It leaves `.next-build/dev/types/**/*.ts`.
+- `next dev` and `next typegen` (first half of `pnpm typecheck`) add the `.next` includes back, so the committed `tsconfig.json` currently carries all of `.next-build/types`, `.next/types`, `.next/dev/types` and `.next-build/dev/types`, and a host-side build shows a `tsconfig.json` diff. Don't commit that churn with unrelated work. `pnpm dev:doctor` reports the volatile includes as present.
+- `next-env.d.ts` is gitignored and rewritten by whichever of dev or build ran last.
 
-Thunderstrux has three Docker Compose contracts: the base production-like runtime, a development override, and a provider-neutral hosted contract.
+## Proxy guard
 
-Production-like local runtime:
+`proxy.ts` matches `/dashboard/:path*` and `/account/:path*` only. With no live session identity it redirects to `/login?callbackUrl=<path and query>`. Everything else (including the public `/events/[eventId]`) relies on page and route guards; members get a concealed 404 on management pages (`lib/auth/page-access.ts`). The session secret comes from `lib/auth/secret.ts`. Details: [[Authentication and Dashboard Access]].
 
-```bash
-docker compose up --build
-```
+## Tailwind
 
-or:
+- Tailwind v4 through PostCSS (`postcss.config.mjs`: `@tailwindcss/postcss`, `autoprefixer`).
+- Entry `app/globals.css` starts with `@config "../tailwind.config.js";` then `@import "tailwindcss";`. Don't go back to v3 `@tailwind` directives.
+- `tailwind.config.js` content globs cover `app/` and `components/`. Semantic tokens (`--ts-*`, `bg-paper`, `text-ink`) live in `app/globals.css` ([[UI Architecture Rules]]).
+- The global `a` rule only removes the underline; a colour there would beat `text-*` utilities on links.
 
-```bash
-pnpm docker:prod
-```
+## Recreate and clean
 
-Use the `pnpm docker:prod` deployment helper when migrations are pending: plain base Compose startup does not run them. The development override below deploys migrations as part of startup. Back up non-disposable data first; never substitute a reset/seed for migration.
+| Situation | Do |
+| --- | --- |
+| Source correct but the page is stale, no recompiles, or a new file isn't picked up | Hard refresh, then `pnpm docker:restart`. |
+| `.env` changed | `pnpm docker:restart` (recreating the container reloads env; a plain restart does not). |
+| Dependencies changed, or `@redis/client` / Prisma client missing | `pnpm docker:rebuild` (same script). |
+| Container started from the base file, or doesn't see current source | `pnpm docker:dev:clean` (dev files, `--build --force-recreate`; keeps volumes). |
+| Still stale after a restart, or a route in source returns 404 | Delete `.next` (PowerShell `Remove-Item -LiteralPath .next -Recurse -Force`, Bash `rm -rf .next`), then `pnpm docker:restart`. |
 
-Development runtime with bind mounts, polling, and Turbopack:
+`scripts/recreate-dev-app.mjs` (`pnpm docker:restart` / `pnpm docker:rebuild`): builds the dev `app` image, removes the app container, deletes the `node_modules` volume only after checking its Compose labels (project and volume name), runs `up -d app` (which also starts `db` and `redis`, not `object-store`), then waits up to 60 s for `@redis/client` and `@prisma/client` to import. Startup regenerates Prisma Client and deploys migrations. Postgres, Redis and asset volumes are kept.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
+**`down -v` destroys data.** `pnpm docker:reset` (`docker compose down -v`, base file) deletes `postgres_data` and `redis_data`. With both dev files it also deletes `node_modules` and `asset_data`; image bytes can't be rebuilt from a seed. Never use it to fix a stale app. Recovery: [[Seeding and Data]].
 
-or:
+## Tests locally
 
-```bash
-pnpm docker:dev
-```
-
-App:
-
-```text
-http://localhost:3080
-```
-
-PostgreSQL host port:
-
-```text
-localhost:5433 in dev override only
-```
-
-## Docker Configuration
-
-Society images require the development object-store service and its persistent asset_data volume. Normal `pnpm docker:dev` starts it. For an existing stack, start it with `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build object-store` before `pnpm docker:restart`; the recovery helper recreates only the app/dependency cache. Back up PostgreSQL before additive migration and retain object bytes alongside metadata. Never remove database, Redis or asset volumes to fix a stale app.
-
-`docker-compose.yml` is production-like:
-
-- app runs `pnpm start`
-- app uses the built `.next-build` output from the Docker image
-- app receives only app runtime environment variables
-- app requires `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`, `NEXTAUTH_URL`, and `NEXT_PUBLIC_APP_URL` at Compose interpolation time
-- app receives optional `RATE_LIMIT_*` values
-- app uses `restart: unless-stopped`
-- app waits for the database healthcheck
-- production migrations run once through the separate migration service owned by `pnpm ops:deploy`; ordinary app startup does not migrate
-- database uses the named volume `postgres_data`
-- database port is not exposed to the host
-- Redis 7 is available as `redis` for rate limiting when `RATE_LIMIT_ENABLED=true`
-- the base PostgreSQL and Redis images are digest pinned and updated only through reviewed Renovate PRs
-- bounded `email-worker`, `notification-worker`, `stale-order-worker`, `compensation-worker`, `checkout-recovery-worker` and `monitor-worker` services are available through the `workers` profile (each run takes a lease and honours `pnpm ops:workers -- pause`; see [[Production Operations]], T42)
-
-`docker-compose.dev.yml` only adds development-specific overrides:
-
-```yaml
-volumes:
-  - .:/app
-  - node_modules:/app/node_modules
-command: pnpm dev
-environment:
-  NODE_ENV: development
-  THUNDERSTRUX_RUNTIME_CONTAINER: "false"
-  WATCHPACK_POLLING: "true"
-  CHOKIDAR_USEPOLLING: "true"
-ports:
-  - "127.0.0.1:5433:5432"
-```
-
-Why:
-
-- base Compose can validate the production runtime path without host source mounts
-- dev override keeps source live-mounted into the container
-- dev override explicitly clears the production runtime marker so build/runtime guard behavior is unambiguous
-- `node_modules:/app/node_modules` avoids host/container dependency conflicts and uses the named Docker volume `thunderstrux_node_modules` instead of an anonymous hash volume
-- DB host port exposure is available for dev tools only
-- the development build uses `thunderstrux-app:dev`, so it cannot replace the production-like local tag
-
-Validate the hosted contract with secret-safe fixture files:
+- **Evidence of record:** `node scripts/run-e2e.mjs baseline`. It builds its own app, database, Redis, object store and mail capture under a run-owned project (`baseline-<24 hex>`), then in the `tests` container runs `pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit`, stopping at the first failure. A migration added without updating `config/schema-contract.json` fails the guards. It never touches dev data or the dev dependency volume.
+- **Browser and staging:** `pnpm test:e2e` and `pnpm test:payments:staging`. Port 3100 must be free. Clean up with `pnpm test:e2e:cleanup -- <run-id>`. Run IDs, manifests and recovery: [[E2E and Staging Payments]].
+- **Operations rehearsal:** `pnpm ops:test` (`ops-` run IDs; [[Production Operations]]).
+- **Focused integration run in the dev app container:** needs only `DATABASE_URL` on a `_test` database and `NODE_ENV=test`; `tests/setup/integration.setup.ts` pins every other switch (DEF-042). Migrate the test database first:
 
 ```bash
-pnpm docker:hosted:check -- --env-file <hosted-validation.env>
-```
-
-The hosted contract requires immutable `APP_IMAGE` (web) and `OPS_IMAGE` (migration and workers) references containing `@sha256:`. Migration and every worker must share the one ops image, and the app must not run it (T43a, [[Production Operations]]). It also requires external database and Redis endpoints, explicit resource inputs, and file-backed secret names. It deliberately defines no database or Redis service.
-
-Database data lives in the named volume:
-
-```yaml
-postgres_data:/var/lib/postgresql/data
-```
-
-Container dependencies live in the named dev volume:
-
-```yaml
-node_modules:/app/node_modules
-```
-
-## Dev Server Configuration
-
-Current `package.json` dev script, used by the dev override:
-
-```json
-"dev": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --turbopack --hostname 0.0.0.0"
-```
-
-Fallback dev script:
-
-```json
-"dev:webpack": "node scripts/assert-docker-runtime.mjs --block-next-dev && node scripts/clean-next-dev.mjs && next dev --webpack --hostname 0.0.0.0"
-```
-
-The dev override also sets:
-
-```yaml
-environment:
-  WATCHPACK_POLLING: "true"
-  CHOKIDAR_USEPOLLING: "true"
-```
-
-This is intentional.
-
-Reason:
-
-- Next 16 production builds use Turbopack.
-- `scripts/assert-docker-runtime.mjs` warns by default, but blocks `pnpm dev` outside Docker when `DATABASE_URL` uses the Docker-only `db:5432` hostname.
-- `scripts/clean-next-dev.mjs` clears `.next/dev` and `.next/types` before startup so stale dev route manifests and volatile generated type files do not survive container restarts.
-- If volatile `.next` files are locked on Windows/Docker/OneDrive, `scripts/clean-next-dev.mjs` warns and continues startup instead of blocking the app container. It still never removes `.next-build`.
-- Turbopack dev mode plus polling is the default route-stable configuration.
-- `pnpm dev:webpack` is kept as a safe fallback when Turbopack hot reload or route manifest generation appears stuck.
-- `pnpm dev:doctor` prints a read-only report for stale `.next/dev` metadata, missing dev manifests, volatile `.next` type includes, and localhost reachability.
-
-## Build Output Separation
-
-`next.config.ts` separates dev and production output:
-
-```ts
-distDir: process.env.NODE_ENV === "production" ? ".next-build" : ".next"
-```
-
-Why:
-
-- `next dev` writes live route metadata under `.next/dev`.
-- `pnpm build` writes production artifacts under `.next-build`.
-- This prevents build verification from overwriting or confusing the running dev server's route manifest.
-
-`.gitignore` must include both:
-
-```gitignore
-.next/
-.next-build/
-```
-
-`.dockerignore` must also include `.next-build` so Docker build context does not include production build artifacts or generated Prisma client files.
-
-## Tailwind Setup
-
-Thunderstrux currently uses Tailwind CSS v4.
-
-Files:
-
-```text
-tailwind.config.js
-app/globals.css
-```
-
-Required CSS entrypoint:
-
-```css
-@config "../tailwind.config.js";
-@import "tailwindcss";
-```
-
-Tailwind content paths:
-
-```js
-content: [
-  "./app/**/*.{js,ts,jsx,tsx}",
-  "./components/**/*.{js,ts,jsx,tsx}"
-]
-```
-
-Do not revert to the legacy `@tailwind base/components/utilities` entrypoint unless the project is intentionally downgraded to Tailwind v3.
-
-## Common Commands
-
-Start production-like Docker runtime:
-
-```bash
-pnpm docker:prod
-```
-
-Start Docker dev runtime:
-
-```bash
-pnpm docker:dev
-```
-
-Reset Docker volumes intentionally:
-
-```bash
-pnpm docker:reset
-```
-
-Follow app logs:
-
-```bash
-pnpm docker:logs
-```
-
-Run migrations:
-
-```bash
-docker compose exec app pnpm prisma:migrate
-```
-
-Deploy production migrations through the guarded one-shot operations workflow:
-
-```bash
-pnpm ops:deploy -- --project <project> --env-file <environment-file> --url <loopback-url> --release <git-sha>
-```
-
-Generate Prisma client:
-
-```bash
-docker compose exec app pnpm prisma:generate
-```
-
-Seed development data:
-
-```bash
-docker compose exec app pnpm seed
-```
-
-Build:
-
-```bash
-docker compose build app
-```
-
-Rebuild and recreate the app container:
-
-```bash
-pnpm docker:rebuild
-```
-
-Do not run `pnpm build` inside a live production-like `next start` container and continue using that same process as the running app. `next build` mutates `.next-build` while `next start` serves the previous build manifest, which can leave HTML and static asset serving out of sync. Runtime containers set `THUNDERSTRUX_RUNTIME_CONTAINER=true`, so `scripts/prepare-next-build.mjs` blocks this unsafe path before build metadata is changed.
-
-If build was somehow run inside a running app container, recreate the app container afterwards:
-
-```bash
-docker compose up -d --force-recreate app
-```
-
-For production-path validation, use the isolated baseline or operations runner selected by risk; rebuilding a development stack is activation work, not a substitute for isolated test evidence.
-
-Integration tests:
-
-```bash
-node scripts/run-e2e.mjs baseline
-```
-
-The isolated baseline builds its own app/runner and run-owned database. Inside the runner it runs, in order and stopping at the first failure: `pnpm test:e2e:guards` (every `tests/runner/*.test.mjs`, including the check that `config/schema-contract.json` names the newest migration folder), `pnpm typecheck`, `pnpm test` (integration) and `pnpm security:audit`. A migration added without updating the readiness contract fails the baseline. Do not use the development app/dependency volume for normal validation.
-
-Current test database behavior:
-
-- default database URL: `postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public`
-- override with `INTEGRATION_DATABASE_URL` or `TEST_DATABASE_URL`
-- refuses to run unless one simple database name ends in `_test`; the database must also be disposable and run-owned
-- ignores accidental host `DATABASE_URL` leakage by setting `DATABASE_URL` from the resolved test URL for all child commands
-- resets the test database through `pnpm prisma migrate reset --force --skip-seed`
-- runs `pnpm prisma:generate` after reset so Prisma Client matches the current schema
-- truncates app tables before each test
-- runs Vitest sequentially with `--no-file-parallelism --maxWorkers=1 --maxConcurrency=1`
-
-Operational healthcheck:
-
-```bash
-curl -fsS http://localhost:3080/api/health
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "service": "thunderstrux"
-}
-```
-
-Production health monitoring should alert on any non-200 response, timeout, or malformed response from `GET /api/health`.
-
-Important:
-
-- Run integration tests from the Docker dev stack because `docker-compose.dev.yml` bind-mounts the local `tests/` directory into the app container.
-- Do not run integration tests against the normal `thunderstrux` development database.
-- Vitest 4 does not support the literal Jest flag `--runInBand`; the current sequential flags are the equivalent.
-- The integration suite blocks real network calls through the global test `fetch` stub and mocks Stripe at the SDK boundary where needed.
-- Loading the Prisma client copies `.env` into every unset variable, so `tests/setup/integration.setup.ts` pins each behaviour switch to the baseline value before every test: MFA off with a test key, legacy access denied, capture-only email, and rate limiting, trusted origins, the Auth.js URLs, the alert webhook and the worker and email outbox tuning unset (DEF-042). Image storage is left as the container sets it: the baseline gives its tests a disposable bucket. A test that needs another value sets it with `vi.stubEnv`. Shared fixtures for a staff MFA enrolment (`tests/helpers/mfa.ts`) and a real guest checkout session (`tests/helpers/guest.ts`) live beside the other helpers.
-
-The build script runs:
-
-```text
-node scripts/prepare-next-build.mjs && pnpm prisma:generate && next build
-```
-
-This strips `.next/types/**/*.ts` / `.next/dev/types/**/*.ts` from `tsconfig.json`, regenerates Prisma Client from the current schema, then runs production type checking and build.
-
-Recreate the development app from the current image, command, and environment configuration:
-
-```bash
-pnpm docker:restart
-```
-
-Show app logs:
-
-```bash
-docker compose logs -f app
-```
-
-Check dev environment health without changing files:
-
-```bash
-docker compose exec app pnpm dev:doctor
-```
-
-Host-facing package helpers:
-
-```bash
-pnpm docker:dev
-pnpm docker:dev:clean
-pnpm docker:prod
-pnpm docker:reset
-pnpm docker:logs
-pnpm docker:up
-pnpm docker:restart
-pnpm docker:migrate
-pnpm docker:seed
-pnpm docker:db:sync
-pnpm docker:build
-pnpm docker:rebuild
-```
-
-`pnpm docker:up` is a detached dev-stack alias using `docker-compose.dev.yml`.
-
-`pnpm docker:dev` is the normal fast foreground dev start.
-
-`pnpm docker:dev:clean` is the explicit recovery path when the app container does not see current source, migrations, or generated state. It uses the dev Compose files with `--build --force-recreate` and does not wipe the Postgres volume.
-
-`pnpm docker:build` runs `docker compose build app`. It does not execute `pnpm build` inside the running app container.
-
-`pnpm docker:restart` and `pnpm docker:rebuild` rebuild the development image, remove only the Compose-labelled `node_modules` cache, and recreate the app. The fresh cache is populated from the rebuilt image; startup regenerates Prisma Client and applies migrations before Next listens. PostgreSQL and Redis volumes are preserved.
-
-Apply the current schema and seed data after pulling schema changes:
-
-```bash
-docker compose exec app pnpm prisma:migrate
-docker compose exec app pnpm seed
-```
-
-## Normal Change Workflow
-
-Follow [[Engineering Delivery Workflow]] for state inspection, branching, risk classification, validation, review, PR, and handover. Use the dev override for source-editing work.
-
-1. Edit source files on the host.
-2. Let Docker hot reload the app through `docker-compose.dev.yml`.
-3. Refresh the browser for server-rendered pages.
-4. Verify the rendered route actually reflects the source change.
-
-## When To Recreate The Docker App
-
-Recreate the app container when:
-
-- Source code is correct but the browser still shows old UI.
-- The dev server logs are not recompiling.
-- A route appears stale after multiple refreshes.
-- `.env` changed and the running app needs new runtime variables.
-
-```bash
-pnpm docker:restart
-```
-
-## When To Clear `.next`
-
-Clear `.next` when:
-
-- Recreating the app container does not fix stale output.
-- Runtime HTML contains code that no longer exists in source.
-- Old strings still appear inside `.next`.
-- A valid App Router route exists in source but dev still returns 404.
-- `.next/dev/server/app-paths-manifest.json` is missing a route that exists in source.
-
-PowerShell:
-
-```powershell
-if (Test-Path -LiteralPath .next) { Remove-Item -LiteralPath .next -Recurse -Force }
-pnpm docker:restart
-```
-
-Bash:
-
-```bash
-rm -rf .next
-pnpm docker:restart
-```
-
-If production build artifacts may also be involved, clear both from inside Docker:
-
-```bash
-docker compose down
-docker compose run --rm app sh -lc "rm -rf .next .next-build"
-docker compose up --build --force-recreate -d
-```
-
-Prefer clearing volatile `.next/dev` and `.next/types` first through the normal dev startup path. `scripts/clean-next-dev.mjs` has a narrow path guard and only removes those volatile `.next` paths; it never removes `.next-build`.
-
-If restart still does not pick up the change, then recreate containers:
-
-```bash
-docker compose down
-docker compose up --build --force-recreate -d
-```
-
-## Generated Next Type Metadata
-
-`next-env.d.ts` may switch between dev and build route type imports:
-
-```ts
-import "./.next/dev/types/routes.d.ts";
-```
-
-and:
-
-```ts
-import "./.next/types/routes.d.ts";
-```
-
-or, after a production build with the current `.next-build` dist directory:
-
-```ts
-import "./.next-build/types/routes.d.ts";
-```
-
-This depends on whether `next dev` or `next build` ran most recently. Treat it as generated framework metadata, not a product change.
-
-With the current `.next-build` production dist directory, normal TypeScript validation should include the stable generated route types:
-
-```json
-".next-build/types/**/*.ts"
-```
-
-Do not keep `.next-build/dev/types/**/*.ts` unless that directory actually exists and is intentionally used by the current Next build output.
-
-Do not include `.next/types/**/*.ts` or `.next/dev/types/**/*.ts` in normal TypeScript validation. Stale dev route types or `validator.ts` files can break `pnpm exec tsc --noEmit` with errors from ignored generated cache files. Current generated type includes should stay under `.next-build`.
-
-`scripts/prepare-next-build.mjs` enforces this immediately before `pnpm build`, because Next dev may re-add `.next/types` entries while the dev server is running.
-
-## Proxy Route Guard
-
-Next 16 deprecates the `middleware.ts` file convention in favour of `proxy.ts`.
-
-Thunderstrux uses:
-
-```text
-proxy.ts
-```
-
-It protects:
-
-```text
-/dashboard/:path*
-/account/:path*
-```
-
-Expected behavior:
-
-- Logged-out dashboard requests redirect to `/login`.
-- The `callbackUrl` query preserves the requested dashboard path.
-- Logged-in requests continue normally.
-- `/events/[eventId]` is public (T15a); its checkout pages require a member sign-in.
-- Member accounts requesting `/dashboard/events/[eventId]` redirect to `/`.
-- Startup rejects missing or placeholder `AUTH_SECRET` values in development and production (production also needs 32 characters); only tests and builds fall back. `auth.ts` and `proxy.ts` resolve the secret through `lib/auth/secret.ts`. Generate a local value with `openssl rand -base64 32`.
-
-## Docker Access From Codex
-
-Docker Desktop may be healthy even if sandboxed commands report named-pipe or log-file access errors.
-
-Symptoms:
-
-```text
-permission denied while trying to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine
-unable to create a log file for docker-desktop.exe ... Access is denied
-```
-
-In this Codex environment, run Docker commands with escalated permissions when needed. Verified working checks:
-
-```bash
-docker desktop status
-docker info
-docker compose ps
-docker compose build app
-```
-
-If the app is started outside Docker, `DATABASE_URL=db:5432` will not resolve. Use the Docker app container for normal development.
-
-Host database connection string, available when using `docker-compose.dev.yml`:
-
-```text
-postgresql://thunderstrux:thunderstrux@localhost:5433/thunderstrux?schema=public
-```
-
-Container database connection string:
-
-```text
-postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux?schema=public
-```
-
-## When To Use `down -v`
-
-Only do this when you intentionally want to wipe the local Postgres volume:
-
-```bash
-docker compose down -v
-```
-
-After `down -v`, restore:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build --force-recreate -d
-docker compose exec app pnpm seed
-```
-
-## Environment Variables
-
-Application `.env` values:
-
-```text
-DATABASE_URL=
-AUTH_SECRET=
-APP_PORT=3080
-PORT=3000
-AUTH_URL=http://localhost:3080
-NEXTAUTH_URL=http://localhost:3080
-NEXT_PUBLIC_APP_URL=http://localhost:3080
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-STRIPE_CONNECT_WEBHOOK_SECRET=
-RESEND_API_KEY=
-EMAIL_FROM=
-```
-
-Required for app container startup:
-
-```text
-DATABASE_URL
-AUTH_SECRET
-AUTH_URL
-NEXTAUTH_URL
-NEXT_PUBLIC_APP_URL
-```
-
-If one is missing or empty, `docker compose up` fails before starting the app. Example diagnostic:
-
-```text
-DATABASE_URL is required
-```
-
-Optional Stripe values may be empty for non-payment local work:
-
-```text
-STRIPE_SECRET_KEY
-STRIPE_WEBHOOK_SECRET
-STRIPE_CONNECT_WEBHOOK_SECRET
-```
-
-Optional email delivery values may be empty for local work that does not need actual ticket emails:
-
-```text
-RESEND_API_KEY
-EMAIL_FROM
-```
-
-When email values are missing, paid webhook fulfilment still succeeds and queues ticket delivery. Provider configuration errors are recorded only when the email outbox worker processes the queued job.
-
-Email outbox worker values:
-
-```text
-EMAIL_OUTBOX_BATCH_SIZE=25
-EMAIL_OUTBOX_MAX_ATTEMPTS=5
-EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS=600
-```
-
-Process one bounded email outbox batch:
-
-```text
-pnpm email:outbox:process
-```
-
-The command emits structured JSON log lines, including `email_outbox.batch.processed` and `email_outbox.worker.completed`. Production should schedule it every 1 minute. If it is not scheduled, paid buyers may have issued ticket rows but no ticket delivery email.
-
-The runtime entrypoint also accepts file-backed forms for sensitive values: append `_FILE` to `DATABASE_URL`, `AUTH_SECRET`, `MFA_ENCRYPTION_KEY`, `RATE_LIMIT_REDIS_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`, or `RESEND_API_KEY`. The path must be absolute, readable, a regular non-empty file, and the direct variable must be absent.
-
-Stale-order cleanup worker:
-
-```text
-pnpm stale-orders:process
-pnpm stale-orders:process -- --dry-run
-pnpm stale-orders:process -- --limit=100
-```
-
-The command emits structured JSON log lines, including `stale_orders.batch.processed` and `stale_orders.worker.completed`. Production should schedule it every 1 minute. Stale rows may temporarily remain until the worker runs; checkout-local cleanup remains authoritative before new reservations.
-
-Compensation refund worker:
-
-```text
-pnpm compensation-refunds:process
-pnpm compensation-refunds:process -- --limit=25
-```
-
-The worker processes a bounded, fenced batch and verifies Stripe identity and refund state before finalizing jobs. Production should schedule it every minute and subscribe the required refund webhooks before any real sale: new events default to `automatic_full` (2026-10-25), and the hosted refund webhooks are still gated by PAY-002 and [[E2E and Staging Payments]].
-
-Checkout attempt recovery worker:
-
-```text
-pnpm checkout-attempts:process
-pnpm checkout-attempts:process -- --limit=25
-```
-
-It replays uncertain checkout attempts with their stored Stripe request and idempotency key, then binds, fails or closes them ([[Payment Lifecycle]]). It needs `STRIPE_SECRET_KEY` only when an attempt is due. Production should schedule it every minute.
-
-Staff security and trusted-origin values:
-
-```text
-MFA_ENFORCEMENT_MODE=off
-MFA_ENCRYPTION_KEY=
-LEGACY_ORGANISATION_ACCESS_MODE=allow
-TRUSTED_APP_ORIGINS=
-```
-
-The dev app is loopback-only. Don't tunnel it to a public domain: `next dev` answers development endpoints to anyone who reaches it (SEC-014), and `next.config.ts` lists only `127.0.0.1` and `localhost` as dev origins. The public preview runs the production build under its own project (README, Public Preview; [[Production Operations]]). To reach one app at two addresses, keep the public one in `NEXT_PUBLIC_APP_URL`, `AUTH_URL` and `NEXTAUTH_URL` and list both in `TRUSTED_APP_ORIGINS`; sessions are per host.
-
-**Stripe webhooks on the dev app.** Without a webhook endpoint, a dev payment completes only when the browser comes back to `/success`: the development-only fallback reads the Session from Stripe. Expiries, refunds and disputes never arrive, and unpaid orders stay pending until the stale-order worker runs, because the dev stack runs no workers.
-
-To receive webhooks, add two test-mode endpoints in the Stripe Dashboard, each with API version `2026-09-30.endive` (see Stripe webhook endpoints and keys in [[Production Operations]]):
-- **Platform payments:** `https://<public address>/api/payments/webhook`, with `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed` and `charge.dispute.created`/`updated`/`closed`. Its signing secret goes in `STRIPE_WEBHOOK_SECRET`.
-- **Connected accounts:** `https://<public address>/api/stripe/connect/webhook`, with `account.updated` and `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated`. Its signing secret goes in `STRIPE_CONNECT_WEBHOOK_SECRET`.
-
-Restart the app afterwards. Stripe can reach only the public address, which serves both addresses' orders because they share one database. Local development may use `off` and `allow`. Production must set an explicit MFA mode, a separately backed-up 32-byte base64 MFA key for enrollment/enforcement, exact trusted origins, and must move legacy access to `deny` after named-staff enrollment. Follow [[Production Readiness Verification 2026-09-22]] rather than changing these values ad hoc.
-
-Rate-limit values:
-
-```text
-RATE_LIMIT_ENABLED=false
-RATE_LIMIT_REDIS_URL=redis://redis:6379
-RATE_LIMIT_KEY_PREFIX=thunderstrux
-RATE_LIMIT_TRUSTED_PROXY_HEADER=x-forwarded-for
-```
-
-Enable `RATE_LIMIT_ENABLED=true` with the Compose Redis service when exercising signup, verification or MFA. Account-token endpoints deliberately return `503` if protection is disabled or unavailable. Configure the T02 notification encryption key and sender for signup/verification issuance, and run `notification-worker` to deliver queued messages. Isolated E2E uses its private Docker capture service. Production requires reliable Redis, notification scheduling and provider configuration.
-
-Database `.env.db` values:
-
-```text
-POSTGRES_USER=
-POSTGRES_PASSWORD=
-POSTGRES_DB=
-```
-
-Tracked examples:
-
-```text
-.env.example
-.env.db.example
-```
-
-Browser-facing URLs should use `localhost`, even though the app binds to `0.0.0.0` inside Docker.
-
-After editing `.env` or `.env.db`, recreate containers rather than only refreshing the browser:
-
-```bash
-docker compose down
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
-```
-
-For webhook-secret-only changes, recreating the app container is enough:
-
-```bash
-docker compose up -d --force-recreate app
-```
-
-Verify environment values are present without printing secrets:
-
-```powershell
-docker compose exec app printenv | Select-String -Pattern '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_CONNECT_WEBHOOK_SECRET|NEXT_PUBLIC_APP_URL)=' | ForEach-Object { $line = $_.Line; $name, $value = $line -split '=', 2; if ($value.Length -gt 0) { "$name=set length=$($value.Length)" } else { "$name=EMPTY" } }
-```
-
-To compare a Stripe CLI webhook secret without printing the full secret:
-
-```bash
-docker compose exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"
-```
-
-## Production Observability Runbook
-
-Thunderstrux emits structured JSON logs to stdout/stderr. These logs are machine-parseable but remain console/log-derived only for MVP. There is no built-in metrics backend, alert transport, dashboard, or automatic paging.
-
-Production deployment must provide:
-
-- log aggregation for app stdout/stderr
-- alert routing from selected `event`, `metricName`, and alert names
-- liveness checks for `GET /api/health` and rollout/readiness checks for `GET /api/health/ready`
-- scheduler entries for `pnpm email:outbox:process`, `pnpm stale-orders:process`, `pnpm compensation-refunds:process` and `pnpm checkout-attempts:process`
-
-Alert immediately:
-
-- any `paid_but_unfulfilled_compensation_required`
-- any `email_outbox_retry_exhausted`
-- any `stale_order_worker_failed`
-- any `compensation_refund.worker.failed`
-- any `checkout_attempt_recovery_failed` or `checkout_attempt_recovery_abandoned`
-- app healthcheck non-200, timeout, or malformed response
-
-Alert on threshold:
-
-- `stripe_webhook_signature_failure` or `stripe_webhook_signature_failures_total` above the normal baseline in a 5-minute window
-- spike in `checkout_session_creation_failure` or `checkout_session_create_failures_total`
-- repeated `rate_limit.backend_unavailable`
-- repeated `trusted_origin.rejected` above expected baseline
-
-Future deployment automation should emit or route `db_migration_failed` on migration deploy failure. Until that is implemented, migration failures must be watched through deployment logs and exit codes.
-
-Operational event names are documented in [[API Reference]].
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -e DATABASE_URL="postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public" -e NODE_ENV=test app sh -c "pnpm prisma migrate reset --force --skip-seed && pnpm vitest run tests/integration/ticket-check-in.test.ts"
+```
+
+  The dev database `thunderstrux` is never a test target. `pnpm test:integration` in the dev container runs the whole suite, but `tests/integration/redis-runtime.test.ts` fails there without a run-owned `INTEGRATION_REDIS_URL`; never point it at dev Redis.
+- **`scripts/run-integration-tests.mjs`** (`pnpm test:integration`): URL from `INTEGRATION_DATABASE_URL`, then `TEST_DATABASE_URL`, then `postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public`. `scripts/integration-test-guards.mjs` refuses anything but a PostgreSQL URL with one database name matching `[a-z0-9_-]+_test` before any reset, and never echoes the URL. Children get `DATABASE_URL` (the resolved URL), `NODE_ENV=test` and `THUNDERSTRUX_INTEGRATION_TEST=1` (read by nothing). Steps: `prisma migrate reset --force --skip-seed`, `prisma:generate`, then `vitest run tests/integration --no-file-parallelism --maxWorkers=1 --maxConcurrency=1`. `tests/helpers/db-reset.ts` re-checks `DATABASE_URL` with the same guard. A `_test` name is necessary, not proof a database is disposable: use run-owned databases only.
+- **Integration setup** (`tests/setup/integration.setup.ts`): Prisma Client copies `.env` into unset variables, so before each test it stubs Stripe, email, notification and MFA keys with placeholders, sets `MFA_ENFORCEMENT_MODE=off` and `LEGACY_ORGANISATION_ACCESS_MODE=deny`, unsets rate limiting, trusted origins, Auth.js URLs, the alert webhook and worker/outbox tuning, and replaces `fetch` with a stub that throws. Tests change a switch with `vi.stubEnv`. Fixtures: `tests/helpers/mfa.ts` (staff MFA enrolment), `tests/helpers/guest.ts` (guest checkout session).
+- **Runner guards:** `pnpm test:e2e:guards` runs `tests/runner/*.test.mjs` with no database or provider credentials.
+
+### Integration test speed
+
+Each test starts from an empty `_test` database (`tests/helpers/db-reset.ts`). Two modes:
+
+| Mode | Reset | Fixture password hash |
+| --- | --- | --- |
+| Default (on) | One `TRUNCATE ... RESTART IDENTITY CASCADE` of a hand-kept table list | `password123` hashed per user (`tests/helpers/test-data.ts`) |
+| Fast (`THUNDERSTRUX_FAST_TEST_RESET=1`; nothing sets it) | Children-first `DELETE`, ordered once per run from the database's foreign keys, so no `ON DELETE` action or update-guarding trigger fires; the organisation logo/cover ↔ asset cycle is broken by nulling those columns; a cycle with nothing nullable falls back to `TRUNCATE` | One shared bcrypt hash per run |
+
+- The default's table list is maintained by hand: a new model must be added, or `tests/integration/test-database-safety.test.ts` fails. The fast path reads tables from the database.
+- Fast-path limits: no sequence reset (ids are cuids); the plan is computed once per run; a trigger that blocks `DELETE` makes the reset fail loudly; fixture users share one hash.
+- To use it in the baseline, add `THUNDERSTRUX_FAST_TEST_RESET: "1"` to the `tests` service environment in `docker-compose.e2e.yml`; for a focused run, pass it with `-e`.
+
+## Stripe on the dev app
+
+- With no webhook reaching the dev app, a test payment completes only when the browser returns to `/success`: a development-only fallback (`app/success/page.tsx`, off when `NODE_ENV=production`) reads the Session from Stripe. Expiries, refunds, disputes and Connect updates never arrive, and unpaid orders stay pending (no workers run).
+- For webhooks, use the Stripe CLI or test-mode Dashboard endpoints and put each signing secret in `.env` (`STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`), then `pnpm docker:restart`. Endpoints, event lists and API version: [[Stripe Payments and Connect]].
+- Live keys are refused outside `NODE_ENV=production` (`lib/stripe/index.ts`).
+
+## Commands
+
+Run app-side commands in the dev container: `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app pnpm <script>`.
+
+| Script | Runs | Use |
+| --- | --- | --- |
+| `pnpm dev` | `scripts/assert-docker-runtime.mjs --block-next-dev`, `scripts/clean-next-dev.mjs`, `next dev --turbopack` | Dev container command. Not on the host. |
+| `pnpm dev:webpack` | Same guards, `next dev --webpack` | Fallback dev server. |
+| `pnpm dev:doctor` | `scripts/doctor-dev.mjs` | Read-only report, in the container: `.next` caches, `proxy.ts`, tsconfig includes, port 3000, whether startup migrates, `prisma migrate status`, MFA key and rate limiting. |
+| `pnpm build` | `scripts/prepare-next-build.mjs`, `prisma:generate`, `next build` | Production build; rewrites `tsconfig.json`. Refused in a runtime container. |
+| `pnpm start` | `next start --hostname 0.0.0.0` | Not used by any image (the web image runs `node server.js`). |
+| `pnpm typecheck` | `next typegen && tsc --noEmit` | Type check. |
+| `pnpm docs:check` | `scripts/check-docs.mjs` | Docs links, note size, frontmatter sources, coverage. Host or container. |
+| `pnpm test` | `pnpm test:integration` | Integration suite. |
+| `pnpm test:integration` | `scripts/run-integration-tests.mjs` | Inside the baseline runner, or a container with a `_test` database. |
+| `pnpm test:e2e` | `scripts/run-e2e.mjs` (mode `test`, run ID `browser-…`) | Isolated browser campaign. |
+| `pnpm test:e2e:cleanup` | `scripts/run-e2e.mjs cleanup <run-id>` | Remove a finished or interrupted run's resources. |
+| `pnpm test:payments:staging` | `scripts/run-e2e.mjs staging` | Stripe test-mode staging run, interactive terminal. |
+| `pnpm test:e2e:guards` | `node --test tests/runner/*.test.mjs` | Runner and readiness-contract guards. |
+| `pnpm security:audit` | `pnpm audit --audit-level high` | Dependency audit (includes dev dependencies; must exit 0). |
+| `pnpm notifications:process` | `scripts/process-notifications.mjs` | One bounded batch of account/guest notifications. |
+| `pnpm email:outbox:process` | `scripts/process-email-outbox.mjs` | One batch of ticket emails. |
+| `pnpm stale-orders:process` | `scripts/process-stale-orders.mjs` (`--dry-run`, `--limit=`) | Expire stale unpaid orders. |
+| `pnpm compensation-refunds:process` | `scripts/process-compensation-refunds.mjs` (`--limit=`) | Compensation refunds. |
+| `pnpm checkout-attempts:process` | `scripts/process-checkout-attempts.mjs` (`--limit=`) | Recover uncertain checkout attempts. |
+| `pnpm db:integrity:audit` | `scripts/audit-db-integrity.mjs` | Read-only integrity audit ([[Database and Multi Tenancy]]). |
+| `pnpm db:organisation-drift:repair` | `scripts/repair-organisation-drift.mjs` | Dry run; `--apply` only after a verified backup. |
+| `pnpm assets:maintain` | `scripts/maintain-assets.mjs` (`--apply`, `--objects`, `--integrity`, `--cursor`) | Asset cleanup, dry run by default ([[Society Profiles and Assets]]). |
+| `pnpm ops:deploy` | `scripts/operations.mjs deploy` | Single-host deploy; needs `--project`, `--env-file`, `--url` ([[Production Operations]]). |
+| `pnpm ops:backup` | `scripts/operations.mjs backup` | Needs `--project`, `--env-file`. |
+| `pnpm ops:restore` | `scripts/operations.mjs restore` | Needs `--project`, `--env-file`, `--archive`, `--target-database`. |
+| `pnpm ops:smoke` | `scripts/operations.mjs smoke --url <loopback>` | GETs `/api/health`, `/api/health/ready` and `/`; fails on any status outside 200–399. |
+| `pnpm ops:workers` | `scripts/workers.mjs` | `status`, `pause <job\|all> --reason=…`, `resume <job\|all>`. |
+| `pnpm ops:droplet` | `scripts/droplet.mjs` | `deploy`, `rollback`, `status` on the pilot host. |
+| `pnpm ops:droplet:rehearse` | `scripts/rehearse-droplet.mjs` | Local rehearsal of the Droplet deploy. |
+| `pnpm ops:test` | `tests/runner/operations.test.mjs`, then `scripts/run-operations-tests.mjs` | Disposable operations rehearsal. |
+| `pnpm seed` | `prisma db seed` (`node prisma/seed.mjs`) | Demo data ([[Seeding and Data]]). |
+| `pnpm prisma:seed` | `node prisma/seed.mjs` | Same seed without the Prisma wrapper. |
+| `pnpm prisma:migrate` | `prisma migrate dev` | Create a migration from schema changes. Interactive; may offer to reset the database on drift. Dev only. |
+| `pnpm prisma:migrate:deploy` | `prisma migrate deploy` | Apply pending migrations (dev startup does this). |
+| `pnpm prisma:generate` | `prisma generate` | Regenerate Prisma Client. |
+| `pnpm docker:dev` | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` | Normal start, foreground. |
+| `pnpm docker:up` | Same files, `up -d` | Detached start, no build. |
+| `pnpm docker:dev:clean` | Same files, `up --build --force-recreate` | Recreate every dev container; keeps volumes. |
+| `pnpm docker:restart` | `scripts/recreate-dev-app.mjs` | Rebuild and recreate the dev app with a fresh dependency volume. |
+| `pnpm docker:rebuild` | `scripts/recreate-dev-app.mjs` | Same as `docker:restart`. |
+| `pnpm docker:build` | `docker compose build app` | Builds the base (web) image only. |
+| `pnpm docker:logs` | `docker compose logs -f app` | Follow app logs. |
+| `pnpm docker:migrate` | `docker compose exec app pnpm prisma:migrate` | `prisma migrate dev` in the running app. |
+| `pnpm docker:seed` | `docker compose exec app pnpm seed` | Seed in the running app. |
+| `pnpm docker:db:sync` | `docker:migrate`, `prisma:generate`, `seed` in the running app | After pulling schema changes on a dev database. |
+| `pnpm docker:reset` | `docker compose down -v` | **Destructive:** deletes the database and Redis volumes. |
+| `pnpm docker:prod` | `scripts/operations.mjs deploy` | **Unusable as written:** no arguments, so it fails with `--project is required` (OPS-006). Use `pnpm ops:deploy -- …`. |
+| `pnpm docker:hosted:check` | `scripts/check-hosted-compose.mjs --env-file <file>` | Validate the hosted Compose contract. |
+
+Other helpers: `scripts/release-pair.mjs`, `scripts/rehearse-assets.mjs`, `scripts/rehearse-upgrade.mjs`, `scripts/every-minute.mjs`, `scripts/mail-capture.mjs`, `scripts/seed-notification-e2e.mjs`, `scripts/seed-operations-verification.mjs`, `scripts/staging-driver.mjs`, `scripts/staging-payments.mjs`, `scripts/verify-restored-database.mjs`, `scripts/fence-restored-identity.sql`, `scripts/operations-guards.mjs`, `scripts/container-config.mjs`, `scripts/e2e-ci-summary.mjs`, `scripts/process-operations-monitor.mjs`: see [[Production Operations]] and [[E2E and Staging Payments]].
+
+## Traps
+
+- `docker compose up -d --force-recreate app` without the dev files swaps the dev app for the production web container (no source mount, `.next-build`, `NODE_ENV=production`). Always pass `-f docker-compose.yml -f docker-compose.dev.yml`, or use the `pnpm docker:*` helpers.
+- `docker compose exec app …` without the dev files still reaches the running dev app (same project), but `run`, `up` and `build` do not.
+- Signup, verification and reset tokens, account security changes, guest email links, image uploads, staff invites and handover answer 503 while `RATE_LIMIT_ENABLED` is not `true` (callers pass `required: true` to `enforceRateLimit` in `lib/security/rate-limit.ts`). Staff MFA enrolment and enforcement also need it (`lib/security/staff-mfa.ts`). Turn it on with the Compose Redis to test them.
+- Signup and verification also need `NOTIFICATION_ENCRYPTION_KEY` and a run of `pnpm notifications:process` to deliver anything.
+- Don't run `pnpm build` in a runtime container; rebuild the image.
+- A lockfile-only update does not refresh the dev `node_modules` volume: run `pnpm docker:rebuild`.
+
+## Failure and recovery
+
+Symptoms and fixes: [[Troubleshooting]]. Lost demo data: [[Seeding and Data]].
+
+## Related
+
+[[Engineering Delivery Workflow]] · [[Environment Variables]] · [[Troubleshooting]] · [[Seeding and Data]] · [[Production Operations]] · [[E2E and Staging Payments]] · [[Dependency Automation]]

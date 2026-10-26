@@ -2,284 +2,191 @@
 status: living
 last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[API Reference]]", "[[Email Delivery Implementation]]"]
-sources: [auth.ts, proxy.ts, lib/auth/access.ts, lib/auth/account-lifecycle.ts, lib/auth/account-closure.ts]
+related: ["[[Route Security Inventory]]", "[[API Reference]]", "[[Frontend and Backend Flow]]", "[[Email Delivery Implementation]]", "[[Audit Coverage]]"]
+sources: [auth.ts, proxy.ts, lib/permissions/index.ts, lib/auth/access.ts, lib/auth/page-access.ts, lib/auth/context.ts, lib/auth/context-cookie.ts, lib/staff/live-authority.ts, lib/security/staff-mfa.ts, lib/auth/account-lifecycle.ts, lib/auth/email-change.ts, lib/auth/account-closure.ts, lib/guest/guest-access.ts, lib/staff/invites.ts, lib/staff/handover.ts]
 ---
 
 # Authentication and Dashboard Access
 
-## Staff MFA Rollout
-
-Staff and legacy-owner management access now checks live database staff authority and a login-bound MFA grant when `MFA_ENFORCEMENT_MODE` is `enroll` (for enabled users) or `enforce` (for everyone). Production requires an explicit mode. The `/mfa` page supports authenticator enrollment and verification; successful setup returns ten one-time recovery codes. TOTP secrets are AES-GCM encrypted with `MFA_ENCRYPTION_KEY`, recovery codes are keyed hashes, and grants expire after 12 hours. Auth.js keeps a random login ID across cookie refreshes; a new login needs its own verification. Management page helpers redirect to `/mfa`; API helpers deny access until verification. Member purchases and joined-organisation views remain outside the staff gate.
-
-Enrollment and challenge endpoints require the normal first-party origin and session CSRF token. They fail closed unless Redis-backed rate limiting is enabled and the separate MFA key is configured. `enroll` permits unenrolled staff to work while they are provisioned; `enforce` blocks them. See [[Production Readiness Verification 2026-09-22]] for activation and recovery gates.
-
-## Dependency security update (2026-09-18)
-
-NextAuth is pinned to 5.0.0-beta.32 with @auth/core 0.41.3. The Credentials provider remains in use; the session includes a random staff MFA login ID in the JWT/session callbacks. `dependency-security.test.ts` exercises actual credential rejection/login/session/logout plus malformed Bearer and valid-cookie proxy handling; this supplements the mocked-auth route suite. See [[Dependency Automation]].
-
-## Auth Provider
-
-Thunderstrux uses Auth.js / NextAuth with a Credentials provider.
-
-Main files:
-
-- `auth.ts`
-- `app/api/auth/[...nextauth]/route.ts`
-- `app/api/auth/signup/route.ts`
-- `proxy.ts`
-- `components/auth/credentials-login-form.tsx`
-- `components/auth/signup-form.tsx`
-
-`AUTH_SECRET` rules:
-
-- production runtime requires a random `AUTH_SECRET` of at least 32 characters
-- development also refuses placeholders (SEC-016): the fallback key is in source, and a dev app can be reachable from outside; only tests and builds use it
-- Docker image builds use a build-time placeholder only so real secrets are not required during image creation; the runtime refuses that value
-- `auth.ts` and `proxy.ts` share one resolver, `lib/auth/secret.ts`, so the proxy always reads sessions with the secret that signed them
-
-The proxy selects Auth.js's secure session cookie from `AUTH_URL`, then `NEXTAUTH_URL`, then the request URL (`publicOriginIsHttps` in `lib/auth/public-origin.ts`). The guest session and dashboard-context cookies are `Secure` in production and whenever that public URL is https, so an https preview never sends them in clear (SEC-017). An HTTPS public URL uses `__Secure-authjs.session-token` even when Cloudflare forwards to an HTTP loopback service; HTTP local development uses `authjs.session-token`. Auth.js handles chunked cookies. The proxy still validates the live account/authVersion before allowing `/dashboard/*`, `/account/*` or `/events/*`. A missing, invalid, stale or disabled session redirects to login with the original path/query as its callback.
-
-## User Model
-
-Users authenticate with:
-
-- `email`
-- `password`
-- `accountRole`
-
-Rules:
-
-- Passwords are hashed with bcrypt before storage.
-- Auth lookup normalises email to lowercase during credentials authorization.
-- Signup validation is handled by Zod in `lib/validators/auth.ts`.
-- Account role is either `member` or `organisation`.
-- Member accounts represent people.
-- Organisation accounts may bootstrap one primary society; a retained pointer or active staff authority blocks another. Handover retires the pointer permanently; revoked historical rows alone do not block later bootstrap. Named staff authority is separate from account type and join state.
-- Named staff users, invites, roles, MFA, and initial audit logging are implemented. The legacy organisation login remains supported during migration and should be retired after all management users have individual accounts.
-
-## Session Shape
-
-Important session field:
-
-```ts
-session.user.id
-session.user.accountRole
-session.user.staffMfaSessionId
-session.user.authVersion
-```
-
-The first two values support dashboard routing and access checks. The random MFA login ID binds verification to one sign-in. Sessions created before this claim was introduced must sign out and sign in again before staff verification.
-
-## Protected Routes
-
-`proxy.ts` protects:
-
-```text
-/dashboard/:path*
-/account/:path*
-```
-
-Event pages under `/events/` are public since T15a; the checkout and confirmation pages beneath them ask for sign-in themselves and return the buyer to the same checkout.
-
-Behavior:
-
-- If no token exists, user is redirected to `/login`
-- Relative callback URL is preserved in the query string
-- Organisation accounts see public event pages as buyers do; the ticket box tells them society accounts can't buy
-- Management pages resolve live staff/capability/MFA authority; a member accountRole alone neither grants nor prevents staff access.
-- Outside tests and builds, the shared secret resolver fails startup for unsafe `AUTH_SECRET` values: empty, `dev-secret`, `replace-with-a-non-empty-secret` or the Dockerfile's build placeholder; production also requires at least 32 characters
-
-## Login and Signup Flow
-
-`/login` explains a forced sign-out: `passwordChanged=true`, `emailChanged=true` and `accountClosed=true` each show their reason above the form. Signup describes the two account types beside the choice and, after submission, stays on `/signup` with the same generic message for new and existing addresses. `/verify-email` prefills the signed-in account's address. The staff invitation page opens sign-in and `/verify-email` in a new tab because the invitation link is held in the page's memory.
-
-Login:
-
-```text
-/login
-```
-
-- Uses `signIn("credentials")`; the check is `authorizeCredentials` in `lib/auth/credentials.ts`
-- On success, redirects to `callbackUrl`
-- An unknown or disabled address is checked against a dummy bcrypt hash of the same cost before it is refused, so sign-in takes as long whether or not an account exists, matching signup and recovery (DEF-035)
-
-Signup:
-
-```text
-/signup
-```
-
-- POSTs to `/api/auth/signup`
-- Returns the same `202 {accepted:true}` for eligible new and existing addresses; it does not sign in automatically or disclose duplicate addresses.
-- Atomically creates an unverified account, a purpose-bound token digest and an encrypted notification. New passwords require at least 8 characters and no more than 72 UTF-8 bytes. Existing password login remains compatible.
-- `/verify-email` removes the token fragment from browser history, then requires an explicit POST confirmation with the account's password; GET/prefetch never consumes a token. A wrong password leaves the link unused, so a mailbox owner can't verify an account someone else registered and holds the password for (SEC-008); they reset the password instead, which verifies the address. Verification lasts 24 hours. Resend invalidates the previous token and cancels its queued/claimed intent; workers independently suppress obsolete tokens.
-- Verification request and confirmation require trusted origin and enabled fail-closed Redis limits. They use email/token authority and deliberately ignore login-cookie CSRF authority, so stale cookies do not block verification. Protected account mutations retain session CSRF.
-- Unverified users may sign in and edit profiles; purchases, society joins/bootstrap and staff invite acceptance require live verified identity, rechecked under an account lock in the write transaction. Legacy users are not silently verified. Disabled users cannot sign in or pass protected access guards.
-- Callback paths use the shared safe-return-path helper, which also refuses paths that normalise to `//host` (SEC-012). Confirmation never logs in or changes staff authority. Successful confirmation offers sign-in.
-- JWT authVersion is established only at password login. Auth.js session output, application pages, API guards, CSRF and proxy compare it to live active identity. Missing/old versions are rejected; cookie refresh cannot upgrade a revoked session.
-
-## Navbar Behavior
-
-Files:
-
-- `app/layout.tsx`
-- `components/layout/auth-session-provider.tsx`
-- `components/layout/navbar.tsx`
-
-Current behavior:
-
-- Navbar is fixed globally at the top
-- Thunderstrux logo links to `/dashboard` for organisation accounts
-- Thunderstrux logo links to `/`
-- Everyone sees Explore events and Explore societies. Logged-out users also see Sign in and Create a society.
-- Desktop signed-in users see Dashboard, Account (/account/settings), and Sign out; members also see My tickets. Mobile keeps Sign out visible and places Explore events, Explore societies and account links in a native Menu disclosure.
-- Member accounts see `My tickets`, and the personal menu also lists `Purchases` (T19a)
-- Organisation accounts do not see `My tickets`
-- Sign out redirects to `/` on the current site, including isolated staging ports and a second trusted address beside the public domain. `signOutTo` (`lib/client/sign-out.ts`) signs out without Auth.js's redirect, which `AUTH_URL` would make absolute, then goes to a same-site path. Every sign-out uses it.
-
-## Organisation Access Helpers
-
-File:
-
-```text
-lib/auth/access.ts
-```
-
-Important helpers:
-
-- `requireAuthenticatedUser`
-- `getAccessibleOrganisationsForCurrentAccount`
-- `requireOrganisationAccessBySlug`
-- `requireOrganisationEventManagementAccess`
-- `requireOrganisationFinanceAccess`
-- `requireOrganisationStripeConnectAccess`
-
-## Dashboard Access Layers
-
-Dashboard protection is layered:
-
-1. Proxy blocks unauthenticated users from `/dashboard/*`
-2. Dashboard pages resolve the signed context preference against live staff authority
-3. API handlers verify ownership or member access again on mutations
-
-Organisation management is now available at:
-
-```text
-/dashboard
-/dashboard/events
-/dashboard/events/[eventId]
-/dashboard/events/new
-/dashboard/events/[eventId]/edit
-/dashboard/orders
-/dashboard/settings
-/dashboard/settings/profile
-/dashboard/settings/staff
-/dashboard/notifications
-```
-
-Legacy `/dashboard/[orgSlug]/*` routes authorize their target and forward only when it matches the selected tenant; otherwise they return to the dashboard chooser. A GET never changes context.
-
-Organisation dashboard access is authorized from the authenticated user, an active `OrganisationStaff` record, its live role and permissions, and the canonical target organisation resolved by the server. Disabling or changing staff authority takes effect without waiting for session expiry.
-
-The legacy `Organisation.accountUserId` ownership path is used only according to `LEGACY_ORGANISATION_ACCESS_MODE` during migration. Missing authority redirects to an appropriate safe page or resolves as `notFound()` where revealing the tenant would disclose information.
-
-### One live staff authority rule (F1)
-
-`lib/staff/live-authority.ts` is the only place that decides an actor's role in an organisation; routes (through `lib/auth/access.ts`), locked services (profile, assets, staff updates, invitations) and workers (notification and ticket-email requeue) all call it, each keeping its own guard order. It is database-only, so workers load no HTTP auth, session or CSRF modules.
-
-- An active `OrganisationStaff` row grants its role.
-- Any staff row for that organisation, active or revoked, supersedes legacy ownership.
-- Otherwise an organisation account still named on `Organisation.accountUserId` acts as owner only when `LEGACY_ORGANISATION_ACCESS_MODE=allow`.
-- A disabled account holds no authority.
-- The mode: `allow` or `deny`. Unset means allow in development. In production, unset or invalid denies, and the readiness check fails until it is set (`assertLegacyOrganisationAccessConfigured`).
-
-Invitation issuers must also have a verified email; that extra rule stays in `lib/staff/invite-authority.ts`.
-
-## Explicit dashboard context
-
-GET `/api/me/context` lists only live authorized staff organisations and role capabilities. POST selects personal or staff mode with trusted origin/session CSRF; staff selection rechecks target permission and MFA. A signed HttpOnly SameSite cookie binds the preference to the account, authVersion and password-login ID. It carries no authority. Revocation, tampering or stale selection never selects another tenant. Member staff start in personal mode on a fresh login; selected staff context lasts only that login. Organisation accounts without a preference retain their owned tenant only when it still has live authority, for bootstrap compatibility. Personal tickets and private account settings stay available to individual accounts.
-
-The desktop sidebar and mobile menu filter links by current capabilities and mark the active page. Check-in staff see published events and attendance only. Event managers see event/attendance analytics without financial values or the revenue query; finance sees orders/refunds and financial analytics. Only owners may invite owners or change any owner row; other staff management still permits admins. Last-owner changes serialize on the organisation and audit atomically.
-
-## Current Role Capabilities
-
-Anonymous `/societies` and `/societies/[orgSlug]` reads expose whitelisted public fields. The profile uses dynamic caller-only join state. Verified member join/leave transactions lock the User then Organisation and recheck account role/authVersion/disabled state; leave may remove an unverified caller's own affiliation. Origin/CSRF and rate guards remain in routes. Paid orders/tickets, other users and staff rows are unaffected. Public profile writes and assets require live settings/kind capability and staff MFA; see [[Society Profiles and Assets]].
-
-Named staff receive event, finance, settings, administration and Stripe Connect capabilities from the live rolePermissions mapping. There is no stored arbitrary per-user permission array. Server handlers re-check live authority, capability and MFA for every protected operation.
-
-Member accounts can complete a profile, join/leave organisations, browse events and view tickets; purchases/joins require verified identity. Members with active named staff authority can also use permitted management pages/APIs. A join membership alone never grants that access.
-
-Organisation accounts can view public event URLs only as redirects to the organiser event view. They cannot buy tickets.
-
-Recent verification:
-
-- `admin@example.com` can start Stripe Connect onboarding for Arts Society.
-- `user2@example.com`, which is only a `member` in Arts Society, still receives `403 Insufficient Stripe Connect permissions`.
-
-## Trust Model
-
-Trusted:
-
-- Auth.js session
-- `session.user.id`
-- active `OrganisationStaff` status, role, and permissions from the database
-- the canonical organisation resolved server-side
-- `Organisation.accountUserId` only through the configured legacy migration fallback
-- `OrganisationMember` row for member joins only
-- server-side Prisma query results
-
-Not trusted as authority:
-
-- Frontend role state
-- frontend `organisationId`
-- request headers such as `x-user-role`
-- request headers such as `x-org-id`
-
-Some helper functions exist for organisation header matching, but access decisions still need live server-side staff authority, the explicitly enabled legacy fallback, or member-access checks as appropriate.
-
-## Recovery And Private Settings (T04a)
-
-`/forgot-password` returns generic acceptance for known, absent and disabled accounts. A 30-minute reset token is bound to user/email/authVersion and stored as a digest; the raw link exists only inside an encrypted notification. Latest issuance supersedes earlier links of that purpose. `/reset-password` clears the fragment and requires an explicit POST; opening/prefetching the URL never consumes it. Confirmation never creates a login.
-
-`/account/settings` and GET `/api/me/account` expose only the current user's selected profile, verification/MFA status and ten private security events. Profile writes recheck the session version under the account lock. Password changes require the current password and, whenever an authenticator is enrolled, a login-bound grant even with staff enforcement off. Former staff can verify their existing enrollment without receiving staff authority.
-
-Reset and change atomically update the bcrypt password, advance authVersion, delete every MFA login grant, invalidate outstanding auth tokens/cancel their pending messages, record a private AccountSecurityEvent and enqueue the security notice. MFA enrollment/recovery codes are preserved. A completed reset proves the mailbox, so it also verifies an unverified address (SEC-008); a password change leaves verification as it was. An unknown reset token is refused before any password hash. Passwords must have at least eight characters and at most 72 UTF-8 bytes. Anonymous recovery requires first-party origin and fail-closed Redis limits; signup, verification and reset requests each have their own 3-per-hour bucket per address, so one can't use up another (SEC-026); authenticated changes also retain session CSRF and a five-per-user/hour limit.
-
-Deploy `20261005010000_password_recovery` before the app. Existing versionless cookies require fresh login. Rollback retains additive data; an older executable cannot enforce session revocation, so pause authenticated traffic during rollback. Independent security review is required before production activation. Provider acceptance, inbox delivery and hosted recovery remain separate evidence.
-
-## Email Changes (T04b)
-
-Authenticated request/confirm/cancel endpoints require live session version, current password, any enrolled login MFA grant, session CSRF/trusted origin and fail-closed account rate limits. Requests always queue an old-address alert and new-address confirmation intent; pending state is private and independent of whether the proposed address is already registered. The old login remains active until confirmation. The 30-minute digest token binds user, original email/version and proposed email. Uniqueness is enforced again transactionally at confirmation, including competing accounts.
-
-`/change-email` removes the fragment and supports explicit credentials login on the same page before explicit confirmation; no token creates a session. Enrolled MFA can be verified in a separate tab while this page stays open. A static parser-time capture script runs before router hydration; queued hashchange events use their original newURL even if the router has already removed the fragment. All three account link forms handle a new fragment in an already mounted page, including after prior completion, and retain one bounded document-memory link across repeated effect setup/router remounts. Success clears it; a full document reload discards it. Raw tokens remain in page memory, never query callbacks or browser storage.
-
-Confirmation atomically verifies the new email, increments authVersion, revokes grants/outstanding tokens, cancels token messages, records a private security event and notifies both addresses. Historical orders, tickets, joins and staff rows keep their user IDs. Pending staff invites to a verified old address are cancelled so a recycled address cannot accept them. An unverified old address has not established invite authority and does not cancel another recipient's invitations. Cancellation invalidates outstanding change links without changing the current email/session version.
-
-Deploy `20261005020000_email_change` before app/worker. Older workers suppress this purpose; pause new security changes during rollback. No hosted activation or old-inbox approval is implied.
-
-## Permanent Account Closure (T04c)
-
-Settings exposes private eligibility and an explicit closure form. Closure requires the current password, every enrolled login authenticator regardless of staff enforcement mode, session CSRF/trusted origin, a live matching-version account, fail-closed five/hour account limits and the exact acknowledgement CLOSE MY ACCOUNT. The transaction rechecks active owner/legacy ownership pointers, pending ticket, membership and merchandise orders, unresolved compensation and upcoming paid purchases; a manual refund marker is not Stripe truth and cannot bypass blockers. Organisation owners must hand over both active owner authority and any legacy account pointer first.
-
-Closure locks the User and its orders before the final decision. Checkout, free joins, organisation bootstrap, invite acceptance, staff updates and MFA credential writes share account locks. Staff changes also recheck live actor/version/permission/MFA under locks, serialize last-owner changes and audit in the same transaction. Closure disables and permanently marks the retained user ID, increments authVersion, replaces login email/password with unusable values, clears editable profile/verification, deletes MFA secrets/recovery/grants and auth tokens, cancels pending token jobs, revokes active staff and verified-address pending invites, and removes free join rows. A private security event and encrypted former-inbox notice commit atomically. The database prevents clearing/changing closedAt or clearing disabledAt on a closed row; there is no self-service reversal.
-
-Orders, tickets, attendance, security/audit records and historical user IDs remain. Orders created since T10 already hold a purchase-time capture (provenance `purchase`). Older orders lacking a capture retain the current account email/name at closure with current_account_at_capture provenance and a capture timestamp; this does not claim unknown purchase-time profile facts. Existing captures are immutable. Tenant-scoped order details, email search/pagination, check-in and ticket delivery resolve retained contacts. Historical security notification recipients/encrypted payloads are retained privately; closure is profile/login anonymisation, not deletion of all personal information. A new signup at the former email gets a new user ID, unverified state and no old records. Later legitimate provider events still update payment/compensation truth without reopening the identity.
-
-Deploy 20261005030000_account_closure before the app/workers. The additive schema supports retained records, but anonymisation cannot be reversed by app rollback. Pause closure, account mutations and buyer contact/ticket delivery flows before rolling back to a version that cannot read captures or fence closure. Independent high-risk review and hosted recovery remain release gates; no activation is implied.
-
-## Verified guest access (T16a)
-
-`lib/guest/guest-access.ts` proves an email address without an account. The link token and the session id are random 32-byte values that exist only in the email fragment and the `thunderstrux-guest` cookie; `GuestAccessGrant` stores their SHA-256 digests, the purpose (`checkout`), the safe return path, expiry, consumption and revocation. `/guest/access` captures the fragment before hydration (the shared account-link capture script), removes it from the address and redeems only when the visitor presses Continue, so mail scanners and prefetching cannot use a link up. Redemption locks the `GuestIdentity` row and consumes the grant with a guarded update, so two concurrent redemptions start one session. A guest session never matches or merges with a member account by email; claiming guest purchases is the explicit T16c step.
-
-T16b gives sessions a scope. A `checkout` session buys and can reopen only the orders whose checkout attempt it made; a `purchase` session, started from a ticket email, a guest's merchandise receipt or a Find your purchase link (`GuestAccessGrant.orderId` or `commerceOrderId`), opens that one order. `canOpenGuestOrder` is the only rule `/guest/orders/[orderId]` uses (`canOpenGuestCommerceOrder` for `/merchandise/orders/[orderId]`), and the page is identical for a missing, foreign or guessed order. The ticket email's link is minted on each send attempt and stored only as a digest. The guest CSRF helpers live in `lib/guest/guest-csrf.ts`, the only guest module that loads the auth secret, so workers that load guest links never need it.
-
-T16c: "Add to my account" (`lib/guest/guest-claim.ts`) is the only way a guest order joins a member's purchases; signing up or signing in with the same email never claims anything. It needs the member's login, a verified account, and the guest session that opens the order. Under the User, then GuestIdentity, then Order locks it checks that the guest's verified email is the member's current email, sets `Order.userId` once (a repeat by the same member is a no-op), writes the audit entry `order.guest_claimed` and leaves the buyer snapshot and its `verified_guest` provenance unchanged. A colleague's account, a changed account email and an already claimed order are refused.
-
-## Private staff invitations
-
-Creation and resend require live owner/admin authority and staff MFA. Only owners manage owner invitations or reactivate revoked owner rows. Invite creation, encrypted security mail and tenant audit commit together; management returns metadata only, with at most 100 staff/invite rows. Resend rotates the digest and version, replaces the issuer and cancels older queued/claimed jobs; revoke cancels pending delivery. Acceptance is an explicit POST by the matching verified, non-disabled identity. The fragment is captured before hydration, then removed by the client hook and retained in document memory only; GET does not grant access. Existing active roles are preserved. An accepted-token replay reports current access without changing it, including revoked access. Fresh acceptance rechecks live issuer authority and locks sorted Users, Organisation and invite. Email change cancels verified-old-address invitations; closure also cancels invitations issued by the closed account. Revoking a staff member, directly or as the outgoing owner of a handover, revokes their pending invitations to that society, so they can't rejoin without a manager acting (SEC-006). Context selection remains explicit after acceptance.
-
-## Committee ownership handover
-
-An active named owner can explicitly hand over to another active, verified, non-disabled same-tenant staff identity. Current password and exact HAND OVER OWNERSHIP acknowledgement are required; an enrolled actor must verify the current login even in MFA off mode. Enforce mode requires both owners enrolled. Sorted User locks include actor, target and any legacy pointer, then the Organisation lock rechecks current owner, target and pointer. Incoming ownership is promoted before outgoing access becomes admin or revoked; at least one active owner remains. The legacy accountUserId is cleared and audited, never transferred. Live authority removes revoked sessions without transferring credentials, MFA, joins, event/order history or Stripe configuration. Outgoing ownership-related closure blockers are released; other payment/account blockers still apply. The owner-only form lists up to 100 eligible staff and shows recipient and outgoing access before confirmation.
+**Owns:** who someone is and what they may do: roles and the permission matrix, the auth helpers routes and pages call, sessions and `authVersion`, the proxy, staff MFA, account verification, recovery, email change and closure, guest access, staff invitations, owner handover and the dashboard context.
+**Read when:** adding a protected route or page, changing a role's reach, or touching sign-in, account security, guest sessions or staff management.
+**Not here:** the order each route runs its checks and the rate-limit numbers ([[Route Security Inventory]]); request and response shapes ([[API Reference]]); which page needs which permission ([[Frontend and Backend Flow]]); emails sent ([[Email Delivery Implementation]]); deploys and rollback ([[Production Operations]]).
+
+## Code
+
+| Concern | Where |
+| --- | --- |
+| Roles, permissions | `lib/permissions/index.ts`: `organisationPermissions`, `hasOrganisationPermission`, `organisationRolesWithPermission` |
+| The one live authority rule | `lib/staff/live-authority.ts`: `liveStaffRole`, `liveStaffRoleForUser`, `roleHasPermission`, `legacyOrganisationAccessMode` |
+| Route helpers | `lib/auth/access.ts` (see [Auth helpers](#auth-helpers)); error rules `lib/api/route-rules.ts` |
+| Page helpers | `lib/auth/page-access.ts`: `requireManagementPage`, `redirectLegacyOrganisationPage` |
+| Locked recheck in services | `lib/organisations/authority.ts`: `lockOrganisationActor` |
+| Auth.js | `auth.ts` (Credentials provider, JWT and session callbacks), `lib/auth/credentials.ts`: `authorizeCredentials`, `lib/auth/secret.ts`: `resolveAuthSecret` |
+| Live session | `lib/auth/live-session.ts`: `getLiveSession`; `lib/auth/session-identity.ts`: `getSessionIdentity` |
+| Proxy | `proxy.ts`; cookie scheme `lib/auth/public-origin.ts`: `publicOriginIsHttps`, `appCookieSecure` |
+| Dashboard context | `lib/auth/context.ts`: `readAccountContext`, `contextChoices`; `lib/auth/context-cookie.ts` |
+| Staff MFA | `lib/security/staff-mfa.ts`; page `/mfa` |
+| Signup, verification, reset, password change | `lib/auth/account-lifecycle.ts`; settings `lib/auth/account-settings.ts` |
+| Email change | `lib/auth/email-change.ts` |
+| Closure | `lib/auth/account-closure.ts` |
+| Fragment capture for emailed links | `lib/auth/account-link-capture.ts` |
+| Safe callback paths | `lib/security/safe-return-path.ts` |
+| Guest access | `lib/guest/guest-access.ts`, `lib/guest/guest-csrf.ts`, `lib/guest/guest-claim.ts` |
+| Staff | `lib/staff/invites.ts`, `lib/staff/invite-authority.ts`, `lib/staff/management.ts`, `lib/staff/handover.ts` |
+| Sign-out | `lib/client/sign-out.ts`: `signOutTo` |
+| Tests | `tests/integration/auth-access.test.ts`, `tests/integration/live-staff-authority.test.ts`, `tests/integration/staff-mfa.test.ts`, `tests/integration/staff-context.test.ts`, `tests/integration/account-verification.test.ts`, `tests/integration/password-recovery.test.ts`, `tests/integration/email-change.test.ts`, `tests/integration/account-closure.test.ts`, `tests/integration/guest-access.test.ts`, `tests/integration/guest-claim.test.ts`, `tests/integration/staff-invites.test.ts`, `tests/integration/staff-handover.test.ts`, `tests/integration/proxy-session-cookie.test.ts`, `tests/integration/dependency-security.test.ts` (real Auth.js sign-in, session, sign-out and proxy), `tests/e2e/account-lifecycle.spec.ts`, `tests/e2e/mfa-enforced.spec.ts` |
+
+## Roles and permissions
+
+Two account kinds (`User.accountRole`): `member` (a person) and `organisation` (a society login from before named staff). The account kind grants no management power; staff power comes only from an `OrganisationStaff` row (`role`, `status` `active` or `revoked`) or the legacy pointer below.
+
+`OrganisationStaffRole` → permissions (`rolePermissions` in `lib/permissions/index.ts`; there is no per-user permission list):
+
+| Permission | `owner` | `admin` | `event_manager` | `finance_manager` | `check_in_staff` | Used by |
+| --- | --- | --- | --- | --- | --- | --- |
+| `events:read` | ✓ | ✓ | ✓ | ✓ | ✓ | events list and calendar pages, `GET /api/orgs/[orgSlug]/calendar`, choosing a staff context |
+| `events:manage` | ✓ | ✓ | ✓ | | | event APIs and builder pages, event images, drafts in the calendar |
+| `tickets:check_in` | ✓ | ✓ | ✓ | | ✓ | check-in API and page |
+| `orders:read` | ✓ | ✓ | | ✓ | | orders API and pages, commerce order finance view, money in analytics (with `analytics:read`) |
+| `orders:refund_mark` | ✓ | ✓ | | ✓ | | `PATCH /api/orders/[orderId]/refund-manual` |
+| `orders:refund` | ✓ | ✓ | | ✓ | | refunds, free cancellations, dispute review, compensation confirm, membership cancel and refund, merchandise refund and cancel |
+| `orders:email_resend` | ✓ | ✓ | | ✓ | | resend, email-job and notification requeue, `/dashboard/notifications` |
+| `analytics:read` | ✓ | ✓ | ✓ | ✓ | | analytics and event summary pages, sales columns |
+| `stripe:manage` | ✓ | ✓ | | | | Connect routes, `/dashboard/settings` |
+| `staff:manage` | ✓ | ✓ | | | | staff list, edits, invitations; handover also needs `owner` |
+| `organisation:settings` | ✓ | ✓ | | | | society profile, logo and cover images |
+| `members:read` | ✓ | ✓ | | | | membership roster, membership ends in the calendar and overview |
+| `memberships:manage` | ✓ | ✓ | | | | membership plan routes and pages, membership revoke |
+| `merchandise:manage` | ✓ | ✓ | | | | product routes and pages, product photos |
+| `merchandise:fulfil` | ✓ | ✓ | | | | pickups and returns |
+| `audit:read` | ✓ | ✓ | | | | `/dashboard/history` ([[Audit Coverage#History]]) |
+| `members:manage` | ✓ | ✓ | | | | defined, used by nothing |
+| `openclaw:use` | ✓ | ✓ | ✓ | ✓ | | defined, used by nothing (OpenClaw is deferred) |
+
+Extra rules outside the matrix: only an `owner` may invite an owner, change an owner row or grant owner (`lib/staff/management.ts`); handover needs an `owner`; invitation issuers also need a verified email (`lib/staff/invite-authority.ts`).
+
+**Legacy `OrganisationRole`** (`org_owner`, `org_admin`, `event_manager`, `finance_manager`, `content_manager`, `member`) is the `OrganisationMember.role` join union. Joins use `member`; bootstrap also writes a compatibility `org_owner` row. It is display data for joined societies and never authority.
+
+**Live authority** (`liveStaffRole`, the only place that decides a role; routes, locked services and workers all call it):
+
+- An active staff row grants its role; a revoked row grants nothing.
+- Any staff row for the society, active or revoked, supersedes legacy ownership.
+- Otherwise an `organisation` account named on `Organisation.accountUserId` acts as `owner` only when `LEGACY_ORGANISATION_ACCESS_MODE=allow`. Unset means allow outside production; in production unset or invalid means deny and readiness fails (`assertLegacyOrganisationAccessConfigured`). Hosted compose must set `deny` (`scripts/container-config.mjs`).
+- A disabled account holds no authority. Changes take effect on the next request, without waiting for the session to end.
+
+## Auth helpers
+
+| Helper (`lib/auth/access.ts` unless named) | Does | Throws |
+| --- | --- | --- |
+| `requireAuthenticatedUser` | live session; user exists, not disabled, `authVersion` matches; returns id, `authVersion`, `mfaSessionId`, `accountRole`, email, `emailVerifiedAt` | `AuthenticationRequiredError` (401) |
+| `requireVerifiedUser` | the above plus a verified email | `OrganisationAccessError` "Verify your email before using this feature" |
+| `requireAccountRole(role)` | the account kind | `OrganisationAccessError` |
+| `requireOrganisationPermission(id, permission)` | live role, permission, then staff MFA | `OrganisationAccessError` "Organisation not found or access denied" (no role) or "Insufficient staff permissions"; `StaffMfaRequiredError` |
+| `requireAnyOrganisationPermission(id, list)` | first permission that passes; an MFA failure stops at once | the last access error |
+| `requireOrganisationEventManagementAccess`, `requireOrganisationFinanceAccess`, `requireOrganisationStripeConnectAccess` | `events:manage`, `orders:read`, `stripe:manage` | as above |
+| `requireStripeConnectCapability` | `stripe:manage` in any society (or legacy owner), then MFA; callers still authorise the target | `OrganisationAccessError` "Insufficient permissions" |
+| `requireCurrentOrganisationAccount` | the selected dashboard context, then staff MFA | `OrganisationAccessError` "Organisation account has no organisation"; `StaffMfaRequiredError` |
+| `requireOrganisationAccessBySlug` | any live staff role, else (member accounts) a join row | `OrganisationAccessError` |
+| `getAccessibleOrganisationsForCurrentAccount` | a member's joined societies with running-membership end dates; an organisation account's selected society | — |
+| `getCurrentStaffOrganisations`, `getOrganisationAccessForUser` | active staff societies (plus a live legacy one); `GET /api/orgs` list | — |
+| `organisationActor(slug, permission)` (`lib/organisations/http.ts`) | sign-in, slug, `requireOrganisationPermission`; unknown slug is the no-role error | as above |
+| `requireManagementPage(permission or list, callback)` (`lib/auth/page-access.ts`) | `requireCurrentOrganisationAccount` then the permission(s); returns the society and context choices | redirects `/login?callbackUrl=…` (401), `/mfa?callbackUrl=…` (MFA), else `notFound()` |
+| `redirectLegacyOrganisationPage` | `/dashboard/[orgSlug]/*`: authorise that slug, forward to the slugless page only if it is the selected context, else `/dashboard`; a GET never changes context | `notFound()` |
+| `lockOrganisationActor(tx, actor, id, permission)` | inside a service transaction: lock User then Organisation, recheck version, role and MFA grant | as above |
+
+`StaffMfaRequiredError` extends `OrganisationAccessError`, not `MfaRequiredError`, so `organisationAccessRule` maps it to 403. A route whose rules name only `MfaRequiredError` lets it fall to 500: `GET /api/commerce/orders/[orderId]` does this for staff whose grant expired (DEF-048).
+
+## Sessions
+
+- Auth.js with a Credentials provider (`auth.ts`); sign-in page `/login`. `authorizeCredentials` lower-cases the email and compares an unknown or disabled address against a dummy bcrypt hash of the same cost, so sign-in takes as long whether or not an account exists (DEF-035). Passwords are bcrypt hashes.
+- The JWT gets `userId`, `authVersion` and a random `staffMfaSessionId` (the login id) only at password sign-in; a cookie refresh can't add or upgrade them. A session issued before these claims existed must sign in again.
+- Every `auth()` read, page, API guard, CSRF token and the proxy compare the token's `authVersion` with the live user (`getSessionIdentity`). Password reset or change, email change and closure increment it, so every other session dies at its next request. The `/api/auth/session` response is `null` for a dead session.
+- `AUTH_SECRET` comes from one resolver, `lib/auth/secret.ts`, shared by `auth.ts` and `proxy.ts` so the proxy reads sessions with the key that signed them. Outside tests and builds it refuses empty, `dev-secret`, `replace-with-a-non-empty-secret` and the Dockerfile's build placeholder, and production also needs at least 32 characters (SEC-016).
+- Cookies: Auth.js uses `__Secure-authjs.session-token` when the public URL (`AUTH_URL`, then `NEXTAUTH_URL`, then the request) is https, even behind a plain-http tunnel; otherwise `authjs.session-token`. The guest and context cookies are `Secure` in production or whenever that URL is https (SEC-017).
+- Sign-out goes through `signOutTo`, which signs out without Auth.js's absolute redirect and then goes to a same-site path, so staging ports and second trusted addresses stay on themselves.
+- `/login` shows why a session ended for `passwordChanged=true`, `emailChanged=true` and `accountClosed=true`.
+
+## Proxy and page guards
+
+- `proxy.ts` matches `/dashboard/:path*` and `/account/:path*` only. It reads the JWT, checks the live identity and `authVersion`, and redirects a missing, stale or disabled session to `/login` with the path and query as `callbackUrl`.
+- Everything else guards itself: public event pages `/events/[eventId]` are public; checkout and confirmation pages ask for sign-in themselves.
+- An organisation account sees public event pages as a buyer would; the ticket box says society accounts can't buy (`viewer: "society"`). It is not redirected.
+- Management pages call `requireManagementPage` with their permission; the page-to-permission map is in [[Frontend and Backend Flow]]. A member account with no staff row reaches personal pages only.
+
+## Staff MFA
+
+- **Modes** (`MFA_ENFORCEMENT_MODE`): `off` (no checks), `enroll` (enrolled staff need a grant; unenrolled staff pass), `enforce` (every staff check needs enrollment and a grant). Unset is `off` in development; in production unset or invalid throws, so readiness and staff checks fail. Hosted compose must set `enforce`.
+- **Config:** setup, confirm and verify answer 503 unless `MFA_ENCRYPTION_KEY` is a base64 32-byte key and `RATE_LIMIT_ENABLED=true`; any mode except `off` needs the same.
+- **Eligible:** an active staff row, or a legacy pointer with no staff row. An enrolled former staff member can still verify (for account security) without gaining authority.
+- **Setup:** TOTP (SHA-1, six digits, 30 s), secret AES-256-GCM encrypted with a 16-byte tag; a pending secret lasts 10 minutes. Confirming returns ten one-time recovery codes (20 hex characters, stored as HMACs keyed by the MFA key) and grants the current login.
+- **Verify:** a code is accepted for the previous, current or next 30 s step and never twice (`lastAcceptedStep`); a recovery code is deleted when used. A grant is keyed by an HMAC of the login id (`mfaGrantDigest`) and lasts 12 hours. A new sign-in needs its own verification.
+- **Where it applies:** every `requireOrganisationPermission`, `requireCurrentOrganisationAccount`, `requireStripeConnectCapability` and `lockOrganisationActor`. Pages redirect to `/mfa`; APIs answer 403. Member purchases and joined-society views never need it.
+- **Fresh codes:** refunds, cancellations, membership revoke and the Connect dashboard and disconnect also take a code in the body unless the mode is `off` ([[Route Security Inventory#Guard order]]).
+- **Grants end** at expiry (the stale-orders worker then deletes them, [[Route Security Inventory#Tokens at rest]]). Password reset or change, email change and closure delete all of a user's grants at once.
+- Audit rows `staff_mfa.enabled`, `staff_mfa.verified`, `staff_mfa.recovery_used` go to every society the person staffs.
+
+## Dashboard context
+
+- `GET /api/me/context` lists live staff societies with each role's permissions. `POST` selects `{mode: "personal"}` or `{mode: "staff", organisationId}`; staff mode rechecks `events:read` and MFA on the target.
+- The choice is a signed, HttpOnly, SameSite=Lax cookie `thunderstrux-context` bound to user id, `authVersion` and login id. It is a preference, never authority: every request resolves it against live staff rows, and a revoked, tampered or stale choice selects nothing, never another society.
+- A new sign-in invalidates it, so member staff start personal on each login. An organisation account with no context cookie selects its bootstrap society while that society still gives it a live role.
+- The sidebar and mobile menu show only links the current role can use. Check-in staff see published events and attendance; event managers see attendance analytics without money; finance sees orders, refunds and money.
+- `POST /api/orgs` (bootstrap) deletes the context cookie, so a stale personal choice can't hide the new society.
+
+## Account lifecycle
+
+- **Signup** (`/signup`, `POST /api/auth/signup`): `member` (default) or `organisation`. Always the same 202, for new and existing addresses; it never signs in. Creates an unverified account, a verification token digest and an encrypted notification atomically. Passwords: 8 or more characters and at most 72 UTF-8 bytes (`newPasswordSchema`).
+- **Verification** (`/verify-email`): a token lasts 24 hours, single use; the latest one wins and resending cancels the previous queued email. Confirming needs the account's password, so a mailbox owner can't verify an account someone else registered (SEC-008); a wrong password leaves the link unused.
+- **What needs verification:** purchases, joins, society bootstrap, staff invitations (issue and accept), handover. Rechecked under the account lock in the writing transaction. Unverified users can sign in, edit their profile and leave a society. Older accounts are not silently verified.
+- **Reset** (`/forgot-password`, `/reset-password`): always the same 202. A 30-minute token bound to user, email and `authVersion`; the raw link exists only in the encrypted email. Confirming sets the password, increments `authVersion`, deletes every MFA grant, invalidates outstanding tokens and queues a security notice; enrollment and recovery codes stay. A completed reset also verifies an unverified email (it proves the mailbox). It never signs in.
+- **Password change** (`/account/settings`): current password, plus a live grant whenever an authenticator is enrolled, even in mode `off`. Same effects as reset, without touching verification.
+- **Email change** (`/change-email`): request, confirm and cancel need the current password, any enrolled authenticator, a live session and CSRF. The request alerts the old address and sends a 30-minute confirmation to the new one, whether or not that address is taken; the old login stays valid until confirmation. Confirmation rechecks uniqueness, sets the new email verified, increments `authVersion`, revokes grants and tokens, and notifies both addresses. Pending staff invitations to a verified old address are cancelled. Orders, tickets, joins and staff rows keep their user id.
+- **Emailed links** (verification, reset, email change, guest, staff invite): the token travels in the URL fragment, a parser-time script captures it before hydration, the page removes it from history and redeems only on an explicit POST. Opening or prefetching never consumes a link. Callback paths go through `safeReturnPath`, which also refuses paths that normalise to `//host` (SEC-012).
+- Account security events and notices are private to the account; they never appear in society History or notifications.
+
+## Account closure
+
+- Needs the current password, every enrolled authenticator (whatever the mode), a live session, CSRF, `account_security_change` and the exact acknowledgement `CLOSE MY ACCOUNT`. `GET /api/me/account/closure` is advisory; the POST rechecks under the account and order locks.
+- **Blocked by:** active owner authority or a legacy pointer (hand over first), pending ticket, membership or merchandise orders, unresolved ticket compensation, and paid ticket orders (over $0) for events that haven't ended. A manual refund marker is not Stripe truth and doesn't clear a blocker.
+- **Effect, in one transaction:** disable and mark the user closed, increment `authVersion`, replace the login email and password with unusable values, clear the editable profile and verification, delete MFA secrets, recovery codes, grants and tokens, cancel pending token emails, revoke active staff rows and pending invitations sent to or by the account, remove free join rows, record a private security event and queue a notice to the former address. The database refuses to clear or change `closedAt`; there is no self-service reversal.
+- **Kept:** orders, tickets, attendance, audit and security records and the user id. Ticket orders without a purchase-time buyer capture get the current email and name with provenance `current_account_at_capture`; existing captures never change. A later signup at the same email is a new, unverified user with no old records.
+
+## Guest access
+
+- A guest proves an email without an account (`/guest/access`). The link token and session id are random 32-byte values; `GuestAccessGrant` stores their SHA-256 digests. A checkout link lasts 30 minutes and works once; the session cookie `thunderstrux-guest` (HttpOnly, SameSite=Lax) lasts two hours. Redemption locks the `GuestIdentity` row, so two clicks start one session.
+- **Purposes:** a `checkout` session can buy (tickets and merchandise, not memberships) and reopen the orders its own checkout attempts made. A `purchase` session, from a ticket email, a guest merchandise receipt or a Find your purchase link (24 hours, once; up to the latest ten paid ticket orders and ten merchandise orders not claimed by a member), opens that one order and can't buy.
+- `canOpenGuestOrder` and `canOpenGuestCommerceOrder` are the only rules for `/guest/orders/[orderId]` and `/merchandise/orders/[orderId]`; a missing, foreign or guessed order shows the same page.
+- Guest writes carry `x-thunderstrux-guest-csrf`, an HMAC of the session id. `lib/guest/guest-csrf.ts` is the only guest module that loads the auth secret, so workers that mint guest links don't need it.
+- A guest session is not a login and grants no member, staff or account access. Signing up or in with the same email claims nothing.
+- **Add to my account** (`claimGuestOrder`): needs the member's login, a verified account and the guest session that opens the order. Under User, GuestIdentity, Order locks it checks the guest's verified email is the member's current email, sets `Order.userId` once and writes `order.guest_claimed`; the buyer snapshot and `verified_guest` provenance stay. A repeat by the same member is a no-op.
+
+## Staff invitations
+
+- Create and resend need live `staff:manage`, a verified issuer, staff MFA and both invite limits; only owners invite owners. The invite, the encrypted email and the audit row commit together; responses carry metadata only, never the token. Lists are capped at 100 staff and 100 pending invitations.
+- Links last seven days. Resend rotates the token digest and version, replaces the issuer and cancels older queued emails; revoke cancels pending delivery.
+- Acceptance (`/staff/invites/accept`) is an explicit POST by the matching verified, non-disabled identity. It rechecks the issuer's live authority under sorted User, Organisation and invite locks. An existing active role is kept; replaying an accepted token reports current access and never restores a revoked one.
+- Revoking a staff member (directly, or as the outgoing owner of a handover) revokes their pending invitations to that society, so they can't rejoin without a manager (SEC-006). Closure cancels invitations sent by the closed account. Acceptance never selects a context.
+
+## Owner handover
+
+- An active owner hands ownership to another active, verified, non-disabled staff member of the same society, with the current password and the exact text `HAND OVER OWNERSHIP`; the outgoing owner becomes `admin` or `revoked`. An enrolled actor must verify this login even in mode `off`; `enforce` needs both people enrolled.
+- Sorted User locks (actor, target, any legacy pointer), then the Organisation lock, recheck everything. The incoming owner is promoted before the outgoing access drops, so one active owner always remains. The legacy `accountUserId` is cleared and audited (`staff.ownership.handed_over`), never transferred. Nothing else moves: credentials, MFA, joins, history and Stripe setup stay where they are.
+- Admins can't hand over. A foreign, self, missing or ineligible target and a concurrent change all answer one generic 409.
+
+## Rules
+
+- Trusted: the live session's user id, live `OrganisationStaff` rows, the canonical tenant the server resolves, `Organisation.accountUserId` only through the legacy mode, `OrganisationMember` for joins only.
+- Not authority: the account kind, client role state, a client `organisationId`, headers such as `x-org-id` or `x-user-role`, join rows, the context cookie.
+- One active owner always remains; last-owner changes serialise on the Organisation lock and audit in the same transaction.
+- A society account can bootstrap one society; a retained pointer or active staff authority blocks another. Revoked rows alone don't.
+
+## Traps
+
+- Don't check `accountRole === "organisation"` for management power; call `requireOrganisationPermission` or `organisationActor`.
+- A route that maps only `MfaRequiredError` turns an expired staff grant into a 500 (DEF-048); include `organisationAccessRule` or map `StaffMfaRequiredError`.
+- Adding a permission means adding it to `organisationPermissions`, each role's list, this matrix, and the route or page that checks it.
+- Rolling back past the account migrations (password recovery, email change, closure) leaves an older build that can't enforce session revocation or the closure fences; pause account changes first ([[Production Operations]]).
+
+## Related
+
+[[Route Security Inventory]] · [[API Reference]] · [[Frontend and Backend Flow]] · [[Audit Coverage]] · [[Email Delivery Implementation]] · [[Production Operations]] · [[Database and Multi Tenancy]]

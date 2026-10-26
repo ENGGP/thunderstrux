@@ -1,608 +1,200 @@
 ---
 status: living
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Architecture Overview]]", "[[UI Architecture Rules]]"]
-sources: [app, components, lib/auth/page-access.ts]
+related: ["[[UI Architecture Rules]]", "[[Architecture Overview]]", "[[Authentication and Dashboard Access]]", "[[API Reference]]"]
+sources: [app, lib/auth/page-access.ts, lib/auth/access.ts, lib/auth/live-session.ts, proxy.ts, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx]
 ---
 
 # Frontend and Backend Flow
 
-Organisation management flows resolve a canonical tenant from active `OrganisationStaff` authority and re-check live role/capability in the backend. `Organisation.accountUserId` remains only as the explicitly configured legacy migration fallback. Member `OrganisationMember` rows never grant management access.
-
-## Public Homepage
-
-Files:
-
-- `app/page.tsx`
-- `app/(public)/events/page.tsx`
-- `app/api/public/events/route.ts`
-- `lib/events/public-events.ts`
-- `lib/events/explore-filters.ts`
-
-Flow:
-
-```text
-User visits /
-  -> page calls getPublishedEvents({ limit: 6 }) directly from lib/events/public-events.ts
-  -> page renders up to six upcoming event cards and an "Explore all events" link to /events
-
-User visits /events?q=&when=&from=&to=&society=&cursor=&direction=
-  -> parseExploreFilters reads the URL; presets run in Brisbane time
-  -> invalid values become field errors and no list is read
-  -> getPublishedEvents applies the title, society and start-time filters, 20 a page
-  -> page renders cards with Earlier events / Later events cursor links that keep the filters
-```
-
-Important current behavior:
-
-- `app/page.tsx` is `force-dynamic`.
-- Public homepage cards always link to `/events/[eventId]`.
-- Every public list keeps only published, public events that have not ended (PUB-001).
-- The home page takes no query parameters; paging and filters live on `/events` (T15b).
-- On `/events`, a bad or stale page cursor falls back to the first page with a warning; a failed read shows "We couldn't load events" with the filters kept, never an empty list.
-- Public event reads are read-only. If there are zero published events in the whole database, the API returns an empty event list.
-- Demo public events come from `prisma/seed.mjs`, not from public runtime reads.
-
-## Society Discovery and Profiles
-
-Society discovery is a separate implemented journey: `/societies` calls lib/organisations/discovery.ts directly for literal name/slug search (q <=120, default 25/max 50, stable name/ID forward cursor). `/api/public/organisations/search` returns the same public DTO without joined/account/staff/Stripe state. Cards link to `/societies/[orgSlug]`; incomplete profiles remain visible.
-
-The profile page calls lib/organisations/public-organisations.ts for public name/description/contact/policies/timezone, logo/cover and up to 50 upcoming published events. A separate dynamic caller-only lookup supplies SocietyJoin: anonymous sign-in callback, unverified verification prompt, explicit verified Join, or Joined. Authentication never auto-joins. Ready public images use `/api/public/assets/[assetId]`; raw uploads and unattached images stay private. [[Society Profiles and Assets]] owns privacy, references and storage.
-
-## Public Event Detail
-
-Files:
-
-- `app/(public)/events/[eventId]/page.tsx`
-- `app/api/public/events/[eventId]/route.ts`
-- `components/events/public-ticket-purchase.tsx`
-- `app/tickets/page.tsx`
-
-Flow:
-
-```text
-User visits /events/[eventId]
-  -> anyone may open it (T15a); the page reads the live session only to choose the ticket box action
-  -> page calls getEventForViewer (lib/events/public-events.ts): drafts and wrong ids are not found;
-     public and link-only events read through getPublishedEventDetail, the same service as GET /api/public/events/[eventId];
-     a members-only event opens only for a member whose membership unlocks it, and everyone else gets the gate (T24b2)
-  -> the service computes each type's sellable stock (holds and capacity) and readiness reason, and whether sales are open
-  -> PublicEventView renders the page; PublicTicketPurchase sends the buyer to /events/[eventId]/checkout
-```
-
-Important current behavior:
-
-- Public detail keeps raw `ticketType.quantity` for compatibility.
-- The HTML `/events/[eventId]` route is anonymous since T15a, like society pages.
-- Public purchase UI uses `ticketType.availableQuantity` and `unavailable` for remaining count, sold-out and paid-unavailable rows, quantity input max, client validation, and buy-button state.
-- Public detail reads are read-only. They do not expire reservations, run stale cleanup, create demo data, or write rows.
-- Checkout remains authoritative and revalidates availability before creating a reservation.
-
-Checkout flow:
-
-```text
-User selects quantity
-  -> POST /api/payments/checkout/event
-  -> route validates event, ticket type, quantity, status, inventory, and Stripe readiness
-  -> lapsed holds don't count toward availability (the stale-order worker expires their orders)
-  -> local Order row is created with status=pending
-  -> active TicketReservation row is created with a 30-minute expiry
-  -> Stripe Checkout session is created, and the reservation is set to end 5 minutes after its expires_at
-  -> Order row is updated with stripeSessionId
-  -> browser redirects to Stripe
-  -> payment webhook marks Order paid and issues Ticket rows
-  -> fulfilment commits its automatic email intent atomically; a bounded worker sends after commit
-  -> in non-production only, /success?session_id=... can reconcile paid sessions if local webhook forwarding is absent
-  -> /success shows the order's real state to the member who bought it: "Confirming your payment" while it is pending, polling GET /api/purchases/tickets/[orderId]/status every 3 seconds for about a minute (then "Still confirming"), and "You're going" once the webhook has fulfilled it; it says the tickets were emailed only after the provider accepted the email
-  -> /cancel?order=... names the event only to the buyer. While the hold lasts it says "You haven't paid yet", with Return to payment (the same Stripe page) and Cancel order (Stripe closes its page, then the hold is released at once; round E1). Otherwise it says no payment was taken, or that the order went through after all.
-  -> an unpaid order page asks Stripe where it stands: Waiting for payment with the same two actions, Confirming payment once Stripe has it, or Didn't complete; it never reads "Paid" before payment
-  -> buyer sees the order at /purchases and /purchases/tickets/[orderId], and the tickets at /tickets (Upcoming, Past and Not valid tabs, one ticket face per unit)
-```
-
-Buyer tickets page:
-
-- Requires authentication.
-- Read-only. Does not run stale pending order cleanup before reading orders.
-- Reads orders by `session.user.id`.
-- Shows paid orders only.
-- Pending, expired, and failed order states remain internal/system history.
-- Shows ticket identifiers once tickets have been issued.
-
-## Login and Signup
-
-Files:
-
-- `app/login/page.tsx`
-- `app/signup/page.tsx`
-- `components/auth/credentials-login-form.tsx`
-- `components/auth/signup-form.tsx`
-- `app/api/auth/signup/route.ts`
-- `app/api/auth/[...nextauth]/route.ts`
-
-Flow:
-
-```text
-User signs up
-  -> POST /api/auth/signup
-  -> generic 202 acceptance for new/existing addresses
-  -> eligible new account, digest token and encrypted notification commit atomically
-  -> verification link requires explicit POST; sign-in is a separate action
-```
-
-```text
-User signs in
-  -> signIn("credentials")
-  -> auth.ts checks email/password and active identity against Prisma, establishes authVersion and MFA login ID
-  -> session.user.id and session.user.accountRole are exposed
-  -> browser redirects to callbackUrl
-```
-
-## Dashboard Root
-
-Files:
-
-- `app/(dashboard)/dashboard/page.tsx`
-- `app/api/orgs/route.ts`
-
-Flow:
-
-```text
-User visits /dashboard
-  -> server reads authenticated user from session
-  -> signed context preference is checked against live identity, staff authority and MFA
-  -> member accounts start personal, including staff; explicit selection enters a permitted society
-  -> management user resolves canonical organisation from live staff authority or configured legacy fallback
-  -> authorised management dashboard renders directly
-```
-
-Current UI:
-
-- Member dashboard shows a profile prompt (the form is on Account settings), upcoming tickets and joined societies.
-- Organisation dashboard shows its name and permitted upcoming events/navigation; recent orders and current-month revenue are queried/rendered only with orders:read. Revoked selection never chooses another tenant.
-
-## Member Organisation Search And Join
-
-Files:
-
-- `app/(dashboard)/dashboard/organisations/page.tsx`
-- `components/organisations/organisation-search.tsx`
-- `app/api/orgs/search/route.ts`
-- `app/api/orgs/[orgSlug]/join/route.ts`
-
-Flow:
-
-```text
-Member opens /dashboard/organisations
-  -> page requires accountRole = member
-  -> joined list is loaded for the caller independently of selected staff context
-  -> OrganisationSearch calls GET /api/orgs/search?q=...&limit=25 with optional forward cursor
-  -> API returns public-safe organisation rows and joined state
-  -> member clicks Join
-  -> POST /api/orgs/[orgSlug]/join
-  -> service locks User then Organisation and rechecks live version/account/verification
-  -> idempotently upserts only the caller's OrganisationMember with role = member
-  -> refresh synchronises joined list and search badges; obsolete search responses are ignored
-```
-
-Important rule:
-
-- Joining an organisation never grants management access.
-- Queries are bounded literal substrings; default API requests preserve the original response envelope, while limit/cursor opts into pageInfo. Personalized responses are private/no-store. Join state is free affiliation, separate from paid benefits.
-
-## Member Organisation Details And Leave
-
-Files:
-
-- `components/organisations/member-organisations-list.tsx`
-- `app/(public)/societies/[orgSlug]/page.tsx`
-- `app/api/orgs/[orgSlug]/leave/route.ts`
-
-Flow:
-
-```text
-Member opens /dashboard
-  -> joined society cards show the join date with View society, View events and Leave society actions
-  -> View details links to /societies/[orgSlug]
-  -> public organisation details page loads public-safe organisation data and upcoming published events
-  -> Leave society opens a confirmation dialog that states what is and is not affected
-  -> POST /api/orgs/[orgSlug]/leave
-  -> API requires accountRole = member
-  -> API deletes only the signed-in user's OrganisationMember row for that organisation
-  -> dashboard refreshes joined cards and search badges
-```
-
-Important rules:
-
-- `/societies/[orgSlug]` exposes only public-safe organisation data and upcoming published events.
-- Leave is idempotent when the member is already not joined.
-- Leave retains origin/CSRF/rate/live-version checks, permits removal by an unverified member, and preserves staff, paid purchases/tickets and other users. MembershipGrant exists since T22 and is written by T23, which owns the regression that leaving keeps a paid grant.
-- Organisation accounts cannot leave their owned organisation through the member leave endpoint.
-
-## Create Organisation
-
-Files:
-
-- `app/(dashboard)/dashboard/create/page.tsx`
-- `components/organisations/create-organisation-form.tsx`
-- `app/api/orgs/route.ts`
-
-Flow:
-
-```text
-User submits organisation name
-  -> POST /api/orgs
-  -> API requires accountRole = organisation
-  -> verified live account is locked; retained bootstrap association OR active staff authority blocks another primary
-  -> API normalises or generates slug
-  -> API creates Organisation
-  -> API sets Organisation.accountUserId
-  -> API creates active owner OrganisationStaff authority and transitional legacy records
-  -> creation and compatibility join, active owner and audit commit atomically
-  -> stale context cookie is cleared; frontend opens /dashboard/settings/profile
-```
-
-The protected four-step profile editor saves identity, optional safe branding and public operations, then shows completion and implemented settings links. PATCH uses expectedProfileVersion, live settings/MFA/rate/origin/CSRF authority and ready same-tenant asset references under User -> Organisation -> sorted Asset locks. Conflict 409 preserves local edits; explicit reload confirms discard. Completion requires name/description/public contact, independently of Stripe. Upload previews are private until saved references make them public.
-
-## Organisation Dashboard Overview
-
-Files:
-
-- `app/(dashboard)/dashboard/page.tsx`
-- `components/layout/dashboard-shell.tsx`
-
-Flow:
-
-```text
-Page resolves the authorised user's canonical organisation
-  -> requireCurrentOrganisationAccount()
-  -> pass organisation.name into DashboardShell
-  -> page renders overview, upcoming events, recent orders, and revenue summary
-```
-
-Current UI:
-
-- Capability-filtered sidebar: Overview, Events, Orders, then Settings (Society profile, Staff, Payments, Email delivery); longest matching route is active. The staff authenticator is reached from Account settings and by the `/mfa` redirect, not the sidebar.
-- The sidebar shows the organisation name; each page renders its own `h1` title
-- Primary management links use slugless `/dashboard/*` paths.
-- Legacy `/dashboard/[orgSlug]/*` pages redirect for backwards compatibility.
-
-## Events Dashboard
-
-The page requires events:read and is rendered on the server for every role. Owner, admin and event-manager roles also get the event actions; finance gets a read-only list with sales; check-in staff get published events only, with links to Attendees. Nobody obtains events:manage by appearing in navigation.
-
-Files:
-
-- `app/(dashboard)/dashboard/events/page.tsx`
-- `app/(dashboard)/dashboard/events/layout.tsx`
-- `components/events/event-actions.tsx`
-- `components/events/event-tabs.tsx`
-- `lib/events/event-lifecycle.ts` (`listDashboardEvents`, `getDashboardEvent`)
-- `app/api/events/route.ts`
-- `app/api/events/[eventId]/route.ts`
-- `app/api/events/[eventId]/publish/route.ts`
-
-Flow:
-
-```text
-Events page runs requireManagementPage("events:read")
-  -> header renders; the list streams inside <Suspense> behind a skeleton
-  -> listDashboardEvents(organisationId, view, query, publishedOnly, includeSales)
-  -> rows render with blocker reasons; EventActions calls
-     PATCH /api/events/[eventId]/publish or DELETE /api/events/[eventId]
-  -> the API re-checks live events:manage authority; the page refreshes
-```
-
-Supported actions:
-
-- Create new event
-- View event analytics
-- Edit event
-- Publish draft event
-- Unpublish published event, but only if there are no orders
-- Delete event, but only if there are no orders or tickets
-
-Important edit rules:
-
-- Ticket types with existing orders or issued tickets cannot be deleted.
-- Ticket types with existing orders or issued tickets can be renamed and can have price/quantity changed for future purchases.
-- Historical `Order.unitPrice` and `Order.totalAmount` are preserved when ticket type price changes.
-- Existing `Ticket` rows remain linked to the same `ticketTypeId`.
-- Event deletion is blocked after orders or ticket issuance.
-
-Edit link shape:
-
-```ts
-`/dashboard/${orgSlug}/events/${event.id}/edit`
-or current slugless form:
-`/dashboard/events/${event.id}/edit`
-```
-
-The link is generated in:
-
-```text
-components/events/event-actions.tsx
-components/events/event-tabs.tsx
-```
-
-The expected page is:
-
-```text
-app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx
-app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx
-```
-
-View event link shape:
-
-```ts
-`/dashboard/events/${event.id}`
-```
-
-The expected page is:
-
-```text
-app/(dashboard)/dashboard/events/[eventId]/page.tsx
-```
-
-There is also a pass-through layout at:
-
-```text
-app/(dashboard)/dashboard/[orgSlug]/events/layout.tsx
-```
-
-This exists intentionally. In the Docker/Windows/OneDrive dev setup, Next 16 repeatedly failed to register nested child event routes in `.next/dev/server/app-paths-manifest.json` unless the `events` segment had an explicit route boundary.
-
-If this URL returns the generic not-found page while source is correct, do not rewrite the href first. Check the dev route manifest in [[Troubleshooting]].
-
-## Create and Edit Event
-
-Files:
-
-- `app/(dashboard)/dashboard/[orgSlug]/events/new/page.tsx`
-- `app/(dashboard)/dashboard/[orgSlug]/events/[eventId]/edit/page.tsx`
-- `app/(dashboard)/dashboard/events/new/page.tsx`
-- `app/(dashboard)/dashboard/events/[eventId]/edit/page.tsx`
-- `components/events/create-event-form.tsx`
-
-Flow:
-
-```text
-CreateEventForm loads organisation by slug
-  -> create mode posts to /api/events
-  -> edit mode patches /api/events/[eventId]
-  -> PATCH validates event fields and ticketTypes
-  -> PATCH checks event-management access
-  -> PATCH updates Event and synchronises TicketType rows in a Prisma transaction
-  -> form calls router.refresh()
-  -> on success, router.push(`/dashboard/events`) on slugless routes
-```
-
-Edit route access:
-
-```text
-Edit page receives eventId
-  -> requireCurrentOrganisationAccount()
-  -> query Event where id = eventId and organisationId = current organisation.id
-  -> render CreateEventForm in edit mode
-  -> notFound() when the event belongs to another org
-```
-
-Current UI note:
-
-- Edit page now shows only one `Edit event` title.
-
-Ticket edit details:
-
-- Create mode requires ticket quantity greater than zero.
-- Edit mode allows ticket quantity zero so sold-out ticket types can remain attached while event fields are edited.
-- Existing ticket rows must include `id`.
-- New ticket rows omit `id`.
-- Existing ticket rows included in the payload update `name`, `price`, and `quantity`, even if orders or issued tickets exist.
-- Removing a ticket row from the submitted array deletes it only if it has no orders or issued tickets.
-- Sold/issued ticket rows omitted from the payload are preserved unchanged instead of being deleted.
-- Sold/issued ticket rows keep editable name/price/quantity inputs, but their Remove button is disabled.
-
-## Organiser Event Analytics
-
-Files:
-
-- `app/(dashboard)/dashboard/events/[eventId]/page.tsx`
-- `lib/events/event-analytics.ts`
-
-Flow:
-
-```text
-Authorised management user opens /dashboard/events/[eventId]
-  -> proxy verifies live identity; the management-page helper checks live analytics:read authority and MFA
-  -> page resolves canonical organisation through live staff authority or configured legacy fallback
-  -> analytics helper fetches event/ticket types and paid-order aggregates in one Prisma transaction
-  -> revenue query/series and financial DTO fields are omitted without orders:read
-  -> page renders permitted event/attendance counts and links, adding financial views only for authorised roles
-```
-
-Analytics rules:
-
-- Remaining is current `TicketType.quantity`.
-- Sold is summed from paid `Order.quantity`.
-- Revenue is summed from paid `Order.totalAmount`.
-- Revenue is grouped per ticket type by `Order.ticketTypeId`.
-- Revenue-over-time is grouped by UTC day and labelled as `Revenue (UTC)`.
-- The UI does not show total capacity.
-- Empty states are shown for no ticket types and no tickets sold.
-
-## Organiser Event Tickets And Check-in
-
-Files:
-
-- `app/(dashboard)/dashboard/events/[eventId]/tickets/page.tsx`
-- `app/api/events/[eventId]/tickets/route.ts`
-- `app/api/tickets/[ticketId]/check-in/route.ts`
-- `components/tickets/ticket-check-in-button.tsx`
-- `lib/tickets/check-in.ts`
-
-Flow:
-
-```text
-Authorised management user opens /dashboard/events/[eventId]/tickets
-  -> page resolves canonical organisation through live staff authority or configured legacy fallback
-  -> server query verifies the event belongs to the current organisation
-  -> page parses limit/cursor/direction pagination params
-  -> page renders one cursor-paginated slice of issued Ticket rows for that event
-  -> pagination uses stable ordering by Ticket.createdAt then Ticket.id
-  -> Next and Previous links pass opaque cursors back to the same route/API
-  -> each row shows buyer, ticket type, createdAt, and unused/checked-in state
-  -> Check in button calls POST /api/tickets/[ticketId]/check-in
-  -> API verifies ticket ownership through the event/organisation relationship
-  -> API atomically sets checkedInAt only when it is currently null
-  -> Undo check-in button calls POST /api/tickets/[ticketId]/check-out
-  -> API atomically clears checkedInAt only when it is currently not null
-  -> UI disables the button and shows the checked-in timestamp
-```
-
-Rules:
-
-- Member accounts without active staff authority cannot view event tickets or check tickets in.
-- Ticket listing/check-in/out requires the live tickets:check_in capability.
-- Frontend ticket ids are inputs only; ownership is verified server-side.
-- Double check-in returns `409` and preserves the original timestamp.
-- Check-out returns `409` when the ticket is already unused.
-- Check-in/out update Ticket.checkedInAt and append actor-attributed AuditLog records in the same transaction.
-- Check-in and check-out do not alter order status, Stripe state, ticket ownership, or ticket type data.
-- `GET /api/events/[eventId]/tickets` defaults to 25 tickets per page and supports `limit`, `cursor`, and `direction`.
-- Invalid pagination params return `400` from the API; the server-rendered page redirects invalid pagination back to the first page.
-
-## Stripe Settings
-
-Files:
-
-- `app/(dashboard)/dashboard/settings/page.tsx`
-- `components/settings/stripe-connect-settings.tsx`
-- `app/api/stripe/connect/status/route.ts`
-- `app/api/stripe/connect/onboard/route.ts`
-- `app/api/stripe/connect/continue/route.ts`
-- `app/api/stripe/connect/disconnect/route.ts`
-- `lib/stripe/connect.ts`
-
-Flow:
-
-```text
-Settings page resolves the authorised user's canonical organisation
-  -> client resolves organisation via /api/orgs/[orgSlug] for API compatibility
-  -> GET /api/stripe/connect/status?organisationId=...
-  -> backend maps account into NOT_CONNECTED / PLATFORM_NOT_READY / CONNECTED_INCOMPLETE / RESTRICTED / READY / ERROR
-  -> user may connect, open platform settings, retry onboarding, continue onboarding, fix account, open dashboard, refresh status, or disconnect locally
-  -> browser redirects to Stripe-hosted onboarding when needed
-  -> status refreshes when window regains focus
-```
-
-Current UX by state:
-
-- `NOT_CONNECTED`: show `Connect Stripe Account`.
-- `PLATFORM_NOT_READY`: explain Stripe platform setup is required and show `Open Stripe Platform Settings`, `Retry after completion`, and `Disconnect Stripe account`.
-- `CONNECTED_INCOMPLETE`: explain onboarding is incomplete and show `Continue onboarding`.
-- `RESTRICTED`: explain Stripe requires more information and show `Fix account`.
-- `READY`: show that Stripe is ready and display charges/payout status.
-- `ERROR`: show the Stripe error, retry status check, dashboard link if available, and disconnect.
-
-Current disconnect behavior:
-
-- Disconnect clears local organisation Stripe fields only.
-- It does not delete the Stripe Express account.
-- Clicking `Connect Stripe Account` after disconnect creates a new account unless the old `acct_...` id is manually restored in the DB.
-
-Important security detail:
-
-- The frontend sends `organisationId` only as an input.
-- Every Connect mutation rechecks live Stripe Connect capability and canonical tenant ownership on the server.
-
-## Organiser Orders
-
-Files:
-
-- `app/(dashboard)/dashboard/orders/page.tsx`
-- `app/(dashboard)/dashboard/orders/[orderId]/page.tsx`
-- `app/api/orders/route.ts`
-- `app/api/orders/[orderId]/route.ts`
-- `app/api/orders/[orderId]/refund-manual/route.ts`
-- `app/api/orders/[orderId]/resend/route.ts`
-- `lib/orders/grouped-orders.ts`
-- `lib/orders/order-detail.ts`
-- `lib/email/ticket-delivery.ts`
-
-Flow:
-
-```text
-Page resolves the authorised user's canonical organisation
-  -> requireOrganisationFinanceAccess(organisation.id)
-  -> optionally validates eventId belongs to the current organisation
-  -> query orders scoped through Order.event.organisationId with optional eventId/search/date filters
-  -> render grouped events, buyer, ticket type, quantity, total, status, and timestamps
-```
-
-Access:
-
-- Live finance authority or explicitly enabled legacy authority required.
-- Finance access required.
-
-Current UI:
-
-- Orders are grouped by event.
-- Search supports buyer email.
-- Filters support event id and createdAt date range.
-- Normal status filters support `all`, `paid`, `expired`, and `failed`.
-- Default `all` excludes internal `pending` orders.
-- `Show system orders` enables a debug/system view that can include `pending`.
-- Event-filtered views show an event header and `Back to all orders`.
-- Empty states are shown when no orders match.
-
-Order detail flow:
-
-```text
-Authorised management user opens /dashboard/orders/[orderId]
-  -> page resolves the authorised user's canonical organisation
-  -> query verifies the order belongs to an event owned by the current organisation
-  -> page renders order snapshot data, buyer, event link, issued ticket ids, total, and Stripe session id
-  -> manual refund action calls PATCH /api/orders/[orderId]/refund-manual
-  -> resend action calls POST /api/orders/[orderId]/resend
-```
-
-Rules:
-
-- Organiser order access uses `Order.event.organisationId` as the ownership source of truth.
-- `Order.organisationId` remains stored but should not be used alone for organiser access decisions.
-- Manual refund only sets `Order.isManuallyRefunded`; it never calls Stripe and never changes order status.
-- Manual resend is paid-order only and queues a manual email outbox job.
-- Manual resend updates `ticketEmailResentAt` only after worker success and `ticketEmailLastError` on worker failure.
-- Pending orders remain hidden from normal organiser UI.
-
-## Ticket Email Delivery
-
-Files:
-
-- `lib/email/ticket-delivery.ts`
-- `lib/email/ticket-email-outbox.ts`
-- `lib/payments/checkout-fulfilment-orchestrator.ts`
-- `lib/payments/checkout-reconciliation.ts`
-- `app/api/orders/[orderId]/resend/route.ts`
-- `scripts/process-email-outbox.mjs`
-
-Automatic webhook flow:
-
-```text
-Stripe checkout.session.completed received
-  -> fulfilment orchestrator calls checkout reconciliation
-  -> reconciliation validates paid session and pending order
-  -> transaction marks order paid, confirms reservation, decrements inventory, creates tickets, and creates automatic EmailOutbox job
-  -> reconciliation returns a typed result
-  -> worker sends provider email later
-  -> worker success sets ticketEmailSentAt and clears ticketEmailLastError
-  -> enqueue or worker failure sets ticketEmailLastError where possible
-```
-
-Rules:
-
-- Automatic email is enqueued inside the same transaction as successful payment fulfilment and ticket issuance.
-- Automatic email enqueue failure rolls back the fulfilment transaction. Provider/worker failure after commit cannot reverse payment, reservations, inventory or tickets.
-- Duplicate webhook delivery does not enqueue duplicate automatic ticket email jobs.
-- Manual resend can queue additional manual jobs for paid orders.
-- No attachments, QR codes, or notification preferences exist in the MVP.
+**Owns:** the page map: every `app/**/page.tsx` route with its guard, main data source, main components and notable behaviour; how pages reach data; loading and error boundaries.
+**Read when:** adding, moving or guarding a page, or finding which service and component a screen uses.
+**Not here:** tokens, primitives, shells and copy rules ([[UI Architecture Rules]]); request/response contracts ([[API Reference]]); route guard order ([[Route Security Inventory]]); roles and the permission matrix ([[Authentication and Dashboard Access]]); metric definitions ([[Analytics and Calendar]]).
+
+## Code
+
+| Concern | Where |
+| --- | --- |
+| Management page guard | `lib/auth/page-access.ts`: `requireManagementPage(permission or permissions[], callbackPath)` |
+| Legacy slug redirects | `lib/auth/page-access.ts`: `redirectLegacyOrganisationPage(orgSlug, permissions, legacyPath, target)` |
+| Signed-in and role guards | `lib/auth/access.ts`: `requireAuthenticatedUser`, `requireAccountRole`, `requireCurrentOrganisationAccount` |
+| Optional session (public pages) | `lib/auth/live-session.ts`: `getLiveSession` |
+| Anonymous redirect for `/dashboard` and `/account` | `proxy.ts` (matcher `/dashboard/:path*`, `/account/:path*`) |
+| Context and switcher choices | `lib/auth/context.ts`: `readAccountContext`, `contextChoices` |
+| Shared error and missing pages | `app/error.tsx`, `app/not-found.tsx`, `app/mfa/error.tsx`, `app/(public)/societies/error.tsx` |
+| Public loading states | `app/(public)/societies/loading.tsx`, `app/(public)/events/[eventId]/loading.tsx` |
+| Page tests render helper | `tests/helpers/render.ts`: `renderPage` |
+
+Route groups `(public)` and `(dashboard)` are folders only; they never appear in a URL. Page-local server components sit beside their page: `app/(dashboard)/dashboard/personal-overview.tsx`, `app/(dashboard)/dashboard/society-overview.tsx`, `app/(dashboard)/dashboard/analytics/analytics-tabs.tsx`, `app/(dashboard)/dashboard/orders/commerce-orders.tsx`, `app/(public)/societies/[orgSlug]/viewer.ts`.
+
+## Guards
+
+| Guard | Used by | On failure |
+| --- | --- | --- |
+| `requireManagementPage(p)` | every `/dashboard/*` management page | no session: `/login?callbackUrl=`; staff MFA needed: `/mfa?callbackUrl=`; no live authority or permission: concealed 404. Returns the organisation plus `contexts` for the switcher, read after both checks. An array means any one permission |
+| `requireAuthenticatedUser` | personal pages | page catches `AuthenticationRequiredError` and redirects to `/login?callbackUrl=<page>`; organisation accounts are sent to `/dashboard` |
+| `requireAccountRole(role)` | `/dashboard/organisations` (member), `/dashboard/create` (organisation) | wrong role: `/dashboard` |
+| `getLiveSession` only | public, checkout, payment-return and guest pages | the page decides: anonymous view, login redirect, or guest session |
+| none | static auth-token pages (`/reset-password`, `/change-email`, `/guest/access`, `/staff/invites/accept`) | token authority is checked by the API the form posts to |
+
+Authority is always the live staff row for the selected context ([[Authentication and Dashboard Access]]). Navigation filtering in the shells is presentation; every page and API re-checks.
+
+## Public pages
+
+| Page | Data | Components | Behaviour |
+| --- | --- | --- | --- |
+| `/` | `getPublishedEvents({ limit: 6 })`, `discoverOrganisations` (4) | `components/events/event-card.tsx`, `components/organisations/society-card.tsx`, `components/layout/site-footer.tsx` | `force-dynamic`; listings stream behind a skeleton under the hero; society calls to action only for signed-out visitors; empty state "No upcoming events yet" |
+| `/events` | `parseExploreFilters` (`lib/events/explore-filters.ts`), `getPublishedEvents`, `getExploreSocieties` | `components/ui/filter-bar.tsx`, `components/events/explore-filter-fields.tsx`, `EventCard` | Explore events. Filters `q`, `when`, `from`, `to`, `society`, `cursor`, `direction` in the URL; presets in `Australia/Brisbane` (`defaultTimeZone`); custom range at most 366 days. 20 a page, Earlier/Later events links keep filters. Invalid filter: field errors, no list read. Stale cursor: first page with "That page link has expired". Failed read: danger `Notice` "We couldn't load events", never an empty list |
+| `/events/[eventId]` | `getEventForViewer` (`lib/events/public-events.ts`), `memberPricePlan` | `components/events/public-event-view.tsx`, `components/events/public-ticket-purchase.tsx`, `components/events/members-only-gate.tsx` | Anonymous allowed (T15a). Draft or wrong id: 404. Public and link-only render for everyone; members-only renders only for a member whose membership unlocks it, everyone else gets the gate (noindex). Buy box viewer is `anonymous`, `society`, `unverified` or `member`; member prices only for a verified member holding the plan. Reads only: no expiry or cleanup |
+| `/fees` | `calculatePlatformFee` (`lib/stripe/fees.ts`) | `components/public/policy-page.tsx` | Worked fee examples |
+| `/help`, `/privacy` | none | `PolicyPage` | Static policy pages, `force-dynamic` |
+| `/societies` | `discoverOrganisations` (`lib/organisations/discovery.ts`) | `SocietyCard` | Literal name/slug search: `q` up to 120, default 25, max 50, forward name/id cursor. Bad input: warning `Notice` |
+| `/societies/[orgSlug]` | `publicOrganisation`, `membershipOffers`, `hasShop`, `societyViewer` | `components/organisations/society-header.tsx`, `components/organisations/society-join-card.tsx`, `EventCard` | Public-safe profile and up to 50 upcoming published events. Join control from the caller's own state (anonymous, verify, available, joined, organisation); never auto-joins. Memberships and Merchandise tabs show only when there is something to show |
+| `/societies/[orgSlug]/memberships` | `membershipOffers`, `hasShop`, `societyViewer` | `SocietyHeader`, `SocietyJoinCard` | Offers with the viewer's standing; buy links go to the review page (sign-in link when anonymous; society accounts are told to use a member account; unverified see a verify notice) |
+| `/societies/[orgSlug]/memberships/[planId]/checkout` | `membershipOffer` | `components/layout/checkout-shell.tsx`, `components/memberships/membership-checkout-action.tsx`, `components/purchases/money-summary.tsx` | Requires a session (else login); non-members back to the list; offer not on sale: back to the list. Unverified: verify notice instead of the action |
+| `/societies/[orgSlug]/merchandise` | `shopProducts`, `membershipOffers` | `components/merchandise/shop.tsx`, `SocietyHeader` | Product grid; basket link when products exist |
+| `/societies/[orgSlug]/merchandise/[productId]` | `shopProduct` | `components/merchandise/shop.tsx` | Product page with pickup details |
+| `/societies/[orgSlug]/merchandise/basket` | `publicOrganisation` | `BasketView` (`components/merchandise/shop.tsx`) | Basket kept on the device and re-quoted by the server on every view |
+| `/societies/[orgSlug]/merchandise/checkout` | `readGuestSession`, `publicOrganisation` | `components/merchandise/checkout.tsx` | Members buy signed in; others confirm an email and buy as a guest. Society accounts: back to basket. Unverified member: verify notice. noindex |
+
+`/organisations` and `/organisations/[orgSlug]` are permanent redirects to `/societies` (`next.config.ts`).
+
+## Ticket checkout and payment return
+
+| Page | Guard and data | Behaviour |
+| --- | --- | --- |
+| `/events/[eventId]/checkout` | `getLiveSession`, guest cookie (`readGuestSession`); `getEventForViewer`, `priceForViewer` | One review page for every ticket purchase (T13), `?ticketTypeId=&quantity=&guest=`. Anonymous without a checkout guest session and without `guest=1`: `/login?callbackUrl=` back here. Society account, gated event, unknown type or quantity outside 1 to `maxTicketsPerOrder`: back to the event. `guest=1` first shows `components/guest/guest-email-form.tsx`. Unverified member: "Verify your email to continue". Action is `components/purchases/checkout-action.tsx` (`POST /api/payments/checkout/event`); refusal screens are listed in [[UI Architecture Rules#Checkout state screens]] |
+| `/events/[eventId]/checkout/confirmed` | session required (else login); `getMemberTicketOrder`, `getBookedEventDetail` | Free registration or a completed polled attempt: the buyer's own order for that event, ticket numbers, View my tickets. Not theirs: 404 |
+| `/success` | `getLiveSession`, `getOwnOrderForCheckoutSession` | Never marks anything paid. Outside production only, a `session_id` whose Stripe Session is paid runs `reconcileCompletedCheckoutSessionWithSideEffects` (`source: "dev_success_fallback"`) for missing local webhook forwarding. Shows the buyer's own order state: "Confirming your payment" with `components/purchases/payment-status-poller.tsx` (`GET /api/purchases/tickets/[orderId]/status` every 3 s, 20 checks, then "Still confirming"), "You're going" once fulfilled (says emailed only after `ticketEmailSentAt`), "This checkout didn't complete". No order or not theirs: "Checking payment status" with Go to Purchases |
+| `/cancel` | `getTicketPurchaseStatus`, `mayOpenTicketPurchase`, `pendingCheckoutState` | `?order=`. Names the order only to the member or guest session that bought it. While Stripe's page is open: "You haven't paid yet" with Return to payment and Cancel order (`components/purchases/unpaid-order-actions.tsx`, `POST /api/purchases/tickets/[orderId]/cancel`). Stripe has the payment: "Your order went through". Otherwise "No payment taken" |
+
+Stripe return URLs (`lib/payments/checkout-creation.ts`, `lib/commerce/checkout.ts`): a member's ticket checkout returns to `/success?session_id=`, a guest's to `/guest/orders/[orderId]`, and a cancelled one to `/cancel?order=`. Membership and merchandise checkouts return to `/memberships/orders/[orderId]` or `/merchandise/orders/[orderId]`, with `?left=1` when the buyer left Stripe.
+
+## Buyer pages (personal shell)
+
+All use `requireAuthenticatedUser`; anonymous goes to `/login?callbackUrl=`, organisation accounts to `/dashboard`. All are inside `components/layout/personal-shell.tsx`.
+
+| Page | Data | Behaviour |
+| --- | --- | --- |
+| `/tickets` | `getWalletTickets(userId, view)` (`lib/purchases/ticket-purchases.ts`) | Tabs Upcoming, Past, Not valid (`?view=`). One `components/tickets/ticket-face.tsx` per ticket, grouped by event; first 100 tickets, then "Older ones are in Purchases". Empty state per tab |
+| `/purchases` | `getOwnTicketPurchases`, `getOwnCommerceOrders`, `ownPurchaseCounts` | Family tabs Tickets, Memberships, Merchandise (`?family=`) with counts; cursor pages (`limit`, `cursor`, `direction`); bad pagination: first page with a warning |
+| `/purchases/tickets/[orderId]` | `getOwnTicketPurchase`, `pendingCheckoutState` | Not the buyer's: 404. Unpaid order asks Stripe: Waiting for payment (Return to payment, Cancel order), Confirming payment (poller), Didn't complete. Ticket faces, buyer-safe history (`components/ui/audit-timeline.tsx`). noindex |
+| `/memberships` | `myMemberships(userId, view)` (`lib/memberships/offers.ts`) | Tabs Active, Upcoming, Expired, Revoked with counts; "Memberships don't renew automatically" notice on Active and Upcoming; renew links |
+| `/memberships/orders/[orderId]` | session required (else login); `ownMembershipOrder`, `grantState`, `pendingCheckoutState` | Membership order outcome in `CheckoutShell`; pending polls `/api/commerce/orders/[orderId]`; unpaid offers Return to payment and Cancel (`POST /api/commerce/orders/[orderId]/cancel`); compensation review explained. noindex |
+| `/merchandise/orders/[orderId]` | member session or guest session that can open it (`canOpenGuestCommerceOrder`); `getOwnCommerceOrder` | Same states as the membership order page plus pickup progress. Neither session: login redirect. noindex |
+
+## Guest pages
+
+| Page | Behaviour |
+| --- | --- |
+| `/guest/access` | Emailed link lands here; opening it does nothing, Continue posts the token (`components/guest/guest-access-form.tsx`). noindex, no referrer |
+| `/guest/recover` | Find your purchase (`GuestEmailForm` to `POST /api/guest/recover`); the answer never says whether the address has orders |
+| `/guest/orders/[orderId]` | Opens only with the guest session that bought it or that its link started (`canOpenGuestOrder`, `getGuestOrder`); every other case shows the same "Open your order from your email" page, so an id alone reveals nothing. Shows tickets, unpaid-order actions, and account standing via `components/guest/guest-claim.tsx` (Add to your account, already in an account, different email, verify first) |
+
+## Account and authentication pages
+
+| Page | Guard and data | Behaviour |
+| --- | --- | --- |
+| `/login` | `getLiveSession` | Signed in: straight to the safe `callbackUrl` (`safeReturnPath`). `components/auth/credentials-login-form.tsx` |
+| `/signup` | `getLiveSession` | `?for=society` preselects the society account. `components/auth/signup-form.tsx` to `POST /api/auth/signup` |
+| `/verify-email` | `getLiveSession` | `components/auth/verification-form.tsx`; confirming needs an explicit POST |
+| `/forgot-password`, `/reset-password` | none | `components/auth/password-recovery-form.tsx` (request, confirm); reset signs out all devices |
+| `/change-email` | none | `components/auth/email-change-confirm-form.tsx`; opening the page changes nothing |
+| `/staff/invites/accept` | none | `components/auth/staff-invite-accept-form.tsx` to `POST /api/staff/invites/accept` |
+| `/mfa` | session required (else login); `getStaffMfaStatus`; `MfaInputError` goes to `/dashboard` | Staff authenticator setup and verification (`components/auth/staff-mfa-form.tsx`), returns to a safe `callbackUrl`. `app/mfa/error.tsx` says the service is unavailable |
+| `/account/settings` | `proxy.ts`; `requireAuthenticatedUser`, `readAccountSettings`, `readAccountClosureEligibility`, `getStaffMfaStatus` | Personal shell. Sections: Profile (members), Password and security, Email address, Notifications (members, `PATCH /api/me/notification-preferences`), Close account. Authenticator row only for people who could use it (same eligibility as `/mfa`). Closure blockers in a warning notice. Stale session: login |
+
+## Dashboard: overview and societies
+
+| Page | Guard | Data | Behaviour |
+| --- | --- | --- | --- |
+| `/dashboard` | `proxy.ts`, `requireAuthenticatedUser`, `readAccountContext`; with a selected context `requireCurrentOrganisationAccount` | Personal: `PersonalOverview` (`getWalletTickets`, `getOwnTicketPurchases`, `getOwnCommerceOrders`, `myMemberships`, `upcomingEventCounts`, `readMemberProfile`). Society: `SocietyOverview` (`getOrganisationOverview`, `listDashboardEvents`, `societySales`, `ticketMetrics`) or `DoorOverview` (`getDoorDay`) for `check_in_staff` | Members start personal, staff included; the switcher enters a society. Selected context: MFA needed goes to `/mfa`; lost access goes to `/dashboard/create`. Organisation account with no staff society and no bootstrap: `/dashboard/create`; otherwise "Choose a staff organisation". Overview data streams behind a skeleton after the guards. Section content: [[UI Architecture Rules#Overview content]] |
+| `/dashboard/organisations` | `requireAccountRole("member")` | `getAccessibleOrganisationsForCurrentAccount` | Personal shell. Joined list (`components/organisations/member-organisations-list.tsx`: View society, View events, Leave society with a confirm) and search (`components/organisations/organisation-search.tsx` to `GET /api/orgs/search`, Join to `POST /api/orgs/[orgSlug]/join`). Joining never grants management; leaving keeps staff, purchases and paid memberships |
+| `/dashboard/create` | `requireAccountRole("organisation")`; existing organisation goes to `/dashboard` | none | Auth shell; `components/organisations/create-organisation-form.tsx` posts the name to `POST /api/orgs`, then opens `/dashboard/settings/profile` |
+
+## Dashboard: events
+
+| Page | Guard | Data | Behaviour |
+| --- | --- | --- | --- |
+| `/dashboard/events` | `requireManagementPage("events:read")` | `listDashboardEvents(organisationId, { view, query, publishedOnly, includeSales })` (`lib/events/event-lifecycle.ts`) | Views Upcoming (default, not yet ended), Drafts, Past, All with counts; `?view=`, `?q=` (cut to 100). At most 100 rows a view, says so when more. Sold and left only with `analytics:read`; actions (`components/events/event-actions.tsx`) only with `events:manage`. `check_in_staff`: published only, no Drafts view, links open Attendees. Table from `md`, cards below. List streams behind a skeleton |
+| `/dashboard/events/new` | `requireManagementPage("events:manage")` | `readTimeZone`, `readChargeReadiness`, `entitlementOnSale` | `components/events/create-event-form.tsx` (`organisationId`, `orgSlug`, zone, charge readiness, member-price and members-only availability); `?date=` preselects the start day (from Calendar) |
+| `/dashboard/events/[eventId]` | `requireManagementPage("analytics:read")` | `getDashboardEvent`, `eventTicketTypeMetrics`, `ticketAttendance`, `eventSalesDays` (`lib/analytics/metrics.ts`) | Summary tab of `EventWorkspaceHeader`. Tiles: Tickets sold, Tickets left, Capacity (`occupancy` of `capacity`, issued plus live holds) when set, Checked in, Net sales (only with `orders:read`). Draft: readiness checklist first. Ticket performance table; Sales over time in the society zone behind a skeleton. Foreign or missing event: 404 decided before streaming |
+| `/dashboard/events/[eventId]/tickets` | `requireManagementPage("tickets:check_in")` | `getDashboardEvent`, `getOrganisationEventTickets` | Attendees tab: `components/tickets/check-in-console.tsx` ([[Ticket Check-in Implementation]]). Bad pagination params: redirect to the first page |
+| `/dashboard/events/[eventId]/edit` | `requireManagementPage("events:manage")` | `getDashboardEvent`, `getOrganisationEventForEditing`, `readChargeReadiness`, `entitlementOnSale` | `CreateEventForm` in edit mode; published event shows a notice that changes go live on save; draft shows the readiness checklist beside the form. 404 for a foreign event |
+| `/dashboard/events/[eventId]/preview` | `requireManagementPage("events:manage")` | `getEventPreviewDetail` | Draft preview through `PublicEventView` under a "Draft preview" band. Published event: redirect to `/events/[eventId]`; missing: 404 |
+
+Every event page shares `EventWorkspaceHeader` (`components/events/event-tabs.tsx`); its tabs are in [[UI Architecture Rules#Event workspace]]. Event rules: [[Event Lifecycle]].
+
+## Dashboard: orders
+
+| Page | Guard | Data | Behaviour |
+| --- | --- | --- | --- |
+| `/dashboard/orders` | `requireManagementPage("orders:read")` | Tickets: `getGroupedOrganisationOrdersWithContext` (`lib/orders/grouped-orders.ts`), `listEventOptions`, `getDashboardEvent`. Memberships and merchandise: `listOrganisationCommerceOrders` (`lib/commerce/orders.ts`) via `commerce-orders.tsx` | Family tabs Tickets (default), Memberships, Merchandise (`?family=`). Tickets: status pills All, Paid, Expired, Failed (`orderStatusFilters`); "Show system orders (pending checkouts)" adds Pending (`includeSystem=true`). Filters buyer email (`search`), Event, `startDate`, `endDate`; cursor pages. The read groups by event; the page flattens one table newest first. `?eventId=` of this society swaps the header for `EventWorkspaceHeader` (Orders tab, stays on tickets); a foreign event id gives an empty list. Commerce: pills All, Paid, Free, Refunded, Payment review, Expired; plan or product filter. Date filters are UTC days on both (DEF-049). Results stream behind a skeleton. Pending rows have no link |
+| `/dashboard/orders/[orderId]` | `requireManagementPage("orders:read")` | `getOrganisationOrderDetail`, `getOrganisationOrderLifecycle` (`?historyCursor=`, `?historyDirection=`) | Scoped by `Order.event.organisationId`; foreign or missing: 404. Title `Order` plus the last six id characters. Actions in `components/orders/order-detail-actions.tsx` (refund, cancel free registration, record outside refund, verify compensation refund, resend) and `components/orders/order-review-actions.tsx`; refund needs `orders:refund`. One `Order history` section |
+
+## Dashboard: memberships and merchandise
+
+| Page | Guard | Data | Behaviour |
+| --- | --- | --- | --- |
+| `/dashboard/memberships` | `requireManagementPage("memberships:manage")` | `listPlans` (`lib/memberships/plans.ts`) | Plans and Members tabs; table from 768px; Edit for drafts, Details otherwise; empty state "No membership plans yet" |
+| `/dashboard/memberships/new` | `requireManagementPage("memberships:manage")` | `readTimeZone` | `components/memberships/plan-form.tsx` |
+| `/dashboard/memberships/[planId]` | `requireManagementPage("memberships:manage")` | `readPlan` | Form plus aside: `components/memberships/plan-checklist.tsx`, `components/memberships/plan-actions.tsx`, offer preview. Archived is read-only; a sold plan locks all but the description |
+| `/dashboard/memberships/members` | `requireManagementPage("members:read")` | `listRoster`, `listFreeJoins` (`lib/memberships/roster.ts`) | Pills Active, Upcoming, Expired, Revoked, then Free joins, with counts; `?view=`, `?q=` (100), `?cursor=` |
+| `/dashboard/memberships/members/[grantId]` | `requireManagementPage(["members:read", "orders:read"])` | `readMembership`, `latestCommerceRefundRequest` | Breadcrumb is Memberships > Members with `members:read`, else Orders (finance staff can't open the roster). `components/memberships/membership-actions.tsx`: refund (`orders:refund`), revoke (`memberships:manage`), cancel free; refund and dispute notices via `components/commerce/stripe-review-notice.tsx` |
+| `/dashboard/merchandise` | `requireManagementPage("merchandise:manage")` | `listProducts`, `toPrepareCount` | Products and Pickups tabs (Pickups shows "N to prepare"); empty state "No products yet" |
+| `/dashboard/merchandise/new`, `/dashboard/merchandise/[productId]` | `requireManagementPage("merchandise:manage")` | `readProfile`; `readProduct` | `components/merchandise/product-form.tsx`, `components/merchandise/product-actions.tsx` |
+| `/dashboard/merchandise/pickups` | `requireManagementPage("merchandise:fulfil")` | `listPickups`, `pickupResult` | Stage pills To prepare (default), Ready to collect, Collected, Needs review; `?stage=`, `?q=`, `?cursor=`, `?done=` (success notice after a step). Products tab only with `merchandise:manage`. `components/merchandise/pickup-action.tsx` |
+| `/dashboard/merchandise/orders/[orderId]` | `requireManagementPage(["merchandise:fulfil", "orders:read"])` | `staffMerchandiseOrder`, `pickupSettings` | Breadcrumb is Merchandise > Pickups with `merchandise:fulfil`, else Orders. Items, pickup and money cards; `components/merchandise/order-actions.tsx` (refund, cancel free, returns); finance sees money actions, fulfilment staff see pickup steps |
+
+Product rules: [[Memberships and Merchandise]].
+
+## Dashboard: insights
+
+| Page | Guard | Data | Behaviour |
+| --- | --- | --- | --- |
+| `/dashboard/calendar` | `requireManagementPage("events:read")` | `readCalendar` (`lib/events/calendar.ts`) | Month (default), Week, Agenda (`?view=`, `?date=`); bad date opens today with a warning; more than `calendarEventCap` events: warning; `components/calendar/calendar-views.tsx` |
+| `/dashboard/analytics` | `requireManagementPage("analytics:read")` | `analyticsRange` (`lib/analytics/range.ts`), tabs in `analytics-tabs.tsx` (`lib/analytics/metrics.ts`) | Tabs Tickets, Memberships, Merchandise, Engagement; Memberships, Merchandise and money need `orders:read`. `?tab=`, `?from=`, `?to=`, `?bucket=`, `?eventId=` (this society's events only). Bad range: danger notice "Pick a shorter range", default range used |
+| `/dashboard/history` | `requireManagementPage("audit:read")` | `readHistory`, `historyPeople`, `hasHistory` (`lib/audit/history.ts`) | Filters What, Who, From, To (society-zone days); `?cursor=` pages; stale cursor restarts from newest with a notice. States: Nothing recorded yet, No matches. Content rules: [[Audit Coverage]] |
+
+## Dashboard: settings
+
+| Page | Guard | Data | Behaviour |
+| --- | --- | --- | --- |
+| `/dashboard/settings` | `requireManagementPage("stripe:manage")` | client: `components/settings/stripe-connect-settings.tsx` | Payments. The card resolves the society through `GET /api/orgs/[orgSlug]` and reads `GET /api/stripe/connect/status`; actions call `/api/stripe/connect/onboard`, `/continue`, `/dashboard`, `/disconnect` (authenticator code via `/api/me/mfa/status` when MFA is on). UI rules: [[UI Architecture Rules#Stripe settings]]; states: [[Stripe Payments and Connect#Connect account states]] |
+| `/dashboard/settings/profile` | `requireManagementPage("organisation:settings")` | `readProfile`; `listOrganisationStaff` only with `staff:manage`; `readChargeReadiness` only with `stripe:manage` | Four-step resumable editor (`components/settings/society-profile.tsx`); time zone list computed on the server; Finish checklist shows only facts the caller may see. Rules: [[Society Profiles and Assets]] |
+| `/dashboard/settings/staff` | `requireManagementPage("staff:manage")` | `listOrganisationStaff`, `listPastStaffInvites`; `listHandoverTargets` for owners | `components/settings/staff-management.tsx`; owners also get `components/settings/staff-handover.tsx` |
+| `/dashboard/notifications` | `requireManagementPage("orders:email_resend")` | `listFailedBusinessNotifications` (`lib/email/notification-outbox.ts`) | Email delivery: failed society emails, `components/settings/failed-notifications.tsx` (Send again with a review reason, `POST /api/notifications/[jobId]/requeue`); bad cursor: redirect to the first page. Account-security mail never appears |
+
+## Legacy slug routes
+
+`app/(dashboard)/dashboard/[orgSlug]/layout.tsx` is a pass-through. Each page calls `redirectLegacyOrganisationPage`: unknown slug or no live authority is a 404; MFA needed goes to `/mfa`; a slug that isn't the selected context goes to `/dashboard`; otherwise it redirects to the slugless page. Links are only ever generated slugless.
+
+| Legacy page | Permissions (any) | Target |
+| --- | --- | --- |
+| `/dashboard/[orgSlug]` | `events:manage`, `orders:read`, `tickets:check_in`, `stripe:manage`, `staff:manage` | `/dashboard` |
+| `/dashboard/[orgSlug]/events`, `/dashboard/[orgSlug]/events/new` | `events:manage` | `/dashboard/events`, `/dashboard/events/new` |
+| `/dashboard/[orgSlug]/events/[eventId]/edit` | `events:manage` | `/dashboard/events/[eventId]/edit` |
+| `/dashboard/[orgSlug]/orders` | `orders:read` | `/dashboard/orders` |
+| `/dashboard/[orgSlug]/settings` | `stripe:manage` | `/dashboard/settings` |
+
+## How pages reach data
+
+- **Server pages call `lib/*` services directly**, never their own `/api` routes and never Prisma (`tests/integration/domain-service-boundaries.test.ts`). They pass the organisation id the guard returned.
+- **Client components call the API for every change** through `fetchJson` or `fetchWithCsrf` (`lib/client/api.ts`), then `router.refresh()` to re-read on the server. Main callers: event form and actions (`/api/events`), check-in console (`/api/events/[eventId]/tickets`, `/api/tickets/[ticketId]/check-in`), checkout actions (`/api/payments/checkout/*`, attempt polling via `waitForAttempt` in `lib/client/checkout.ts`), order actions (`/api/orders/[orderId]/*`), memberships and merchandise forms and actions (`/api/orgs/[orgSlug]/memberships/*`, `/api/orgs/[orgSlug]/merchandise/*`), staff and profile settings (`/api/orgs/[orgSlug]/staff/*`, `/profile`, `/assets`), account forms (`/api/me/*`), guest forms (`/api/guest/*`), join and leave, context switcher (`POST /api/me/context`), Stripe settings. Contracts: [[API Reference]].
+- **Reads in the browser** are rare: the check-in console search, the payment status poller, the merchandise basket quote (`POST /api/merchandise/quote`), society search, and the Stripe status card.
+- **Loading:** a page decides every redirect and 404 above its `<Suspense>` boundary, then streams slow reads behind a skeleton (events list, overviews, orders, analytics, calendar, history, plans, roster, products, pickups, Explore, home). There is no root or dashboard `loading.tsx`: it would answer 200 where a page redirects or conceals a 404. Only `/societies` and `/events/[eventId]` have public `loading.tsx` files.
+- **Errors:** `app/error.tsx` says nothing about the cause; `app/not-found.tsx` is also what a foreign tenant resource renders and must not hint that it exists.
+
+## Traps
+
+- Put the guard and any 404 or redirect decision before `<Suspense>`; inside it, the status is already 200.
+- Don't add a `loading.tsx` under `app/` or `app/(dashboard)/`; see Loading above.
+- Pages render their shell after the guard. Don't move a shell into a route-group layout: layouts don't re-render when authority changes.
+- Generate only slugless `/dashboard/*` links. The `[orgSlug]` pages are redirects.
+- Integration tests render pages with `renderPage`, which waits for every boundary; `renderToStaticMarkup` prints only the fallbacks.
+- Scope organiser order and ticket reads by the event's organisation, never `Order.organisationId` or a client-sent id.
+
+## Related
+
+[[UI Architecture Rules]] · [[Architecture Overview]] · [[Authentication and Dashboard Access]] · [[API Reference]] · [[Route Security Inventory]] · [[Event Lifecycle]] · [[Payment Lifecycle]] · [[Ticket Check-in Implementation]] · [[Memberships and Merchandise]] · [[Analytics and Calendar]]

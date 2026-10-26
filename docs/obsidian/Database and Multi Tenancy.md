@@ -1,621 +1,255 @@
 ---
 status: living
-last-reviewed: 2026-10-27
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]"]
-sources: [prisma/schema.prisma, prisma/migrations, lib/db/organisation-scope.ts]
+related: ["[[Architecture Overview]]", "[[Authentication and Dashboard Access]]", "[[Payment Lifecycle]]", "[[Production Operations]]"]
+sources: [prisma/schema.prisma, prisma/migrations, config/schema-contract.json, lib/db/organisation-scope.ts, lib/db/organisation-drift.ts, lib/ops/integrity-audit.ts, lib/staff/live-authority.ts]
 ---
 
 # Database and Multi Tenancy
 
-## Dependency security update (2026-09-18)
-
-Prisma client and CLI are paired at 6.19.3, retaining the current generator, schema and migration history. Its config package resolves Effect 3.21.0 and a reviewed, parent-scoped deepmerge-ts 8.0.2 override. See [[Dependency Automation]] for compatibility evidence and the override removal condition. Test resets use only disposable `_test` databases.
-
-## Tenant Boundary
-
-The tenant boundary is `Organisation`.
-
-Core model:
-
-```text
-User
-  -> accountRole member | organisation
-
-Named staff User
-  -> OrganisationStaff (active role and permissions)
-       -> Organisation
-            -> Event
-                 -> TicketType
-            -> Order
-            -> Ticket
-            -> TicketReservation
-
-Legacy organisation User
-  -> Organisation.accountUserId (configured migration fallback only)
-
-Member account User
-  -> OrganisationMember
-  -> Organisation
-```
-
-Organisation dashboard access is normally granted by an active `OrganisationStaff` row and its live role and permissions. `Organisation.accountUserId` is a controlled legacy fallback governed by `LEGACY_ORGANISATION_ACCESS_MODE`. `OrganisationMember` is member join state and grants no management authority.
-
-## Schema Snapshot
-
-Main models in `prisma/schema.prisma`:
-
-- `User`
-- `AuthToken`
-- `AccountSecurityEvent`
-- `NotificationOutbox`
-- `Organisation`
-- `Asset`
-- `OrganisationMember`
-- `OrganisationStaff`
-- `OrganisationStaffInvite`
-- `AuditLog`
-- `UserMfa`
-- `MfaRecoveryCode`
-- `MfaGrant`
-- `Event`
-- `TicketType`
-- `Order`
-- `CompensationRefundJob`
-- `StripeRefundWebhookEvent`
-- `Ticket`
-- `EmailOutbox`
-- `OrderLifecycleEvent`
-- `TicketReservation`
-
-Enums:
-
-- `OrganisationRole`
-- `OrganisationStaffRole`
-- `OrganisationStaffStatus`
-- `AccountRole`
-- `EventStatus`
-- `CompensationRefundMode`
-- `CompensationRefundState`
-- `OrderStatus`
-- `EmailOutboxMode`
-- `EmailOutboxStatus`
-- `ReservationStatus`
-- `OrderLifecycleEventType`
-- `OrderLifecycleSource`
-
-## Users
-
-Important fields:
-
-- `id`
-- `email` unique
-- `password`
-- `accountRole`
-- `firstName`
-- `lastName`
-- `displayName`
-- `phone`
-- `studentNumber`
-- `onboardingCompletedAt`
-- `createdAt`
-- `emailVerifiedAt`
-- `authVersion`
-- `disabledAt`
-- `closedAt`
-
-`password` stores the bcrypt hash, not the raw password.
-
-## Organisations
-
-Important fields:
-
-- `id`
-- `name`
-- `slug` unique
-- `accountUserId` unique nullable
-- `stripeAccountId`
-- `stripeAccountStatus`
-- `stripeChargesEnabled`
-- `stripePayoutsEnabled`
-- `stripeDetailsSubmitted`
-- `createdAt`
-
-`slug` is the stable tenant-facing identifier used in dashboard routes.
-
-Public profile fields are description, separately supplied supportEmail, refundPolicy, pickupPolicy and timeZone (default Australia/Brisbane). onboardingCompletedAt is derived from name/description/public contact; profileVersion fences stale saves. Nullable logoAssetId and coverAssetId have composite tenant foreign keys to Asset. Assets retain uploader/tenant/key/hash/processed dimensions and state independently of S3 bytes. See [[Society Profiles and Assets]]. Current schema has 22 models and 34 migrations; event, payment and staff authority remain separate from public completion and joins.
-
-Example:
-
-```text
-/dashboard
-```
-
-Legacy slug routes such as `/dashboard/engineering-society` currently redirect to slugless organisation dashboard routes for backwards compatibility.
-
-Stripe fields are local cache/control fields for Connect:
-
-- `stripeAccountId`: Stripe connected account id, e.g. `acct_...`.
-- `stripeAccountStatus`: Thunderstrux lifecycle state string.
-- `stripeChargesEnabled`: cached Stripe `charges_enabled`.
-- `stripePayoutsEnabled`: cached Stripe `payouts_enabled`.
-- `stripeDetailsSubmitted`: cached Stripe `details_submitted`.
-
-Current lifecycle strings:
-
-- `NOT_CONNECTED`
-- `PLATFORM_NOT_READY`
-- `CONNECTED_INCOMPLETE`
-- `RESTRICTED`
-- `READY`
-- `ERROR`
-
-These values are stored as strings, not a Prisma enum.
-
-Meaning:
-
-- `NOT_CONNECTED`: no connected account is stored locally.
-- `PLATFORM_NOT_READY`: account creation was blocked because Stripe platform setup/profile is incomplete.
-- `CONNECTED_INCOMPLETE`: a Stripe account exists, but onboarding details are not submitted.
-- `RESTRICTED`: account details are submitted, but charges are not enabled.
-- `READY`: charges are enabled.
-- `ERROR`: an existing connected account could not be retrieved or synced.
-
-Disconnect is local-only and clears the organisation Stripe fields. It does not delete the Stripe account. Reconnecting to the same old account requires manually restoring the old `acct_...` value into `stripeAccountId` and refreshing status.
-
-## Organisation Members
-
-Fields:
-
-- `userId`
-- `organisationId`
-- `role`
-- `createdAt`
-
-Constraints:
-
-```text
-unique(userId, organisationId)
-```
-
-Member relationship roles:
-
-- `org_owner`
-- `org_admin`
-- `event_manager`
-- `finance_manager`
-- `content_manager`
-- `member`
-
-These rows represent member-account joins. They are not staff invite records and grant no organisation management access.
-
-## Organisation Staff, MFA, And Audit
-
-`OrganisationStaff` is the normal management authority. It records organisation, named user, role and status; capabilities are derived from rolePermissions in lib/permissions/index.ts, not a stored arbitrary permission array. Every protected request resolves live database state so revocation and role changes take effect immediately. `OrganisationStaffInvite` holds expiring hashed tokens, intended role and issuance version.
-
-`UserMfa`, `MfaRecoveryCode`, and `MfaGrant` implement encrypted TOTP enrollment, one-time recovery codes, and login-bound verification grants. Grants expire after 12 hours. `AuditLog` records actor-attributed sensitive management actions. See [[Authentication and Dashboard Access]]. Since T38 (migration `20261110010000_audit_actor_role`) a `BEFORE INSERT` trigger copies the actor's active staff role into `AuditLog.actorRole`, and `AuditLog(organisationId, actorUserId, createdAt)` serves the History page's Who filter; [[Audit Coverage]] lists what each action records.
-
-## Compensation Refunds
-
-`CompensationRefundJob` persists a fenced, retryable automatic refund workflow for paid orders that could not be fulfilled. `StripeRefundWebhookEvent` deduplicates provider events. Identity, amount, currency, PaymentIntent, charge state, and job ownership are verified before transitions. Manual confirmation requires provider evidence. See [[Payment Lifecycle]] and [[Production Operations]].
-
-## Events
-
-Fields:
-
-- `organisationId`
-- `title`
-- `description`
-- `startTime`
-- `endTime`
-- `location`
-- `status`
-
-Current statuses:
-
-- `draft`
-- `published`
-
-### Analytics indexes (T31)
-
-Migration `analytics_indexes` adds `Order(eventId, fulfilledAt)` and `CommerceOrder(organisationId, kind, fulfilledAt)` for sales by fulfilment time, chosen from `EXPLAIN ANALYZE` on synthetic `_test` data ([[Analytics and Calendar]]). They are plain `CREATE INDEX`, which briefly blocks writes to those tables while it builds; at current volumes that is seconds.
-
-### Event changes (T30)
-
-`EventChange` (migration `event_changes_and_preferences`) records a material time or place change to an event with active tickets: old and new start, end and location, the new event version (unique per event), the actor, the fanout `cursor` (last order id queued), `notifiedCount`, and `completedAt` with `outcome` (`sent` or `superseded`; both null or both set). It cascades with its event and society. The same migration adds `User.renewalReminders` (default true) and a `MembershipGrant(endsAt)` index for the reminder scan.
-
-## Ticket Types
-
-Fields:
-
-- `eventId`
-- `name`
-- `price` in integer cents
-- `quantity`
-
-Current rule:
-
-- quantity must be positive on creation
-- quantity means remaining inventory, not original capacity
-- organiser analytics display `quantity` as remaining only
-- sold counts and revenue are derived from paid orders
-
-## Orders, Reservations, And Tickets
-
-`Order` is the checkout and reconciliation record.
-
-`OrderLifecycleEvent` is the append-only operational history for an order. `(orderId, sequence)` is unique and gives deterministic per-order ordering. Organiser reads scope through `Order.event.organisationId`; denormalized `Order.organisationId` is not an independent authority boundary. Existing orders are not backfilled. See [[Payment Lifecycle]].
-
-Important fields:
-
-- `organisationId`
-- `eventId`
-- `ticketTypeId`
-- `userId`
-- `status`
-- `quantity`
-- `unitPrice`
-- `totalAmount`
-- `stripeSessionId` unique
-- `isManuallyRefunded`
-- `requiresCompensationReview`
-- `fulfilmentFailedAt`
-- `fulfilmentFailureReason`
-- `ticketEmailSentAt`
-- `ticketEmailLastError`
-- `ticketEmailResentAt`
-- `paymentKind` (required, no default), `fulfilledAt`
-- purchase snapshots: `purchasedTicketTypeName`, `sellerName`, `sellerStripeAccountId`, `currency`, `feeAmount`, `feePolicyVersion`, `snapshotVersion`
-
-Order tenancy:
-
-- `Event.organisationId` is the source of truth for organiser order access.
-- `Order.organisationId` remains stored as a denormalized field for existing relations/reporting and checkout metadata.
-- Checkout-created orders write `Order.organisationId` from `Event.organisationId`.
-- Organiser order list/detail/action queries must scope through `Order.event.organisationId`, not trust `Order.organisationId` alone.
-- Manual refund and manual resend access inherit the same event-based ownership check.
-- Event analytics counts paid orders through event ownership.
-- Checkout reconciliation validates Stripe organisation metadata against `Event.organisationId`. A stale `Order.organisationId` must not block fulfilment when the Stripe metadata matches the event owner, and reconciliation must not silently repair or overwrite the stale denormalized field.
-- Paid Stripe sessions whose organisation metadata does not match `Event.organisationId` enter compensation review. Non-paid mismatches remain ordinary failed/ignored checkout outcomes.
-
-Current statuses:
-
-- `pending`
-- `paid`
-- `failed`
-- `expired`
-
-`pending` remains in the schema as an internal checkout reconciliation state. It is not part of normal organiser or member UX.
-
-Each order maps to exactly one ticket type through `ticketTypeId`. Organiser analytics group paid orders by `ticketTypeId` and sum `quantity` and `totalAmount` for sold count and revenue.
-
-Order management fields:
-
-- `isManuallyRefunded`: local organiser bookkeeping flag only. It does not call Stripe, change Stripe payment state, or change order lifecycle status.
-- `requiresCompensationReview`: marks paid Stripe sessions where local ticket fulfilment failed and operator review is required. These orders remain `status = failed`, are not valid member tickets, and must not trigger ticket email.
-- `fulfilmentFailedAt`: first recorded timestamp for paid-but-unfulfilled local fulfilment failure. Treat as write-once diagnostics.
-- `fulfilmentFailureReason`: first recorded machine-readable reason for paid-but-unfulfilled local fulfilment failure. Treat as write-once diagnostics.
-- `ticketEmailSentAt`: first successful automatic ticket delivery email timestamp.
-- `ticketEmailLastError`: most recent ticket email delivery error message.
-- `ticketEmailResentAt`: most recent successful manual resend timestamp.
-
-Ticket email delivery tracking is operational state only. It must not be used as payment truth, ticket ownership, refund state, or fulfilment truth.
-
-`EmailOutbox` stores durable ticket delivery email jobs.
-
-`EmailOutbox.processingToken` is a nullable worker lease token. Every claim/reclaim rotates it, and finalization conditionally matches it to fence stale workers.
-
-Important fields:
-
-- `orderId`
-- `mode`: `automatic` or `manual`
-- `status`: `pending`, `processing`, `sent`, or `failed`
-- `attempts`
-- `nextAttemptAt`
-- `processingStartedAt`
-- `lastError`
-- `providerMessageId`
-- `deliveredToProviderAt`
-- `sentAt`
-
-Automatic jobs are unique per order through the raw partial index `EmailOutbox_automatic_order_unique`. Manual jobs are intentionally not unique so organiser resends can queue multiple delivery attempts.
-
-`TicketReservation` is the temporary soft hold created before redirecting to Stripe Checkout.
-
-Important fields:
-
-- `orderId` unique
-- `organisationId`
-- `eventId`
-- `ticketTypeId`
-- `userId`
-- `quantity`
-- `status`
-- `expiresAt`
-- `confirmedAt`
-- `releasedAt`
-- `releaseReason`
-
-Reservation tenancy:
-
-- `Event.organisationId` is the source of truth for organisation-scoped reservation lifecycle operations.
-- `TicketReservation.organisationId` remains stored as a denormalized field for existing relations/reporting and checkout metadata.
-- Organisation-scoped stale reservation cleanup must scope through `TicketReservation.event.organisationId`, not trust `TicketReservation.organisationId` alone.
-
-Reservation statuses:
-
-- `active`
-- `confirmed`
-- `released`
-- `expired`
-
-Rules:
-
-- active reservations reduce checkout availability
-- a paid hold lasts 30 minutes plus Stripe's 60-second margin (the Stripe page), then 5 more minutes for a late webhook (DEF-033)
-- expired reservations do not reduce availability
-- pending orders linked to expired reservations are marked `expired` by the stale-order worker, the only place that expires them
-- legacy pending orders without reservations are marked `expired` by the stale-order worker once they are older than 30 minutes
-- normal reservation expiry does not set `Order.failureReason`
-- Stripe Checkout `expires_at` is the buyer's deadline; the reservation ends 5 minutes after it
-- paid webhook reconciliation confirms reservations atomically with order payment, inventory decrement, and ticket creation
-
-`Ticket` is the issued unit created after a paid webhook reconciliation.
-
-One paid order creates `quantity` ticket rows.
-
-Important fields:
-
-- `organisationId`
-- `eventId`
-- `ticketTypeId`
-- `orderId`
-- `checkedInAt`
-- `createdAt`
-
-Ticket check-in/check-out state:
-
-- `checkedInAt = null`: unused.
-- `checkedInAt != null`: checked in.
-- Check-in is the only mutable ticket operational state in the MVP.
-- Ticket access for visibility and check-in/check-out is authorised through `Ticket.event.organisationId`.
-- `Ticket.organisationId` remains stored for existing relations/reporting, but event ownership is the access source of truth.
-- Ticket issuance always writes `Ticket.organisationId` from `Event.organisationId`. If historical order data has a different `Order.organisationId`, webhook reconciliation logs the mismatch and still creates tickets with the event organisation.
-- Check-in and check-out must not modify order status, Stripe data, ticket ownership, ticket type history, or payment state.
-- Double check-in is prevented by atomically updating only tickets where `checkedInAt` is still `null`.
-- Invalid check-out is prevented by atomically updating only tickets where `checkedInAt` is not `null`.
-- Organiser ticket listing is cursor-paginated by event using stable ordering on `Ticket.createdAt` and `Ticket.id`.
-- `Ticket(eventId, createdAt, id)` is indexed for event ticket cursor pagination.
-
-Composite query indexes added in P1.10:
-
-- `Event(status, startTime, id)` supports public event discovery ordered by start time.
-- `Order(eventId, status, createdAt, id)` supports event/order reads and future event-scoped order pagination.
-- `Order(userId, status, createdAt, id)` supports member ticket wallet and future member order pagination.
-- `Order(status, createdAt)` supports stale pending order worker selection.
-- `TicketReservation(status, expiresAt)` supports global stale active reservation cleanup.
-
-Non-blocking index notes:
-
-- Existing single-column `Order(eventId)` and `Order(userId)` overlap with the left-most prefixes of the new composite order indexes. They were intentionally kept in P1.10; remove only after production query/index-usage evidence.
-- `TicketReservation(orderId)` overlaps with the unique `TicketReservation(orderId)` backing index and predates P1.10. Treat removal as later DB hygiene, not part of the composite-index slice.
-
-## Database Integrity Audit And Numeric Constraints
-
-P1.8 added a read-only audit followed by numeric and narrow lifecycle constraints. The production-readiness work later added the failed-order timestamp constraint after a clean preflight. Cross-row relationship checks remain audit-only.
-
-Run:
-
-```bash
-pnpm db:integrity:audit
-```
-
-The audit remains read-only. Each check reports a class, violation count, and up to 10 sample ids. Since T41 it exits non-zero only for unexplained violations: a check may carry a `legacy` explanation for rows from before its feature existed, which are printed with that explanation but don't fail the run. The checks live in `lib/ops/integrity-audit.ts`, so the restore verifier and the integration tests run the same ones.
-
-Audit classes:
-
-- `numeric`: low-risk candidates for later check constraints.
-- `lifecycle-risk`: lifecycle candidates that need payment, compensation, webhook, and stale-cleanup review before constraints.
-- `relationship/audit-only`: cross-row consistency checks that are not simple check-constraint candidates.
-
-Active numeric check constraints:
-
-- `TicketType_quantity_nonnegative_chk`: `TicketType.quantity >= 0`
-- `TicketType_price_nonnegative_chk`: `TicketType.price >= 0`
-- `Order_quantity_positive_chk`: `Order.quantity > 0`
-- `Order_unitPrice_nonnegative_chk`: `Order.unitPrice >= 0`
-- `Order_totalAmount_nonnegative_chk`: `Order.totalAmount >= 0`
-- `TicketReservation_quantity_positive_chk`: `TicketReservation.quantity > 0`
-
-Active lifecycle check constraints:
-
-- `Event_endTime_after_startTime_chk`: `Event.endTime > Event.startTime`
-- `Order_paid_requires_paidAt_chk`: paid orders require `paidAt`
-- `Order_expired_has_no_paidAt_chk`: expired orders must not have `paidAt`
-- `Order_failed_requires_failedAt_chk`: failed orders require `failedAt`
-
-Audited checks:
-
-- `TicketType.quantity >= 0`
-- `TicketType.price >= 0`
-- `Order.quantity > 0`
-- `Order.unitPrice >= 0`
-- `Order.totalAmount >= 0`
-- `TicketReservation.quantity > 0`
-- `Event.endTime > Event.startTime`
-- paid orders require `paidAt`
-- failed orders require `failedAt`
-- expired orders must not have `paidAt`
-- pending reservation-backed orders should have active reservations
-- reservation quantity should match order quantity
-- reservation event should match order event
-- reservation ticket type should match order ticket type
-
-Latest local Docker audit before Phase 3 migration: 14 checks, 0 violations.
-
-Compensation shape, ticket count, and reservation/order cross-row relationship checks remain audit-only. Add database enforcement only after production-copy audit and lifecycle review.
-
-Current operational follow-up:
-
-- Run `pnpm db:integrity:audit` and the ownership-drift tool against representative production data before rollout.
-- Run dry-run `pnpm db:organisation-drift:repair`; apply only with an approved backup and maintenance procedure.
-- Keep canonical relation paths as authorization authority even after repairing denormalized organisation IDs.
-
-### T41 checks, the paid-total constraint and the upgrade rehearsal
-
-T41 brings the audit to 40 checks. The new ones cover free orders (no charge, no Stripe Session), paid ticket totals, a buyer on every order, purchase snapshots, no valid tickets on a refunded or cancelled order, every ticket issued for a fulfilled order, confirmed refunds within the order total, commerce line and order arithmetic and fees, a grant for every fulfilled membership, positive and non-overlapping terms, revoked grants on refunded memberships, non-negative merchandise stock, day-old ticket holds and commerce checkouts the workers should have closed, outbox jobs processing for over an hour, and sent notices without a provider acceptance. Two checks carry legacy explanations: orders fulfilled before purchase snapshots (T10) have none, and orders created before account closure (5 Oct 2026) may have neither a user nor a guest identity; orders since then are checked strictly.
-
-`tests/integration/integrity-audit.test.ts` builds a clean society that passes every check, then breaks each invariant directly in the database: the write is either refused by a constraint (free charge, paid total, commerce line, total and fee, grant term, revoke on refund, negative stock) or the matching check's count rises. Nothing repairs history.
-
-Migration `20261111010000_order_paid_total_check` adds `Order_paid_total_matches_units_chk` (a paid order's total is its unit price times its quantity), after the audit found no exceptions in any development dump. Rollback: older code never writes a different total, so it runs unchanged against this schema. Grant overlap stays audit-only: an exclusion constraint needs `btree_gist`, which waits for the chosen host (H-series).
-
-`node scripts/rehearse-upgrade.mjs <archive.dump> [...]` restores each archive into a throwaway Postgres 16 container as `upgrade_rehearsal_test`, applies this checkout's migrations, runs the audit and compares row counts, then removes the container; it never touches the dev or production volumes. Archives written by a newer `pg_dump` (format 1.16) are skipped with a reason. The operations rehearsal also audits the seeded release and the restored copy (`scripts/verify-restored-database.mjs`), failing on anything unexplained.
-
-Upgrade rehearsal, 23 Oct 2026: 12 development dumps from 21 Sep to 22 Oct (22 to 58 migrations each) all upgraded to 59 migrations with no rows lost and no unexplained violations. Each reports the same 13 explained legacy rows (one order from April with no buyer, 12 orders fulfilled before snapshots). One dump from 27 Sep was skipped: a newer `pg_dump` wrote it.
-
-Representative plans, 23 Oct 2026 (`EXPLAIN ANALYZE` on a synthetic `scale_plans_test` database, one society with 400,000 audit rows over three years, 85% of them check-ins, among 1,000,000 rows in 11 societies, and 13,000 events): History's first page reads 52 rows backwards along `AuditLog(organisationId, createdAt)` in 0.4 ms; one person's actions use `(organisationId, actorUserId, createdAt)` in 0.2 ms; a month of staff actions takes 0.9 ms; the rarest filter (payments setup, one row in 1,000) skips 52,000 rows in 13.4 ms. A calendar month reads one society's 3,000 events through `Event(organisationId, status)` in 1.0 ms (0.6 ms for published only). No index was added.
-
-## Multi-Tenant Access Pattern
-
-The backend resolves tenant access through:
-
-- authenticated user
-- active `OrganisationStaff` status, role, and permissions
-- canonical target organisation resolved server-side
-- explicitly configured legacy ownership through `Organisation.accountUserId` during migration
-- member join relationships through `OrganisationMember`
-
-Common patterns:
-
-- `requireCurrentOrganisationAccount()`
-- `getCurrentOrganisationAccount()`
-- `requireOrganisationAccessBySlug(orgSlug)`
-- `requireOrganisationEventManagementAccess(organisationId)`
-- `requireOrganisationFinanceAccess(organisationId)`
-- `requireOrganisationStripeConnectAccess(organisationId)`
-
-Organisation-management decisions are based on live named-staff authority, with only the configured legacy fallback. Member join rows never grant management access.
-
-## Organisation Scope Helpers
-
-File:
-
-```text
-lib/db/organisation-scope.ts
-```
-
-Important helpers:
-
-- `requireOrganisationId`
-- `scopedByOrganisation`
-
-Current note:
-
-- The helper layer supports validating `x-org-id`, but the security boundary is the server-resolved tenant and live staff capability or explicitly enabled legacy fallback.
-
-## Public vs Private Data
-
-Public APIs:
-
-- return published event data only
-- do not require authentication
-
-Private APIs:
-
-- require authentication
-- require active staff authority and the needed live capability for management routes
-- allow legacy ownership only when the migration mode explicitly permits it
-
-Checkout is public-facing in URL shape, but requires a live active verified member identity and server-side event resolution.
-
-## Account Lifecycle And Retained Records
-
-The account-lifecycle delivery reached 21 models and 31 migrations through 20261005030000_account_closure. AuthToken stores purpose-bound digests and email/authVersion/expiry binding; AccountSecurityEvent is a private account ledger. NotificationOutbox stores encrypted immutable versioned intents and rotating worker leases separately from ticket EmailOutbox.
-
-Closure permanently retains the User ID/closedAt and disables credentials. Database guards prevent reopening. Immutable Order buyer email/name captures include provenance/date; closure fills missing captures from current account data without inventing purchase-time facts. Orders, tickets, attendance and audit/security records remain attached to the original user; new signup never inherits them. See [[Authentication and Dashboard Access]] and [[Email Delivery Implementation]] for the transactional fences and contact-reader rules.
-
-## Invitation version migration
-
-`20261009010000_private_staff_invites` adds positive invitation versions, nullable outbox invite/version linkage, indexes and foreign-key/check constraints. Existing invitations start at version 1; no raw tokens are recovered and old invites are not automatically mailed. New private invitation mail and audits commit with their invitation mutation. Sorted User locks precede Organisation then invite/staff locks, shared with account closure, email change and staff management. That delivery reached 32 migrations with 21 models.
-
-## Society assets and profiles
-
-T07/T08 bring the current chain to 34 migrations and 22 models, ending in 20261011020000_society_profiles. Asset metadata retains tenant/uploader ownership, processed-byte hash and recoverable state; object bytes live separately. Profile logo/cover references use `(assetId, Organisation.id)` composite foreign keys to `(Asset.id, organisationId)`. Profile version and derived completion protect concurrent editable public fields, while event/payment authority is unchanged. Existing societies remain visible with empty public defaults. [[Society Profiles and Assets]] owns reference locks, delayed cleanup, bootstrap eligibility and metadata/object restore compatibility.
-
-## Purchase snapshots and ticket validity
-
-T10 brings the chain to 35 migrations (still 22 models), ending in `20261015010000_ticket_purchase_snapshots`. It adds the `PaymentKind` and `TicketValidity` enums, the Order snapshot fields above, and Ticket `issueSequence` (unique per order, positive), `validity`, `validityReason` and `validityChangedAt`. New checks: a fulfilled order is paid, a free order totals zero, and a recorded fee lies between zero and the total. `Order_buyer_capture_check` now accepts provenance `purchase` as well as `current_account_at_capture`, and the existing trigger keeps either capture immutable. The backfill records only facts the rows prove (every existing order is a Stripe order; `fulfilledAt` from the first ticket; ticket numbers by creation order); unknown names and fees stay null. `pnpm db:integrity:audit` reports paid orders without `fulfilledAt` and orders with more tickets than their quantity. Rollback: the columns are additive, but older code cannot create orders once `paymentKind` is required, so pause checkout before running an older release against this schema. [[Payment Lifecycle]] owns the behaviour.
-
-## Event policy
-
-T11 brings the chain to 36 migrations (still 22 models), ending in `20261016010000_event_policy`. Event gains `capacity` (nullable, positive), `visibility` (`EventVisibility`, default `public`), `salesCloseAt` (backfilled from `startTime`, then required), `saleState` (`EventSaleState`, default `open`) and `version` (default 1, positive). No capacity is invented for existing events. Rollback keeps the columns; older code cannot create events once `salesCloseAt` is required, so pause event creation before running an older release against this schema. [[Event Lifecycle]] owns the behaviour.
-
-## Checkout attempts
-
-T14a brings the chain to 37 migrations and 23 models, ending in `20261017010000_checkout_attempts`. `CheckoutAttempt` records one intended checkout: `family` (`ticket`; commerce families arrive with T21), `actorKind` (`user`; `guest` arrives with T16a) and `actorId`, `operationType`, the client's `clientIdempotencyKey` (unique per actor, family and operation), `requestHash`, a unique optional `orderId`, a unique `providerOperationKey` sent to Stripe, a unique `stripeSessionId` with its URL, `state`, `reconcileDueAt` and `lastOutcome`. Checks: only ticket attempts bind an Order, and an attached attempt has its Session. The integrity audit flags an attempt whose Session differs from its order's. No existing order gets an attempt. Rollback leaves the table unused; older code ignores it. [[Payment Lifecycle]] owns the behaviour.
-
-T14b brings the chain to 38 migrations (still 23 models), ending in `20261018010000_checkout_attempt_recovery`: nullable `CheckoutAttempt.providerRequest` (JSONB, the exact Session request replayed by recovery; no secrets) and the `checkout_recovery` order lifecycle source. Attempts created before it have no stored request and are failed, not replayed. Rollback leaves the column and enum value unused.
-
-T11b brings the chain to 39 migrations (still 23 models), ending in `20261019010000_event_hero_image`: nullable `Event.heroAssetId` with an index and a composite foreign key `(heroAssetId, organisationId)` to `(Asset.id, organisationId)`, `ON DELETE RESTRICT`, so an event can only reference an image of its own society. No existing event gets an image. Rollback leaves the column unused; older code ignores it. [[Event Lifecycle]] owns the behaviour.
-
-T13 brings the chain to 40 migrations (still 23 models), ending in `20261020010000_free_ticket_lifecycle`: the `free_fulfilled` order lifecycle event. Free orders use the existing `paymentKind = free` and its zero-total check. Rollback leaves the enum value unused.
-
-T16a brings the chain to 41 migrations and 25 models, ending in `20261023010000_guest_access`. `GuestIdentity` holds one normalised email (a check enforces lower-case and trimmed) and when it was first proven. `GuestAccessGrant` holds one emailed link per row: purpose, unique token digest, safe return path, expiry, consumed and revoked times, and after redemption a unique session digest with its expiry (a check requires both together, and only on a consumed grant). `Order.guestIdentityId` (nullable, restrict) is for guest purchases in T16b, and `NotificationOutbox.guestAccessGrantId` (set null) lets the worker cancel a link's email once the link is used, replaced or revoked. `Order_buyer_capture_check` also accepts the provenance `verified_guest`. All additive; rollback leaves the tables unused. Lock order: the `GuestIdentity` row before its grants, and (from T16b) before the Event and Order rows.
-
-T16b brings the chain to 42 migrations (still 25 models), ending in `20261024010000_guest_checkout`: `CheckoutActorKind` gains `guest`, and `GuestAccessGrant.orderId` (restrict) scopes a purchase link to one order, with a check that `checkout` grants have no order and `purchase` grants always do. A guest checkout locks the `GuestIdentity` row in place of the User row, then the Event and TicketType as before. Rollback leaves the value and column unused.
-
-T28b brings the chain to 56 migrations and 36 models, ending in `20261107010000_merchandise_returns`: `MerchandiseReturn` (one recorded return of one merchandise line: quantity 1 to 10, `restocked`, reason, actor, a unique `operationKey`; composite foreign key to `CommerceOrderLine(id, organisationId)` so it stays in the line's society) and the `return_recorded` history event. Rollback leaves the table unused.
-
-T28a brought the chain to 55 migrations (still 35 models), ending in `20261106010000_merchandise_pickups`: the `MerchandisePickupStatus` enum (`pending`, `ready`, `collected`), `CommerceOrder.pickupStatus` (merchandise orders only, database check; index on `(organisationId, pickupStatus, createdAt, id)`) and the `pickup_ready` and `pickup_collected` history events. Staff steps bump the existing `CommerceOrder.version`. Paid, fulfilled merchandise orders not under review are backfilled to `pending`. Rollback leaves the column and enum values unused.
-
-Guest merchandise links brought the chain to 54 migrations (still 35 models), ending in `20261105010000_guest_commerce_order_links`: `GuestAccessGrant.commerceOrderId` (nullable, restrict, indexed) lets a purchase link open one merchandise order. The scope check is replaced, keeping its rules: a `checkout` grant names no order of either kind, and a `purchase` grant names exactly one (`num_nonnulls("orderId", "commerceOrderId") = 1`). Additive; rollback leaves the column unused, but the old check must not be restored while a commerce link row exists.
-
-T27a brings the chain to 53 migrations (still 35 models), ending in `20261104010000_merchandise_sale`: `CommerceOrderLine.merchandiseVariantId` (merchandise lines only, database check; composite foreign key to `MerchandiseVariant(id, organisationId)`, so a line can't name another society's option; unique per order; indexed). Checkout holds are not a table: the lines of a pending Stripe order before its `expiresAt` hold their stock, so a hold ends exactly when its order is paid, fails or expires. Rollback leaves the column unused.
-
-T25 brought the chain to 52 migrations and 35 models, ending in `20261103010000_merchandise_catalogue`: `MerchandiseProduct` (draft, published or archived; `firstPublishedAt` never cleared), `MerchandiseProductImage` (up to four, positions 0 to 3, composite foreign keys to the product and to an `Asset` of the same society) and `MerchandiseVariant` (colour, size, a SKU unique per society, price and stock checked in the database, `archivedAt` when it stops selling, composite foreign key to the product). See [[Memberships and Merchandise]].
-
-T24b1 brought the chain to 51 migrations (still 32 models), ending in `20261102010000_ticket_member_price`: `TicketType.memberPrice` (at most `price`, database check) and `Order.membershipGrantId` with `membershipEntitlementVersion` (both or neither, foreign key to the grant, fixed by the `Order_preserve_member_price` trigger).
-
-T23c brought the chain to 50 migrations (still 32 models), ending in `20261101010000_commerce_refunds`: `RefundRequest.orderId` becomes optional beside a new `commerceOrderId` (exactly one of them, database check; index on `(commerceOrderId, createdAt)`), `CommerceOrder.refundStatus` (the refund fence, Stripe payments only) and the commerce refund history events (`refund_requested`, `refund_pending`, `refunded`, `refund_failed`).
-
-T23b brought the chain to 49 migrations (still 32 models), ending in `20261031010000_membership_revocation`: `CommerceOrder.cancelledAt`, `cancelledByUserId` and `cancellationReason` (a free, paid-status order only, reason 8 to 500 characters; never a refund), the `free_cancelled` commerce history event and a length bound on `MembershipGrant.revocationReason`.
-
-T22 brought the chain to 48 migrations and 32 models, ending in `20261030010000_memberships`: `MembershipProduct` (a society's fixed-term plan: integer AUD price, half-open `[startsAt, endsAt)`, whitelisted `MembershipEntitlement[]` with an `entitlementVersion`, `MembershipPlanStatus` draft, published or archived with matching `publishedAt` and `archivedAt`, version; unique `(id, organisationId)`), `MembershipGrant` (one per purchased line through a unique `commerceOrderLineId` that is also pinned to the grant's society by `(commerceOrderLineId, organisationId)`, plan reference `(membershipProductId, organisationId)`, copied term and rights, revocation with a required reason) and `CommerceOrderLine.membershipProductId` (membership lines only, same-society composite key; `CommerceOrderLine` gains unique `(id, organisationId)` for it). Triggers keep a sold plan's name, term, price and rights fixed and never let a plan move society, and keep a grant's facts fixed apart from a single revocation. Lock order for plans: User, Organisation, then the plan row. See [[Memberships and Merchandise]].
-
-T21 brought the chain to 47 migrations (still 30 models), ending in `20261029010000_commerce_checkout`: `CommerceOrder.feePolicyVersion` becomes text (the fee policy is a name such as `platform_fee_10_percent_v1`, as on ticket orders; T20 had declared it an integer, and no commerce order existed yet), `CommerceOrder.expiresAt` with an index on `(status, expiresAt)` for the stale-order worker, and the `stripe_session_attached` commerce history event. Lock order for commerce: the family's resources, then the commerce order. The readiness schema contract (`config/schema-contract.json`) now names this migration; it had stayed on T13's `20261020010000_free_ticket_lifecycle`.
-
-T20 brought the chain to 46 migrations and 30 models, ending in `20261028010000_commerce_orders`: membership and merchandise orders, kept apart from ticket orders.
-
-- `CommerceOrder`: one society (`organisationId`) and one family (`kind`: `membership` or `merchandise`); a member buyer (`userId`, set null on account closure) or, for merchandise only, a verified guest (`guestIdentityId`), never both; `status` and `paymentKind` reuse the ticket enums; integer `totalAmount` and `feeAmount` (the platform fee, at most the total; a free order totals zero with no Stripe Session); buyer email and name snapshots; seller name, support email, Stripe account and fee policy snapshots; Stripe Session (unique) and PaymentIntent; compensation-review flag and reason; `version`; paid, fulfilled (only when paid) and failed facts.
-- `CommerceOrderLine`: reaches its order through the composite key `(orderId, organisationId, kind)` on `CommerceOrder(id, organisationId, kind)`, so the database refuses a line of another family or another society. Line numbers 1 to 10 (unique per order), quantity 1 to 10 (a membership line is exactly 1), `lineAmount = quantity × unitAmount`, a currency, name and optional variant snapshot, and for a membership a term with `termEndsAt` after `termStartsAt`. Product references arrive with the product tables (T22 memberships, T25 merchandise), through `(organisationId, productId)` so they stay tenant-safe too.
-- `CommerceLifecycleEvent`: unique `(commerceOrderId, sequence)`, appended under the order lock (`lockCommerceOrder`).
-- Triggers keep lines and history append-only, and keep an order's society, family, guest buyer, payment kind, currency, amounts, buyer and seller snapshots and creation time from changing; status, provider references and review fields still move.
-- `CheckoutAttempt.commerceOrderId` (unique) and the `membership` and `merchandise` checkout families; a check refuses a commerce order on a ticket attempt, and the existing check refuses a ticket order on a commerce attempt.
-
-Migration `20261115010000_society_payouts` (PAY-005) adds `SocietyPayout` and its `SocietyPayoutStatus` enum (`pending`, `paid`, `failed`). Each row records the society, the connected account, Stripe's unique payout id, the amount (checked positive), the currency, a failure message and the arrival date. It also adds `Organisation.payoutCheckedAt`, the payouts worker's hourly claim. Additive; the readiness schema contract names this migration. An older release ignores both, and its connected accounts stay on whatever payout schedule Stripe has, so rolling back means switching them back to Stripe's schedule (disconnect does this per society).
-
-Migration `20261114010000_dispute_transfer_reversal` (PAY-004) adds the `DisputeReversalStatus` enum (`pending`, `uncertain`, `succeeded`, `failed`). On `PurchaseDispute` it adds the reversal's state: `reversalStatus`, `reversalAmount` (checked positive), `stripeTransferReversalId` (unique), `reversalAttempts`, `reversalNextAttemptAt`, the worker lease (`reversalProcessingToken`, `reversalProcessingStartedAt`) and `reversalLastError`, indexed on status and next attempt. It also adds the `dispute_funds_recovered` lifecycle event for ticket and commerce orders. Lock order is unchanged: the purchase, then its dispute. Additive; an older release ignores the columns, and a reversal queued meanwhile waits until the worker that sends it is back.
-
-`RefundRequest` gained `commerceOrderId` in T23c. `CompensationRefundJob` stays ticket-only: commerce compensation refunds run on `RefundRequest` (PAY-003). Migration `20261113010000_commerce_payment_recovery` (PAY-003) adds `CommerceOrder.disputeStatus`, `externalRefundedAmount` (checked non-negative) and `externalRefundReviewedAt`, and makes `PurchaseDispute.orderId` nullable beside a new `commerceOrderId`, checked so exactly one is set. Additive; an older release ignores the new columns, and commerce disputes recorded meanwhile stay in the table.
-
-T18c brought the chain to 45 migrations (still 27 models), ending in `20261027010000_free_purchase_cancellation`: `Order.cancelledAt`, `cancelledByUserId` (set null if the user is deleted) and `cancellationReason`, with a check that only a free order is cancelled and always with a reason of 8 to 500 characters, and the `free_cancelled` lifecycle event. Order's buyer relation is now named `OrderBuyer` in the schema only (no database change). It also tightens T18b's `PurchaseDispute_resolution_chk`, which let a missing reason through because a check on NULL passes. Additive apart from that constraint; rollback leaves the columns unused.
-
-T18b brought the chain to 44 migrations and 27 models, ending in `20261026010000_purchase_disputes`: `PurchaseDispute` (order, society, unique Stripe dispute id, charge, amount, currency, Stripe reason and status, evidence due date, closed time, and the staff restore: who, when and a reason of 8 to 500 characters, enforced by a check), `Order.disputeStatus` (`open`, `won` or `lost`: the dispute fence), `Order.externalRefundedAmount` (non-negative) and `Order.externalRefundReviewedAt`, and five lifecycle events (`dispute_opened`, `dispute_closed`, `dispute_resolved`, `external_refund_recorded`, `external_refund_reviewed`). Lock order: Order, then its dispute and tickets. Additive; rollback leaves the columns unused.
-
-T18a brought the chain to 43 migrations and 26 models, ending in `20261025010000_purchase_refunds`: `RefundRequest` (order, society, amount and currency, reason of 8 to 500 characters, actor, unique `operationKey` and Stripe refund id, PaymentIntent and destination snapshot, status `pending`, `uncertain`, `succeeded` or `failed`, a processing lease and timestamps), `Order.refundStatus` (`processing` or `refunded`: the financial fence shared with compensation) and `Order.stripePaymentIntentId`, four refund lifecycle events, and `StripeRefundWebhookEvent.refundRequestId` so the refund webhook journal covers ordinary refunds. Lock order: Order, then its refund request and tickets. Additive; rollback leaves the columns unused.
-
-T16c needs no migration. A member claim locks User, then GuestIdentity, then Order, sets `Order.userId` and writes an `AuditLog` row (`order.guest_claimed`, the society's tenant, actor the member, metadata the guest identity). The buyer capture columns are unchanged, as their trigger requires.
+**Owns:** the tenant boundary, every Prisma model and enum, indexes, database constraints and triggers, lock order, the integrity audit, migration policy and worker leases.
+**Read when:** adding or changing a model, enum, index, constraint or migration; writing a query that crosses societies; taking row locks.
+**Not here:** what each order, ticket or hold state means ([[Payment Lifecycle]]); Connect account states ([[Stripe Payments and Connect#Connect account states]]); roles and permissions ([[Authentication and Dashboard Access#Roles and permissions]]); check-in rules ([[Ticket Check-in Implementation]]); deploy and backups ([[Production Operations]]).
+
+## Code
+
+| Concern | Where |
+| --- | --- |
+| Schema (every field) | `prisma/schema.prisma` |
+| Migrations | `prisma/migrations/` (SQL; constraints and triggers live only here) |
+| Newest migration the app needs | `config/schema-contract.json` `requiredMigration`, checked by `checkDatabaseReadiness` in `lib/ops/readiness.ts` |
+| Prisma client | `lib/db/index.ts` |
+| Scope helpers | `lib/db/organisation-scope.ts`: `requireOrganisationId`, `scopedByOrganisation`, `OrganisationScopeError` (400), `OrganisationMismatchError` (403) |
+| Live staff authority | `lib/staff/live-authority.ts`: `liveStaffRole`, `legacyOrganisationAccessMode` |
+| Integrity audit | `lib/ops/integrity-audit.ts`: `runDatabaseIntegrityAudit`; CLI `scripts/audit-db-integrity.ts` (`pnpm db:integrity:audit`) |
+| Drift repair | `lib/db/organisation-drift.ts`: `repairOrganisationDrift`; `pnpm db:organisation-drift:repair` |
+| Worker leases | `lib/ops/worker.ts` |
+| Tests | `tests/integration/organisation-tenancy.test.ts`, `tests/integration/organisation-creation.test.ts`, `tests/integration/organisation-drift-repair.test.ts`, `tests/integration/integrity-audit.test.ts`, `tests/integration/account-closure.test.ts` |
+
+## Tenant boundary
+
+The tenant is `Organisation` (a society).
+
+- **Event-owned rows:** `Event.organisationId` is the only owner of an event's `TicketType`, `Order`, `Ticket`, `TicketReservation` and `EventChange` rows. Organiser reads and actions scope through `<row>.event.organisationId` (or load the event with `scopedByOrganisation(organisationId, { id: eventId })` first).
+- **Denormalised copies are not authority.** `Order.organisationId`, `Ticket.organisationId` and `TicketReservation.organisationId` are written from `Event.organisationId` at creation and kept for relations and reporting. Never authorise from them. Webhook reconciliation checks Stripe metadata against `Event.organisationId`: a stale `Order.organisationId` doesn't block fulfilment, isn't repaired silently, and tickets are issued with the event's organisation. A paid Session whose metadata names another organisation goes to compensation review ([[Payment Lifecycle]]).
+- **Rows with their own owner:** commerce, membership, merchandise, asset, refund, dispute and payout rows carry `organisationId` as their owner. Children reach it through composite foreign keys (`(id, organisationId)`), so the database refuses a line, grant, image or option of another society.
+- **Client ids, headers and membership rows grant nothing.** A route resolves the target society server-side (the selected dashboard context or a slug) and then needs live staff authority on it. `requireOrganisationId` only checks an id is present (400 `OrganisationScopeError`). An edit whose body `organisationId` differs from the selected society is 403 (`OrganisationMismatchError`).
+- **Live staff authority:** an active `OrganisationStaff` row, read from the database on every protected request, with permissions derived from its role (`lib/permissions/index.ts`, never stored). Any staff row for the society, active or not, supersedes the legacy owner pointer. `Organisation.accountUserId` grants owner only while `LEGACY_ORGANISATION_ACCESS_MODE` allows it (unset allows in development and denies in production). Disabled accounts hold no authority.
+- **`OrganisationMember` is free affiliation** (the Joined badge). It grants no management access and no membership rights; paid rights live on `MembershipGrant`.
+- Helpers: `requireOrganisationPermission` and wrappers in `lib/auth/access.ts`; `lockOrganisationActor` in `lib/organisations/authority.ts` rechecks under lock.
+
+## Models
+
+Fields, defaults and relations: `prisma/schema.prisma`. Amounts are integer cents; `currency` defaults to `aud`.
+
+### Accounts and security
+
+| Model | Purpose and notable rules |
+| --- | --- |
+| `User` | One account (`accountRole` `member` or `organisation`). `password` is a bcrypt hash. `authVersion` invalidates sessions; `disabledAt`, `closedAt` (closure is permanent, see below). `renewalReminders` is the one optional-mail switch. |
+| `AuthToken` | Emailed account token: purpose (`verify_account`, `reset_password`, `email_change`), digest only (`tokenHash` unique), bound to email and `authVersion`, expiry, consumed or invalidated. |
+| `AccountSecurityEvent` | Private per-account ledger (password reset or change, email change steps, `account_closed`). Restrict on user delete. |
+| `UserMfa` | Encrypted TOTP secret (and pending one during enrolment), `lastAcceptedStep` against replay. |
+| `MfaRecoveryCode` | One-time recovery code digests. |
+| `MfaGrant` | A session's MFA verification: keyed by session digest, with expiry. The stale-orders worker deletes expired grants. |
+
+### Societies and staff
+
+| Model | Purpose and notable rules |
+| --- | --- |
+| `Organisation` | A society. Unique `slug`. Public profile fields (`description`, `supportEmail`, `refundPolicy`, `pickupPolicy`, `timeZone` default `Australia/Brisbane`, `profileVersion`, `onboardingCompletedAt`) and `logoAssetId`/`coverAssetId` through `(assetId, id)` composite keys ([[Society Profiles and Assets]]). Cached Connect fields `stripeAccountId`, `stripeAccountStatus` (a string, not an enum), `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted` ([[Stripe Payments and Connect#Connect account states]]). `payoutCheckedAt` is the payouts claim. `accountUserId` (unique) is the legacy owner pointer. |
+| `Asset` | An uploaded image: owner society, uploader, unique `storageKey`, `kind` (`logo`, `cover`, `event`, `product`), processed size, dimensions, `sha256`, `status` string (`pending`, `ready`, `failed`, `deleted`), `unreferencedAt` cleanup clock. Bytes live in object storage ([[Society Profiles and Assets]]). |
+| `OrganisationMember` | Free join, unique `(userId, organisationId)`, `role` `OrganisationRole` (joins write `member`; bootstrap writes `org_owner`). No authority. |
+| `OrganisationStaff` | Named staff: unique `(organisationId, userId)`, role, status, who invited, accepted, revoked. |
+| `OrganisationStaffInvite` | Expiring invite: hashed token, intended role, positive `version` that fences re-sends. |
+| `AuditLog` | Society history: action, target, metadata, actor. `actorRole` is filled by the `AuditLog_actor_role` trigger from the actor's active staff row. Cascades with the society ([[Audit Coverage]]). |
+
+### Events and tickets
+
+| Model | Purpose and notable rules |
+| --- | --- |
+| `Event` | Owner `organisationId`; `status`, `visibility`, `saleState`, `salesCloseAt`, optional `capacity` (positive), `version` (compare-and-swap, positive), `compensationRefundMode`, optional `heroAssetId` through `(heroAssetId, organisationId)` ([[Event Lifecycle]]). End after start (check). |
+| `TicketType` | `price`, optional `memberPrice` (at most `price`, check), `quantity` = remaining stock (never original capacity; non-negative). |
+| `Ticket` | One admission. `issueSequence` unique per order and positive; `validity`, `validityReason`, `validityChangedAt` (set by refunds, disputes, cancellations); `checkedInAt` (check-in). |
+| `EventChange` | A time or place change to an event with active tickets: old and new start, end and location, unique `(eventId, eventVersion)`, fan-out `cursor`, `notifiedCount`, `completedAt` with `outcome` `sent` or `superseded` (both null or both set). |
+
+### Ticket orders, checkout and money
+
+| Model | Purpose and notable rules |
+| --- | --- |
+| `Order` | One ticket purchase of one ticket type. `status`, `paymentKind` (required, no default), amounts, `stripeSessionId` (unique), `stripePaymentIntentId`, buyer snapshots with provenance (immutable once captured), purchase snapshots (`purchasedTicketTypeName`, seller, `feeAmount`, `feePolicyVersion`, `snapshotVersion`), `compensationRefundModeSnapshot` (copied from the event at checkout), `refundStatus`, `disputeStatus`, `externalRefundedAmount`, free cancellation (`cancelledAt`, who, reason), `membershipGrantId` with `membershipEntitlementVersion` for member prices, review and email-delivery fields. `userId` or `guestIdentityId` names the buyer. |
+| `OrderLifecycleEvent` | Append-only order history, unique `(orderId, sequence)`, typed and sourced. |
+| `TicketReservation` | A ticket hold, unique per order. `status`, `expiresAt`, confirmed or released facts ([[Payment Lifecycle#Holds]]). |
+| `CheckoutAttempt` | One intended checkout: actor and client key unique per family and operation (`CheckoutAttempt_actor_key_key`), unique `providerOperationKey` (Stripe idempotency key), `providerRequest` replayed by recovery, `state`, `reconcileDueAt`. Binds `orderId` (ticket family only) or `commerceOrderId` (commerce only), never both. |
+| `CompensationRefundJob` | Ticket-only automatic refund for a paid order that couldn't be fulfilled; fenced worker lease (`processingToken`). |
+| `RefundRequest` | One staff whole-order refund of an `Order` or a `CommerceOrder` (exactly one, check), reason 8 to 500 characters, unique `operationKey` and Stripe refund id, lease. Commerce compensation refunds also run here. |
+| `StripeRefundWebhookEvent` | Dedupe journal of refund, dispute and outside-refund webhook events, keyed by Stripe event id. |
+| `PurchaseDispute` | A Stripe dispute on an order or commerce order (exactly one), staff restore with reason, and the lost-dispute transfer reversal with its own lease. |
+| `SocietyPayout` | A Stripe payout from a society's balance: unique `stripePayoutId`, positive amount, status as Stripe reports. |
+| `GuestIdentity` | A proven email for buying without an account (normalised lower-case, check). Never a login. |
+| `GuestAccessGrant` | One emailed guest link: token digest, purpose `checkout` (no order) or `purchase` (exactly one of `orderId`, `commerceOrderId`), expiry, consumed or revoked, and the redeemed session digest. |
+
+### Commerce (memberships and merchandise)
+
+| Model | Purpose and notable rules |
+| --- | --- |
+| `CommerceOrder` | One society, one family (`kind`). A member buyer or, merchandise only, a guest, never both. `status` and `paymentKind` reuse the ticket enums. Fee at most total; free totals zero with no Session. Buyer and seller snapshots and amounts are frozen by `CommerceOrder_preserve_snapshot`. `expiresAt` ends a paid order's hold. `version`, `refundStatus`, `disputeStatus`, `externalRefundedAmount`, free cancellation, `pickupStatus` (merchandise only). Unique `(id, organisationId, kind)`. |
+| `CommerceOrderLine` | Reaches its order through `(orderId, organisationId, kind)`, so the database refuses another family or society. Line number and quantity 1 to 10, membership quantity exactly 1, `lineAmount = quantity × unitAmount`, name and option snapshots, membership term. `membershipProductId` (membership lines) or `merchandiseVariantId` (merchandise lines, unique per order). Append-only. |
+| `CommerceLifecycleEvent` | Append-only commerce history, unique `(commerceOrderId, sequence)`, appended under the order lock. |
+| `MembershipProduct` | A plan: price, half-open term `[startsAt, endsAt)`, `entitlements` with `entitlementVersion`, `status` with matching `publishedAt`/`archivedAt`, `version`. `MembershipProduct_preserve_sold` freezes name, term, price and rights once sold and never lets a plan change society. |
+| `MembershipGrant` | One member's membership from one line (unique `commerceOrderLineId`, pinned to the grant's society). Copied term and rights; `MembershipGrant_preserve_facts` allows only one revocation (reason up to 600 characters). |
+| `MerchandiseProduct` | A product for pickup: `status`, `firstPublishedAt` (never cleared), `version`. Never deleted. |
+| `MerchandiseProductImage` | Up to four photos, `position` 0 to 3, composite keys to the product and to an `Asset` of the same society. |
+| `MerchandiseVariant` | An option: colour, size, `sku` unique per society for good, price, `remaining` (non-negative), `position`, `version`, `archivedAt`. |
+| `MerchandiseReturn` | One return of one line: quantity 1 to 10, `restocked`, reason 3 to 500 characters, unique `operationKey`, composite key to the line's society. |
+
+### Messaging and operations
+
+| Model | Purpose and notable rules |
+| --- | --- |
+| `EmailOutbox` | Ticket email jobs per order, `mode` and `status`, rotating `processingToken` lease. One automatic job per order (partial unique index `EmailOutbox_automatic_order_unique`); manual resends may repeat. |
+| `NotificationOutbox` | Every other email: encrypted payload, unique `(eventKey, recipient, templateVersion)` (the idempotency key), `privacy` `security` (no society) or `business` (a society), status string (`pending`, `processing`, `sent`, `failed`, `cancelled`), lease, links to the invite, token or guest grant it serves ([[Email Delivery Implementation]]). |
+| `WorkerLease` | One row per scheduled job plus `all` (global pause). See [[#Worker leases]]. |
+
+## Enums
+
+Values are a contract: code, SQL checks and stored rows use them. Adding a value needs a migration; renaming or removing one needs a data migration.
+
+| Enum | Values |
+| --- | --- |
+| `AccountRole` | `member`, `organisation` |
+| `OrganisationRole` | `org_owner`, `org_admin`, `event_manager`, `finance_manager`, `content_manager`, `member` (join rows; no authority) |
+| `OrganisationStaffRole` | `owner`, `admin`, `event_manager`, `finance_manager`, `check_in_staff` |
+| `OrganisationStaffStatus` | `invited`, `active`, `revoked` |
+| `EventStatus` | `draft`, `published` |
+| `EventVisibility` | `public`, `unlisted`, `members_only` |
+| `EventSaleState` | `open`, `closed` |
+| `CompensationRefundMode` | `manual_review`, `automatic_full` |
+| `CompensationRefundState` | `review_required`, `auto_queued`, `auto_processing`, `refund_pending`, `refunded`, `refund_failed`, `recovered` |
+| `PaymentKind` | `stripe`, `free` |
+| `TicketValidity` | `active`, `void`, `refund_review` |
+| `OrderStatus` | `pending`, `paid`, `failed`, `expired` (orders and commerce orders) |
+| `ReservationStatus` | `active`, `confirmed`, `released`, `expired` |
+| `OrderRefundStatus` | `processing`, `refunded` (the refund fence) |
+| `OrderDisputeStatus` | `open`, `won`, `lost` |
+| `RefundRequestStatus` | `pending`, `uncertain`, `succeeded`, `failed` |
+| `DisputeReversalStatus` | `pending`, `uncertain`, `succeeded`, `failed` |
+| `SocietyPayoutStatus` | `pending`, `paid`, `failed` |
+| `EmailOutboxMode` | `automatic`, `manual` |
+| `EmailOutboxStatus` | `pending`, `processing`, `sent`, `failed` |
+| `CheckoutFamily` | `ticket`, `membership`, `merchandise` |
+| `CheckoutActorKind` | `user`, `guest` |
+| `CheckoutAttemptState` | `created`, `provider_uncertain`, `provider_attached`, `failed` |
+| `CommerceKind` | `membership`, `merchandise` |
+| `MembershipPlanStatus` | `draft`, `published`, `archived` |
+| `MembershipEntitlement` | `member_prices`, `members_only_events` |
+| `MerchandiseProductStatus` | `draft`, `published`, `archived` |
+| `MerchandisePickupStatus` | `pending`, `ready`, `collected` |
+| `OrderLifecycleSource` | `checkout`, `stripe_webhook`, `development_fallback`, `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy` (also the source of commerce history) |
+
+`OrderLifecycleEventType`: `legacy_baseline`, `order_created`, `stripe_session_attached`, `order_failed`, `order_expired`, `compensation_required`, `payment_fulfilled`, `free_fulfilled`, `compensation_recovered`, `manual_refund_marked`, `compensation_refund_queued`, `compensation_refund_started`, `compensation_refund_pending`, `compensation_refunded`, `compensation_refund_failed`, `refund_requested`, `refund_pending`, `refunded`, `refund_failed`, `dispute_opened`, `dispute_closed`, `dispute_resolved`, `dispute_funds_recovered`, `external_refund_recorded`, `external_refund_reviewed`, `free_cancelled`, `email_enqueued`, `email_retry_scheduled`, `email_provider_accepted`, `email_delivery_exhausted`.
+
+`CommerceLifecycleEventType`: `order_created`, `stripe_session_attached`, `payment_fulfilled`, `free_fulfilled`, `order_failed`, `order_expired`, `compensation_required`, `free_cancelled`, `refund_requested`, `refund_pending`, `refunded`, `refund_failed`, `pickup_ready`, `pickup_collected`, `return_recorded`, `dispute_opened`, `dispute_closed`, `dispute_funds_recovered`, `external_refund_recorded`, `external_refund_reviewed`.
+
+What each state means: [[Payment Lifecycle]] (orders, holds, refunds, disputes, compensation, attempts), [[Event Lifecycle]] (event status, visibility, sales), [[Memberships and Merchandise]] (plans, grants, products, pickups).
+
+## Indexes
+
+Composite indexes and the reads they serve. Every index is in `prisma/schema.prisma`.
+
+| Index | Serves |
+| --- | --- |
+| `Event(status, startTime, id)` | Public event lists ordered by start |
+| `Event(organisationId, status)` | Dashboard event lists and the calendar month (`readCalendar` in `lib/events/calendar.ts` filters this society, optionally `published`, then the time window; there is no time index for it) |
+| `Order(eventId, status, createdAt, id)` | Event order reads and pages |
+| `Order(userId, status, createdAt, id)` | The member's ticket purchases |
+| `Order(status, createdAt)` | Stale pending-order selection |
+| `Order(eventId, fulfilledAt)`, `CommerceOrder(organisationId, kind, fulfilledAt)` | Analytics sales by fulfilment time ([[Analytics and Calendar]]) |
+| `Ticket(eventId, createdAt, id)`, `Ticket(eventId, checkedInAt)` | Attendee list pages and check-in counts |
+| `TicketReservation(ticketTypeId, status, expiresAt)`, `TicketReservation(status, expiresAt)` | Live holds per type; stale-hold cleanup |
+| `CommerceOrder(organisationId, createdAt, id)`, `(organisationId, pickupStatus, createdAt, id)`, `(userId, createdAt, id)`, `(status, expiresAt)` | Organiser Orders tabs; Pickups tab; buyer Purchases; stale commerce expiry |
+| `MembershipGrant(userId, organisationId, startsAt)`, `(organisationId, startsAt, id)`, `(endsAt)` | Entitlement checks; roster pages; renewal and expiry scan |
+| `MembershipProduct(organisationId, status, startsAt, id)`, `MerchandiseProduct(organisationId, status, createdAt, id)`, `MerchandiseVariant(productId, position, id)` | Plan and product lists; option order |
+| `AuditLog(organisationId, createdAt)`, `(organisationId, actorUserId, createdAt)` | History pages and its Who filter |
+| `Organisation(name, id)` | Society directory pages |
+| `NotificationOutbox(organisationId, privacy, status, createdAt)` | The society's failed-notification list |
+| `EmailOutbox(status, nextAttemptAt, createdAt)`, `NotificationOutbox(status, nextAttemptAt)`, `CompensationRefundJob(state, nextAttemptAt, createdAt)`, `RefundRequest(status, nextAttemptAt)`, `PurchaseDispute(reversalStatus, reversalNextAttemptAt)`, `CheckoutAttempt(state, reconcileDueAt)`, `EventChange(completedAt, createdAt)` | Worker claim queries; the outbox and compensation tables also index `processingStartedAt` for lease recovery |
+
+- Indexes are plain `CREATE INDEX`, which blocks writes to the table while it builds (seconds at current volumes).
+- Known overlaps, kept until production index-usage evidence says otherwise: `Order(eventId)` and `Order(userId)` are prefixes of the composites; `TicketReservation(orderId)` duplicates its unique index; `Event(organisationId)` is a prefix of `Event(organisationId, status)`; `Ticket(orderId)` is a prefix of the unique `(orderId, issueSequence)`.
+
+## Constraints and triggers
+
+Database checks back the validators; a write that breaks one fails with a Postgres error, not a 400. Find each by name in `prisma/migrations/`.
+
+- **Numeric:** `TicketType_quantity_nonnegative_chk`, `TicketType_price_nonnegative_chk`, `TicketType_member_price_chk`, `Order_quantity_positive_chk`, `Order_unitPrice_nonnegative_chk`, `Order_totalAmount_nonnegative_chk`, `Order_paid_total_matches_units_chk` (a paid order's total is unit price × quantity), `Order_feeAmount_bounds_chk`, `Order_externalRefundedAmount_chk`, `TicketReservation_quantity_positive_chk`, `Ticket_issueSequence_positive_chk`, `Event_capacity_positive_chk`, `Event_version_positive_chk`, `CommerceOrder_amounts_chk`, `CommerceOrderLine_amount_chk`, `MerchandiseVariant_remaining_chk`, `RefundRequest_amount_chk`, `PurchaseDispute_reversalAmount_chk`, `SocietyPayout_amount_chk`.
+- **Lifecycle:** `Event_endTime_after_startTime_chk`; `Order_paid_requires_paidAt_chk`, `Order_expired_has_no_paidAt_chk`, `Order_failed_requires_failedAt_chk`, `Order_fulfilled_requires_paid_chk`, `Order_free_has_zero_total_chk`; `Order_cancellation_chk` and `CommerceOrder_cancellation_chk` (only a free, paid-status order is cancelled, with a reason of 8 to 500 characters); `CommerceOrder_free_chk`, `CommerceOrder_fulfilled_chk`, `CommerceOrder_refund_chk`, `CommerceOrder_pickup_chk`; `CheckoutAttempt_ticket_order_chk`, `CheckoutAttempt_commerce_order_chk`, `CheckoutAttempt_attached_session_chk`; `PurchaseDispute_resolution_chk`; `MembershipProduct_published_chk`, `MembershipProduct_archived_chk`; `EventChange_completed_chk`.
+- **Shape:** `Order_buyer_capture_check` (snapshot all-or-nothing; provenance `current_account_at_capture`, `purchase` or `verified_guest`), `Order_member_price_chk` (grant and version together), `CommerceOrder_buyer_chk`, `GuestAccessGrant_purpose_scope_chk`, `GuestAccessGrant_session_chk`, `GuestIdentity_email_normalised_chk`, `RefundRequest_purchase_chk`, `PurchaseDispute_purchase_chk`, `NotificationOutbox_privacy_check`, `Organisation_profile_bounds_chk`, `User_closed_disabled_check`.
+- **Triggers:** `Order_preserve_buyer_capture` (buyer capture immutable), `Order_preserve_member_price`, `CommerceOrder_preserve_snapshot`, `CommerceOrderLine_append_only`, `CommerceLifecycleEvent_append_only`, `MembershipProduct_preserve_sold`, `MembershipGrant_preserve_facts`, `User_permanent_closure` (a closed account can't reopen), `AuditLog_actor_role`.
+- **Audit-only (no constraint):** cross-row checks such as reservation versus order, ticket count versus quantity, and grant overlap. Grant overlap needs an exclusion constraint on `btree_gist`, which waits for the hosting decision.
+
+## Lock order
+
+Take row locks (`SELECT ... FOR UPDATE`) in this order, or two transactions can deadlock:
+
+1. `User` rows (the buyer, member or actor; several users sorted by id), or the `GuestIdentity` in place of the buyer's User.
+2. `Organisation` (`lockOrganisationActor`, which also rechecks live authority and MFA after waiting).
+3. The resource: `Event`, then its `TicketType` rows by ascending id (`lockEventInventory` in `lib/events/inventory.ts`); or a plan; or a product, then its options by ascending id; or merchandise options alone in ascending id (checkout never locks the product); then any `Asset` rows (sorted).
+4. The order (`lockOrder`, `lockCommerceOrder`), then its refund request, dispute, tickets and holds.
+
+No path locks an order and then an event, ticket type, plan or option. Invites and staff rows come after the Organisation; account closure, email change and handover share the User-first order.
+
+## Integrity audit
+
+`pnpm db:integrity:audit` runs the read-only checks in `lib/ops/integrity-audit.ts`; `scripts/verify-restored-database.mjs`, `scripts/rehearse-upgrade.mjs` and `tests/integration/integrity-audit.test.ts` run the same list.
+
+- Each check has a class: `numeric`, `lifecycle-risk` or `relationship/audit-only`. Output per check: name, class, violation count, up to 10 sample ids, a recommendation.
+- A check may carry a `legacy` explanation for rows older than its feature (orders fulfilled before purchase snapshots; orders whose buyer was cleared before account closure existed). Those rows print with the explanation and don't fail the run. Exit code 1 only for unexplained violations.
+- Coverage includes the numeric constraints, paid and free order shape, buyers, snapshots, valid tickets on refunded or cancelled orders, issued tickets per fulfilled order, refunds within totals, commerce line and fee arithmetic, grants for fulfilled memberships, revoked grants on refunded memberships, grant overlap, stock, day-old holds and pending commerce orders, stuck outbox jobs, sent notices without provider acceptance, and `Order`/`Ticket`/`TicketReservation` `organisationId` drift from the event. The list is the code; don't copy its count.
+- The audit never repairs. `tests/integration/integrity-audit.test.ts` breaks each invariant directly: the write is refused by a constraint or the matching count rises.
+- **Drift repair:** `pnpm db:organisation-drift:repair` is a dry run reporting mismatched `organisationId` per table. `--apply` (after a verified backup) rewrites them from `Event.organisationId` in batches, refuses when a ticket's or hold's event differs from its order's, and fails if drift remains. Repair doesn't change authority: reads still scope through the event.
+
+## Migrations
+
+- **Additive first.** Add nullable columns or columns with defaults, backfill only facts the rows prove, then tighten. A required column or new check can stop an older release writing (for example `Order.paymentKind` required, `Event.salesCloseAt` required): say in the PR whether rollback needs checkout or event creation paused.
+- **Production:** migrations run once as the `migration` service (`prisma migrate deploy`) before the new app starts; ordinary app startup never migrates. Readiness fails until the migration named in `config/schema-contract.json` is applied, so bump `requiredMigration` when the app needs a new migration ([[Production Operations]]).
+- **Development:** the dev `app` container runs `pnpm prisma:migrate:deploy` on every start, so restarting it applies pending migrations; `pnpm docker:migrate` runs `prisma migrate dev` to create one from schema changes ([[Development Workflow]]).
+- **Upgrade rehearsal:** `node scripts/rehearse-upgrade.mjs <archive.dump> [...]` restores each `pg_dump` archive into a throwaway Postgres container as `upgrade_rehearsal_test`, applies this checkout's migrations, runs the audit and compares row counts, then removes the container. Archives from a newer `pg_dump` are skipped with a reason. It never touches dev or production volumes.
 
 ## Worker leases
 
-T42 adds `WorkerLease` (migration `20261112010000_worker_leases`, additive, no foreign keys). It has one row per scheduled job (email-outbox, notifications, stale-orders, refunds, checkout-recovery, monitor) plus `all` for a global pause:
-- the running holder and `leasedUntil`;
-- `pausedAt` and `pauseReason`;
-- the last start, success and failure, with duration and a short error;
-- the monitor's `alertState`: when each firing alert was last sent.
+`WorkerLease` has one row per scheduled job (`email-outbox`, `notifications`, `stale-orders`, `refunds`, `checkout-recovery`, `monitor`, from `scheduledWorkers` in `lib/ops/worker.ts`) plus `all` for a global pause. A row holds the running `holder` and `leasedUntil`, `pausedAt` and `pauseReason`, the last start, success and failure with duration and a short error, and the monitor's `alertState`. Rows appear on a job's first run or pause. They are backed up and restored like everything else, so a restored copy keeps a pause until someone resumes it. Behaviour: [[Production Operations#Workers and schedules]].
 
-Rows are created on a job's first run or first pause. Being operational state, they're backed up and restored with everything else: a restored copy keeps a pause until someone resumes it. Rollback: older releases ignore the table. [[Production Operations]] owns the behaviour.
+Row-level leases for jobs (`processingToken` on outbox, refund and dispute rows) rotate on every claim and are matched on finish, so a stale worker can't overwrite a newer one.
 
-## Ownership retirement
+## Account lifecycle and retained records
 
-Handover atomically promotes incoming owner, changes outgoing access, checks an active owner remains, clears Organisation.accountUserId and writes staff.ownership.handed_over with actor/incoming/outgoing/retired-pointer identities and roles. No new migration is needed beyond the existing Package 2 chain. Event.organisationId and all business/payment/Stripe records retain their ownership. User -> Organisation locking includes any separate legacy account pointer so closure cannot race retirement. Backup/restore qualification includes active incoming owner, revoked outgoing owner, null pointer and retirement audit.
+- Closing an account keeps the `User` id and sets `closedAt` and `disabledAt`; credentials are disabled and `User_permanent_closure` refuses reopening. A new signup never inherits the old account's records.
+- Orders, tickets, attendance, audit and security rows stay attached to the original user. Missing buyer snapshots are filled from the account at closure (provenance `current_account_at_capture`); nothing invents purchase-time facts.
+- Relations to `User` use `SetNull` or `Restrict`, not cascade, for financial and history rows.
+- Ownership handover (`lib/staff/handover.ts`) promotes the incoming owner, makes the outgoing one an admin or revokes them, checks an active owner remains, clears `Organisation.accountUserId` and writes `staff.ownership.handed_over`. A retired pointer is never restored. Events and payment records keep their owner society.
+- Details: [[Authentication and Dashboard Access]], [[Email Delivery Implementation]].
+
+## Traps
+
+- **An `Organisation` create must name `accountUserId` (null is fine) or an `id` (DEF-040).** The logo and cover relations include the society's own `id`; a create that names only `name`/`slug` or `accountUser: { connect }` makes Prisma skip generating the id and fail with P2011. `tests/integration/organisation-creation.test.ts` fails on any create that misses this.
+- **Two compensation defaults.** `Event.compensationRefundMode` defaults to `manual_review` in the schema, but `createEventSchema` defaults to `automatic_full`. Events created by the API refund automatically unless the society chooses review; events created directly through Prisma (seed, tests, scripts) get `manual_review`. Each order keeps `compensationRefundModeSnapshot` from checkout.
+- `TicketType.quantity` is what's left. Paid fulfilment and free registration both decrement it; never treat it as the original allocation.
+- A ticket's `validity` changes after issue (refunds, disputes, cancellations), and `checkedInAt` at the door. Count "issued" as `validity = 'active'` where the rule needs valid tickets.
+- Ticket email fields on `Order` (`ticketEmailSentAt` and friends) and `isManuallyRefunded` are bookkeeping only, never payment, fulfilment or refund truth.
+- `CompensationRefundJob` is ticket-only; commerce compensation refunds are `RefundRequest` rows.
+- New check constraints evaluate NULL as passing; write `IS NOT NULL` explicitly when a field is required in a state.
+- Integration tests reset only a database whose name contains `_test`.
+
+## Failure and recovery
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Readiness reports "Required application schema migration is not applied" | The `migration` service didn't run or failed | Run it, then recheck ([[Production Operations]]) |
+| P2011 on an organisation insert | Create names no relation column | Pass `accountUserId` or `id` (DEF-040) |
+| Audit exits 1 | Unexplained violations | Read each check's recommendation; never rewrite charged totals; drift goes through `pnpm db:organisation-drift:repair` |
+
+## Related
+
+[[Architecture Overview]] · [[Authentication and Dashboard Access]] · [[Payment Lifecycle]] · [[Stripe Payments and Connect]] · [[Event Lifecycle]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]] · [[Analytics and Calendar]] · [[Production Operations]] · [[Development Workflow]] · [[Glossary]]

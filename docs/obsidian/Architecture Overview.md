@@ -1,338 +1,99 @@
 ---
 status: living
-last-reviewed: 2026-10-17
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]"]
-sources: [package.json, prisma/schema.prisma, docker-compose.yml]
+related: ["[[Thunderstrux Codebase Map]]", "[[Frontend and Backend Flow]]", "[[Route Security Inventory]]", "[[Database and Multi Tenancy]]", "[[Production Operations]]"]
+sources: [package.json, docker/Dockerfile, docker/entrypoint.sh, docker-compose.yml, docker-compose.dev.yml, docker-compose.schedules.yml, next.config.ts, proxy.ts, auth.ts, config/schema-contract.json]
 ---
 
 # Architecture Overview
 
+**Owns:** the stack, the runtime shape, the service boundary, the product account model, and the **Invariants** table (what must always hold, where it is enforced, which test guards it).
+**Read when:** starting work on Thunderstrux, deciding where new code belongs, or checking that a change keeps a system-wide rule.
+**Not here:** directory-by-directory layout ([[Thunderstrux Codebase Map]]); the page map ([[Frontend and Backend Flow]]); per-route guards ([[Route Security Inventory]]); schema and tenant boundary ([[Database and Multi Tenancy]]); deploy, workers and alerts ([[Production Operations]]); env vars ([[Environment Variables]]).
+
+## Code
+
+| Concern | Where |
+| --- | --- |
+| Dependencies and pinned versions | `package.json` (exact pins; Node in `engines`, pnpm in `packageManager`), `pnpm-lock.yaml` |
+| Images | `docker/Dockerfile` targets `web` (`node server.js`), `ops` (migrations, workers), `development` |
+| Container entrypoint | `docker/entrypoint.sh` |
+| Compose stacks | `docker-compose.yml` (production-like base), `docker-compose.dev.yml` (dev overlay), `docker-compose.schedules.yml`, `docker-compose.hosted.yml`, `docker-compose.operations.yml` |
+| Next config, security headers, redirects | `next.config.ts` |
+| Auth.js | `auth.ts`, `lib/auth/credentials.ts`, `lib/auth/secret.ts` |
+| Edge redirect for `/dashboard` and `/account` | `proxy.ts` |
+| Schema contract | `config/schema-contract.json` (`requiredMigration`), read by `lib/ops/readiness.ts` |
+
 ## Stack
 
-- Next.js 16.3.8 App Router
-- React 19
-- TypeScript
-- Prisma ORM 6.19.3
-- PostgreSQL 16
-- Auth.js / NextAuth 5.0.0-beta.32 credentials provider
-- Stripe Checkout
-- Stripe Connect Express
-- Zod validation
-- Tailwind CSS v4
-- Docker Compose
-- Node 22.23.4 and pnpm 10.34.7
-- Sharp 0.35.5 for safe static WebP processing; AWS S3 SDK 3.1149.0 for bounded object storage. Local development uses patched SeaweedFS 4.48; hosted storage is separately configured.
-
-Security updates, scoped Prisma override, removal conditions, and verification: [[Dependency Automation]].
-
-## Runtime Shape
-
-```text
-Browser
-  -> Next.js App Router pages and layouts
-  -> Client components submit forms and call route handlers
-  -> Route handlers validate input and enforce auth/tenancy
-  -> Mutation guards enforce trusted origins and selected abuse limits
-  -> Application services execute domain use cases
-  -> Services use Prisma and external providers
-  -> Stripe webhooks reconcile reservations, payments, tickets, and account readiness
-```
-
-## Application Service Boundary
-
-Security-sensitive routes are transport adapters. They retain request parsing, trusted-origin checks, authentication, permission and tenant checks, rate limiting, and HTTP error mapping. Domain decisions, persistence, transactions, recovery, and provider composition live in application services:
-
-- `lib/payments/checkout-creation.ts`: checkout validation, reservation/order creation, Stripe session creation, and failure recovery.
-- `lib/payments/checkout-reconciliation.ts`: completed and expired Checkout reconciliation.
-- `lib/payments/order-lifecycle.ts`: locked append-only business transition journal.
-- `lib/payments/order-lifecycle-history.ts`: tenant-scoped operator timeline and cursor parsing.
-- `lib/events/event-lifecycle.ts`: organisation-scoped event reads, create/edit, ticket-type changes, publish/unpublish, and deletion.
-- `lib/orders/grouped-orders.ts` and `lib/orders/order-detail.ts`: organisation-scoped order reads, refund marking, and paid-order email resend.
-- `lib/tickets/check-in.ts`: ticket attendance reads and mutations.
-- `lib/stripe/connect.ts`: Connect lifecycle operations and Stripe/provider composition.
-- `lib/auth/account-*`, `lib/auth/context.ts` and `lib/staff`: account lifecycle/version fencing, login-bound personal/staff selection, private invitations and atomic owner handover.
-- `lib/assets`: sanitisation, quota reservation, verified S3 bytes, reference-gated reads and recoverable deletion/maintenance.
-- `lib/organisations`: bootstrap eligibility, versioned profiles, whitelisted public reads, bounded discovery, caller-only join transactions and the dashboard overview reads (permission-gated tasks, recent orders across families, today's door for check-in staff).
-- `lib/orders/member-tickets.ts`: the caller's upcoming orders for the personal overview, the checkout confirmation and the guest order page.
-- `lib/memberships/plans.ts`, `http.ts` (T22): membership plans (society-zone terms, publish check, sold-plan lock, one-way archive, public list) and the shared route handler for `/api/orgs/[orgSlug]/memberships`. See [[Memberships and Merchandise]].
-- `lib/commerce/families.ts`, `checkout.ts`, `binding.ts`, `reconciliation.ts`, `http.ts` (T21): the family adapter registry (empty until T23 and T27), commerce checkout, the worker-safe fail and bind steps (no auth imports), family-routed webhook reconciliation and the stale-order expiry, and the shared checkout route handler.
-- `lib/commerce/orders.ts` (T20): membership and merchandise orders. `createCommerceOrder` validates lines and checked integer arithmetic and writes the order, lines, seller snapshot and first history entry in the caller's transaction; `appendCommerceLifecycleEvent` under `lockCommerceOrder`; buyer and finance reads and the buyer's paged list for the unified Purchases (T29).
-- `lib/purchases/ticket-purchases.ts` (T19a): the buyer's own purchases (`/purchases`, `/purchases/tickets/[orderId]` with a buyer-safe history), the wallet's tickets by view (`/tickets`), the success-page lookup and the buyer-or-guest access check behind the status read. Every query is scoped to the buyer.
-- `lib/format.ts`: the single money and date formatter; dates take the society's IANA zone and default to `Australia/Brisbane`.
-
-Server pages and route adapters do not import Prisma. Pages call the same read services as the API routes, never their own HTTP endpoints, and `tests/integration/domain-service-boundaries.test.ts` fails if any file under `app/` reaches the database directly. Routes map failures through `mapRouteError` (`lib/api/errors.ts`) with shared guard rules in `lib/api/route-rules.ts`; event, order, ticket, Connect and payment routes keep their established catch blocks (API-001).
-
-Application services accept already-authorized tenant identifiers. Routes must perform live server-side permission checks before calling them. The services still scope every persistence operation by the authoritative organisation or event owner; they do not trust client claims.
-
-Docker runtime:
-
-- base `docker-compose.yml` runs the production-like image with `pnpm start`; `ops:deploy` runs the separate one-shot migration service before starting a candidate
-- `docker/entrypoint.sh` only drops into the configured container command and does not own migrations
-- `docker-compose.dev.yml` adds source bind mounts, polling, the host database port, and runs `pnpm prisma:migrate:deploy` before `pnpm dev`
-- Redis 7 is available for central rate limiting when `RATE_LIMIT_ENABLED=true`
-- Development object-store persists sanitised bytes in asset_data. PostgreSQL stores metadata/references; restore needs both. Hosted asset secrets use docker-compose.assets.hosted.yml. [[Society Profiles and Assets]] owns this boundary.
-
-## Product Account Model
-
-`User.accountRole` is exactly one of:
-
-- `member`
-- `organisation`
-
-Member accounts represent people. Live verified identity is required for joins and purchases. Active named staff can manage permitted organisations regardless of accountRole; ordinary member joins never grant that authority.
-
-Organisation management normally resolves an active `OrganisationStaff` record and its live role and permissions. Named staff accounts, invitations, revocation, TOTP MFA, recovery codes, and actor-attributed audit records are implemented.
-
-`Organisation.accountUserId` remains an explicitly configured legacy migration fallback. Production activation requires staff enrollment, enforced MFA, and `LEGACY_ORGANISATION_ACCESS_MODE=deny` after migration.
-
-## App Router Structure
-
-Route groups are filesystem-only. `(dashboard)` and `(public)` do not appear in URLs.
-
-```text
-app/
-  layout.tsx
-  page.tsx
-  login/page.tsx
-  signup/page.tsx
-  success/page.tsx
-  cancel/page.tsx
-  (public)/
-    organisations/page.tsx           Anonymous society directory
-    organisations/[orgSlug]/page.tsx Public profile and personalized join control
-    events/[eventId]/page.tsx
-  (dashboard)/
-    dashboard/
-      page.tsx                         Role-aware member/org dashboard
-      create/page.tsx                  Organisation-account onboarding
-      organisations/page.tsx           Member organisation search/join
-      events/layout.tsx                Explicit route boundary
-      events/page.tsx                  Organisation event list
-      events/[eventId]/page.tsx        Organisation event analytics
-      events/new/page.tsx              Organisation event creation
-      events/[eventId]/edit/page.tsx   Organisation event editing
-      orders/page.tsx                  Organisation order review
-      settings/page.tsx                Organisation settings/Stripe Connect
-      settings/profile/page.tsx        Resumable public profile setup
-      settings/staff/page.tsx          Private invitations and owner handover
-      notifications/page.tsx           Scoped failed-business-job recovery
-      [orgSlug]/                       Legacy compatibility redirects
-  api/
-```
-
-## Layout Responsibilities
-
-`app/layout.tsx`
-
-- Loads the auth session on the server.
-- Wraps the tree in `AuthSessionProvider`.
-- Renders the fixed global `Navbar`.
-- Loads DM Sans and Space Grotesk through next/font and offsets page content by the header height (60px, 72px from `md`).
-
-`app/(dashboard)/dashboard/page.tsx`
-
-- Resolves the signed personal/staff context against live identity, authority and MFA.
-- Member accounts start personal, including named staff; the context selector explicitly chooses an authorised society.
-- Resolves the current staff organisation, with the configured legacy-owner fallback during migration, and renders its management dashboard.
-- Redirects organisation accounts without an organisation to `/dashboard/create`.
-
-`components/layout/dashboard-shell.tsx`
-
-- Renders the deep-plum sidebar column from `lg` (its contents stick below the global header) and, below `lg`, the same column with an `Society menu` disclosure.
-- Shows `Current society` and the society name in that column; each page renders its own `h1` title.
-- Owns shared organisation dashboard nav, capability-filtered: Overview, Events, Calendar, Orders; Community (Memberships, Merchandise); Insights (Analytics); then a Settings group (Society profile, Staff, Payments, Email delivery).
-- Receives the context switcher's choices from the server; see [[UI Architecture Rules]].
-- Uses slugless `/dashboard/*` paths for current organisation management routes.
-
-`app/(dashboard)/dashboard/[orgSlug]/layout.tsx`
-
-- Compatibility layout only.
-- Keeps old nested slug routes available as redirect targets.
-- Does not own the dashboard shell.
-
-## Page Responsibilities
-
-`/dashboard`
-
-- Personal member mode shows a profile prompt linking to Account settings, the caller's nearest upcoming paid tickets and joined societies inside the personal shell. Selected staff mode shows only permitted management content; revocation never falls back to another tenant.
-- Authorised organisation context shows setup tasks the caller may act on (payments, profile, scheduling an event), upcoming events (sold and left only with analytics:read) and role-filtered recent orders and month-to-date revenue. Finance queries are omitted when orders:read is absent. The data streams in after the guards behind a skeleton.
-
-`/dashboard/events`
-
-- Requires events:read. One server read (`listDashboardEvents` in lib/events/event-lifecycle.ts) serves every role: views with counts, title search, at most 100 rows per view, and tickets sold from one paid-order `groupBy` only with analytics:read. Check-in staff get published events only. Actions appear only with events:manage and call the existing event APIs, which still require events:manage.
-
-`/dashboard/events/[eventId]`
-
-- Renders organisation-only event details and analytics under the shared event workspace header and tabs.
-- Shows event metadata, sold/remaining counts and ticket-type analytics; finance-capable callers additionally receive revenue.
-- Uses the management-page helper to verify live analytics:read authority and conceal foreign events; orders:read separately controls financial fields/queries. The proxy does not deny all member-role users.
-
-`/dashboard/events/new`
-
-- Renders the event creation form for an authorised management user.
-
-`/dashboard/events/[eventId]/edit`
-
-- Renders the event edit form after verifying live authority for the event's canonical organisation.
-
-`/dashboard/orders`
-
-- Renders organisation-scoped order and payment review.
-- Supports event-scoped filtering through `eventId`.
-
-`/dashboard/settings`
-
-- Renders Stripe Connect settings UI.
-- The UI is state-driven from the backend Connect lifecycle: `NOT_CONNECTED`, `PLATFORM_NOT_READY`, `CONNECTED_INCOMPLETE`, `RESTRICTED`, `READY`, and `ERROR`.
-
-`/dashboard/organisations`
-
-- Member-only personal joined list and paged search/join/leave page, also available to named member staff without changing context. Server refresh updates both joined cards and badges.
-
-`/societies` is anonymous bounded discovery by literal name/slug, with public-safe cards and stable name/ID cursors. `/dashboard/settings/profile` requires live settings permission/MFA and saves explicit editable public fields with optimistic conflicts; profile completion is separate from Stripe readiness.
-
-`/societies/[orgSlug]`
-
-- Public-safe organisation details page.
-- Shows name, description, public contact/policies/timezone, ready logo/cover and at most 50 upcoming published events. Incomplete profiles remain visible.
-- Does not expose members, Stripe fields, or management actions.
-- Dynamic join controls use only the caller's affiliation: anonymous sign-in callback, verification prompt, explicit verified Join or Joined. Free affiliation grants neither staff authority nor paid benefits.
-
-`/dashboard/[orgSlug]/*`
-
-- Legacy compatibility routes.
-- Redirect to the matching slugless organisation dashboard route when the caller has live authority for the slug.
-- Return not found when ownership does not match.
-
-## Authentication Model
-
-- Auth uses the Credentials provider in `auth.ts`.
-- Passwords are stored hashed with bcrypt.
-- JWT login establishes userId, authVersion and a random MFA login ID. Session/route checks compare the version to a live active identity; refresh never upgrades a revoked session.
-- Session callback exposes live identity, accountRole, authVersion and the login-bound MFA ID. See [[Authentication and Dashboard Access]] for verified identity, recovery, email changes and permanent closure.
-- Custom sign-in page is `/login`.
-- `lib/auth/secret.ts` resolves `AUTH_SECRET` once for both `auth.ts` and `proxy.ts`.
-
-## Request Protection Model
-
-Custom cookie-authenticated mutation routes use two central protections:
-
-- `lib/security/request-guard.ts` validates first-party Origin/Referer and session-bound CSRF for authenticated mutations. Exact anonymous signup/verification/recovery exceptions use origin, token authority and fail-closed limits.
-- `lib/security/rate-limit.ts` applies Redis-backed fixed-window rate limits to high-abuse routes.
-
-The rate limiter hashes bucket parts before constructing Redis keys. It does not store raw emails, user IDs, order IDs, tokens, cookies, passwords, Redis URLs, or unhashed bucket keys.
-
-Failure policy:
-
-- Login, signup, verification, recovery, account-security mutations, staff MFA, organisation creation, profile writes and asset upload/delete fail closed when required rate limiting is unavailable.
-- Checkout creation, ticket email resend, organisation join/leave, ticket check-in/check-out, and Stripe Connect browser mutations fail open with a structured warning when rate limiting is unavailable.
-
-Stripe webhook routes are deliberately excluded from both protections because they verify Stripe signatures against the raw request body.
-
-Since T39:
-
-- **Errors.** Every route maps failures through `mapRouteError` (`lib/api/errors.ts`), directly or through its family's `http` helper. Known errors keep their documented answers. Anything else is a generic 500 that logs only the operation and the error's class.
-- **Contract test.** `tests/integration/route-contract.test.ts` fails a route that skips the mapper, logs a raw error, or changes data without the origin check. Auth.js, the webhooks, health, readiness, CSRF and the read-only merchandise quote are named exceptions.
-- **Headers.** `next.config.ts` adds a Content-Security-Policy (self-only sources; framing, plugins and outside form posts blocked; `'unsafe-inline'` scripts kept for Next's bootstrap), `nosniff`, `X-Frame-Options: DENY`, a strict referrer and permissions policy, and HSTS in production. It also makes every `/api` answer except `/api/public/*` and health `private, no-store`.
-- **Token cleanup.** `lib/security/token-cleanup.ts` deletes auth tokens, guest access grants and MFA grants 30 days past expiry, 500 per table per run, from the notification worker.
-
-[[Route Security Inventory]] records each route family's checks.
-
-## Operational Logging
-
-Thunderstrux has a small structured operations foundation in `lib/ops/logger.ts`, `lib/ops/metrics.ts`, and `lib/ops/alerts.ts`.
-
-- Logs are emitted as one JSON object per console line with `level`, `event`, `timestamp`, `service`, and `environment`.
-- Redaction is applied by default to sensitive keys such as cookies, authorization headers, tokens, passwords, secrets, raw bodies, payloads, and email HTML.
-- Operational alerts use stable event names such as `paid_but_unfulfilled_compensation_required`, `email_outbox_retry_exhausted`, `checkout_session_creation_failure`, `stripe_webhook_signature_failure`, `stale_order_worker_failed`, `db_migration_failed`, and `app_healthcheck_failed`.
-- P1.13 MVP structured logging is implemented for the health endpoint, alerts, payment/webhook/checkout paths, email outbox, stale cleanup, rate limiting, and trusted-origin guard.
-- Alert records use the alert name as the structured `event` value, so operators should query alert names directly.
-- `db_migration_failed` and `app_healthcheck_failed` are reserved operational alert names. They are not emitted by app runtime code yet; deployment and monitoring must own migration failure and healthcheck non-200 alerting.
-- Console JSON is the MVP transport. Production must route these logs into an aggregation and alerting system before relying on them operationally.
-
-## Multi-Tenancy Model
-
-- `Organisation` remains the tenant, event owner, order owner, ticket owner, and Stripe Connect owner.
-- Organisation dashboard access is resolved from active `OrganisationStaff` authority and live permissions. The legacy `Organisation.accountUserId` path is available only under the configured migration mode.
-- Member join relationships use `OrganisationMember`.
-- `OrganisationMember` is not staff access for the MVP, although legacy compatibility rows may still exist.
-- `Organisation.slug` remains a stable identifier for compatibility, public display, and lookup APIs.
-- The frontend may send `organisationId`, but backend permission checks must still verify the authenticated account and organisation ownership.
-
-## Ticket Reservation Model
-
-Checkout uses soft holds to prevent overselling:
-
-- `TicketType.quantity` remains remaining inventory.
-- `TicketReservation` holds a requested quantity for 30 minutes.
-- Checkout availability is `TicketType.quantity - activeReservedQuantity`.
-- The reservation lasts 5 minutes past Stripe Checkout's `expires_at`, so a payment made just before the page closes still finds its hold when the webhook arrives (DEF-033).
-- Webhooks confirm, release, or expire reservations while preserving `Order` history.
-- A bounded one-shot stale-order worker expires pending orders whose reservations are expired or past `expiresAt`, plus legacy reservationless pending orders older than 30 minutes. It is the only place that expires them: checkout and normal read paths ignore lapsed holds without expiring them.
-- `pending` is kept internally for checkout reconciliation but hidden from normal member and organiser UX.
-
-## Organiser Analytics Model
-
-Organiser event analytics are derived from existing event, ticket type, and paid order data.
-
-- `TicketType.quantity` is displayed as remaining inventory.
-- Sold count is summed from paid `Order.quantity`.
-- Revenue is summed from paid `Order.totalAmount`.
-- Revenue-over-time is grouped by UTC day for charting.
-- The analytics page does not show total capacity because original capacity is not stored.
-- Each order maps to one ticket type through `Order.ticketTypeId`, so ticket-type revenue is grouped by `ticketTypeId`.
-
-## Styling Pipeline
-
-Tailwind is configured with:
-
-```text
-tailwind.config.js
-app/globals.css
-```
-
-Current Tailwind v4 entrypoint:
-
-```css
-@config "../tailwind.config.js";
-@import "tailwindcss";
-```
-
-Content paths:
-
-```js
-content: [
-  "./app/**/*.{js,ts,jsx,tsx}",
-  "./components/**/*.{js,ts,jsx,tsx}"
-]
-```
-
-## Stripe Connect Boundary
-
-Stripe Connect integration is split deliberately:
-
-- `lib/stripe/index.ts` owns Stripe SDK initialisation and webhook secret access.
-- `lib/stripe/connect.ts` owns high-level onboarding, continuation, status refresh, Express account creation, platform-readiness detection, lifecycle mapping, and local disconnect.
-- API routes own authentication, role checks, validation, and structured JSON responses.
-- `components/settings/stripe-connect-settings.tsx` owns the user guidance and action buttons.
-
-The platform owns the UX. Stripe owns compliance and sensitive onboarding data collection.
-
-`PLATFORM_NOT_READY` means the Stripe platform account behind `STRIPE_SECRET_KEY` cannot yet create Express accounts. It is shown before a connected account exists and links the operator to:
-
-```text
-https://dashboard.stripe.com/settings/connect/platform-profile
-```
-
-## Checkout Reconciliation Boundary
-
-Checkout fulfilment is shared through:
-
-```text
-lib/payments/checkout-reconciliation.ts
-```
-
-Checkout creation and pre-redirect recovery are owned separately by `lib/payments/checkout-creation.ts`. The route keeps origin, schema, member-authentication, and rate-limit checks before invoking that service.
-
-Production fulfilment remains webhook-driven through `POST /api/payments/webhook`. The `/success` page has a non-production-only fallback that retrieves the Checkout Session by `session_id` and calls the same reconciliation helper when local webhook forwarding is missing.
+Next.js App Router with React and TypeScript; Prisma on PostgreSQL 16; Auth.js (NextAuth) credentials provider with bcryptjs hashes; Stripe Checkout and Stripe Connect Express; zod validation; Tailwind CSS v4 (`app/globals.css` with `@config "../tailwind.config.js"`, built by `@tailwindcss/postcss`); Redis 7 for central rate limits; S3-compatible object storage (SeaweedFS locally) through the AWS S3 SDK, with sharp for image sanitising; Vitest for integration tests and Playwright with axe for browser tests; Docker Compose for every environment. Versions live in `package.json` and the Dockerfiles; dependency policy is in [[Dependency Automation]].
+
+## Runtime shape
+
+| Piece | What runs | Notes |
+| --- | --- | --- |
+| `app` | `web` image, `node server.js` (standalone output, built to `.next-build`) | Healthcheck `GET /api/health/ready`. Never migrates |
+| `migration` | `ops` image, `prisma migrate deploy` | One-shot job before an app rollout |
+| Workers | `ops` image, `scripts/process-*.mjs` under the `workers` profile; `docker-compose.schedules.yml` loops each through `scripts/every-minute.mjs` | Email outbox, notifications (also token cleanup), stale orders, compensation refunds, checkout recovery, operations monitor. All run through `runWorker` (`lib/ops/worker.ts`). Schedules and alerts: [[Production Operations#Workers and schedules]] |
+| `db` | PostgreSQL 16 | |
+| `redis` | Redis 7 | Rate limits when `RATE_LIMIT_ENABLED=true` |
+| Object store | SeaweedFS (`docker/Dockerfile.assets`) locally; hosted storage separately | PostgreSQL holds asset metadata; a restore needs both ([[Society Profiles and Assets]]) |
+
+- `docker/entrypoint.sh` loads `*_FILE` secrets into their variables (refusing both forms at once), then `exec`s the container command. It never migrates.
+- `docker compose up` on the base file starts the production-like stack. The dev stack is `-f docker-compose.yml -f docker-compose.dev.yml` (`pnpm docker:dev`): source mounts, polling, host database port, and `pnpm prisma:migrate:deploy` before `pnpm dev`. See [[Development Workflow]].
+- Request path: browser, then `proxy.ts` (only `/dashboard` and `/account`), then server pages that call services directly, or route handlers for every client mutation; services use Prisma and providers; Stripe webhooks drive payment state.
+
+## Service boundary
+
+- **Routes are transport and security.** A route handler parses and bounds the request (`lib/api/request.ts`), checks trusted origin and CSRF, authentication, live permission, tenant and rate limit, calls one service, and maps errors with `mapRouteError` (`lib/api/errors.ts`) plus shared rules (`lib/api/route-rules.ts` and each family's `http.ts`). Guard order: [[Route Security Inventory#Guard order]].
+- **Services own the domain:** decisions, persistence, transactions, recovery and provider calls live in `lib/*` (one line each in [[Thunderstrux Codebase Map]]). Services accept an already-authorised organisation id and still scope every query by it or by the event's owner; they never trust a client claim.
+- **Pages call the same services as the routes,** never their own `/api` endpoints, and nothing under `app/` imports Prisma.
+- **Workers** import only database-level code (no HTTP auth or CSRF config), e.g. `lib/auth/account-lock.ts`, `lib/staff/invite-authority.ts`, `lib/commerce/binding.ts`.
+- **Commerce families** (`lib/commerce/families.ts`): memberships and merchandise plug into one commerce checkout, webhook reconciliation and stale expiry. An unregistered family's checkout answers 404 and its paid webhook goes to compensation review.
+
+## Product account model
+
+- `User.accountRole` is `member` (a person) or `organisation` (the legacy society login). Live verified identity is required for joins and purchases.
+- Management authority is an active `OrganisationStaff` row with its live role; any account can be staff. `OrganisationMember` (a free join) never grants management.
+- `Organisation.accountUserId` is a legacy fallback, honoured only while `LEGACY_ORGANISATION_ACCESS_MODE` allows it; production runs `deny` after migration.
+- Members start every login in personal context; the switcher selects a society through a signed, login-bound preference that carries no authority. Details: [[Authentication and Dashboard Access]].
+
+## Request protection
+
+- Cookie-authenticated mutations pass `enforceTrustedMutationRequest` (`lib/security/request-guard.ts`): first-party Origin or Referer and a session-bound CSRF token. Guest mutations use `verifyGuestCsrf`. Stripe webhooks verify their signed raw body instead.
+- Rate limits: `enforceRateLimit` (`lib/security/rate-limit.ts`), Redis-backed, bucket keys hashed; security-sensitive policies fail closed, door and purchase paths fail open with a warning. Policies and numbers: [[Route Security Inventory#Rate limits]].
+- `next.config.ts` sets the Content-Security-Policy, `nosniff`, `X-Frame-Options: DENY`, referrer and permissions policies, HSTS in production, and `private, no-store` on every `/api` answer except `/api/public/*` and health.
+- Logs are one JSON object a line with redaction (`lib/ops/logger.ts`); alerts and metrics: [[Production Operations#Logs, metrics and alerts]].
+
+## Multi-tenancy
+
+`Organisation` is the tenant: it owns events, orders, tickets, reservations, commerce orders and the Stripe account. For event-owned rows the owner is `Event.organisationId`; the denormalised `organisationId` on orders and tickets is stored but never authority. A foreign resource answers exactly like a missing one (404). Boundary, indexes and integrity audit: [[Database and Multi Tenancy#Tenant boundary]].
+
+## Invariants
+
+| Invariant | Enforced in | Guarded by |
+| --- | --- | --- |
+| The tenant of an event-owned order, ticket or reservation is `Event.organisationId`; client ids, headers, membership rows and denormalised columns are never authority | `lib/orders/order-detail.ts` and `lib/orders/grouped-orders.ts` (`event: { organisationId }`), `lib/tickets/check-in.ts`, `lib/events/event-lifecycle.ts` | `tests/integration/orders-api.test.ts` ("uses event ownership when order organisation is inconsistent"), `tests/integration/ticket-check-in.test.ts` |
+| Staff authority is read live from the staff row on every page, route, service and worker check; a revoked or legacy-only owner holds nothing in `deny` mode | `lib/staff/live-authority.ts` (`liveStaffRole`, `roleHasPermission`, `legacyOrganisationAccessMode`), used by `lib/auth/access.ts` | `tests/integration/live-staff-authority.test.ts` |
+| Every API route that changes data checks the trusted origin (or guest CSRF) | `lib/security/request-guard.ts`: `enforceTrustedMutationRequest`; `lib/guest/guest-csrf.ts`: `verifyGuestCsrf` | `tests/integration/route-contract.test.ts` (named exceptions: Auth.js, the two Stripe webhooks, the read-only merchandise quote) |
+| Every route maps failures through one mapper and logs only an error's class | `lib/api/errors.ts`: `mapRouteError` | `tests/integration/route-contract.test.ts` (exceptions: Auth.js, health, readiness, CSRF, webhooks) |
+| Nothing under `app/` touches Prisma; pages and routes call services | `lib/*` services | `tests/integration/domain-service-boundaries.test.ts` |
+| Payment fulfilment is webhook-driven and idempotent; a browser success page never marks an order paid | `lib/payments/checkout-reconciliation.ts`, `lib/payments/checkout-fulfilment-orchestrator.ts`, `lib/commerce/reconciliation.ts`; `/success` only reads (its fallback runs outside production only) | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/payment-lifecycle.test.ts` ("concurrent paid replays fulfil and journal exactly once"), `tests/integration/ticket-purchases.test.ts` (success page shows confirming until the webhook lands) |
+| Purchase transactions run at READ COMMITTED after taking row locks, so queued buyers aren't refused (DEF-032) | `lib/tickets/reservations.ts`: `lockedPurchaseTransactionOptions`, `runReservationTransaction`; locks in `lib/events/inventory.ts` | `tests/integration/inventory-locks.test.ts` (30 buyers for 20 free and 20 paid tickets) |
+| A ticket hold outlives its Stripe page by `lateWebhookGraceMs` (5 min) after `expires_at` (DEF-033) | `lib/tickets/reservations.ts`, set in `lib/payments/checkout-creation.ts` | `tests/integration/checkout-reservations.test.ts`, `tests/integration/pending-checkout.test.ts` |
+| At most one payout per society per UTC day; the idempotency key is the account and day (DEF-034) | `lib/payouts/payouts.ts`: `processPayoutBatch` | `tests/integration/society-payouts.test.ts` |
+| Integration tests touch only a database whose name ends in `_test` | `scripts/integration-test-guards.mjs`, applied by `scripts/run-integration-tests.mjs` and `tests/helpers/db-reset.ts` | `tests/runner/integration-guards.test.mjs` |
+| The public origin is read at run time, so one image serves any domain | `lib/app-url.ts`: `appUrl` (computed key, never inlined by `next build`) | `tests/runner/runtime-origin.test.mjs` |
+| The schema contract names the newest checked-in migration; readiness fails until it is applied | `config/schema-contract.json`, `lib/ops/readiness.ts` | `tests/runner/schema-contract.test.mjs` |
+
+## Traps
+
+- Don't add a migration without updating `config/schema-contract.json`; the runner test fails and readiness would pass on an old schema.
+- Don't read `process.env.NEXT_PUBLIC_APP_URL` directly; `next build` would bake the build's domain into the image. Use `appUrl()`.
+- Don't add `pnpm start` or a migration to the web container; the base compose runs `node server.js` and migrations are the separate one-shot job.
+- A new mutating route without `enforceTrustedMutationRequest` or `mapRouteError` fails the route contract test; add an exception there only with a reason.
+
+## Related
+
+[[Thunderstrux Codebase Map]] · [[Frontend and Backend Flow]] · [[Route Security Inventory]] · [[Database and Multi Tenancy]] · [[Authentication and Dashboard Access]] · [[Payment Lifecycle]] · [[Stripe Payments and Connect]] · [[Production Operations]] · [[Development Workflow]]

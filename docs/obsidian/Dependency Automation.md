@@ -1,126 +1,103 @@
 ---
 status: living
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Engineering Delivery Workflow]]", "[[Troubleshooting]]"]
-sources: [package.json, pnpm-lock.yaml, .github/workflows/security-audit.yml]
+related: ["[[Engineering Delivery Workflow]]", "[[Production Operations Hosting]]", "[[Development Workflow]]", "[[Troubleshooting]]"]
+sources: [package.json, pnpm-lock.yaml, renovate.json, .github/workflows/dependency-validation.yml, .github/workflows/security-audit.yml, .github/workflows/release.yml]
 ---
 
 # Dependency Automation
 
-## Asset runtime qualification (2026-10-11)
+**Owns:** dependency update policy: Renovate, pnpm overrides and when to remove them, how audits and container scans run, what the Dependency Validation workflow checks, and how a dependency change is validated and rolled out.
+**Read when:** reviewing a Renovate PR, changing `package.json`, `pnpm-lock.yaml`, a Dockerfile, a Compose file or a workflow pin, or answering a Security Audit failure.
+**Not here:** how much validation a risk level needs ([[Engineering Delivery Workflow]]); image budgets, publication and attestation ([[Production Operations Hosting]]); refreshing the dev dependency volume ([[Development Workflow]], [[Troubleshooting]]). Dated campaigns: [[Evidence Ledger]], [[Dependency Advisory Triage 2026-09-18]].
 
-T07 adds explicit Sharp 0.35.5 and AWS S3 SDK 3.1149.0 pins. The checksum-pinned SeaweedFS 4.48 upstream binary failed its fixable high/critical scan (x/net CVE-2026-78669 and Go stdlib CVE-2026-78667/78669/97031). `docker/Dockerfile.assets` rebuilds that exact source with digest-pinned Go 1.27.2 and x/net 0.60.0; the delivery image scan passes. The existing Node base also inherited vulnerable perl-base 5.36.0-7+deb12u3; explicit security-repository refresh in `docker/Dockerfile` installs the patched package. Pinned Trivy 0.68.2 scans of both final images report no fixable high/critical findings. Both Dockerfiles pass pinned Hadolint. This is dated local evidence, not ongoing advisory clearance or hosted activation.
+## Code
 
-## Current dependency remediation
+| Concern | Where |
+| --- | --- |
+| Pinned versions, package manager, Node engine | `package.json` (`packageManager`, `engines`), `pnpm-lock.yaml` |
+| Overrides and allowed install scripts | `package.json` `pnpm.overrides`, `pnpm.onlyBuiltDependencies` |
+| Update bot | `renovate.json` |
+| Scheduled audit | `.github/workflows/security-audit.yml` (`pnpm security:audit`) |
+| Manual validation | `.github/workflows/dependency-validation.yml` |
+| Image scan on image-changing PRs and on `main` | `.github/workflows/release.yml` |
+| Base images | digest-pinned `FROM` in `docker/Dockerfile`, `docker/Dockerfile.e2e`, `docker/Dockerfile.assets`; `image:` digests in the Compose files and workflows |
+| Regressions for risky packages | `tests/integration/dependency-security.test.ts` (native sharp, JWT/Auth.js, Prisma config loading), `tests/integration/redis-runtime.test.ts` (real Redis client against a run-owned Redis named by `INTEGRATION_REDIS_URL`) |
 
-Package 3 adds the asset dependency/image boundary above. Its dated baseline is `15a1e4b` / `p216-e62123415fe7e1788a49219e` (354 tests/42 files, build/typecheck and clean audit); final UI `5931086` also passes its production browser build and 30 checks. Local app dependencies and persistent image storage were activated on 2026-10-12 after backup; hosted activation remains unverified. [[Project Handover]] owns the latest overall validation and rollout state. The dependency campaigns below are dated evidence, not the latest overall campaign.
+## Rules
 
-### Vite and Vitest advisories (2026-10-22)
+- **Exact pins.** Every dependency is pinned (`rangeStrategy: pin`) and installed with `--frozen-lockfile`. Node and pnpm versions come from `package.json`; workflows and Dockerfiles must match them.
+- **Install scripts** run only for the packages in `pnpm.onlyBuiltDependencies` (Prisma and sharp).
+- **No suppression.** No advisory ignore list, audit threshold change or automatic `audit fix`. A vulnerability exception needs the CVE, reason, owner and expiry recorded in [[Issue and Defect Register]] and the workflow; none exists.
+- **Lockfile merges don't deploy.** A merged pin doesn't refresh a running app or the dev dependency volume: rebuild the release pair, or refresh dev dependencies without deleting database, Redis or asset volumes.
+- **Rollback** of a security pin restores a vulnerable graph and needs an explicit security decision.
 
-On 2026-10-22 the baseline audit began failing on `main` with eight development-only advisories published after 19 October: six in Vite 8.3.2 and two in `@vitest/mocker` below 4.1.12 (manual mock code injection; Windows backslash path traversal). Renovate security [PR #126](https://github.com/ENGGP/thunderstrux/pull/126) moved Vite to 8.3.3 (`dd93c81`). Vitest is pinned to 4.1.12, which moves every `@vitest/*` package to 4.1.12 and needs no other change; 4.1.12 is the latest 4.x release. Neither package ships in the app image; the integration runner is the only consumer. Local baseline `baseline-1ea53cc6a75a20ab0196acdd` on `dd93c81` plus this pin passed frozen installation, the production build, 30/30 runner guard tests, typecheck, all 595 integration tests in 84 files and the audit with no known vulnerabilities; its manifest records `passed` and `cleanupComplete`.
+## Renovate
 
-### Redis client update qualification
+`renovate.json`, extending `config:recommended` and `helpers:pinGitHubActionDigests`:
 
-[PR #52](https://github.com/ENGGP/thunderstrux/pull/52) merged `@redis/client` 6.2.1 to 6.3.0 on 2026-10-13 as `eff2184`, while follow-up qualification was in progress. The update retains the Node >=20 requirement (the app uses Node 22.23.3) and removes `cluster-key-slot` because upstream vendors that implementation. Thunderstrux uses a standalone client for readiness `PING` and the atomic rate-limit Lua `EVAL`; upstream connection/reconnection changes make outage/recovery evidence part of this update's acceptance. Added regression/fixture coverage is delivered separately from the already-merged pin update.
+| Setting | Value |
+| --- | --- |
+| Managers | `npm`, `github-actions`, `dockerfile`, `docker-compose` (Docker images are updated) |
+| Schedule | before 5 am Monday; lock-file maintenance on the same schedule |
+| Release age | 3 days (`minimumReleaseAge`) |
+| Concurrency | 3 open PRs; majors separate from minors |
+| Merge | always manual review; automerge off everywhere |
+| Dashboard | on |
+| Security fixes (`vulnerabilityAlerts`) | labelled `security`, created immediately, no schedule, no release age, no automerge |
+| Docker digests | grouped as "container image digests", no release age: a digest rebuild has no release timestamp, and the default `timestamp-required` behaviour would leave `renovate/stability-days` pending forever |
+| Groups (non-major) | Prisma; Next and React; Tailwind and PostCSS; Auth.js; Stripe; test and build tooling (Vitest, Playwright, Vite, TypeScript, jiti, `@types/node`) |
 
-`tests/integration/redis-runtime.test.ts` uses the installed client and a run-owned Redis, with an isolated TCP path for connection interruption. It checks shared cold-start connection, concurrent counters, 429/Retry-After/TTL, bounded failure, sensitive-policy 503, existing optional-policy behavior and recovery retaining the counter. It deletes only its own random-prefix keys. `INTEGRATION_REDIS_URL` identifies the disposable service: Docker E2E Compose uses `redis://redis:6379`; the manual Dependency Validation integration job supplies its own Redis at `redis://localhost:6379`. Other integration entrypoints must provision an isolated Redis and set that variable; do not point tests at development or production Redis.
+Action references are pinned to commit SHAs and kept current by Renovate. Dependabot update PRs stay off; Renovate is the only update bot. GitHub vulnerability alerts are on.
 
-Merging package/lockfile pins does not activate the installed development dependency cache. After maintainer merge, use the existing dependency refresh procedure in [[Troubleshooting]]; preserve PostgreSQL, Redis and asset volumes. Hosted release images must be rebuilt and reviewed separately. Rollback restores the 6.2.1 manifest/lockfile and rebuilds/refreshes dependencies; this update needs no data migration or database rollback. The live tunnel is not refreshed as part of PR qualification.
+## Overrides
 
-Local Redis 6.3.0 qualification on 2026-10-13: source/test/fixture inputs `8231530` pass frozen Docker installation, production build/typecheck, all 380 integration tests in baseline `p216-a888af193938da9ec374a603`, and dependency audit with no known vulnerabilities. The real Redis regression passes; both test images report installed client 6.3.0. Thirty runner safety checks also pass. The earlier test typing failure was corrected; an interrupted run was cleaned up and is not qualification evidence. [[Project Handover 2026-10-15]] records completed browser and resource-cleanup evidence for the separate coverage follow-up.
+`package.json` `pnpm.overrides` forces patched transitive versions. Each is removed only when the upstream graph resolves a patched version without it; then rerun frozen install, audit, build and the regression named.
 
-The D1-D5 dependency fixes were published through [PR #3](https://github.com/ENGGP/thunderstrux/pull/3), merge `b81c631`. The [post-remediation Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35290377481) passed. GitHub reported zero open dependency alerts on 2026-09-18. The failed runs and counts below are historical evidence.
+| Override | Why | Before removing, rerun |
+| --- | --- | --- |
+| `deepmerge-ts` under `@prisma/config` only | advisory in Prisma's config loader dependency | Prisma config regression, `pnpm prisma:generate`, migrations, integration suite, build, audit; revisit on every Prisma update (the selector names the Prisma version, so it stops applying when Prisma moves) |
+| `sharp` | librsvg advisory in sharp's bundled libvips; the lockfile moves sharp's platform binaries with it | native sharp resize/encode regression |
+| `source-map-js` | indexed source-map denial of service | build, audit |
 
-The current security baseline is owned by `package.json` and `pnpm-lock.yaml`: Next.js 16.3.8, NextAuth 5.0.0-beta.32, paired Prisma client/CLI 6.19.3, PostCSS 8.5.28, pnpm 10.34.7, and Node 22.23.4 (from 22.23.3 on 2026-10-22 for the 21 Oct Node security release, High: CVE-2026-111497, CVE-2026-106069, CVE-2026-105482). The reviewed override `@prisma/config@6.19.3>deepmerge-ts=8.0.2` is restricted to that parent. On the next Prisma update, remove it when the selected config package resolves a patched version natively, then rerun the config regression, Prisma generation and migrations, integration tests, production build, and full audit. `tests/integration/dependency-security.test.ts` covers native Sharp processing, JWT/Auth.js behavior, and Prisma config loading.
+## Audits and scans
 
-### October 2026 transitive security patches
+- **`pnpm security:audit`** = `pnpm audit --audit-level high` over every dependency, build and dev tooling included. Local entrypoint; the baseline campaign runs it.
+- **Security Audit workflow:** Wednesday 03:00 UTC and on demand. High/critical findings and registry errors fail it visibly. Not a PR check. The maintainer subscribes to its failure notifications and triages each one. DEP-001 stays open until a genuine security-labelled Renovate PR and a received failure notification are recorded; never manufacture either.
+- **Container scan:** Trivy, fixable `HIGH,CRITICAL` only, on both release images: in `.github/workflows/release.yml` (image-changing PRs and every `main` push) and in Dependency Validation. A finding fails the job and prints target, CVE, package, installed and fixed versions.
+- **Base OS packages:** digest pins keep a base image's packages; `docker/Dockerfile` refreshes its security packages on every build, so a rebuild is the fix for a base-image CVE that Debian has patched ([[Production Operations Hosting]]).
 
-[PR #39](https://github.com/ENGGP/thunderstrux/pull/39) patches the two high-severity findings in the [2026-10-07 scheduled audit](https://github.com/ENGGP/thunderstrux/actions/runs/37604274931): `source-map-js` indexed source-map denial of service and Sharp's vulnerable librsvg dependency. Exact pnpm overrides select `source-map-js=1.2.2` and `sharp=0.35.5`; the lockfile updates Sharp's platform binaries and libvips packages together. No advisory suppression or audit threshold change is used.
+## Dependency Validation workflow
 
-Remove each override only when its upstream dependency graph resolves a patched version without it, then verify frozen installation, audit, build and applicable regressions. The existing native Sharp resize/encode regression covers compatibility. Merging the lockfile does not refresh a running app or its dependency volume: rebuild the release image or refresh the development dependencies without deleting database/Redis volumes. Rollback restores the vulnerable dependency graph and needs an explicit security decision.
+Manual dispatch only. GitHub checks are optional and not merge requirements (VALID-001); local evidence chosen by [[Engineering Delivery Workflow]] is what a PR records. All jobs: read-only permissions, SHA-pinned actions, no persisted checkout credentials, job timeouts, superseded runs cancelled, pnpm installed before the Node action's pnpm cache.
 
-Review on 2026-10-09 found additional Next.js advisories after Copilot's audit. The original patched graph passed build/typecheck and 311 integration tests, but audit failed with six Next.js findings (one high, four moderate, one low). Next.js is therefore pinned to 16.3.8, including the patch for [image-optimization SSRF](https://github.com/advisories/GHSA-cjq9-62q9-8jv4). Current configuration has no remote image allowlist; that limits exposure to this specific advisory but does not justify leaving the audited dependency vulnerable.
+| Job | Runs |
+| --- | --- |
+| `static-validation` | frozen install; `git diff --exit-code -- pnpm-lock.yaml`; `pnpm docs:check`; `pnpm prisma:generate`; `pnpm typecheck`; hadolint on `docker/Dockerfile` and `docker/Dockerfile.e2e` only, not `docker/Dockerfile.assets` (OPS-006); Compose `config` for base + dev, base + hardened, `scripts/check-hosted-compose.mjs` against `.env.hosted.example`, and the full Droplet stack; builds the `web` and `ops` pair and checks budgets with `scripts/release-pair.mjs`; Trivy on both |
+| `integration-tests` | PostgreSQL 16 (`thunderstrux_test`) and Redis services; `pnpm test` with `INTEGRATION_DATABASE_URL` and `INTEGRATION_REDIS_URL` |
+| `production-build` | `pnpm build` with non-secret placeholders matching the Docker builder |
 
-Final local baseline on executable `b3f965d`, run `p216-4eeb6f57df076e27f533e459`, passed frozen installation with pnpm 10.34.6/Node 22.23.3, production build, typecheck, all 31 migrations, 311 integration tests in 36 files (including native Sharp compatibility), and audit with no known vulnerabilities. Its manifest records `passed` and `cleanupComplete`. The earlier Docker-unavailable attempt and original-graph audit-failed run were also cleaned. Final documentation-only evidence updates use docs/diff checks; no browser/payment/operations campaign is required because those contracts and test infrastructure did not change. At that qualification, no development or hosted deployment was performed and running images/dependency volumes still required refresh. The dated local runtime refresh below records subsequent development activation; hosted activation remains unverified.
+## Validating a dependency change
 
-## P2.15 status
+Pick checks from the diff ([[Engineering Delivery Workflow]]; dependencies are High risk):
 
-The original P2.15 integration gate passed locally: 185/185 tests, including 22 Stripe Connect disclosure tests. The four original failures were reproduced on `c8878fe` and fixed separately from dependency infrastructure without weakening their expectations. See the evidence below.
+| Change | Local validation |
+| --- | --- |
+| Runtime or toolchain package | `node scripts/run-e2e.mjs baseline` (frozen install, build, typecheck, integration, audit) plus the package's regression |
+| Browser test tool (Playwright, axe) | a full `pnpm test:e2e`, because it changes what the browser campaign checks |
+| Dockerfile or base image | hadolint the changed Dockerfile, build the pair, check budgets, Trivy scan |
+| Compose file | `docker compose ... config` for affected stacks, `pnpm docker:hosted:check -- --env-file <file>` for hosted ones |
+| Action SHA pin only | review the pin against the upstream release tag; no functionality tests |
 
-Repository-side P2.15 implementation and evidence are merged through PRs #1-#5, #7, and #8. Renovate is authorized and operational: [Dependency Dashboard #6](https://github.com/ENGGP/thunderstrux/issues/6) proves npm and GitHub Actions discovery with Docker exclusions, and controlled [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) merged as `b3f4fce`. All five post-merge checks passed on `main`. The non-required `renovate/stability-days` status remained pending for this pin update; it was not a failed application test. Overall P2.15 remains **Open - operational evidence pending**: a real eligible high/critical advisory is needed to verify a security-labelled Renovate PR, while maintainer notification receipt must be recorded after the next genuine Security Audit failure, including a registry failure.
+Never build inside the running app container; use the isolated runner or rebuild the image. Test setup supplies fake Stripe credentials and blocks external fetches; event fixtures are relative to today.
 
-Routine Renovate evidence advanced on 2026-09-28: [PR #20](https://github.com/ENGGP/thunderstrux/pull/20) updated all workflow Node 22 inputs to 22.23.3, and [PR #19](https://github.com/ENGGP/thunderstrux/pull/19) updated the pinned `pnpm/action-setup` v4.1.0 digest. Both were manually reviewed, merged, and passed all five latest-head checks. These routine updates do not satisfy the outstanding genuine security-PR or failure-notification evidence gates.
+## Traps
 
-## Validation and update policy
+- A Renovate Docker digest PR can change a base image under every image at once: build and scan the pair, not just one Dockerfile.
+- `pnpm.overrides` keyed by a parent version (`@prisma/config@<version>>`) silently stops applying after that parent updates; check the audit after any Prisma bump.
+- `integration-tests` and `redis-runtime.test.ts` need a disposable Redis; never point `INTEGRATION_REDIS_URL` at a development or production Redis.
 
-- `pnpm typecheck`, `pnpm test` (the existing integration runner), and `pnpm security:audit` are the local entrypoints. `pnpm build` remains the production build command.
-- Dependency Validation is manual-dispatch only. GitHub checks are optional; dependency PRs require local validation selected using [[Engineering Delivery Workflow]]. Use the isolated baseline for runtime/toolchain changes, frozen installation and lockfile stability, relevant dependency regressions, and audit. For Docker changes also lint changed Dockerfiles, validate affected Compose contracts and scan the resulting image for fixable high/critical vulnerabilities. Action-pin-only changes require configuration review rather than application functionality tests. The optional job names are `static-validation`, `integration-tests`, and `production-build`.
-- Every job installs with the committed pnpm version and `--frozen-lockfile`. Static validation checks lockfile stability, generates Prisma, and typechecks. Integration uses disposable PostgreSQL 16 and `thunderstrux_test`; the runner resets its database and runs sequentially. Never supply an application database URL.
-- Test setup supplies fake Stripe credentials; external fetch calls remain blocked. Future event fixtures are relative to the current date.
-- Build uses non-secret placeholders matching the Docker builder. Do not build inside the running application container; use a disposable environment or rebuild the image.
-- Workflows use read-only repository permissions, SHA-pinned Actions, disabled persisted checkout credentials, job timeouts, and cancellation of superseded runs. pnpm is installed before enabling the Node action's pnpm cache.
-- Renovate covers npm, GitHub Actions, Dockerfiles, and Compose. Docker digest updates are grouped, scheduled, and require manual review; automerge is disabled. They have no release-age delay: Renovate gets no release timestamp for a digest rebuild, and its default `minimumReleaseAgeBehaviour` (`timestamp-required`) then keeps `renovate/stability-days` pending forever, as it did on [PR #50](https://github.com/ENGGP/thunderstrux/pull/50) for two weeks. Ordinary updates retain Monday scheduling, a three-day release delay, grouped non-major updates, and manual review.
-- Security-fix PRs are labelled `security`, created immediately without the ordinary release delay, and require manual review. GitHub Action SHA pins are maintained by Renovate.
+## Related
 
-## Security audit operations
-
-Security Audit runs Wednesday at 03:00 UTC and manually. It audits all dependencies at severity `high`, including development/build tooling. High/critical findings and registry errors fail the job visibly. This scheduled job is not a required PR check. Subscribe the repository maintainer to workflow failure notifications and triage each failure; never suppress registry failures or use an automatic audit fix.
-
-The original audit reported 41 vulnerabilities (5 critical, 21 high, 15 moderate), with 54 separately counted GitHub alerts. [[Dependency Advisory Triage 2026-09-18]] retains that historical inventory. D1-D5 fixes are merged; the current baseline, owner, override rationale, removal condition, and rollout limits are recorded above. No advisory suppression is used. A new high/critical finding or registry failure must still fail the audit.
-
-## External rollout checklist
-
-These actions require a repository administrator; configuration files alone do not activate them.
-
-1. Completed: reviewed changes are published and all three Dependency Validation checks passed.
-2. Completed: Renovate is authorized for `ENGGP/thunderstrux`, created [Dependency Dashboard #6](https://github.com/ENGGP/thunderstrux/issues/6), and Dependabot alerts report zero open findings. Dependabot update PRs remain disabled, leaving Renovate as the only update bot.
-3. Completed: `static-validation`, `integration-tests`, and `production-build` remain strict protected-branch checks; `security-audit` is not required.
-4. Completed: controlled CI-only [PR #7](https://github.com/ENGGP/thunderstrux/pull/7) initially pinned Node 20 to 20.20.2 and workflow Node 22 to 22.23.2. [PR #20](https://github.com/ENGGP/thunderstrux/pull/20) later updated every workflow Node input to 22.23.3, and [PR #19](https://github.com/ENGGP/thunderstrux/pull/19) updated the pinned `pnpm/action-setup` digest. These changes touched no manifests or lockfile and passed all five latest-head checks. Dockerfile, Compose, and workflow service images remain excluded from Renovate.
-5. Pending: security-PR evidence requires a real eligible advisory. Maintainer failure-notification receipt requires the next genuine audit failure, whether caused by an advisory or a registry error. Never downgrade dependencies, introduce a vulnerability or cause a registry failure to manufacture evidence.
-6. Mark P2.15 complete only after both pending evidence items are recorded.
-
-GitHub vulnerability alerts were enabled during implementation. The historical dependency graph contained 205 packages and 54 open alerts; after remediation, a 2026-09-18 API check found zero open alerts. Renovate authorization and repository discovery are evidenced by [Dependency Dashboard](https://github.com/ENGGP/thunderstrux/issues/6) and controlled PR #7. The repository-side deployment (task P2.17), migration, health, backup/restore, and rollback tooling is implemented; external production activation remains outstanding. Real browser/Stripe tests are covered by P2.16.
-
-## GitHub rollout evidence (2026-09-18)
-
-- [Implementation PR #1](https://github.com/ENGGP/thunderstrux/pull/1) merged with a regular merge commit `05d9502`, preserving the original four commits plus advisory assignment commit `178d431`. There were no upstream conflicts; remote branches were retained.
-- [Validation run 35231538737](https://github.com/ENGGP/thunderstrux/actions/runs/35231538737) passed all three jobs for commit `6b3fb9e176120ac56302239de51a41afcebc29af`.
-- After that green run, `main` branch protection was configured and read back: require `static-validation`, `integration-tests`, `production-build`, bound to the observed GitHub Actions app (15368), require an up-to-date branch, enforce for administrators. No audit check or new reviewer-count requirement was added.
-- Completed after initial rollout: Renovate authorization, Dependency Dashboard #6 and controlled PR #7 validation and merge. Docker dependencies are absent from the dashboard because their managers and datasource are disabled. Dependabot update PRs remain disabled. Eligible vulnerability-PR evidence awaits a real advisory; maintainer notification evidence awaits the next genuine audit failure.
-
-## Original P2.15 local verification
-
-Before the authorization fix, isolated runs of `organisation-connect-disclosure.test.ts` on both clean commit `c8878fe` and the P2.15 working copy produced the same 9 passes / 4 failures. This demonstrates that the failures predate the infrastructure changes. Both used disposable PostgreSQL 16 databases (`baseline_test` and `current_test`) and equivalent fake Stripe environment values.
-
-The authorization fix adds a bounded broad-capability check before input validation, while retaining separate target-tenant authorization and the first-party-origin guard first for mutations. Active owner/admin staff can manage Connect regardless of account role. Safe legacy ownership applies only when no staff row exists for that user/tenant pair; revoked, invited or downgraded staff cannot regain authority through legacy fallback. Unrelated staff membership does not erase legitimate legacy ownership. Missing/unrelated/revoked target access remains non-disclosing, while broad lack of capability remains 403.
-
-After the fix: focused suite 22/22; complete suite 185/185; typecheck and production build passed. Added regressions cover member owner/admin access, malformed/missing/valid unauthorized requests, cross-tenant 404 body equivalence, target-role denial, legacy ownership, same-session revocation/invitation/downgrade, origin ordering, no provider calls and no organisation changes on denial. Original disclosure assertions were retained. Clean-environment fixture corrections keep dates relative and supply fake Stripe credentials.
-
-Validation uses a disposable source copy and database, preserving the running app and workspace build files. The frozen install left `pnpm-lock.yaml` byte-for-byte unchanged; typecheck and the production build passed. The non-test database guard refused a `production` database before attempting a connection.
-
-Both workflows passed actionlint 1.7.7. Renovate configuration passed validator 44.93.4 with Node 24.11.1; installation emitted engine warnings from the bootstrap Node 20 process, and the validator reported its optional RE2 fallback. Action SHAs were resolved from their official upstream release tags.
-
-## Historical completed rollout evidence (2026-09-18 Australia/Brisbane)
-
-- [Fresh pre-merge validation](https://github.com/ENGGP/thunderstrux/actions/runs/35236969551) passed all three required jobs for `178d431`.
-- Local disposable Docker validation passed frozen installation, Prisma generation, typecheck, all 185 integration tests (including 22 Connect regressions), and production build against PostgreSQL 16 database `p215_test`.
-- [Manual Security Audit](https://github.com/ENGGP/thunderstrux/actions/runs/35286130474) ran from merged `main` (`05d9502`), started 2026-09-17 23:17:07 UTC (2026-09-18 09:17:07 Brisbane). Installation passed; the audit failed with exit code 1 after reporting 41 findings: 5 critical, 21 high, 15 moderate. This expected failure proves advisory detection; it is not a green audit or vulnerability remediation.
-- GitHub's separately counted open-alert inventory remains 54: 9 critical, 24 high, 21 moderate. D1-D5 owner: ENGGP repository maintainer. Deadlines: D1/D2 2026-09-21; D3/D5 2026-09-25; D4 2026-10-02.
-- Branch protection was read back: strict/up-to-date, administrator enforcement, and the three GitHub Actions checks remain required. Security Audit remains non-required and scheduled Wednesdays at 03:00 UTC.
-- Lockfile unchanged: Windows checkout SHA-256 `6E4D3BD138B75D817D349AB7CB43784B1BEEF47ED0A1965D11C53BE1FFCBA080`; committed LF archive and validated Linux copy both `31d8d163e8b7a81effe7ac97041afec243c18900a8720ecb8967c13662bad95f`. The difference is checkout line endings.
-- This historical rollout evidence was published through documentation-only PR #2. The production-readiness plan is now synchronized with current rollout status.
-
-## Finalisation evidence (2026-09-18)
-
-- [PR #4](https://github.com/ENGGP/thunderstrux/pull/4), merge `3229578`, ignores generated `next-env.d.ts` and runs `next typegen` before standalone typechecking. [Main validation](https://github.com/ENGGP/thunderstrux/actions/runs/35292254371) passed all three jobs.
-- Branch protection still requires `static-validation`, `integration-tests`, and `production-build`, with up-to-date enforcement. Security Audit remains non-required.
-- Windows dependencies were refreshed using pnpm 10.0.0 and the frozen lockfile; Prisma 6.19.3 generation passed. This replaces the previously stale host installation.
-- Finalisation validation passed: host typecheck (Node 22.18.0), all 21 installed direct dependency versions match the manifest, and host audit reports no known vulnerabilities. Isolated Node 20 validation passed frozen installation, Prisma generation, typecheck, all 190 integration tests, production build and audit. Production HTTP checks passed for homepage, login, health, compiled CSS, malformed-token redirect and invalid image input. No package or lockfile changes were needed.
-- Renovate 44.93.4 strict configuration validation passed (optional native RE2 unavailable; validator used its documented RegExp fallback). Independent read-only review found no concrete issues. Docker image exclusion includes workflow service images through the Docker datasource rule.
-- Renovate authorization completed after finalisation. Dashboard #6 and merged PR #7 provide repository discovery and controlled-update evidence; Docker dependencies are absent as configured. PR #7's five post-merge checks passed; its non-required release-age status remained pending for a pin update.
-- Overall P2.15 remains Open only for security-PR proof after a real eligible advisory and maintainer notification receipt after the next genuine audit failure, as explicitly selected by the maintainer.
-
-## Local runtime refresh (2026-10-10)
-
-The local development dependency volume still held Next 16.3.5 while package.json pinned 16.3.8. `node scripts/recreate-dev-app.mjs` refreshed the development image and verified dependency cache without changing package/lockfile pins or database/Redis volumes. Runtime Next 16.3.8, generated Prisma Client, 32 applied migrations, affected dashboard compilation and readiness 200 were observed. [[Troubleshooting]] and [[Project Handover 2026-10-12]] record the archive/key retention and local configuration recovery. This activates the dependency patches in local development only; hosted release images still need separate rollout and verification.
+[[Engineering Delivery Workflow]] · [[Production Operations Hosting]] · [[E2E and Staging Payments]] · [[Development Workflow]] · [[Troubleshooting]] · [[Issue and Defect Register]]

@@ -1,184 +1,256 @@
 ---
 status: living
-last-reviewed: 2026-10-27
+last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Stripe Payments and Connect]]", "[[Email Delivery Implementation]]"]
-sources: [lib/payments/checkout-reconciliation.ts, lib/payments/order-lifecycle.ts]
+related: ["[[Payment Lifecycle Refunds and Disputes]]", "[[Stripe Payments and Connect]]", "[[Email Delivery Implementation]]", "[[Database and Multi Tenancy]]", "[[Memberships and Merchandise]]"]
+sources: [lib/payments/checkout-creation.ts, lib/payments/checkout-reconciliation.ts, lib/payments/checkout-attempts.ts, lib/payments/checkout-attempt-recovery.ts, lib/payments/checkout-binding.ts, lib/payments/free-ticket-issuance.ts, lib/payments/order-lifecycle.ts, lib/tickets/reservations.ts, lib/orders/stale-orders.ts, lib/commerce/checkout.ts, lib/commerce/reconciliation.ts, lib/purchases/projection.ts, lib/purchases/pending-checkout.ts]
 ---
 
 # Payment Lifecycle
 
-Delivery and defect-resolution evidence is retained in the validation section below and in merged PR #13. Repeatable engineering and PR procedure: [[Engineering Delivery Workflow]].
+**Owns:** Thunderstrux-side purchase state for tickets and for memberships and merchandise: order, ticket, hold and checkout-attempt states, checkout and fulfilment, holds, expiry, buyer cancel, attempt recovery, purchase snapshots, the order history journal, display statuses, transaction rules and the payment workers. Refunds, compensation, disputes, reversals and free cancellation are in [[Payment Lifecycle Refunds and Disputes]].
+**Read when:** changing checkout, fulfilment, order or ticket states, holds, the stale-order or recovery workers, or how an order's status is shown.
+**Not here:** Stripe calls, Session parameters, webhook endpoints and Connect ([[Stripe Payments and Connect]]); ticket and refund emails ([[Email Delivery Implementation]]); membership and merchandise family rules ([[Memberships and Merchandise]]); models and indexes ([[Database and Multi Tenancy]]); what validity means at the door ([[Ticket Check-in Implementation]]).
 
-P3.19 adds an append-only business-event journal around the existing `Order`, `TicketReservation`, `Ticket`, refund, and `EmailOutbox` fields. Existing status enums and API response contracts remain authoritative for current state; `OrderLifecycleEvent` explains how that state was reached.
+## Code
 
-## Account Closure And Buyer Identity
-
-Closure retains original Order/User identifiers, tickets, attendance and lifecycle records. Buyer contacts use immutable captures with explicit provenance; anonymised login email is not a delivery address. A new signup never inherits old purchases. Later provider payment/refund truth remains authoritative, independently of account closure. See [[Database and Multi Tenancy]] and [[Email Delivery Implementation]].
-
-## Purchase Snapshots (T10)
-
-Checkout records what was bought when it creates the order: `paymentKind` (`stripe` or `free`; required with no default), the purchased ticket type name, seller name and connected Stripe account, currency, the platform fee in cents and its policy version (`platform_fee_10_percent_v1` until T46, then `platform_fee_3_75_percent_89c_v2`: 3.75% of the order, rounded once, plus $0.89 per ticket), `snapshotVersion`, and the buyer contact with provenance `purchase`. These are the values the Stripe Session charges, and later edits to the ticket type, society or profile never change them. Fulfilment sets `fulfilledAt` with `paidAt` and numbers each ticket with a unique `(orderId, issueSequence)`, so a second issuance for the same order fails instead of adding tickets. Tickets carry `validity` (`active`, `void`, `refund_review`); only active tickets appear in the wallet, ticket email and door list.
-
-`lib/purchases/projection.ts` turns status, kind and compensation review into the one displayed status: Processing, Paid, Free, Payment review, Failed or Expired. Free orders keep the compatible `status = paid` and `paidAt`, so money queries must filter on `paymentKind`, not status. Legacy rows keep unknown names, sellers and fees as null; readers show today's ticket name followed by "(historical label unavailable)" and never write it back. Migration `20261015010000_ticket_purchase_snapshots` backfills only known facts: every existing order is Stripe (checkout always rejected zero totals), `fulfilledAt` is the first ticket's creation time for paid orders, and existing tickets are numbered by `(createdAt, id)`.
-
-## Payment Destination and Mode (T17)
-
-Fulfilment checks where the money went. `reconcileCompletedCheckoutSessionWithSideEffects`, the only production entry (signed webhook and the development success fallback), reads the Session's PaymentIntent from Stripe before any lock and passes its `transfer_data.destination`. Reconciliation compares it with the order's `sellerStripeAccountId` snapshot: a different destination, or a paid Session without a PaymentIntent, is held for compensation review (`webhook_mismatch`) instead of fulfilled. Orders from before T10 have no snapshot and are not checked. Both webhooks ignore events from the other Stripe mode, and live keys are refused outside production (see [[Stripe Payments and Connect]]).
-
-## Free Registrations (T13)
-
-`lib/payments/free-ticket-issuance.ts` fulfils a zero-price selection where checkout locks it (User, Event, then TicketType), after the same sale-state, readiness, price and sellable-stock checks as a paid checkout. It writes a free `Order` (`paymentKind: free`, `status: paid`, `paidAt = fulfilledAt`, unit price, total and fee 0, no seller Stripe account), numbered tickets, one stock decrement, `order_created` and `free_fulfilled` lifecycle events, a `CheckoutAttempt` without a reconcile time (so the recovery worker never claims it) and the automatic ticket email, all in one transaction. No Stripe call, fee calculation or hold. A replay with the same key returns the same order.
-
-Free orders count as sold tickets (the Summary splits paid and free) but never as revenue: revenue by day and the overview's monthly revenue read `paymentKind: stripe`. The order page says nothing was charged and hides the refund and Stripe session controls, and marking a free order refunded is refused. Cancelling a free registration arrives with T18c.
-
-## Checkout Attempts (T14a)
-
-Every paid checkout is a `CheckoutAttempt` (`lib/payments/checkout-attempts.ts`): the actor, the client's `idempotencyKey`, a hash of the selection (event, ticket type, quantity, expected price), the order, a stable server-generated `providerOperationKey` and, once bound, the Stripe Session. The attempt is created in the same transaction as the pending order and hold.
-
-- The same actor and key returns the same attempt: a double click or a retry after a lost response never creates a second order or Session. The same key with a different selection is a 409.
-- The provider key is sent to Stripe as its idempotency key, so replaying Session creation returns the original Session.
-- One buyer's unpaid holds on an event stay within one order's worth (10 tickets): a member is counted by account and a guest by email identity, across checkout sessions. Past that, checkout answers 409 `purchase_in_progress` until a hold is paid, cancelled or lapses (SEC-005). The `checkout_create` limit is keyed on the buyer and event, not the client address.
-- Only a definite Stripe refusal (card, invalid request, authentication, permission or rate-limit error) fails the order, its attempt and the hold. A timeout, connection or unknown error, or a Session that cannot be bound, leaves the attempt `provider_uncertain` with its order and hold, and checkout answers 202. The buyer polls `GET /api/payments/checkout/attempts/[attemptId]`.
-- A webhook that fulfils before the Session is bound converges: binding finds the order already on that Session and marks the attempt attached.
-- States: `created`, `provider_uncertain`, `provider_attached`, `failed`. Completed and expired come from the order. `reconcileDueAt` marks attempts due for recovery.
-
-## Checkout Attempt Recovery (T14b)
-
-Checkout stores the exact Stripe Session request on the attempt (`providerRequest`) before calling Stripe. `scripts/process-checkout-attempts` (`pnpm checkout-attempts:process`, Compose service `checkout-recovery-worker`) claims due `created` or `provider_uncertain` attempts, locking the order and then the attempt and hiding each claim for a two-minute lease, so a crashed worker's claim reappears. It replays the stored request with the attempt's idempotency key:
-
-- **Stripe returns a Session:** it is the original one. It is bound to the still-pending order, or the attempt converges on a webhook that bound it first.
-- **Stripe refuses:** no Session exists. A request Stripe never received is by then within 30 minutes of its stored expiry, which Stripe rejects. The order fails and its hold is released.
-- **Unknown again:** the hold is kept and recovery retries in two minutes, until Stripe's 24-hour idempotency window passes (alert `checkout_attempt_recovery_abandoned`).
-- **The order already closed** (its hold and the Session expire together): the Session is recorded on the failed attempt. A payment on it still arrives by webhook and goes to compensation review.
-- **No stored request:** checkout stopped before calling Stripe, so the order fails without a Stripe call.
-
-Worker actions appear in the order history with source `checkout_recovery`. A worker failure logs `checkout_attempt_recovery.worker.failed` and alerts `checkout_attempt_recovery_failed`.
-
-## Whole-Order Refunds (T18a)
-
-`lib/payments/order-refunds.ts`. A refund is one `RefundRequest` for the whole order, started by staff with `orders:refund` from order detail (POST `/api/orders/[orderId]/refunds`). Rules, in order:
-
-- **Request:** under the Order lock the order must be a paid, fulfilled Stripe order with no compensation review, no manual "recorded outside Thunderstrux" mark, no live compensation job and no `refundStatus`; the staff member types the order's short reference, gives a reason (8 to 500 characters) and, unless staff MFA is off, a fresh authenticator code. The request is recorded and `Order.refundStatus` becomes `processing`: the financial fence. Compensation refunds never start on a fenced order, and ordinary refunds never start on an order in compensation.
-- **Stripe, outside the transaction:** the Checkout Session and PaymentIntent are re-read and must match the order (amount, currency, order id, the snapshot destination account, not disputed). A refund Stripe already holds that this request did not make (dashboard or compensation) stops the request for review rather than adding a second one. Then `refunds.create` with `reverse_transfer` and `refund_application_fee`, metadata `refundRequestId` and `orderId`, and the request's `operationKey` as the idempotency key.
-- **Outcome:** `succeeded` sets `refundStatus = refunded`, voids every ticket (`validity: void`, reason `refunded`; attendance and check-ins are kept, stock is not restored), appends `refunded` and queues a refund notice to the buyer. `pending` keeps the fence until a webhook or the worker confirms. `failed`, a definite Stripe refusal or a verification mismatch lifts the fence and leaves the tickets valid.
-- **No answer:** the request becomes `uncertain`. The refund worker (`scripts/process-compensation-refunds`, which now also runs `processOrderRefundBatch`) first looks for the request's own refund at Stripe; only if there is none does it send the same key again. After six attempts it stops retrying, keeps the fence and alerts `order_refund_unresolved`. Once an attempt has recorded the PaymentIntent, the refund may exist, so a failed or throttled lookup, or one that can't match it, keeps the request `uncertain` instead of failing it; Stripe's signed outcome for that refund settles it (SEC-011).
-- **Webhooks:** `refund.created`, `refund.updated` and `refund.failed` carrying `refundRequestId` go to the ordinary refund, those carrying `compensationRefundJobId` to compensation, and anything else is a refund made outside Thunderstrux (T18b, below). The event must match the request's recorded PaymentIntent, amount and currency, is journalled once in `StripeRefundWebhookEvent`, and an older event never overrides a newer one.
-
-The order keeps `status: paid`; projections read `refundStatus` first, so lists and detail show Refund processing or Refunded.
-
-**Commerce orders (T23c).** The same code refunds a membership order and, since T28b, a merchandise order (a confirmed refund cancels a pickup not yet collected; stock comes back only through a return): a `RefundRequest` names exactly one of `orderId` or `commerceOrderId` (database check), and `CommerceOrder.refundStatus` is the same fence, allowed only on Stripe payments. `requestCommerceRefund` locks the family's resources then the order (member, society, order for a membership) and accepts only a fulfilled, paid Stripe order with no compensation review; the Session check reads `commerceOrderId` from its metadata, and the refund carries `commerceOrderId` (never `orderId`), which the webhook checks. Verification, the stable key, the uncertain-outcome lookup, the worker and the webhook journal are shared with tickets; a few helpers in `order-refunds.ts` pick the purchase's lock, history, fence and metadata. A confirmed refund marks the order `refunded`, revokes every membership it bought (`Refunded: {reason}`, by the requesting staff member) and emails the buyer; a failure lifts the fence and the membership stays active. Commerce orders have no projection of disputes or refunds made in Stripe's dashboard yet, so a request stops for review if Stripe already shows another refund (PAY-003).
-
-## Disputes and Refunds Made Outside Thunderstrux (T18b)
-
-`lib/payments/purchase-disputes.ts`. Stripe reports both through signed webhooks, but each handler re-reads Stripe's current state (the dispute, or the payment's refund list), so duplicate and out-of-order deliveries reach the same result. Before anything changes, the event's PaymentIntent must resolve to an order (by `Order.stripePaymentIntentId`, or the Checkout Session Stripe lists for it, which must name the order and be its session), the Session must name the order, the currency must match and the money must have gone to the order's seller snapshot. A dispute must also be on the payment's own charge and no larger than the order. Anything that does not verify changes nothing; an unmatched dispute alerts `purchase_dispute_unmatched`. Applied events are journalled once in `StripeRefundWebhookEvent` (with neither link set).
-
-- **Disputes** (`charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`): the first verified event records a `PurchaseDispute`, sets `Order.disputeStatus = open`, moves every active ticket to `refund_review` (reason `disputed`, shown as "Under review"; check-in accepts only active tickets), appends `dispute_opened` and alerts `purchase_dispute_opened`. While `disputeStatus` is set, Thunderstrux refunds, ticket resends, the manual "recorded outside Thunderstrux" mark and compensation refunds are refused. A dispute is not a refund. `lost` voids the disputed tickets (reason `dispute_lost`), stays set, and queues the money's recovery (below). `won` (or `warning_closed`, an inquiry that never became a chargeback, or `prevented`) keeps the tickets under review until an owner or finance manager restores them with a reason of 8 to 500 characters (`dispute_resolved`, audited); that clears the fence, and later events for that dispute are history only. A charge can carry more than one dispute: `disputeStatus` is the worst of the order's disputes (lost, then open, then won), and a restore needs every unresolved dispute won and resolves them all together (SEC-024). Commerce orders take the same worst-of rule.
-- **Refunds made outside Thunderstrux** (a `refund.*` event naming neither a request nor a compensation job, typically from the Stripe dashboard): `Order.externalRefundedAmount` becomes the total of the payment's succeeded refunds that Thunderstrux did not make; pending ones count for nothing. A full amount on a paid order sets `refundStatus = refunded` and voids the tickets (reason `refunded_outside`). A partial amount is never treated as full: the tickets stay valid, the order reads Payment review until staff mark it reviewed, and Refund the rest sends a Thunderstrux refund for the remainder (the T18a check accepts Stripe's other refunds only when they total exactly the part already refunded). Each change appends `external_refund_recorded`.
-
-**Lost disputes taken back from the society (PAY-004).** On destination charges Stripe takes a dispute's amount and its dispute fee from the platform, with or without `on_behalf_of`. Founder decision (2026-10-24, as Eventbrite does): the society bears a lost sale, so the transfer that paid it is reversed by the disputed amount. Thunderstrux keeps its fee and pays Stripe's dispute fee. Stripe advises reversing only once a dispute is lost, so nothing moves while it is open or after it is won.
-- **Queued with the loss.** The ticket and commerce dispute handlers set `PurchaseDispute.reversalStatus = pending` in the transaction that records the loss. A later event for the same dispute queues nothing new.
-- **Sent by the refunds worker.** `processDisputeReversalBatch` (`lib/payments/dispute-reversals.ts`) runs after the refund batches in `scripts/process-compensation-refunds.ts`. It claims a row with a lease and reads the charge's `transfer`. The transfer's destination and currency must match the order's seller snapshot. It then reverses `min(dispute amount, what is left of the transfer)`, because a refund may already have reversed part of it. The reversal carries metadata `disputeId` and `orderId` or `commerceOrderId`, and the idempotency key `dispute-reversal:<dispute id>`. It doesn't refund the application fee.
-- **Recorded.** Success stores `stripeTransferReversalId` and `reversalAmount`, and appends `dispute_funds_recovered` to the order's history (staff timeline only, "Lost dispute taken back from the society"). It also writes `order.dispute_funds_recovered` or `commerce_order.dispute_funds_recovered`, which History shows as Thunderstrux's step with the amount.
-- **Unknown or impossible.** An unknown outcome becomes `uncertain` and retries with backoff (1 to 30 minutes); the next try first looks for the dispute's reversal at Stripe, so a key is never sent twice for a reversal that exists. After six tries it alerts `dispute_reversal_unresolved` and keeps checking hourly. A missing transfer, a destination mismatch, nothing left to reverse, or a definite refusal from Stripe marks it `failed` and alerts, and a person settles it in Stripe's Dashboard. The operations monitor counts pending and uncertain reversals as the `dispute_reversals` queue.
-
-Lists and order detail read `disputeStatus` first: Disputed, then Refunded, Refund processing, and Payment review for compensation or an unreviewed partial refund.
-
-## Cancelling a Free Registration (T18c)
-
-`lib/payments/free-cancellation.ts`, the readiness plan section 3.3 shape that T23 (membership grants) and T28 (pickups) reuse. Staff with `orders:refund` cancel a confirmed free order (`paymentKind = free`, `status = paid`, fulfilled) from order detail with a reason of 8 to 500 characters and, unless staff MFA is off, a fresh authenticator code (POST `/api/orders/[orderId]/cancel`). Under the Order lock it records `cancelledAt`, `cancelledByUserId` and `cancellationReason`, voids the tickets (reason `cancelled`; check-ins are kept), appends `free_cancelled`, writes `order.free_cancelled` to the audit log and queues one cancellation notice to the buyer (event key `cancellation/{orderId}`). It is never a refund: no `RefundRequest`, no refund totals, and the order keeps `status = paid` and its original fulfilment. Stock is not restored; that stays a separate reviewed action. A repeat answers `already_cancelled` without changing anything, and the database refuses a cancellation on a non-free order or without a reason.
-
-Read models show Cancelled before every other state ("Cancelled", long form "Cancelled – free purchase"); resends are refused, and the guest order page says the registration was cancelled instead of listing tickets.
-
-## Membership and Merchandise Checkout (T21)
-
-`lib/commerce/` (database spec 6.1 to 6.3 and 7), the commerce twin of ticket checkout. Each family (memberships since T23a; merchandise since T27a) plugs in through `lib/commerce/families.ts`: a selection schema, whether guests may buy, and four hooks that run inside the caller's transaction (`quote`, `lock`, `fulfil`, `release`). Lock order is the family's own resources first (membership: member then society; merchandise: variants in ascending id), then the commerce order. The registry ships empty: until a family is registered its checkout route answers 404 and a webhook for it fulfils nothing.
-
-- **Checkout** (`lib/commerce/checkout.ts`, POST `/api/payments/checkout/membership` and `/merchandise`): the same key and selection replay the same attempt; the same key with a different selection is 409. Under the buyer lock (member, or for merchandise a verified guest's checkout session) the family quotes the lines; a total different from `expectedTotal` is a 409 quote change. A free total is created, fulfilled through the family and completed in the same transaction (`free_fulfilled`), with no Stripe call. A paid total needs a society that can take payments (a Session returns to `/memberships/orders/{id}` or `/merchandise/orders/{id}` on success and with `?left=1` on cancel; free options in a paid basket stay off Stripe's line items); the order (fee and policy snapshot, `expiresAt` 30 minutes out) and its attempt are committed, then the Session is created outside the transaction with the attempt's stable key and metadata `family`, `commerceOrderId` and `organisationId` on both the Session and the PaymentIntent, and bound to the order (`stripe_session_attached`). A lost Stripe answer leaves the attempt `provider_uncertain`; the attempt recovery worker replays the stored request with the same key and binds the original Session.
-- **Webhook** (`lib/commerce/reconciliation.ts`): `checkout.session.completed` and `.expired` go to commerce only when the Session carries `family`. The order is found by its unique Session, or by `commerceOrderId` before the Session is bound; an unknown family, two different matches, a family or society that disagrees with the order, or another Session already bound is ignored with `commerce_webhook_identity_mismatch` and never sent to another family or to tickets. A Session without `family` is a ticket Session unless it belongs to a commerce order, which is also ignored with the alert. Under the family's locks and the order lock, a paid Session is checked for amount, currency and the destination snapshot, then the family fulfils it (`payment_fulfilled`); a replay changes nothing. A mismatch, a payment on an order that had already closed, a family that can no longer honour it (for example out of stock) or a family not registered becomes a compensation review on the order (`requiresCompensationReview`, `reviewReason`, `compensation_required`, alert `paid_but_unfulfilled_compensation_required`) and releases any hold. A completed but unpaid Session fails the order; an expired one expires it.
-- **Workers**: attempt recovery (`process-checkout-attempts`) covers commerce attempts; the stale-order worker (`process-stale-orders`) expires pending paid commerce orders five minutes after their Session expired and releases their holds.
-
-A commerce payment that needs review is recorded on the order.
-
-**Unpaid orders (design round E1).** An order Stripe hasn't been paid for asks Stripe where it stands each time its page loads (`lib/purchases/pending-checkout.ts`):
-- **Waiting for payment:** the Session is open and the hold lasts. The page offers Return to payment (the same Session) and Cancel order.
-- **Confirming payment:** Stripe has the payment and its webhook is due.
-- **Didn't complete:** the Session expired or the hold ended.
-
-Unpaid orders never read "Paid" or "Confirming". Purchases lists them as Waiting for payment without asking Stripe. Cancel expires the Session at Stripe, then releases the hold through the webhook's expiry path, so the tickets or stock go back on sale at once rather than when the hold lapses. If Stripe was paid meanwhile, nothing is cancelled. Without Stripe's answer the hold decides, and the payment page isn't offered.
-
-**Commerce disputes, outside refunds and compensation (PAY-003).** `lib/commerce/payment-recovery.ts` gives membership and merchandise orders what T18b gives ticket orders. The webhook asks commerce first: a `charge.dispute.*` or unlabelled `refund.*` event is commerce's when its PaymentIntent belongs to a commerce order (stored on the order, or found from Stripe's Session by `family` metadata), and the order, family and destination still match. Anything else goes to the ticket handlers unchanged. Events are journalled once and projected from Stripe's state as re-read. A dispute (`PurchaseDispute` names exactly one of `orderId` or `commerceOrderId`) sets `CommerceOrder.disputeStatus`. While it is `open`, refunds and pickup hand-over are refused; `lost` ends the order's memberships, leaves nothing to hand over and queues the same recovery as a ticket order (PAY-004); `won` clears the status, and the dispute stays in history. Refunds made in the Stripe dashboard are totalled into `externalRefundedAmount`. A full one marks the order refunded and ends its memberships, which also settles a payment under review. A partial one shows as Payment review until staff mark it reviewed (`POST /api/orders/[orderId]/review` accepts a commerce order); a refund here then takes only the rest. A paid order that can't be filled is refunded in full automatically: compensation queues a system `RefundRequest` (no actor) under the usual fence, and the refund worker verifies the payment before sending it. A mismatch fails the request and leaves the order under review. Commerce has no per-order compensation mode, because automatic is what a ticketing platform does with an order it can't complete. Hosted activation still waits on PAY-002.
-
-## Storage
-
-`OrderLifecycleEvent` belongs to one order and has a unique `(orderId, sequence)` pair. Events store a typed event and source, optional staff actor, Stripe event/session references, email job reference, reason, before/after order and reservation statuses, and a small allowlisted `facts` object.
-
-New orders start with `order_created`. Existing orders are not backfilled. Their first later transition receives `legacy_baseline`, and the organiser timeline warns that earlier history is incomplete.
-
-The journal must not contain raw webhook bodies, checkout payloads, email addresses, provider credentials, invite tokens, or payment-card data.
-
-## Recorded Transitions
-
-- Checkout: order creation, Stripe session attachment, and checkout creation failure.
-- Stripe reconciliation: ordinary failure, expiry, compensation required, successful fulfilment, and compensation recovery.
-- Stale cleanup: reservation-backed and legacy pending-order expiry after lock-time revalidation.
-- Staff actions: manual refund bookkeeping and manual ticket-email enqueue, attributed to the authenticated user.
-- Email worker: automatic/manual enqueue, retry scheduling, provider acceptance, and terminal exhaustion.
-
-Duplicate webhook delivery and idempotent actions do not append duplicate business transitions. Worker claim/reclaim operations are operational leases and are not journal events.
-
-## Transition Rules
-
-| Operation | Allowed state and result |
+| Concern | Where |
 | --- | --- |
-| Create checkout | Create a pending order and active reservation together. |
-| Attach Stripe Session | Bind only an unbound pending order; an identical existing binding is a no-op. Never replace another Session. |
-| Checkout creation failure | Only pending orders become failed; release an active reservation. Do not overwrite a concurrently completed order. |
-| Complete paid checkout | Validate identity, metadata, amount, currency, reservation, and inventory before atomically confirming the reservation, decrementing inventory, issuing tickets, marking paid, and enqueuing email. |
-| Paid but unfulfillable | Record failed plus compensation-review state, preserving payment evidence and the actual resulting reservation state. No tickets or automatic email job. |
-| Late paid checkout | Expired or ordinarily failed orders enter compensation review rather than ordinary fulfilment. |
-| Compensation recovery | Requires an active unexpired reservation, no manual refund, and successful fulfilment validation. Otherwise retain review state. |
-| Expire checkout | Only pending orders expire; revalidate cleanup candidates after locking. Paid/failed/expired terminal states are not overwritten by expiry. |
-| Manual refund | Existing visible paid/failed/expired orders may receive the bookkeeping flag once; order/payment status is unchanged. |
-| Email delivery | The current processing-token holder may record retry, exhaustion, or provider acceptance. Stale claims cannot finalize. Payment state is unchanged. |
+| Ticket checkout (paid and free) | `lib/payments/checkout-creation.ts`: `createEventCheckout`; free path `lib/payments/free-ticket-issuance.ts`: `issueFreeOrder` |
+| Attempts and buyer polling | `lib/payments/checkout-attempts.ts`: `findCheckoutAttempt`, `checkoutAttemptStatus`, `readCheckoutAttempt` |
+| Bind or fail a ticket order | `lib/payments/checkout-binding.ts`: `attachStripeSession`, `failPendingOrder` |
+| Attempt recovery | `lib/payments/checkout-attempt-recovery.ts`: `processCheckoutAttemptRecoveryBatch` |
+| Ticket fulfilment and expiry | `lib/payments/checkout-reconciliation.ts`: `reconcileCompletedCheckoutSession`, `reconcileExpiredCheckoutSession` |
+| Holds, lock options | `lib/tickets/reservations.ts`; stock `lib/events/inventory.ts`: `lockEventInventory`, `readEventInventory`, `sellableQuantity` |
+| Stale-order expiry | `lib/orders/stale-orders.ts`: `processStaleOrderCleanupBatch` |
+| Commerce checkout, binding, webhook, expiry | `lib/commerce/checkout.ts`, `lib/commerce/binding.ts`, `lib/commerce/reconciliation.ts`, `lib/commerce/families.ts`, `lib/commerce/orders.ts` |
+| Unpaid order state and buyer cancel | `lib/purchases/pending-checkout.ts`, `lib/purchases/pending-checkout-http.ts` |
+| Display status | `lib/purchases/projection.ts`: `ticketOrderProjection`, `buyerPurchaseBadge` |
+| Order history | `lib/payments/order-lifecycle.ts`: `lockOrder`, `appendOrderLifecycleEvent`; `lib/payments/order-lifecycle-history.ts` |
+| Workers | `scripts/process-checkout-attempts.ts`, `scripts/process-stale-orders.ts`, `scripts/process-compensation-refunds.ts` |
+| Tests | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/checkout-attempts.test.ts`, `tests/integration/checkout-attempt-recovery.test.ts`, `tests/integration/checkout-reservations.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/free-tickets.test.ts`, `tests/integration/pending-checkout.test.ts`, `tests/integration/commerce-checkout.test.ts`, `tests/integration/payment-lifecycle.test.ts`, `tests/integration/purchase-snapshots.test.ts` |
 
-Ambiguous order identity never causes a transition. Repeated fulfilment of an already-paid order is a no-op, with integrity diagnostics if historical ticket counts disagree. All journal writes share the business transaction; a failed outbox insert rolls back fulfilment and its journal together.
+## States
 
-## Transition Safety
+**`Order.status`** (`OrderStatus`, shared with `CommerceOrder.status`):
 
-Sensitive mutations reload state while holding database row locks and use conditional updates. Checkout locks the buyer, then the event and ticket type through `lib/events/inventory.ts`, and decides price, sale state and stock only under those locks (T12). Payment fulfilment locks the event and ticket type before the order and its reservation/outbox writes, and re-checks the event capacity once. Candidate discovery for stale cleanup happens outside the mutation transaction; every candidate is revalidated after its order lock is acquired.
+| Status | Set by | Meaning |
+| --- | --- | --- |
+| `pending` | paid checkout | Unpaid; holds stock; may have a bound Session |
+| `paid` | fulfilment, or a free order at creation | Fulfilled (`paidAt`, `fulfilledAt`). With `paymentKind = free` nothing was charged |
+| `failed` | a definite Stripe refusal (`failureReason = stripe_error`); a completed but unpaid Session (`webhook_mismatch`); compensation (`requiresCompensationReview`, reason below) | Not fulfilled |
+| `expired` | stale-order job, `checkout.session.expired`, buyer cancel | Unpaid and closed; `failureReason` is null |
 
-Checkout, free registration, commerce checkout and ticket fulfilment run at READ COMMITTED (`lockedPurchaseTransactionOptions` in `lib/tickets/reservations.ts`, DEF-032). Every decision is made after the row locks above, so each statement sees what the buyer before committed. SERIALIZABLE took its snapshot before the lock wait and refused every buyer queued behind another; with 30 buyers for 20 tickets, only 7 free and 5 paid sales went through. A queue of buyers waits up to 10 s for a database connection. These transactions still retry deadlocks and serialization errors a bounded number of times; other database errors are not retried or suppressed. `inventory-locks.test.ts` sends 30 buyers at once for 20 free and 20 paid tickets.
+Facts that sit beside the status: `requiresCompensationReview` (charged, not honoured), `refundStatus`, `disputeStatus`, `externalRefundedAmount` and `externalRefundReviewedAt`, `cancelledAt` (free only), `isManuallyRefunded` ([[Payment Lifecycle Refunds and Disputes]]). A refund or dispute never changes `status`.
 
-**Hold end and late webhooks (DEF-033).** A paid ticket hold lasts 5 minutes past its Stripe page (`lateWebhookGraceMs`). Stripe takes no payment after the page closes, but its webhook (or a retry) comes later, and it must still find the hold, or a buyer who paid in time would go to compensation review. Order pages show Stripe's closing time as the deadline. Commerce holds end with the Stripe page, and the stale-order job waits the same 5 minutes before expiring them. Only the stale-order job expires unpaid ticket orders; checkout ignores lapsed holds without expiring them.
+**`Ticket.validity`** (`TicketValidity`), with `validityReason` and `validityChangedAt`:
 
-**Unfillable payments.** New events default to `automatic_full`: a payment that can't become tickets is refunded in full by the refunds worker, as commerce orders are. Societies can still choose review in the event builder, and existing events keep their saved choice. Hosted activation waits on PAY-002.
+| Validity | Reasons | Set by |
+| --- | --- | --- |
+| `active` | none | issuance; a staff restore after a won dispute |
+| `refund_review` | `disputed` | a dispute opening |
+| `void` | `refunded`, `refunded_outside`, `dispute_lost`, `cancelled` | a confirmed refund, a full outside refund, a lost dispute, a free cancellation |
 
-Completed or expired Stripe sessions are ignored and alert with `payment_reconciliation_ambiguous_order` if metadata and `stripeSessionId` resolve to different local orders. A paid session arriving after an ordinary local failure enters durable compensation review and releases any active reservation. A manually refunded compensation order cannot be recovered by a later webhook retry.
+Voiding keeps `checkedInAt` and never restores stock. Only `active` tickets appear in the wallet, the ticket email and the door list.
 
-Email claims receive a rotating `processingToken`. Final success/failure writes require the token, so a timed-out worker cannot overwrite a newer worker's result. Deployments introducing this token must drain old email workers before starting new workers.
+**`TicketReservation.status`** (`ReservationStatus`), one per paid ticket order:
 
-## Operator View
+| Status | Set by |
+| --- | --- |
+| `active` | checkout; counts against stock while `expiresAt` is in the future |
+| `confirmed` | fulfilment |
+| `released` | checkout failure, a fulfilment mismatch, compensation that releases the hold |
+| `expired` | stale-order job, `checkout.session.expired`, buyer cancel, a payment that arrived after the hold lapsed |
 
-The organisation order detail page shows a newest-first, 25-event timeline. It uses canonical event ownership for tenant isolation and the existing finance access guard. Older/newer links page by per-order sequence. Staff-attributed actions show the actor's display name; system events show their source.
+**`CheckoutAttempt.state`** (`CheckoutAttemptState`), one per checkout of any family (`CheckoutFamily`), unique per actor, family, operation and client key:
 
-The timeline is diagnostic history. It does not replace Stripe as payment-provider truth or turn `isManuallyRefunded` into a Stripe refund.
+| State | Meaning |
+| --- | --- |
+| `created` | Order and hold committed; Stripe not yet answered. `reconcileDueAt` is 2 minutes out (`attemptReconcileDelayMs`) |
+| `provider_uncertain` | Stripe's answer was lost, or the Session couldn't be bound. Due for recovery |
+| `provider_attached` | Session bound (`stripeSessionId`, `stripeSessionUrl`) |
+| `failed` | Order failed, or the order had closed when its Session arrived (the Session is still recorded) |
 
-## Migration And Rollback
+The buyer sees `checkoutAttemptStatus`: `completed` when the order is paid, `failed` when the attempt or order failed or expired, `ready` with the URL when attached, otherwise `processing`. `lastOutcome` records why (for example `session_create_unknown`, `order_not_pending_at_attach`, `replay_window_passed`). Free attempts have no `reconcileDueAt`, so recovery never picks them up.
 
-Migration `20260921010000_formal_payment_lifecycle` is additive: it creates the journal enums/table/indexes and adds nullable `EmailOutbox.processingToken`. The previous application release can run against the expanded schema because it ignores these additions. Before rollback, drain new email workers; an older worker does not understand processing-token fencing. Do not drop the journal during an application rollback.
+## Purchase snapshots
 
-## Validation
+Checkout writes what was bought, and later edits never change it: `paymentKind` (`stripe` or `free`, required), `purchasedTicketTypeName`, `sellerName`, `sellerStripeAccountId`, `currency`, `feeAmount`, `feePolicyVersion`, `snapshotVersion` (`PURCHASE_SNAPSHOT_VERSION`), the buyer snapshot fields with `buyerIdentityCapturedAt` and `buyerIdentityProvenance` (`purchase`, `verified_guest` for guests, or `current_account_at_capture` when account closure filled in an older order), and for a member price `membershipGrantId` with `membershipEntitlementVersion`. These are the values the Session charges.
 
-- Fresh migration and Prisma generation pass.
-- 213 integration tests pass, including lifecycle ordering/idempotency, concurrent replay, tenant isolation, actor attribution, ambiguous identity, late-paid compensation, manual-refund recovery blocking, cleanup concurrency, and stale-worker fencing.
-- Typecheck, production build, 15 browser/signed-webhook tests, 13 runner-safety tests, and the high-severity audit pass (no known vulnerabilities).
-- Three consecutive runs on unchanged implementation revision `138c982` each passed all 15 browser/signed-webhook tests with cleanup: `p216-d057dd2d2efe4f3aa17a417c`, `p216-dbf811d56f13115a5084c9ba`, and `p216-049df43b5b5520a8597ff398`. They cover history pagination, desktop/mobile overflow, tenant denial, and concurrent/expiry transport. Desktop/mobile history screenshots were inspected.
-- Final operations rehearsal `p217-ci-2931ec054f` passed backup/restore with a lifecycle event, outage probes, corrupt-archive quarantine, rollback compatibility, and migration-failure blocking.
-- Independent review identified an incorrect compensation reservation after-state; the journal now reads the actual resulting reservation, with regression coverage. Follow-up review found no further correctness issues.
-- Real Stripe campaign `p216-20010cf603f4e0763ec530c1` passed success, decline, manually attested cancellation, and forced expiry on API version `2026-03-25.dahlia`. It verified the new lifecycle sequence and real Stripe event correlation, destination-charge configuration, inventory, tickets, outbox, and buyer visibility. Listener HTTP 200 and app receipt were correlated. Stripe cleanup and run-owned resource cleanup passed.
-- Real event evidence: success `evt_1UHz3tRuN9MD4SvFpGbf8zTn`, decline/expiry `evt_1UHz62RuN9MD4SvFMJeKqd9x`, cancellation/expiry `evt_1UHz8uRuN9MD4SvFZRbGqV1c`. This does not claim natural timeout or email-provider delivery.
-- Implementation revision: `138c982`; merged through [PR #13](https://github.com/ENGGP/thunderstrux/pull/13) after five latest-head checks passed. Local evidence did not replace CI.
-- See [[E2E and Staging Payments]] for the real Stripe acceptance procedure required after payment-path changes.
+- Tickets are numbered by unique `(orderId, issueSequence)`, so a second issuance for an order fails instead of adding tickets.
+- Legacy rows keep unknown values null. Readers show today's ticket name plus "(historical label unavailable)" (`purchasedTicketTypeLabel`) and never write it back. Migration `20261015010000_ticket_purchase_snapshots` backfilled only known facts.
+- Free orders are stored `paid`, so **money queries filter `paymentKind`, never status alone**. Their order page says nothing was charged and hides refund and Stripe Session controls.
+- Account closure keeps orders, tickets, attendance and history; a new signup never inherits them ([[Authentication and Dashboard Access]]).
 
-Related: [[Stripe Payments and Connect]], [[Email Delivery Implementation]], [[Database and Multi Tenancy]], [[Production Operations]].
+## Ticket checkout
+
+`createEventCheckout` takes one buyer: a verified member, or a guest's live checkout session (actor kind `guest`, actor id the session's grant). Its conditions and refusal codes: [[Stripe Payments and Connect#Required conditions for checkout]].
+
+1. A known `(actor, idempotencyKey)` replays its attempt; the same key with another selection (`checkoutRequestHash` of event, ticket type, quantity, expected price) is 409 `idempotency_conflict`. A same-key request that won the race is found again after the buyer lock or a unique violation.
+2. In one transaction (`runReservationTransaction`): lock the buyer, then `lockEventInventory`, then decide visibility, status, sale state, price (member price via an active `member_prices` grant), stock and Stripe readiness under those locks.
+3. **Free price:** `issueFreeOrder` writes a `paid` free order (`paidAt = fulfilledAt`, unit price, total and fee 0, no seller account), decrements stock once, numbers the tickets, appends `order_created` and `free_fulfilled`, creates the attempt and queues the automatic ticket email. No hold, no fee, no Stripe call; the answer is `fulfilled`.
+4. **Paid price:** the SEC-005 hold cap is checked, then a `pending` order with its snapshots, an `active` hold, `order_created` and a `created` attempt are committed.
+5. Outside the transaction: store the Session request on the attempt and move the hold's end to the Session's `expires_at` + `lateWebhookGraceMs`, then create the Session. Bind it with `attachStripeSession` (`stripe_session_attached`) and answer `redirect`.
+
+A definite Stripe refusal fails the order, its attempt and the hold (`failPendingOrder`, `order_failed`). An uncertain error, or a Session that can't be bound, leaves the attempt `provider_uncertain` and answers 202 with the attempt id.
+
+**Binding** converges: if the order already holds this Session (a webhook bound it first), the attempt is marked attached. If the order is no longer pending or holds another Session, the attempt fails but keeps the Session, so a payment on it still reaches compensation through the webhook, or alerts as PAY-010.
+
+## Holds
+
+| | Tickets | Memberships and merchandise |
+| --- | --- | --- |
+| Row | `TicketReservation` | the family's own holds, plus `CommerceOrder.expiresAt` |
+| Ends | Session `expires_at` + `lateWebhookGraceMs` (5 min), set in `lib/payments/checkout-creation.ts`; created first as `getReservationExpiry` (30 min, `reservationMinutes`) | with the Session (`expires_at`), set in `lib/commerce/checkout.ts` |
+| Expired by | stale-order job, expiry webhook, buyer cancel | the same; the stale job waits the same 5 minutes past `expiresAt` |
+
+- The Session lives 30 minutes + 60 s (`checkoutSessionExpiresAt`). Stripe takes no payment after its page closes, but the webhook may come later; the grace lets a payment made in time still find its hold (DEF-033). Order pages show Stripe's closing time as the deadline.
+- Stock: `sellableQuantity` = max(0, min(type remaining − that type's live holds, capacity − (active tickets + all live holds))); the capacity term applies only when `Event.capacity` is set. `TicketType.quantity` is remaining stock and drops only at fulfilment.
+- A lapsed hold stops counting at once, whether or not its order has expired yet. Checkout never expires other buyers' holds (DEF-032).
+- One buyer's live paid holds on an event stay within `maxTicketsPerOrder` (10): members by account, guests by identity (SEC-005).
+- Hold length is longer than Eventbrite's and Humanitix's defaults (PAY-009, open).
+
+## Fulfilment
+
+`reconcileCompletedCheckoutSession` runs from the signed webhook or the development success fallback, always through `reconcileCompletedCheckoutSessionWithSideEffects`, which passes the payment's destination ([[Stripe Payments and Connect#Webhooks]]). In order:
+
+1. Find the order by `metadata.orderId` and by `stripeSessionId`. Two different orders: ignored, alert `payment_reconciliation_ambiguous_order`. None: ignored.
+2. Order bound to a different Session: ignored (`session_mismatch`); if that Session is paid, alert `ticket_webhook_identity_mismatch` and a person refunds it in Stripe (PAY-010).
+3. Lock the event and ticket type, then the order.
+4. Already `paid`: no change (a ticket count that differs from `quantity` is logged for review).
+5. Under compensation review: stays in review if manually refunded, if its compensation job has left `review_required`, or if no live hold remains; otherwise fulfilment is retried as a recovery.
+6. Session not paid: a `pending` order fails (`webhook_mismatch`, hold released); others stay as they are.
+7. Paid, then each failure goes to compensation with its reason:
+
+| Check | Reason |
+| --- | --- |
+| The order had expired | `expired_order_paid_after_payment` |
+| Metadata missing (`orderId`, `eventId`, `organisationId`, `ticketTypeId`, positive `quantity`) | `missing_required_metadata_after_payment` |
+| Session id, amount, currency `aud`, metadata against the order (organisation = the event's owner), or destination against `sellerStripeAccountId` (orders without a snapshot skip it) | `webhook_mismatch` |
+| The order had failed ordinarily | `paid_session_received_after_order_failed` |
+| Hold expired or lapsed / missing | `reservation_expired_after_payment` / `reservation_missing_after_payment` |
+| Hold quantity differs | `reservation_quantity_mismatch_after_payment` |
+| Member-price membership revoked (read `FOR SHARE`) | `member_price_membership_revoked` |
+| Event capacity below occupancy | `capacity_exceeded_after_payment` |
+| Hold can't be confirmed / stock can't be decremented | `reservation_confirm_failed_after_payment` / `inventory_unavailable_after_payment` |
+
+8. Success, in one transaction: order `paid` with `paidAt` and `fulfilledAt`, review cleared, hold `confirmed`, `TicketType.quantity` decremented, tickets `1..quantity` created with `organisationId` from the event, `payment_fulfilled` (or `compensation_recovered`, which also moves the compensation job `review_required` → `recovered`), and the automatic ticket email queued. A failed email insert rolls the whole fulfilment back.
+
+**Compensation** (`markCompensationRequired`): the order becomes `failed` with `requiresCompensationReview`, keeps or sets `paidAt`, clears `fulfilledAt`, and writes `fulfilmentFailedAt` and `fulfilmentFailureReason` once. The first time it also creates the `CompensationRefundJob` from `compensationRefundModeSnapshot`, writes the audit row, queues the buyer's `payment-review/{orderId}` notice, appends `compensation_required` (and `compensation_refund_queued` when automatic), and after commit alerts `paid_but_unfulfilled_compensation_required`. A replay changes nothing. What happens next: [[Payment Lifecycle Refunds and Disputes]].
+
+## Expiry and buyer cancel
+
+| Path | Tickets | Commerce |
+| --- | --- | --- |
+| Stale-order job | An active hold past `expiresAt` → hold and order `expired`; a pending order whose hold already expired; a pending order with no hold older than `stalePreCheckoutOrderMinutes` (30) | Pending Stripe orders whose `expiresAt` is more than `lateWebhookGraceMs` past → `expired` (`hold_expired`), family holds released |
+| `checkout.session.expired` | A `pending` order → `expired`, hold `expired`; paid, failed and expired orders unchanged; an order bound to another Session ignored | `failPendingCommerceOrder` (`checkout_expired`) |
+| Buyer cancel | `reconcileExpiredCheckoutSession` with source `checkout` | `failPendingCommerceOrder` (`buyer_cancelled`) as `expired` |
+
+The stale job locks each candidate and re-checks it before expiring; candidate discovery happens outside the transaction. `pnpm stale-orders:process -- --dry-run` counts without writing; `--limit=` takes 1 to 1000 (default 100).
+
+**Buyer routes:**
+
+| Route | Rule |
+| --- | --- |
+| `POST /api/purchases/tickets/[orderId]/cancel`, `POST /api/commerce/orders/[orderId]/cancel` | Trusted origin; the member who bought it, or a guest session that may open it (with the guest CSRF header); anyone else 404. Rate limit `checkout_create` per order. Retrieves the Session and expires it at Stripe if open. 200 `{ status: "cancelled" }`, or `{ status: "paid" }` if Stripe was paid meanwhile; 409 `not_pending` or `no_session` |
+| `GET /api/purchases/tickets/[orderId]/status` | The buyer or a guest who may open it; else 404. `{ status }` from `ticketOrderProjection`, `no-store` |
+| `GET /api/payments/checkout/attempts/[attemptId]` | The attempt's own actor; else 404. `checkoutAttemptStatus`, `no-store` |
+
+`pendingCheckoutState` asks Stripe each time an unpaid order's page loads: `waiting` (Session open and held; offers the same payment page and Cancel order), `confirming` (Stripe has the payment, the webhook is due), or `ended`. Without Stripe's answer the hold decides and no payment page is offered. Lists show unpaid orders as Waiting for payment without asking Stripe. `cancelledByBuyer` tells a buyer's cancel apart from a lapsed hold by the `order_expired` source `checkout`.
+
+## Checkout attempt recovery
+
+The `checkout-recovery` worker (`processCheckoutAttemptRecoveryBatch`, tickets and commerce) claims due `created` or `provider_uncertain` attempts in `reconcileDueAt` order. It locks the order, then the attempt, and pushes `reconcileDueAt` out by `attemptRecoveryLeaseMs` (2 min) as a lease. It replays the stored request with the same key:
+
+| Outcome | What happens |
+| --- | --- |
+| `attached` | Stripe returned the original Session; it is bound (source `checkout_recovery`) |
+| `order_closed` | The order closed first; the Session is kept on the failed attempt and a payment on it goes to compensation |
+| `provider_refused` | A definite refusal, or a Session without a URL: the order fails and its hold is released. A request Stripe never saw is refused because its stored expiry is too close |
+| `provider_never_called` | No stored request: checkout stopped before Stripe, so the order fails without a call |
+| `retry_scheduled` | Unknown again: hold kept, retried in `attemptRetryDelayMs` (2 min) |
+| `replay_window_passed` | Older than `attemptReplayWindowMs` (24 h, Stripe's idempotency window): the attempt fails, alert `checkout_attempt_recovery_abandoned`; the order stays pending until the stale job expires it |
+
+## Memberships and merchandise orders
+
+`CommerceOrder` (`CommerceKind` `membership` or `merchandise`) with `CommerceOrderLine`s. Families plug in through `commerceFamilies` in `lib/commerce/families.ts` (both are registered): a selection schema, whether guests may buy (merchandise only), and `quote`, `lock`, `fulfil`, `release` hooks that run inside the caller's transaction. Lock order: buyer, then the family's resources (membership: member then society; merchandise: variants by ascending id), then the order.
+
+- **Checkout** (`POST /api/payments/checkout/membership`, `/merchandise`): same replay and 409 rules as tickets (`commerceRequestHash`). The family quotes under its locks; a total other than `expectedTotal` is 409 `quote_changed`. A free total is created, fulfilled and `free_fulfilled` in one transaction. A paid total needs a ready society, commits the order (`expiresAt` 30 min, fee snapshot) and its attempt, then creates the Session outside and binds it (`attachCommerceSession`). A definite refusal fails the order; an unknown answer leaves the attempt `provider_uncertain` and answers processing.
+- **Webhook** (`reconcileCommerceCheckoutSession`): the order is found by its Session or by `commerceOrderId`. An unknown family, two different matches, a family or society that disagrees, or another bound Session is ignored with `commerce_webhook_identity_mismatch`; a ticket order's Session carrying `family` alerts too. Under the locks, a paid Session is checked for amount, currency and destination, then the family fulfils it (`payment_fulfilled`). A mismatch (`amount_mismatch`, `currency_mismatch`, `destination_mismatch`, `paid_after_order_closed`) or a family that can't honour it becomes compensation: `failed` with `requiresCompensationReview` and `reviewReason`, holds released, `compensation_required`, the buyer's `payment-review/{id}` notice, an automatic full refund ([[Payment Lifecycle Refunds and Disputes]]) and alert `paid_but_unfulfilled_compensation_required`. A completed unpaid Session fails the order (`session_not_paid`).
+- **History:** `CommerceLifecycleEvent` with `CommerceLifecycleEventType`: `order_created`, `stripe_session_attached`, `payment_fulfilled`, `free_fulfilled`, `order_failed`, `order_expired`, `compensation_required`, `free_cancelled`, `refund_requested`, `refund_pending`, `refunded`, `refund_failed`, `pickup_ready`, `pickup_collected`, `return_recorded`, `dispute_opened`, `dispute_closed`, `dispute_funds_recovered`, `external_refund_recorded`, `external_refund_reviewed`. Sources are `OrderLifecycleSource`.
+
+## Order history
+
+`OrderLifecycleEvent`, append-only, unique `(orderId, sequence)`. `appendOrderLifecycleEvent` is called with the order locked (or created in the same transaction), inside the business transaction. It stores the type, source, optional staff actor, `stripeEventId`, `stripeSessionId`, `emailOutboxId`, reason, before and after order and hold statuses, and an allowlisted `facts` object (`OrderLifecycleFacts`). Never raw webhook bodies, checkout payloads, email addresses, credentials, tokens or card data.
+
+| Group | `OrderLifecycleEventType` values |
+| --- | --- |
+| Checkout and fulfilment | `order_created`, `stripe_session_attached`, `order_failed`, `order_expired`, `payment_fulfilled`, `free_fulfilled` |
+| Compensation | `compensation_required`, `compensation_recovered`, `compensation_refund_queued`, `compensation_refund_started`, `compensation_refund_pending`, `compensation_refunded`, `compensation_refund_failed`, `manual_refund_marked` |
+| Refunds | `refund_requested`, `refund_pending`, `refunded`, `refund_failed`, `external_refund_recorded`, `external_refund_reviewed` |
+| Disputes | `dispute_opened`, `dispute_closed`, `dispute_resolved`, `dispute_funds_recovered` |
+| Free cancellation | `free_cancelled` |
+| Ticket email | `email_enqueued` (also an operator requeue), `email_retry_scheduled`, `email_provider_accepted`, `email_delivery_exhausted` |
+| Legacy | `legacy_baseline` |
+
+Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `development_fallback`, `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy`.
+
+- An order with no history gets `legacy_baseline` (source `legacy`) before its first new event, and the timeline warns that earlier history is incomplete.
+- Duplicate deliveries and idempotent replays append nothing. Worker claims and leases are not history.
+- **Operator view:** order detail shows the timeline newest first, `orderLifecyclePageSize` (25) a page, older and newer by sequence (`parseOrderLifecycleCursor`). It is tenant-scoped by the event's owner and labelled by `orderLifecycleLabel`. Staff events show the actor's name, system events their source. The timeline is diagnosis, not provider truth.
+
+## Display status
+
+`ticketOrderProjection` (`lib/purchases/projection.ts`) gives one status for ticket and commerce orders; the first match wins:
+
+| Status | When |
+| --- | --- |
+| `cancelled` | `cancelledAt` set (a free order cancelled by staff) |
+| `disputed` | `disputeStatus` set |
+| `refunded` | `refundStatus = refunded` |
+| `refund-processing` | `refundStatus = processing` |
+| `review` | `requiresCompensationReview`, or an outside partial refund not yet reviewed |
+| `processing` | `pending` |
+| `paid` / `free` | `paid`, by `paymentKind` |
+| `failed` / `expired` | the order status |
+
+`buyerPurchaseBadge` words it for buyers: failed and expired read "Didn't complete", processing "Waiting for payment", cancelled "Cancelled by the society", review "Payment issue" (compensation) or "Partly refunded".
+
+## Transaction rules
+
+- Checkout, free registration, commerce checkout and ticket fulfilment run at READ COMMITTED with `maxWait` 10 s (`lockedPurchaseTransactionOptions`, DEF-032), retrying write conflicts up to `maxReservationTransactionAttempts` (3). Every decision is made after the row locks, so each statement sees what the buyer before committed. SERIALIZABLE took its snapshot before the lock wait and refused everyone queued behind another buyer. `tests/integration/inventory-locks.test.ts` sends 30 buyers at 20 tickets.
+- Lock order: buyer (`User` or `GuestIdentity`), then `Event`, then its `TicketType`s (`lockEventInventory`), then `Order`. Commerce: buyer, family resources, then `CommerceOrder`.
+- Staff paths lock with `lockOrder(tx, orderId, organisationId)`, which joins the event, so a client id never locks another society's order. The event's `organisationId` is the owner, never `Order.organisationId` ([[Database and Multi Tenancy#Tenant boundary]]).
+- Workers find candidates outside the transaction and re-check each under its lock.
+
+## Workers
+
+Each runs under `lib/ops/worker.ts` (one run at a time, pausable, timeout, `worker.failed` and alert `worker_failed`) every minute ([[Production Operations#Workers and schedules]]).
+
+| Worker | Command | Does |
+| --- | --- | --- |
+| `checkout-recovery` | `pnpm checkout-attempts:process` (`--limit=` 1 to 100, default 25) | Attempt recovery for every family; on error also alerts `checkout_attempt_recovery_failed` |
+| `stale-orders` | `pnpm stale-orders:process` | Ticket order expiry (log `stale_orders.batch.processed`, metric `stale_orders_expired_total`; failure `stale_orders.batch.failed` and alert `stale_order_worker_failed`), commerce expiry (skipped on `--dry-run`), deleting expired staff MFA grants |
+| `refunds` | `pnpm compensation-refunds:process` (`--limit=` 1 to 100, default 25) | Compensation refunds, order refunds, dispute reversals ([[Payment Lifecycle Refunds and Disputes]]), then payouts ([[Stripe Payments and Connect]]) |
+| `email-outbox` | `pnpm email:outbox:process` | Ticket emails ([[Email Delivery Implementation]]) |
+
+## Traps
+
+- Fulfil only from the signed webhook path; the success page never marks an order paid.
+- Don't sum money by `status = paid`: free orders are `paid` too.
+- Don't authorise or scope from `Order.organisationId`; use `Event.organisationId`.
+- A new transition needs a history event in the same transaction, and a label in `orderLifecycleLabel`.
+- A new display state needs a place in `ticketOrderProjection`'s precedence and a buyer wording.
+- Don't take locks out of order (buyer, event, ticket type, order), or concurrent checkouts deadlock.
+- Expiry must re-check under the order lock: a webhook may have paid the order since the candidate was read.
+
+## Failure and recovery
+
+- **A paid buyer has no tickets:** look for `paid_but_unfulfilled_compensation_required`; the order reads Payment review and follows its compensation mode.
+- **A checkout stuck processing:** the attempt is `provider_uncertain`; the recovery worker settles it within minutes, or alerts after 24 hours.
+- **A paid Session the order isn't bound to** (`ticket_webhook_identity_mismatch`): refund it in Stripe; nothing was issued.
+- **Rollback across `20260921010000_formal_payment_lifecycle`:** keep the history table, and drain email workers first, because older workers ignore `processingToken` fencing.
+
+## Related
+
+[[Payment Lifecycle Refunds and Disputes]] · [[Stripe Payments and Connect]] · [[Email Delivery Implementation]] · [[Memberships and Merchandise]] · [[Database and Multi Tenancy]] · [[Ticket Check-in Implementation]] · [[Glossary]]

@@ -2,96 +2,74 @@
 status: living
 last-reviewed: 2026-10-26
 owner: engineering
-related: ["[[Frontend and Backend Flow]]", "[[Authentication and Dashboard Access]]"]
-sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/ui/button.tsx]
+related: ["[[Frontend and Backend Flow]]", "[[Accessibility Review]]", "[[Authentication and Dashboard Access]]"]
+sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navbar.tsx, components/layout/site-footer.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/events/event-tabs.tsx, components/settings/stripe-connect-settings.tsx, .design-sync/config.json]
 ---
 
 # UI Architecture Rules
 
-[[THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]] owns the target presentation. This note records what the code does today and the rules new UI must follow. Every existing screen uses the token source, fonts, primitives and shells described here. Screens for features that are not built yet do not exist.
+**Owns:** design tokens and fonts, the `components/ui/*` primitives, the shells and global header and footer, shared UI patterns and copy rules, the Stripe settings card, and the design-sync setup.
+**Read when:** building or restyling any screen, adding a primitive or status, or changing navigation.
+**Not here:** which page lives where, its guard and data ([[Frontend and Backend Flow]]); what is scanned for accessibility ([[Accessibility Review]]); target presentation ([[THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]]); Connect states and their meaning ([[Stripe Payments and Connect]]).
 
-## Tokens And Fonts
+## Code
 
-`app/globals.css` is the only token source.
+| Concern | Where |
+| --- | --- |
+| Tokens and semantic utilities | `app/globals.css` (the only token source) |
+| Fonts, skip link, header offset, verify banner | `app/layout.tsx` |
+| Primitives | `components/ui/` |
+| Shells | `components/layout/auth-shell.tsx`, `components/layout/checkout-shell.tsx`, `components/layout/personal-shell.tsx`, `components/layout/dashboard-shell.tsx` |
+| Page title | `components/layout/page-header.tsx`: `PageHeader` |
+| Header, footer | `components/layout/navbar.tsx`, `components/layout/site-footer.tsx` |
+| Context switcher | `components/layout/context-selector.tsx` |
+| Event workspace | `components/events/event-tabs.tsx`, `components/events/event-actions.tsx` |
+| Design sync | `.design-sync/config.json`, `.design-sync/NOTES.md`, `.design-sync/conventions.md` |
 
-- `:root` defines the `--ts-*` custom properties: ink, brand, paper and surface colours, borders, focus, and five status roles. Success (jade), warning (ochre), danger (crimson), info (brand lilac) and neutral each have a text colour, a `-bg` wash, a `-border` hairline and an `-icon` mark; every text colour is at least 6:1 and every icon colour at least 3:1 on its own wash.
-- `@theme inline` exposes them as semantic Tailwind utilities: `bg-paper`, `bg-surface`, `text-ink`, `text-ink-soft`, `bg-brand`, `border-line`, `border-line-strong`, `text-danger`, `bg-warning-bg`, `rounded-control` (9px), `rounded-card` (14px), `shadow-float`, and the widths `max-w-auth`, `max-w-read`, `max-w-checkout`, `max-w-personal`, `max-w-page`, `max-w-admin`.
-- Two type sizes sit between the scale's steps: `text-caption` (13px, meta lines and counts) and `text-ui` (15px, dense body text). Use them instead of `text-[13px]`/`text-[15px]`; only display sizes (17px and up) keep arbitrary values. Corners use `rounded-tag`, `rounded-control`, `rounded-card` or `rounded-feature`, not `rounded-md`/`-lg`/`-xl`.
-- New UI uses these names. Do not add raw palette classes such as `bg-neutral-900` or `text-purple-600`, and do not add hex colours in components.
-- Bare `border` utilities draw the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
-- The keyboard focus ring is a 2px `--ts-focus` outline defined outside any layer, so `outline-none` cannot remove it.
-- The first Tab on any page reaches Skip to content, which moves focus to the page's `<main id="main" tabIndex={-1}>`; every page's main keeps that id (T40). A container that scrolls sideways is a focusable region named after its content (`role="region"`, `tabIndex={0}`, `aria-label`), as `ResponsiveTable` does, and a page grid uses `grid-cols-1` so wide content scrolls inside its card instead of widening the page. [[Accessibility Review]] lists what is scanned.
-- `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through next/font. They are downloaded at build time and served by the app.
-- There is no dark mode and no icon library: `components/ui/icon.tsx` holds the few outline icons the UI uses, always decorative beside text. `prefers-reduced-motion` shortens every transition.
+## Tokens and fonts
+
+- `:root` defines the `--ts-*` properties: ink, brand, paper and surface colours, borders, focus, and five status roles. Success (jade), warning (ochre), danger (crimson), info (brand lilac) and neutral each have a text colour, a `-bg` wash, a `-border` hairline and an `-icon` mark. Every text colour is at least 6:1 and every icon colour at least 3:1 on its own wash.
+- `@theme inline` exposes them as semantic utilities: `bg-paper`, `bg-surface`, `text-ink`, `text-ink-soft`, `bg-brand`, `border-line`, `border-line-strong`, `text-danger`, `bg-warning-bg`, `shadow-float`, and so on.
+- Type: `text-caption` (13px, meta lines and counts) and `text-ui` (15px, dense body) sit between the scale's steps. Use them, not `text-[13px]`/`text-[15px]`; only display sizes (17px and up) keep arbitrary values.
+- Corners: `rounded-tag` (6px), `rounded-control` (9px), `rounded-card` (14px), `rounded-feature` (20px); not `rounded-md`/`-lg`/`-xl`.
+- Widths: `max-w-auth`, `max-w-read`, `max-w-checkout`, `max-w-personal`, `max-w-page`, `max-w-admin` (values in `app/globals.css`).
+- No raw palette classes (`bg-neutral-900`, `text-purple-600`) and no hex colours in components.
+- Bare `border` draws the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
+- The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` shortens every transition.
+- `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through `next/font`; they are downloaded at build time and served by the app.
+- No dark mode. No icon library: `components/ui/icon.tsx` holds the outline icons, always decorative beside text.
 
 ## Primitives
 
 `components/ui/` holds the shared primitives. Extend them rather than writing class strings in pages.
 
-- `button.tsx`: `Button` and `buttonClasses()` for links that look like buttons. Variants `primary`, `secondary`, `tertiary`, `danger`; sizes `sm` (36px), `md` (44px), `lg` (48px).
-- `input.tsx`: `TextInput`, `TextArea`, `Select`, and `MoneyInput` (a `$` prefix; callers turn the text into cents with `parseMoneyInput`), shared by the event builder and membership plans since T22. The `<label>` contains only the label text. Hint and error text sit outside it and are tied to the control with `aria-describedby`; an error also sets `aria-invalid`.
-- `date-field.tsx` (22 Oct 2026): `DateField` and `DateTimeField` replace every browser date and time popup, so dates look and work the same everywhere.
-  - `DateField` is a text field people can type into ("22 Oct 2026", "22/10/2026" or `2026-10-22`). Beside it, a calendar button opens a Monday-first month in the house style: today ringed, the chosen day filled, and days outside `min`/`max` disabled.
-  - The month works from the keyboard: arrows move by day and week, Home and End go to the week's ends, PageUp and PageDown change month (with Shift, year), Enter picks and Escape closes.
-  - With `name`, a hidden input submits `YYYY-MM-DD`, so it works in GET filter forms (Analytics, Orders, Explore). Without one it is controlled (membership plan days).
-  - `DateTimeField` is a fieldset holding a `DateField` and a Time list in 15-minute steps, keeping any saved time that is off that grid. It is used for the event builder's Starts, Ends and Ticket sales close. Its value stays the zone-free `YYYY-MM-DDTHH:MM` that `zonedCandidates` resolves (EVT-001).
-  - Use these instead of `type="date"`, `type="time"` or `type="datetime-local"`.
-- `card.tsx`: bordered surface with an optional `className`.
-- `notice.tsx`: inline message in `info`, `success`, `warning` or `danger`: a soft wash, a hairline border, an icon and a toned title, with body text in ink. `action` puts the link or button that resolves the message at the end of the row; `onDismiss` (client callers only) adds a close button. Pass `role="alert"` or `role="status"` only when it reports the result of an action; a page should not gain a permanent live region.
-- `status-badge.tsx`: the one mapping from a server status to its words and colour: a pill with a dot and the word. Draft, expired, revoked, unused, Sales closed and Sold out are neutral; Sales open is a success; joined uses the brand accent. Orders show the projection from `lib/purchases/projection.ts`: Processing and Payment review (charged but not fulfilled) are warnings, Paid and Free are successes. Add a status there, not in a page.
-- `skeleton.tsx`: `Skeleton` blocks and `ListSkeleton`, a list stand-in with one screen-reader label. They are used only as a `<Suspense>` fallback after a page's guards (see below).
-- `confirm-dialog.tsx`: native `<dialog>` confirmation that names the action and its consequences. Its body is mounted only while open, and Escape cancels. Use it instead of `window.confirm`.
+| File | What | Rules |
+| --- | --- | --- |
+| `button.tsx` | `Button`, `buttonClasses()` for links styled as buttons | Variants `primary`, `secondary`, `tertiary`, `danger`; sizes `sm` (`h-9`, 36px), `md` (`h-11`, 44px, default), `lg` (`h-12`, 48px) |
+| `input.tsx` | `Field`, `TextInput`, `TextArea`, `Select`, `MoneyInput` | The `<label>` holds only the label text; hint and error sit outside and are tied with `aria-describedby`; an error sets `aria-invalid`. `MoneyInput` has a `$` prefix; callers turn text into cents with `parseMoneyInput` (`lib/format.ts`) |
+| `date-field.tsx` | `DateField`, `DateTimeField` | Replace every `type="date"`, `type="time"` and `type="datetime-local"`. `DateField` accepts "22 Oct 2026", "22/10/2026" or `2026-10-22` and has a Monday-first calendar (today ringed, chosen day filled, outside `min`/`max` disabled). Keyboard: arrows by day and week, Home/End to week ends, PageUp/PageDown by month (Shift: year), Enter picks, Escape closes. With `name` a hidden input submits `YYYY-MM-DD` for GET filter forms; without it, it is controlled. `DateTimeField` adds a Time list in 15-minute steps, keeps a saved off-grid time, and emits zone-free `YYYY-MM-DDTHH:MM` that `zonedCandidates` (`lib/zoned-time.ts`) resolves |
+| `card.tsx` | `Card` | Bordered surface |
+| `notice.tsx` | `Notice` | Tones `info`, `success`, `warning`, `danger`: wash, hairline, icon, toned title, ink body. `action` ends the row; `onDismiss` (client only) adds a close button. Pass `role="alert"` or `role="status"` only for the result of an action |
+| `status-badge.tsx` | `StatusBadge` | The one map from a status to its word and colour (pill, dot, word). Add a status there, never in a page |
+| `link-tabs.tsx` | `LinkTabs`, `tabClasses`, `tabBarClasses`, `pillClasses`, `pillBarClasses`, `Count` | URL-driven tabs and pills; see Patterns. `event-tabs.tsx` re-exports `tabClasses` and `tabBarClasses` |
+| `filter-bar.tsx` | `FilterBar` | A GET form with Clear; every filter lives in the URL |
+| `empty-state.tsx` | `EmptyState` | One reason and one action for an empty list |
+| `responsive-table.tsx` | `ResponsiveTable` | Bordered table from 768px (a focusable region named after its content), the caller's cards below |
+| `audit-timeline.tsx` | `AuditTimeline` | One history list in exactly one `<section>`, so a page has one place its history lives |
+| `skeleton.tsx` | `Skeleton`, `ListSkeleton` | Only as a `<Suspense>` fallback after a page's guards; `ListSkeleton` has one screen-reader label |
+| `confirm-dialog.tsx` | `ConfirmDialog` | Native `<dialog>` naming the action and its consequences; body mounted only while open; Escape cancels and never confirms, not while busy. Use instead of `window.confirm` |
+| `icon.tsx` | `Icon` | Decorative outline icons |
 
-Status filters inside a tab are pills (`pillClasses` in `components/ui/link-tabs.tsx`; Orders, Pickups, Members), never a second row of tabs. Every tab or pill count uses `Count` from the same file.
+Shared content components: `components/events/date-rail.tsx` (day and month in the society's zone), `components/events/event-card.tsx` (16:9 image when there is one, date rail, host link, one whole-card link) and `components/organisations/society-card.tsx`. Neither shows a price or count the data model does not hold. A list of `EventCard`s passes `media` when any event has an image, so every card gets the same 16:9 area.
 
-Shared content components: `components/events/date-rail.tsx` (day and month in the society's zone, used by event cards, the member overview and My tickets), `components/events/event-card.tsx` (the event image at 16:9 when there is one, date rail, host link, one whole-card event link, dates in the society's zone) and `components/organisations/society-card.tsx`. Neither shows a price or count that the data model does not hold.
+## Shells
 
-Event workspace components live in `components/events/` because they import `next/link`:
+Each page renders its shell after its guards pass; shells are never in route-group layouts (a layout would not re-render when authority changes, and integration tests render page output directly).
 
-- `event-tabs.tsx`: `EventWorkspaceHeader` gives every page of one event the same breadcrumb, title, status, date and place, actions and tabs: Summary (`analytics:read`), Attendees (`tickets:check_in`), Orders (`orders:read`; the orders list filtered to the event, named `Orders for this event`) and Edit (`events:manage`). Tabs are hidden when only one would show. `tabClasses` and `tabBarClasses` style link tabs; the bar scrolls sideways on narrow screens instead of wrapping.
-- `event-actions.tsx`: Publish, Edit and a `More` menu (a native popover, so a scrolling table cannot clip it) with View public page, Unpublish and Delete event. A disabled action shows the reason computed by the server read (for Publish, the first blocker from the shared readiness rules); Publish and Unpublish send the target status and the version the page loaded; Unpublish and Delete confirm through `ConfirmDialog`; the API still enforces every rule. After a change the page refreshes from the server.
-
-## Global Header And Footer
-
-`components/layout/navbar.tsx` owns the header, rendered once by `app/layout.tsx`.
-
-- Fixed, 60px high below `md` and 72px from `md`, including its bottom border. `app/layout.tsx` offsets content by the same amounts and `DashboardShell` starts its sidebar at 72px.
-- It reads only the session. It never shows a society, a role or an email address.
-- Desktop: `Thunderstrux` (to `/`), `Explore events` (`/events`), `Explore societies` (`/societies`); signed in, `My tickets` for member accounts, `Dashboard`, `Account` (`/account/settings`) and a `Sign out` button; signed out, `Sign in` and `Create a society` (`/signup?for=society`, which preselects the society option). Home shows its society calls to action only to signed-out visitors, because a society needs its own account.
-- Below `md`: a native `Menu` disclosure, styled as a small secondary button, holds the links. `Sign out` (or `Sign in`) stays visible outside it.
-- The current section's link is ink with a 3px brand rule along the header's bottom edge (artboard ExploreEventsA2).
-- On a checkout page (`/…/checkout`) the header drops its browsing links and the Menu, so nothing pulls the buyer away (visual spec 3.3).
-- `app/layout.tsx` makes the page area a column at least one screen tall and `SiteFooter` takes `mt-auto`, so the footer sits at the bottom of short pages. A page's own centred `main` needs `w-full` beside `mx-auto`.
-- The header owns the link names `Explore events` and `Explore societies`. Other links to the same places use different words (`Events`, `Find a society`, `Browse societies`) so every link name is unique on a page.
-
-`components/layout/site-footer.tsx` is rendered by `app/(public)/layout.tsx` for the society and event pages, and by the home page itself. It lists only destinations that exist; support, terms and privacy links wait for real pages. The public layout does nothing else: no authentication, context or data loading.
-
-### Email verification reminder
-
-`app/layout.tsx` renders `components/layout/verify-email-banner.tsx` under the header for a signed-in user whose email is not verified. Its close button sets the `thunderstrux-verify-dismissed` cookie to the user id for seven days, and the layout skips the banner while that cookie matches. Dismissing never changes verification: `requireVerifiedUser` and `lockVerifiedAccount` still refuse purchases, joins, society creation and invitation acceptance, and those screens prompt where the action happens. The banner is a labelled region, not a live region, and links to `/verify-email`.
-
-## Shells Are Composed By Pages
-
-Each page renders its own shell after its guards have passed. Shells are not placed in route-group layouts: a layout would not re-render when authority changes, and page output is rendered directly by integration tests. No root or dashboard `loading.tsx` exists, because it would stream a 200 where a page currently answers with a redirect or a concealed 404.
-
-Where data loads after the guards, the page wraps that part in `<Suspense>` with a skeleton fallback: the events list, the society Overview, the orders results and the Sales over time chart. A read that decides a redirect or a 404 stays above the boundary, so the status is settled before anything streams; pages whose only read is that decision render in one piece. Integration tests render pages with `renderPage` from `tests/helpers/render.ts`, which waits for every boundary and rethrows errors inside them; `renderToStaticMarkup` would print only the fallbacks.
-
-### Auth shell
-
-`components/layout/auth-shell.tsx` is the narrow column for sign-in, signup, verification, recovery, email-change confirmation, staff invitation acceptance, staff MFA and the payment return pages. It adds a title, an optional description and nothing else: no navigation and no lists.
-
-### Personal shell
-
-`components/layout/personal-shell.tsx` wraps `/dashboard` in personal context, `/dashboard/organisations`, `/tickets`, `/purchases`, `/memberships` and `/account/settings`.
-
-- Navigation: `Overview`, `My tickets`, `Memberships` (T24a), `Societies`, `Purchases`, `Account`. Organisation accounts see `Overview` and `Account` only.
-- It shows the context switcher only when the page passes `contexts`; `/dashboard` does. Exactly one switcher is rendered.
-- It must never show society management controls.
-- Under the switcher it says `Switch to a society you staff to manage its events.`
-
-### Organisation shell
-
-`components/layout/dashboard-shell.tsx` (`DashboardShell`) owns organisation navigation. Do not duplicate these links in page files.
+- **Auth shell** (`AuthShell`): narrow column for sign-in, signup, verification, recovery, email-change confirmation, guest access, staff invitation, staff MFA, `/dashboard/create` and the payment-return fallbacks. Title, optional description, nothing else.
+- **Checkout shell** (`CheckoutShell`): every purchase step. "Booking for {society}", a way back (Change tickets, Back to basket), the steps, then the content and its summary.
+- **Personal shell** (`PersonalShell`): `/dashboard` in personal context, `/dashboard/organisations`, `/tickets`, `/purchases`, `/purchases/tickets/[orderId]`, `/memberships`, `/account/settings`. Navigation (labelled `Personal navigation`): Overview, My tickets, Memberships, Societies, Purchases, Account; organisation accounts see Overview and Account only. Purchases stays current on its order pages. The switcher shows only when the page passes `contexts` and the person staffs a society, with "Switch to a society you staff to manage its events." It never shows society management controls.
+- **Organisation shell** (`DashboardShell`): owns organisation navigation; don't duplicate these links in pages.
 
 | Group | Item | Route | Capability |
 | --- | --- | --- | --- |
@@ -108,185 +86,119 @@ Where data loads after the guards, the page wraps that part in `<Suspense>` with
 | Settings | Payments | `/dashboard/settings` | `stripe:manage` |
 | Settings | Email delivery | `/dashboard/notifications` | `orders:email_resend` |
 
-The staff authenticator (`/mfa`) is not organisation navigation: it is reached from Account settings, Password and security, and automatically when a page requires verification.
+- Filtering is presentation; every page and API enforces the same capability. An item is added only when its destination exists; empty groups are dropped.
+- The longest matching route sets `aria-current="page"`, so `/dashboard/settings/staff` marks Staff, not Payments.
+- The shell owns the page container (`max-w-admin`, page gap); pages narrow a form with their own `max-w-*` wrapper.
+- From `lg` the navigation is a 244px deep-plum column whose contents stick below the header, so the verify banner pushes it down. Below `lg` the column holds `Current society`, the name and the `Society menu` disclosure. Nav rows are 36px from `lg` so the column fits an 800px-tall screen; it scrolls only on shorter screens.
+- The staff authenticator (`/mfa`) is not in this navigation: it is reached from Account settings and automatically when a page needs verification.
+- **Context switcher** (`ContextSelector`, labelled `Workspace`): options are society names with `Your role: …` beneath. Choices come from the server with the page (`requireManagementPage` returns them after both guards; `/dashboard` passes its own); the browser never fetches them. Selecting posts `POST /api/me/context`, a signed login-bound preference that carries no authority. Exactly one switcher per page.
 
-- Filtering is presentation. Every page and API independently enforces the same capability.
-- The longest matching route sets `aria-current="page"`.
-- `DashboardShell` also owns the page container (one content width, `max-w-admin`, with the page gap), so pages render their sections directly and narrow a form with a `max-w-*` wrapper of their own.
-- From `lg` the navigation is a 244px deep-plum column whose contents stick below the fixed header, so the verify-email banner pushes it down instead of sitting under it. Below `lg` the same column holds `Current society`, the society name and the `Society menu` disclosure.
-- Each page renders its own title as the only `h1` through `components/layout/page-header.tsx` (or an `h1` of its own); section headings are `h2`. The society name is plain text in the sidebar.
-- The workspace switcher is labelled `Workspace`; its options are society names, with `Your role: …` under it so a name isn't cut off. From `lg` nav rows are 36px so the column fits an 800px-tall screen; the column scrolls with a thin scrollbar only on shorter screens.
-- Every page sets a document title through `metadata` (shown as `{title} · Thunderstrux`). Public and link-only event pages and society pages use their own name; members-only pages stay generic.
-- A navigation item is added only when its destination exists. Analytics arrived with T32, Calendar with T33 and History with T38. OpenClaw is deferred (19 Oct 2026) and gets no item or page until the maintainer schedules it. Memberships arrived with T22; its Plans and Members tabs (T23a) show only to staff with `memberships:manage` and `members:read` respectively.
+## Global header and footer
 
-### Context switcher
+- `Navbar` is rendered once by `app/layout.tsx`: fixed, `h-[60px] md:h-[72px]` including its border; the layout offsets content by the same amounts.
+- It reads only the session; it never shows a society, role or email.
+- Links: `Thunderstrux` (`/`), `Explore events`, `Explore societies`; signed in, `My tickets` (members), `Dashboard`, `Account` and a `Sign out` button; signed out, `Sign in` and `Create a society` (`/signup?for=society`). Home shows society calls to action only to signed-out visitors, because a society needs its own account.
+- Below `md` a native `Menu` disclosure holds the links; Sign out or Sign in stays outside it.
+- The current section is ink with a 3px brand rule on the header's bottom edge.
+- On any `/checkout` path the header drops its browsing links and Menu (visual spec 3.3).
+- The header owns the names `Explore events` and `Explore societies`; other links to those places use other words (`Events`, `Find a society`, `Browse societies`) so link names stay unique.
+- `SiteFooter` is rendered by `app/(public)/layout.tsx` (which does nothing else: no auth, context or data) and by the home page. Links: Events, Societies, Fees, Help, Privacy. Terms waits for legal drafting (LEGAL-001). The page area is a column at least one screen tall and the footer takes `mt-auto`; a page's centred `main` needs `w-full` beside `mx-auto`.
+- **Verify-email banner** (`components/layout/verify-email-banner.tsx`): under the header for a signed-in, unverified user. Close sets `thunderstrux-verify-dismissed` (`lib/auth/verify-banner.ts`) to the user id for seven days. Dismissing changes nothing: `requireVerifiedUser` and `lockVerifiedAccount` still refuse purchases, joins, society creation and invitation acceptance, and those screens prompt in place. A labelled region, not a live region; links to `/verify-email`.
 
-`components/layout/context-selector.tsx` receives its choices from the server with the page. `requireManagementPage` returns them after both guards pass, and `/dashboard` passes the context it already loads; the browser does not fetch them. Selecting a context records a signed, login-bound preference through `POST /api/me/context` and carries no authority.
+## Patterns
 
-## Account-Specific Dashboards
+- **Headings:** each page has one `h1` (`PageHeader` or its own), sections are `h2`. Every page sets `metadata` (`{title} · Thunderstrux`); public and link-only events and society pages use their own name, members-only pages stay generic.
+- **Main landmark:** every page's `<main id="main" tabIndex={-1}>` is the Skip to content target.
+- **Tabs vs pills:** sections are link tabs (`tabClasses`, `LinkTabs`); the bar scrolls sideways on narrow screens instead of wrapping. Status filters inside a tab are pills (`pillClasses`: Orders, Pickups, Members), never a second row of tabs. Every count on a tab or pill uses `Count`.
+- **Filters:** `FilterBar` GET forms; every filter, view and cursor is in the URL. A stale cursor falls back to the first page with a warning notice, never an error.
+- **Empty vs failed:** an empty list is an `EmptyState` (one reason, one action; "No matches" offers Clear filters). A failure or denied access is a `Notice`, never "nothing here".
+- **Statuses:** always `StatusBadge`. Draft, expired, revoked, unused, Sales closed and Sold out are neutral; Sales open, Paid and Free are success; Processing and Payment review (charged, not fulfilled) are warnings; joined and upcoming use the brand accent. Orders show `ticketOrderProjection` (`lib/purchases/projection.ts`). Pickup is always a separate badge from payment.
+- **Lists:** `ResponsiveTable` for dashboard lists (orders, commerce orders, Pickups, members); page grids use `grid-cols-1` so wide content scrolls inside its card.
+- **Money copy:** amounts through `formatMoney`/`formatPrice` (`lib/format.ts`, AUD; `formatPrice` says "Free" for zero). Buy boxes say "Prices in AUD". Never claim a payment succeeded from the browser; only the signed webhook establishes it. The fee line under a paid price: "For one ticket you receive $X after the Thunderstrux fee (3.75% plus $0.89 a ticket), which includes card processing" (computed with `calculatePlatformFee`, `lib/stripe/fees.ts`), plus a set-up-payments link while the society cannot take payments; a free price says "Free. No fee and no payment setup needed."
+- **Dates:** in the society's IANA zone (`formatDateTime`, `zoneCity`), default `Australia/Brisbane`; name the zone where times are listed. Order references are the last six id characters, upper case (`orderReference`).
+- **Confirmations:** destructive or irreversible actions use `ConfirmDialog` naming what happens and what it does not undo; results report through a `Notice` with a live role.
+- **Concurrency:** a version conflict (409) keeps the user's edits and offers a reload (profile also offers `Save my version`); unsaved-change guards ask before leaving.
 
-`/dashboard` is role-aware.
+## Overview content
 
-Member accounts in personal mode, including named staff on a fresh login:
+- **Member** (design round C1): `Complete your profile` (links to Account settings) until onboarding is done; **Your next plans**, the next event with a valid ticket (paid order, `active` ticket, not ended) and View tickets; Also coming up (next three); Recent purchases (three newest across families, with the buyer's badge or pickup state); Your memberships (active and upcoming, noting one ending within 14 days doesn't renew); Societies you've joined with upcoming public event counts. No metric tiles. A checkout still confirming is a purchase, never a ticket. The two columns stack independently.
+- **Society:** header names the society, its zone and today. **Needs your attention** lists only tasks the viewer can act on (`lib/organisations/overview.ts` reads each only for a role holding its permission): setup (payments `stripe:manage`, profile `organisation:settings`, first event `events:manage`), open payment reviews (`orders:read`), merchandise to prepare (`merchandise:fulfil`), memberships ending within 7 days (`members:read`), failed business emails (`orders:email_resend`), drafts starting within 7 days (`events:manage`). Titled `Get {society} ready` while only setup remains, `All caught up` when empty. Tiles: Upcoming events; Sales this month (since the 1st in the society zone, all families) for finance roles or tickets issued for event managers; Members now with `members:read`. Then Upcoming events (Open calendar) and Recent orders across families (`orders:read`; pending ticket orders and ungranted memberships unlinked). Phones: attention, then events, then tiles.
+- **Check-in staff** land on **Today at the door**: Events today in the society zone with valid and checked-in counts and Open check-in, then Later this week. No money, orders, drafts or members.
 
-- See a `Complete your profile` prompt (linking to Account settings, Profile) until onboarding is complete, their nearest upcoming paid tickets and joined societies inside the personal shell. The overview has no metric tiles.
-- Can navigate to `/dashboard/organisations` to search and join organisations.
-- Can browse public events and view `/tickets`.
-- Must not see organisation management navigation.
+## Event workspace
 
-Explicitly selected live staff context and permitted legacy organisation context:
+- `EventWorkspaceHeader` gives every page of one event the same breadcrumb, title, status and selling badge (Sales open, Sold out, Sales closed), dates in the society zone, place, sales close time and actions. Tabs: Summary (`analytics:read`), Attendees (`tickets:check_in`), Orders (`orders:read`; the orders list filtered to the event, accessible name `Orders for this event`), Edit (`events:manage`), Preview (`events:manage`, drafts only). Tabs hide when only one would show. Edit is titled `Edit event` with the event as a breadcrumb. Without `events:manage` a published event shows View public page.
+- `EventActions`: Publish, Edit and a `More` menu (native popover so a scrolling table can't clip it) with View public page, Close or Reopen sales, Unpublish and Delete event. A disabled action shows the server's reason (Publish: the first readiness blocker). Publish and Unpublish send the target status and the loaded version; Unpublish and Delete confirm. The API still enforces every rule; the page refreshes after a change.
+- Event form (`components/events/create-event-form.tsx`): cards Details (optional 16:9 image), Schedule (times in the society zone, named; sales close shows the start until changed), Tickets (`$` price, quantity, sold and held per type), Access (Public or Link only, optional capacity) and If tickets cannot be issued. Sticky save bar for unsaved changes. A published event's Edit shows that changes go live on save and holders are emailed only about a new time or place (T30). Rules: [[Event Lifecycle]].
+- Attendees: the check-in console ([[Ticket Check-in Implementation]]).
 
-- See the permitted organisation dashboard at `/dashboard` inside `DashboardShell`.
-- Use slugless management routes: `/dashboard/events`, `/dashboard/orders`, `/dashboard/settings`.
+## Public event page and buy box
 
-Legacy `/dashboard/[orgSlug]/*` routes are compatibility redirects only.
+- `PublicEventView` (`components/events/public-event-view.tsx`) is shared with the organiser's draft preview: 16:9 image, society link, title, date range with zone, location, About, Hosted by with support email and refund policy when set. Below `lg` the ticket box comes before Hosted by; from `lg` it sits in the right column.
+- Buy box (`components/events/public-ticket-purchase.tsx`): "Prices in AUD"; each type's price or Free and "N left", Sold out or "Paid tickets unavailable right now"; a Sales closed or Sold out badge replaces the choices when nothing can be bought. One ticket choice, one `Quantity` ("Up to 10 per order"), then `Get free tickets`, `Buy tickets` or `Continue as guest` with the running total, opening the checkout page. The action follows the viewer (sign in, verify email, society account, buy). Below `lg`, while the box's button is off screen, a fixed bottom bar repeats the selection and action; hidden for society and unverified viewers.
 
-## Page Responsibilities
+## Checkout state screens
 
-`/dashboard`
+The checkout page (`components/purchases/checkout-action.tsx`) shows tickets and total ("Free" and "No payment needed." for free; "No booking fee" for paid), who the tickets go to, the 30-minute hold for paid tickets, and the refund policy and support email when set. The action is `Confirm free registration` or `Pay $X.XX`; it sends the price shown and one idempotency key per reviewed quote, and any server answer ends that key. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds.
 
-- Member (T34, design round C1):
-  - A profile prompt that links to Account settings (the form lives there only).
-  - **Your next plans**: the next event the member holds a valid ticket for (paid order, `active` ticket, not yet ended), with its image and View tickets. A checkout still confirming or in payment review is a purchase, never a ticket here.
-  - Also coming up (the next three events with tickets).
-  - Recent purchases: the three newest across tickets, memberships and merchandise, with the buyer's badge, or the pickup state for a paid merchandise order waiting to be collected.
-  - Your memberships: active and upcoming, noting that a membership ending within 14 days doesn't renew automatically.
-  - Societies you've joined, with how many public events are coming up. Leaving stays on the Societies page.
-  - The two columns stack independently, so a short card never leaves a gap beside a tall one.
+A refusal replaces the action with a titled `Notice` (`role="alert"`) chosen from the API detail's `reason` and `value`, never by parsing the message. Every refusal says nothing has been charged.
 
-`/tickets` (My tickets)
-
-- One card per paid order: date rail, event link, date and society, quantity and total, ticket numbers (last six characters, full id in the title) and `Order` plus a short reference. The list streams behind a skeleton after the sign-in guard.
-
-`/account/settings`
-
-- `On this page` links to Profile (members), Password and security, Email address and Close account. A `Signed in as` summary shows the email, account type and verification state.
-- The authenticator row appears only for people who could use it, decided by the same eligibility check `/mfa` uses (active staff, legacy owner, or already enrolled). Everyone else sees password, security activity, email and closure only.
-- Closure lists its blockers in a warning notice; the confirmation fields stay disabled until they are resolved.
-- Organisation (T34, design round C1): the header names the society, its zone and today.
-  - **Needs your attention** lists only tasks the viewer can act on (`lib/organisations/overview.ts` reads each one only for a role that holds its permission). It is headed `Get {society} ready` while only setup steps remain, and shows `All caught up` when nothing is left, so the card keeps its place.
-    - Setup: payments (`stripe:manage`, warning tone), the society profile (`organisation:settings`) and a first event (`events:manage`).
-    - Open payment reviews in either family (`orders:read`, warning tone).
-    - Merchandise orders to prepare, with the oldest paid date and how many are ready (`merchandise:fulfil`).
-    - Memberships ending in the next 7 days, and whether a next plan is on sale (`members:read`; the link plans one with `memberships:manage`).
-    - Business emails that failed (`orders:email_resend`).
-    - Drafts starting within 7 days (`events:manage`).
-  - Tiles: Upcoming events with the next one; Sales this month (gross since the 1st in the society's zone, all three families) for finance roles, or Tickets issued this month for event managers; Members now with `members:read`.
-  - Upcoming events with date rails and Open calendar, then Recent orders across tickets, memberships and merchandise (`orders:read`). A pending ticket order and a membership not yet granted are listed without a link.
-  - On phones the attention card comes first, then upcoming events, then the tiles.
-  - Check-in staff land on **Today at the door** instead: today's published events in the society's zone with valid and checked-in tickets and Open check-in, then the rest of the week. There is no money, no orders, no drafts and no members.
-
-`/dashboard/history` (T38, design round C2)
-
-- Owners and admins (`audit:read`); for anyone else the address is Page not found.
-- Filters in the URL: What (a category; Check-ins only under their own, never in All activity), Who (people in this society's History, Stripe or Thunderstrux), From and To (society-zone days with the house `DateField`). `?cursor=` pages 50 at a time; a stale cursor starts again from the newest with a notice.
-- Day headings, then a rail of entries: time, the actor's initials (Stripe dark, Thunderstrux outlined, a former staff member dashed), the sentence with links to the event, order, member, plan or product, and a box of facts with before → after. The category tag sits in a fixed right-hand column so tags and fact boxes line up.
-- Sentences and facts come only from `lib/audit/history.ts`, which names the fields each action may show; nothing else in `metadata` reaches the page. An edit recorded before T38 says "Historical detail unavailable".
-- States: Nothing recorded yet, No matches with Clear filters, the start of the history, loading skeleton. See [[Audit Coverage]].
-
-`/dashboard/events`
-
-- Server-rendered for every role from one read (`listDashboardEvents`): views Upcoming (not yet ended; the default), Drafts, Past and All with counts, plus a title search, all in the URL (`?view=`, `?q=`). A table from `md`, one card per event below it.
-- `N sold · N left` appears only with `analytics:read` (sold counts paid orders); actions only with `events:manage`. Check-in staff see published events only, get no Drafts view, and their links open Attendees.
-- Each view shows up to 100 events and says so when there are more.
-
-`/dashboard/events/[eventId]` (Summary), `/dashboard/events/[eventId]/tickets` (Attendees), `/dashboard/events/[eventId]/edit` (Edit) and `/dashboard/orders?eventId=` (Orders)
-
-- Share `EventWorkspaceHeader`: dates in the society time zone, the sales close time, and Published with a selling badge (Sales open, Sold out, Sales closed). Summary shows tickets sold, tickets left, capacity when set, checked in and, with `orders:read`, net sales; the ticket table (price, sold, held, left, revenue and share); Sales over time in the society's zone (T31); and a draft's readiness checklist (`components/events/readiness-checklist.tsx`) or a published event's selling status. More offers Close sales or Reopen sales.
-- Edit is titled `Edit event` with the event as a breadcrumb; a published event shows a notice that changes go live on save and ticket holders are emailed only about a new time or place (T30). `/dashboard/events/new` has its own `New event` header.
-- The event form (T11b) has five cards: Details with the optional 16:9 event image, Schedule (times in the society's zone, named in the card; sales close shows the start until changed), Tickets (a `$` price, quantity, sold and held per type), Access (Public or Link only, optional capacity) and If tickets cannot be issued. A sticky save bar says when there are unsaved changes; leaving asks first. A draft's Edit page shows the readiness checklist beside the form. A version conflict keeps the edits and offers a reload.
-
-`/dashboard/orders`
-
-- Renders canonical tenant-scoped order review for callers with live finance capability, regardless of account role.
-- Status views (All, Paid, Expired, Failed) are link tabs; buyer email, an Event list of the society's events and a date range filter through the URL. One table lists the page newest first: buyer, event and ticket, quantity, total, status and time. Results stream behind a skeleton.
-- Family tabs (T29b): Tickets (the default, everything above), Memberships and Merchandise (`?family=`). The commerce tabs have status pills (All, Paid, Free, Refunded, Payment review, Expired), buyer email, plan or product and date filters, and the same table: buyer and order reference, items or plan and term, total, payment, pickup (merchandise) and time. Rows open the staff merchandise order page or the member's page; both open for `orders:read` as well as their own permission, so finance managers see money actions there but not pickup steps or the roster. An event's Orders view stays on tickets.
-- Lists use `ResponsiveTable` (`components/ui/responsive-table.tsx`, T29b): a bordered table from 768px and the caller's cards below, used by ticket orders, commerce orders and Pickups.
-- Normal filters hide internal pending orders. `Show system orders` may expose pending orders for debugging, but pending must not be presented as a normal product status, and a pending row is not linked because order detail serves settled orders only.
-
-`/dashboard/orders/[orderId]`
-
-- Breadcrumb `Orders`, title `Order` plus the last six characters of the id, and the status. The ticket line uses the purchased ticket name; an order from before T10 shows today's name with "(historical label unavailable)". The note that contact details were captured from the account profile appears only for closure captures, not for contacts recorded at purchase. A Summary card (buyer, event, tickets, total, ordered, paid, full order id) and a `Manage this order` card: resend tickets, record a refund made outside Thunderstrux (confirmed through `ConfirmDialog` because it cannot be undone) or, for a compensation case, verify the Stripe refund id, and the Stripe session with copy and a Stripe link.
-- `Order history` sits in exactly one `<section>` (a `Card`); browser tests locate it that way.
-
-`/dashboard/events/[eventId]/tickets` (Attendees)
-
-- Checked in, not yet and total tiles; cards on phones and a table from `md`. Each button names its attendee for screen readers; a checked-in ticket shows the time and `Undo check-in`.
-
-`/dashboard/notifications` (Email delivery)
-
-- Lists failed society emails with their last error. `Send again` needs a review reason (8 to 500 characters) recorded with the retry, and reports the result.
-
-`/dashboard/settings` (Payments)
-
-- Renders Stripe Connect settings. State-specific Connect controls are allowed here because they are settings content, not dashboard navigation. Since PAY-005 (round F1) a connected society also sees a Payouts card (`components/settings/payouts-card.tsx`) between the Stripe account and Fees cards, and a refused payout puts a warning above them. A skeleton shows while the status loads; disconnecting sits in its own zone and asks for confirmation.
-
-`/dashboard/organisations`
-
-- Renders caller-only joined societies and bounded paged search. Explicit verified Join changes free affiliation only; Leave synchronises both views after refresh and never revokes staff or paid purchases.
-
-`/events` (T15b) is Explore events: a `FilterBar` (`components/ui/filter-bar.tsx`, a GET form with Clear, also used by the orders list) with Search by title, When (Upcoming, This week, This month, Choose dates with From and To, at most 366 days; presets run in Brisbane time) and Society, all kept in the URL. Below `md`, When and Society fold behind a Filters toggle that counts the filters on. Invalid values show as field errors and the list waits until they are fixed. `EmptyState` (`components/ui/empty-state.tsx`) says either "No events match these filters" with Clear filters or "No upcoming events yet" with Explore societies; a failed read is a danger `Notice`, never an empty list. Twenty cards a page with Earlier events and Later events links. The home page shows the next six events and an Explore all events link.
-
-`/societies` and `/societies/[orgSlug]` render anonymous discovery and public profile content. `SocietyHeader` shows the cover only on Overview (rounded, with a quiet line pattern when there is none); Memberships and Merchandise start with the logo and name so their content is on the first screen. Tabs are Overview and, when there is something to show, Memberships and Merchandise. Every tab uses the same `SocietyJoinCard` (heading, one line on what joining means, the action, contact). A list of `EventCard`s passes `media` when any event has an image, so every card gets the same 16:9 area. `/organisations` and `/organisations/[orgSlug]` redirect to them permanently. Profile join controls are personalized and dynamic; sign-in/verification never automatically joins. `/dashboard/settings/profile` (Settings) is the live-settings/MFA-protected resumable editor: four steps, a timezone list computed on the server, and a Finish step whose checklist shows only facts the caller may see (profile complete, payments ready, team size). On a version conflict it keeps the edits and offers `Save my version` or a confirmed reload.
-
-`/dashboard/settings/staff` (Staff) invites with an email and `Invitation role` whose hint says what the role can do, confirms a role change or revocation through `ConfirmDialog` and reports the result, lists pending invitations, and shows the latest accepted, revoked and expired invitations in a separate history table. Revoking an invitation is immediate. Owners also see `Committee handover`, built from the same primitives.
-
-`/dashboard/create` uses the auth shell and asks only for the society name. [[Society Profiles and Assets]] owns their full contracts.
-
-`/events/[eventId]` is public (T15a) and renders `PublicEventView` (`components/events/public-event-view.tsx`), shared with the organiser's draft preview: the 16:9 image across the page, the society link, title, date range with its time zone and location, About, and Hosted by with the support email and refund policy when set. Below `lg` the ticket box comes before Hosted by (artboard PublicEventAnonA2Mobile); from `lg` it sits in the right column beside both. The ticket box shows "Prices in AUD", each type's price or Free and N left, Sold out or "Paid tickets unavailable right now"; a Sales closed or Sold out badge replaces the choices when nothing can be bought, and its action follows the viewer (sign in, verify email, society account, or buy). The buy box offers one ticket choice (price or Free, "N left", sold-out types disabled), one `Quantity` (hint "Up to 10 per order") and `Get free tickets` or `Buy tickets` with the running total, then opens the checkout page. Below `lg`, while the box's own button is still below the screen, a fixed bottom bar repeats the selection, its total and the primary action (`Continue as guest` for visitors); it hides once the box is reached and for society and unverified viewers.
-
-`/events/[eventId]/checkout?ticketTypeId=&quantity=` (T13) is the one review page for every ticket purchase, in `CheckoutShell` (`components/layout/checkout-shell.tsx`: "Booking for {society}", Change tickets, steps) with `MoneySummary` (`components/purchases/money-summary.tsx`). It shows the tickets and total ("Free" and "No payment needed." for a free registration; "No booking fee" for paid), who the tickets go to, the 30-minute hold for paid tickets, and the society's refund policy and support email when set. The event sits in the aside with the total and the one action, `Confirm free registration` or `Pay $X.XX` (`components/purchases/checkout-action.tsx`). The action sends the price shown and one idempotency key per reviewed quote; any server answer ends that key, so a new price or quantity goes out under a new one. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds.
-
-Checkout state screens (design round A1, artboards CheckoutStatesA1 and CheckoutStatesA1Mobile) replace the action with a titled `Notice` (`role="alert"`) and its own actions. The screen is chosen from the API detail's `reason` and `value` (see [[API Reference]]), never by parsing the message, and every refusal says "Nothing has been charged":
-
-| API reason | Notice | Actions |
+| Reason | Notice | Actions |
 | --- | --- | --- |
-| `quote_changed` | warning, "The price changed": new unit price and total; the page reloads so the summary shows the new price | `Continue at $X` (resubmits at the new price), `Change tickets` |
-| `sold_out` | danger, "No tickets remaining" | `Back to ticket options` |
-| `insufficient_availability` | warning, "Only N tickets left": the count left and the count asked for | `Continue with N tickets` (replaces the address quantity and resubmits), `Change tickets` |
-| `sales_closed` | info, "Ticket sales have closed" | `Back to the event` |
-| `stripe_not_ready` | warning, "Paid checkout unavailable"; adds "Free tickets are still available." when the event has a free type with stock | `Back to ticket options` |
-| none: still processing after 30 seconds | info, "We're still confirming your checkout" | `Try again` (same key), `Go to My tickets` |
+| `quote_changed` | warning "The price changed", new unit price and total; page reloads | `Continue at $X`, `Change tickets` |
+| `sold_out` | danger "No tickets remaining" | `Back to ticket options` |
+| `insufficient_availability` | warning "Only N tickets left" | `Continue with N tickets` (replaces the quantity), `Change tickets` |
+| `sales_closed` | info "Ticket sales have closed" | `Back to the event` |
+| `stripe_not_ready` | warning "Paid checkout unavailable", plus "Free tickets are still available." when a free type has stock | `Back to ticket options` |
+| `purchase_in_progress` | warning "You already have a checkout in progress" | member `Go to My tickets`; guest `Back to ticket options` |
+| none, still processing after 30 s | info "We're still confirming your checkout" | `Try again` (same key), `Go to My tickets` |
 
-Any other failure keeps the button and shows the message in a danger `Notice` with `Change tickets`. `tests/e2e/checkout-states.spec.ts` drives the refusals from real API answers and checks 390 and 1280px for sideways scroll. Not built from the mobile artboard: the struck-through old total in the summary and a sticky pay bar. An unverified member sees `Verify your email to continue` instead of the action; the API still enforces verification. A visitor who chose Continue as guest (T16b, `?guest=1`) first sees "Where should we send your tickets?" (`GuestEmailForm`, steps Your email, Review, Pay with Stripe) and then "Check your email"; the link brings them back to the same review, now showing their confirmed address and "Buying as a guest". A guest's finished checkout lands on `/guest/orders/[orderId]`: the Paid or Free badge, the tickets, where they were sent, the society's contact and refund policy, a "Keep your tickets in one place" prompt and Find your tickets. `/guest/recover` is Find your purchase; its answer never says whether the address has orders. Since T16c the guest order page states its account standing: "Keep your tickets in one place" when nobody is signed in; "Verify your email to add this order"; "This order uses a different email"; the "Add this order to your account?" notice whose button opens a `ConfirmDialog` ("Add to your account?", "This can't be undone"), then "Added to your account" with a My tickets link; "This order is in your account"; or "Already in an account". A free registration, or a polled attempt that completes, lands on `/events/[eventId]/checkout/confirmed?orderId=`: the buyer's own order for that event, its ticket numbers, `View my tickets` and `Back to the event`. My tickets badges each order Paid or Free and says Registered for free orders. The home page streams its event and society listings behind a skeleton under the hero; `/societies` and `/events/[eventId]` keep their public `loading.tsx`, built from `Skeleton`.
+Any other failure keeps the button and shows a danger `Notice` with `Change tickets`. An unverified member sees `Verify your email to continue` instead of the action. Guests see "Where should we send your tickets?" (steps Your email, Review, Pay with Stripe), then "Check your email", then the review showing "Buying as a guest". `tests/e2e/checkout-states.spec.ts` drives the refusals and checks 390 and 1280px for sideways scroll. Not built from the mobile artboard: a struck-through old total and a sticky pay bar.
 
-`/success` and `/cancel` are the payment return pages. `/success` says `Checking payment status` and links to My tickets; it never states that a payment succeeded, because only the signed webhook establishes that.
+## Society pages
 
-`app/not-found.tsx` and `app/error.tsx` are the shared missing-page and failure pages. The missing page is also what a foreign tenant resource renders and must not hint at whether the resource exists.
+`SocietyHeader` shows the cover only on Overview (rounded, with a quiet line pattern when there is none); Memberships and Merchandise start with logo and name. Tabs: Overview, and Memberships and Merchandise when there is something to show. Every tab uses the same `SocietyJoinCard` (heading, one line on what joining means, the action, contact). Sign-in or verification never joins automatically.
 
-### Membership plans (T22)
+## Lists and orders
 
-`/dashboard/memberships` lists plans as a table from 768px and cards below, with Runs in the society's zone, Price (or Free), a status badge (Draft, Published, Ended, Archived), the holders and a Details or Edit link. `/dashboard/memberships/new` and `/dashboard/memberships/[planId]` share `components/memberships/plan-form.tsx`: Term (Semester 1, Semester 2, Full year or Custom dates, a year, then First day and Last day), Details, Price with the fee example, and What it unlocks; an unsaved-changes guard; a 409 on a stale version keeps the edits and offers Reload. A sold plan disables everything but the description under an information notice; an archived plan is read-only. The detail page's aside holds the publish check (`plan-checklist.tsx`, the server's blockers in a fixed order with a Payments link), Publish and Archive (`plan-actions.tsx`; Archive confirms and names what it does not undo), and a preview of the buyer's offer card. Design round B1 on the canvas is the approved source.
+- Orders: tickets, memberships and merchandise share one table shape (buyer and reference, items, total, payment, pickup for merchandise, time). Pending ticket rows are shown only under "Show system orders" and are never linked; pending is not a product status.
+- Order detail: breadcrumb `Orders`, title `Order` plus the short reference, status badge. The ticket line uses the purchased ticket name; an order from before T10 shows today's name with "(historical label unavailable)". A Summary card and a `Manage this order` card (resend, refund, record an outside refund through `ConfirmDialog`, verify a compensation refund id, Stripe session with copy and link). `Order history` sits in exactly one `<section>`; browser tests locate it that way.
+- Memberships: plans table from 768px with Runs in the society zone, Price or Free, a status (Draft, Published, Ended, Archived) and holders. Plan form: Term (Semester 1, Semester 2, Full year or Custom dates), Details, Price with the fee example, What it unlocks. Member page actions each confirm, ask for a reason and the authenticator code; a refund dialog names the amount and asks for the order's short reference.
+- Staff settings: invite with email and `Invitation role` (hint says what the role can do); role changes and revocations confirm; pending invitations and a separate history table; owners also see `Committee handover`.
 
-`/dashboard/memberships/members` (T23a) uses view pills (Active, Upcoming, Expired, Revoked, then Free joins set apart) with counts, a search form, a table from 768px and a list below, Next page links, and a note that members, joins and staff are different lists. The member page has Membership and With the society cards and, for staff who may end it, a Manage this membership card (T23b): Refund membership for a paid one (`orders:refund`; the dialog names the amount and asks for the order's short reference, T23c), Revoke membership (`memberships:manage`) or, for a free membership, Cancel free membership (`orders:refund`), each through a ConfirmDialog that names what happens and asks for a reason and the authenticator code. An ended-early membership shows an information notice with who ended it, when and why. `upcoming` joins the badge words (accent).
+## Stripe settings
 
-## Stripe Settings UI Rules
+`components/settings/stripe-connect-settings.tsx` renders from the server's Connect state, never from "an account id exists".
 
-The Stripe Connect settings card should render from backend lifecycle state:
+| State | Badge | Main action |
+| --- | --- | --- |
+| `NOT_CONNECTED` | Not connected | `Connect Stripe` |
+| `PLATFORM_NOT_READY` | Setup incomplete | `Open Stripe Platform Settings`, `Retry after completion` |
+| `CONNECTED_INCOMPLETE` | Setup incomplete | `Continue Stripe setup` |
+| `RESTRICTED` | Needs attention | `Fix in Stripe`, with Stripe's reason and requirements |
+| `READY` | Ready, or Payouts not set up | `Add a bank account in Stripe` until payouts are on |
+| `ERROR` | Out of date | `Try again` |
 
-- `NOT_CONNECTED`: connect button only.
-- `PLATFORM_NOT_READY`: platform settings link, retry button, and local disconnect button.
-- `CONNECTED_INCOMPLETE`: continue onboarding.
-- `RESTRICTED`: fix account and show requirements if Stripe provides them.
-- `READY`: show readiness and cached flags.
-- `ERROR`: show clear error and recovery actions.
+- Two rows, Can take payments and Can receive payouts, each with its next action, plus the Stripe account id; `Refresh status` and `Open Stripe dashboard` (asks for the authenticator code first when staff MFA is on).
+- A Payouts card (`components/settings/payouts-card.tsx`) for a connected society; a failed payout puts a warning above the cards.
+- A Fees card with the one-$20.00-ticket worked example from `calculatePlatformFee`.
+- `Disconnect Stripe account` (connected states and `PLATFORM_NOT_READY`) sits in its own zone, confirms, and is blocked with "You can't disconnect right now" while open orders need the account. It only unlinks; the Stripe account and its money are untouched.
+- A skeleton shows while status loads.
 
-Since T17 (design round A2) the card shows two rows, Can take payments and Can receive payouts, each with its next action, a Fees card with the $20.00 worked example, and a Disconnect block that is disabled with the open-order count while orders depend on the account and asks for an authenticator code when staff MFA is on. The event builder shows under each paid price "For one ticket you receive $X after the Thunderstrux fee (3.75% plus $0.89 a ticket), which includes card processing" (computed with `calculatePlatformFee`), plus a set-up-payments link while the society cannot take payments; a free price says no fee or setup is needed. The state shows as a status badge (Not connected, Setup incomplete, Payouts not set up, Ready, Needs attention, Out of date) with a notice that explains it and lists what Stripe still requires. Always show the readiness rows when status exists:
+## Design sync
 
-- Stripe account (the account id)
-- Card payments
-- Payouts
-- Details submitted
+- `.design-sync/` syncs `components/ui/` to the Claude design project as component cards (`.design-sync/config.json`: `srcDir`, `docsMap`, previews in `.design-sync/previews/`). `.design-sync/NOTES.md` records how to run it and its risks; `.design-sync/conventions.md` lists the classes and tokens the design agent may use.
+- CSS is compiled first by `node .design-sync/build-css.mjs`. `.design-sync/overrides/source-kit.mjs` drops any `components/ui/*` file importing `next/*` (so `FilterBar`, `LinkTabs`, `Count` are not synced).
+- Visual spec section 16.4 lists the implemented primitives; update it with a new primitive.
+- After a token or primitive restyle, re-run the sync and spot-check components: grades follow preview sources, not styling.
 
-Do not call an account "ready" just because `stripeAccountId` exists.
-
-`Disconnect Stripe account` is local-only and asks for confirmation first. It may appear for connected states and `PLATFORM_NOT_READY`. It clears local organisation Stripe fields and does not delete the Stripe account in Stripe.
-
-## Known UI Inconsistencies
+## Traps
 
 - In an event's Orders tab the sidebar highlights Orders, because that tab is the orders list filtered to the event.
-- The event builder, order, check-in and payment screens keep their pre-specification structure under the new presentation; their target layouts belong to T11-T19.
+- A new `components/ui/*` file that imports `next/*` silently drops out of design sync.
+- Don't add a second `h1`, a second switcher, or a permanent live region.
+- Don't style status words in a page; add them to `StatusBadge`.
 
-## Notification Recovery
+## Related
 
-The shared DashboardShell owns the Email delivery navigation link. `/dashboard/notifications` requires live email-resend authority and renders a bounded failed-business-job list, review-reason forms, accessible status/error feedback and pagination. Account-security jobs are private and absent.
+[[Frontend and Backend Flow]] · [[Accessibility Review]] · [[Authentication and Dashboard Access]] · [[Stripe Payments and Connect]] · [[Event Lifecycle]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]]

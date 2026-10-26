@@ -21,7 +21,7 @@ function fixture(files, run) {
 
 test("accepts relative Markdown links, unique wikilinks, aliases, and headings", () => {
   fixture({
-    "docs/Index.md": "[[Guide|Guide alias]]\n[Guide](./Guide.md#start)",
+    "docs/Index.md": "[[Guide|Guide alias]]\n[Guide](./Guide.md#start)\n| [[Guide\\|Table alias]] |",
     "docs/Guide.md": "# Start"
   }, (root) => {
     const result = checkDocumentation({ root, requiredFiles: [], sourceFiles: ["docs/Index.md"] });

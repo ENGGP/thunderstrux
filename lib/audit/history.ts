@@ -249,6 +249,16 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   else if (a === "event.sales_closed") sentence = ["closed ticket sales for ", event(row.targetId)];
   else if (a === "event.sales_reopened") sentence = ["reopened ticket sales for ", event(row.targetId)];
   else if (a === "event.deleted") sentence = ["deleted the draft ", { text: text(m.title) ?? "event", href: null }];
+  else if (a === "event.cancelled") {
+    sentence = ["cancelled ", event(row.targetId)];
+    const skipped = Array.isArray(m.skipped) ? m.skipped.length : 0;
+    facts = [
+      ...(text(m.reason) ? [{ label: "Message", value: text(m.reason) as string }] : []),
+      { label: "Refunds started", value: String(m.refundsQueued ?? 0) },
+      { label: "Free registrations cancelled", value: String(m.freeCancelled ?? 0) },
+      ...(skipped ? [{ label: "Orders to settle in Orders", value: String(skipped) }] : [])
+    ];
+  }
   else if (a === "ticket_type.created") {
     const found = row.targetId ? targets.ticketTypes.get(row.targetId) : undefined;
     sentence = ["added a ticket type to ", event(found?.event.id ?? m.eventId)];

@@ -1,9 +1,8 @@
 import Link from "next/link";
 import type { TicketValidity } from "@prisma/client";
 import { StatusBadge, type Status } from "@/components/ui/status-badge";
+import { ticketReference } from "@/lib/format";
 
-// The short reference shown on a ticket and typed at the door.
-export const ticketReference = (ticketId: string) => ticketId.slice(-6).toUpperCase();
 
 // Whether a ticket admits, in words. Void tickets say why when the reason is known.
 export function ticketState(ticket: { validity: TicketValidity; validityReason: string | null; checkedInAt: Date | null }, timeZone: string): { status: Status; label?: string } {

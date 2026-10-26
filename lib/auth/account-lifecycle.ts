@@ -93,7 +93,9 @@ export async function consumeVerification(raw: string, password: string, now = n
     await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: now } });
     await invalidateAccountTokens(tx, user.id, "verify_account", now);
     await tx.notificationOutbox.updateMany({ where: { authTokenId: token.id, status: { in: ["pending", "processing"] } }, data: { status: "cancelled", processingToken: null, lastError: "consumed" } });
-    return { verified: true, callbackUrl: safeReturnPath(token.callbackPath) };
+    // The email lets the form sign straight in with the password just typed, so
+    // a buyer who signed up from checkout goes back to it without a second sign-in.
+    return { verified: true, callbackUrl: safeReturnPath(token.callbackPath), email: user.email };
   });
 }
 

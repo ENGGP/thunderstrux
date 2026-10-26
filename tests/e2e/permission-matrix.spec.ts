@@ -17,6 +17,7 @@ type Society = Awaited<ReturnType<typeof seed>>;
 async function signInWithMfa(page: Page, email: string, organisationId: string) {
   await login(page, email, "/mfa");
   await page.goto("/mfa?callbackUrl=/dashboard");
+  await page.getByLabel("Your password").fill("password123");
   await page.getByRole("button", { name: "Set up authenticator" }).click();
   const secret = (await page.locator("code").textContent())!;
   await page.getByLabel("Authenticator code").fill(totpCode(secret, Math.floor(Date.now() / 30_000)));

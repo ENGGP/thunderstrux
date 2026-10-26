@@ -93,9 +93,10 @@ describe("what is held", () => {
     expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(0);
   });
 
-  test("money already back with the buyer is not held: compensation or manual refunds, and a lost dispute recovered before its event ends (PAY-012)", async () => {
+  test("money already back with the buyer is not held: compensation refunds, and a lost dispute recovered before its event ends (PAY-012)", async () => {
     const fixture = await society();
-    await ticketSale(fixture, 5 * day, { isManuallyRefunded: true });
+    const compensated = await ticketSale(fixture, 5 * day, { isManuallyRefunded: true, status: "failed", failedAt: new Date() });
+    await prisma.compensationRefundJob.create({ data: { orderId: compensated.id, state: "refunded", amount: 2000, currency: "aud" } });
     const lost = await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
     await prisma.purchaseDispute.create({ data: {
       orderId: lost.id, organisationId: fixture.organisationId, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"),
@@ -104,6 +105,25 @@ describe("what is held", () => {
     // A lost dispute the society never paid back (no transfer reversal) still waits with the event.
     await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
     expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836);
+  });
+
+  test("staff can't release held money early: a manual refund mark or an end moved earlier still waits for the event", async () => {
+    const fixture = await society();
+    // A staff mark proves nothing at Stripe, so the sale waits with its event.
+    await ticketSale(fixture, 5 * day, { isManuallyRefunded: true });
+    // The end moved to just after now holds until 2 days after the end it had before (SEC-004).
+    const moved = await ticketSale(fixture, -3 * day);
+    const event = await prisma.event.findUniqueOrThrow({ where: { id: moved.eventId } });
+    await prisma.eventChange.create({ data: {
+      eventId: event.id, organisationId: fixture.organisationId, eventVersion: event.version + 1,
+      previousStartTime: new Date(now.getTime() + 30 * day - 3600_000), previousEndTime: new Date(now.getTime() + 30 * day), previousLocation: event.location,
+      startTime: event.startTime, endTime: event.endTime, location: event.location, completedAt: now, outcome: "sent"
+    } });
+    const held = await heldMoney(fixture.organisationId, fixture.accountId, now);
+    expect(held.events).toMatchObject({ amount: 1836 * 2, eventCount: 2 });
+    expect(held.events.nextEndsAt?.getTime()).toBe(now.getTime() + 5 * day);
+    // Once the latest end has passed too, the money goes.
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, new Date(now.getTime() + 33 * day))).total).toBe(0);
   });
 });
 

@@ -99,6 +99,7 @@ export default async function OrganiserEventPage({
           <div className="mt-3">
             <ReadinessChecklist
               blockers={event.blockers}
+              warnings={event.warnings}
               editHref={canManage ? `/dashboard/events/${event.id}/edit` : undefined}
             />
           </div>
@@ -196,8 +197,8 @@ export default async function OrganiserEventPage({
                   ? "Published, members only: not listed; only members whose membership unlocks members-only events can see it"
                   : "Published and listed publicly"}
             </li>
-            {event.blockers
-              .filter((blocker) => ["payments_unavailable", "sold_out", "no_stock"].includes(blocker.code))
+            {[...event.blockers, ...event.warnings]
+              .filter((blocker) => ["payments_unavailable", "paid_tickets_waiting", "sold_out", "no_stock"].includes(blocker.code))
               .map((blocker) => (
                 <li className="text-warning" key={blocker.code}>{blocker.message}</li>
               ))}

@@ -47,7 +47,7 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 - **Conflicts:** a 409 body names the reason in its details: `[{ path: ["ticketId"], reason }]`. The console uses the reason to re-read the ticket and explain.
 - **Listing:** `limit` defaults to 25 and is capped at 100; `cursor` is opaque (`createdAt`, `id`); `direction` is `next` or `prev`. Order is `createdAt` then `id`, ascending. A bad cursor is 400. `counts` (`total`, `unused`, `checkedIn`) cover `active` tickets only, because void and under-review tickets admit no one.
 - **Search:** `q` is cut to 100 characters and used from 2. Either the whole query appears in the ticket or order id, or every word matches a buyer name or email: the order's purchase snapshot, the member's account, or the guest's email. A search includes void and under-review tickets, so staff can say why someone can't come in. Without a search the list shows only `active` tickets.
-- **No QR codes:** attendees are found by name, email or reference.
+- **No QR codes:** attendees are found by name, email or reference. Guests give a name at checkout and members at signup, so name search finds both (DEF-055). The reference is `ticketReference` (`lib/format.ts`), the same six characters on the ticket email, the wallet, the order pages and the console (DEF-059).
 
 ## Console behaviour
 

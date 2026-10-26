@@ -2,6 +2,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAccountLinkToken } from "./account-link-token";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
@@ -18,10 +19,20 @@ export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackU
   async function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      const result = await fetchJson<{ verified: boolean; callbackUrl: string }>("/api/auth/verification/confirm", {
+      const result = await fetchJson<{ verified: boolean; callbackUrl: string; email: string }>("/api/auth/verification/confirm", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password })
       });
-      setToken(""); setPassword(""); setVerifiedPath(result.callbackUrl); setMessage("Email verified. Sign in to continue.");
+      setToken("");
+      // The password was just proven, so sign in with it and go straight back to
+      // where the buyer was (often checkout) instead of asking for it again.
+      const signedIn = await signIn("credentials", { email: result.email, password, redirect: false }).catch(() => null);
+      setPassword("");
+      if (signedIn?.ok && !signedIn.error) {
+        setMessage("Email verified. Taking you back…");
+        window.location.href = result.callbackUrl;
+        return;
+      }
+      setVerifiedPath(result.callbackUrl); setMessage("Email verified. Sign in to continue.");
     } catch (failure) { setError(getClientErrorMessage(failure, "Could not verify this link.")); }
     finally { setBusy(false); }
   }
@@ -41,7 +52,7 @@ export function VerificationForm({ callbackUrl, defaultEmail = "" }: { callbackU
         <TextInput label="Password" type="password" autoComplete="current-password" required maxLength={200} value={password} onChange={event => setPassword(event.target.value)}
           hint="Enter the password for this account. If you didn't set it, reset the password instead; that also verifies your email." />
         <Button disabled={busy} size="lg" type="submit">{busy ? "Verifying..." : "Verify email"}</Button>
-        <Link className="text-sm font-semibold text-brand underline underline-offset-4" href="/forgot-password">Reset password</Link>
+        <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={`/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Reset password</Link>
       </form>}
       <form className="grid gap-3" onSubmit={resend}>
         <TextInput label="Email" type="email" required maxLength={320} value={email} onChange={event => setEmail(event.target.value)} />

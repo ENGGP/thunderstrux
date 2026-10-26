@@ -150,10 +150,11 @@ A refusal replaces the action with a titled `Notice` (`role="alert"`) chosen fro
 | `insufficient_availability` | warning "Only N tickets left" | `Continue with N tickets` (replaces the quantity), `Change tickets` |
 | `sales_closed` | info "Ticket sales have closed" | `Back to the event` |
 | `stripe_not_ready` | warning "Paid checkout unavailable", plus "Free tickets are still available." when a free type has stock | `Back to ticket options` |
-| `purchase_in_progress` | warning "You already have a checkout in progress" | member `Go to My tickets`; guest `Back to ticket options` |
-| none, still processing after 30 s | info "We're still confirming your checkout" | `Try again` (same key), `Go to My tickets` |
+| `purchase_in_progress` | warning "You already have a checkout in progress" | `Open your checkout`: the open order named by the detail `id` (`/purchases/tickets/[orderId]`, or `/guest/orders/[orderId]` for a guest), which offers Return to payment and Cancel order. Without an `id`: member `Go to Purchases`, guest `Back to ticket options`. Membership and merchandise checkouts link their open order the same way (members only for merchandise) (DEF-053) |
+| `free_limit_reached` | warning "You can get N more free tickets", or "You have the most free tickets one person can get" | `Continue with N tickets` and `Change tickets`, or `Back to the event` |
+| none, still processing after 30 s | info "We're still confirming your checkout" | `Try again` (same key); members also `Go to My tickets`, guests are told the tickets arrive by email |
 
-Any other failure keeps the button and shows a danger `Notice` with `Change tickets`. An unverified member sees `Verify your email to continue` instead of the action. Guests see "Where should we send your tickets?" (steps Your email, Review, Pay with Stripe), then "Check your email", then the review showing "Buying as a guest". `tests/e2e/checkout-states.spec.ts` drives the refusals and checks 390 and 1280px for sideways scroll. Not built from the mobile artboard: a struck-through old total and a sticky pay bar.
+Any other failure keeps the button and shows a danger `Notice` with `Change tickets`. An unverified member sees `Verify your email to continue` instead of the action. Guests see "Where should we send your tickets?" (steps Your email, Review, Pay with Stripe) with required First name and Last name, which door staff search by, then "Check your email", then the review showing "Buying as a guest". `tests/e2e/checkout-states.spec.ts` drives the refusals and checks 390 and 1280px for sideways scroll. Not built from the mobile artboard: a struck-through old total and a sticky pay bar.
 
 ## Society pages
 

@@ -1189,6 +1189,20 @@ describe("webhook reconciliation", () => {
     expect(await state()).toMatchObject({ status: "failed", requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
   });
 
+  test("a refund or dispute Stripe recorded before a late paid webhook sends the order to review instead of issuing tickets", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const refunded = await pendingWithHold();
+    // Staff refunded the buyer in Stripe's dashboard while the paid webhook kept failing.
+    await prisma.order.update({ where: { id: refunded.order.id }, data: { externalRefundedAmount: refunded.order.totalAmount } });
+    expect(await reconcileCompletedCheckoutSession(refunded.session())).toEqual({ status: "compensation_required", orderId: refunded.order.id, reason: "refunded_or_disputed_before_fulfilment" });
+    expect(await refunded.state()).toMatchObject({ status: "failed", requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
+
+    const disputed = await pendingWithHold();
+    await prisma.order.update({ where: { id: disputed.order.id }, data: { disputeStatus: "open" } });
+    expect(await reconcileCompletedCheckoutSession(disputed.session())).toMatchObject({ status: "compensation_required", reason: "refunded_or_disputed_before_fulfilment" });
+    expect(await disputed.state()).toMatchObject({ tickets: [] });
+  });
+
   test("a paid session for an event whose capacity fell below its holds goes to compensation review", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { order, session, state } = await pendingWithHold(2, { capacity: 2 });

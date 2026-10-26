@@ -19,6 +19,8 @@ test("a guest gets free tickets with a verified email, then finds them again fro
   await page.getByRole("button", { name: "Continue as guest" }).click();
   await expect(page.getByRole("heading", { name: "Where should we send your tickets?" })).toBeVisible();
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("First name").fill("Gia");
+  await page.getByLabel("Last name").fill("Guest");
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByRole("status")).toContainText(email);
   for (const width of [390, 1280]) {

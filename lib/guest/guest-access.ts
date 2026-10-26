@@ -42,7 +42,7 @@ async function revokeOpenGrants(tx: Prisma.TransactionClient, guestIdentityId: s
 
 // Always the same outcome for the caller, whatever the address; only a newer
 // link replaces an unused one.
-export async function requestGuestAccess(email: string, callbackUrl?: string, now = new Date()) {
+export async function requestGuestAccess(email: string, callbackUrl?: string, now = new Date(), name: { firstName?: string; lastName?: string } = {}) {
   assertNotificationConfiguration();
   const address = email.trim().toLowerCase();
   const raw = newSecret();
@@ -52,6 +52,7 @@ export async function requestGuestAccess(email: string, callbackUrl?: string, no
     await revokeOpenGrants(tx, identity.id, now);
     const grant = await tx.guestAccessGrant.create({ data: {
       guestIdentityId: identity.id, purpose: "checkout", tokenDigest: guestDigest(raw),
+      buyerFirstName: name.firstName?.trim() || null, buyerLastName: name.lastName?.trim() || null,
       callbackPath: safeReturnPath(callbackUrl, "/events"), expiresAt: new Date(now.getTime() + linkLifetimeMs)
     } });
     const link = new URL("/guest/access", appUrl());
@@ -200,7 +201,8 @@ export async function lockGuestBuyer(tx: Prisma.TransactionClient, grantId: stri
   if (!grant || grant.purpose !== "checkout" || grant.revokedAt || !grant.sessionExpiresAt || grant.sessionExpiresAt <= now || !grant.guestIdentity.verifiedAt) {
     throw new GuestAccessError(guestSessionEndedMessage);
   }
-  return { email: grant.guestIdentity.email, firstName: null, lastName: null, displayName: null };
+  // The name given with this checkout link, so door staff can find the guest by name.
+  return { email: grant.guestIdentity.email, firstName: grant.buyerFirstName, lastName: grant.buyerLastName, displayName: null };
 }
 
 export function guestSessionIdFrom(request: Request) {

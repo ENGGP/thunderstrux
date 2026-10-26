@@ -54,7 +54,7 @@ test("explicit verification consumes once under concurrent requests and keeps sa
   await signupAccount(input); const raw = await rawToken();
   const results = await Promise.allSettled([consumeVerification(raw, input.password), consumeVerification(raw, input.password)]);
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
-  expect((results.find(result => result.status === "fulfilled") as PromiseFulfilledResult<unknown>).value).toEqual({ verified: true, callbackUrl: "/events/example" });
+  expect((results.find(result => result.status === "fulfilled") as PromiseFulfilledResult<unknown>).value).toEqual({ verified: true, callbackUrl: "/events/example", email: input.email });
   expect((await prisma.user.findFirstOrThrow()).emailVerifiedAt).not.toBeNull();
   await expect(consumeVerification(raw, input.password)).rejects.toBeInstanceOf(AccountTokenError);
 });
@@ -87,7 +87,7 @@ test("resend supersedes old tokens and fences already claimed security jobs", as
   await requestVerification(input.email, "https://evil.example");
   await expect(consumeVerification(old, input.password)).rejects.toBeInstanceOf(AccountTokenError);
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch); expect(await processNotificationClaim(claim)).toBe("skipped"); expect(fetch).not.toHaveBeenCalled();
-  expect(await consumeVerification(await rawToken(), input.password)).toEqual({ verified: true, callbackUrl: "/dashboard" });
+  expect(await consumeVerification(await rawToken(), input.password)).toEqual({ verified: true, callbackUrl: "/dashboard", email: input.email });
 });
 test("expired, wrong-purpose, changed-email, disabled and stale-version tokens are denied", async () => {
   await signupAccount(input); const raw = await rawToken(); const user = await prisma.user.findFirstOrThrow();

@@ -7,7 +7,7 @@ import { enforceTrustedMutationRequest, trustedRequestOrigin } from "@/lib/secur
 import { connectRouteRules } from "@/lib/stripe/http";
 import { validateJson } from "@/lib/validators";
 import { startOrganisationStripeOnboarding } from "@/lib/stripe/connect";
-import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
+import { stripeDisconnectSchema } from "@/lib/validators/stripe-connect";
 
 // Creates the society's Express account if it has none, then returns Stripe's onboarding link.
 export async function POST(request: Request) {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireStripeConnectCapability();
-    const validation = await validateJson(request, organisationConnectSchema);
+    const validation = await validateJson(request, stripeDisconnectSchema);
 
     if (!validation.success) {
       return validationError(validation.details);
@@ -37,7 +37,13 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const url = await startOrganisationStripeOnboarding(organisationId, user.id, trustedRequestOrigin(request));
+    // Authenticator guesses share the staff verification limit.
+    if (validation.data.mfaCode) {
+      const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [user.id] });
+      if (codeLimit) return codeLimit;
+    }
+
+    const url = await startOrganisationStripeOnboarding(organisationId, { actor: user, mfaCode: validation.data.mfaCode }, trustedRequestOrigin(request));
 
     return NextResponse.json({ url });
   } catch (error) {

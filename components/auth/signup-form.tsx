@@ -109,16 +109,21 @@ export function SignupForm({
 
       {accountRole === "member" ? (
         <div className="grid gap-4 sm:grid-cols-2">
+          {/* Door staff find tickets by the buyer's name, so a member gives one. */}
           <TextInput
+            autoComplete="given-name"
             label="First name"
             maxLength={80}
             onChange={(event) => setFirstName(event.target.value)}
+            required
             value={firstName}
           />
           <TextInput
+            autoComplete="family-name"
             label="Last name"
             maxLength={80}
             onChange={(event) => setLastName(event.target.value)}
+            required
             value={lastName}
           />
         </div>

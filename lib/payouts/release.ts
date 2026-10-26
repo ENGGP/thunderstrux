@@ -37,12 +37,20 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
   const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }, reversing];
   // PAY-012: a lost dispute whose money is already back from the society holds nothing.
   const notRecovered = { OR: [{ disputeStatus: null }, { disputeStatus: { not: "lost" as const } }, { disputes: { none: { reversalStatus: "succeeded" as const } } }, reversing] };
+  const ended = new Date(now.getTime() - ticketHoldAfterEventMs);
   const [tickets, commerce] = await Promise.all([
     prisma.order.findMany({
       // The event owns a ticket order (Event.organisationId is canonical).
-      // A compensation or manually marked refund already returned the money (PAY-012).
-      where: { ...paidTo, isManuallyRefunded: false, event: { organisationId }, AND: [{ OR: [{ event: { endTime: { gt: new Date(now.getTime() - ticketHoldAfterEventMs) } } }, ...stillOpen] }, notRecovered] },
-      select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, eventId: true, event: { select: { endTime: true } } }
+      where: { ...paidTo, event: { organisationId }, AND: [
+        // An end moved earlier still holds until its latest end has passed, so an
+        // edit can't release the money before the event runs (SEC-004).
+        { OR: [{ event: { endTime: { gt: ended } } }, { event: { changes: { some: { previousEndTime: { gt: ended } } } } }, ...stillOpen] },
+        notRecovered,
+        // A compensation refund returned the money (PAY-012). A staff mark proves
+        // nothing at Stripe, so that sale waits for its event like any other.
+        { OR: [{ isManuallyRefunded: false }, { compensationRefundJob: { is: null } }] }
+      ] },
+      select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, eventId: true, event: { select: { endTime: true, changes: { select: { previousEndTime: true }, orderBy: { previousEndTime: "desc" }, take: 1 } } } }
     }),
     prisma.commerceOrder.findMany({
       where: { ...paidTo, organisationId, AND: [{ OR: [{ paidAt: { gt: new Date(now.getTime() - commerceHoldMs) } }, ...stillOpen] }, notRecovered] },
@@ -50,7 +58,8 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
     })
   ]);
   const eventAmount = tickets.reduce((sum, order) => sum + share(order), 0);
-  const upcoming = tickets.map((order) => order.event.endTime).filter((endTime) => endTime > now).sort((a, b) => a.getTime() - b.getTime());
+  const latestEnd = ({ endTime, changes }: (typeof tickets)[number]["event"]) => (changes[0] && changes[0].previousEndTime > endTime ? changes[0].previousEndTime : endTime);
+  const upcoming = tickets.map((order) => latestEnd(order.event)).filter((endTime) => endTime > now).sort((a, b) => a.getTime() - b.getTime());
   const commerceAmount = commerce.reduce((sum, order) => sum + share(order), 0);
   return {
     events: { amount: eventAmount, eventCount: new Set(tickets.map((order) => order.eventId)).size, nextEndsAt: upcoming[0] ?? null },

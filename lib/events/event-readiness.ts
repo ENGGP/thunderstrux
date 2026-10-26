@@ -70,10 +70,17 @@ export function eventReadiness(
       block("sold_out", "ticketTypes", "Every ticket type is sold out or held in checkouts.");
     }
   }
+  // Not a blocker: a mixed event sells its free tickets, but the organiser should
+  // know buyers see its paid ones as unavailable until payments are set up.
+  const warnings: ReadinessBlocker[] =
+    ticketTypes.some((ticketType) => ticketType.checkoutEligible) && ticketTypes.some((ticketType) => ticketType.reason === "payments_unavailable")
+      ? [{ code: "paid_tickets_waiting", field: "ticketTypes", message: "Paid tickets can't be bought until payments are set up. Free tickets are on sale." }]
+      : [];
 
   return {
     publishable: blockers.length === 0,
     blockers,
+    warnings,
     ticketTypes,
     salesOpen: event.status === "published" && salesOpen(event, now)
   };

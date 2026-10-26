@@ -40,7 +40,7 @@ export function activeEntitlementGrant(
 }
 
 export class MembershipUnavailableError extends Error {
-  constructor(readonly reason: "plan_unavailable" | "term_overlap" | "purchase_in_progress", message: string) {
+  constructor(readonly reason: "plan_unavailable" | "term_overlap" | "purchase_in_progress", message: string, readonly orderId?: string) {
     super(message);
     this.name = "MembershipUnavailableError";
   }
@@ -83,9 +83,9 @@ export const membershipFamily: CommerceFamilyAdapter<z.infer<typeof selection>> 
         organisationId, kind: "membership", termStartsAt: { lt: plan.endsAt }, termEndsAt: { gt: plan.startsAt },
         order: { userId: buyer.userId, status: "pending" }
       },
-      select: { id: true }
+      select: { orderId: true }
     });
-    if (pending) throw new MembershipUnavailableError("purchase_in_progress", "You already have a checkout in progress for these dates");
+    if (pending) throw new MembershipUnavailableError("purchase_in_progress", "You already have a checkout in progress for these dates", pending.orderId);
     return {
       lines: [{ quantity: 1, unitAmount: plan.priceAmount, name: plan.name, termStartsAt: plan.startsAt, termEndsAt: plan.endsAt, membershipProductId: plan.id }]
     };

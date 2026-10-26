@@ -35,8 +35,14 @@ export function GuestAccessForm() {
       <div className="grid gap-4">
         {error ? <Notice role="alert" tone="danger">{error}</Notice> : null}
         <h2 className="text-xl font-semibold text-ink">This link has stopped working</h2>
-        <p className="text-ink-soft">Links work once and only for 30 minutes. Go back to the event and enter your email again for a new one.</p>
-        <Link className={buttonClasses({ size: "lg" })} href="/events">Back to events</Link>
+        {/* An order link is often tapped again at the door; finding the purchase is the way back, not a new order. */}
+        <p className="text-ink-soft">
+          Each link works once, for a short time. Already bought? We&apos;ll email you a new link to your order. Still buying? Go back to the event and enter your email again.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link className={buttonClasses({ size: "lg" })} href="/guest/recover">Find your purchase</Link>
+          <Link className={buttonClasses({ size: "lg", variant: "secondary" })} href="/events">Back to events</Link>
+        </div>
       </div>
     );
   }

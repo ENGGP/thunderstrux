@@ -160,6 +160,23 @@ describe("ticket email outbox", () => {
     await expect(prisma.auditLog.count({ where: { targetId: job.id } })).resolves.toBe(0);
   });
 
+  test("an email waiting when its order is refunded, cancelled or disputed is never sent, and can't be requeued", async () => {
+    // No provider is configured, so a send attempt would record a provider error instead of the refusal.
+    const order = await createPaidTicketOrder("refunded-while-waiting@example.com");
+    await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+    await makeOutboxJobsDue(order.id, new Date(Date.now() - 1000));
+    await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });
+
+    await processTicketEmailOutboxBatch({ now: new Date() });
+
+    const job = await prisma.emailOutbox.findFirstOrThrow({ where: { orderId: order.id } });
+    expect(job).toMatchObject({ status: "failed", lastError: "Tickets can't be resent for an order with a refund", deliveredToProviderAt: null });
+    const actorUserId = (await prisma.order.findUniqueOrThrow({ where: { id: order.id },
+      select: { event: { select: { organisation: { select: { accountUserId: true } } } } } }))
+      .event.organisation.accountUserId!;
+    await expect(requeueFailedTicketEmail({ jobId: job.id, actorUserId, reason: "Provider issue resolved" })).rejects.toThrow("not eligible");
+  });
+
   test("automatic enqueue is idempotent while manual enqueue is repeatable", async () => {
     const order = await createPaidTicketOrder();
 

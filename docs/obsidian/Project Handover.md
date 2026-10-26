@@ -18,6 +18,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 **2026-10-26, main `183b2e2`.** This session began on 2026-10-25 at `1bc34ef`.
 - T01 to T46 are delivered and locally qualified, apart from the assistant (T35 to T37), which the founder deferred. [[Pre-hosting Candidate]] is the candidate record.
 - This session delivered the codebase audit fixes, the UI audit and design sync, the security audit remediation (T47 to T53) and the test audit. The documentation audit (#195) rewrote the notes and registered 17 items; #196 fixes 16 of them (DEBT-001, a cleanup, is left).
+- A security and buyer-journey audit (2026-10-26, compared with Luma, Humanitix and Eventbrite) found 20 items; #PR fixes 18 of them (PAY-016, PAY-018 to PAY-021, SEC-029 to SEC-031, DEF-053 to DEF-062, UI-006) and registers event cancellation (EVT-004), buyer self-cancel of free registrations (EVT-005) and smaller leftovers (DEBT-002). It adds migration `20261116010000_guest_checkout_name`.
 
 **Snapshot at `912e49b`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -87,6 +88,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
 | #193 | Test audit findings (DEF-046, PAY-010, SEC-027) |
 | #50, #183 to #186, #188, #189 | Renovate updates: container digests, postcss, golang, stripe 23.0.1, caddy, axe-core 4.14. axe-core 4.14 failed the browser campaign until #193 (DEF-046). |
 | #195 | Documentation audit: vault root at `docs/`, notes rewritten for agent readers, stricter `pnpm docs:check`, resolved defects moved to History, 17 new register items |
+| #PR | Security and journey audit fixes: payout hold (manual mark, end-time edit, disconnect), refunds or disputes before fulfilment, free-ticket cap, merchandise hold grace, capacity under review, refunds after a won dispute, fresh codes for Stripe onboarding and a password for authenticator setup; checkout dead end, guest names and door references, guest link at the door, sign-in after verification, society-zone order times, link previews, map and calendar links, event form safety (PAY-016, PAY-018 to PAY-021, SEC-029 to SEC-031, DEF-053 to DEF-062, UI-006). Adds migration `20261116010000_guest_checkout_name` |
 | #196 | Documentation-audit fixes: deploy stops and restarts workers (OPS-007), ticket email zone and wording, order date filters in the society's zone, refund, payout, analytics, dispute-reversal and disconnect fixes, bounded request bodies, config faults (DEF-047 to DEF-052, PAY-011 to PAY-015, SEC-028, API-002, AUD-002, OPS-006) |
 
 ## Next safe actions
@@ -96,15 +98,17 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts.
-2. **DEBT-001 cleanup PR:** the dead and redundant code the documentation audit listed. Small; no behaviour change.
-3. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].
+2. **Dev database before pulling #PR:** take a verified dump first; the next dev app restart applies `20261116010000_guest_checkout_name` (additive).
+3. **EVT-004 and EVT-005:** "Cancel event" with bulk refunds and holder notices, and buyer self-cancel of free registrations, as one task.
+4. **DEBT-001 and DEBT-002 cleanup:** the dead and redundant code the documentation audit listed, and the smaller items of the journey audit. Small; no risky behaviour change.
+5. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].
    - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]].
    - Pass PAY-002 on the hosted endpoint.
-4. **When hosting is chosen,** run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
-5. **UI-004:** fold the phone filters, use one date formatter, and add the society Overview previews.
-6. **PAY-009, when scheduled:** shorter or society-set holds, made by closing the Stripe page early from the stale-order job. It is its own task.
-7. **Before activating account lifecycle:**
-   - get an independent security and migration review, which also covers #167's payment and sign-in changes;
+6. **When hosting is chosen,** run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
+7. **UI-004:** fold the phone filters, use one date formatter, and add the society Overview previews.
+8. **PAY-009, when scheduled:** shorter or society-set holds, made by closing the Stripe page early from the stale-order job. It is its own task.
+9. **Before activating account lifecycle:**
+   - get an independent security and migration review, which also covers #167's payment and sign-in changes and #PR's payout-hold, refund and staff-security changes;
    - provision the notification key and back it up separately;
    - verify reliable Redis and real email acceptance.
 

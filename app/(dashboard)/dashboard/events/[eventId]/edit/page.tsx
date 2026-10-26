@@ -69,7 +69,7 @@ export default async function EditEventPage({
                   <h2 className="text-lg font-semibold text-ink" id="ready-heading">Ready to publish?</h2>
                   <p className="mt-1 text-sm text-ink-soft">Checked when you save. Publish from the Summary.</p>
                 </div>
-                <ReadinessChecklist blockers={event.blockers} />
+                <ReadinessChecklist blockers={event.blockers} warnings={event.warnings} />
               </div>
             </Card>
           ) : null

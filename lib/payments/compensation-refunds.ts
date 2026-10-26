@@ -343,8 +343,8 @@ async function retrieveEligiblePayment(job: ClaimedRefund) {
     intent.currency.toLowerCase() !== expectedCurrency ||
     intent.metadata.orderId !== job.orderId ||
     destination !== job.stripeAccountId ||
-    !latestCharge ||
-    latestCharge.disputed !== false
+    // Not `disputed`, which stays true after a dispute closes; the claim already refuses a disputed order.
+    !latestCharge
   ) {
     throw new CompensationRefundVerificationError("provider_identity_not_eligible");
   }
@@ -568,7 +568,6 @@ export async function confirmCompensationRefund(
     session.currency?.toLowerCase() !== existing.currency ||
     destination !== existing.order.event.organisation.stripeAccountId ||
     !latestCharge ||
-    latestCharge.disputed !== false ||
     (refund.metadata?.orderId !== undefined && refund.metadata.orderId !== orderId)
   ) throw new CompensationRefundVerificationError("manual_refund_verification_failed");
 

@@ -30,6 +30,14 @@ describe("public event pages", () => {
     expect(await title(membersOnly.id)).not.toBe(membersOnly.title);
     expect(await title("missing")).toBeUndefined();
     expect((await societyMetadata({ params: Promise.resolve({ orgSlug: owner.organisation.slug }) })).title).toBe(owner.organisation.name);
+
+    // A shared link previews when and where; a members-only one shows nothing of the event.
+    const shared = await eventMetadata({ params: Promise.resolve({ eventId: open.id }) });
+    expect(shared.openGraph).toMatchObject({ title: open.title, description: expect.stringContaining(open.location) });
+    expect((await eventMetadata({ params: Promise.resolve({ eventId: membersOnly.id }) })).openGraph).toBeUndefined();
+    const page = await renderPage(await PublicEventPage({ params: Promise.resolve({ eventId: open.id }) }));
+    expect(page).toContain("https://calendar.google.com/calendar/render?action=TEMPLATE");
+    expect(page).toContain(`https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(open.location)}`);
   });
 
   test("the proxy no longer guards event pages, and the dashboard stays protected", async () => {

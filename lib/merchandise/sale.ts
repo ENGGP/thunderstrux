@@ -6,6 +6,7 @@ import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatMoney, orderReference } from "@/lib/format";
 import { mintPurchaseLink } from "@/lib/guest/guest-access";
 import { MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
+import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
 
 // Selling merchandise (T27a): the merchandise commerce family, checkout holds
 // and stock. Loaded by the payments webhook and the stale-order worker through
@@ -17,14 +18,14 @@ import { MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
 // deadlock.
 //
 // A hold is not a row of its own: the lines of a pending Stripe order that
-// has not reached its `expiresAt` (30 minutes, the Session's own expiry) hold
-// their stock. Paying, failing or expiring the order ends its hold, so the
+// has not passed its `expiresAt` (30 minutes, the Session's own expiry) plus
+// `lateWebhookGraceMs` hold their stock. Paying, failing or expiring the order ends its hold, so the
 // two can never disagree.
 
 export type MerchandiseUnavailableReason = "unavailable" | "sold_out" | "not_enough" | "quote_changed" | "purchase_in_progress";
 
 export class MerchandiseUnavailableError extends Error {
-  constructor(readonly reason: MerchandiseUnavailableReason, message: string, readonly variantId?: string, readonly available?: number) {
+  constructor(readonly reason: MerchandiseUnavailableReason, message: string, readonly variantId?: string, readonly available?: number, readonly orderId?: string) {
     super(message);
     this.name = "MerchandiseUnavailableError";
   }
@@ -32,14 +33,16 @@ export class MerchandiseUnavailableError extends Error {
 
 type Db = Pick<Prisma.TransactionClient, "commerceOrderLine">;
 
-// Units of each option held by checkouts still waiting on Stripe.
+// Units of each option held by checkouts still waiting on Stripe. A hold
+// outlives its Stripe page by the late-webhook grace, as ticket holds do
+// (DEF-033), so a payment made just before the page closed still finds its stock.
 export async function heldByVariant(db: Db, variantIds: string[], now: Date, exceptOrderId?: string) {
   if (!variantIds.length) return new Map<string, number>();
   const rows = await db.commerceOrderLine.groupBy({
     by: ["merchandiseVariantId"],
     where: {
       merchandiseVariantId: { in: variantIds },
-      order: { status: "pending", paymentKind: "stripe", expiresAt: { gt: now }, ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}) }
+      order: { status: "pending", paymentKind: "stripe", expiresAt: { gt: new Date(now.getTime() - lateWebhookGraceMs) }, ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}) }
     },
     _sum: { quantity: true }
   });
@@ -83,7 +86,7 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
       where: { organisationId, kind: "merchandise", status: "pending", paymentKind: "stripe", expiresAt: { gt: now }, ...buyer },
       select: { id: true }
     });
-    if (open) throw new MerchandiseUnavailableError("purchase_in_progress", "You already have a checkout in progress. Finish or cancel it first.");
+    if (open) throw new MerchandiseUnavailableError("purchase_in_progress", "You already have a checkout in progress. Finish or cancel it first.", undefined, undefined, open.id);
     const ids = items.map((item) => item.variantId);
     await lockVariants(tx, ids);
     const [options, held] = await Promise.all([

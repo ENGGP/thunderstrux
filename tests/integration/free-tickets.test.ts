@@ -82,6 +82,21 @@ describe("free ticket registration", () => {
     expect((await prisma.ticketType.findUniqueOrThrow({ where: { id: fixture.ticketType.id } })).quantity).toBe(18);
   });
 
+  test("one buyer holds at most one order's worth of free tickets for an event, so nobody can claim them all", async () => {
+    const fixture = await freeEvent({ quantity: 50 });
+    const member = await createMember();
+    await register(member.id, fixture, 6);
+    await expect(register(member.id, fixture, 5)).rejects.toMatchObject({ kind: "free_limit_reached", details: [expect.objectContaining({ value: 4 })] });
+    await register(member.id, fixture, 4);
+    await expect(register(member.id, fixture, 1)).rejects.toMatchObject({ kind: "free_limit_reached" });
+    expect(await prisma.ticket.count({ where: { eventId: fixture.event.id } })).toBe(10);
+    // A cancelled registration no longer counts.
+    await prisma.ticket.updateMany({ where: { eventId: fixture.event.id, issueSequence: 1 }, data: { validity: "void", validityReason: "cancelled" } });
+    await expect(register(member.id, fixture, 2)).resolves.toMatchObject({ status: "fulfilled" });
+    // Another buyer is unaffected.
+    await expect(register((await createMember()).id, fixture, 10)).resolves.toMatchObject({ status: "fulfilled" });
+  });
+
   test("two members racing for the last seat get exactly one ticket", async () => {
     const fixture = await freeEvent({ quantity: 1 });
     const [a, b] = await Promise.all([createMember(), createMember()]);

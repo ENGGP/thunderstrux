@@ -50,16 +50,16 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 | `POST /api/stripe/connect/continue` | `continueOrganisationStripeOnboarding`: a fresh onboarding link | 400 when no account is connected |
 | `GET /api/stripe/connect/status?organisationId=` | `getOrganisationStripeConnectStatus`: read Stripe, persist the flags, return the status | 503 when Stripe isn't configured |
 | `POST /api/stripe/connect/dashboard` | `createOrganisationDashboardLink`: a single-use Express Dashboard login link `{ url }` | 400 until details are submitted |
-| `POST /api/stripe/connect/disconnect` | `disconnectAccount`, then `{ disconnected: true, status }` with `NOT_CONNECTED` | 409 while orders depend on the account |
+| `POST /api/stripe/connect/disconnect` | `disconnectAccount`, then `{ disconnected: true, status }` with `NOT_CONNECTED` | 409 while orders depend on the account or sale money is still held |
 
 - **Authority:** every route needs `stripe:manage` on the target society (`requireStripeConnectCapability`, then `requireOrganisationStripeConnectAccess`). The body or query names `organisationId`; it is authorised, never trusted ([[Authentication and Dashboard Access#Roles and permissions]]).
-- **Guards:** the four POSTs check the trusted origin and rate limit `stripe_connect_mutation` per society and action. Dashboard and disconnect also apply `staff_mfa_verify` per user when a code is sent ([[Route Security Inventory#Rate limits]]).
+- **Guards:** the four POSTs check the trusted origin and rate limit `stripe_connect_mutation` per society and action, and apply `staff_mfa_verify` per user when a code is sent ([[Route Security Inventory#Rate limits]]).
 - **Errors** (`connectRouteRules`): a missing or unreachable society is 404, permission is 403, a bad `organisationId` is 400, `MfaRequiredError` 403, a bad code 400, MFA misconfiguration 503, `StripeConfigurationError` 503 "Stripe is not configured." (no server setting named), and a disconnect Stripe couldn't answer 503 (`StripeDisconnectUnavailableError`). Provider messages never reach the client.
 - **Account creation** (`createExpressAccount`): `type: "express"`, capabilities `card_payments` (needed by `on_behalf_of`) and `transfers` (destination charges), and `settings: manualPayoutSettings` (see Payouts). The idempotency key is `connect-account:<orgId>:<n>`, where `n` counts earlier `stripe_connect.account_created` audit rows: a double click returns the same account, a reconnect after disconnect gets a new one. Success stores the id with `CONNECTED_INCOMPLETE` and all flags false, and writes `stripe_connect.account_created`.
-- **Onboarding links:** `accountLinks.create` (`account_onboarding`); return and refresh URLs are `/dashboard/settings` on the trusted origin the request came from, else the app URL.
+- **Onboarding links:** `accountLinks.create` (`account_onboarding`); return and refresh URLs are `/dashboard/settings` on the trusted origin the request came from, else the app URL. Onboarding collects the bank account payouts go to, so `onboard` and `continue` need a fresh authenticator code unless staff MFA is `off` (`mfaCode` in the body, as the dashboard link).
 - **Status:** with an account, the response adds `openObligations` (orders that block disconnect) and `payouts` (`payoutSummary`). `dashboard_available` is `details_submitted`.
 - **Express dashboard:** needs a fresh authenticator code unless staff MFA is `off`, because the dashboard can change where payouts go. It calls `accounts.createLoginLink` per click and writes `stripe_connect.dashboard_opened`. The platform's own view (`dashboard.stripe.com/connect/accounts/...`) never opens for a society.
-- **Disconnect:** a fresh authenticator code unless MFA is `off`. Open obligations are counted first; if none, the account goes back to Stripe's daily payouts (`restoreStripePayoutSchedule`). If Stripe answers that this platform's key can't see the account (a 403 `StripePermissionError`: made under another platform key, or deleted), there's no schedule to give back and the account is unlinked anyway, logged `stripe_connect.disconnect_account_out_of_reach` (PAY-015); any other Stripe failure is a 503 and nothing changes. Then, under the `Organisation` row lock, they are counted again. The local Stripe fields are cleared and `stripe_connect.disconnected` records the previous account id. With no account (for example `PLATFORM_NOT_READY`) only the local state resets. The Stripe account is never deleted, and past orders keep it as their seller snapshot.
+- **Disconnect:** a fresh authenticator code unless MFA is `off`. Open obligations are counted first, then held money: while `heldMoney` is above zero, disconnect is refused (`heldMoneyBlocksDisconnect`), because Stripe's daily schedule would pay out money the society may still have to refund (PAY-018). If neither blocks, the account goes back to Stripe's daily payouts (`restoreStripePayoutSchedule`). If Stripe answers that this platform's key can't see the account (a 403 `StripePermissionError`: made under another platform key, or deleted), there's no schedule to give back and the account is unlinked anyway, logged `stripe_connect.disconnect_account_out_of_reach` (PAY-015); any other Stripe failure is a 503 and nothing changes. Then, under the `Organisation` row lock, they are counted again. The local Stripe fields are cleared and `stripe_connect.disconnected` records the previous account id. With no account (for example `PLATFORM_NOT_READY`) only the local state resets. The Stripe account is never deleted, and past orders keep it as their seller snapshot.
 - **Open obligations** are Stripe orders for the account, or orders with no seller snapshot: ticket orders of the society's events and commerce orders of the society. One counts while it is `pending`, under compensation review, `refundStatus = processing`, `disputeStatus = open`, or has a `RefundRequest` that is `pending` or `uncertain`. Ticket orders also count while their `CompensationRefundJob` is `review_required`, `auto_queued`, `auto_processing`, `refund_pending` or `refund_failed`.
 
 ## Connect account states
@@ -95,14 +95,14 @@ Societies are paid after their event, as Humanitix and Eventbrite pay organisers
 
   | Sale | Held while |
   | --- | --- |
-  | Ticket order of the society's event | until `ticketHoldAfterEventMs` (2 days) after the event ends |
+  | Ticket order of the society's event | until `ticketHoldAfterEventMs` (2 days) after the event ends, or after the latest end it had (`EventChange.previousEndTime`), whichever is later, so moving the end earlier can't release it (SEC-029) |
   | Membership or merchandise order | `commerceHoldMs` (7 days) after payment |
   | Any of them | while `disputeStatus = open`, under compensation review, or a dispute reversal is `pending` or `uncertain` |
 
-  Each sale holds its society share: total less `feeAmount` less `externalRefundedAmount`. Money already back with the buyer holds nothing: ticket orders refunded by compensation or marked refunded (`isManuallyRefunded`), and lost disputes whose transfer reversal succeeded.
+  Each sale holds its society share: total less `feeAmount` less `externalRefundedAmount`. Money already back with the buyer holds nothing: ticket orders refunded by compensation (`isManuallyRefunded` with a `CompensationRefundJob`), and lost disputes whose transfer reversal succeeded. A staff "refunded outside Thunderstrux" mark proves nothing at Stripe, so that sale waits for its event like any other (PAY-016).
 - **Payout events:** the Connect webhook passes `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated` to `reconcilePayoutEvent`. It re-reads the payout on the connected account and records `SocietyPayoutStatus`: `paid`, `failed` (failed or canceled) or `pending`. A first move to `failed` alerts `society_payout_failed`. A payout with no known society, or recorded under another account, logs `payouts.webhook.ignored` and changes nothing.
 - **Payments page:** the payouts card shows money waiting for events (amount, event count, next event end), commerce money from the last 7 days, what is on its way (pending payouts), and the last 5 payouts. A refused payout shows a warning until a later payout is paid. Every payout opens in the Express dashboard.
-- **Disconnect** first restores Stripe's daily schedule. If disconnect is then refused under the lock, the next worker check puts the account back on manual payouts.
+- **Disconnect** is refused while any money is held; once nothing is, it restores Stripe's daily schedule. If disconnect is then refused under the lock, the next worker check puts the account back on manual payouts.
 - **Not built:** early payouts and a per-payout breakdown of orders. A payout is the balance less what is held, not a set of orders.
 
 ## Checkout Sessions
@@ -232,7 +232,7 @@ stripe listen --latest \
 
 - **`PLATFORM_NOT_READY`:** finish the platform's Connect profile in Stripe, then Retry after completion.
 - **`ERROR`:** Stripe was unreachable; Try again. Sales follow the last flags meanwhile.
-- **Disconnect refused:** the dialog shows how many orders are open; wait for them to finish.
+- **Disconnect refused:** the page shows how many orders are open, or how much sale money is still held; wait for them to finish or for the money to be paid out.
 - **Reconnect a previously disconnected account** (disconnect never deletes it): set it back, then Refresh status on `/dashboard/settings`.
 
   ```sql

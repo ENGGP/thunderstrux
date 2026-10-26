@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { loadTicketDeliveryOrder, renderTicketEmail } from "@/lib/email/ticket-delivery";
+import { ticketReference } from "@/lib/format";
 import { getGroupedOrganisationOrdersWithContext } from "@/lib/orders/grouped-orders";
 import { getWalletTickets } from "@/lib/purchases/ticket-purchases";
 import { getOrganisationOrderDetail } from "@/lib/orders/order-detail";
@@ -196,9 +197,11 @@ describe("purchase snapshots and ticket validity", () => {
     expect((await getWalletTickets(member.id, "upcoming")).tickets.map((ticket) => ticket.id)).toEqual([valid.id]);
     expect((await getWalletTickets(member.id, "not-valid")).tickets.map((ticket) => ticket.id).sort()).toEqual([voided.id, review.id].sort());
     const mail = renderTicketEmail(await loadTicketDeliveryOrder(order.id)).text;
-    expect(mail).toContain(valid.id);
-    expect(mail).not.toContain(voided.id);
-    expect(mail).not.toContain(review.id);
+    // The email names tickets by the same short reference as the wallet and the door.
+    expect(mail).toContain(ticketReference(valid.id));
+    expect(mail).not.toContain(ticketReference(voided.id));
+    expect(mail).not.toContain(ticketReference(review.id));
+    expect(mail).not.toContain("MVP");
 
     const door = await getOrganisationEventTickets(owner.organisation.id, event.id);
     expect(door.tickets.map((ticket) => ticket.id)).toEqual([valid.id]);

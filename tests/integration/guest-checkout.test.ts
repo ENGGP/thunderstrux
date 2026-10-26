@@ -11,8 +11,10 @@ import { GuestAccessError, guestCookieName, purchaseLinkForEmail, readGuestSessi
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { getOrganisationEventTickets } from "@/lib/tickets/check-in";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestBackendFailure, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
+import { setMockSession } from "@/tests/helpers/auth";
 import { guestSession, newestGuestLink } from "@/tests/helpers/guest";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { renderPage } from "@/tests/helpers/render";
@@ -34,9 +36,9 @@ beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(create
 afterEach(() => { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); stripeMocks.createSession.mockReset(); });
 
 async function eventWith(price: number) {
-  const { organisation } = await createOrganisationAccount({ stripeReady: true });
+  const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
   const event = await createEvent({ organisationId: organisation.id, status: "published", ticketTypes: [{ name: price ? "General" : "Free entry", price, quantity: 20 }] });
-  return { organisation, event, ticketType: event.ticketTypes[0] };
+  return { organisation, owner: user, event, ticketType: event.ticketTypes[0] };
 }
 
 const buy = (fixture: Awaited<ReturnType<typeof eventWith>>, quantity = 2) => ({
@@ -76,6 +78,18 @@ describe("guest checkout", () => {
     expect(sent[0].key).toMatch(/^ticket-email\/.+\/0$/);
     const link = sent[0].text.match(/http:\/\/localhost:3000\/guest\/access#token=[A-Za-z0-9_-]{43}/)![0];
     expect((await redeemGuestAccess(new URLSearchParams(new URL(link).hash.slice(1)).get("token")!)).callbackUrl).toBe(`/guest/orders/${orderId}`);
+  });
+
+  test("the name a guest gives with their email reaches the order, so door staff find them by name", async () => {
+    const fixture = await eventWith(0);
+    const email = `${unique("named")}@example.com`;
+    await requestGuestAccess(email, undefined, new Date(), { firstName: " Gia ", lastName: "Nguyen" });
+    const { sessionId } = await redeemGuestAccess(await newestGuestLink(email));
+    const { orderId } = await parseJsonResponse(await checkoutRoute(guestRequest(sessionId, buy(fixture, 1))));
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).toMatchObject({ buyerFirstNameSnapshot: "Gia", buyerLastNameSnapshot: "Nguyen" });
+    setMockSession({ userId: fixture.owner.id, email: fixture.owner.email, accountRole: "organisation" });
+    const door = await getOrganisationEventTickets(fixture.organisation.id, fixture.event.id, { query: "gia nguyen" });
+    expect(door.tickets.map((ticket) => ticket.orderId)).toEqual([orderId]);
   });
 
   test("a paid guest checkout holds stock and returns from Stripe to the guest order page", async () => {

@@ -62,9 +62,9 @@ export async function commerceCheckoutRoute(request: Request, family: CommerceKi
         routeErrorRule(AccountVerificationError, (failure) => forbidden(failure.message)),
         routeErrorRule(CommerceSelectionError, (failure) => validationError(failure.issues.map((issue) => ({ path: ["selection", ...issue.path.map(String)], message: issue.message })))),
         // Nothing charged: the plan left sale, the dates are already covered, or a checkout for them is open.
-        routeErrorRule(MembershipUnavailableError, (failure) => apiError("CONFLICT", failure.message, 409, [{ path: ["selection"], message: failure.message, reason: failure.reason }])),
+        routeErrorRule(MembershipUnavailableError, (failure) => apiError("CONFLICT", failure.message, 409, [{ path: ["selection"], message: failure.message, reason: failure.reason, ...(failure.orderId ? { id: failure.orderId } : {}) }])),
         routeErrorRule(MerchandiseUnavailableError, (failure) =>
-          apiError("CONFLICT", failure.message, 409, [{ path: failure.variantId ? ["selection", "items", failure.variantId] : ["selection"], message: failure.message, reason: failure.reason, value: failure.available }])
+          apiError("CONFLICT", failure.message, 409, [{ path: failure.variantId ? ["selection", "items", failure.variantId] : ["selection"], message: failure.message, reason: failure.reason, value: failure.available, ...(failure.orderId ? { id: failure.orderId } : {}) }])
         ),
         routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),
         routeErrorRule(CommerceCheckoutError, (failure) =>

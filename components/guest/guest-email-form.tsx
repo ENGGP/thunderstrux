@@ -8,9 +8,12 @@ import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 // Asks for an email and sends a link to it: the checkout email step and Find
-// your tickets. The answer never says whether the address has anything.
+// your tickets. The answer never says whether the address has anything. At
+// checkout it also asks for a name, which door staff search by.
 export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoint: "/api/guest/email/request" | "/api/guest/recover"; submitLabel: string; callbackUrl?: string }) {
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [sentTo, setSentTo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -21,7 +24,7 @@ export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoin
     setBusy(true);
     setError("");
     try {
-      await fetchJson(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(checkout ? { email, callbackUrl } : { email }) });
+      await fetchJson(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(checkout ? { email, callbackUrl, firstName, lastName } : { email }) });
       setSentTo(email.trim());
     } catch (failure) {
       setError(getClientErrorMessage(failure, "We couldn't send the link. Try again in a few minutes."));
@@ -48,6 +51,12 @@ export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoin
   return (
     <form className="grid gap-4" onSubmit={send}>
       {error ? <Notice role="alert" tone="warning">{error}</Notice> : null}
+      {checkout ? (
+        <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
+          <TextInput autoComplete="given-name" label="First name" maxLength={80} onChange={(event) => setFirstName(event.target.value)} required value={firstName} />
+          <TextInput autoComplete="family-name" hint="Door staff find your tickets by name." label="Last name" maxLength={80} onChange={(event) => setLastName(event.target.value)} required value={lastName} />
+        </div>
+      ) : null}
       <TextInput autoComplete="email" hint={checkout ? "We'll email a link to confirm it's yours. Your tickets and receipt go here too." : undefined} label="Email" maxLength={320} onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
       <Button disabled={busy} size="lg" type="submit">{busy ? "Sending…" : submitLabel}</Button>
       <p className="text-sm text-ink-soft">

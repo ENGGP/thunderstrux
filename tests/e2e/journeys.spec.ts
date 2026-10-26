@@ -40,6 +40,8 @@ test("a guest pays for tickets, opens them from another browser, is admitted onc
   await page.goto(`/events/${event.id}`);
   await page.getByRole("button", { name: "Continue as guest" }).click();
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("First name").fill("Gia");
+  await page.getByLabel("Last name").fill("Guest");
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByRole("status")).toContainText(email);
   await page.goto(await emailedLink(page.request, email, "Confirm your email"));

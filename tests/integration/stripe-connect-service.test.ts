@@ -9,6 +9,7 @@ import {
   OrganisationStripeConnectValidationError,
   startOrganisationStripeOnboarding
 } from "@/lib/stripe/connect";
+import { MfaInputError } from "@/lib/security/staff-mfa";
 import { createOrganisationAccount } from "@/tests/helpers/test-data";
 
 const stripeMocks = vi.hoisted(() => ({
@@ -116,14 +117,14 @@ describe("Stripe Connect application service", () => {
       { type: "StripeInvalidRequestError" }
     ));
 
-    await expect(startOrganisationStripeOnboarding(organisation.id, user.id)).rejects.toMatchObject({ name: "StripeConnectPlatformNotReadyError", state: "PLATFORM_NOT_READY" });
+    await expect(startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).rejects.toMatchObject({ name: "StripeConnectPlatformNotReadyError", state: "PLATFORM_NOT_READY" });
     expect(await prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id }, select: { stripeAccountId: true, stripeAccountStatus: true, stripeChargesEnabled: true } }))
       .toEqual({ stripeAccountId: null, stripeAccountStatus: "PLATFORM_NOT_READY", stripeChargesEnabled: false });
     expect(stripeMocks.createAccountLink).not.toHaveBeenCalled();
     expect(await prisma.auditLog.count({ where: { organisationId: organisation.id, action: "stripe_connect.account_created" } })).toBe(0);
 
     stripeMocks.createAccount.mockRejectedValueOnce(new Error("Too many requests"));
-    await expect(startOrganisationStripeOnboarding(organisation.id, user.id)).rejects.toThrow("Too many requests");
+    await expect(startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).rejects.toThrow("Too many requests");
   });
 
   test("composes onboarding for an existing connected account", async () => {
@@ -135,10 +136,10 @@ describe("Stripe Connect application service", () => {
     });
 
     await expect(
-      startOrganisationStripeOnboarding(organisation.id, user.id)
+      startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })
     ).resolves.toBe("https://connect.stripe.test/application-service");
     await expect(
-      continueOrganisationStripeOnboarding(organisation.id)
+      continueOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })
     ).resolves.toBe("https://connect.stripe.test/application-service");
     expect(stripeMocks.createAccount).not.toHaveBeenCalled();
     expect(stripeMocks.createAccountLink).toHaveBeenCalledWith({
@@ -154,7 +155,7 @@ describe("Stripe Connect application service", () => {
     stripeMocks.createAccount.mockResolvedValueOnce({ id: "acct_created_audit" });
     stripeMocks.createAccountLink.mockResolvedValueOnce({ url: "https://connect.stripe.test/new" });
 
-    await expect(startOrganisationStripeOnboarding(organisation.id, user.id)).resolves.toBe("https://connect.stripe.test/new");
+    await expect(startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).resolves.toBe("https://connect.stripe.test/new");
     // The society is the settlement merchant (on_behalf_of), and a double click returns the same account.
     expect(stripeMocks.createAccount).toHaveBeenLastCalledWith(
       { type: "express", capabilities: { card_payments: { requested: true }, transfers: { requested: true } }, settings: { payouts: { schedule: { interval: "manual" }, debit_negative_balances: true } } },
@@ -167,14 +168,23 @@ describe("Stripe Connect application service", () => {
   });
 
   test("distinguishes a missing organisation from an unconnected one", async () => {
-    const { organisation } = await createOrganisationAccount();
+    const { organisation, user } = await createOrganisationAccount();
 
     await expect(
       getOrganisationStripeConnectStatus("missing-organisation")
     ).rejects.toBeInstanceOf(OrganisationStripeConnectNotFoundError);
     await expect(
-      continueOrganisationStripeOnboarding(organisation.id)
+      continueOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })
     ).rejects.toBeInstanceOf(OrganisationStripeConnectValidationError);
+  });
+
+  test("with staff MFA on, Stripe onboarding needs a fresh authenticator code, because it sets where payouts go", async () => {
+    const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
+    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+    await expect(startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).rejects.toBeInstanceOf(MfaInputError);
+    await expect(continueOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).rejects.toBeInstanceOf(MfaInputError);
+    expect(stripeMocks.createAccountLink).not.toHaveBeenCalled();
   });
 
   test("account.updated saves the account as Stripe has it now, not as the event says", async () => {

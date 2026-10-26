@@ -20,7 +20,7 @@ const linkClass = "inline-flex min-h-11 items-center font-semibold text-brand un
 const items = (count: number) => `${count} ${count === 1 ? "item" : "items"}`;
 
 type Buyer = { name: string | null; email: string; guest: boolean };
-type Refusal = { title: string; body: string; toBasket?: boolean };
+type Refusal = { title: string; body: string; toBasket?: boolean; openOrder?: string };
 
 // BUY-07 (T27b, design round B2): review and pay for one society's basket.
 // The basket is on this device, so the review re-quotes it; a basket that
@@ -112,7 +112,8 @@ export function MerchandiseCheckout({
 
   function refusalFor(failure: unknown): Refusal {
     const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
-    if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: "Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing more has been charged." };
+    // A member opens the open order to pay or cancel it; a guest's may belong to an earlier email link.
+    if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: "Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing more has been charged.", openOrder: guestCsrf ? undefined : detail.id };
     if (detail?.reason === "unavailable") return { title: "An item is no longer sold", body: "Remove it from your basket to continue. Nothing has been charged.", toBasket: true };
     if (detail?.reason === "sold_out" || detail?.reason === "not_enough" || detail?.reason === "quote_changed" || detail?.path?.[0] === "expectedTotal") {
       return { title: "Some items changed", body: "A price or stock level changed while you were checking out. Nothing has been charged.", toBasket: true };
@@ -224,6 +225,11 @@ export function MerchandiseCheckout({
                 {refusal.toBasket ? (
                   <Link className={linkClass} href={basketHref}>
                     Review basket
+                  </Link>
+                ) : null}
+                {refusal.openOrder ? (
+                  <Link className={linkClass} href={`/merchandise/orders/${encodeURIComponent(refusal.openOrder)}`}>
+                    Open your checkout
                   </Link>
                 ) : null}
               </Notice>

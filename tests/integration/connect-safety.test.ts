@@ -8,7 +8,7 @@ import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-recon
 import { getStripeSessionDashboardUrl } from "@/lib/orders/order-detail";
 import { MfaInputError } from "@/lib/security/staff-mfa";
 import { getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
-import { createOrganisationDashboardLink, disconnectAccount, markAccountStatusError, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
+import { createOrganisationDashboardLink, disconnectAccount, heldMoneyBlocksDisconnect, markAccountStatusError, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createEvent, createOrder, createOrganisationAccount, createReservation } from "@/tests/helpers/test-data";
 
@@ -102,6 +102,16 @@ describe("disconnect", () => {
       actorUserId: actor.id,
       metadata: { previousStripeAccountId: fixture.owner.organisation.stripeAccountId }
     });
+  });
+
+  test("is refused while sale money is still held for an upcoming event, so Stripe can't pay it out early (PAY-005)", async () => {
+    const fixture = await paidFixture(null);
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "paid", paidAt: new Date(), sellerStripeAccountId: fixture.owner.organisation.stripeAccountId } });
+    const actor = { id: fixture.owner.user.id };
+
+    await expect(disconnectAccount(fixture.owner.organisation.id, { actor })).rejects.toThrow(heldMoneyBlocksDisconnect);
+    expect(restoreSchedule).not.toHaveBeenCalledWith(fixture.owner.organisation.stripeAccountId);
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).not.toBeNull();
   });
 
   test("a membership order still being paid, refunded or disputed also blocks it", async () => {

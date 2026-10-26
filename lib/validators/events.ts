@@ -5,10 +5,12 @@ const eventFieldsSchema = z
   .object({
     organisationId: z.string().trim().min(1),
     title: z.string().trim().min(1).max(180),
-    description: z.string().trim().min(1).max(5000),
+    // A draft may be saved half-done; publishing (eventReadiness) and editing a
+    // published event both need a description and location.
+    description: z.string().trim().max(5000),
     startTime: z.coerce.date(),
     endTime: z.coerce.date(),
-    location: z.string().trim().min(1).max(240),
+    location: z.string().trim().max(240),
     // Optional event-wide ceiling; null clears it.
     capacity: z.number().int().positive().max(1_000_000).nullable().optional(),
     visibility: z.enum(["public", "unlisted", "members_only"]).optional(),

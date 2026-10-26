@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { conflict, forbidden, mapRouteError, notFound, routeErrorRule } from "@/lib/api/errors";
+import { z } from "zod";
+import { badRequest, conflict, forbidden, mapRouteError, notFound, routeErrorRule, serviceUnavailable, validationError } from "@/lib/api/errors";
 import { authenticationRule } from "@/lib/api/route-rules";
 import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import {
@@ -7,7 +8,11 @@ import {
   OrganisationOrderOperationError,
   markOrganisationOrderManuallyRefunded
 } from "@/lib/orders/order-detail";
+import { mfaGrantDigest } from "@/lib/security/csrf";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
+import { MfaConfigurationError, MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
+import { validateJson } from "@/lib/validators";
 
 type RouteContext = {
   params: Promise<{
@@ -15,6 +20,10 @@ type RouteContext = {
   }>;
 };
 
+const schema = z.object({ mfaCode: z.string().trim().max(20).optional() }).strict();
+
+// The mark voids the tickets and ends the order's payout hold, so unless staff
+// MFA is off it needs a fresh authenticator code, as a refund does.
 export async function PATCH(request: Request, context: RouteContext) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
 
@@ -28,6 +37,18 @@ export async function PATCH(request: Request, context: RouteContext) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationPermission(organisation.id, "orders:refund_mark");
     const actor = await requireAuthenticatedUser();
+    const body = await validateJson(request, schema);
+    if (!body.success) return validationError(body.details);
+    if (body.data.mfaCode) {
+      const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [actor.id] });
+      if (codeLimit) return codeLimit;
+    }
+    if (mfaEnforcementMode() !== "off") {
+      if (!body.data.mfaCode) throw new MfaInputError("Enter your authenticator code to mark this order as refunded");
+      const digest = mfaGrantDigest(actor.mfaSessionId);
+      if (!digest) throw new MfaRequiredError();
+      await verifyStaffMfa(actor.id, body.data.mfaCode, digest);
+    }
     const order = await markOrganisationOrderManuallyRefunded(
       organisation.id,
       orderId,
@@ -42,6 +63,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       rules: [
         authenticationRule,
         routeErrorRule(OrganisationAccessError, (error) => forbidden(error.message)),
+        routeErrorRule(MfaRequiredError, (error) => forbidden(error.message)),
+        routeErrorRule(MfaInputError, (error) => badRequest(error.message, [{ path: ["mfaCode"], message: error.message }])),
+        routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
         routeErrorRule(OrganisationOrderAccessError, (error) => notFound(error.message)),
         routeErrorRule(OrganisationOrderOperationError, (error) => conflict(error.message))
       ]

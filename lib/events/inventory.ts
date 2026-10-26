@@ -34,6 +34,7 @@ export type EventInventory = {
 
 // Callers that mutate must hold lockEventInventory first; public reads call it
 // unlocked as advisory stock. `now` is the transaction's one clock reading.
+// A ticket under dispute review keeps its place: a won dispute restores it.
 export async function readEventInventory(
   tx: InventoryClient,
   eventId: string,
@@ -41,7 +42,7 @@ export async function readEventInventory(
 ): Promise<EventInventory> {
   const [event] = await tx.$queryRaw<Array<{ capacity: number | null; issued: number }>>`
     SELECT "capacity",
-      (SELECT COUNT(*)::int FROM "Ticket" WHERE "eventId" = ${eventId} AND "validity" = 'active') AS "issued"
+      (SELECT COUNT(*)::int FROM "Ticket" WHERE "eventId" = ${eventId} AND "validity" <> 'void') AS "issued"
     FROM "Event" WHERE "id" = ${eventId}
   `;
   const holds = await tx.$queryRaw<Array<{ ticketTypeId: string; held: number }>>`

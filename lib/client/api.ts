@@ -11,6 +11,7 @@ export type ApiErrorPayload = {
       message: string;
       reason?: string;
       value?: number;
+      id?: string;
     }>;
   };
 };

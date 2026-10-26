@@ -111,6 +111,8 @@ describe("event policy, readiness and explicit transitions", () => {
     ]) {
       const event = await createEvent({ organisationId: organisation.id, ticketTypes });
       expect((await publish(event.id, { targetStatus: "published", version: 1 })).status).toBe(200);
+      // The mixed event tells the organiser its paid tickets wait for payments; the free-only one has nothing to say.
+      expect((await getDashboardEvent(organisation.id, event.id)).warnings.map((warning) => warning.code)).toEqual(ticketTypes.length > 1 ? ["paid_tickets_waiting"] : []);
     }
 
     const closedWindow = await createEvent({

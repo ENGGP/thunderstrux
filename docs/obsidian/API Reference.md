@@ -69,7 +69,7 @@ All answers are `no-store`. Account-security writes run through `accountSecurity
 | `GET`/`POST /api/auth/[...nextauth]` | Auth.js; credentials callback: `login_ip_global`, `login_ip_email` | form | Auth.js | 400 "Send one email address" when the form repeats `email` (SEC-007). `GET /api/auth/session` answers `null` for a dead session |
 | `POST /api/auth/signup` | public; `signup_ip`, `signup_email` (`signup`) | `lib/validators/auth.ts:signupSchema` (`accountRole` defaults `member`) | 202 `{accepted: true}` for new and existing addresses | creates an unverified account, token and encrypted email atomically; never signs in |
 | `POST /api/auth/verification/request` | public; `signup_ip`, `signup_email` (`verification`) | strict `{email, callbackUrl?}` | 202 `{accepted: true}` | sends only to an existing, unverified, enabled account |
-| `POST /api/auth/verification/confirm` | public; `account_token_ip`, `account_token_digest` | strict `{token, password}` | `{verified: true, callbackUrl}` | 400 one generic message for a wrong password or a bad, used, expired or superseded link (the link stays usable after a wrong password) |
+| `POST /api/auth/verification/confirm` | public; `account_token_ip`, `account_token_digest` | strict `{token, password}` | `{verified: true, callbackUrl, email}` (the form signs in with it) | 400 one generic message for a wrong password or a bad, used, expired or superseded link (the link stays usable after a wrong password) |
 | `POST /api/auth/password/request` | public; `signup_ip`, `signup_email` (`password_reset`) | strict `{email, callbackUrl?}` | 202 `{accepted: true}` | 30-minute link in an encrypted email |
 | `POST /api/auth/password/confirm` | public; `account_token_ip`, `account_token_digest` | strict `{token, newPassword}` (`newPasswordSchema`) | `{reset: true, callbackUrl}` | 400 bad link; signs other sessions out, deletes MFA grants, verifies the email; never signs in |
 | `GET /api/me/account` | live session | — | `{user, mfa: {enabled, verified}, pendingEmailChange: {email, expiresAt} \| null, securityEvents}` (latest ten) | 401 stale. `private, no-store` |
@@ -91,7 +91,7 @@ MFA writes answer 503 "Staff verification is unavailable" unless `MFA_ENCRYPTION
 | Route | Auth, bucket | Body | Success | Errors |
 | --- | --- | --- | --- | --- |
 | `GET /api/me/mfa/status` | session; staff-eligible or enrolled | — | `{enabled, mode}` | 403 not eligible |
-| `POST /api/me/mfa/setup` | `staff_mfa_setup` | none | `{secret, otpauthUrl}`; pending 10 minutes | 403 not eligible or already enabled, 400 no email |
+| `POST /api/me/mfa/setup` | `staff_mfa_setup` | strict `{password}` | `{secret, otpauthUrl}`; pending 10 minutes | 400 no password or no email, 403 wrong password, not eligible or already enabled |
 | `POST /api/me/mfa/confirm` | `staff_mfa_verify` | `{code}` | `{recoveryCodes}` (ten, shown once); grants this login; audit `staff_mfa.enabled` | 400 bad, expired or changed setup |
 | `POST /api/me/mfa/verify` | `staff_mfa_verify` | `{code}` (six digits or a recovery code) | `{verified: true}`; 12-hour grant; audit `staff_mfa.verified` or `staff_mfa.recovery_used` | 400 wrong or reused code, 403 not enrolled |
 | `GET /api/me/context` | session | — | `{mode: "personal" \| "staff", selected, organisations: [{id, name, slug, createdAt, staffRole, permissions}], accountRole}` | 401 |
@@ -105,7 +105,7 @@ All `no-store`; the token routes use token authority, so a stale login cookie ne
 
 | Route | Auth, bucket | Body | Success | Errors and effects |
 | --- | --- | --- | --- | --- |
-| `POST /api/guest/email/request` | public; `guest_email_ip`, `guest_email_address` | strict `{email, callbackUrl?}` | 202 `{accepted: true}` for any address | creates or reuses the `GuestIdentity`, revokes its unused checkout links (cancelling their emails) and queues one `guest_access` email linking `/guest/access#token=…` (30 minutes, once) |
+| `POST /api/guest/email/request` | public; `guest_email_ip`, `guest_email_address` | strict `{email, callbackUrl?, firstName?, lastName?}` (names up to 80, kept on the checkout link) | 202 `{accepted: true}` for any address | creates or reuses the `GuestIdentity`, revokes its unused checkout links (cancelling their emails) and queues one `guest_access` email linking `/guest/access#token=…` (30 minutes, once) |
 | `POST /api/guest/email/confirm` | public; `guest_token_ip`, `guest_token_digest` | strict `{token}` | `{callbackUrl}` (safe local path, default `/events`) and cookie `thunderstrux-guest` (two hours) | 400 one generic message for wrong, used, revoked, superseded or expired links |
 | `GET /api/guest/session` | guest cookie | — | `{email, expiresAt, csrfToken}` | 401 "Your guest session has ended…" |
 | `POST /api/guest/recover` | public; same buckets with a `recover` key | strict `{email}` | 202 `{accepted: true}` | for a known guest: revokes unused links and queues one `guest_order_link` email per paid guest ticket order and merchandise order (latest ten of each, not claimed), each link 24 hours, once |

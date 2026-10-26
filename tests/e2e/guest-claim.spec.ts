@@ -8,6 +8,8 @@ test("a guest who later signs in with the same email adds the order to their acc
   await page.goto(`/events/${event.id}`);
   await page.getByRole("button", { name: "Continue as guest" }).click();
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("First name").fill("Gia");
+  await page.getByLabel("Last name").fill("Guest");
   await page.getByRole("button", { name: "Email me a link" }).click();
   await expect(page.getByRole("status")).toContainText(email);
   execFileSync("node", ["scripts/process-notifications.mjs"], { stdio: "pipe" });

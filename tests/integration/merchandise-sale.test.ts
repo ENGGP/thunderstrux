@@ -197,15 +197,36 @@ describe("merchandise sale", () => {
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: expiring } })).toMatchObject({ requiresCompensationReview: true, reviewReason: "paid_after_order_closed" });
     expect(await stock(variants[0].id)).toEqual({ remaining: 1, version: 1 });
 
-    // Past its expiry but not yet cleaned up, a hold no longer counts: someone else buys the unit first.
+    // A payment made just before Stripe's page closed still finds its stock: the hold
+    // outlives the page by the late-webhook grace, as ticket holds do (DEF-033).
+    const late = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
+    await prisma.commerceOrder.update({ where: { id: late }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+    await expect(buy(organisation.id, await member(), items)).rejects.toMatchObject({ reason: "sold_out" });
+    await deliverPaid(late);
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: late } })).toMatchObject({ status: "paid", requiresCompensationReview: false });
+    expect(await stock(variants[0].id)).toEqual({ remaining: 0, version: 2 });
+    await prisma.merchandiseVariant.update({ where: { id: variants[0].id }, data: { remaining: 1 } });
+
+    // Past the grace too, but not yet cleaned up, a hold no longer counts: someone else buys the unit first.
     const lapsed = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
-    await prisma.commerceOrder.update({ where: { id: lapsed }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+    await prisma.commerceOrder.update({ where: { id: lapsed }, data: { expiresAt: new Date(Date.now() - 6 * 60_000) } });
     const sold = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
     await deliverPaid(sold);
     await deliverPaid(lapsed);
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: lapsed } })).toMatchObject({ requiresCompensationReview: true, reviewReason: "sold_out" });
-    expect(await stock(variants[0].id)).toEqual({ remaining: 0, version: 2 });
+    expect(await stock(variants[0].id)).toEqual({ remaining: 0, version: 3 });
     expect(await receipts(lapsed)).toBe(0);
+  });
+
+  test("a refund made in Stripe before a late paid webhook sends the order to review without taking stock", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 3000, remaining: 2 }]);
+    const items = [{ variantId: variants[0].id, quantity: 1, unitPrice: 3000 }];
+    const refunded = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
+    await prisma.commerceOrder.update({ where: { id: refunded }, data: { externalRefundedAmount: 3000 } });
+    await deliverPaid(refunded);
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: refunded } })).toMatchObject({ status: "failed", requiresCompensationReview: true, reviewReason: "refunded_or_disputed_before_fulfilment" });
+    expect(await stock(variants[0].id)).toMatchObject({ remaining: 2 });
+    expect(await receipts(refunded)).toBe(0);
   });
 
   test("stock edits can't go below holds, and stale baskets, options no longer sold and other societies' options are refused", async () => {

@@ -6,6 +6,7 @@ import PurchasesPage from "@/app/purchases/page";
 import SuccessPage from "@/app/success/page";
 import MyTicketsPage from "@/app/tickets/page";
 import { prisma } from "@/lib/db";
+import { ticketReference } from "@/lib/format";
 import { purchaseLinkForEmail, redeemGuestAccess } from "@/lib/guest/guest-access";
 import { getOwnTicketPurchase, getWalletTickets } from "@/lib/purchases/ticket-purchases";
 import { StripeConfigurationError } from "@/lib/stripe";
@@ -109,7 +110,7 @@ describe("purchases and order status", () => {
     await fulfil(fixture);
     const page = await renderPage(await confirmed(fixture.event.id, fixture.order.id));
     expect(page).toContain("Booking confirmed");
-    for (const ticket of await prisma.ticket.findMany({ where: { orderId: fixture.order.id } })) expect(page).toContain(`Ticket ${ticket.id.slice(-6)}`);
+    for (const ticket of await prisma.ticket.findMany({ where: { orderId: fixture.order.id } })) expect(page).toContain(`Ticket ${ticketReference(ticket.id)}`);
     await expect(confirmed(otherEvent.id, fixture.order.id)).rejects.toMatchObject(notFound);
     await expect(confirmed(fixture.event.id)).rejects.toMatchObject(notFound);
     asMember(fixture.stranger);

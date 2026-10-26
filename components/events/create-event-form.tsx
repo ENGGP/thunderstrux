@@ -207,8 +207,22 @@ export function CreateEventForm({
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    // Links inside the app (Cancel, the sidebar, "set up payments") change page
+    // without unloading it, so beforeunload never fires for them: ask here too.
+    const leave = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!link || link.getAttribute("target") === "_blank" || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (!window.confirm("Leave this page? Your changes haven't been saved.")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    document.addEventListener("click", leave, true);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      document.removeEventListener("click", leave, true);
+    };
   }, [dirty]);
 
   // Updates read the latest state, so two changes in one tick never undo each other.
@@ -254,8 +268,11 @@ export function CreateEventForm({
     const add = (path: string[], message: string) => found.push({ path, message });
 
     if (!form.title.trim()) add(["title"], "Add a title.");
-    if (!form.description.trim()) add(["description"], "Add a description.");
-    if (!form.location.trim()) add(["location"], "Add a location.");
+    // A draft saves half-done; the readiness checklist asks for these before publishing.
+    if (initialEvent?.status === "published") {
+      if (!form.description.trim()) add(["description"], "Add a description.");
+      if (!form.location.trim()) add(["location"], "Add a location.");
+    }
 
     const times = Object.fromEntries(
       (["startTime", "endTime", "salesCloseAt"] as const).map((field) => {

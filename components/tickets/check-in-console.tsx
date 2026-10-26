@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { buttonClasses } from "@/components/ui/button";
-import { shortMonths } from "@/lib/format";
+import { shortMonths, ticketReference } from "@/lib/format";
 import { fetchWithCsrf } from "@/lib/client/api";
 import type { OrganisationEventTicket } from "@/lib/tickets/check-in";
 
@@ -16,7 +16,6 @@ type ConsoleTicket = Omit<OrganisationEventTicket, "createdAt" | "checkedInAt" |
 
 const requestTimeoutMs = 10_000;
 
-const reference = (id: string) => id.slice(-6).toUpperCase();
 
 // The ticket as the server has it now; null when it can't be read.
 async function readTicket(eventId: string, ticketId: string): Promise<ConsoleTicket | null> {
@@ -110,7 +109,7 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
           <strong className={`shrink-0 md:hidden ${tone.label}`}>{state.label}</strong>
         </div>
         <p className="text-sm text-ink">
-          {ticket.ticketTypeName} · <span className="font-mono font-bold tracking-[0.06em]" title={ticket.id}>{reference(ticket.id)}</span> · {ticket.issueSequence} of {ticket.orderQuantity}
+          {ticket.ticketTypeName} · <span className="font-mono font-bold tracking-[0.06em]" title={ticket.id}>{ticketReference(ticket.id)}</span> · {ticket.issueSequence} of {ticket.orderQuantity}
         </p>
         {ticket.buyerName && ticket.buyerEmail ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{ticket.guest ? "guest · " : ""}{ticket.buyerEmail}</p> : null}
       </div>

@@ -162,6 +162,7 @@ function toDashboardEvent(
     soldOut: event.ticketTypes.length > 0 && remaining <= 0,
     // Every readiness blocker, for the checklist; the first is the Publish reason.
     blockers: readiness.blockers,
+    warnings: readiness.warnings,
     publishBlocker: event.status === "draft" ? readiness.blockers[0]?.message ?? null : null,
     reopenBlocker:
       event.saleState === "closed" && event.salesCloseAt <= now
@@ -525,6 +526,7 @@ export async function updateOrganisationEvent(
       where: { id: existingEvent.id },
       select: {
         version: true,
+        status: true,
         heroAssetId: true,
         title: true,
         description: true,
@@ -542,6 +544,14 @@ export async function updateOrganisationEvent(
 
     if (locked.version !== input.version) {
       throw new EventLifecycleConflictError();
+    }
+
+    // Buyers can see a published event, so it keeps the details publishing needed.
+    if (locked.status === "published") {
+      const missing = (["description", "location"] as const).filter((field) => !input[field].trim());
+      if (missing.length) {
+        throw new EventLifecycleValidationError("A published event needs a description and location", missing.map((field) => ({ path: [field], message: `Add a ${field}.` })));
+      }
     }
 
     // Payouts are held until two days after the end, so moving the end earlier into

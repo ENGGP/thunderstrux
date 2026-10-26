@@ -327,7 +327,7 @@ Smoke tests:
 docker compose exec app pnpm test:smoke
 ```
 
-The smoke script checks auth roles, dashboard access, event create/edit, ticket editing, member API denial, checkout preconditions, member organisation leave, public organisation details, reservation availability behavior, stale pending order expiry, cleanup idempotency, and paid/failed cleanup safety.
+The smoke script currently stops at step 4: it sends no Origin or CSRF token, which the trusted-origin guard refuses (DEF-041). Use the E2E suite until it's repaired. It checks auth roles, dashboard access, event create/edit, ticket editing, member API denial, checkout preconditions, member organisation leave, public organisation details, reservation availability behavior, stale pending order expiry, cleanup idempotency, and paid/failed cleanup safety.
 
 Integration tests:
 

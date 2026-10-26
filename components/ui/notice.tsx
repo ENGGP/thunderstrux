@@ -35,7 +35,7 @@ export function Notice({
 
   return (
     <div
-      className={`flex items-start gap-3 rounded-card border px-4 py-3 text-sm ${role ? "animate-fade-in" : ""} ${style.box} ${className}`}
+      className={`flex items-start gap-3 rounded-card border px-4 py-3 text-sm ${style.box} ${className}`}
       role={role}
     >
       <Icon className={`mt-px ${style.icon}`} name={style.name} size={20} />

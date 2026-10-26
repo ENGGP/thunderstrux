@@ -15,7 +15,7 @@ export default defineConfig({
     trace: 'off',
     screenshot: 'off',
     video: 'off',
-    // Entry animations finish instantly, so axe never scans a half-faded dialog or notice.
+    // Motion finishes instantly, so axe never scans a half-faded dialog or a sliding buy bar.
     reducedMotion: 'reduce'
   },
   projects: [

@@ -35,7 +35,8 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
   const value = controlled ?? own;
   const [text, setText] = useState(formatDayInput(value));
   const [unreadable, setUnreadable] = useState(false);
-  const [open, setOpen] = useState(false);
+  // How it was opened: the calendar animates in only for a pointer, never from the keyboard.
+  const [open, setOpen] = useState<false | "pointer" | "keyboard">(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
 
@@ -82,7 +83,7 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
               onBlur={read}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "ArrowDown" && event.altKey) setOpen(true);
+                if (event.key === "ArrowDown" && event.altKey) setOpen("keyboard");
                 if (event.key !== "Enter") return;
                 // Read the typed day first; a GET form then submits with it.
                 event.preventDefault();
@@ -95,11 +96,12 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
               value={text}
             />
             <button
-              aria-expanded={open}
+              aria-expanded={Boolean(open)}
               aria-haspopup="dialog"
               aria-label={`Choose ${label.toLowerCase()} from a calendar`}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-r-control border border-l-0 border-line-strong bg-surface text-brand hover:bg-brand-tint"
-              onClick={() => setOpen(!open)}
+              // Enter and Space fire a click with detail 0.
+              onClick={(event) => setOpen(open ? false : event.detail === 0 ? "keyboard" : "pointer")}
               ref={toggle}
               type="button"
             >
@@ -109,6 +111,7 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
           {name ? <input name={name} type="hidden" value={value} /> : null}
           {open ? (
             <MonthPicker
+              animate={open === "pointer"}
               label={label}
               max={max}
               min={min}
@@ -132,7 +135,7 @@ export function DateField({ label, hint, error, id, name, value: controlled, def
 
 // Below 640px the month is a sheet pinned to the bottom of the screen, so a
 // field in a right-hand column never opens it off the edge.
-function MonthPicker({ label, value, min, max, onPick, onClose }: { label: string; value: string; min?: string; max?: string; onPick: (day: string) => void; onClose: () => void }) {
+function MonthPicker({ animate, label, value, min, max, onPick, onClose }: { animate: boolean; label: string; value: string; min?: string; max?: string; onPick: (day: string) => void; onClose: () => void }) {
   const today = localTodayInBrowser();
   const [focused, setFocused] = useState(value || today);
   const grid = useRef<HTMLTableElement>(null);
@@ -167,7 +170,7 @@ function MonthPicker({ label, value, min, max, onPick, onClose }: { label: strin
   return (
     <div
       aria-labelledby={titleId}
-      className="fixed inset-x-4 bottom-4 z-30 origin-bottom animate-pop-in rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-[19.5rem] sm:origin-top-left"
+      className={`fixed inset-x-4 bottom-4 z-30 origin-bottom rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-[19.5rem] sm:origin-top-left ${animate ? "animate-pop-in" : ""}`}
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}

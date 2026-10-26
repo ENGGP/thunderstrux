@@ -9,7 +9,8 @@ import {
   OrganisationStripeConnectNotFoundError,
   OrganisationStripeConnectValidationError,
   StripeConnectPlatformNotReadyError,
-  StripeDisconnectBlockedError
+  StripeDisconnectBlockedError,
+  StripeDisconnectUnavailableError
 } from "@/lib/stripe/connect";
 
 // Error mappings shared by the Connect routes. A missing tenant and one the
@@ -27,9 +28,9 @@ export const connectRouteRules = [
   routeErrorRule(MfaRequiredError, (error) => forbidden(error.message)),
   routeErrorRule(MfaInputError, (error) => badRequest(error.message, [{ path: ["mfaCode"], message: error.message }])),
   routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
-  routeErrorRule(StripeConfigurationError, () =>
-    serviceUnavailable("Stripe is not configured. Check STRIPE_SECRET_KEY in the app container environment.")
-  ),
+  // Names no server setting to the browser (API-002), as the other Stripe routes.
+  routeErrorRule(StripeConfigurationError, () => serviceUnavailable("Stripe is not configured.")),
+  routeErrorRule(StripeDisconnectUnavailableError, (error) => serviceUnavailable(error.message)),
   routeErrorRule(StripeConnectPlatformNotReadyError, (error) =>
     NextResponse.json(
       { state: error.state, message: error.message, actionRequired: error.actionRequired, actionUrl: error.actionUrl },

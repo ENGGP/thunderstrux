@@ -31,6 +31,7 @@ vi.mock("@/lib/stripe", () => {
   return {
     StripeConfigurationError,
     getAppUrl: () => "http://localhost:3000",
+    isLiveStripeKey: () => false,
     getStripe: () => ({ checkout: { sessions: { create: stripeMocks.createSession } } })
   };
 });
@@ -243,6 +244,22 @@ describe("purchase snapshots and ticket validity", () => {
     });
     const listed = await getGroupedOrganisationOrdersWithContext(owner.organisation.id);
     expect(listed.groups[0].orders[0]).toMatchObject({ projection: "free", totalAmount: 0 });
+  });
+
+  test("the ticket email gives the time in the society's zone and words a free registration as one (DEF-047, DEF-050)", async () => {
+    const { organisation } = await createOrganisationAccount();
+    await prisma.organisation.update({ where: { id: organisation.id }, data: { timeZone: "Australia/Perth" } });
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    // 7:00 pm in Perth (UTC+8 all year) is 9:00 pm in Brisbane.
+    await prisma.event.update({ where: { id: event.id }, data: { startTime: new Date("2027-03-05T11:00:00Z"), endTime: new Date("2027-03-05T14:00:00Z") } });
+    const base = { organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid" as const, paidAt: new Date() };
+    const paid = renderTicketEmail(await loadTicketDeliveryOrder((await createOrder(base)).id));
+    const free = renderTicketEmail(await loadTicketDeliveryOrder((await createOrder({ ...base, paymentKind: "free", unitPrice: 0, stripeSessionId: null })).id));
+    expect(paid.text).toMatch(/Date: .*5 March 2027.*7:00\spm/);
+    expect(paid.text).not.toMatch(/9:00\spm/);
+    expect(paid.text).toContain("Your payment is confirmed");
+    expect(free.text).toContain("Your registration is confirmed");
+    expect(free.text + free.html).not.toContain("payment");
   });
 
   test("the database refuses purchase facts that cannot be true", async () => {

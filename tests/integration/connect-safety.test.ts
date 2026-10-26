@@ -5,9 +5,10 @@ import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { getStripeSessionDashboardUrl } from "@/lib/orders/order-detail";
 import { MfaInputError } from "@/lib/security/staff-mfa";
 import { getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
-import { createOrganisationDashboardLink, disconnectAccount, markAccountStatusError, StripeDisconnectBlockedError } from "@/lib/stripe/connect";
+import { createOrganisationDashboardLink, disconnectAccount, markAccountStatusError, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createEvent, createOrder, createOrganisationAccount, createReservation } from "@/tests/helpers/test-data";
 
@@ -36,6 +37,9 @@ describe("Stripe key mode", () => {
   test("live keys are refused outside production and test keys are not live", () => {
     expect(isLiveStripeKey("sk_test_123")).toBe(false);
     expect(isLiveStripeKey("rk_live_123")).toBe(true);
+    // DEF-051: a restricted live key links staff to the live dashboard too.
+    vi.stubEnv("STRIPE_SECRET_KEY", "rk_live_not_a_real_key");
+    expect(getStripeSessionDashboardUrl("cs_live_1")).toBe("https://dashboard.stripe.com/payments?query=cs_live_1");
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_live_not_a_real_key");
     expect(() => getStripe()).toThrow(StripeConfigurationError);
   });
@@ -116,6 +120,24 @@ describe("disconnect", () => {
     await prisma.commerceOrder.update({ where: { id: order.id }, data: { disputeStatus: "won" } });
     await disconnectAccount(owner.organisation.id, { actor });
     expect((await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId).toBeNull();
+  });
+
+  test("an account a changed platform key can't see is unlinked; any other Stripe failure changes nothing (PAY-015)", async () => {
+    const owner = await createOrganisationAccount({ stripeReady: true });
+    const actor = { id: owner.user.id };
+    const linked = async () => (await prisma.organisation.findUniqueOrThrow({ where: { id: owner.organisation.id } })).stripeAccountId;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    restoreSchedule.mockRejectedValueOnce(Object.assign(new Error("An error occurred with our connection to Stripe."), { type: "StripeConnectionError" }));
+    await expect(disconnectAccount(owner.organisation.id, { actor })).rejects.toBeInstanceOf(StripeDisconnectUnavailableError);
+    expect(await linked()).not.toBeNull();
+
+    restoreSchedule.mockRejectedValueOnce(Object.assign(
+      new Error(`The provided key 'sk_test_***' does not have access to account '${await linked()}' (or that account does not exist). Application access may have been revoked.`),
+      { type: "StripePermissionError" }
+    ));
+    await disconnectAccount(owner.organisation.id, { actor });
+    expect(await linked()).toBeNull();
   });
 
   test("with no account, only resets a blocked platform state", async () => {

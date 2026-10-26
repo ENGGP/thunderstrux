@@ -128,6 +128,20 @@ describe("whole-order refunds", () => {
     expect(await prisma.auditLog.count({ where: { targetId: fixture.order.id, action: "order.refund_succeeded" } })).toBe(1);
   });
 
+  test("a webhook delivery that fails to apply is applied by Stripe's retry, not dropped as a duplicate (PAY-014)", async () => {
+    const fixture = await paidOrder();
+    stripe.create.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => providerRefund(fixture, params.metadata.refundRequestId, "pending"));
+    const pending = await requestOrderRefund(refundInput(fixture));
+    const delivery = { id: unique("evt"), type: "refund.updated", created: Math.floor(Date.now() / 1000), data: { object: providerRefund(fixture, pending.refundRequestId) } } as unknown as Stripe.Event;
+    vi.spyOn(prisma, "$transaction").mockRejectedValueOnce(new Error("connection reset"));
+    await expect(reconcileOrderRefundEvent(delivery)).rejects.toThrow("connection reset");
+    expect(await prisma.stripeRefundWebhookEvent.count({ where: { stripeEventId: delivery.id } })).toBe(0);
+
+    await reconcileOrderRefundEvent(delivery);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
+    expect(await prisma.stripeRefundWebhookEvent.count({ where: { stripeEventId: delivery.id } })).toBe(1);
+  });
+
   test("a staff path locks only its own society's order, and another society's refund finds nothing (T53)", async () => {
     const fixture = await paidOrder();
     const other = await createOrganisationAccount({ stripeReady: true });
@@ -211,22 +225,32 @@ describe("whole-order refunds", () => {
     expect(stripe.create).not.toHaveBeenCalled();
   });
 
-  test("a refund still unresolved after six checks keeps its fence, stops asking Stripe and alerts a person, then checks hourly", async () => {
+  test("a refund still unresolved after six checks keeps its fence and alerts a person, and Stripe is still asked hourly until it answers (PAY-013)", async () => {
     const fixture = await paidOrder();
     stripe.create.mockRejectedValueOnce(new Error("socket hang up"));
     const lost = await requestOrderRefund(refundInput(fixture));
     await prisma.refundRequest.update({ where: { id: lost.refundRequestId }, data: { attempts: 6 } });
     for (const mock of Object.values(stripe)) mock.mockClear();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const answered = stripe.retrieve.getMockImplementation();
+    stripe.retrieve.mockRejectedValue(new Error("socket hang up"));
 
     const now = new Date(Date.now() + 2 * 60 * 1000);
     await processOrderRefundBatch(25, now);
-    expect(stripe.retrieve).not.toHaveBeenCalled();
+    expect(stripe.retrieve).toHaveBeenCalledTimes(1);
     expect(stripe.create).not.toHaveBeenCalled();
     expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: lost.refundRequestId } }))
       .toMatchObject({ status: "uncertain", lastErrorCode: "provider_unresolved", processingToken: null, nextAttemptAt: new Date(now.getTime() + 60 * 60_000) });
     expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "processing" });
     expect(error.mock.calls.filter(([line]) => String(line).includes('"event":"order_refund_unresolved"'))).toHaveLength(1);
+
+    // An hour later Stripe answers: the lost attempt's refund exists, so nothing is sent again.
+    stripe.retrieve.mockImplementation(answered!);
+    stripe.list.mockResolvedValue({ data: [providerRefund(fixture, lost.refundRequestId)] });
+    await processOrderRefundBatch(25, new Date(now.getTime() + 60 * 60_000));
+    expect(stripe.create).not.toHaveBeenCalled();
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: lost.refundRequestId } })).toMatchObject({ status: "succeeded" });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
   });
 
   test("with staff MFA on, the route needs a fresh authenticator code before anything is recorded", async () => {

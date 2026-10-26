@@ -2,6 +2,7 @@ import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-i
 import { purchaseLinkForEmail } from "@/lib/guest/guest-access";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
+import { formatDateTime } from "@/lib/format";
 
 type TicketDeliveryOrder = Awaited<ReturnType<typeof loadTicketDeliveryOrder>>;
 
@@ -52,18 +53,6 @@ function formatCurrency(amountInCents: number) {
   }).format(amountInCents / 100);
 }
 
-function formatDateTime(value: Date | null) {
-  if (!value) {
-    return "Not available";
-  }
-
-  return new Intl.DateTimeFormat("en-AU", {
-    dateStyle: "full",
-    timeStyle: "short",
-    timeZone: "Australia/Brisbane"
-  }).format(value);
-}
-
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -82,6 +71,7 @@ export async function loadTicketDeliveryOrder(orderId: string) {
       quantity: true,
       unitPrice: true,
       totalAmount: true,
+      paymentKind: true,
       paidAt: true,
       ticketEmailSentAt: true,
       userId: true,
@@ -104,7 +94,8 @@ export async function loadTicketDeliveryOrder(orderId: string) {
           location: true,
           organisation: {
             select: {
-              name: true
+              name: true,
+              timeZone: true
             }
           }
         }
@@ -157,15 +148,19 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
   // Purchase-time facts; the event date and place stay live.
   const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
   const seller = order.sellerName ?? order.event.organisation.name;
+  // In the society's zone, as event-change notices are (DEF-047).
+  const date = formatDateTime(order.event.startTime, { timeZone: order.event.organisation.timeZone, dateStyle: "full" });
+  // A free registration has no payment to confirm (DEF-050).
+  const confirmed = order.paymentKind === "free" ? "Your registration is confirmed" : "Your payment is confirmed";
 
   const text = [
     greeting,
     "",
-    `Your payment is confirmed and your tickets for ${order.event.title} are ready.`,
+    `${confirmed} and your tickets for ${order.event.title} are ready.`,
     "",
     `Event: ${order.event.title}`,
     `Organiser: ${seller}`,
-    `Date: ${formatDateTime(order.event.startTime)}`,
+    `Date: ${date}`,
     `Location: ${order.event.location}`,
     `Ticket: ${ticketName}`,
     `Quantity: ${order.quantity}`,
@@ -183,13 +178,13 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
   const html = `
     <div>
       <p>${escapeHtml(greeting)}</p>
-      <p>Your payment is confirmed and your tickets for <strong>${escapeHtml(
+      <p>${confirmed} and your tickets for <strong>${escapeHtml(
         order.event.title
       )}</strong> are ready.</p>
       <dl>
         <dt>Event</dt><dd>${escapeHtml(order.event.title)}</dd>
         <dt>Organiser</dt><dd>${escapeHtml(seller)}</dd>
-        <dt>Date</dt><dd>${escapeHtml(formatDateTime(order.event.startTime))}</dd>
+        <dt>Date</dt><dd>${escapeHtml(date)}</dd>
         <dt>Location</dt><dd>${escapeHtml(order.event.location)}</dd>
         <dt>Ticket</dt><dd>${escapeHtml(ticketName)}</dd>
         <dt>Quantity</dt><dd>${order.quantity}</dd>

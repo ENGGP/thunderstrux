@@ -653,16 +653,16 @@ async function main() {
 
   console.log(publicOrigin ? "Test accounts all use SEED_DEMO_PASSWORD." : "Test accounts all use password: password123");
   console.table([
-    { email: "user1@example.com", note: "Engineering org_owner" },
+    { email: "user1@example.com", note: "Engineering member (no staff role)" },
     { email: "engineering.org@example.com", note: "Engineering organisation account" },
     { email: "arts.org@example.com", note: "Arts organisation account" },
     { email: "robotics.org@example.com", note: "Robotics organisation account" },
     { email: "payments.lab@example.com", note: "Payments Lab organisation account" },
     { email: "empty.org@example.com", note: "Empty Society organisation account" },
-    { email: "admin@example.com", note: "Engineering org_admin, Arts org_admin" },
+    { email: "admin@example.com", note: "Engineering admin, Arts member (no staff role)" },
     { email: "event.manager@example.com", note: "Engineering event_manager, Robotics owner" },
     { email: "finance@example.com", note: "Engineering finance_manager, Payments Lab owner" },
-    { email: "content@example.com", note: "Engineering content_manager" },
+    { email: "content@example.com", note: "Engineering member (no staff role)" },
     { email: "member@example.com", note: "Engineering member" },
     { email: "user2@example.com", note: "Arts member and seeded buyer" },
     { email: "empty@example.com", note: "Owner of Empty Society with no events" },

@@ -59,7 +59,7 @@ sources: [prisma/seed.mjs, package.json]
 | `user2@example.com` | `member` | none | Arts `member` |
 | `outsider@example.com` | `member` | none | none |
 
-- Authority comes only from `OrganisationStaff` (or, while `LEGACY_ORGANISATION_ACCESS_MODE=allow`, an `organisation` account named on `Organisation.accountUserId`; `lib/staff/live-authority.ts`). Membership roles grant nothing. So `user1@`, `content@`, `member@` and `admin@` in Arts have no management access, although the seed's closing console table labels `user1@` "Engineering org_owner" and `content@` "Engineering content_manager" (OPS-006).
+- Authority comes only from `OrganisationStaff` (or, while `LEGACY_ORGANISATION_ACCESS_MODE=allow`, an `organisation` account named on `Organisation.accountUserId`; `lib/staff/live-authority.ts`). Membership roles grant nothing. So `user1@`, `content@`, `member@` and `admin@` in Arts have no management access; the seed's closing console table marks them "no staff role".
 - Each organisation account is linked through `Organisation.accountUserId`.
 - `outsider@` has no names and no `onboardingCompletedAt`.
 

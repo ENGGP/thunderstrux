@@ -50,14 +50,14 @@ pnpm ops:deploy -- --project ops-thunderstrux --env-file .env.production --url h
 | `--compatibility-file` | enables automatic rollback on a failed candidate |
 | `--rehearsal` | adds `docker-compose.operations.yml` |
 
-Deploy: take `tmp/operations/<project>/deploy.lock` → build `app` and `migration` → check the pair (`describeReleasePair`, budgets) → find the running `app` → stop only `app` (workers keep running unless paused) → pre-migration backup → `migration` once → start the candidate → readiness (`/api/health`, `/api/health/ready`, `/` must answer 2xx/3xx) → record `current-release.json` (`candidateImageId`, `imageRef`, `opsImageId`, `opsImageRef`, `pair`, `previousImageId`, `migrationDigest`, `backup`) and `active.env`. A backup failure restarts the unchanged previous app. Once migration starts, a failure leaves `app` stopped; its message says "writers remain stopped", but scheduled workers keep running unless paused. `pnpm ops:smoke -- --url <loopback>` runs the three read-only checks alone. `pnpm docker:prod` maps to the same deploy without arguments and always fails (OPS-006). The deploy never starts or restarts workers.
+Deploy: take `tmp/operations/<project>/deploy.lock` → build `app` and `migration` → check the pair (`describeReleasePair`, budgets) → find the running `app` and worker services → stop them all (OPS-007: workers write too) → pre-migration backup → `migration` once → start the candidate → readiness (`/api/health`, `/api/health/ready`, `/` must answer 2xx/3xx) → record `current-release.json` (`candidateImageId`, `imageRef`, `opsImageId`, `opsImageRef`, `pair`, `previousImageId`, `migrationDigest`, `backup`) and `active.env` → recreate the workers it stopped with `docker-compose.schedules.yml` on the release's ops image. A backup failure, or a failed candidate rolled back, restarts the unchanged previous app and workers. Once migration starts, any other failure leaves `app` and the workers stopped ("writers remain stopped"). `pnpm ops:smoke -- --url <loopback>` runs the three read-only checks alone. The deploy restarts only workers that were running; it never starts them the first time.
 
 ### Public preview
 
 `https://thunderstrux.mistayu.com` runs this path as project `ops-preview`, with its own database volume, Redis and workers, separate from the dev stack. Preview reachability satisfies no release gate.
 
 1. Create an ignored `.env.preview` from `.env.example`: random `AUTH_SECRET` (32+ characters), `MFA_ENCRYPTION_KEY` and `NOTIFICATION_ENCRYPTION_KEY` (`openssl rand -base64 32`); `AUTH_URL`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`, `TRUSTED_APP_ORIGINS` = `https://thunderstrux.mistayu.com`; `APP_PORT=3090` (published on `127.0.0.1` only); `MFA_ENFORCEMENT_MODE=enforce`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, `RATE_LIMIT_ENABLED=true`, `RATE_LIMIT_TRUSTED_PROXY_HEADER=cf-connecting-ip`; Stripe **test** keys and the preview endpoints' test-mode webhook secrets; `RESEND_API_KEY` with `EMAIL_FROM` on a domain verified in the same Resend team; optional `ASSET_STORAGE_*` (without a bucket only image uploads fail); `DATABASE_URL` for the `db` service with `.env.db`'s credentials.
-2. Deploy, then start the workers on the images that release recorded. Without `APP_IMAGE`/`OPS_IMAGE` Compose would recreate the app from `thunderstrux-app:local`. Run the second command after every deploy, settings-only ones included:
+2. Deploy. After the first deploy, start the workers on the images that release recorded; later deploys stop and restart them themselves. Without `APP_IMAGE`/`OPS_IMAGE` Compose would recreate the app from `thunderstrux-app:local`. Run the second command again only if the workers were stopped:
 
    ```bash
    pnpm ops:deploy -- --project ops-preview --env-file .env.preview --url http://127.0.0.1:3090 --release <git-sha>
@@ -158,10 +158,10 @@ Every alert (`OperationalAlertName`). The engineering on-call owns all of them; 
 | `stale_order_worker_failed` | the stale ticket-order batch threw (also `worker_failed`) | As `worker_failed` for `stale-orders`. |
 | `checkout_attempt_recovery_failed` | the recovery batch threw (also `worker_failed`) | As `worker_failed`; check Stripe reachability. |
 | `checkout_attempt_recovery_abandoned` | an uncertain attempt passed the 24 h replay window (`attemptReplayWindowMs`) and was closed | Look in Stripe for a Session under it; if paid, the webhook still fulfils; otherwise nothing to do. |
-| `order_refund_unresolved` | a refund request is still unknown after 6 checks; re-alerts hourly and never asks Stripe again (PAY-013) | Find the refund in Stripe's Dashboard; a `refund.*` webhook can still settle it. Don't refund by hand while it may exist. |
+| `order_refund_unresolved` | a refund request is still unknown after 6 checks; re-alerts hourly while the worker keeps asking Stripe hourly | Find the refund in Stripe's Dashboard; a `refund.*` webhook can still settle it. Don't refund by hand while it may exist. |
 | `purchase_dispute_opened` | a dispute opened on a ticket or commerce order (`evidenceDueBy`) | Answer it in Stripe's Dashboard before the due date. |
 | `purchase_dispute_unmatched` | a dispute doesn't match its order's charge, currency or amount | Investigate the charge in Stripe; nothing was recorded. |
-| `dispute_reversal_unresolved` | a lost dispute can't be taken back (no transfer, another account, nothing left, Stripe refused) or is unknown after 6 tries; the latter re-alerts hourly without asking Stripe again (PAY-013) | Reverse or write it off by hand in Stripe; record it on the order. |
+| `dispute_reversal_unresolved` | a lost dispute can't be taken back (no transfer, another account, nothing left, Stripe refused) or is unknown after 6 tries; the latter re-alerts hourly while the worker keeps looking it up | Reverse or write it off by hand in Stripe; record it on the order. |
 | `society_payout_failed` | a society's bank refused a payout | The society sees a warning on Payments and fixes bank details in Stripe; the money waits for the next payout. Help if it repeats. |
 | `commerce_webhook_identity_mismatch` | a commerce Session's family, society or order doesn't match, or a commerce Session arrived without a family | Nothing was fulfilled. Find the payment in Stripe; refund a stray charge there. |
 | `ticket_webhook_identity_mismatch` | a paid Session isn't the one bound to its ticket order (PAY-010) | Nothing was issued. If the order was paid on its own Session, refund the stray payment in Stripe; no order records it. |
@@ -181,8 +181,7 @@ Every alert (`OperationalAlertName`). The engineering on-call owns all of them; 
 
 ## Traps
 
-- `docker-compose.hosted.yml` doesn't pass `WORKER_TIMEOUT_SECONDS` to any service, so the value in `config.env` has no effect: hosted workers and their `every-minute.mjs` loops use 300 s (OPS-006).
-- The single-host runner stops only `app` (OPS-007). Pause workers yourself before a deploy or restore.
+- `pnpm ops:restore` restores into a new database and doesn't stop the live stack's workers; stop writes first ([[#Failure and recovery]]).
 - `pnpm ops:backup` doesn't cover object storage or the encryption keys. A restore without `NOTIFICATION_ENCRYPTION_KEY` and `MFA_ENCRYPTION_KEY` can't decrypt pending notices or staff MFA secrets.
 - An alert path must never throw into payment code: `emitOperationalAlert` swallows its own errors. Keep it that way.
 - A new alert name must be added to `OperationalAlertName` and to the table above (`pnpm docs:check` enforces it).

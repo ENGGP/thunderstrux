@@ -4,6 +4,7 @@ import { latestPurchaseDispute } from "@/lib/payments/purchase-disputes";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { isLiveStripeKey } from "@/lib/stripe";
 import { enqueueTicketEmail } from "@/lib/email/ticket-email-outbox";
 import {
   appendOrderLifecycleEvent,
@@ -31,8 +32,7 @@ export function getStripeSessionDashboardUrl(stripeSessionId: string | null) {
     return null;
   }
 
-  const isLiveMode = process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_") ?? false;
-  const baseUrl = isLiveMode
+  const baseUrl = isLiveStripeKey()
     ? "https://dashboard.stripe.com/payments"
     : "https://dashboard.stripe.com/test/payments";
 
@@ -259,7 +259,7 @@ export async function enqueueOrganisationOrderTicketEmail(
       event: { is: { organisationId } },
       status: { in: visibleOrderStatuses }
     },
-    select: { id: true, status: true, disputeStatus: true, cancelledAt: true }
+    select: { id: true, status: true, disputeStatus: true, cancelledAt: true, refundStatus: true }
   });
 
   if (!order) {
@@ -279,6 +279,11 @@ export async function enqueueOrganisationOrderTicketEmail(
 
   if (order.cancelledAt) {
     throw new OrganisationOrderOperationError("This registration was cancelled, so its tickets are no longer valid");
+  }
+
+  // A refund voids the tickets, so an email calling them ready would mislead (DEF-050).
+  if (order.refundStatus) {
+    throw new OrganisationOrderOperationError("Tickets can't be resent for an order with a refund");
   }
 
   await enqueueTicketEmail({ orderId: order.id, mode: "manual", actorUserId });

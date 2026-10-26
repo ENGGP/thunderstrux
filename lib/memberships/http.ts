@@ -70,7 +70,8 @@ const endSchema = z.object({
   mfaCode: z.string().trim().max(20).optional()
 }).strict();
 
-const endRules = [
+// The 409 detail names what the action was on: a membership grant or a merchandise order (API-002).
+const endRules = (target: "grantId" | "orderId") => [
   authenticationRule,
   staleSessionRule,
   routeErrorRule(MfaRequiredError, (error) => forbidden(error.message)),
@@ -80,7 +81,7 @@ const endRules = [
   routeErrorRule(MfaInputError, (error) => badRequest(error.message, [{ path: ["mfaCode"], message: error.message }])),
   routeErrorRule(MfaConfigurationError, () => serviceUnavailable("Staff verification is unavailable")),
   routeErrorRule(MembershipRevocationError, (error) =>
-    error.kind === "not_found" ? notFound(error.message) : apiError("CONFLICT", error.message, 409, [{ path: ["grantId"], message: error.message, reason: error.kind }])
+    error.kind === "not_found" ? notFound(error.message) : apiError("CONFLICT", error.message, 409, [{ path: [target], message: error.message, reason: error.kind }])
   ),
   routeErrorRule(MerchandiseCatalogueError, (error) =>
     apiError(error.status === 404 ? "NOT_FOUND" : error.status === 409 ? "CONFLICT" : "BAD_REQUEST", error.message, error.status, error.details)
@@ -91,7 +92,7 @@ const endRules = [
       ? notFound(error.message)
       : error.kind === "confirmation_mismatch"
         ? badRequest(error.message, [{ path: ["confirmation"], message: error.message, reason: error.kind }])
-        : apiError("CONFLICT", error.message, 409, [{ path: ["grantId"], message: error.message, reason: error.kind }])
+        : apiError("CONFLICT", error.message, 409, [{ path: [target], message: error.message, reason: error.kind }])
   )
 ];
 
@@ -126,6 +127,6 @@ export async function staffEndRoute(
     const result = await run(organisationId, { id: actor.id }, body.data);
     return NextResponse.json(result, { status: status(result), headers: noStore });
   } catch (error) {
-    return mapRouteError(error, { operation: `memberships.${operation}`, request, rules: endRules });
+    return mapRouteError(error, { operation, request, rules: endRules(operation.startsWith("merchandise.") ? "orderId" : "grantId") });
   }
 }

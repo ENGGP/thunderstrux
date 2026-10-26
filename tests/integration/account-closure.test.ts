@@ -29,7 +29,7 @@ import { POST as bootstrap } from "@/app/api/orgs/route";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled, setRateLimitTestBackendFailure } from "@/lib/security/rate-limit";
 const stripe = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@/lib/stripe", () => ({ StripeConfigurationError: class extends Error {}, getAppUrl: () => "http://localhost:3000", getStripe: () => ({ checkout: { sessions: { create: stripe.create } } }) }));
+vi.mock("@/lib/stripe", () => ({ StripeConfigurationError: class extends Error {}, getAppUrl: () => "http://localhost:3000", isLiveStripeKey: () => false, getStripe: () => ({ checkout: { sessions: { create: stripe.create } } }) }));
 beforeEach(() => { setRateLimitTestEnabled(true); setRateLimitTestBackend(createTestRateLimitBackend()); setRateLimitTestBackendFailure(null); });
 afterEach(() => { setRateLimitTestEnabled(null); setRateLimitTestBackend(null); setRateLimitTestBackendFailure(null); });
 const actorFor = (user: { id: string; authVersion: number }) => ({ id: user.id, authVersion: user.authVersion });
@@ -56,6 +56,12 @@ test("pending, unresolved compensation and upcoming paid purchases block; manual
   await expect(close(user)).rejects.toMatchObject({ kind: "blocked" });
   await prisma.order.update({ where: { id: order.id }, data: { status: "paid", paidAt: new Date(), isManuallyRefunded: true } });
   expect((await readAccountClosureEligibility(actorFor(user))).blockers.join(" ")).toContain("upcoming paid");
+  // DEF-052: a refund in progress still blocks; a finished one leaves nothing to resolve.
+  await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "processing" } });
+  expect((await readAccountClosureEligibility(actorFor(user))).blockers.join(" ")).toContain("upcoming paid");
+  await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });
+  expect((await readAccountClosureEligibility(actorFor(user))).blockers.join(" ")).not.toContain("upcoming paid");
+  await prisma.order.update({ where: { id: order.id }, data: { refundStatus: null } });
   await prisma.event.update({ where: { id: event.id }, data: { startTime: new Date(0), endTime: new Date(1000) } });
   await prisma.order.update({ where: { id: order.id }, data: { requiresCompensationReview: true } });
   await expect(close(user)).rejects.toMatchObject({ kind: "blocked" });

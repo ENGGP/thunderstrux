@@ -36,10 +36,12 @@ vi.mock("@/lib/stripe/connect", () => {
     details = [];
   }
   class StripeDisconnectBlockedError extends Error {}
+  class StripeDisconnectUnavailableError extends Error {}
 
   return {
     StripeConnectPlatformNotReadyError,
     StripeDisconnectBlockedError,
+    StripeDisconnectUnavailableError,
     OrganisationStripeConnectNotFoundError,
     OrganisationStripeConnectValidationError,
     startOrganisationStripeOnboarding:

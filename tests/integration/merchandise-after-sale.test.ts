@@ -74,7 +74,10 @@ describe("merchandise after the sale", () => {
     const refunded = await call(refundRoute, organisation.slug, waiting.id, { reason, confirmation: orderReference(waiting.id) });
     expect(refunded.status).toBe(200);
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: waiting.id } })).toMatchObject({ refundStatus: "refunded", status: "paid", pickupStatus: "pending" });
-    expect((await call(refundRoute, organisation.slug, waiting.id, { reason, confirmation: orderReference(waiting.id) })).status).toBe(409);
+    const again = await call(refundRoute, organisation.slug, waiting.id, { reason, confirmation: orderReference(waiting.id) });
+    expect(again.status).toBe(409);
+    // API-002: the refusal names the order, not a membership grant.
+    expect(again.body.error.details).toEqual([expect.objectContaining({ path: ["orderId"] })]);
 
     stripeAccepts(collected, organisation.stripeAccountId);
     expect((await call(refundRoute, organisation.slug, collected.id, { reason, confirmation: orderReference(collected.id) })).status).toBe(200);

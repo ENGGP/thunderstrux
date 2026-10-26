@@ -41,7 +41,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | `AUTH_URL` | `lib/auth/public-origin.ts`, `prisma/seed.mjs`, Auth.js | Auth.js public URL. Its `https:` scheme makes `proxy.ts` and the app read and set secure (`__Secure-`) cookies even when TLS ends at a proxy. | dev and hosted: compose | no |
 | `NEXTAUTH_URL` | `lib/auth/public-origin.ts`, `prisma/seed.mjs`, Auth.js | Fallback for `AUTH_URL`; keep both equal. | dev and hosted: compose | no |
 | `TRUSTED_APP_ORIGINS` | `lib/security/request-guard.ts` | Comma-separated extra origins accepted for cookie-authenticated writes and Stripe returns. Unset: only `NEXT_PUBLIC_APP_URL`. | hosted: compose | no |
-| `PLATFORM_SUPPORT_EMAIL` | `components/public/policy-page.tsx` | Contact on the Help and Privacy pages; empty or not an email leaves the line out. The base `docker-compose.yml` doesn't pass it (OPS-006); hosted does. | no | no |
+| `PLATFORM_SUPPORT_EMAIL` | `components/public/policy-page.tsx` | Contact on the Help and Privacy pages; empty or not an email leaves the line out. Base and hosted Compose pass it. | no | no |
 | `THUNDERSTRUX_RUNTIME_CONTAINER` | `scripts/prepare-next-build.mjs`, `scripts/doctor-dev.mjs` | `true` (base, hosted) makes `pnpm build` refuse under `NODE_ENV=production`; `false` in dev. The doctor checks only that it is set before inspecting the container's start command. | no | no |
 | `THUNDERSTRUX_ALLOW_HOST_DEV` | `scripts/assert-docker-runtime.mjs` | `1` lets `pnpm dev` run outside Docker even when `DATABASE_URL` uses `db:5432`. For one-off host debugging with a `localhost` URL. | no | no |
 | `WATCHPACK_POLLING`, `CHOKIDAR_USEPOLLING` | Next dev watcher | `true` in the dev override: bind-mount changes are polled. | no | no |
@@ -73,7 +73,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 
 | Variable | Read by | Purpose; when unset | Required | `_FILE` |
 | --- | --- | --- | --- | --- |
-| `STRIPE_SECRET_KEY` | `lib/stripe/index.ts`, `lib/orders/order-detail.ts`, `scripts/staging-driver.mjs` | Platform key. Missing: Stripe calls throw `StripeConfigurationError` (Connect routes 503 naming the variable, API-002; webhooks 503). `sk_live_`/`rk_live_` keys are refused outside production. `order-detail.ts` picks live or test Dashboard links from an `sk_live_` prefix only. | for paid flows; compensation and checkout-recovery workers | yes |
+| `STRIPE_SECRET_KEY` | `lib/stripe/index.ts`, `lib/orders/order-detail.ts`, `scripts/staging-driver.mjs` | Platform key. Missing: Stripe calls throw `StripeConfigurationError` (Connect routes 503 "Stripe is not configured."; webhooks 503). `sk_live_`/`rk_live_` keys are refused outside production. `order-detail.ts` picks live or test Dashboard links with `isLiveStripeKey` (`sk_live_` or `rk_live_`). | for paid flows; compensation and checkout-recovery workers | yes |
 | `STRIPE_WEBHOOK_SECRET` | `lib/stripe/index.ts` | Signing secret for `/api/payments/webhook`; missing is 503. Must match the CLI listener or Dashboard endpoint in use. | for payment webhooks | yes |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | `lib/stripe/index.ts` | Signing secret for `/api/stripe/connect/webhook`; missing is 503. | for Connect webhooks | yes |
 
@@ -105,7 +105,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | Variable | Read by | Purpose; when unset | Required | `_FILE` |
 | --- | --- | --- | --- | --- |
 | `ALERT_WEBHOOK_URL` | `lib/ops/alerts.ts` | Operational alerts are also POSTed here as redacted JSON, best effort. Unset: logs only. | hosted (secret) | yes |
-| `WORKER_TIMEOUT_SECONDS` | `lib/ops/worker.ts`, `scripts/every-minute.mjs` | Run timeout; integer 10–3600 or the worker throws; default `300`. The loop kills a run after timeout + 60 s. Base Compose passes it; hosted Compose doesn't, so the Droplet `config.env` value is ignored (OPS-006). | no | no |
+| `WORKER_TIMEOUT_SECONDS` | `lib/ops/worker.ts`, `scripts/every-minute.mjs` | Run timeout; integer 10–3600 or the worker throws; default `300`. The loop kills a run after timeout + 60 s. Base and hosted Compose pass it to every worker. | no | no |
 | `WORKER_INTERVAL_SECONDS` | `scripts/every-minute.mjs` | Loop interval; default `60`. No Compose file sets it. | no | no |
 | `APP_IMAGE`, `OPS_IMAGE` | Compose | Web and ops images. Base defaults `thunderstrux-app:local`, `thunderstrux-ops:local`; hosted requires immutable `@sha256:` references. | hosted: compose | no |
 | `DEV_APP_IMAGE` | `docker-compose.dev.yml` | Dev image tag; default `thunderstrux-app:dev`. | no | no |
@@ -140,12 +140,12 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 
 ## Example files
 
-| File | For | Gaps (OPS-006) |
+| File | For | Notes |
 | --- | --- | --- |
-| `.env.example` | Local `.env` | No `ASSET_STORAGE_*` (the dev override sets them), `ALERT_WEBHOOK_URL`, `WORKER_TIMEOUT_SECONDS` or `SEED_DEMO_PASSWORD`. App URLs say `localhost:3080`; the maintained local `.env` uses `127.0.0.1:3080`. `AUTH_SECRET` is a placeholder the app refuses. |
+| `.env.example` | Local `.env` | `ASSET_STORAGE_*` apply to `ops:deploy` stacks only (the dev override sets its own); `SEED_DEMO_PASSWORD` is commented out. App URLs say `localhost:3080`; the maintained local `.env` uses `127.0.0.1:3080`. `AUTH_SECRET` is a placeholder the app refuses. |
 | `.env.db.example` | `.env.db` | — |
-| `.env.hosted.example` | Hosted contract | No `ASSET_STORAGE_*` values or their secret names, needed by `docker-compose.assets.hosted.yml`. |
-| `deploy/droplet/config.env.example` | Droplet `config.env` | Sets `WORKER_TIMEOUT_SECONDS`, which hosted Compose ignores; no `PLATFORM_SUPPORT_EMAIL`. Secrets are files in `THUNDERSTRUX_SECRETS_DIR`. |
+| `.env.hosted.example` | Hosted contract | Includes the `ASSET_STORAGE_*` values and secret names `docker-compose.assets.hosted.yml` reads. |
+| `deploy/droplet/config.env.example` | Droplet `config.env` | Secrets are files in `THUNDERSTRUX_SECRETS_DIR`. |
 
 ## Traps
 

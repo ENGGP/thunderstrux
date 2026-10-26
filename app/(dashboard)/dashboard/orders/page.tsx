@@ -14,6 +14,8 @@ import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
+import { readTimeZone } from "@/lib/organisations/profile";
+import { dateFilterBound } from "@/lib/zoned-time";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   EventLifecycleNotFoundError,
@@ -84,8 +86,9 @@ export default async function OrganisationOrdersPage({
   });
   const eventId = eventIdParam?.trim() || undefined;
   const search = searchParam?.trim() || undefined;
-  const startDate = startDateParam ? new Date(startDateParam) : undefined;
-  const endDate = endDateParam ? new Date(endDateParam) : undefined;
+  const timeZone = await readTimeZone(organisation.id);
+  const startDate = startDateParam ? dateFilterBound(startDateParam, timeZone) : undefined;
+  const endDate = endDateParam ? dateFilterBound(endDateParam, timeZone, { endOfDay: true }) : undefined;
   const pagination = parsePaginationOptionsOrDefault(
     new URLSearchParams({
       ...(limitParam ? { limit: limitParam } : {}),
@@ -94,14 +97,6 @@ export default async function OrganisationOrdersPage({
     })
   );
 
-  if (
-    endDate &&
-    !Number.isNaN(endDate.getTime()) &&
-    endDateParam &&
-    /^\d{4}-\d{2}-\d{2}$/.test(endDateParam)
-  ) {
-    endDate.setUTCHours(23, 59, 59, 999);
-  }
   const visibleStatusFilters = includeSystemOrders
     ? systemOrderStatusFilters
     : orderStatusFilters;

@@ -344,13 +344,20 @@ async function refundCommerce(
 async function applyOutcome(
   requestId: string,
   refund: Stripe.Refund,
-  { source, token, stripeEventId, eventCreatedAt }: { source: RefundSource; token?: string; stripeEventId?: string; eventCreatedAt?: Date }
+  { source, token, webhook }: { source: RefundSource; token?: string; webhook?: { stripeEventId: string; eventType: string; eventCreatedAt: Date } }
 ): Promise<RefundRequestStatus> {
   const status = providerStatus(refund);
   const now = new Date();
+  const { stripeEventId, eventCreatedAt } = webhook ?? {};
   return prisma.$transaction(async (tx) => {
     const request = await tx.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
     if (!(await lockPurchase(tx, request))) return request.status;
+    if (webhook) {
+      // Journalled with the outcome, so a delivery that fails to apply is
+      // applied by Stripe's retry instead of dropped as a duplicate (PAY-014).
+      const journal = await tx.stripeRefundWebhookEvent.createMany({ data: [{ ...webhook, refundRequestId: requestId }], skipDuplicates: true });
+      if (journal.count === 0) return request.status;
+    }
     const current = await tx.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
     if (current.status === "succeeded" || current.status === "failed") return current.status;
     if (eventCreatedAt && current.lastProviderEventAt && current.lastProviderEventAt > eventCreatedAt) return current.status;
@@ -407,16 +414,18 @@ export async function processOrderRefundBatch(limit = 25, now = new Date()) {
       data: { processingToken: token, processingStartedAt: now, attempts: { increment: 1 } }
     });
     if (claimed.count !== 1) continue;
-    if (candidate.attempts >= maxAttempts) {
-      // Still unresolved after repeated checks: a person looks at it; the fence stays.
-      await prisma.refundRequest.updateMany({ where: { id: candidate.id, processingToken: token }, data: { processingToken: null, processingStartedAt: null, nextAttemptAt: new Date(now.getTime() + 60 * pollMs), lastErrorCode: "provider_unresolved" } });
-      emitOperationalAlert("order_refund_unresolved", { refundRequestId: candidate.id, orderId: candidate.orderId, commerceOrderId: candidate.commerceOrderId });
-      continue;
-    }
+    let result: { refundRequestId: string; status: string };
     try {
-      results.push(await sendRefund(candidate.id, token, "refund_worker"));
+      result = await sendRefund(candidate.id, token, "refund_worker");
     } catch (error) {
-      results.push({ refundRequestId: candidate.id, status: error instanceof OrderRefundError ? "failed" : "error" });
+      result = { refundRequestId: candidate.id, status: error instanceof OrderRefundError ? "failed" : "error" };
+    }
+    results.push(result);
+    if (candidate.attempts >= maxAttempts && (result.status === "pending" || result.status === "uncertain")) {
+      // Still unresolved after repeated checks: a person is alerted and the fence
+      // stays, and Stripe is still asked hourly, so a late answer settles it (PAY-013).
+      await prisma.refundRequest.updateMany({ where: { id: candidate.id, status: { in: ["pending", "uncertain"] }, processingToken: null }, data: { nextAttemptAt: new Date(now.getTime() + 60 * pollMs), lastErrorCode: "provider_unresolved" } });
+      emitOperationalAlert("order_refund_unresolved", { refundRequestId: candidate.id, orderId: candidate.orderId, commerceOrderId: candidate.commerceOrderId });
     }
   }
   logInfo("order_refund.batch.completed", { processed: results.length });
@@ -441,13 +450,7 @@ export async function reconcileOrderRefundEvent(event: Stripe.Event) {
     logWarn("order_refund.webhook_identity_rejected", { stripeEventId: event.id, refundId: refund.id });
     return;
   }
-  try {
-    await prisma.stripeRefundWebhookEvent.create({ data: { stripeEventId: event.id, refundRequestId: request.id, eventType: event.type, eventCreatedAt } });
-  } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2002") return;
-    throw error;
-  }
-  await applyOutcome(request.id, refund, { source: "stripe_webhook", stripeEventId: event.id, eventCreatedAt });
+  await applyOutcome(request.id, refund, { source: "stripe_webhook", webhook: { stripeEventId: event.id, eventType: event.type, eventCreatedAt } });
 }
 
 // For order detail: the latest request, to show processing, refunded or failed.

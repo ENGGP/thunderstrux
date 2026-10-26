@@ -152,14 +152,16 @@ export async function processDisputeReversalBatch(limit = 25, now = new Date()) 
       data: { reversalProcessingToken: token, reversalProcessingStartedAt: now, reversalAttempts: { increment: 1 } }
     });
     if (claimed.count !== 1) continue;
-    if (candidate.reversalAttempts >= maxAttempts) {
-      // Still unknown after repeated tries: a person looks at it; the worker keeps checking hourly.
-      await release(candidate.id, token, { reversalNextAttemptAt: new Date(now.getTime() + 60 * pollMs), reversalLastError: "provider_unresolved" });
+    const status = await sendReversal(candidate.id, token, now);
+    if (status === "uncertain" && candidate.reversalAttempts >= maxAttempts) {
+      // Still unknown after repeated tries: a person is alerted, and the worker
+      // keeps looking the reversal up at Stripe hourly (PAY-013).
+      await prisma.purchaseDispute.updateMany({ where: { id: candidate.id, reversalStatus: "uncertain", reversalProcessingToken: null }, data: { reversalNextAttemptAt: new Date(now.getTime() + 60 * pollMs), reversalLastError: "provider_unresolved" } });
       emitOperationalAlert("dispute_reversal_unresolved", { disputeId: candidate.stripeDisputeId, orderId: candidate.orderId, commerceOrderId: candidate.commerceOrderId, reason: "provider_unresolved" });
       results.push({ disputeId: candidate.stripeDisputeId, status: "unresolved" });
       continue;
     }
-    results.push({ disputeId: candidate.stripeDisputeId, status: await sendReversal(candidate.id, token, now) });
+    results.push({ disputeId: candidate.stripeDisputeId, status });
   }
   logInfo("dispute_reversal.batch.completed", { processed: results.length });
   return { processed: results.length, results };

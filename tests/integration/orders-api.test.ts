@@ -41,6 +41,24 @@ describe("orders API", () => {
     };
   }
 
+  test("date filters read a day in the society's zone, not UTC (DEF-049)", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+    const at = async (createdAt: string) => (await createOrder({
+      organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id,
+      status: "paid", paidAt: new Date(createdAt), createdAt: new Date(createdAt)
+    })).id;
+    // Brisbane is UTC+10 all year: 1 am and 11:30 pm on 21 October, then 12:30 am on the 22nd.
+    const early = await at("2026-10-20T15:00:00Z");
+    const late = await at("2026-10-21T13:30:00Z");
+    await at("2026-10-21T14:30:00Z");
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const response = await getOrders(jsonRequest("http://localhost/api/orders?startDate=2026-10-21&endDate=2026-10-21"));
+    expect(response.status).toBe(200);
+    expect(orderIds(await parseJsonResponse(response)).sort()).toEqual([early, late].sort());
+    expect((await getOrders(jsonRequest("http://localhost/api/orders?startDate=2026-02-30"))).status).toBe(400);
+  });
+
   test("default orders exclude pending while includeSystem exposes pending", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const member = await createMember();
@@ -845,6 +863,27 @@ describe("orders API", () => {
       routeContext({ orderId: failedOrder.id })
     );
     expect(unpaidDenied.status).toBe(400);
+
+    // DEF-050: a refund voided the tickets, so they are never sent as ready.
+    const refundedOrder = await createOrder({
+      organisationId: organisation.id,
+      eventId: event.id,
+      ticketTypeId: ticketType.id,
+      userId: member.id,
+      status: "paid",
+      paidAt: new Date(),
+      unitPrice: ticketType.price
+    });
+    await prisma.order.update({ where: { id: refundedOrder.id }, data: { refundStatus: "refunded" } });
+    const refundedDenied = await resendTickets(
+      jsonRequest(`http://localhost/api/orders/${refundedOrder.id}/resend`, undefined, {
+        method: "POST"
+      }),
+      routeContext({ orderId: refundedOrder.id })
+    );
+    expect(refundedDenied.status).toBe(400);
+    expect(await parseJsonResponse(refundedDenied)).toMatchObject({ error: { message: "Tickets can't be resent for an order with a refund" } });
+    expect(await prisma.emailOutbox.count({ where: { orderId: refundedOrder.id } })).toBe(0);
   });
 
   test("manual resend queues even when provider is not configured", async () => {

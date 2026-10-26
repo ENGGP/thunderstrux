@@ -17,7 +17,8 @@ export async function accountClosureEligibility(tx: Prisma.TransactionClient, us
   // Membership and merchandise checkouts count too (T53).
   if (await tx.order.count({ where: { userId, status: "pending" } }) || await tx.commerceOrder.count({ where: { userId, status: "pending" } })) blockers.push("Resolve pending orders before closing your account.");
   if (await tx.order.count({ where: { userId, OR: [{ requiresCompensationReview: true }, { compensationRefundJob: { is: { state: { notIn: ["refunded", "recovered"] } } } }] } })) blockers.push("Resolve outstanding payment compensation before closing your account.");
-  if (await tx.order.count({ where: { userId, status: "paid", totalAmount: { gt: 0 }, event: { is: { endTime: { gt: now } } } } })) blockers.push("Wait until upcoming paid events finish or resolve their purchases before closing your account.");
+  // A refunded order has nothing left to resolve (DEF-052); one still processing does.
+  if (await tx.order.count({ where: { userId, status: "paid", totalAmount: { gt: 0 }, OR: [{ refundStatus: null }, { refundStatus: "processing" }], event: { is: { endTime: { gt: now } } } } })) blockers.push("Wait until upcoming paid events finish or resolve their purchases before closing your account.");
   return { eligible: blockers.length === 0, blockers };
 }
 export async function readAccountClosureEligibility(actor: AccountActor, now = new Date()) {

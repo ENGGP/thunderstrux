@@ -92,6 +92,19 @@ describe("what is held", () => {
     await prisma.purchaseDispute.update({ where: { id: dispute.id }, data: { reversalStatus: "succeeded" } });
     expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(0);
   });
+
+  test("money already back with the buyer is not held: compensation or manual refunds, and a lost dispute recovered before its event ends (PAY-012)", async () => {
+    const fixture = await society();
+    await ticketSale(fixture, 5 * day, { isManuallyRefunded: true });
+    const lost = await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
+    await prisma.purchaseDispute.create({ data: {
+      orderId: lost.id, organisationId: fixture.organisationId, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"),
+      amount: 2000, currency: "aud", providerStatus: "lost", reversalStatus: "succeeded"
+    } });
+    // A lost dispute the society never paid back (no transfer reversal) still waits with the event.
+    await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836);
+  });
 });
 
 describe("payouts worker", () => {

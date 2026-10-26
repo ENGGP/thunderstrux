@@ -109,6 +109,17 @@ describe("ticket metrics", () => {
     expect((await ticketMetrics(foreign.organisation.id, october, finance, event.id)).totals.ticketsIssued).toBe(0);
   });
 
+  test("a partial refund reverses its share of the fee, and a refund of an order never fulfilled is not a refund of sales (PAY-011)", async () => {
+    const { organisation, sale } = await ticketed();
+    const resolvedAt = new Date("2026-10-05T01:00:00.000Z");
+    const refund = (orderId: string, amount: number) => prisma.refundRequest.create({ data: { orderId, organisationId: organisation.id, amount, reason: "Refund the rest.", operationKey: unique("refund"), status: "succeeded", resolvedAt } });
+    // $20.00 with a $1.00 fee; "Refund the rest" after $15.00 went back in Stripe.
+    await refund((await sale("2026-10-02T01:00:00.000Z")).id, 500);
+    await refund((await sale("2026-10-03T01:00:00.000Z", { status: "expired", paidAt: null, fulfilledAt: null })).id, 2000);
+    const metrics = await ticketMetrics(organisation.id, october, finance);
+    expect(metrics.totals).toMatchObject({ gross: 2000, refunded: 500, net: 1500, platformFees: 75, refunds: 1 });
+  });
+
   test("check-in rate is valid checked-in over valid issued, not applicable with none, and keeps refunded admissions apart", async () => {
     const { event, sale, organisation } = await ticketed();
     expect(await ticketAttendance(organisation.id, { eventId: event.id })).toEqual({ valid: 0, checkedIn: 0, checkInRate: null, checkedInNoLongerValid: 0 });
@@ -146,6 +157,13 @@ describe("membership, merchandise and engagement metrics", () => {
     await prisma.commerceOrder.update({ where: { id: merch.id }, data: { status: "paid", paidAt: at, fulfilledAt: at, stripeSessionId: unique("cs"), pickupStatus: "ready" } });
     await prisma.refundRequest.create({ data: { commerceOrderId: merch.id, organisationId: organisation.id, amount: 5000, reason: "Wrong size.", operationKey: unique("refund"), status: "succeeded", resolvedAt: at } });
     await prisma.commerceOrder.update({ where: { id: merch.id }, data: { refundStatus: "refunded" } });
+    // PAY-011: a compensation refund of a payment that came too late was never a sale.
+    const late = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+      organisationId: organisation.id, kind: "merchandise", buyer: { userId: buyer.id }, buyerEmail: buyer.email, paymentKind: "stripe", feeAmount: 125, source: "checkout",
+      lines: [{ quantity: 1, unitAmount: 2500, name: "Hoodie" }]
+    }));
+    await prisma.commerceOrder.update({ where: { id: late.id }, data: { status: "expired", stripeSessionId: unique("cs") } });
+    await prisma.refundRequest.create({ data: { commerceOrderId: late.id, organisationId: organisation.id, amount: 2500, reason: "Paid after expiry.", operationKey: unique("refund"), status: "succeeded", resolvedAt: at } });
 
     const memberships = await membershipMetrics(organisation.id, october, finance, new Date("2026-10-20T00:00:00.000Z"));
     expect(memberships.totals).toMatchObject({ granted: 1, renewals: 1, activeMembers: 1, fulfilledOrders: 1, freeOrders: 1, gross: 0 });

@@ -33,15 +33,19 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
   // A nullable column: NOT refunded would also drop the never-refunded rows.
   const paidTo = { sellerStripeAccountId: stripeAccountId, paymentKind: "stripe" as const, paidAt: { gt: capped }, OR: [{ refundStatus: null }, { refundStatus: "processing" as const }] };
   // A lost dispute's money stays held until its transfer reversal settles (T53).
-  const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }, { disputes: { some: { reversalStatus: { in: ["pending" as const, "uncertain" as const] } } } }];
+  const reversing = { disputes: { some: { reversalStatus: { in: ["pending" as const, "uncertain" as const] } } } };
+  const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }, reversing];
+  // PAY-012: a lost dispute whose money is already back from the society holds nothing.
+  const notRecovered = { OR: [{ disputeStatus: null }, { disputeStatus: { not: "lost" as const } }, { disputes: { none: { reversalStatus: "succeeded" as const } } }, reversing] };
   const [tickets, commerce] = await Promise.all([
     prisma.order.findMany({
       // The event owns a ticket order (Event.organisationId is canonical).
-      where: { ...paidTo, event: { organisationId }, AND: [{ OR: [{ event: { endTime: { gt: new Date(now.getTime() - ticketHoldAfterEventMs) } } }, ...stillOpen] }] },
+      // A compensation or manually marked refund already returned the money (PAY-012).
+      where: { ...paidTo, isManuallyRefunded: false, event: { organisationId }, AND: [{ OR: [{ event: { endTime: { gt: new Date(now.getTime() - ticketHoldAfterEventMs) } } }, ...stillOpen] }, notRecovered] },
       select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, eventId: true, event: { select: { endTime: true } } }
     }),
     prisma.commerceOrder.findMany({
-      where: { ...paidTo, organisationId, AND: [{ OR: [{ paidAt: { gt: new Date(now.getTime() - commerceHoldMs) } }, ...stillOpen] }] },
+      where: { ...paidTo, organisationId, AND: [{ OR: [{ paidAt: { gt: new Date(now.getTime() - commerceHoldMs) } }, ...stillOpen] }, notRecovered] },
       select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true }
     })
   ]);

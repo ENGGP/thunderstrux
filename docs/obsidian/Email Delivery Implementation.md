@@ -34,11 +34,11 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 
 - **Sent:** queued in the fulfilment transaction of a paid order, or with a free registration ([[Payment Lifecycle#Fulfilment]]). A failed insert rolls the fulfilment back, so a paid order never commits without its job. Provider I/O happens only in the worker.
 - **Content:** subject `Your tickets for <event>` (line breaks folded to a space). Body: greeting by the buyer's display or full name, event title, organiser (`sellerName` snapshot), date, location, ticket type (purchased name, or today's name plus "(historical label unavailable)"), quantity, unit price ("Free" at 0), total, order id, the active ticket ids, and a note that no QR scan is needed. Event date and place are read live.
-- **Dates** are formatted in `Australia/Brisbane`, not the society's zone (DEF-047).
-- **Wording:** every email says "Your payment is confirmed", including free registrations (DEF-050).
+- **Dates** are formatted in the society's zone (`Organisation.timeZone`, `formatDateTime` in `lib/format.ts`), as event-change notices are.
+- **Wording:** "Your payment is confirmed", or "Your registration is confirmed" for a free order (`paymentKind = free`).
 - **Guest orders** (a guest identity, no member) add an "Open your order" link: single use, 24 hours, minted on each send attempt (`purchaseLinkForEmail`). Only its digest is stored, so the worker needs `NEXT_PUBLIC_APP_URL` but no secret. Because each attempt carries a new link, the provider key adds the attempt number, and a lost provider answer can mean a second email with another valid link.
 - **Recipient:** the order's buyer capture, else the live account (`retainedBuyerIdentity`). No recipient fails the job.
-- **Manual resend:** `POST /api/orders/[orderId]/resend`, permission `orders:email_resend`, rate limit `order_resend` per order. The order must belong to the society and be visible; 400 unless it is `paid`, not disputed and not cancelled. It queues a new `manual` job each time, even after a successful send. It does not check `refundStatus`, so a refunded order's buyer can be told their void tickets "are ready" (DEF-050). It answers `{ queued: true }` and appends `email_enqueued` with audit `order.ticket_email_queued`.
+- **Manual resend:** `POST /api/orders/[orderId]/resend`, permission `orders:email_resend`, rate limit `order_resend` per order. The order must belong to the society and be visible; 400 unless it is `paid`, not disputed, not cancelled and not refunded (`refundStatus` set, because a refund voids the tickets). It queues a new `manual` job each time, even after a successful send. It answers `{ queued: true }` and appends `email_enqueued` with audit `order.ticket_email_queued`.
 
 ## Ticket email outbox
 
@@ -165,7 +165,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | `POST /api/notifications/[jobId]/requeue` | Trusted origin, `orders:email_resend`, rate limit `order_resend`, `reason` 8 to 500; 404 for another society's or a security job; 409 unless failed, not accepted, not expired and within 23 hours of its first attempt. Resets it to `pending`, audit `notification.requeued` |
 | `POST /api/orders/[orderId]/email-jobs/[jobId]/requeue` | Trusted origin, `orders:email_resend`, rate limit `order_resend`, `reason` 8 to 500; 409 unless the job is `failed` and never accepted, the order is `paid`, and an automatic job's order isn't already marked sent. Resets attempts, audit `email_outbox.requeued`, `email_enqueued` with reason `operator_requeue` |
 
-Both requeue routes read the body with raw `request.json()` (SEC-028). `/dashboard/notifications` (Email delivery) shows the failed list.
+Both requeue routes take a strict `{reason}` of 8 to 500 characters through `validateJson` (else 400). `/dashboard/notifications` (Email delivery) shows the failed list.
 
 ## Traps
 
@@ -173,7 +173,6 @@ Both requeue routes read the body with raw `request.json()` (SEC-028). `/dashboa
 - A new notification needs a stable, unique `eventKey` per recipient, or retries and replays send twice.
 - Don't put secrets or provider responses in `lastError`, logs or alerts; notification errors are generic so notice text never leaves the process.
 - A `business_notice` needs a society; anything else must not have one.
-- The ticket email ignores the society's time zone (DEF-047) and calls free orders paid (DEF-050).
 
 ## Failure and recovery
 

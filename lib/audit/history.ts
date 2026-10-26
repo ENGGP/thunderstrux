@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { formatMoney, formatPrice, membershipLabel, orderReference } from "@/lib/format";
 import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
-import { toZonedInput, zonedCandidates } from "@/lib/zoned-time";
+import { nextDay, startOfZonedDay, toZonedInput } from "@/lib/zoned-time";
 
 // The society History (T38, design round C2): AuditLog rows of one society,
 // newest first, told as sentences with safe facts. Facts come only from the
@@ -32,7 +32,11 @@ const prefixes: Record<HistoryCategory, string[]> = {
   profile: ["organisation.", "asset."]
 };
 // Automatic steps Thunderstrux takes; any other row without a person came from Stripe.
-const automaticActions = ["order.compensation_refund_queued", "order.compensation_refund_review_required", "order.compensation_refund_started", "order.dispute_funds_recovered", "commerce_order.dispute_funds_recovered", "asset.orphan_removed"];
+// Outcomes Stripe reports (refunds settling, disputes closing) stay Stripe's even when a worker reads them.
+const automaticActions = [
+  "order.compensation_refund_queued", "order.compensation_refund_review_required", "order.compensation_refund_started", "order.compensation_review_required",
+  "commerce_order.compensation_refund_queued", "order.dispute_funds_recovered", "commerce_order.dispute_funds_recovered", "asset.orphan_removed"
+];
 
 export const historyPageSize = 50;
 export class HistoryCursorError extends Error {}
@@ -41,8 +45,6 @@ export function categoryOf(action: string): HistoryCategory | null {
   return (Object.keys(prefixes) as HistoryCategory[]).find((category) => prefixes[category].some((prefix) => action.startsWith(prefix))) ?? null;
 }
 
-const startOfDay = (day: string, timeZone: string) => zonedCandidates(`${day}T00:00`, timeZone)[0] ?? zonedCandidates(`${day}T01:00`, timeZone)[0];
-const nextDay = (day: string) => new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
 export type HistoryFilters = { category?: HistoryCategory; who?: string; from?: string; to?: string };
 
@@ -54,8 +56,8 @@ function filterWhere(organisationId: string, filters: HistoryFilters, timeZone: 
   if (filters.who === "thunderstrux") and.push({ actorUserId: null, action: { in: automaticActions } });
   else if (filters.who === "stripe") and.push({ actorUserId: null, action: { notIn: automaticActions } });
   else if (filters.who) and.push({ actorUserId: filters.who });
-  if (filters.from) and.push({ createdAt: { gte: startOfDay(filters.from, timeZone) } });
-  if (filters.to) and.push({ createdAt: { lt: startOfDay(nextDay(filters.to), timeZone) } });
+  if (filters.from) and.push({ createdAt: { gte: startOfZonedDay(filters.from, timeZone) } });
+  if (filters.to) and.push({ createdAt: { lt: startOfZonedDay(nextDay(filters.to), timeZone) } });
   return { AND: and };
 }
 

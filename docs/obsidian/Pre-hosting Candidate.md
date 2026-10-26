@@ -2,7 +2,7 @@
 status: living
 last-reviewed: 2026-10-25
 owner: engineering
-related: ["[[Project Handover]]", "[[Journey Qualification]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Non-Blocking Issue Register]]"]
+related: ["[[Project Handover]]", "[[Journey Qualification]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Issue and Defect Register]]"]
 sources: [docs/MVP_READINESS_PLAN.md, lib/stripe/fees.ts, docker-compose.hosted.yml, docker-compose.schedules.yml]
 ---
 

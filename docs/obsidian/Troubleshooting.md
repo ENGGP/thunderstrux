@@ -460,7 +460,7 @@ This usually means the named dependency volume contains packages from an older i
 pnpm docker:restart
 ```
 
-The helper verifies its target, rebuilds the development image, replaces only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, deploys migrations, and verifies that `@redis/client` and `@prisma/client` resolve. It preserves PostgreSQL and Redis volumes. Check readiness separately after startup. Do not use `docker compose down -v` for this recovery. See resolved defects `DEF-002` and `DEF-003` in [[Non-Blocking Issue Register]].
+The helper verifies its target, rebuilds the development image, replaces only the Compose-labelled dependency cache, recreates the app, generates Prisma Client, deploys migrations, and verifies that `@redis/client` and `@prisma/client` resolve. It preserves PostgreSQL and Redis volumes. Check readiness separately after startup. Do not use `docker compose down -v` for this recovery. See resolved defects `DEF-002` and `DEF-003` in [[Issue and Defect Register]].
 
 ### `/mfa` Reports That `public.UserMfa` Does Not Exist
 
@@ -489,7 +489,7 @@ curl --fail http://localhost:3080/api/health/ready
 curl --head http://localhost:3080/mfa
 ```
 
-Do not create the table manually or mark the migration applied without reviewing the database. See `DEF-001` in [[Non-Blocking Issue Register]].
+Do not create the table manually or mark the migration applied without reviewing the database. See `DEF-001` in [[Issue and Defect Register]].
 
 ## Integration Test Reset Fails
 

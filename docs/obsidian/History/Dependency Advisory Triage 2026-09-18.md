@@ -2,7 +2,7 @@
 status: historical
 last-reviewed: 2026-10-09
 owner: engineering
-related: ["[[Dependency Automation]]", "[[Non-Blocking Issue Register]]"]
+related: ["[[Dependency Automation]]", "[[Issue and Defect Register]]"]
 ---
 
 # Dependency Advisory Triage — 2026-09-18

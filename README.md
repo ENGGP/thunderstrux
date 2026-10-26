@@ -157,7 +157,7 @@ Member staff start in personal mode and explicitly select a live authorised soci
 
 Organisation management normally uses an active `OrganisationStaff` record, its live role and permissions, and the canonical organisation resolved by the server. Named staff accounts, invitations, live revocation, TOTP MFA, recovery codes, and actor-attributed audit records are implemented.
 
-`Organisation.accountUserId` remains a deliberately controlled migration fallback for legacy organisation logins. Production rollout must enroll staff, enforce MFA, and set `LEGACY_ORGANISATION_ACCESS_MODE=deny` before shared access is considered retired. See [Authentication and Dashboard Access](docs/obsidian/Authentication%20and%20Dashboard%20Access.md) and [Production Readiness Verification](docs/obsidian/Production%20Readiness%20Verification%202026-09-22.md).
+`Organisation.accountUserId` remains a deliberately controlled migration fallback for legacy organisation logins. Production rollout must enroll staff, enforce MFA, and set `LEGACY_ORGANISATION_ACCESS_MODE=deny` before shared access is considered retired. See [Authentication and Dashboard Access](docs/obsidian/Authentication%20and%20Dashboard%20Access.md) and [Production Readiness Verification](docs/obsidian/History/Production%20Readiness%20Verification%202026-09-22.md).
 
 ## Seeded Accounts
 

@@ -10,7 +10,7 @@ const defaultRequiredFiles = [
   "docs/obsidian/Documentation Index.md",
   "docs/obsidian/Project Handover.md",
   "docs/obsidian/Engineering Delivery Workflow.md",
-  "docs/obsidian/Non-Blocking Issue Register.md"
+  "docs/obsidian/Issue and Defect Register.md"
 ];
 
 function walkMarkdown(directory) {

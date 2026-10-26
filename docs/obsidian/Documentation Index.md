@@ -13,11 +13,11 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 ## Start Here
 
 1. [[Project Handover]]: current session state, active contracts, risks and next safe actions.
-2. [[Engineering Delivery Workflow]] ? focused branching, local validation by risk, review, cleanup and PR delivery.
-3. [[Non-Blocking Issue Register|Issue and Defect Register]] ? canonical defects, accepted risks and external gates.
-4. [[../THUNDERSTRUX_PRD|Product Requirements]] and [[../MVP_READINESS_PLAN|Readiness Plan]] (work packages, task order and substeps) ? product intent and delivery sequence.
-5. Read only the relevant living reference and its code sources. [[../MVP_READINESS_PLAN|Readiness Plan]] owns detailed acceptance and delivery evidence.
-6. [[../THUNDERSTRUX_PRD|Product Requirements]] defines authority by subject for the [[../THUNDERSTRUX_DATABASE_ARCHITECTURE_AND_SCHEMA_SPEC|Database Specification]], [[../THUNDERSTRUX_UX_USER_FLOW_SPEC|UX Specification]] and [[../THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]]. These are target contracts; the readiness ledger and handover record delivery, and code/provider observations establish implementation facts.
+2. [[Engineering Delivery Workflow]]: focused branching, local validation by risk, review, cleanup and PR delivery.
+3. [[Issue and Defect Register|Issue and Defect Register]]: canonical defects, accepted risks and external gates.
+4. [[THUNDERSTRUX_PRD|Product Requirements]] and [[MVP_READINESS_PLAN|Readiness Plan]] (work packages, task order and substeps) ? product intent and delivery sequence.
+5. Read only the relevant living reference and its code sources. [[MVP_READINESS_PLAN|Readiness Plan]] owns detailed acceptance and delivery evidence.
+6. [[THUNDERSTRUX_PRD|Product Requirements]] defines authority by subject for the [[THUNDERSTRUX_DATABASE_ARCHITECTURE_AND_SCHEMA_SPEC|Database Specification]], [[THUNDERSTRUX_UX_USER_FLOW_SPEC|UX Specification]] and [[THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]]. These are target contracts; the readiness ledger and handover record delivery, and code/provider observations establish implementation facts.
 
 ## Find The Right Note
 
@@ -41,7 +41,7 @@ The project knowledge map: use [[Project Handover]] for current state, the livin
 | How do ticket emails and encrypted account notices work? | [[Email Delivery Implementation]], [[Production Operations]] |
 | How do I deploy, migrate, restore or roll back? | [[Production Operations]], [[Database and Multi Tenancy]], [[Project Handover]] |
 | What versions/overrides are pinned and how are audits handled? | [[Dependency Automation]], [[Troubleshooting]] |
-| Which risks remain open? | [[Non-Blocking Issue Register]], [[../MVP_READINESS_PLAN|Readiness Plan]] |
+| Which risks remain open? | [[Issue and Defect Register]], [[MVP_READINESS_PLAN|Readiness Plan]] |
 
 ## Historical Evidence
 
@@ -50,9 +50,9 @@ These notes retain their original findings and dates. They do not define today's
 - [[Project Handover 2026-10-25]]: the handover for the 2026-10-15 to 2026-10-25 session (planning and delivering T10 to T46, then the Stripe audit and its fixes, PRs #68 to #166, with every dev database dump and activation) as it stood at main `1bc34ef`; superseded by [[Project Handover]] when the codebase audit session began.
 - [[Project Handover 2026-10-15]]: the handover for the 2026-10-12 to 2026-10-15 session (specification-alignment refactor, tunnel and Redis fixes, UX redesign and design-system sync) as it stood at main `33e84ce`; superseded by [[Project Handover]] when the T10–T46 delivery session began.
 - [[Project Handover 2026-10-12]]: the handover for PR #31 to PR #53 delivery with its qualification evidence; superseded by [[Project Handover]] when a new session began.
-- [[Dependency Advisory Triage 2026-09-18]] ? original advisory inventory; current patches/override removal conditions are in [[Dependency Automation]].
-- [[Production Readiness Verification 2026-09-22]] ? earlier remediation acceptance; current release procedures and remaining gates are in [[Production Operations]] and the handover.
-- [[Docker Architecture Assessment 2026-09-29]] ? topology/design assessment and subsequent foundation evidence; current runtime uses Node 22 and local validation.
+- [[Dependency Advisory Triage 2026-09-18]]: original advisory inventory; current patches/override removal conditions are in [[Dependency Automation]].
+- [[Production Readiness Verification 2026-09-22]]: earlier remediation acceptance; current release procedures and remaining gates are in [[Production Operations]] and the handover.
+- [[Docker Architecture Assessment 2026-09-29]]: topology/design assessment and subsequent foundation evidence; current runtime uses Node 22 and local validation.
 
 Earlier documentation governance merged in PRs #21, #23 and #24; the current readiness plan/work packages came through #26/#30 (the separate work packages note was folded into the readiness plan on 2026-10-16), with baseline qualification in #28. Their implementation evidence remains in the relevant notes, merged PRs and Git history. [[Project Handover 2026-10-12]] covers PR #31 to PR #53, [[Project Handover 2026-10-15]] covers PRs #54 to #67 and [[Project Handover 2026-10-25]] covers PRs #68 to #166; keep the current handover focused on the session it describes.
 

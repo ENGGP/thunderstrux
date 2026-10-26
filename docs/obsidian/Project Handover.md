@@ -3,13 +3,13 @@ status: current
 last-reviewed: 2026-10-26
 owner: engineering
 aliases: [Current Handover]
-related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]", "[[Project Handover 2026-10-25]]", "[[Project Handover 2026-10-15]]", "[[Project Handover 2026-10-12]]"]
+related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Issue and Defect Register]]", "[[Project Handover 2026-10-25]]", "[[Project Handover 2026-10-15]]", "[[Project Handover 2026-10-12]]"]
 sources: [package.json, prisma/schema.prisma]
 ---
 
 # Project Handover
 
-This is the only current handover. It covers the session that began on **2026-10-25 at main `1bc34ef`**: a whole-repository audit and the fixes for its five most important findings (#167), then the 2026-10-25 security audit's remediation (T47 to T53) and the 2026-10-26 test audit (#191 to #193). The previous session (planning and delivering T10 to T46, then the Stripe audit and its fixes, 2026-10-15 to 2026-10-25) is retained in [[Project Handover 2026-10-25]]. Earlier sessions are in [[Project Handover 2026-10-15]] and [[Project Handover 2026-10-12]]. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
+This is the only current handover. It covers the session that began on **2026-10-25 at main `1bc34ef`**: a whole-repository audit and the fixes for its five most important findings (#167), then the 2026-10-25 security audit's remediation (T47 to T53) and the 2026-10-26 test audit (#191 to #193). The previous session (planning and delivering T10 to T46, then the Stripe audit and its fixes, 2026-10-15 to 2026-10-25) is retained in [[Project Handover 2026-10-25]]. Earlier sessions are in [[Project Handover 2026-10-15]] and [[Project Handover 2026-10-12]]. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Issue and Defect Register]] for open risks.
 
 ## Current State
 
@@ -81,7 +81,7 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 
 ## Security Audit And Remediation (T47 to T53)
 
-**Audit (2026-10-25).** A deep `/security-audit` run (`thunderstrux-run-1`, outside the repository) covered `7d72e33` in 72 coverage units over four hunter waves, ending with a clean final critic. Every finding was found, validated and finally verified by separate sandboxed agents with no network and dummy data. It found no cross-tenant access, authentication bypass or injection. The results are 13 confirmed findings (1 high, 5 medium, 7 low) and 11 leads, registered as SEC-003 to SEC-026 (SEC-001 and SEC-002 were already external gates, so the first two audit rows are SEC-025 and SEC-026) in [[Non-Blocking Issue Register]].
+**Audit (2026-10-25).** A deep `/security-audit` run (`thunderstrux-run-1`, outside the repository) covered `7d72e33` in 72 coverage units over four hunter waves, ending with a clean final critic. Every finding was found, validated and finally verified by separate sandboxed agents with no network and dummy data. It found no cross-tenant access, authentication bypass or injection. The results are 13 confirmed findings (1 high, 5 medium, 7 low) and 11 leads, registered as SEC-003 to SEC-026 (SEC-001 and SEC-002 were already external gates, so the first two audit rows are SEC-025 and SEC-026) in [[Issue and Defect Register]].
 
 **Remediation order**, one PR each:
 - T47: request bounds and the unused image optimizer (SEC-025, 013, 018);

@@ -5,7 +5,7 @@ This repository is a Docker-first Next.js application handling tenant data, tick
 1. [Documentation Index](docs/obsidian/Documentation%20Index.md)
 2. [Project Handover](docs/obsidian/Project%20Handover.md)
 3. [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md)
-4. [Issue and Defect Register](docs/obsidian/Non-Blocking%20Issue%20Register.md)
+4. [Issue and Defect Register](docs/obsidian/Issue%20and%20Defect%20Register.md)
 5. [Product Requirements](docs/THUNDERSTRUX_PRD.md)
 
 ## Required Practices

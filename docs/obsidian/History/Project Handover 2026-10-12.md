@@ -2,7 +2,7 @@
 status: historical
 last-reviewed: 2026-10-12
 owner: engineering
-related: ["[[Project Handover]]", "[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Non-Blocking Issue Register]]"]
+related: ["[[Project Handover]]", "[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Issue and Defect Register]]"]
 sources: [package.json, prisma/schema.prisma]
 ---
 
@@ -10,11 +10,11 @@ sources: [package.json, prisma/schema.prisma]
 
 **Archived 2026-10-12 at main `b82198d` when a new session began. [[Project Handover]] is the current handover; the content below is retained unchanged as dated evidence and is no longer maintained.**
 
-This was the current handover until 2026-10-12. It covers delivery from **PR #31 to PR #53**, with the contracts and dated validation evidence recorded below. Earlier implementation remains background in the linked references and Git history. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Non-Blocking Issue Register]] for open risks.
+This was the current handover until 2026-10-12. It covers delivery from **PR #31 to PR #53**, with the contracts and dated validation evidence recorded below. Earlier implementation remains background in the linked references and Git history. Start at [[Documentation Index]]; use [[Engineering Delivery Workflow]] for delivery and [[Issue and Defect Register]] for open risks.
 
 ## Current State
 
-**Packages 1, 2 and 3 are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[../MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
+**Packages 1, 2 and 3 are implemented and locally qualified.** Completion does not establish full MVP or hosted production readiness. See [[MVP_READINESS_PLAN|Readiness Plan]] for dependencies and detailed evidence.
 
 | Delivery PR | Delivered result |
 | --- | --- |
@@ -72,7 +72,7 @@ Prior local refresh (2026-10-10) resolved a stale Turbopack module error, instal
 
 Documentation alignment on 2026-10-12 (DEF-022, [PR #53](https://github.com/ENGGP/thunderstrux/pull/53)) reviews current code at main `4a8024b`, corrects affected living references and distinguishes target specifications from delivered Packages 1–3. Historical evidence is retained; docs/link/diff and claim review add no new functionality, provider or hosted qualification. The implementation and next task below are unchanged.
 
-The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [PRD](../THUNDERSTRUX_PRD.md) defines authority by subject. Free/paid membership entitlement parity, free-purchase cancellation and mixed-event publication remain later implementation targets. T08 introduces the scoped visual token source and resolves the BOOT-001 guard discovered during reconciliation, restoring single-primary traceability. Earlier delivery evidence and hosted gates remain dated; documentation reconciliation itself did not establish functionality/deployment evidence.
+The five product/implementation/design specifications were reconciled on 2026-10-11 (DEF-020); the [[THUNDERSTRUX_PRD|PRD]] defines authority by subject. Free/paid membership entitlement parity, free-purchase cancellation and mixed-event publication remain later implementation targets. T08 introduces the scoped visual token source and resolves the BOOT-001 guard discovered during reconciliation, restoring single-primary traceability. Earlier delivery evidence and hosted gates remain dated; documentation reconciliation itself did not establish functionality/deployment evidence.
 
 1. Start Package 4 ticket foundations (T10 -> T11 -> T12 -> T13) from refreshed main. Packages 1–3 are complete locally; STAFF-001 and BOOT-001 are resolved. Paid memberships/merchandise and T15 anonymous event details remain later packages.
 2. Before activating account lifecycle, obtain independent security/migration review, provision and separately back up the notification key, and verify reliable Redis and real email acceptance.

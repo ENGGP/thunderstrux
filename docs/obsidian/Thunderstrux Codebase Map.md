@@ -49,7 +49,7 @@ Read these in order:
 1. [[Documentation Index]]
 2. [[Project Handover]]
 3. [[Engineering Delivery Workflow]]
-4. [[Non-Blocking Issue Register|Issue and Defect Register]]
+4. [[Issue and Defect Register|Issue and Defect Register]]
 5. [[Architecture Overview]]
 6. [[Development Workflow]]
 7. The living reference for the subsystem being changed

@@ -89,7 +89,7 @@ Only allowlisted counts are published to the GitHub job summary. Browser traces,
 - GitHub E2E and operations workflows are manual-only and are not merge requirements. Documentation-only evidence updates run docs/diff checks and claim review, without functionality tests or a new provider campaign.
 - Preserve tested-revision evidence and explain its applicability to the reviewed diff. Historical repeated local/CI campaigns below remain evidence of past delivery, not current repetition requirements.
 - Require observed real Stripe evidence for every scenario in the table above (T45), including manual cancel attestation, forced expiry with automatic reconciliation, and refund events. The test explicitly expires unpaid Sessions through Stripe; it does not claim to observe natural timeout. Missing or skipped scenarios remain outstanding.
-- See [[Project Handover]] and the evidence ledger in [[../MVP_READINESS_PLAN]] for current evidence.
+- See [[Project Handover]] and the evidence ledger in [[MVP_READINESS_PLAN]] for current evidence.
 
 ## Validation evidence
 

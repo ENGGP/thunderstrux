@@ -8,7 +8,7 @@ sources: [app/globals.css, app/layout.tsx, components/layout/navbar.tsx, compone
 
 # UI Architecture Rules
 
-[Visual Design](../THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC.md) owns the target presentation. This note records what the code does today and the rules new UI must follow. Every existing screen uses the token source, fonts, primitives and shells described here. Screens for features that are not built yet do not exist.
+[[THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]] owns the target presentation. This note records what the code does today and the rules new UI must follow. Every existing screen uses the token source, fonts, primitives and shells described here. Screens for features that are not built yet do not exist.
 
 ## Tokens And Fonts
 

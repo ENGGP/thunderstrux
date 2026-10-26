@@ -4,7 +4,7 @@ This repository is a Docker-first Next.js application handling tenant data, tick
 
 1. [Documentation Index](docs/obsidian/Documentation%20Index.md): it routes your task to the notes and code to read.
 2. [Project Handover](docs/obsidian/Project%20Handover.md): current state, what blocks real users, and next safe actions.
-3. The notes your task's row in the Index names, and only those.
+3. The notes your task's row in the Index names. For anything cross-cutting, grep `docs/obsidian/` for the identifier rather than reading more notes whole.
 
 Read [Engineering Delivery Workflow](docs/obsidian/Engineering%20Delivery%20Workflow.md) before you validate or deliver. Read the [Issue and Defect Register](docs/obsidian/Issue%20and%20Defect%20Register.md) when you touch an area with an open item or find a defect, and the [Product Requirements](docs/THUNDERSTRUX_PRD.md) when product intent matters. Search the large specs and the readiness plan by section or task ID; don't read them whole.
 

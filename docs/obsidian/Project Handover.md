@@ -49,7 +49,7 @@ Pointers only; each linked note owns its rule.
 - **Payment truth:** Stripe is payment truth, and fulfilment is webhook-driven and idempotent. An order is never marked paid from a success page. [[Payment Lifecycle]]
 - **Purchases under load (DEF-032):** checkout, free registration, commerce checkout and fulfilment run at READ COMMITTED (`lockedPurchaseTransactionOptions`) and decide everything after their row locks. Don't move them back to SERIALIZABLE: its snapshot predates the lock wait, so queued buyers fail.
 - **Holds (DEF-033, PAY-009):** a ticket hold outlives its Stripe page by 5 minutes (`lateWebhookGraceMs`), and pages show Stripe's closing time. New events default to `automatic_full` compensation. [[Payment Lifecycle#Holds]]
-- **Payouts (PAY-005, DEF-034):** money is held until 2 days after the event (7 days for commerce), then paid at most once per society per UTC day. [[Stripe Payments and Connect]]
+- **Payouts (PAY-005, DEF-034):** ticket money is held until 2 days after the event and membership and merchandise money for 7 days after payment, then paid at most once per society per UTC day. [[Stripe Payments and Connect]]
 - **Accounts:**
   - Verification, reset and email-change links use purpose-bound digests and explicit POST redemption.
   - Signup, recovery and sign-in timing conceal which addresses have accounts.

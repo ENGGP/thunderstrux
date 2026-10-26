@@ -113,7 +113,7 @@ Polling is on because bind-mount file events don't cross into the container on W
 
 `scripts/recreate-dev-app.mjs` (`pnpm docker:restart` / `pnpm docker:rebuild`): builds the dev `app` image, removes the app container, deletes the `node_modules` volume only after checking its Compose labels (project and volume name), runs `up -d app` (which also starts `db` and `redis`, not `object-store`), then waits up to 60 s for `@redis/client` and `@prisma/client` to import. Startup regenerates Prisma Client and deploys migrations. Postgres, Redis and asset volumes are kept.
 
-**`down -v` destroys data.** `pnpm docker:reset` (`docker compose down -v`, base file) deletes `postgres_data` and `redis_data`. With both dev files it also deletes `node_modules` and `asset_data`; image bytes can't be rebuilt from a seed. Never use it to fix a stale app. Recovery: [[Seeding and Data]].
+**`down -v` destroys data.** `pnpm docker:reset` (`docker compose down -v`, base file only) deletes `postgres_data` and `redis_data`. Running `down -v` by hand with both dev files also deletes `node_modules` and `asset_data`; image bytes can't be rebuilt from a seed. Never use it to fix a stale app. Recovery: [[Seeding and Data]].
 
 ## Tests locally
 

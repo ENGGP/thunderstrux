@@ -9,7 +9,7 @@ sources: [AGENTS.md, scripts/check-docs.mjs, tests/runner/docs-check.test.mjs]
 # Documentation Index
 
 **Owns:** where to look. It routes a task to the notes and code to read, and sets how these notes are written and checked.
-**Read when:** at the start of every session, then read [[Project Handover]], then only the notes your task row names.
+**Read when:** at the start of every session, then read [[Project Handover]], then the notes your task row names. For a question that crosses areas, grep `docs/obsidian/` for the identifier; each fact lives in one note.
 **Not here:** any rule or behaviour. Every fact has one owning note, listed below.
 
 The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated records are in `docs/obsidian/History/`. Links are `[[Note name]]` and resolve to `docs/obsidian/Note name.md` (or `docs/<NAME>.md` for the specs). Code, schema, configuration and provider state are the truth: if a note disagrees with them, the note is wrong. Fix it, or register the gap in [[Issue and Defect Register]].

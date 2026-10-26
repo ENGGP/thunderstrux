@@ -6,6 +6,7 @@ import type { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { isLiveStripeKey } from "@/lib/stripe";
 import { enqueueTicketEmail } from "@/lib/email/ticket-email-outbox";
+import { ticketEmailRefusal, ticketEmailRefusalSelect } from "@/lib/email/ticket-delivery";
 import {
   appendOrderLifecycleEvent,
   lockOrder
@@ -193,6 +194,8 @@ export async function markOrganisationOrderManuallyRefunded(
       data: { isManuallyRefunded: true }
     });
     if (updated.count === 0) return;
+    // The buyer has their money back, so the tickets stop admitting, as after a refund made in Stripe.
+    await tx.ticket.updateMany({ where: { orderId, validity: { not: "void" } }, data: { validity: "void", validityReason: "refunded_outside", validityChangedAt: new Date() } });
     await appendOrderLifecycleEvent(tx, {
       orderId,
       type: "manual_refund_marked",
@@ -259,32 +262,15 @@ export async function enqueueOrganisationOrderTicketEmail(
       event: { is: { organisationId } },
       status: { in: visibleOrderStatuses }
     },
-    select: { id: true, status: true, disputeStatus: true, cancelledAt: true, refundStatus: true }
+    select: { id: true, ...ticketEmailRefusalSelect }
   });
 
   if (!order) {
     throw new OrganisationOrderAccessError();
   }
 
-  if (order.status !== "paid") {
-    throw new OrganisationOrderOperationError(
-      "Ticket email can only be resent for paid orders"
-    );
-  }
-
-  // Paused while a dispute is open, and the tickets of a lost one are void.
-  if (order.disputeStatus) {
-    throw new OrganisationOrderOperationError("Tickets can't be resent while this payment is disputed");
-  }
-
-  if (order.cancelledAt) {
-    throw new OrganisationOrderOperationError("This registration was cancelled, so its tickets are no longer valid");
-  }
-
-  // A refund voids the tickets, so an email calling them ready would mislead (DEF-050).
-  if (order.refundStatus) {
-    throw new OrganisationOrderOperationError("Tickets can't be resent for an order with a refund");
-  }
+  const refusal = ticketEmailRefusal(order);
+  if (refusal) throw new OrganisationOrderOperationError(refusal);
 
   await enqueueTicketEmail({ orderId: order.id, mode: "manual", actorUserId });
 }

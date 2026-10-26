@@ -9,6 +9,7 @@ test('enforced staff MFA survives session refresh and denies a new password-only
   await page.goto('/mfa?callbackUrl=/dashboard');
   expect((await page.request.get(`/api/events?orgId=${data.organisation.id}`)).status()).toBe(403);
 
+  await page.getByLabel('Your password').fill('password123');
   await page.getByRole('button', { name: 'Set up authenticator' }).click();
   const secret = await page.locator('code').textContent();
   expect(secret).toMatch(/^[A-Z2-7]{32}$/);
@@ -71,6 +72,7 @@ test('committee handover with enforced MFA retires legacy ownership and removes 
   async function enroll(targetPage: typeof page, email: string) {
     await login(targetPage, email, '/mfa');
     await targetPage.goto('/mfa?callbackUrl=/dashboard');
+    await targetPage.getByLabel('Your password').fill('password123');
     await targetPage.getByRole('button', { name: 'Set up authenticator' }).click();
     const secret = await targetPage.locator('code').textContent(); expect(secret).toMatch(/^[A-Z2-7]{32}$/);
     await targetPage.getByLabel('Authenticator code').fill(totpCode(secret!, Math.floor(Date.now() / 30000)));
@@ -85,6 +87,7 @@ test('committee handover with enforced MFA retires legacy ownership and removes 
     await login(page, data.owner.email, '/mfa');
     const { token } = await (await page.request.get('/api/security/csrf')).json();
     expect((await page.request.post(`/api/orgs/${data.organisation.slug}/staff/handover`, { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token }, data: { incomingStaffId: data.staff.id, outgoingAccess: 'revoked', currentPassword: 'password123', acknowledgement: 'HAND OVER OWNERSHIP' } })).status()).toBe(403);
+    await page.getByLabel('Your password').fill('password123');
     await page.getByRole('button', { name: 'Set up authenticator' }).click();
     const secret = await page.locator('code').textContent();
     await page.getByLabel('Authenticator code').fill(totpCode(secret!, Math.floor(Date.now() / 30000)));

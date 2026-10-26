@@ -88,7 +88,7 @@ Fields, defaults and relations: `prisma/schema.prisma`. Amounts are integer cent
 | `PurchaseDispute` | A Stripe dispute on an order or commerce order (exactly one), staff restore with reason, and the lost-dispute transfer reversal with its own lease. |
 | `SocietyPayout` | A Stripe payout from a society's balance: unique `stripePayoutId`, positive amount, status as Stripe reports. |
 | `GuestIdentity` | A proven email for buying without an account (normalised lower-case, check). Never a login. |
-| `GuestAccessGrant` | One emailed guest link: token digest, purpose `checkout` (no order) or `purchase` (exactly one of `orderId`, `commerceOrderId`), expiry, consumed or revoked, and the redeemed session digest. |
+| `GuestAccessGrant` | One emailed guest link: token digest, purpose `checkout` (no order) or `purchase` (exactly one of `orderId`, `commerceOrderId`), expiry, consumed or revoked, and the redeemed session digest. A checkout link also keeps the name the guest gave (`buyerFirstName`, `buyerLastName`, nullable; migration `20261116010000_guest_checkout_name`), which reaches an order only through the session the link opens. |
 
 ### Commerce (memberships and merchandise)
 

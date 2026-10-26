@@ -97,15 +97,10 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).toBeNull();
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Verify email', exact: true }).click();
-  await expect(page.getByText('Email verified. Sign in to continue.')).toBeVisible();
-  expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).not.toBeNull();
-  const anonymousSession = await (await page.request.get('/api/auth/session')).json();
-  expect(anonymousSession?.user).toBeFalsy();
-  await page.getByRole('link', { name: 'Sign in to continue', exact: true }).click();
-  await page.getByLabel('Email', { exact: true }).fill(email);
-  await page.getByLabel('Password', { exact: true }).fill('password123');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  // The password was just proven, so verifying signs straight in and returns to
+  // where signup started, with no second sign-in (2026-10-26 audit).
   await expect(page).toHaveURL('http://localhost:3100/account/settings');
+  expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerifiedAt).not.toBeNull();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL('http://localhost:3100/');
   await page.goto('/dashboard');
@@ -115,6 +110,8 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByText('Invalid email or password.')).toBeVisible();
   await page.goto('/signup');
+  await page.getByLabel('First name').fill('Existing');
+  await page.getByLabel('Last name').fill('Member');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
@@ -327,8 +324,9 @@ test('organisers check attendees in and confirm before recording a refund', asyn
   await page.goto(`/dashboard/orders/${order.id}`);
   await page.getByRole('button', { name: 'Mark as refunded', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('cannot be undone');
+  await expect(dialog).toContainText("can't be undone");
   await dialog.getByRole('button', { name: 'Mark as refunded', exact: true }).click();
   await expect(page.getByText('This order is marked as refunded.')).toBeVisible();
   expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(true);
+  expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ validity: 'void', validityReason: 'refunded_outside' });
 });

@@ -14,7 +14,7 @@ import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { canOpenGuestOrder, guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
-import { formatDateRange, formatMoney } from "@/lib/format";
+import { formatDateRange, formatMoney, ticketReference } from "@/lib/format";
 import { getGuestOrder } from "@/lib/orders/member-tickets";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { zoneCity } from "@/lib/zoned-time";
@@ -88,10 +88,10 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
             <section aria-label="Your tickets" className="grid gap-2 rounded-card border border-line p-4">
               <h2 className="font-semibold text-ink">Your tickets</h2>
               <ul className="grid gap-1.5">
-                {order.tickets.map((ticket, index) => (
+                {order.tickets.map((ticket) => (
                   <li className="flex justify-between gap-3 text-ink" key={ticket.id}>
                     <span>{ticketName}</span>
-                    <span className="font-mono text-sm text-ink-soft" title={ticket.id}>Ticket {ticket.id.slice(-6)} · {index + 1} of {count}</span>
+                    <span className="font-mono text-sm text-ink-soft" title={ticket.id}>Ticket {ticketReference(ticket.id)} · {ticket.issueSequence} of {order.quantity}</span>
                   </li>
                 ))}
               </ul>
@@ -102,7 +102,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
               <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">Sent to {order.buyerEmailSnapshot}</p>
             </section>
           ) : null}
-          {going ? <p className="text-sm text-ink-soft">Show this page or your email at the door.</p> : null}
+          {going ? <p className="text-sm text-ink-soft">At the door, give your name or show the ticket reference from your email.</p> : null}
           {organisation.supportEmail || organisation.refundPolicy ? (
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-sm">
               {organisation.supportEmail ? <><dt className="text-ink-soft">Questions</dt><dd className="[overflow-wrap:anywhere]"><a className="text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>{organisation.supportEmail}</a></dd></> : null}

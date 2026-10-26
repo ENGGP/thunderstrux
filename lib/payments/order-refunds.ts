@@ -214,10 +214,13 @@ async function verifiedPayment(request: Purchase & { id: string; amount: number;
   const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId as string, { expand: ["payment_intent", "payment_intent.latest_charge"] });
   const intent = typeof session.payment_intent === "object" ? session.payment_intent : null;
   const charge = intent && typeof intent.latest_charge === "object" ? intent.latest_charge : null;
+  // Not `charge.disputed`: Stripe keeps it true after a dispute closes, so a won
+  // dispute would block every later refund. The order's `disputeStatus` fences an
+  // open or lost dispute, and Stripe itself refuses a refund while one is open.
   if (
     session.payment_status !== "paid" || session.amount_total !== order.totalAmount || session.currency?.toLowerCase() !== request.currency ||
     session.metadata?.[named] !== order.id || !intent || intent.amount_received !== order.totalAmount ||
-    intent.transfer_data?.destination !== request.destinationAccountId || !charge || charge.disputed !== false
+    intent.transfer_data?.destination !== request.destinationAccountId || !charge
   ) {
     throw new RefundVerificationError("provider_identity_not_eligible");
   }

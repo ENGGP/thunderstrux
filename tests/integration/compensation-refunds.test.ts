@@ -162,8 +162,9 @@ describe("compensation refunds", () => {
       .toMatchObject({ organisationId: fixture.organisation.id, actorUserId: null, metadata: { reason: "existing_refund_requires_review" } });
   });
 
-  test("routes absent or disputed provider charge state to review", async () => {
-    for (const latestCharge of [null, { disputed: true }]) {
+  // A charge Stripe once disputed stays `disputed: true` after the dispute closes; the claim fences an open dispute by the order's own state.
+  test("routes an absent provider charge to review", async () => {
+    for (const latestCharge of [null]) {
       const fixture = await automaticCompensationFixture();
       const paymentIntent = configureEligibleStripe(fixture);
       paymentIntent.latest_charge = latestCharge as never;
@@ -413,8 +414,8 @@ describe("compensation refunds", () => {
     });
   });
 
-  test("manual confirmation rejects absent or disputed charge state", async () => {
-    for (const latestCharge of [null, { disputed: true }]) {
+  test("manual confirmation rejects an absent charge", async () => {
+    for (const latestCharge of [null]) {
       const fixture = await automaticCompensationFixture();
       await prisma.compensationRefundJob.update({
         where: { id: fixture.job.id },

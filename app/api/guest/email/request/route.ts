@@ -6,7 +6,8 @@ import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limi
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
 
-const schema = z.object({ email: z.string().trim().toLowerCase().email().max(320), callbackUrl: z.string().max(1000).optional() }).strict();
+const name = z.string().trim().max(80).optional();
+const schema = z.object({ email: z.string().trim().toLowerCase().email().max(320), callbackUrl: z.string().max(1000).optional(), firstName: name, lastName: name }).strict();
 
 // A generic 202 whatever the address; limits fail closed, so no link is sent
 // while request protection is down.
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   const emailLimit = await enforceRateLimit({ policy: "guest_email_address", request, keyParts: [body.data.email], required: true });
   if (emailLimit) return emailLimit;
   try {
-    await requestGuestAccess(body.data.email, body.data.callbackUrl);
+    await requestGuestAccess(body.data.email, body.data.callbackUrl, new Date(), { firstName: body.data.firstName, lastName: body.data.lastName });
     return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return mapRouteError(error, { operation: "guest.email_request", request }); }
 }

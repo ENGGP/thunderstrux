@@ -2,7 +2,8 @@ import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-i
 import { purchaseLinkForEmail } from "@/lib/guest/guest-access";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, orderReference, ticketReference } from "@/lib/format";
+import { appUrl } from "@/lib/app-url";
 
 type TicketDeliveryOrder = Awaited<ReturnType<typeof loadTicketDeliveryOrder>>;
 
@@ -26,6 +27,20 @@ export class TicketEmailRecipientError extends TicketEmailError {
     this.name = "TicketEmailRecipientError";
   }
 }
+
+// Why an order's tickets can't be emailed as ready, or null. Staff resend,
+// requeue and the worker all ask, so none sends void or paused tickets (DEF-050).
+export function ticketEmailRefusal(order: { status: string; disputeStatus: string | null; cancelledAt: Date | null; refundStatus: string | null; isManuallyRefunded: boolean }) {
+  if (order.status !== "paid") return "Ticket email can only be resent for paid orders";
+  // Paused while a dispute is open, and the tickets of a lost one are void.
+  if (order.disputeStatus) return "Tickets can't be resent while this payment is disputed";
+  if (order.cancelledAt) return "This registration was cancelled, so its tickets are no longer valid";
+  // A refund voids the tickets, so an email calling them ready would mislead.
+  if (order.refundStatus || order.isManuallyRefunded) return "Tickets can't be resent for an order with a refund";
+  return null;
+}
+
+export const ticketEmailRefusalSelect = { status: true, disputeStatus: true, cancelledAt: true, refundStatus: true, isManuallyRefunded: true } as const;
 
 export class TicketEmailOrderStateError extends TicketEmailError {
   constructor(message = "Ticket email can only be sent for paid orders") {
@@ -108,7 +123,8 @@ export async function loadTicketDeliveryOrder(orderId: string) {
       tickets: {
         where: { validity: "active" },
         select: {
-          id: true
+          id: true,
+          issueSequence: true
         },
         orderBy: { issueSequence: "asc" }
       }
@@ -135,15 +151,19 @@ function buyerName(order: TicketDeliveryOrder) {
   return order.user.displayName ?? (fullName || null);
 }
 
-// A guest's email also carries a link that opens this order (T16b).
+// A guest's email carries a link that opens this order (T16b); a member's links
+// to the order in their account. Tickets show the short reference the wallet and
+// the door console use, so a buyer reads out the same six characters everywhere.
 export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: string) {
   const name = buyerName(order);
   const greeting = name ? `Hi ${name},` : "Hi,";
-  const ticketIds = order.tickets.map((ticket) => ticket.id);
-  const ticketIdLines = ticketIds.map((id) => `- ${id}`).join("\n");
-  const ticketIdHtml = ticketIds
-    .map((id) => `<li><code>${escapeHtml(id)}</code></li>`)
+  const ticketLabels = order.tickets.map((ticket) => `${ticketReference(ticket.id)} (ticket ${ticket.issueSequence} of ${order.quantity})`);
+  const ticketIdLines = ticketLabels.map((label) => `- ${label}`).join("\n");
+  const ticketIdHtml = ticketLabels
+    .map((label) => `<li><code>${escapeHtml(label)}</code></li>`)
     .join("");
+  const origin = appUrl();
+  const memberLink = order.userId && origin ? new URL(`/purchases/tickets/${order.id}`, origin).toString() : undefined;
   const subject = `Your tickets for ${order.event.title.replace(/[\r\n]+/g, " ")}`;
   // Purchase-time facts; the event date and place stay live.
   const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
@@ -166,12 +186,13 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
     `Quantity: ${order.quantity}`,
     `Unit price: ${formatCurrency(order.unitPrice)}`,
     `Total: ${formatCurrency(order.totalAmount)}`,
-    `Order ID: ${order.id}`,
+    `Order: ${orderReference(order.id)}`,
     "",
-    "Ticket IDs:",
+    "Your tickets:",
     ticketIdLines || "- Not available",
     "",
-    "QR scanning is not required for this MVP. Keep this email or your ticket IDs handy for the event.",
+    "At the door, give your name or show this email with your ticket reference.",
+    ...(memberLink ? ["", `View your tickets: ${memberLink}`] : []),
     ...(guestOrderLink ? ["", `Open your order (works once, for 24 hours; after that use Find your purchase): ${guestOrderLink}`] : [])
   ].join("\n");
 
@@ -190,11 +211,12 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
         <dt>Quantity</dt><dd>${order.quantity}</dd>
         <dt>Unit price</dt><dd>${escapeHtml(formatCurrency(order.unitPrice))}</dd>
         <dt>Total</dt><dd>${escapeHtml(formatCurrency(order.totalAmount))}</dd>
-        <dt>Order ID</dt><dd><code>${escapeHtml(order.id)}</code></dd>
+        <dt>Order</dt><dd><code>${escapeHtml(orderReference(order.id))}</code></dd>
       </dl>
-      <p><strong>Ticket IDs</strong></p>
+      <p><strong>Your tickets</strong></p>
       <ul>${ticketIdHtml || "<li>Not available</li>"}</ul>
-      <p>QR scanning is not required for this MVP. Keep this email or your ticket IDs handy for the event.</p>
+      <p>At the door, give your name or show this email with your ticket reference.</p>
+      ${memberLink ? `<p><a href="${escapeHtml(memberLink)}">View your tickets</a></p>` : ""}
       ${guestOrderLink ? `<p><a href="${escapeHtml(guestOrderLink)}">Open your order</a> (works once, for 24 hours; after that use Find your purchase).</p>` : ""}
     </div>
   `;

@@ -11,6 +11,7 @@ import { AuditTimeline } from "@/components/ui/audit-timeline";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate, formatDateTime, formatMoney, formatPrice } from "@/lib/format";
+import { readTimeZone } from "@/lib/organisations/profile";
 import { orderReference } from "@/lib/payments/order-refunds";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
 import { roleHasPermission } from "@/lib/staff/live-authority";
@@ -52,6 +53,8 @@ export default async function OrganisationOrderDetailPage({
     historySearchParams.historyDirection
   );
   const organisation = await requireManagementPage("orders:read", `/dashboard/orders/${orderId}`);
+  // Every date here is in the society's zone, as on the orders list and its filters.
+  const timeZone = await readTimeZone(organisation.id);
 
   let order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>;
   let lifecycle: Awaited<ReturnType<typeof getOrganisationOrderLifecycle>>;
@@ -98,14 +101,14 @@ export default async function OrganisationOrderDetailPage({
       {order.cancelledAt ? (
         <Notice title="Registration cancelled">
           <p>
-            Cancelled on {formatDate(order.cancelledAt)}
+            Cancelled on {formatDate(order.cancelledAt, timeZone)}
             {order.cancelledBy ? ` by ${[order.cancelledBy.firstName, order.cancelledBy.lastName].filter(Boolean).join(" ") || order.cancelledBy.email}` : ""}:
             {" "}&ldquo;{order.cancellationReason}&rdquo; Nothing was charged, so there is nothing to refund.
           </p>
         </Notice>
       ) : null}
-      <RefundNotice order={order} />
-      <ReviewNotice canAct={canRefund} order={order} />
+      <RefundNotice order={order} timeZone={timeZone} />
+      <ReviewNotice canAct={canRefund} order={order} timeZone={timeZone} />
 
       {order.requiresCompensationReview ? (
         <Notice title="Payment received, tickets not issued" tone="warning">
@@ -145,9 +148,9 @@ export default async function OrganisationOrderDetailPage({
             <dt className="text-ink-soft">Total</dt>
             <dd className="font-semibold tabular-nums text-ink">{formatPrice(order.totalAmount)}</dd>
             <dt className="text-ink-soft">Ordered</dt>
-            <dd className="text-ink">{formatDateTime(order.createdAt)}</dd>
+            <dd className="text-ink">{formatDateTime(order.createdAt, { timeZone })}</dd>
             <dt className="text-ink-soft">Paid</dt>
-            <dd className="text-ink">{formatDateTime(order.paidAt)}</dd>
+            <dd className="text-ink">{formatDateTime(order.paidAt, { timeZone })}</dd>
             <dt className="text-ink-soft">Order ID</dt>
             <dd className="font-mono text-sm text-ink-soft [overflow-wrap:anywhere]">{order.id}</dd>
           </dl>
@@ -172,6 +175,7 @@ export default async function OrganisationOrderDetailPage({
                 : null
             }
             isManuallyRefunded={order.isManuallyRefunded}
+            markNeedsCode={mfaEnforcementMode() !== "off"}
             orderId={order.id}
             requiresCompensationReview={order.requiresCompensationReview}
             stripeDashboardUrl={order.stripeDashboardUrl}
@@ -228,14 +232,14 @@ const refundFailures: Record<string, string> = {
 };
 
 // Where the latest Thunderstrux refund stands. The tickets stay valid unless it succeeded.
-function RefundNotice({ order }: { order: Awaited<ReturnType<typeof getOrganisationOrderDetail>> }) {
+function RefundNotice({ order, timeZone }: { order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>; timeZone: string }) {
   const refund = order.latestRefund;
   if (!refund) return null;
   const by = refund.actor ? [refund.actor.firstName, refund.actor.lastName].filter(Boolean).join(" ") || refund.actor.email : "a staff member";
   if (order.refundStatus === "refunded" && refund.status === "succeeded") {
     return (
       <Notice role="status" title={`Refunded ${formatMoney(refund.amount)}`} tone="success">
-        <p>Refunded {formatDateTime(refund.resolvedAt)} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid and the buyer was emailed.</p>
+        <p>Refunded {formatDateTime(refund.resolvedAt, { timeZone })} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid and the buyer was emailed.</p>
       </Notice>
     );
   }
@@ -259,7 +263,7 @@ function RefundNotice({ order }: { order: Awaited<ReturnType<typeof getOrganisat
 
 // What Stripe reported that Thunderstrux didn't do: a dispute, or a refund made
 // in the Stripe dashboard. A dispute is not a refund.
-function ReviewNotice({ order, canAct }: { order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>; canAct: boolean }) {
+function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>; canAct: boolean; timeZone: string }) {
   const dispute = order.latestDispute;
   if (order.disputeStatus && dispute) {
     const link = (
@@ -271,8 +275,8 @@ function ReviewNotice({ order, canAct }: { order: Awaited<ReturnType<typeof getO
       return (
         <Notice title="The buyer has disputed this payment" tone="warning">
           <p>
-            Their bank opened a dispute for {formatMoney(dispute.amount)} on {formatDate(dispute.createdAt)}.
-            {dispute.evidenceDueBy ? ` Respond in Stripe by ${formatDate(dispute.evidenceDueBy)}.` : ""} Until it&apos;s resolved, refunds and
+            Their bank opened a dispute for {formatMoney(dispute.amount)} on {formatDate(dispute.createdAt, timeZone)}.
+            {dispute.evidenceDueBy ? ` Respond in Stripe by ${formatDate(dispute.evidenceDueBy, timeZone)}.` : ""} Until it&apos;s resolved, refunds and
             resends are paused and the tickets show as &ldquo;Under review&rdquo; at the door.
           </p>
           {link}
@@ -289,7 +293,7 @@ function ReviewNotice({ order, canAct }: { order: Awaited<ReturnType<typeof getO
     }
     return (
       <Notice title="The buyer won the dispute" tone="danger">
-        <p>Their bank returned {formatMoney(dispute.amount)} to them{dispute.closedAt ? ` on ${formatDate(dispute.closedAt)}` : ""}. The tickets are no longer valid.</p>
+        <p>Their bank returned {formatMoney(dispute.amount)} to them{dispute.closedAt ? ` on ${formatDate(dispute.closedAt, timeZone)}` : ""}. The tickets are no longer valid.</p>
         {link}
       </Notice>
     );
@@ -306,7 +310,7 @@ function ReviewNotice({ order, canAct }: { order: Awaited<ReturnType<typeof getO
   const part = `${formatMoney(order.externalRefundedAmount)} of ${formatMoney(order.totalAmount)} was refunded from the Stripe dashboard.`;
   return order.externalRefundReviewedAt ? (
     <Notice title="Partly refunded in Stripe">
-      <p>{part} Reviewed on {formatDate(order.externalRefundReviewedAt)}; the tickets stay valid.</p>
+      <p>{part} Reviewed on {formatDate(order.externalRefundReviewedAt, timeZone)}; the tickets stay valid.</p>
     </Notice>
   ) : (
     <Notice action={canAct ? <OrderReviewActions action="mark_reviewed" orderId={order.id} /> : undefined} title="Partly refunded in Stripe: needs review" tone="warning">

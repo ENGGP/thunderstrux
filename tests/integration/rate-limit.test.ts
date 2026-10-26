@@ -292,12 +292,12 @@ describe("rate limit helper", () => {
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const response = await beginMfaSetup(jsonRequest("http://localhost/api/me/mfa/setup", undefined, {
+      const response = await beginMfaSetup(jsonRequest("http://localhost/api/me/mfa/setup", { password: "password123" }, {
         method: "POST", headers: { "x-forwarded-for": `198.51.100.${attempt + 1}` }
       }));
       expect(response.status).toBe(200);
     }
-    const throttled = await beginMfaSetup(jsonRequest("http://localhost/api/me/mfa/setup", undefined, {
+    const throttled = await beginMfaSetup(jsonRequest("http://localhost/api/me/mfa/setup", { password: "password123" }, {
       method: "POST", headers: { "x-forwarded-for": "203.0.113.250" }
     }));
     expect(throttled.status).toBe(429);

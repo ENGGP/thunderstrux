@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { compare } from "bcryptjs";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { lockAccount } from "@/lib/auth/account-lock";
@@ -160,6 +161,14 @@ export async function getStaffMfaStatus(userId: string) {
   await requireStaffEligibility(userId, true);
   const mfa = await prisma.userMfa.findUnique({ where: { userId }, select: { enabledAt: true } });
   return { enabled: Boolean(mfa?.enabledAt), mode: mfaEnforcementMode() };
+}
+
+// The authenticator decides who can act as this staff member, so setting one up
+// asks for the account password too: a stolen session cookie alone can't enrol
+// its own phone and lock the real person out.
+export async function confirmPasswordForMfaSetup(userId: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { password: true } });
+  if (!user || !(await compare(password, user.password))) throw new MfaInputError("Your password is incorrect");
 }
 
 export async function beginStaffMfaEnrollment(userId: string, email: string, now = new Date()) {

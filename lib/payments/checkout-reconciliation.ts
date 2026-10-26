@@ -343,6 +343,8 @@ export async function reconcileCompletedCheckoutSession(
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
       isManuallyRefunded: true,
+      externalRefundedAmount: true,
+      disputeStatus: true,
       compensationRefundModeSnapshot: true,
       membershipGrantId: true,
       compensationRefundJob: {
@@ -876,6 +878,19 @@ export async function reconcileCompletedCheckoutSession(
         { mismatchReason: "Paid session arrived after local checkout failure" },
         { releaseActiveReservation: true }
       );
+      return;
+    }
+
+    // A refund made in Stripe's dashboard, or a dispute, can arrive before a
+    // delayed paid webhook; tickets issued now would admit for money that went back.
+    if (localOrder.externalRefundedAmount > 0 || localOrder.disputeStatus) {
+      await markCompensationRequired("refunded_or_disputed_before_fulfilment", {
+        mismatchReason: "Stripe recorded a refund or dispute before the order was fulfilled",
+        externalRefundedAmount: localOrder.externalRefundedAmount,
+        disputeStatus: localOrder.disputeStatus
+      }, {
+        releaseActiveReservation: true
+      });
       return;
     }
 

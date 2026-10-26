@@ -9,26 +9,29 @@ const checks = [
   { label: "Ends after it starts", codes: ["schedule_invalid"] },
   { label: "Sales close in the future, before the end", codes: ["sales_close_after_end", "sales_window_past"] },
   { label: "A ticket type with tickets left", codes: ["no_ticket_types", "no_stock", "sold_out"] },
-  { label: "A ticket people can buy now", codes: ["payments_unavailable"] },
+  { label: "A ticket people can buy now", codes: ["payments_unavailable", "paid_tickets_waiting"] },
   // Shown only while it blocks, since most events are not members-only.
   { label: "A plan that unlocks members-only events", codes: ["members_only_unavailable"], onlyWhenBlocked: true }
 ];
 
 export function ReadinessChecklist({
   blockers,
+  warnings = [],
   editHref
 }: {
   blockers: ReadinessBlocker[];
+  // Things that don't stop publishing but that buyers will notice.
+  warnings?: ReadinessBlocker[];
   // Fix links go to this page's fields; left out on the Edit page itself.
   editHref?: string;
 }) {
   return (
     <ul className="grid gap-3">
       {checks.map((check) => {
-        const blocker = blockers.find((item) => check.codes.includes(item.code));
+        const blocker = blockers.find((item) => check.codes.includes(item.code)) ?? warnings.find((item) => check.codes.includes(item.code));
         if (!blocker && "onlyWhenBlocked" in check) return null;
         const fix =
-          blocker?.code === "payments_unavailable"
+          blocker?.code === "payments_unavailable" || blocker?.code === "paid_tickets_waiting"
             ? { href: "/dashboard/settings", label: "Set up payments" }
             : blocker?.code === "members_only_unavailable"
               ? { href: "/dashboard/memberships", label: "Go to Memberships" }

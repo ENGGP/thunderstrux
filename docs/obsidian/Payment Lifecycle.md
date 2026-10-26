@@ -49,7 +49,7 @@ Facts that sit beside the status: `requiresCompensationReview` (charged, not hon
 | --- | --- | --- |
 | `active` | none | issuance; a staff restore after a won dispute |
 | `refund_review` | `disputed` | a dispute opening |
-| `void` | `refunded`, `refunded_outside`, `dispute_lost`, `cancelled` | a confirmed refund, a full outside refund, a lost dispute, a free cancellation |
+| `void` | `refunded`, `refunded_outside`, `dispute_lost`, `cancelled` | a confirmed refund, a full outside refund or a staff "refunded outside Thunderstrux" mark, a lost dispute, a free cancellation |
 
 Voiding keeps `checkedInAt` and never restores stock. Only `active` tickets appear in the wallet, the ticket email and the door list.
 
@@ -88,8 +88,8 @@ Checkout writes what was bought, and later edits never change it: `paymentKind` 
 
 1. A known `(actor, idempotencyKey)` replays its attempt; the same key with another selection (`checkoutRequestHash` of event, ticket type, quantity, expected price) is 409 `idempotency_conflict`. A same-key request that won the race is found again after the buyer lock or a unique violation.
 2. In one transaction (`runReservationTransaction`): lock the buyer, then `lockEventInventory`, then decide visibility, status, sale state, price (member price via an active `member_prices` grant), stock and Stripe readiness under those locks.
-3. **Free price:** `issueFreeOrder` writes a `paid` free order (`paidAt = fulfilledAt`, unit price, total and fee 0, no seller account), decrements stock once, numbers the tickets, appends `order_created` and `free_fulfilled`, creates the attempt and queues the automatic ticket email. No hold, no fee, no Stripe call; the answer is `fulfilled`.
-4. **Paid price:** the SEC-005 hold cap is checked, then a `pending` order with its snapshots, an `active` hold, `order_created` and a `created` attempt are committed.
+3. **Free price:** the buyer's `active` free tickets on the event plus this order stay within `maxTicketsPerOrder`, else 409 `free_limit_reached` with the number left as `value` (SEC-030), so one account can't claim a free event. Then `issueFreeOrder` writes a `paid` free order (`paidAt = fulfilledAt`, unit price, total and fee 0, no seller account), decrements stock once, numbers the tickets, appends `order_created` and `free_fulfilled`, creates the attempt and queues the automatic ticket email. No hold, no fee, no Stripe call; the answer is `fulfilled`.
+4. **Paid price:** the SEC-005 hold cap is checked (its 409 `purchase_in_progress` names the buyer's own open order as the detail `id`, so the page links to it), then a `pending` order with its snapshots, an `active` hold, `order_created` and a `created` attempt are committed.
 5. Outside the transaction: store the Session request on the attempt and move the hold's end to the Session's `expires_at` + `lateWebhookGraceMs`, then create the Session. Bind it with `attachStripeSession` (`stripe_session_attached`) and answer `redirect`.
 
 A definite Stripe refusal fails the order, its attempt and the hold (`failPendingOrder`, `order_failed`). An uncertain error, or a Session that can't be bound, leaves the attempt `provider_uncertain` and answers 202 with the attempt id.
@@ -101,13 +101,13 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | | Tickets | Memberships and merchandise |
 | --- | --- | --- |
 | Row | `TicketReservation` | the family's own holds, plus `CommerceOrder.expiresAt` |
-| Ends | Session `expires_at` + `lateWebhookGraceMs` (5 min), set in `lib/payments/checkout-creation.ts`; created first as `getReservationExpiry` (30 min, `reservationMinutes`) | with the Session (`expires_at`), set in `lib/commerce/checkout.ts` |
+| Ends | Session `expires_at` + `lateWebhookGraceMs` (5 min), set in `lib/payments/checkout-creation.ts`; created first as `getReservationExpiry` (30 min, `reservationMinutes`) | `CommerceOrder.expiresAt` is the Session's `expires_at` (set in `lib/commerce/checkout.ts`); `heldByVariant` counts the hold until `lateWebhookGraceMs` past it, as tickets do (PAY-020) |
 | Expired by | stale-order job, expiry webhook, buyer cancel | the same; the stale job waits the same 5 minutes past `expiresAt` |
 
 - The Session lives 30 minutes + 60 s (`checkoutSessionExpiresAt`). Stripe takes no payment after its page closes, but the webhook may come later; the grace lets a payment made in time still find its hold (DEF-033). Order pages show Stripe's closing time as the deadline.
-- Stock: `sellableQuantity` = max(0, min(type remaining − that type's live holds, capacity − (active tickets + all live holds))); the capacity term applies only when `Event.capacity` is set. `TicketType.quantity` is remaining stock and drops only at fulfilment.
+- Stock: `sellableQuantity` = max(0, min(type remaining − that type's live holds, capacity − (tickets not void + all live holds))); the capacity term applies only when `Event.capacity` is set. `TicketType.quantity` is remaining stock and drops only at fulfilment.
 - A lapsed hold stops counting at once, whether or not its order has expired yet. Checkout never expires other buyers' holds (DEF-032).
-- One buyer's live paid holds on an event stay within `maxTicketsPerOrder` (10): members by account, guests by identity (SEC-005).
+- One buyer's live paid holds on an event stay within `maxTicketsPerOrder` (10): members by account, guests by identity (SEC-005). Free tickets have the same cap on the tickets the buyer holds (SEC-030).
 - Hold length is longer than Eventbrite's and Humanitix's defaults (PAY-009, open).
 
 ## Fulfilment
@@ -128,6 +128,7 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | Metadata missing (`orderId`, `eventId`, `organisationId`, `ticketTypeId`, positive `quantity`) | `missing_required_metadata_after_payment` |
 | Session id, amount, currency `aud`, metadata against the order (organisation = the event's owner), or destination against `sellerStripeAccountId` (orders without a snapshot skip it) | `webhook_mismatch` |
 | The order had failed ordinarily | `paid_session_received_after_order_failed` |
+| A refund made in Stripe (`externalRefundedAmount`) or a dispute (`disputeStatus`) reached the order before this webhook | `refunded_or_disputed_before_fulfilment` |
 | Hold expired or lapsed / missing | `reservation_expired_after_payment` / `reservation_missing_after_payment` |
 | Hold quantity differs | `reservation_quantity_mismatch_after_payment` |
 | Member-price membership revoked (read `FOR SHARE`) | `member_price_membership_revoked` |
@@ -176,7 +177,7 @@ The `checkout-recovery` worker (`processCheckoutAttemptRecoveryBatch`, tickets a
 `CommerceOrder` (`CommerceKind` `membership` or `merchandise`) with `CommerceOrderLine`s. Families plug in through `commerceFamilies` in `lib/commerce/families.ts` (both are registered): a selection schema, whether guests may buy (merchandise only), and `quote`, `lock`, `fulfil`, `release` hooks that run inside the caller's transaction. Lock order: buyer, then the family's resources (membership: member then society; merchandise: variants by ascending id), then the order.
 
 - **Checkout** (`POST /api/payments/checkout/membership`, `/merchandise`): same replay and 409 rules as tickets (`commerceRequestHash`). The family quotes under its locks; a total other than `expectedTotal` is 409 `quote_changed`. A free total is created, fulfilled and `free_fulfilled` in one transaction. A paid total needs a ready society, commits the order (`expiresAt` 30 min, fee snapshot) and its attempt, then creates the Session outside and binds it (`attachCommerceSession`). A definite refusal fails the order; an unknown answer leaves the attempt `provider_uncertain` and answers processing.
-- **Webhook** (`reconcileCommerceCheckoutSession`): the order is found by its Session or by `commerceOrderId`. An unknown family, two different matches, a family or society that disagrees, or another bound Session is ignored with `commerce_webhook_identity_mismatch`; a ticket order's Session carrying `family` alerts too. Under the locks, a paid Session is checked for amount, currency and destination, then the family fulfils it (`payment_fulfilled`). A mismatch (`amount_mismatch`, `currency_mismatch`, `destination_mismatch`, `paid_after_order_closed`) or a family that can't honour it becomes compensation: `failed` with `requiresCompensationReview` and `reviewReason`, holds released, `compensation_required`, the buyer's `payment-review/{id}` notice, an automatic full refund ([[Payment Lifecycle Refunds and Disputes]]) and alert `paid_but_unfulfilled_compensation_required`. A completed unpaid Session fails the order (`session_not_paid`).
+- **Webhook** (`reconcileCommerceCheckoutSession`): the order is found by its Session or by `commerceOrderId`. An unknown family, two different matches, a family or society that disagrees, or another bound Session is ignored with `commerce_webhook_identity_mismatch`; a ticket order's Session carrying `family` alerts too. Under the locks, a paid Session is checked for amount, currency and destination, then the family fulfils it (`payment_fulfilled`). A mismatch (`amount_mismatch`, `currency_mismatch`, `destination_mismatch`, `paid_after_order_closed`, `refunded_or_disputed_before_fulfilment`) or a family that can't honour it becomes compensation: `failed` with `requiresCompensationReview` and `reviewReason`, holds released, `compensation_required`, the buyer's `payment-review/{id}` notice, an automatic full refund ([[Payment Lifecycle Refunds and Disputes]]) and alert `paid_but_unfulfilled_compensation_required`. A completed unpaid Session fails the order (`session_not_paid`).
 - **History:** `CommerceLifecycleEvent` with `CommerceLifecycleEventType`: `order_created`, `stripe_session_attached`, `payment_fulfilled`, `free_fulfilled`, `order_failed`, `order_expired`, `compensation_required`, `free_cancelled`, `refund_requested`, `refund_pending`, `refunded`, `refund_failed`, `pickup_ready`, `pickup_collected`, `return_recorded`, `dispute_opened`, `dispute_closed`, `dispute_funds_recovered`, `external_refund_recorded`, `external_refund_reviewed`. Sources are `OrderLifecycleSource`.
 
 ## Order history

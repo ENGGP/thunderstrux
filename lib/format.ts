@@ -2,6 +2,8 @@ export const defaultTimeZone = "Australia/Brisbane";
 
 // The short order reference buyers and staff quote, as shown in the dashboard.
 export const orderReference = (orderId: string) => orderId.slice(-6).toUpperCase();
+// The short reference on a ticket, its email and the door console; door search matches it inside the id.
+export const ticketReference = (ticketId: string) => ticketId.slice(-6).toUpperCase();
 
 export function formatMoney(cents: number) {
   return new Intl.NumberFormat("en-AU", {

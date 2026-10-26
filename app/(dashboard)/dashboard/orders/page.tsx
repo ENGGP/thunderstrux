@@ -226,6 +226,7 @@ export default async function OrganisationOrdersPage({
           pagination={pagination}
           startDateParam={startDateParam}
           includeSystemOrders={includeSystemOrders}
+          timeZone={timeZone}
           systemToggleHref={ordersHref({ status: undefined, includeSystem: includeSystemOrders ? undefined : "true" })}
         />
       </Suspense>
@@ -244,7 +245,8 @@ async function OrderResults({
   startDateParam,
   endDateParam,
   includeSystemOrders,
-  systemToggleHref
+  systemToggleHref,
+  timeZone
 }: {
   organisationId: string;
   activeFilter: OrderStatusFilter;
@@ -255,6 +257,8 @@ async function OrderResults({
   endDateParam?: string;
   includeSystemOrders: boolean;
   systemToggleHref: string;
+  // Times show in the society's zone, the same zone the date filters use.
+  timeZone: string;
 }) {
   let pagination = initialPagination;
   let orderResult: Awaited<ReturnType<typeof getGroupedOrganisationOrdersWithContext>>;
@@ -391,7 +395,7 @@ async function OrderResults({
                 {order.eventTitle} · {order.ticketType}
               </p>
               <p className="text-sm tabular-nums text-ink">
-                {order.quantity} {order.quantity === 1 ? "ticket" : "tickets"} · {formatPrice(order.totalAmount)} · {formatDateTime(order.createdAt)}
+                {order.quantity} {order.quantity === 1 ? "ticket" : "tickets"} · {formatPrice(order.totalAmount)} · {formatDateTime(order.createdAt, { timeZone })}
               </p>
             </>
           )}
@@ -401,7 +405,7 @@ async function OrderResults({
             { header: "Qty", align: "right", cell: (order) => order.quantity },
             { header: "Total", align: "right", cell: (order) => formatPrice(order.totalAmount) },
             { header: "Status", cell: (order) => <>{status(order)}{order.failureReason ? <p className="mt-1 max-w-56 text-sm text-ink-soft">{order.failureReason}</p> : null}</> },
-            { header: "Ordered", className: "whitespace-nowrap text-ink-soft", cell: (order) => formatDateTime(order.createdAt) }
+            { header: "Ordered", className: "whitespace-nowrap text-ink-soft", cell: (order) => formatDateTime(order.createdAt, { timeZone }) }
           ]}
           label="Ticket orders"
           rowKey={(order) => order.id}

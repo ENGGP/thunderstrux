@@ -6,7 +6,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { getBookedEventDetail } from "@/lib/events/public-events";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, ticketReference } from "@/lib/format";
 import { getMemberTicketOrder } from "@/lib/orders/member-tickets";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { zoneCity } from "@/lib/zoned-time";
@@ -63,7 +63,7 @@ export default async function CheckoutConfirmedPage({
           <ul aria-label="Ticket numbers" className="flex flex-wrap gap-2">
             {order.tickets.map((ticket) => (
               <li className="rounded-tag border border-line bg-surface-subtle px-2 py-0.5 font-mono text-sm text-ink" key={ticket.id} title={ticket.id}>
-                Ticket {ticket.id.slice(-6)}
+                Ticket {ticketReference(ticket.id)}
               </li>
             ))}
           </ul>

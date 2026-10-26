@@ -158,7 +158,7 @@ export function PublicTicketPurchase({
         <p>Tickets are emailed to you, so we need to know the address works.</p>
         <Link
           className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4"
-          href={`/verify-email?callbackUrl=${encodeURIComponent(`/events/${eventId}`)}`}
+          href={`/verify-email?callbackUrl=${encodeURIComponent(checkoutHref || `/events/${eventId}`)}`}
         >
           Verify email
         </Link>

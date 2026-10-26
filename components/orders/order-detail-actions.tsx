@@ -19,7 +19,8 @@ export function OrderDetailActions({
   requiresCompensationReview,
   free = false,
   disputed = false,
-  cancelFree = null
+  cancelFree = null,
+  markNeedsCode = false
 }: {
   orderId: string;
   buyerEmail: string | null;
@@ -37,6 +38,8 @@ export function OrderDetailActions({
   // Set when this staff member may refund this order through Stripe.
   // rest: part of the order was already refunded in Stripe; this refunds what is left.
   refund?: { amount: string; rest?: boolean; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
+  // Marking a refund made outside Thunderstrux asks for a fresh authenticator code unless staff MFA is off.
+  markNeedsCode?: boolean;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -110,23 +113,20 @@ export function OrderDetailActions({
 
   async function markRefunded() {
     setIsBusy(true);
-    setMessage(null);
-
+    setRefundError("");
     try {
-      const response = await fetchWithCsrf(`/api/orders/${orderId}/refund-manual`, {
-        method: "PATCH"
+      await fetchJson(`/api/orders/${orderId}/refund-manual`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {})
       });
-
-      if (!response.ok) {
-        setMessage({ ok: false, text: "Could not update refund flag." });
-        return;
-      }
-
+      setConfirmingRefund(false);
       setMessage({ ok: true, text: "Marked as refunded." });
       router.refresh();
+    } catch (failure) {
+      setRefundError(getClientErrorMessage(failure, "The order wasn't marked. Nothing changed."));
     } finally {
       setIsBusy(false);
-      setConfirmingRefund(false);
     }
   }
 
@@ -245,8 +245,8 @@ export function OrderDetailActions({
           ) : (
             <>
               <p className="text-sm text-ink-soft">
-                Use only after you have refunded the buyer yourself. This records it and
-                cannot be undone; it does not send money.
+                Use only after you have refunded the buyer yourself. This records it, stops the
+                tickets working and cannot be undone; it does not send money.
               </p>
               <div>
                 <Button disabled={isBusy} onClick={() => setConfirmingRefund(true)} type="button" variant="danger">
@@ -343,9 +343,16 @@ export function OrderDetailActions({
         open={confirmingRefund}
         title="Mark this order as refunded?"
       >
-        Do this only after you have refunded the buyer yourself. It records the refund
-        on this order and cannot be undone. It does not send money or change the payment
-        in Stripe.
+        <div className="grid gap-3">
+          {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
+          <p>
+            Do this only after you have refunded the buyer yourself. The tickets stop working straight away, and
+            this can&apos;t be undone. It doesn&apos;t send money or change the payment in Stripe.
+          </p>
+          {markNeedsCode ? (
+            <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
+          ) : null}
+        </div>
       </ConfirmDialog>
     </div>
   );

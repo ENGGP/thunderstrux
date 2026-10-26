@@ -3,6 +3,8 @@ import type { EmailOutboxMode, EmailOutboxStatus, Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db";
 import {
   sendTicketDeliveryEmailToProvider,
+  ticketEmailRefusal,
+  ticketEmailRefusalSelect,
   truncateTicketEmailError
 } from "@/lib/email/ticket-delivery";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
@@ -197,14 +199,14 @@ export async function requeueFailedTicketEmail({
     const order = await tx.order.findUniqueOrThrow({
       where: { id: job.orderId },
       select: {
-        status: true,
+        ...ticketEmailRefusalSelect,
         ticketEmailSentAt: true,
         requiresCompensationReview: true,
         reservation: { select: { status: true } },
         event: { select: { organisationId: true } }
       }
     });
-    if (order.status !== "paid" || (job.mode === "automatic" && order.ticketEmailSentAt)) {
+    if (ticketEmailRefusal(order) || (job.mode === "automatic" && order.ticketEmailSentAt)) {
       throw new EmailRequeueError("Order is not eligible for email requeue");
     }
     const organisationId = order.event.organisationId;
@@ -451,6 +453,16 @@ async function markJobFailed({
   return { applied: true, exhausted };
 }
 
+// Ends a job whose order can no longer have its tickets emailed. Not a delivery
+// failure: no retry, no alert, and requeue refuses it too.
+async function markJobRefused(job: ClaimedEmailJob, reason: string, now: Date) {
+  const updated = await prisma.emailOutbox.updateMany({
+    where: { id: job.id, status: "processing", processingToken: job.processingToken },
+    data: { status: "failed", nextAttemptAt: now, processingStartedAt: null, processingToken: null, lastError: truncateTicketEmailError(reason) }
+  });
+  if (updated.count > 0) logInfo("email_outbox.job.refused", { jobId: job.id, orderId: job.orderId, mode: job.mode });
+}
+
 async function markJobAlreadySent(job: ClaimedEmailJob, now: Date) {
   return prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, job.orderId))) return false;
@@ -500,7 +512,7 @@ export async function processTicketEmailOutboxBatch({
     try {
       const order = await prisma.order.findUnique({
         where: { id: job.orderId },
-        select: { ticketEmailSentAt: true }
+        select: { ticketEmailSentAt: true, ...ticketEmailRefusalSelect }
       });
 
       if (!order) {
@@ -509,6 +521,14 @@ export async function processTicketEmailOutboxBatch({
 
       if (job.mode === "automatic" && order.ticketEmailSentAt) {
         await markJobAlreadySent(job, now);
+        result.skipped += 1;
+        continue;
+      }
+
+      // Refunded, cancelled or disputed while the email waited: never say the tickets are ready.
+      const refusal = ticketEmailRefusal(order);
+      if (refusal) {
+        await markJobRefused(job, refusal, now);
         result.skipped += 1;
         continue;
       }

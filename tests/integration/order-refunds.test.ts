@@ -209,20 +209,25 @@ describe("whole-order refunds", () => {
     expect(await prisma.ticket.count({ where: { orderId: refused.order.id, validity: "active" } })).toBe(2);
   });
 
-  test("a refund Stripe already has from elsewhere, or a disputed charge, stops the request for review", async () => {
+  test("a refund Stripe already has from elsewhere stops the request for review; a charge whose dispute was won can be refunded", async () => {
     const fixture = await paidOrder();
     stripe.list.mockResolvedValue({ data: [{ id: "re_dashboard", status: "succeeded", metadata: {} }] });
     await expect(requestOrderRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "verification_failed" });
     expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: fixture.order.id } })).toMatchObject({ status: "failed", lastErrorCode: "existing_refund_requires_review" });
 
-    const disputed = await paidOrder();
-    stripe.retrieve.mockResolvedValue({
-      payment_status: "paid", amount_total: 3000, currency: "aud", metadata: { orderId: disputed.order.id },
-      payment_intent: { id: disputed.intentId, amount_received: 3000, transfer_data: { destination: disputed.owner.organisation.stripeAccountId }, latest_charge: { disputed: true } }
-    });
-    await expect(requestOrderRefund(refundInput(disputed))).rejects.toMatchObject({ kind: "verification_failed" });
-    expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: disputed.order.id } })).toMatchObject({ status: "failed", lastErrorCode: "provider_identity_not_eligible" });
     expect(stripe.create).not.toHaveBeenCalled();
+
+    // Stripe keeps `disputed: true` after a dispute closes. Once staff restored the
+    // tickets of a won dispute, the order refunds like any other (an event cancelled later).
+    const won = await paidOrder();
+    stripe.list.mockResolvedValue({ data: [] });
+    stripe.retrieve.mockResolvedValue({
+      payment_status: "paid", amount_total: 3000, currency: "aud", metadata: { orderId: won.order.id },
+      payment_intent: { id: won.intentId, amount_received: 3000, transfer_data: { destination: won.owner.organisation.stripeAccountId }, latest_charge: { disputed: true } }
+    });
+    stripe.create.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => providerRefund(won, params.metadata.refundRequestId));
+    await expect(requestOrderRefund(refundInput(won))).resolves.toMatchObject({ status: "succeeded" });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: won.order.id } })).toMatchObject({ refundStatus: "refunded" });
   });
 
   test("a refund still unresolved after six checks keeps its fence and alerts a person, and Stripe is still asked hourly until it answers (PAY-013)", async () => {

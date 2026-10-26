@@ -8,13 +8,14 @@ import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-recon
 import { getStripeSessionDashboardUrl } from "@/lib/orders/order-detail";
 import { MfaInputError } from "@/lib/security/staff-mfa";
 import { getStripe, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
-import { createOrganisationDashboardLink, disconnectAccount, markAccountStatusError, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
+import { createOrganisationDashboardLink, disconnectAccount, heldMoneyBlocksDisconnect, markAccountStatusError, StripeDisconnectBlockedError, StripeDisconnectUnavailableError } from "@/lib/stripe/connect";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createEvent, createOrder, createOrganisationAccount, createReservation } from "@/tests/helpers/test-data";
 
 // PAY-005: disconnect hands payouts back to Stripe's schedule; Stripe itself isn't reached here.
 const restoreSchedule = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/payouts/payouts", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/payouts/payouts")>()), restoreStripePayoutSchedule: restoreSchedule }));
+const keepManual = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/payouts/payouts", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/payouts/payouts")>()), restoreStripePayoutSchedule: restoreSchedule, keepStripePayoutsManual: keepManual }));
 
 async function paidFixture(sellerStripeAccountId: string | null) {
   const owner = await createOrganisationAccount({ stripeReady: true });
@@ -102,6 +103,23 @@ describe("disconnect", () => {
       actorUserId: actor.id,
       metadata: { previousStripeAccountId: fixture.owner.organisation.stripeAccountId }
     });
+  });
+
+  test("is refused while sale money is still held for an upcoming event, so Stripe can't pay it out early (PAY-005)", async () => {
+    const fixture = await paidFixture(null);
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "paid", paidAt: new Date(), sellerStripeAccountId: fixture.owner.organisation.stripeAccountId } });
+    const actor = { id: fixture.owner.user.id };
+
+    await expect(disconnectAccount(fixture.owner.organisation.id, { actor })).rejects.toThrow(heldMoneyBlocksDisconnect);
+    expect(keepManual).toHaveBeenCalledWith(fixture.owner.organisation.stripeAccountId);
+    expect(restoreSchedule).not.toHaveBeenCalledWith(fixture.owner.organisation.stripeAccountId);
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).not.toBeNull();
+
+    // An account this platform can no longer reach has nothing to pay out, so it is still unlinked (PAY-015).
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    keepManual.mockRejectedValueOnce(Object.assign(new Error("The provided key does not have access to account 'acct_gone' (or that account does not exist)."), { type: "StripePermissionError" }));
+    await disconnectAccount(fixture.owner.organisation.id, { actor });
+    expect((await prisma.organisation.findUniqueOrThrow({ where: { id: fixture.owner.organisation.id } })).stripeAccountId).toBeNull();
   });
 
   test("a membership order still being paid, refunded or disputed also blocks it", async () => {

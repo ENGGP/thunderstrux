@@ -229,7 +229,11 @@ describe("staff MFA", () => {
     const call = (route: (request: Request) => Promise<Response>, path: string, body?: unknown) =>
       route(jsonRequest(`http://localhost:3000/api/me/mfa/${path}`, body, { method: "POST" }));
 
-    const started = await call(setupRoute, "setup");
+    // A session alone can't enrol a phone: setup asks for the account password.
+    expect((await call(setupRoute, "setup")).status).toBe(400);
+    expect((await call(setupRoute, "setup", { password: "not-the-password" })).status).toBe(403);
+    expect(await prisma.userMfa.findUnique({ where: { userId: user.id } })).toBeNull();
+    const started = await call(setupRoute, "setup", { password: "password123" });
     expect(started.status).toBe(200);
     const { secret } = await parseJsonResponse(started);
     const step = Math.floor(Date.now() / 30_000);

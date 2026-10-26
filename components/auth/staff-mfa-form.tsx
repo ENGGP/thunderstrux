@@ -13,6 +13,7 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
   const [setup, setSetup] = useState<Setup | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -27,11 +28,13 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
     </div>
   );
 
-  async function begin() {
+  async function begin(event: FormEvent) {
+    event.preventDefault();
     setBusy(true);
     setMessage("");
     try {
-      setSetup(await fetchJson<Setup>("/api/me/mfa/setup", { method: "POST" }));
+      setSetup(await fetchJson<Setup>("/api/me/mfa/setup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password }) }));
+      setPassword("");
     } catch (error) {
       setMessage(getClientErrorMessage(error, "Could not begin MFA setup."));
     } finally {
@@ -91,11 +94,14 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
           <p className="text-ink-soft">
             Society staff confirm their sign-in with an authenticator app such as Google Authenticator, 1Password or Authy.
           </p>
-          <div>
-            <Button disabled={busy} onClick={begin} type="button">
-              Set up authenticator
-            </Button>
-          </div>
+          <form className="grid gap-3" onSubmit={begin}>
+            <TextInput autoComplete="current-password" hint="Setting up an authenticator changes how you sign in, so we check it's you." label="Your password" maxLength={200} onChange={(event) => setPassword(event.target.value)} required type="password" value={password} />
+            <div>
+              <Button disabled={busy} type="submit">
+                Set up authenticator
+              </Button>
+            </div>
+          </form>
         </>
       ) : null}
       {setup ? (

@@ -299,13 +299,13 @@ describe("orders API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const missingResponse = await markManualRefund(
-      jsonRequest("http://localhost/api/orders/missing-order", undefined, {
+      jsonRequest("http://localhost/api/orders/missing-order", {}, {
         method: "PATCH"
       }),
       routeContext({ orderId: "missing-order" })
     );
     const crossTenantResponse = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${otherOrder.id}`, undefined, {
+      jsonRequest(`http://localhost/api/orders/${otherOrder.id}`, {}, {
         method: "PATCH"
       }),
       routeContext({ orderId: otherOrder.id })
@@ -519,14 +519,6 @@ describe("orders API", () => {
       );
       expect(detailResponse.status).toBe(200);
 
-      const refundResponse = await markManualRefund(
-        jsonRequest(`http://localhost/api/orders/${order.id}`, undefined, {
-          method: "PATCH"
-        }),
-        routeContext({ orderId: order.id })
-      );
-      expect(refundResponse.status).toBe(200);
-
       const resendResponse = await resendTickets(
         jsonRequest(`http://localhost/api/orders/${order.id}/resend`, undefined, {
           method: "POST"
@@ -540,6 +532,20 @@ describe("orders API", () => {
           where: { orderId: order.id, mode: "manual", status: "pending" }
         })
       ).resolves.toBe(1);
+
+      const refundResponse = await markManualRefund(
+        jsonRequest(`http://localhost/api/orders/${order.id}`, {}, {
+          method: "PATCH"
+        }),
+        routeContext({ orderId: order.id })
+      );
+      expect(refundResponse.status).toBe(200);
+      // A refunded order's tickets are void, so they are no longer resent.
+      const refusedResend = await resendTickets(
+        jsonRequest(`http://localhost/api/orders/${order.id}/resend`, undefined, { method: "POST" }),
+        routeContext({ orderId: order.id })
+      );
+      expect(refusedResend.status).toBe(400);
     } finally {
       restoreEmailEnv();
       vi.unstubAllGlobals();
@@ -575,7 +581,7 @@ describe("orders API", () => {
     expect(detailResponse.status).toBe(404);
 
     const refundResponse = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${order.id}`, undefined, {
+      jsonRequest(`http://localhost/api/orders/${order.id}`, {}, {
         method: "PATCH"
       }),
       routeContext({ orderId: order.id })
@@ -653,15 +659,28 @@ describe("orders API", () => {
       paidAt: new Date(),
       unitPrice: ticketType.price
     });
+    const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id, eventId: event.id, ticketTypeId: ticketType.id, organisationId: organisation.id } });
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    // With staff MFA on, the mark needs a fresh code: it voids tickets and ends the payout hold.
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
+    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    const withoutCode = await markManualRefund(jsonRequest(`http://localhost/api/orders/${order.id}`, {}, { method: "PATCH" }), routeContext({ orderId: order.id }));
+    expect(withoutCode.status).toBe(400);
+    expect((await parseJsonResponse(withoutCode)).error.details[0].path).toEqual(["mfaCode"]);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(false);
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
+
     const response = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${order.id}`, undefined, {
+      jsonRequest(`http://localhost/api/orders/${order.id}`, {}, {
         method: "PATCH"
       }),
       routeContext({ orderId: order.id })
     );
     expect(response.status).toBe(200);
+    // The buyer was refunded, so the ticket no longer admits.
+    expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ validity: "void", validityReason: "refunded_outside" });
     const body = await parseJsonResponse(response);
     expect(body.order).toEqual({
       id: order.id,
@@ -712,7 +731,7 @@ describe("orders API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${order.id}/refund-manual`, undefined, {
+      jsonRequest(`http://localhost/api/orders/${order.id}/refund-manual`, {}, {
         method: "PATCH"
       }),
       routeContext({ orderId: order.id })

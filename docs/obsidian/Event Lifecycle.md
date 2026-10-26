@@ -58,7 +58,8 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 ### Validation limits (`lib/validators/events.ts`)
 
-- Title 1 to 180 characters, description 1 to 5000, location 1 to 240. End after start. `salesCloseAt` not after the end.
+- Title 1 to 180 characters, description up to 5000, location up to 240. End after start. `salesCloseAt` not after the end.
+- A draft saves without a description or location, so an organiser can stop half-way; readiness (`details_missing`) asks for both before publishing, and an edit of a published event that empties either is 400 on the field.
 - `capacity` positive, at most 1,000,000.
 - At most 50 ticket types (`MAX_TICKET_TYPES`, SEC-025): the API refuses more; the builder disables "Add ticket type" at the limit.
 - Ticket type name 1 to 120 characters. `price` and `memberPrice` follow `priceAmountSchema`: 0 (free) or $0.50 to $999,999.99 in cents. `memberPrice` at most `price` (validator and `TicketType_member_price_chk`).
@@ -76,7 +77,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - **Capacity** hint names tickets already issued or held. Each existing type shows sold (valid tickets) and held (live holds); a type with orders or tickets can't be removed.
 - **Event image:** optional 16:9, uploaded as an `event` asset (`POST /api/orgs/[orgSlug]/assets?kind=event`), previewed privately; Replace and Remove apply on save.
 - **If tickets cannot be issued:** "Refund the buyer automatically in full" (`automatic_full`, the default) or "Review it manually" (`manual_review`).
-- Saving an edit stays on the page ("Event saved"). A stale version or moved stock keeps the edits on screen with the server's message. Leaving with unsaved changes asks first. A draft's Edit page shows the readiness checklist.
+- Saving an edit stays on the page ("Event saved"). A stale version or moved stock keeps the edits on screen with the server's message. Leaving with unsaved changes asks first, whether by closing the tab or by following any link in the app (Cancel, the sidebar, "set up payments"), because in-app links never unload the page. A draft's Edit page shows the readiness checklist.
 
 ### Publish and unpublish
 
@@ -88,7 +89,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
   - `sales_close_after_end`; `sales_window_past`: close time in the future and not after the end.
   - `members_only_unavailable`: a members-only event needs a published plan still to end that unlocks `members_only_events`.
   - `no_ticket_types`; `no_stock`; `payments_unavailable` (every stocked type is paid and the society can't take charges); `sold_out` ("Every ticket type is sold out or held in checkouts.").
-- **Per-type buyability** is separate: a free type is buyable without Stripe; a paid type needs charges ready. A mixed event publishes and sells its free types while paid ones wait. Checkout and the public page pass each type's sellable stock.
+- **Per-type buyability** is separate: a free type is buyable without Stripe; a paid type needs charges ready. A mixed event publishes and sells its free types while paid ones wait, and readiness returns the non-blocking warning `paid_tickets_waiting` so the checklist and the Summary's selling status tell the organiser buyers can't pay yet. Checkout and the public page pass each type's sellable stock.
 - Publishing a members-only event checks the plan once; it stays published after the plan ends, and members keep access while their memberships run.
 - **Unpublish** is refused once any order exists ("Keep this event published for purchasers and order history"). The count is rechecked under the event lock that checkout takes (SEC-009).
 - Audits `event.published` / `event.unpublished`.
@@ -105,8 +106,9 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - A type without `id` is created. An omitted type is deleted only if it has no orders and no tickets; otherwise it is kept.
 - Types with orders or tickets stay editable (name, price, member price, quantity) for future purchases. Orders keep their `unitPrice`, `totalAmount` and purchase snapshots; tickets keep their `ticketTypeId`.
 - **Stock fence:** each existing type sends `expectedQuantity` (what the editor loaded). If sales moved stock and the field is untouched, the current stock is kept; if both changed, 409 "Ticket stock changed while you were editing".
-- A type's remaining quantity can't go below its active holds; `capacity` can't go below occupancy (valid issued tickets plus active holds). Both are 400 on the field.
-- **End time (SEC-004):** an edit can't move `endTime` earlier to a time already past (400 on `endTime`), because payouts wait until two days after the end. Later, or earlier but still future, is fine.
+- A type's remaining quantity can't go below its active holds; `capacity` can't go below occupancy (issued tickets that aren't void, which includes tickets under dispute review, plus active holds). Both are 400 on the field.
+- **End time (SEC-004):** an edit can't move `endTime` earlier to a time already past (400 on `endTime`), because payouts wait until two days after the end. Later, or earlier but still future, is fine: payouts hold the event's money until two days after the latest end it has had (`EventChange.previousEndTime`, SEC-029), so moving it earlier releases nothing.
+- A published event keeps its description and location (400 on the field), since buyers can see it.
 - **Time and place changes:** a new start, end or location on an event with active tickets records an `EventChange` in the same transaction. A newer unsent change supersedes the older one and keeps the original "was"; changing back before any email sends nothing. The notification worker emails each valid holder once after a five-minute pause (`eventChangeDelayMs`). Title, description, price and stock edits email nobody ([[Email Delivery Implementation]]).
 - Audits `event.updated` with before and after per field and ticket types added, removed or edited.
 
@@ -115,7 +117,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 `lib/events/inventory.ts` is the only place that locks an Event and its ticket types or computes sellable stock.
 
 - **Lock order:** the buyer's User row on paths that fence it, then the Event, then its ticket types by ascending id, then orders and holds. No path locks an order and then an event or type ([[Database and Multi Tenancy#Lock order]]). Checkout (including free issuance inside it), paid fulfilment, edits, unpublish and delete take it; publish and sales changes are compare-and-set on `version`.
-- **Sellable** = `max(0, min(remaining − that type's active holds, capacity − occupancy))`; without a capacity only the first limit applies.
+- **Sellable** = `max(0, min(remaining − that type's active holds, capacity − occupancy))`; without a capacity only the first limit applies. Occupancy counts tickets that aren't void, so a ticket under dispute review keeps its place and restoring it after a won dispute can't oversell (DEF-056).
 - `TicketType.quantity` is remaining stock. Paid fulfilment (`lib/payments/checkout-reconciliation.ts`) and free registration at checkout (`lib/payments/free-ticket-issuance.ts`) both decrement it with a `quantity >= n` guard.
 - Holds count while `status = active` and `expiresAt` is after the transaction's single application-clock reading (not the database clock; tests drive it with fake timers). Hold lifetime: [[Payment Lifecycle#Holds]].
 - Checkout compares the buyer's `expectedUnitPrice` with the locked price and refuses a change with 409 before holding stock. Fulfilment rechecks capacity once; an order that would exceed it goes to compensation review.

@@ -117,6 +117,21 @@ describe("inventory and capacity locks", () => {
     expect(await sellable(event)).toBe(0);
   });
 
+  test("tickets under dispute review keep their places, so restoring them after a won dispute can't oversell", async () => {
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published", capacity: 2 });
+    const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date(), quantity: 2 });
+    for (const issueSequence of [1, 2]) {
+      await prisma.ticket.create({
+        data: { issueSequence, orderId: order.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, organisationId: organisation.id, validity: "refund_review", validityReason: "disputed" }
+      });
+    }
+    expect(await sellable(event)).toBe(0);
+    // A lost dispute voids them, and only then are the places free.
+    await prisma.ticket.updateMany({ where: { orderId: order.id }, data: { validity: "void", validityReason: "dispute_lost" } });
+    expect(await sellable(event)).toBe(2);
+  });
+
   test("a price changed after the buyer saw it is a 409 before any hold", async () => {
     mockSessions();
     const { organisation, user } = await createOrganisationAccount({ stripeReady: true });

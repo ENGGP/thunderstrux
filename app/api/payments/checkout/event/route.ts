@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         routeErrorRule(CheckoutCreationError, (refused) =>
           refused.kind === "event_not_found" || refused.kind === "ticket_type_not_found"
             ? notFound(refused.message)
-            : refused.kind === "quote_changed" || refused.kind === "idempotency_conflict" || refused.kind === "purchase_in_progress"
+            : refused.kind === "quote_changed" || refused.kind === "idempotency_conflict" || refused.kind === "purchase_in_progress" || refused.kind === "free_limit_reached"
               ? apiError("CONFLICT", refused.message, 409, refused.details)
               : badRequest(refused.message, refused.details)
         ),

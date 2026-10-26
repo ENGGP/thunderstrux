@@ -4,6 +4,23 @@ import { Icon } from "@/components/ui/icon";
 import type { PublicEventDetail } from "@/lib/events/public-events";
 import { formatDateRange, formatDateTime } from "@/lib/format";
 import { zoneCity } from "@/lib/zoned-time";
+import { appUrl } from "@/lib/app-url";
+
+// Google Calendar takes UTC times as 20270305T110000Z.
+const calendarTime = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
+// An "Add to calendar" link for the event page: no file to download, and it opens in any browser.
+function googleCalendarHref(event: PublicEventDetail) {
+  const page = appUrl() ? new URL(`/events/${event.id}`, appUrl()).toString() : "";
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.title,
+    dates: `${calendarTime(event.startTime)}/${calendarTime(event.endTime)}`,
+    location: event.location,
+    details: [event.description.slice(0, 500), page].filter(Boolean).join("\n\n")
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
 
 // The public event page body, shared by /events/[eventId] and the organiser's
 // draft preview so the preview is exactly what buyers will see.
@@ -53,11 +70,26 @@ export function PublicEventView({
               <span>
                 {formatDateRange(event.startTime, event.endTime, timeZone)}
                 <span className="block text-sm text-ink-muted">{zoneCity(timeZone)}</span>
+                {preview ? null : (
+                  <a className="block text-sm font-semibold text-brand underline underline-offset-4" href={googleCalendarHref(event)} rel="noopener noreferrer" target="_blank">
+                    Add to Google Calendar
+                  </a>
+                )}
               </span>
             </span>
             <span className="inline-flex items-start gap-2 [overflow-wrap:anywhere]">
               <Icon className="mt-1" name="pin" />
-              {event.location}
+              <span>
+                {event.location}
+                <a
+                  className="block text-sm font-semibold text-brand underline underline-offset-4"
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open in Maps
+                </a>
+              </span>
             </span>
           </div>
           {event.membersOnly ? (

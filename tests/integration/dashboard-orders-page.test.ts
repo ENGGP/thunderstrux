@@ -8,6 +8,7 @@ import {
   createOrganisationAccount
 } from "@/tests/helpers/test-data";
 import OrganisationOrdersPage from "@/app/(dashboard)/dashboard/orders/page";
+import { prisma } from "@/lib/db";
 
 vi.mock("next/navigation", async importOriginal => ({
   ...await importOriginal<typeof import("next/navigation")>(),
@@ -36,6 +37,18 @@ async function renderOrdersPage(
 }
 
 describe("dashboard orders page", () => {
+  test("ticket order times show in the society's zone, the zone its date filters use", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    await prisma.organisation.update({ where: { id: organisation.id }, data: { timeZone: "Australia/Perth" } });
+    const event = await createEvent({ organisationId: organisation.id });
+    // 11:30 pm on 4 March in Perth is 1:30 am on 5 March in Brisbane.
+    await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date(), createdAt: new Date("2027-03-04T15:30:00.000Z") });
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const html = await renderOrdersPage({ startDate: "2027-03-04", endDate: "2027-03-04" });
+    expect(html).toMatch(/4 Mar 2027.{0,20}11:30/);
+    expect(html).not.toMatch(/5 Mar 2027/);
+  });
+
   test("malformed cursor falls back to first page with warning", async () => {
     const { user, organisation } = await createOrganisationAccount();
     const member = await createMember();

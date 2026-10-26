@@ -27,6 +27,9 @@ type StripeConnectState =
   | "READY"
   | "ERROR";
 
+// Stripe actions that can change where payouts go, each its own route under /api/stripe/connect/.
+type CodeAction = "onboard" | "continue" | "dashboard";
+
 type ConnectStatus = {
   accountId: string | null;
   connected: boolean;
@@ -110,8 +113,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [needsCode, setNeedsCode] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
-  const [confirmingDashboard, setConfirmingDashboard] = useState(false);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [codeFor, setCodeFor] = useState<CodeAction | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
 
   const checkStatus = useCallback(
     async (targetOrganisation: Organisation, showMessage = false) => {
@@ -215,17 +218,28 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     window.location.href = data.url;
   }
 
-  async function startOnboarding() {
-    setIsStartingOnboarding(true);
+  // Stripe setup and its dashboard can change where payouts go, so with staff
+  // MFA on each asks for a fresh authenticator code first (T53).
+  async function askForCode(action: CodeAction) {
     setMessage(null);
+    setMfaCode("");
+    setCodeError(null);
+    // The server decides; this only chooses whether to ask for a code.
+    const mfa = await fetchJson<{ mode: string }>("/api/me/mfa/status").catch(() => ({ mode: "enforce" }));
+    if (mfa.mode === "off") return goToStripe(action, false);
+    setCodeFor(action);
+  }
+
+  async function goToStripe(action: CodeAction, withCode: boolean) {
+    const busy = action === "dashboard" ? setIsOpeningDashboard : action === "onboard" ? setIsStartingOnboarding : setIsContinuingOnboarding;
+    busy(true);
+    setCodeError(null);
 
     try {
-      await redirectToOnboarding("/api/stripe/connect/onboard");
+      // An empty field sends no code, so the server asks for one in words.
+      await redirectToOnboarding(`/api/stripe/connect/${action}`, withCode && mfaCode.trim() ? { mfaCode } : {});
     } catch (error) {
-      if (
-        error instanceof ClientApiError &&
-        error.payload?.state === "PLATFORM_NOT_READY"
-      ) {
+      if (action === "onboard" && error instanceof ClientApiError && error.payload?.state === "PLATFORM_NOT_READY") {
         setStatus({
           accountId: null,
           connected: false,
@@ -242,58 +256,14 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           actionRequired: error.payload.actionRequired,
           error: error.payload.message
         });
-        setMessage(null);
-        setIsStartingOnboarding(false);
+        setCodeFor(null);
+        busy(false);
         return;
       }
-
-      setMessage({
-        ok: false,
-        text: error instanceof ClientApiError ? error.message : "Unable to start Stripe onboarding."
-      });
-      setIsStartingOnboarding(false);
-    }
-  }
-
-  async function continueOnboarding() {
-    setIsContinuingOnboarding(true);
-    setMessage(null);
-
-    try {
-      await redirectToOnboarding("/api/stripe/connect/continue");
-    } catch (error) {
-      setMessage({
-        ok: false,
-        text: error instanceof ClientApiError ? error.message : "Unable to continue Stripe onboarding."
-      });
-      setIsContinuingOnboarding(false);
-    }
-  }
-
-  // Stripe signs the society in to its own Express Dashboard with a single-use link made now.
-  // The dashboard can change where payouts go, so with staff MFA on it asks for a code first (T53).
-  async function openDashboard() {
-    setMessage(null);
-    setMfaCode("");
-    setDashboardError(null);
-    // The server decides; this only chooses whether to ask for a code.
-    const mfa = await fetchJson<{ mode: string }>("/api/me/mfa/status").catch(() => ({ mode: "enforce" }));
-    if (mfa.mode === "off") return goToDashboard(false);
-    setConfirmingDashboard(true);
-  }
-
-  async function goToDashboard(withCode: boolean) {
-    setIsOpeningDashboard(true);
-    setDashboardError(null);
-
-    try {
-      // An empty field sends no code, so the server asks for one in words.
-      await redirectToOnboarding("/api/stripe/connect/dashboard", withCode && mfaCode.trim() ? { mfaCode } : {});
-    } catch (error) {
-      const text = getClientErrorMessage(error, "Unable to open the Stripe dashboard.");
-      if (withCode) setDashboardError(text);
+      const text = getClientErrorMessage(error, action === "dashboard" ? "Unable to open the Stripe dashboard." : "Unable to continue to Stripe.");
+      if (withCode) setCodeError(text);
       else setMessage({ ok: false, text });
-      setIsOpeningDashboard(false);
+      busy(false);
     }
   }
 
@@ -376,7 +346,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         : "Not yet. Ticket money is held in Stripe until you add a bank account. Sales keep working meanwhile.",
       action:
         status?.state === "READY" && !status.payouts_enabled ? (
-          <Button disabled={isContinuingOnboarding} onClick={continueOnboarding} size="sm" type="button">
+          <Button disabled={isContinuingOnboarding} onClick={() => askForCode("continue")} size="sm" type="button">
             {isContinuingOnboarding ? "Redirecting..." : "Add a bank account in Stripe"}
           </Button>
         ) : null
@@ -384,11 +354,13 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   ];
 
   const dashboardButton = (label: string, variant: "primary" | "secondary") => (
-    <Button disabled={isOpeningDashboard || !status?.dashboard_available} onClick={openDashboard} type="button" variant={variant}>
+    <Button disabled={isOpeningDashboard || !status?.dashboard_available} onClick={() => askForCode("dashboard")} type="button" variant={variant}>
       {isOpeningDashboard ? "Opening Stripe..." : label}
     </Button>
   );
   const waiting = status?.payouts?.held.total ?? 0;
+  // Held money blocks disconnect, unless Thunderstrux can't reach the account (PAY-015), which the server checks.
+  const heldBlocksDisconnect = isConnected && waiting > 0 && status?.state !== "ERROR";
 
   return (
     <>
@@ -452,19 +424,19 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
             ) : null}
 
             {isPlatformNotReady ? (
-              <Button disabled={isStartingOnboarding} onClick={startOnboarding} type="button" variant="secondary">
+              <Button disabled={isStartingOnboarding} onClick={() => askForCode("onboard")} type="button" variant="secondary">
                 {isStartingOnboarding ? "Retrying..." : "Retry after completion"}
               </Button>
             ) : null}
 
             {!isConnected && !isPlatformNotReady ? (
-              <Button disabled={isStartingOnboarding} onClick={startOnboarding} type="button">
+              <Button disabled={isStartingOnboarding} onClick={() => askForCode("onboard")} type="button">
                 {isStartingOnboarding ? "Redirecting..." : "Connect Stripe"}
               </Button>
             ) : null}
 
             {status?.state === "CONNECTED_INCOMPLETE" || status?.state === "RESTRICTED" ? (
-              <Button disabled={isContinuingOnboarding} onClick={continueOnboarding} type="button">
+              <Button disabled={isContinuingOnboarding} onClick={() => askForCode("continue")} type="button">
                 {isContinuingOnboarding ? "Redirecting..." : status.state === "RESTRICTED" ? "Fix in Stripe" : "Continue Stripe setup"}
               </Button>
             ) : null}
@@ -481,7 +453,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
             ) : null}
 
             {status?.dashboard_available ? (
-              <Button disabled={isOpeningDashboard} onClick={openDashboard} type="button" variant="secondary">
+              <Button disabled={isOpeningDashboard} onClick={() => askForCode("dashboard")} type="button" variant="secondary">
                 {isOpeningDashboard ? "Opening Stripe..." : "Open Stripe dashboard"}
               </Button>
             ) : null}
@@ -543,10 +515,17 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
                 View orders
               </Link>
             </Notice>
+          ) : heldBlocksDisconnect ? (
+            <Notice title="You can't disconnect right now" tone="info">
+              <p>
+                {formatMoney(waiting)} from your sales is held for refunds until 2 days after each event, and 7 days after
+                membership and merchandise sales. Disconnect once Thunderstrux has paid it to your bank.
+              </p>
+            </Notice>
           ) : null}
           <div>
             <Button
-              disabled={isDisconnecting || openObligations > 0}
+              disabled={isDisconnecting || openObligations > 0 || heldBlocksDisconnect}
               onClick={openDisconnect}
               type="button"
               variant="danger"
@@ -558,15 +537,18 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       ) : null}
 
       <ConfirmDialog
-        busy={isOpeningDashboard}
+        busy={isOpeningDashboard || isStartingOnboarding || isContinuingOnboarding}
         confirmLabel="Open Stripe"
-        onCancel={() => setConfirmingDashboard(false)}
-        onConfirm={() => goToDashboard(true)}
-        open={confirmingDashboard}
-        title="Open Stripe dashboard?"
+        onCancel={() => setCodeFor(null)}
+        onConfirm={() => codeFor && goToStripe(codeFor, true)}
+        open={codeFor !== null}
+        title={codeFor === "dashboard" ? "Open Stripe dashboard?" : "Continue to Stripe?"}
       >
         <div className="grid gap-4">
-          <p>Stripe&apos;s dashboard can change the bank account payouts go to, so it needs your authenticator code.</p>
+          <p>
+            {codeFor === "dashboard" ? "Stripe's dashboard" : "Stripe setup"} can change the bank account payouts go to, so it
+            needs your authenticator code.
+          </p>
           <TextInput
             autoComplete="one-time-code"
             hint="6 digits from your authenticator app"
@@ -575,9 +557,9 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
             onChange={(event) => setMfaCode(event.target.value)}
             value={mfaCode}
           />
-          {dashboardError ? (
+          {codeError ? (
             <p className="text-sm text-danger" role="alert">
-              {dashboardError}
+              {codeError}
             </p>
           ) : null}
         </div>
@@ -595,8 +577,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         <div className="grid gap-4">
           <p>
             Paid tickets go off sale for every event until you connect again. Your Stripe account and its balance are not
-            touched: Stripe pays {waiting > 0 ? `the ${formatMoney(waiting)} still waiting` : "anything left"} into your bank on its
-            usual schedule. Past orders keep the account they were paid to.
+            touched: Stripe pays anything left into your bank on its usual schedule. Past orders keep the account they were paid to.
           </p>
           {needsCode ? (
             <TextInput

@@ -102,7 +102,7 @@ export async function reconcileCommerceCheckoutSession(
     if (!order) return { status: "ignored" as const, reason: "order_not_found" };
     const current = await tx.commerceOrder.findUniqueOrThrow({
       where: { id: order.id },
-      select: { status: true, requiresCompensationReview: true, totalAmount: true, currency: true, sellerStripeAccountId: true, stripeSessionId: true }
+      select: { status: true, requiresCompensationReview: true, totalAmount: true, currency: true, sellerStripeAccountId: true, stripeSessionId: true, externalRefundedAmount: true, disputeStatus: true }
     });
     // A replay, or a payment already under review: nothing more to do.
     if (current.status === "paid") return { status: "already_fulfilled" as const };
@@ -116,7 +116,9 @@ export async function reconcileCommerceCheckoutSession(
         : session.currency?.toLowerCase() !== current.currency ? "currency_mismatch"
           : destination !== current.sellerStripeAccountId ? "destination_mismatch"
             : current.status !== "pending" ? "paid_after_order_closed"
-              : null;
+              // A refund made in Stripe, or a dispute, that arrived before this late webhook.
+              : current.externalRefundedAmount > 0 || current.disputeStatus ? "refunded_or_disputed_before_fulfilment"
+                : null;
     if (mismatch) {
       await requireCompensation(tx, order, mismatch, facts);
       return { status: "compensation_required" as const, reason: mismatch };

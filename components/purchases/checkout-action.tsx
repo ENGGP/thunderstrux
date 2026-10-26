@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney } from "@/lib/format";
+import { maxTicketsPerOrder } from "@/lib/validators/payments";
 
 type CheckoutResponse =
   | { kind: "stripe"; url: string }
@@ -26,7 +27,9 @@ type Selection = { quantity: number; unitPrice: number };
 type Screen =
   | { kind: "quote_changed"; unitPrice: number }
   | { kind: "insufficient_availability"; available: number }
-  | { kind: "sold_out" | "sales_closed" | "stripe_not_ready" | "still_confirming" | "purchase_in_progress" }
+  | { kind: "sold_out" | "sales_closed" | "stripe_not_ready" | "still_confirming" }
+  | { kind: "purchase_in_progress"; orderId?: string }
+  | { kind: "free_limit_reached"; left: number }
   | { kind: "error"; message: string };
 
 const pollIntervalMs = 2000;
@@ -43,7 +46,9 @@ function screenFor(failure: unknown): Screen {
   const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
   const reason = detail?.reason;
   const value = detail?.value;
-  if (reason === "sold_out" || reason === "sales_closed" || reason === "stripe_not_ready" || reason === "purchase_in_progress") return { kind: reason };
+  if (reason === "sold_out" || reason === "sales_closed" || reason === "stripe_not_ready") return { kind: reason };
+  if (reason === "purchase_in_progress") return { kind: reason, orderId: detail?.id };
+  if (reason === "free_limit_reached") return { kind: reason, left: value ?? 0 };
   if (reason === "quote_changed" && value !== undefined) return { kind: reason, unitPrice: value };
   if (reason === "insufficient_availability" && value) return { kind: reason, available: value };
   return { kind: "error", message: getClientErrorMessage(failure, "Checkout could not start. Please try again.") };
@@ -198,20 +203,36 @@ export function CheckoutAction({
           {society} can&apos;t take payments right now.{freeTicketsAvailable ? " Free tickets are still available." : ""} Nothing has been charged.
         </StateScreen>
       );
-    case "purchase_in_progress":
+    case "purchase_in_progress": {
+      // The open order's page offers Return to payment and Cancel order; My tickets lists only issued tickets.
+      const open = screen.orderId
+        ? <Link className={linkClass} href={guestCsrf ? `/guest/orders/${encodeURIComponent(screen.orderId)}` : `/purchases/tickets/${encodeURIComponent(screen.orderId)}`}>Open your checkout</Link>
+        : guestCsrf ? backTo("Back to ticket options") : <Link className={linkClass} href="/purchases">Go to Purchases</Link>;
       return (
-        <StateScreen actions={guestCsrf ? backTo("Back to ticket options") : <Link className={linkClass} href="/tickets">Go to My tickets</Link>} title="You already have a checkout in progress" tone="warning">
+        <StateScreen actions={open} title="You already have a checkout in progress" tone="warning">
           Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing more has been charged.
+        </StateScreen>
+      );
+    }
+    case "free_limit_reached":
+      return (
+        <StateScreen
+          actions={screen.left > 0 ? <><Button onClick={() => continueWith(screen.left)} type="button">Continue with {screen.left} {tickets(screen.left)}</Button>{changeTickets}</> : backTo("Back to the event")}
+          title={screen.left > 0 ? `You can get ${screen.left} more free ${tickets(screen.left)}` : "You have the most free tickets one person can get"}
+          tone="warning"
+        >
+          Each person can hold up to {maxTicketsPerOrder} free tickets for {eventTitle}, so there are enough to go round.
+          {guestCsrf ? " The tickets you already have are in your email." : " The tickets you already have are in My tickets."}
         </StateScreen>
       );
     case "still_confirming":
       return (
         <StateScreen
-          actions={<><Button onClick={() => submit()} type="button" variant="secondary">Try again</Button><Link className={linkClass} href="/tickets">Go to My tickets</Link></>}
+          actions={<><Button onClick={() => submit()} type="button" variant="secondary">Try again</Button>{guestCsrf ? null : <Link className={linkClass} href="/tickets">Go to My tickets</Link>}</>}
           title="We're still confirming your checkout"
           tone="info"
         >
-          Try again in a minute; you will not be charged twice. If you already paid, your tickets will appear in My tickets.
+          Try again in a minute; you will not be charged twice. If you already paid, your tickets will {guestCsrf ? "arrive by email" : "appear in My tickets"}.
         </StateScreen>
       );
   }

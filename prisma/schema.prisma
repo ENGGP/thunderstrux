@@ -449,6 +449,10 @@ model GuestAccessGrant {
   purpose          String
   tokenDigest      String    @unique
   callbackPath     String    @default("/events")
+  // The name a guest gave with a checkout link; it reaches an order only
+  // through the session this link opens.
+  buyerFirstName   String?
+  buyerLastName    String?
   expiresAt        DateTime
   consumedAt       DateTime?
   revokedAt        DateTime?

@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import type { ApiErrorDetail } from "@/lib/api/errors";
 import { mfaGrantDigest } from "@/lib/security/csrf";
 import { MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
-import { manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
+import { keepStripePayoutsManual, manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
+import { heldMoney } from "@/lib/payouts/release";
 import { logWarn } from "@/lib/ops/logger";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 
@@ -64,10 +65,14 @@ export class OrganisationStripeConnectNotFoundError extends Error {
   }
 }
 
+export const heldMoneyBlocksDisconnect =
+  "Money from your sales is held for refunds until 2 days after each event, and 7 days after membership and merchandise sales. Disconnect once Thunderstrux has paid it to your bank.";
+
 export class StripeDisconnectBlockedError extends Error {
-  constructor(readonly count: number) {
+  constructor(readonly count: number, message?: string) {
     super(
-      `${count} ${count === 1 ? "order is" : "orders are"} still being paid or reviewed, and ${count === 1 ? "it needs" : "they need"} this Stripe account. Try again once they finish.`
+      message ??
+        `${count} ${count === 1 ? "order is" : "orders are"} still being paid or reviewed, and ${count === 1 ? "it needs" : "they need"} this Stripe account. Try again once they finish.`
     );
     this.name = "StripeDisconnectBlockedError";
   }
@@ -429,11 +434,20 @@ export async function disconnectAccount(
   if (linked?.stripeAccountId) {
     const open = await countOpenObligations(prisma, orgId, linked.stripeAccountId);
     if (open > 0) throw new StripeDisconnectBlockedError(open);
+    const held = (await heldMoney(orgId, linked.stripeAccountId)).total > 0;
     try {
+      // Held money would reach the bank at once on Stripe's schedule, before the
+      // events it may have to refund have run, so a reachable account keeps
+      // manual payouts and stays linked until it is paid out.
+      if (held) {
+        await keepStripePayoutsManual(linked.stripeAccountId);
+        throw new StripeDisconnectBlockedError(0, heldMoneyBlocksDisconnect);
+      }
       await restoreStripePayoutSchedule(linked.stripeAccountId);
     } catch (error) {
-      // An account out of this platform's reach has no schedule to give back,
-      // so it is unlinked here; nothing else could ever unlink it.
+      if (error instanceof StripeDisconnectBlockedError) throw error;
+      // An account out of this platform's reach has no schedule to give back and
+      // no money we could pay out, so it is unlinked here; nothing else could ever unlink it.
       if (!isAccountOutOfReach(error)) {
         const type = (error as { type?: unknown } | null)?.type;
         throw typeof type === "string" && type.startsWith("Stripe") ? new StripeDisconnectUnavailableError() : error;
@@ -507,12 +521,18 @@ export async function markAccountStatusError(
   };
 }
 
-export async function startOrganisationStripeOnboarding(orgId: string, actorUserId: string, returnOrigin?: string) {
-  const { accountId, orgSlug } = await createExpressAccount(orgId, actorUserId);
+type FreshCode = { actor: { id: string; mfaSessionId?: string }; mfaCode?: string };
+
+// Stripe's onboarding collects the bank account payouts go to, so starting or
+// continuing it needs a fresh authenticator code, like the dashboard link.
+export async function startOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
+  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
+  const { accountId, orgSlug } = await createExpressAccount(orgId, actor.id);
   return createOnboardingLink(accountId, orgSlug, returnOrigin);
 }
 
-export async function continueOrganisationStripeOnboarding(orgId: string, returnOrigin?: string) {
+export async function continueOrganisationStripeOnboarding(orgId: string, { actor, mfaCode }: FreshCode, returnOrigin?: string) {
+  await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to continue to Stripe");
   const organisation = await prisma.organisation.findUnique({
     where: { id: orgId },
     select: { slug: true, stripeAccountId: true }
@@ -555,7 +575,7 @@ async function requireFreshStaffMfa(actor: { id: string; mfaSessionId?: string }
 }
 
 // The Express Dashboard can change where payouts go, so opening it needs a fresh code, like disconnect (T53).
-export async function createOrganisationDashboardLink(orgId: string, { actor, mfaCode }: { actor: { id: string; mfaSessionId?: string }; mfaCode?: string }) {
+export async function createOrganisationDashboardLink(orgId: string, { actor, mfaCode }: FreshCode) {
   await requireFreshStaffMfa(actor, mfaCode, "Enter your authenticator code to open the Stripe dashboard");
   const actorUserId = actor.id;
   const organisation = await prisma.organisation.findUnique({ where: { id: orgId }, select: { stripeAccountId: true, stripeDetailsSubmitted: true } });

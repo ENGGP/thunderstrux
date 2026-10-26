@@ -19,6 +19,8 @@ export type ApiErrorDetail = {
   // client can choose what to show without parsing `message`.
   reason?: string;
   value?: number;
+  // The record the cause is about, when the caller may open it (for example an open checkout).
+  id?: string;
 };
 
 type ApiErrorBody = {

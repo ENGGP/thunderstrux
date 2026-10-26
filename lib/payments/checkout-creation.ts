@@ -47,6 +47,7 @@ export type CheckoutCreationErrorKind =
   | "sold_out"
   | "insufficient_availability"
   | "purchase_in_progress"
+  | "free_limit_reached"
   | "stripe_not_ready"
   | "quote_changed"
   | "idempotency_conflict";
@@ -280,8 +281,17 @@ export async function createEventCheckout({
         }
 
         // The locked price decides the path: a free registration completes here,
-        // without reading Stripe configuration.
+        // without reading Stripe configuration. One buyer's free tickets on an
+        // event stay within one order's worth, so nobody can claim them all.
         if (unitPrice === 0) {
+          const ownFree = await tx.ticket.count({
+            where: { eventId: event.id, validity: "active", order: { paymentKind: "free", ...(guest ? { guestIdentityId: guest.guestIdentityId } : { userId }) } }
+          });
+          if (ownFree + quantity > maxTicketsPerOrder) {
+            throw new CheckoutCreationError("free_limit_reached", `You can have up to ${maxTicketsPerOrder} free tickets for this event`, [
+              { path: ["quantity"], message: `You already have ${ownFree} free ${ownFree === 1 ? "ticket" : "tickets"} for this event`, value: Math.max(0, maxTicketsPerOrder - ownFree) }
+            ]);
+          }
           const free = await issueFreeOrder(tx, {
             membership: grant ? { grantId: grant.id, entitlementVersion: grant.entitlementVersion } : null,
             userId: userId ?? null,
@@ -311,8 +321,14 @@ export async function createEventCheckout({
           where: { eventId: event.id, status: "active", expiresAt: { gt: reservationNow }, order: guest ? { guestIdentityId: guest.guestIdentityId } : { userId } }
         });
         if ((ownHeld.quantity ?? 0) + quantity > maxTicketsPerOrder) {
+          // Names the open order this buyer can open, so the page links to its Return to payment and Cancel order.
+          const open = await tx.checkoutAttempt.findFirst({
+            where: { actorKind: actor.kind, actorId: actor.id, family: "ticket", order: { eventId: event.id, status: "pending" } },
+            orderBy: { createdAt: "desc" },
+            select: { orderId: true }
+          });
           throw new CheckoutCreationError("purchase_in_progress", "You already have a checkout in progress for this event", [
-            { path: ["quantity"], message: "Finish or cancel your open checkout first", value: maxTicketsPerOrder - (ownHeld.quantity ?? 0) }
+            { path: ["quantity"], message: "Finish or cancel your open checkout first", value: maxTicketsPerOrder - (ownHeld.quantity ?? 0), ...(open?.orderId ? { id: open.orderId } : {}) }
           ]);
         }
 

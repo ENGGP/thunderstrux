@@ -21,7 +21,7 @@ sources: [lib/email/ticket-delivery.ts, lib/email/ticket-email-outbox.ts, lib/em
 | Notifications: enqueue, claim, send, failed list, requeue | `lib/email/notification-outbox.ts` |
 | Payload encryption | `lib/email/notification-crypto.ts` |
 | Templates and payload schema | `lib/email/templates.ts`: `notificationTemplateSchema`, `renderNotification` |
-| Ticket resend refusals | `lib/orders/order-detail.ts`: `enqueueOrganisationOrderTicketEmail` |
+| Ticket email refusals (resend, requeue, worker) | `lib/email/ticket-delivery.ts`: `ticketEmailRefusal`; resend `lib/orders/order-detail.ts`: `enqueueOrganisationOrderTicketEmail` |
 | Workers | `scripts/process-email-outbox.ts`, `scripts/process-notifications.ts` |
 | Notification producers | `lib/events/event-changes.ts`, `lib/memberships/reminders.ts`, `lib/payments/compensation-notices.ts`, and the services in the matrix below |
 | Failed notifications UI | `components/settings/failed-notifications.tsx` on `/dashboard/notifications` |
@@ -33,12 +33,13 @@ sources: [lib/email/ticket-delivery.ts, lib/email/ticket-email-outbox.ts, lib/em
 One email per ticket order with every `active` ticket. Text and HTML, no attachments, no QR codes.
 
 - **Sent:** queued in the fulfilment transaction of a paid order, or with a free registration ([[Payment Lifecycle#Fulfilment]]). A failed insert rolls the fulfilment back, so a paid order never commits without its job. Provider I/O happens only in the worker.
-- **Content:** subject `Your tickets for <event>` (line breaks folded to a space). Body: greeting by the buyer's display or full name, event title, organiser (`sellerName` snapshot), date, location, ticket type (purchased name, or today's name plus "(historical label unavailable)"), quantity, unit price ("Free" at 0), total, order id, the active ticket ids, and a note that no QR scan is needed. Event date and place are read live.
+- **Content:** subject `Your tickets for <event>` (line breaks folded to a space). Body: greeting by the buyer's display or full name, event title, organiser (`sellerName` snapshot), date, location, ticket type (purchased name, or today's name plus "(historical label unavailable)"), quantity, unit price ("Free" at 0), total, the order reference (`orderReference`), each active ticket by its short reference with "ticket n of m" (`ticketReference`, the same six characters the wallet and the door console show), and "At the door, give your name or show this email with your ticket reference." Event date and place are read live.
 - **Dates** are formatted in the society's zone (`Organisation.timeZone`, `formatDateTime` in `lib/format.ts`), as event-change notices are.
 - **Wording:** "Your payment is confirmed", or "Your registration is confirmed" for a free order (`paymentKind = free`).
+- **Member orders** add "View your tickets", a link to `/purchases/tickets/{orderId}` (needs `NEXT_PUBLIC_APP_URL`).
 - **Guest orders** (a guest identity, no member) add an "Open your order" link: single use, 24 hours, minted on each send attempt (`purchaseLinkForEmail`). Only its digest is stored, so the worker needs `NEXT_PUBLIC_APP_URL` but no secret. Because each attempt carries a new link, the provider key adds the attempt number, and a lost provider answer can mean a second email with another valid link.
 - **Recipient:** the order's buyer capture, else the live account (`retainedBuyerIdentity`). No recipient fails the job.
-- **Manual resend:** `POST /api/orders/[orderId]/resend`, permission `orders:email_resend`, rate limit `order_resend` per order. The order must belong to the society and be visible; 400 unless it is `paid`, not disputed, not cancelled and not refunded (`refundStatus` set, because a refund voids the tickets). It queues a new `manual` job each time, even after a successful send. It answers `{ queued: true }` and appends `email_enqueued` with audit `order.ticket_email_queued`.
+- **Manual resend:** `POST /api/orders/[orderId]/resend`, permission `orders:email_resend`, rate limit `order_resend` per order. The order must belong to the society and be visible; 400 unless `ticketEmailRefusal` passes: `paid`, not disputed, not cancelled, and not refunded (`refundStatus` set or `isManuallyRefunded`, because a refund voids the tickets). It queues a new `manual` job each time, even after a successful send. It answers `{ queued: true }` and appends `email_enqueued` with audit `order.ticket_email_queued`.
 
 ## Ticket email outbox
 
@@ -52,7 +53,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | `failed` | Attempts exhausted; never claimed again without a requeue |
 
 - **One automatic job per order:** the insert is `ON CONFLICT DO NOTHING` on the partial unique index `EmailOutbox_automatic_order_unique`, so a replayed webhook queues nothing.
-- **Worker** (`processTicketEmailOutboxBatch`, `pnpm email:outbox:process`, worker `email-outbox`): claims due `pending` jobs and `processing` jobs older than the processing timeout, `FOR UPDATE SKIP LOCKED`, in `nextAttemptAt` order. An automatic job for an order already marked sent is closed as sent without sending.
+- **Worker** (`processTicketEmailOutboxBatch`, `pnpm email:outbox:process`, worker `email-outbox`): claims due `pending` jobs and `processing` jobs older than the processing timeout, `FOR UPDATE SKIP LOCKED`, in `nextAttemptAt` order. An automatic job for an order already marked sent is closed as sent without sending. A job whose order `ticketEmailRefusal` refuses (refunded, cancelled or disputed while the email waited) is closed `failed` with the reason as `lastError`, without sending, retrying or alerting; it logs `email_outbox.job.refused` (DEF-058).
 - **Send:** provider key `ticket-email/{EmailOutbox.id}` (plus `/attempt` for guest orders).
 - **Success:** job `sent`, then `Order.ticketEmailSentAt` (automatic) or `ticketEmailResentAt` (manual), clears `ticketEmailLastError`, appends `email_provider_accepted`, metric `email_outbox_jobs_sent_total`.
 - **Failure:** `attempts + 1`. Below the maximum the job goes back to `pending` after an escalating delay: 1 min, 5 min, 15 min, 1 h, then 6 h (`backoffSeconds`). It records `lastError` and `Order.ticketEmailLastError`, appends `email_retry_scheduled` (or `email_delivery_exhausted` at the maximum, status `failed`), logs `email_outbox.job.failed` and emits metric `email_outbox_jobs_failed_total`. Exhaustion also alerts `email_outbox_retry_exhausted`.
@@ -163,7 +164,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | --- | --- |
 | `GET /api/notifications?cursor=` | `orders:email_resend`; the society's failed `business` jobs, 25 a page, newest first, `nextCursor` (shared timestamp cursor); a bad cursor is 400; `no-store` |
 | `POST /api/notifications/[jobId]/requeue` | Trusted origin, `orders:email_resend`, rate limit `order_resend`, `reason` 8 to 500; 404 for another society's or a security job; 409 unless failed, not accepted, not expired and within 23 hours of its first attempt. Resets it to `pending`, audit `notification.requeued` |
-| `POST /api/orders/[orderId]/email-jobs/[jobId]/requeue` | Trusted origin, `orders:email_resend`, rate limit `order_resend`, `reason` 8 to 500; 409 unless the job is `failed` and never accepted, the order is `paid`, and an automatic job's order isn't already marked sent. Resets attempts, audit `email_outbox.requeued`, `email_enqueued` with reason `operator_requeue` |
+| `POST /api/orders/[orderId]/email-jobs/[jobId]/requeue` | Trusted origin, `orders:email_resend`, rate limit `order_resend`, `reason` 8 to 500; 409 unless the job is `failed` and never accepted, `ticketEmailRefusal` passes for the order, and an automatic job's order isn't already marked sent. Resets attempts, audit `email_outbox.requeued`, `email_enqueued` with reason `operator_requeue` |
 
 Both requeue routes take a strict `{reason}` of 8 to 500 characters through `validateJson` (else 400). `/dashboard/notifications` (Email delivery) shows the failed list.
 

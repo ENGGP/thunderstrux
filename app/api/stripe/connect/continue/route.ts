@@ -7,7 +7,7 @@ import { enforceTrustedMutationRequest, trustedRequestOrigin } from "@/lib/secur
 import { connectRouteRules } from "@/lib/stripe/http";
 import { validateJson } from "@/lib/validators";
 import { continueOrganisationStripeOnboarding } from "@/lib/stripe/connect";
-import { organisationConnectSchema } from "@/lib/validators/stripe-connect";
+import { stripeDisconnectSchema } from "@/lib/validators/stripe-connect";
 
 export async function POST(request: Request) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
@@ -17,8 +17,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    await requireStripeConnectCapability();
-    const validation = await validateJson(request, organisationConnectSchema);
+    const user = await requireStripeConnectCapability();
+    const validation = await validateJson(request, stripeDisconnectSchema);
 
     if (!validation.success) {
       return validationError(validation.details);
@@ -36,7 +36,13 @@ export async function POST(request: Request) {
       return limitResponse;
     }
 
-    const url = await continueOrganisationStripeOnboarding(organisationId, trustedRequestOrigin(request));
+    // Authenticator guesses share the staff verification limit.
+    if (validation.data.mfaCode) {
+      const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [user.id] });
+      if (codeLimit) return codeLimit;
+    }
+
+    const url = await continueOrganisationStripeOnboarding(organisationId, { actor: user, mfaCode: validation.data.mfaCode }, trustedRequestOrigin(request));
 
     return NextResponse.json({ url });
   } catch (error) {

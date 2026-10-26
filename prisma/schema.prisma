@@ -101,6 +101,11 @@ model Organisation {
   profileVersion      Int                  @default(1)
   logoAssetId         String?
   coverAssetId        String?
+  // These two relations include the Organisation's own id, so a logo or cover can only be
+  // this society's asset. Side effect: a create whose data names no relation column (only
+  // `name`/`slug`, or `accountUser: { connect }`) makes Prisma skip generating the id, and the
+  // insert fails with P2011. Pass a relation column, e.g. `accountUserId` (null is fine), or an `id`.
+  // organisation-creation.test.ts guards every organisation create.
   logoAsset           Asset?               @relation("SocietyLogo", fields: [logoAssetId, id], references: [id, organisationId], onDelete: Restrict)
   coverAsset          Asset?               @relation("SocietyCover", fields: [coverAssetId, id], references: [id, organisationId], onDelete: Restrict)
   accountUserId       String?              @unique

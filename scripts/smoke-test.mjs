@@ -392,6 +392,8 @@ async function main() {
           data: {
             name: "Smoke Member Organisation",
             slug,
+            // A relation column keeps Prisma generating the id (see the Organisation model).
+            accountUserId: null,
             members: {
               create: {
                 userId: member.id,

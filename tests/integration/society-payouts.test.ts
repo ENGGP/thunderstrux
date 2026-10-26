@@ -95,7 +95,7 @@ describe("what is held", () => {
 
   test("money already back with the buyer is not held: compensation refunds, and a lost dispute recovered before its event ends (PAY-012)", async () => {
     const fixture = await society();
-    const compensated = await ticketSale(fixture, 5 * day, { isManuallyRefunded: true, status: "failed", failedAt: new Date() });
+    const compensated = await ticketSale(fixture, 5 * day, { isManuallyRefunded: true, status: "failed", failedAt: new Date(), fulfilledAt: null });
     await prisma.compensationRefundJob.create({ data: { orderId: compensated.id, state: "refunded", amount: 2000, currency: "aud" } });
     const lost = await ticketSale(fixture, 5 * day, { disputeStatus: "lost" });
     await prisma.purchaseDispute.create({ data: {

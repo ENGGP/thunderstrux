@@ -5,8 +5,11 @@ import { EventLifecycleNotFoundError, EventLifecycleValidationError } from "@/li
 import { lockEventInventory } from "@/lib/events/inventory";
 import { formatDateRange, formatMoney } from "@/lib/format";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { logWarn } from "@/lib/ops/logger";
+import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { cancelFreeOrder } from "@/lib/payments/free-cancellation";
 import { OrderRefundError, openOrderRefund, type RefundFailureKind } from "@/lib/payments/order-refunds";
+import { getStripe } from "@/lib/stripe";
 import { zoneCity } from "@/lib/zoned-time";
 
 // Cancel a published event with sales (EVT-004), as Luma, Eventbrite and
@@ -24,6 +27,39 @@ export type SkippedOrder = { orderId: string; reason: RefundFailureKind };
 const transactionOptions = { maxWait: 10_000, timeout: 120_000 };
 
 export async function cancelOrganisationEvent(
+  organisationId: string,
+  eventId: string,
+  input: { confirmation: string; reason: string },
+  actor: { id: string }
+) {
+  const result = await cancelInTransaction(organisationId, eventId, input, actor);
+  // A repeat closes again any page an earlier attempt couldn't reach.
+  return { ...result, checkoutsClosed: await closeOpenCheckouts(eventId) };
+}
+
+// After the cancellation commits, Stripe closes each unpaid order's payment
+// page, so nobody can pay for an event that won't happen (EVT-006); the order
+// then expires as when its page times out. A payment Stripe took first goes to
+// compensation at fulfilment. Stripe is called outside the transaction, as buyer
+// cancel does; a failed call is logged, and that page still lapses within 30 minutes.
+async function closeOpenCheckouts(eventId: string) {
+  const pending = await prisma.order.findMany({ where: { eventId, status: "pending", stripeSessionId: { not: null } }, select: { id: true, stripeSessionId: true } });
+  let closed = 0;
+  for (const order of pending) {
+    try {
+      const stripe = getStripe();
+      let session = await stripe.checkout.sessions.retrieve(order.stripeSessionId as string);
+      if (session.status === "open") session = await stripe.checkout.sessions.expire(session.id);
+      if (session.status !== "expired") continue;
+      if ((await reconcileExpiredCheckoutSession(session, { source: "staff_action" })).status === "expired") closed += 1;
+    } catch (error) {
+      logWarn("event_cancellation.checkout_close_failed", { eventId, orderId: order.id, error });
+    }
+  }
+  return closed;
+}
+
+async function cancelInTransaction(
   organisationId: string,
   eventId: string,
   input: { confirmation: string; reason: string },

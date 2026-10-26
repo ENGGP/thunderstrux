@@ -8,23 +8,24 @@ import { guestCookieName } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { processOrderRefundBatch } from "@/lib/payments/order-refunds";
+import { pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
 import { clearMockSession, selectMockContext, setMockSession } from "@/tests/helpers/auth";
 import { guestSession } from "@/tests/helpers/guest";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { enrolStaffMfa } from "@/tests/helpers/mfa";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
-import { createEvent, createMember, createOrder, createOrganisationAccount, createOrganisationStaff, unique } from "@/tests/helpers/test-data";
+import { createEvent, createMember, createOrder, createOrganisationAccount, createOrganisationStaff, createReservation, unique } from "@/tests/helpers/test-data";
 
-const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), create: vi.fn() }));
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), expire: vi.fn(), list: vi.fn(), create: vi.fn() }));
 vi.mock("@/lib/stripe", () => ({
   StripeConfigurationError: class StripeConfigurationError extends Error {},
   getAppUrl: () => "http://localhost:3000",
-  getStripe: () => ({ checkout: { sessions: { retrieve: stripe.retrieve } }, refunds: { list: stripe.list, create: stripe.create } })
+  getStripe: () => ({ checkout: { sessions: { retrieve: stripe.retrieve, expire: stripe.expire } }, refunds: { list: stripe.list, create: stripe.create } })
 }));
 
 beforeEach(() => { vi.stubEnv("MFA_ENFORCEMENT_MODE", "off"); });
-afterEach(() => { stripe.retrieve.mockReset(); stripe.list.mockReset(); stripe.create.mockReset(); });
+afterEach(() => { stripe.retrieve.mockReset(); stripe.expire.mockReset(); stripe.list.mockReset(); stripe.create.mockReset(); });
 
 type Society = Awaited<ReturnType<typeof createOrganisationAccount>>;
 type Event = Awaited<ReturnType<typeof createEvent>>;
@@ -126,6 +127,46 @@ describe("cancelling an event (EVT-004)", () => {
     expect(await processOrderRefundBatch()).toMatchObject({ processed: 1 });
     expect(await prisma.order.findUniqueOrThrow({ where: { id: paid.id } })).toMatchObject({ refundStatus: "refunded" });
     expect(await prisma.ticket.count({ where: { orderId: paid.id, validity: "void" } })).toBe(2);
+  });
+
+  test("closes every unpaid order's Stripe page, so nobody can pay for the cancelled event, and never offers it again (EVT-006)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { society, event } = await societyEvent();
+    const unpaid = async () => {
+      const order = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, unitPrice: 1500 });
+      await createReservation({ orderId: order.id, organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expiresAt: new Date(Date.now() + 20 * 60_000) });
+      const session = { ...checkoutSession({ id: order.stripeSessionId as string, orderId: order.id, eventId: event.id, organisationId: society.organisation.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, amountTotal: 1500, paymentStatus: "unpaid" }), status: "open", url: "https://checkout.stripe.test/pay", expires_at: Math.floor(Date.now() / 1000) + 15 * 60 };
+      return { order, session };
+    };
+    const closed = await unpaid();
+    const unreachable = await unpaid();
+    stripe.retrieve.mockImplementation(async (id: string) => (id === closed.session.id ? closed.session : unreachable.session));
+    stripe.expire.mockImplementation(async (id: string) => {
+      if (id === unreachable.session.id) throw Object.assign(new Error("An error occurred with our connection to Stripe."), { type: "StripeConnectionError" });
+      return { ...closed.session, status: "expired" };
+    });
+
+    const response = await cancel(society, event.id, { reason, confirmation: event.title });
+    expect(await parseJsonResponse(response)).toMatchObject({ status: "cancelled", checkoutsClosed: 1 });
+    expect(stripe.expire).toHaveBeenCalledWith(closed.session.id);
+    // The closed page's order expires, recorded as the society's doing.
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: closed.order.id }, include: { reservation: true } })).toMatchObject({ status: "expired", reservation: { status: "expired" } });
+    expect(await prisma.orderLifecycleEvent.findFirst({ where: { orderId: closed.order.id, type: "order_expired" } })).toMatchObject({ source: "staff_action" });
+
+    // Stripe couldn't close the other page: the cancellation still stands, and the
+    // order page offers no payment, though Stripe still shows the page open.
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: unreachable.order.id } })).toMatchObject({ status: "pending" });
+    expect(await pendingCheckoutState({ kind: "ticket", id: unreachable.order.id })).toEqual({ state: "ended" });
+    stripe.retrieve.mockRejectedValue(new Error("Stripe is down"));
+    expect(await pendingCheckoutState({ kind: "ticket", id: unreachable.order.id })).toEqual({ state: "ended" });
+
+    // A repeat tries the page it couldn't reach before.
+    stripe.retrieve.mockReset();
+    stripe.retrieve.mockResolvedValue(unreachable.session);
+    stripe.expire.mockReset();
+    stripe.expire.mockResolvedValue({ ...unreachable.session, status: "expired" });
+    expect(await parseJsonResponse(await cancel(society, event.id, { reason, confirmation: event.title }))).toMatchObject({ status: "already_cancelled", checkoutsClosed: 1 });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: unreachable.order.id } })).toMatchObject({ status: "expired" });
   });
 
   test("the longest message still fits each order's own reason", async () => {

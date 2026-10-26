@@ -147,6 +147,7 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | Stale-order job | An active hold past `expiresAt` → hold and order `expired`; a pending order whose hold already expired; a pending order with no hold older than `stalePreCheckoutOrderMinutes` (30) | Pending Stripe orders whose `expiresAt` is more than `lateWebhookGraceMs` past → `expired` (`hold_expired`), family holds released |
 | `checkout.session.expired` | A `pending` order → `expired`, hold `expired`; paid, failed and expired orders unchanged; an order bound to another Session ignored | `failPendingCommerceOrder` (`checkout_expired`) |
 | Buyer cancel | `reconcileExpiredCheckoutSession` with source `checkout` | `failPendingCommerceOrder` (`buyer_cancelled`) as `expired` |
+| Event cancellation | After the cancellation commits, Stripe expires each open Session and `reconcileExpiredCheckoutSession` runs with source `staff_action` ([[Event Lifecycle#Cancelling]]) | Not event-owned |
 
 The stale job locks each candidate and re-checks it before expiring; candidate discovery happens outside the transaction. `pnpm stale-orders:process -- --dry-run` counts without writing; `--limit=` takes 1 to 1000 (default 100).
 
@@ -158,7 +159,7 @@ The stale job locks each candidate and re-checks it before expiring; candidate d
 | `GET /api/purchases/tickets/[orderId]/status` | The buyer or a guest who may open it; else 404. `{ status }` from `ticketOrderProjection`, `no-store` |
 | `GET /api/payments/checkout/attempts/[attemptId]` | The attempt's own actor; else 404. `checkoutAttemptStatus`, `no-store` |
 
-`pendingCheckoutState` asks Stripe each time an unpaid order's page loads: `waiting` (Session open and held; offers the same payment page and Cancel order), `confirming` (Stripe has the payment, the webhook is due), or `ended`. Without Stripe's answer the hold decides and no payment page is offered. Lists show unpaid orders as Waiting for payment without asking Stripe. `cancelledByBuyer` tells a buyer's cancel apart from a lapsed hold by the `order_expired` source `checkout`.
+`pendingCheckoutState` asks Stripe each time an unpaid order's page loads: `waiting` (Session open and held; offers the same payment page and Cancel order), `confirming` (Stripe has the payment, the webhook is due), or `ended`. Without Stripe's answer the hold decides and no payment page is offered. An unpaid order of a cancelled event is `ended` unless Stripe already has its payment. Lists show unpaid orders as Waiting for payment without asking Stripe. `cancelledByBuyer` tells a buyer's cancel apart from a lapsed hold by the `order_expired` source `checkout`.
 
 ## Checkout attempt recovery
 

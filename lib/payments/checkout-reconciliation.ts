@@ -113,8 +113,9 @@ export async function findOrderForCheckoutSession(
 
 export async function reconcileExpiredCheckoutSession(
   session: Stripe.Checkout.Session,
-  // `checkout` when the buyer cancelled and Stripe confirmed the Session expired.
-  { stripeEventId, source = "stripe_webhook" }: { stripeEventId?: string; source?: "stripe_webhook" | "checkout" } = {}
+  // `checkout` when the buyer cancelled and Stripe confirmed the Session expired;
+  // `staff_action` when the society cancelled the event (EVT-006).
+  { stripeEventId, source = "stripe_webhook" }: { stripeEventId?: string; source?: "stripe_webhook" | "checkout" | "staff_action" } = {}
 ): Promise<CheckoutReconciliationResult> {
   let result: CheckoutReconciliationResult = {
     status: "ignored",

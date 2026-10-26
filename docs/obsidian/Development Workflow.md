@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Engineering Delivery Workflow]]", "[[Seeding and Data]]"]
 sources: [package.json, docker-compose.dev.yml, scripts/run-e2e.mjs]
@@ -320,14 +320,6 @@ docker compose up -d --force-recreate app
 ```
 
 For production-path validation, use the isolated baseline or operations runner selected by risk; rebuilding a development stack is activation work, not a substitute for isolated test evidence.
-
-Smoke tests:
-
-```bash
-docker compose exec app pnpm test:smoke
-```
-
-The smoke script currently stops at step 4: it sends no Origin or CSRF token, which the trusted-origin guard refuses (DEF-041). Use the E2E suite until it's repaired. It checks auth roles, dashboard access, event create/edit, ticket editing, member API denial, checkout preconditions, member organisation leave, public organisation details, reservation availability behavior, stale pending order expiry, cleanup idempotency, and paid/failed cleanup safety.
 
 Integration tests:
 

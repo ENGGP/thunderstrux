@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]"]
 sources: [lib/stripe/connect.ts, lib/payments/checkout-creation.ts]
@@ -585,31 +585,6 @@ Safety rules:
 Transaction:
 
 - Checkout and fulfilment run at READ COMMITTED with row locks (`lockedPurchaseTransactionOptions`); the stale-order worker locks each order and re-checks it before expiring it
-
-## Smoke Tests
-
-`scripts/smoke-test.mjs` covers:
-
-- organisation/member auth and dashboard access
-- event create/edit and ticket editing
-- member denial from management APIs
-- Stripe-not-ready checkout creates no reservation
-- active reservation reduces availability
-- expired reservation settles the order as `expired`
-- pending order with expired reservation becomes `expired`
-- legacy pending order without reservation becomes `expired` after 30 minutes
-- fresh reservationless pending order remains internal
-- pending orders are hidden from default organiser orders and member tickets
-- expired orders do not count as analytics revenue
-- expired reservations do not reduce public checkout availability
-- paid orders with confirmed reservations are preserved by cleanup
-- failed orders are preserved by cleanup
-- stale cleanup is idempotent
-- reservation expiry window is exactly 30 minutes
-- order `unitPrice` and `totalAmount` history remains unchanged
-- organisation public event route redirects to organiser event view
-- member access to organiser event view redirects away
-- organisation accounts cannot create checkout sessions
 
 ## Integration Test Coverage
 

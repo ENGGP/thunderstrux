@@ -26,6 +26,12 @@ async function ensureManualPayouts(stripe: Stripe, accountId: string) {
   logInfo("payouts.switched_to_manual", { stripeAccountId: accountId });
 }
 
+// While a society's money is held, its account stays on manual payouts. Also
+// proves the account is still within this platform's reach.
+export async function keepStripePayoutsManual(accountId: string) {
+  await ensureManualPayouts(getStripe(), accountId);
+}
+
 // On disconnect: Stripe pays out what's left on its usual schedule, so no money
 // waits for a worker that no longer looks at this account.
 export async function restoreStripePayoutSchedule(accountId: string) {

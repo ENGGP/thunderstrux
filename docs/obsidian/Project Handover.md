@@ -38,7 +38,7 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
   - The stale-order job is the only place unpaid ticket orders expire.
 - **Holds (DEF-033, PAY-009):** a ticket hold lasts 5 minutes past its Stripe page (`lateWebhookGraceMs`, shared with commerce's stale expiry); pages show Stripe's closing time. New events default to `automatic_full` compensation, as commerce does.
 - **Payouts (PAY-005, DEF-034):** held until 2 days after the event (7 days for commerce), then at most one payout per society per UTC day.
-- Public preview (T48, SEC-014): **closed by the owner on 2026-10-26**; nothing is publicly hosted. When reopened, `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview` with ignored `.env.preview`, loopback port 3090 behind the Cloudflare Tunnel, `cf-connecting-ip` for client addresses, MFA enforced and legacy access denied. The dev stack (port 3080) is loopback-only and never tunnelled. `proxy.ts` and the app's own cookies follow the Auth.js public URL's scheme. Preview reachability does not resolve production release gates.
+- Public preview (T48, SEC-014): live again since 2026-10-26 on `ops-preview` (release `cf913d5`, fresh database, Stripe test mode, no image bucket yet). `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview` with ignored `.env.preview`, loopback port 3090 behind the Cloudflare Tunnel, `cf-connecting-ip` for client addresses, MFA enforced and legacy access denied. The dev stack (port 3080) is loopback-only and never tunnelled. `proxy.ts` and the app's own cookies follow the Auth.js public URL's scheme. Preview reachability does not resolve production release gates.
 - Validation follows the risk table in [[Engineering Delivery Workflow]]: local evidence recorded in each PR, GitHub test checks not required (VALID-001), documentation-only changes use docs and diff checks only.
 - Product decisions follow how Eventbrite, Humanitix and Luma solved the same problem, thought through critically for a student-society tool, with the reasoning recorded in the PR.
 
@@ -92,7 +92,7 @@ Repository pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma client/CLI 6
 - T52: `thunderstrux.com` readiness: alerts, public images, release binding, restore fence (SEC-020 to 023);
 - T53: a hardening bundle.
 
-The owner closed the preview at `thunderstrux.mistayu.com` on 2026-10-26, so T49 to T53 are validated locally only. If it reopens, it does so through the T48 `ops-preview` path; `thunderstrux.com` follows on the Droplet path.
+The owner closed the preview at `thunderstrux.mistayu.com` on 2026-10-26, so T49 to T53 were validated locally. It reopened the same day, first briefly on the dev stack again, then on `ops-preview` (deployed from `cf913d5`; all six workers running; public CSP and HSTS match the production build; both webhook routes reach it). `thunderstrux.com` follows on the Droplet path.
 
 | Item | PR | Status and evidence |
 | --- | --- | --- |
@@ -107,7 +107,7 @@ The owner closed the preview at `thunderstrux.mistayu.com` on 2026-10-26, so T49
 ## Next Safe Actions
 
 First, ahead of the list below:
-- **Preview (owner).** Closed on 2026-10-26. If it reopens, deploy `ops-preview` from `.env.preview` and point the tunnel at port 3090 (README, Public Preview). Don't reopen the dev-stack tunnel. Re-password or disable the seeded `@example.com` accounts in the dev database, which was public, and keep a random `AUTH_SECRET` in `.env`.
+- **Preview (owner).** Runs on `ops-preview` (README, Public Preview). Send a test event from each Stripe test-mode webhook destination and confirm a 200; add an `ASSET_STORAGE_*` bucket for image uploads. Never point the tunnel at the dev stack again. The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts.
 - The 2026-10-25 security remediation (T47 to T53) is complete apart from owner gates. Before `thunderstrux.com` serves anyone, work through the go-live checklist in [[Pre-hosting Candidate]].
 
 1. Before hosting: create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]], and pass PAY-002 on the hosted endpoint. Automatic refunds are now the default for new events, as for commerce.

@@ -51,26 +51,29 @@ The dev stack is for loopback only: never put it behind a public hostname. `next
 
 ## Public Preview (pre-production)
 
-The public preview at `https://thunderstrux.mistayu.com` is closed for now (2026-10-26). When it reopens, it runs the production build through the single-host deploy path in [Production Operations](docs/obsidian/Production%20Operations.md), as `thunderstrux.com` will later. It has its own project, database, Redis and workers, separate from the dev stack.
+The public preview at `https://thunderstrux.mistayu.com` runs as project `ops-preview` since 2026-10-26 (release `cf913d5`). It runs the production build through the single-host deploy path in [Production Operations](docs/obsidian/Production%20Operations.md), as `thunderstrux.com` will later. It has its own project, database, Redis and workers, separate from the dev stack.
 
 1. Create an ignored `.env.preview` from `.env.example`:
    - random `AUTH_SECRET` (at least 32 characters), `MFA_ENCRYPTION_KEY` and `NOTIFICATION_ENCRYPTION_KEY`: `openssl rand -base64 32`;
    - `AUTH_URL`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL` and `TRUSTED_APP_ORIGINS` set to `https://thunderstrux.mistayu.com`, and `APP_PORT=3090`;
    - `MFA_ENFORCEMENT_MODE=enforce`, `LEGACY_ORGANISATION_ACCESS_MODE=deny`, `RATE_LIMIT_ENABLED=true` and `RATE_LIMIT_TRUSTED_PROXY_HEADER=cf-connecting-ip`;
    - Stripe **test** keys and the test-mode webhook secrets for the preview's endpoints (live keys are for `thunderstrux.com` only);
-   - email (`RESEND_API_KEY`, `EMAIL_FROM`) and an S3-compatible bucket in the `ASSET_STORAGE_*` values;
+   - email (`RESEND_API_KEY`, and `EMAIL_FROM` on a domain verified in the same Resend team as the key, e.g. `Thunderstrux <noreply@email.mistayu.com>`) and an S3-compatible bucket in the `ASSET_STORAGE_*` values (without a bucket everything works except image uploads);
    - `DATABASE_URL` for the `db` service with the credentials in `.env.db`. The `ops-preview` project gets its own volume, so it starts as a fresh database, never the dev one.
-2. Deploy, then start the workers:
+2. Deploy, then start the workers on the images that release recorded (without them, Compose would recreate the app from the default `thunderstrux-app:local` tag). A redeploy, including one only for a settings change, doesn't restart the workers, so run the second command after every deploy:
 
    ```bash
    pnpm ops:deploy -- --project ops-preview --env-file .env.preview --url http://127.0.0.1:3090 --release <git-sha>
    ```
 
    ```bash
-   docker compose --env-file .env.preview -p ops-preview -f docker-compose.yml -f docker-compose.hardened.yml -f docker-compose.schedules.yml --profile workers up -d
+   release=tmp/operations/ops-preview/current-release.json
+   APP_IMAGE=$(node -p "require('./$release').candidateImageId") OPS_IMAGE=$(node -p "require('./$release').opsImageId") \
+     docker compose --env-file .env.preview -p ops-preview -f docker-compose.yml -f docker-compose.hardened.yml -f docker-compose.schedules.yml --profile workers \
+     up -d --no-deps email-worker notification-worker stale-order-worker compensation-worker checkout-recovery-worker monitor-worker
    ```
 
-3. Point the Cloudflare Tunnel's public hostname at `http://127.0.0.1:3090`.
+3. Point the Cloudflare Tunnel's public hostname at `http://127.0.0.1:3090`, and remove any route to `3080`. Then send a test event from each Stripe test-mode webhook destination and check for a 200.
 4. Optional demo content: run `node prisma/seed.mjs` in the preview's `migration` service with `SEED_DEMO_PASSWORD` (at least 16 characters). The seed refuses a public origin without it, and the accounts then use that password, not `password123`.
 
 Staff enrol an authenticator on first sign-in, as production requires.

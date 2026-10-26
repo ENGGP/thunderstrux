@@ -35,7 +35,7 @@ sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navb
 - Widths: `max-w-auth`, `max-w-read`, `max-w-checkout`, `max-w-personal`, `max-w-page`, `max-w-admin` (values in `app/globals.css`).
 - No raw palette classes (`bg-neutral-900`, `text-purple-600`) and no hex colours in components.
 - Bare `border` draws the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
-- The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` sets every transition and animation to `0s`; not `0.01ms`, because every element defaults to `transition-property: all`, and any duration would make even the focus ring transition in from 3px.
+- The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` sets every transition and animation to `0s`; not `0.01ms`, because every element defaults to `transition-property: all`, so any duration starts a transition on every style change. Read straight after focusing, the focus ring then still reports its 3px default (`tests/e2e/society-profiles.spec.ts` caught this).
 - Motion tokens sit in their own `@theme` block: `ease-out` is the strong curve `cubic-bezier(0.23, 1, 0.32, 1)`, `ease-drawer` is `cubic-bezier(0.32, 0.72, 0, 1)` for the one drawer, and `animate-pop-in` (160ms), `animate-dialog-in` (200ms) and `animate-fade-in` (200ms) are entry keyframes. Where they are used: [[#Motion]].
 - `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through `next/font`; they are downloaded at build time and served by the app.
 - No dark mode. No icon library: `components/ui/icon.tsx` holds the outline icons, always decorative beside text.
@@ -122,7 +122,7 @@ Each page renders its shell after its guards pass; shells are never in route-gro
 
 ## Motion
 
-Motion shows where something came from or confirms that a change happened, and only after the server has answered (visual spec 2.4). Only `opacity`, `scale` and `translate` animate. **Menus and the dialog animate in and close instantly:** `ConfirmDialog` unmounts its body on close, and a chosen menu action shouldn't wait on a fade. The phone buy bar is the one drawer and slides both ways.
+Motion shows where something came from or confirms that a change happened, and only after the server has answered (visual spec 2.4). Only `opacity`, `scale` and `translate` move. Buttons and header links cross-fade their colours on hover over 150ms, and the buy bar's `visibility` switches with its slide. **Menus and the dialog animate in and close instantly:** `ConfirmDialog` unmounts its body on close, and a chosen menu action shouldn't wait on a fade. The phone buy bar is the one drawer and slides both ways.
 
 | Where | Motion |
 | --- | --- |
@@ -136,7 +136,7 @@ Deliberately still:
 - List rows and search results: data people act on doesn't move.
 - Check-in cards: the new state shows at once at the door.
 - `Notice`: a result appears with its layout, so a fade would bridge nothing.
-- The navbar `Menu` and every `<details>` disclosure, chevrons included: closed `<details>` content is never re-rendered, so a keyframe would play only once.
+- The navbar `Menu` and every `<details>` disclosure: Chromium skips styles for closed `<details>` content, so a keyframe never restarts after the first open. Their chevrons snap too, because the content they announce snaps open.
 - Card hover shadows: they switch instantly, since `box-shadow` isn't animated.
 - Date-picker month changes: they are keyboard driven.
 - Payment or check-in success: no spinners, no celebration (visual spec 12.2).

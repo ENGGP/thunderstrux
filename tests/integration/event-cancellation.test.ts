@@ -128,6 +128,16 @@ describe("cancelling an event (EVT-004)", () => {
     expect(await prisma.ticket.count({ where: { orderId: paid.id, validity: "void" } })).toBe(2);
   });
 
+  test("the longest message still fits each order's own reason", async () => {
+    const { society, event } = await societyEvent();
+    const paid = await heldOrder(society, event, { paymentKind: "stripe" });
+    const free = await heldOrder(society, event, { paymentKind: "free" });
+    const response = await cancel(society, event.id, { reason: "x".repeat(500), confirmation: event.title });
+    expect(await parseJsonResponse(response)).toMatchObject({ status: "cancelled", refundsQueued: 1, freeCancelled: 1 });
+    expect((await prisma.refundRequest.findFirstOrThrow({ where: { orderId: paid.id } })).reason).toHaveLength(500);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: free.id } })).cancellationReason).toHaveLength(500);
+  });
+
   test("a payment that lands after the cancellation issues no tickets and goes to compensation", async () => {
     const { society, event } = await societyEvent();
     const buyer = await createMember();

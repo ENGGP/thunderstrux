@@ -30,6 +30,8 @@ export async function cancelOrganisationEvent(
   actor: { id: string }
 ) {
   const reason = input.reason.trim();
+  // Each order records why too; its reason columns hold at most 500 characters.
+  const orderReason = `Event cancelled: ${reason}`.slice(0, 500);
   const now = new Date();
   return prisma.$transaction(async (tx) => {
     const owned = await tx.event.findFirst({ where: { id: eventId, organisationId }, select: { id: true } });
@@ -78,12 +80,12 @@ export async function cancelOrganisationEvent(
       if (order.paymentKind === "free" && (!holder || order.cancelledAt)) continue;
       let outcome: string;
       if (order.paymentKind === "free") {
-        await cancelFreeOrder(tx, { organisationId, orderId: order.id, by: { kind: "event", actorUserId: actor.id }, reason: `Event cancelled: ${reason}`, now });
+        await cancelFreeOrder(tx, { organisationId, orderId: order.id, by: { kind: "event", actorUserId: actor.id }, reason: orderReason, now });
         freeCancelled += 1;
         outcome = "Nothing was charged, so there is nothing to refund, and your registration is cancelled.";
       } else {
         try {
-          await openOrderRefund(tx, { organisationId, orderId: order.id, actor, reason: `Event cancelled: ${reason}` });
+          await openOrderRefund(tx, { organisationId, orderId: order.id, actor, reason: orderReason });
           refundsQueued += 1;
           outcome = `Your ${formatMoney(order.totalAmount - order.externalRefundedAmount)} refund has started. We'll email you again when it goes through; banks usually take 5 to 10 business days after that.`;
         } catch (error) {

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Troubleshooting]]"]
 sources: [lib/stripe/index.ts, lib/stripe/version.ts, lib/stripe/connect.ts, lib/stripe/fees.ts, lib/stripe/http.ts, lib/payouts/payouts.ts, lib/payouts/release.ts, lib/payments/checkout-creation.ts, lib/commerce/checkout.ts, app/api/payments/webhook/route.ts, app/api/stripe/connect/webhook/route.ts]
@@ -69,7 +69,7 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 | State | Meaning | Settings action |
 | --- | --- | --- |
 | `NOT_CONNECTED` | No `stripeAccountId` | Connect Stripe |
-| `PLATFORM_NOT_READY` | No account; Stripe refused to create one because the platform's Connect profile is unfinished (detected from the error's message, type or code) | Open Stripe Platform Settings (`stripePlatformProfileUrl`), Retry after completion, Disconnect |
+| `PLATFORM_NOT_READY` | No account; Stripe refused to create one because the platform's Connect profile is unfinished (detected from the error's message only; a network failure, `StripeConnectionError`, is rethrown and changes nothing) | Open Stripe Platform Settings (`stripePlatformProfileUrl`), Retry after completion, Disconnect |
 | `CONNECTED_INCOMPLETE` | `details_submitted` is false | Continue Stripe setup |
 | `RESTRICTED` | Details submitted, `charges_enabled` false | Fix in Stripe |
 | `READY` | `charges_enabled` true | Add a bank account in Stripe while `payouts_enabled` is false (badge "Payouts not set up") |
@@ -78,13 +78,17 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 - Settings shows two rows, **Can take payments** (charges) and **Can receive payouts** (payouts), so a society with no bank account keeps selling.
 - **Selling depends on flags, not the state:** `isOrganisationStripeReady` is `stripeAccountId && stripeChargesEnabled`. In `ERROR` sales follow the last known flags until a refresh succeeds.
 - **The `account.updated` webhook** re-reads the account (`refreshConnectedAccount`) for an account some society uses, and persists the same flags and state. An account no society uses logs `stripe_connect.webhook.ignored` (`stripe_account_not_found`) without calling Stripe.
+- **One write path:** the webhook and a Settings refresh both save through `persistConnectedAccountStatus`, which locks the society's row, so a change is seen once whichever arrives first. In the same transaction it emails (`business_notice`, link to `/dashboard/settings`) every active staff member whose role has `stripe:manage`:
+  - when card payments go from on to off (key `stripe-charges-paused/<orgId>/<time>`), and alerts `society_charges_paused` after commit;
+  - while card payments are on, once per deadline Stripe sets for `currently_due` details (`requirements.current_deadline`; key `stripe-deadline/<orgId>/<deadline>`, which the outbox keeps once).
+- **Ready with details due:** Settings shows "Stripe needs more details", the deadline when there is one (`current_deadline` in the status), what Stripe needs, and "Update details in Stripe" (a fresh onboarding link). The badge reads "Needs details".
 
 ## Payouts
 
 Societies are paid after their event, as Humanitix and Eventbrite pay organisers, so refunds for a cancelled event come from money the society still holds (PAY-005). On destination charges the platform carries negative balances, so this protects Thunderstrux too.
 
 - **Manual payouts:** new accounts get `manualPayoutSettings`: `payouts.schedule.interval = manual` and `debit_negative_balances = true`, so a refund after a payout is debited from the society's bank, not left to Thunderstrux. Older accounts are switched the first time the worker checks them.
-- **Worker:** `processPayoutBatch` is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`, `pnpm compensation-refunds:process`). It takes societies with an account, state `READY` and `stripePayoutsEnabled`, at most once an hour each, claimed by compare-and-set on `Organisation.payoutCheckedAt`. Per society it:
+- **Worker:** `processPayoutBatch` is the fourth batch of the refunds worker (`scripts/process-compensation-refunds.ts`, `pnpm compensation-refunds:process`). It takes societies with an account and `stripePayoutsEnabled`, whatever the state (a failed refresh, `ERROR`, or paused card payments, `RESTRICTED`, doesn't stop money the society is owed), at most once an hour each, claimed by compare-and-set on `Organisation.payoutCheckedAt`. Per society it:
   1. makes sure the account is on manual payouts;
   2. skips the society if a `SocietyPayout` for that account already exists this UTC day (DEF-034);
   3. reads the available AUD balance and subtracts `heldMoney`;
@@ -241,6 +245,8 @@ stripe listen --latest \
   WHERE "slug" = '<society-slug>';
   ```
 - **`society_payout_failed`:** the society fixes its bank details in the Express dashboard. The next hourly check pays the balance once the UTC day has no payout.
+- **`society_charges_paused`:** the society's Stripe managers were emailed; they send what Stripe asks for from Payments ("Fix in Stripe").
+- **Sales held more than 80 days** are released before a long-lead event; if it is cancelled, `event_cancelled_after_release` alerts (PAY-022, [[Event Lifecycle#Cancelling]]).
 - **Version or mode mismatch alerts:** recreate the endpoint on the pinned version, or fix the key or endpoint pairing ([[Production Operations]]). Signature failures: [[Troubleshooting]].
 
 ## Related

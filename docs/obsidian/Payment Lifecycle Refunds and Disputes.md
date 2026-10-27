@@ -1,9 +1,9 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Stripe Payments and Connect]]", "[[Memberships and Merchandise]]", "[[Audit Coverage]]"]
-sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, lib/payments/purchase-disputes.ts, lib/payments/dispute-reversals.ts, lib/payments/free-cancellation.ts, lib/commerce/payment-recovery.ts, lib/orders/order-detail.ts]
+sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, lib/payments/purchase-disputes.ts, lib/payments/dispute-evidence.ts, lib/payments/dispute-reversals.ts, lib/payments/free-cancellation.ts, lib/commerce/payment-recovery.ts, lib/orders/order-detail.ts]
 ---
 
 # Payment Lifecycle Refunds and Disputes
@@ -20,6 +20,7 @@ sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, l
 | Ticket compensation refunds | `lib/payments/compensation-refunds.ts`: `processCompensationRefundBatch`, `reconcileRefundEvent`, `confirmCompensationRefund` |
 | Ticket disputes and outside refunds | `lib/payments/purchase-disputes.ts`: `reconcileDisputeEvent`, `reconcileExternalRefundEvent`, `restoreDisputedTickets`, `markExternalRefundReviewed` |
 | Commerce disputes, outside refunds, automatic compensation | `lib/commerce/payment-recovery.ts` |
+| A dispute's draft answer, staged in Stripe | `lib/payments/dispute-evidence.ts`: `stageDisputeEvidence` |
 | Lost-dispute reversals | `lib/payments/dispute-reversals.ts`: `queueDisputeReversal`, `processDisputeReversalBatch` |
 | Free ticket cancellation | `lib/payments/free-cancellation.ts`: `cancelFreeOrder`, `cancelFreePurchase`, `releaseFreeRegistration` |
 | Event cancellation (refund every order) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` ([[Event Lifecycle#Cancelling]]) |
@@ -119,6 +120,13 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
 | Lost | Disputed tickets `void` (`dispute_lost`); status stays `lost`; reversal queued | Memberships end; nothing to hand over; reversal queued |
 | Won | Tickets stay under review until staff with `orders:refund` restore them | `disputeStatus` clears at once; the dispute stays in history |
 
+**Who answers.** On destination charges the dispute is on the platform's account, and societies can't see it in Express, so the platform operator answers it in Stripe's Dashboard ([[Production Operations]]). An unanswered dispute is lost.
+- **Draft answer** (`stageDisputeEvidence`): once the transaction that records a newly opened dispute commits, the facts Thunderstrux holds are staged on it with `disputes.update(..., { submit: false })`. Stripe's default would send them to the bank; staging never does, the operator submits. Only while Stripe still takes an answer (`needs_response`, `warning_needs_response`) and nothing is on it yet (`has_evidence` false).
+  - Tickets: buyer name and email (`retainedBuyerIdentity`), what was bought, the event date, each ticket's door scan time (or that none was scanned, or that none was issued), the society's refund policy as checkout shows it today, and a summary: paid time, when the tickets were emailed, and every refund already made (Thunderstrux refunds with their Stripe ids, a compensation refund, refunds made in Stripe's dashboard). The refund lines answer a buyer who was refunded and disputed anyway.
+  - Commerce: buyer, the lines bought, the refund policy, paid time, a collected merchandise pickup, and refunds already made.
+  - Any failure (for example a key without Disputes write) logs `stripe.dispute.evidence_not_staged` and alerts `dispute_evidence_not_staged`; it never fails the webhook, because the event is already journalled.
+- **Reminder:** the monitor alerts `purchase_dispute_evidence_due` for each dispute still `needs_response` or `warning_needs_response` whose `evidenceDueBy` is within 72 hours, every 30 minutes, until a submitted answer moves Stripe's status and its `charge.dispute.updated` event updates `providerStatus`.
+
 **Restore** (`restore_tickets`, reason 8 to 500): allowed only when `disputeStatus = won` and every unresolved dispute is won. It resolves them all together, puts `disputed` tickets back to `active`, clears `disputeStatus` and appends `dispute_resolved`. Later events for a resolved dispute are history only. A dispute is not a refund.
 
 ## Lost-dispute reversals
@@ -168,6 +176,7 @@ Free memberships and free merchandise orders cancel the same way through their o
 - **`dispute_reversal_unresolved`:** reverse the transfer in Stripe's Dashboard, or decide not to.
 - **Compensation `refund_failed` or `review_required`:** refund in Stripe's Dashboard, then confirm the refund id on the order page.
 - **`purchase_dispute_unmatched`:** the dispute's payment didn't verify as any order's; investigate in Stripe.
+- **`dispute_evidence_not_staged` or `purchase_dispute_evidence_due`:** answer the dispute in Stripe's Dashboard from the order page's facts ([[Production Operations]]).
 
 ## Related
 

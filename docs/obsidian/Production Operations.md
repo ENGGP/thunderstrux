@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Environment Variables]]", "[[Stripe Payments and Connect]]", "[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[Pre-hosting Candidate]]", "[[Troubleshooting]]"]
 sources: [docker/Dockerfile, docker/entrypoint.sh, docker-compose.hosted.yml, docker-compose.schedules.yml, deploy/droplet/docker-compose.droplet.yml, scripts/droplet.mjs, scripts/operations.mjs, scripts/release-pair.mjs, lib/ops/alerts.ts, lib/ops/monitor.ts, lib/ops/worker.ts, lib/ops/readiness.ts]
@@ -89,10 +89,13 @@ Create both in Stripe Workbench (live for production, test for staging) as **sna
 
 Subscribe only these. Check the endpoint list shows the pinned version, then send a test event to each and confirm HTTP 200 under Event deliveries.
 
-**Key:** a restricted key (`rk_live_…`) with only what the code calls: Checkout Sessions write (create, retrieve, list, expire); PaymentIntents and Charges read; Refunds write; Disputes read; Connect accounts, account links and login links write; Transfers write (reversals; also retrieve and list reversals); on connected accounts Balance read and Payouts write. Prove it in test mode with the staging campaign first: a 403 in Workbench request logs names the missing permission. Store it as the `stripe_secret_key` secret; roll it when someone with access leaves.
+**Key:** a restricted key (`rk_live_…`) with only what the code calls: Checkout Sessions write (create, retrieve, list, expire); PaymentIntents and Charges read; Refunds write; Disputes write (read, and staging each dispute's draft answer); Connect accounts, account links and login links write; Transfers write (reversals; also retrieve and list reversals); on connected accounts Balance read and Payouts write. Prove it in test mode with the staging campaign first: a 403 in Workbench request logs names the missing permission. Store it as the `stripe_secret_key` secret; roll it when someone with access leaves.
 
-**Disputes:** on destination charges the platform answers every dispute in Stripe's Dashboard before the due date that `purchase_dispute_opened` reports. Stripe takes the amount and dispute fee from the platform; once lost, the refunds worker reverses the society's transfer by the disputed amount (PAY-004, [[Payment Lifecycle]]); the dispute fee stays with the platform.
-
+**Disputes:** on destination charges the platform answers every dispute, because it is on the platform's account and societies can't see it. The platform operator owns them. Stripe takes the amount and dispute fee from the platform; once lost, the refunds worker reverses the society's transfer by the disputed amount (PAY-004, [[Payment Lifecycle]]); the dispute fee stays with the platform. An unanswered dispute is lost.
+1. `purchase_dispute_opened` names the dispute and its due date. Open it in Stripe's Dashboard (the staff order page links to it).
+2. Thunderstrux has already staged a draft answer on it ([[Payment Lifecycle Refunds and Disputes#Disputes]]): buyer, what was bought, door scans, ticket email time, refund policy and refunds already made. Review it, add anything the society tells you (for example messages with the buyer), and submit before the due date. A buyer refunded and disputing anyway: submit with the refund lines.
+3. `dispute_evidence_not_staged`: nothing was staged (often a key without Disputes write). Fill the same facts in from the staff order page.
+4. `purchase_dispute_evidence_due` repeats every 30 minutes from 72 hours before the due date until the answer is submitted.
 Optionally the edge may accept webhook requests only from Stripe's published IP ranges; signatures stay the real protection.
 
 ## Workers and schedules
@@ -126,7 +129,7 @@ Key log events: `api.request_failed` (unmapped route error: `operation`, `method
 
 **Alert delivery** (`emitOperationalAlert`): always an `ops.alert` error log. With `ALERT_WEBHOOK_URL` set (hosted: `ALERT_WEBHOOK_URL_FILE`, a required secret for app, migration and every worker) it is also POSTed as JSON `{event, environment, timestamp, dedupeKey, details}`, redacted like logs, 3 s timeout, best effort: a failing receiver logs `ops.alert.delivery_failed` and never fails the caller. `dedupeKey` is the payload's own (monitor and worker alerts set `<alert>:<queue|worker>`) or the alert name. `stripe_webhook_signature_failure` reaches the receiver at most once per 5 minutes per process, with `details.suppressed` counting those held back; every one is still logged (SEC-020). Point it at a receiver that groups by `dedupeKey`. Locally `scripts/mail-capture.mjs` receives alerts (`POST /alerts`, `GET /alerts`).
 
-**Monitor** (`runOperationsMonitor`, every minute): per queue it emits `queue.backlog`, `queue.oldest_age_seconds`, `queue.stuck`; per job (not itself) `worker.seconds_since_success`. A firing alert repeats every 30 minutes (`ALERT_REPEAT_SECONDS`); one that clears and returns alerts at once. State lives in the `monitor` lease row's `alertState`. If the monitor itself stops nothing alerts: the hosted uptime check must also watch for missing `worker.seconds_since_success` or a missed heartbeat (OPS-002).
+**Monitor** (`runOperationsMonitor`, every minute): per queue it emits `queue.backlog`, `queue.oldest_age_seconds`, `queue.stuck`; per job (not itself) `worker.seconds_since_success`. It also alerts `purchase_dispute_evidence_due` for each unanswered dispute due within 72 hours (`readDisputesDue`, `DISPUTE_DUE_WITHIN_SECONDS`), keyed per dispute. A firing alert repeats every 30 minutes (`ALERT_REPEAT_SECONDS`); one that clears and returns alerts at once. State lives in the `monitor` lease row's `alertState`. If the monitor itself stops nothing alerts: the hosted uptime check must also watch for missing `worker.seconds_since_success` or a missed heartbeat (OPS-002).
 
 | Queue (`queueThresholds`) | Counts | Alerts when oldest exceeds |
 | --- | --- | --- |
@@ -159,10 +162,14 @@ Every alert (`OperationalAlertName`). The engineering on-call owns all of them; 
 | `checkout_attempt_recovery_failed` | the recovery batch threw (also `worker_failed`) | As `worker_failed`; check Stripe reachability. |
 | `checkout_attempt_recovery_abandoned` | an uncertain attempt passed the 24 h replay window (`attemptReplayWindowMs`) and was closed | Look in Stripe for a Session under it; if paid, the webhook still fulfils; otherwise nothing to do. |
 | `order_refund_unresolved` | a refund request is still unknown after 6 checks; re-alerts hourly while the worker keeps asking Stripe hourly | Find the refund in Stripe's Dashboard; a `refund.*` webhook can still settle it. Don't refund by hand while it may exist. |
-| `purchase_dispute_opened` | a dispute opened on a ticket or commerce order (`evidenceDueBy`) | Answer it in Stripe's Dashboard before the due date. |
+| `purchase_dispute_opened` | a dispute opened on a ticket or commerce order (`evidenceDueBy`) | Review the staged draft in Stripe's Dashboard and submit it before the due date (Disputes above). |
+| `dispute_evidence_not_staged` | Stripe refused or couldn't take a new dispute's draft answer (`lib/payments/dispute-evidence.ts`) | Check the key has Disputes write; answer the dispute by hand from the staff order page. |
+| `purchase_dispute_evidence_due` | an unanswered dispute is due within 72 hours (monitor, per dispute) | Submit the answer in Stripe's Dashboard now; it stops once Stripe's status moves. |
 | `purchase_dispute_unmatched` | a dispute doesn't match its order's charge, currency or amount | Investigate the charge in Stripe; nothing was recorded. |
 | `dispute_reversal_unresolved` | a lost dispute can't be taken back (no transfer, another account, nothing left, Stripe refused) or is unknown after 6 tries; the latter re-alerts hourly while the worker keeps looking it up | Reverse or write it off by hand in Stripe; record it on the order. |
 | `society_payout_failed` | a society's bank refused a payout | The society sees a warning on Payments and fixes bank details in Stripe; the money waits for the next payout. Help if it repeats. |
+| `society_charges_paused` | Stripe paused a society's card payments (`disabledReason`; `lib/stripe/connect.ts`) | Its Stripe managers were emailed. If it sells soon or stays paused, help them send what Stripe asks for. |
+| `event_cancelled_after_release` | a cancelled event had sales older than 80 days, already released to the society's bank (`amount`, `orders`; PAY-022) | Watch the society's balance in Stripe: refunds are debited from its bank. If debits fail, Stripe pauses its payouts and holds a reserve on the platform; contact the society. |
 | `commerce_webhook_identity_mismatch` | a commerce Session's family, society or order doesn't match, or a commerce Session arrived without a family | Nothing was fulfilled. Find the payment in Stripe; refund a stray charge there. |
 | `ticket_webhook_identity_mismatch` | a paid Session isn't the one bound to its ticket order (PAY-010) | Nothing was issued. If the order was paid on its own Session, refund the stray payment in Stripe; no order records it. |
 | `db_migration_failed`, `app_healthcheck_failed` | declared but never raised (DEBT-001) | Watch migration exit codes and deploy logs, and an external uptime check on `/api/health/ready`, instead. |

@@ -58,7 +58,6 @@
 - **Violet editorial rule.** A 3px purple line, occasionally paired with a very small diagonal cut at the end, marks key sections and selected tabs. No busy glowing outlines.
 - **Ticket edge.** A *subtle, functional* clipped/perforated edge appears only on issued ticket visualisations, not on every card. Ticket ID and validity remain plain text.
 - **Quiet square geometry.** Editorial blocks have moderately squared edges and selective 14px radii; controls are rounded just enough to feel contemporary. Do **not** use identical huge `rounded-3xl` boxes everywhere.
-- **One restrained micro-accent.** A pale chartreuse (`#DEF17B`) highlights occasional editorials/date markers and event categorisation; it must **never** represent paid, verified, eligible or safe.
 - **Society-as-publisher.** Every public event sits under the hosting society's visible name/logo. The society owns its content but Thunderstrux owns the checkout chrome, accessibility and trust cues.
 
 **Avoid:** giant gradient-purple hero with floating dashboard illustration; glowing blobs; stock-photo handshake; ubiquitous lightning bolts; emoji in the main navigation; four equal metric cards everywhere; default Lucide icon on every heading; giant rounded pill buttons for all actions; large borderless forms with placeholder-only fields; ornamental graphs showing fictional growth. These are common template shortcuts, not a coherent identity.
@@ -115,7 +114,6 @@ Tokens below are deliberate design choices, not claims about an existing theme. 
 | `--surface-2` | `#F5F2FA` | Row hover, table zebra, neutral sidebar | Distinct from page canvas |
 | `--line` | `#DDD6E7` | Borders, rules, inputs | 3:1 required where boundary is sole indication of control |
 | `--line-strong` | `#9E8AAC` | Input boundaries on white and drag affordance | Ensure non-text contrast vs surrounding surface |
-| `--lime` | `#DEF17B` | Sparing editorial highlight on dark violet | Decorative only; not a trust/status colour |
 | `--success`, `--warning`, `--danger`, `--info`, `--neutral` | see 16.2 | Status roles, each with text, `-bg`, `-border` and `-icon` shades | Replaced on 16 October 2026 by the approved status colour system in section 16.2; colour always paired with a word or icon |
 | `--focus` | `#1E72D8` | Focus ring distinguished from purple buttons | Explicit 2px outer + white separation |
 
@@ -139,10 +137,13 @@ Tokens below are deliberate design choices, not claims about an existing theme. 
   --ts-border: #ddd6e7;
   --ts-input-border: #9e8aac;
   --ts-focus: #1e72d8;
-  --ts-success: #146b50;
-  --ts-warning: #834500;
-  --ts-danger: #9a3f53;
-  --ts-lime: #def17b;
+  /* Status roles: one text colour per role here; the -bg, -border and -icon
+     shades are in section 16.2 and app/globals.css. */
+  --ts-success: #0b6b55;
+  --ts-warning: #8a4a06;
+  --ts-danger: #a61e3f;
+  --ts-info: #4a4360;
+  --ts-neutral: #595265;
 }
 ```
 
@@ -295,8 +296,8 @@ The component library is shared. Agent implementations must use the design token
 
 ## 4.1 Primary button recipes
 
-- **Primary:** 48px height, `#5B2ACB` fill, white text 16px/600, 10px radius, 16-20px side padding; hover `#4C22AF`; pressed `#2A1550`; focus `2px white gap + 2px #1E72D8` outer outline; `disabled` has explanatory text and not only `opacity:0.4`.
-- **Secondary:** 44-48px, transparent/white background, 1px **strong** border, dark-violet label; hover soft-violet tint.
+- **Primary:** 44px height (36px dense admin, 48px for purchase and door actions), `#5B2ACB` fill, white text 14px/600 (16px at 48px), 9px `radius-control`, 16px side padding (12px small, 20px large); hover `#4C22AF`; pressed `#2A1550` and 97% scale; focus `2px #1E72D8` outline with a 2px offset; `disabled` turns neutral and says why, not only `opacity:0.4`.
+- **Secondary:** same heights as primary, white background, 1px **strong** border, dark-violet label; hover soft-violet tint.
 - **Tertiary:** underline on hover *and keyboard focus*, no giant border; used for links and small secondary actions.
 - **Destructive:** white surface + dark-red outline/text by default, solid danger only inside a confirmation dialog. Never render refund button in success-green.
 - **Membership CTA:** primary purple for active eligible offer; if member is not verified, provide `Sign in to purchase` with a clear return route. Free society join uses secondary button and a separate word.
@@ -329,7 +330,7 @@ The component library is shared. Agent implementations must use the design token
 
 **Purpose:** Answer “What's happening around me?” while showing that Thunderstrux is for societies, not just event ticket sales. **Layout:**
 
-1. **Editorial hero:** desktop 60% text, 40% visual mosaic of *real* recent society event imagery with no fake attendee numbers. Deep plum `#2A1550` background and warm-paper text. A small chartreuse `YOUR CAMPUS, LIVE` label precedes a 2-3 line **Space Grotesk** H1: “Good things happen together.” Supporting line refers to events, memberships and society merchandise. The primary action **Explore events** is a light button on the dark hero; secondary **Discover societies** is a text link. No animated gradient.
+1. **Editorial hero:** desktop 60% text, 40% visual mosaic of *real* recent society event imagery with no fake attendee numbers. Deep plum `#2A1550` background and warm-paper text. A 2-3 line **Space Grotesk** H1: “Good things happen together.” Supporting line refers to events, memberships and society merchandise. The primary action **Explore events** is a light button on the dark hero; secondary **Discover societies** is a text link. No animated gradient.
 2. **Immediate discovery strip:** search field and optional `When` / society filters depending on actual public query support; if search is not supported on home, use a prominent link to Explore events instead of pretending it filters.
 3. **Happening soon:** 3-column desktop `EventCard` grid, 2 tablet, 1 mobile. Each card date rail, location, organiser, truthful price. A link `See all events` follows real results.
 4. **Find your crowd:** mixed-dimension society-card row with proper organisation name/logo and single useful next action. Do **not** invent follower counts, ratings or reviews.
@@ -664,7 +665,7 @@ These are **relative hierarchy sketches** (not pixel-perfect mock-ups). Build fr
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ DEEP PLUM HERO (height determined by content; not full screen)               │
 │                                                                              │
-│  YOUR CAMPUS, LIVE                     ┌─────────EVENT IMAGE A────────────┐   │
+│                                        ┌─────────EVENT IMAGE A────────────┐   │
 │  Good things happen                    │ Actual campus event photograph   │   │
 │  together.                             ├───────┬─────────────────────────┤   │
 │  Find events and societies             │ B     │ C                       │   │
@@ -683,7 +684,7 @@ These are **relative hierarchy sketches** (not pixel-perfect mock-ups). Build fr
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Hierarchy notes:** photography authentic; no decorative chart; an event card appears quickly; desktop hero text left aligned. A dark plum hero uses white or warm-white text and chartreuse only for editorial micro-accent. Mobile removes mosaic competition and shows one photo after copy.
+**Hierarchy notes:** photography authentic; no decorative chart; an event card appears quickly; desktop hero text left aligned. A dark plum hero uses white or warm-white text. Mobile removes mosaic competition and shows one photo after copy.
 
 ## 10.2 Event detail desktop / mobile
 
@@ -1019,7 +1020,7 @@ This covers **all 43 named screens** in [SRC-FLOW §6] exactly; nested variants 
 - **Consistent unique identity:** date rail, editorial rule and purple type system appear purposefully in public pages; ticket perforation used only where functionally meaningful. If every page is a rectangular grid of four identical cards, recompose it.
 - **Real-world content resilience:** test an event titled “Queensland Undergraduate Robotics and Computer Vision Welcome Picnic and Student Careers Mixer 2027”, a three-word short title, a 1000-character location description, absent event cover, multi-day date and international contact. No fragile fixed-height title truncation hiding key information.
 - **A meaningful hierarchy:** tell which one action matters most on each page without reading code or hovering. Admin sees a task, event visitor sees “Get tickets”, member sees “View ticket”.
-- **Brand personality with restraint:** deep purple is concentrated where expressive, not thrown behind financial tables. Chartreuse only editorial. All checkout state and account recovery pages remain sober and legible.
+- **Brand personality with restraint:** deep purple is concentrated where expressive, not thrown behind financial tables. All checkout state and account recovery pages remain sober and legible.
 - **Microcopy sounds like a real product:** short, concrete, appropriately Australian terminology (society, event, pickup) and no buzzwords such as “unleash your potential”, “seamless experience”, “revolutionise your journey” scattered through the interface.
 - **Icons are not decoration:** if the heading works without a tiny identical purple icon, remove it. Don't put five random illustrated mascots in every empty state.
 - **Authentic imagery and actual data:** never generate fictional university logos, photos of specific societies, “97% customer satisfaction”, fake charts or testimonials to make screens seem lively.
@@ -1186,3 +1187,28 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 ## 16.7 Still targets
 
 Event images, guest checkout, memberships, merchandise, calendar, analytics and history were delivered with T10–T46; their live treatment is recorded in [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md). QR scanning and OpenClaw remain targets with no screen. The 2026-10-25 UI audit's open consistency items are tracked as UI-004 in the issue register.
+
+The public pages are thinner than sections 5 and 10 describe, and those sections stay the target for them (decided 28 October 2026 against PRD 4, 6.2 and 6.4: discovery must show what, who, when and how to attend, and the society profile is the home base):
+- **PUB-01 Home:** **Explore events** is the hero's primary action (built: Find a society); the "Find your crowd" society row and the three-part "How Thunderstrux works" section follow the events; section rhythm 72-96px once those sections exist. The hero image mosaic waits for real society photographs. Register: UI-008.
+- **Event cards (PUB-01, PUB-02, PUB-05):** the lowest selectable price (`Free` or `From A$…`) and a Sold out or Sales closed label. Register: UI-007.
+- **PUB-05 Society Overview:** next event, the current membership offer and up to four merchandise items. Register: UI-004.
+- **Issued-ticket edge (1.1):** the perforated edge on issued tickets, when the ticket pages are next reworked.
+
+## 16.8 Values kept as built
+
+A design drift check on 28 October 2026 compared the code (`DESIGN.md`, generated by `/impeccable document`) with sections 2 to 4. These built values differ from those sections and are kept; this table is the authority for them.
+
+| Area | Sections 2-4 | Built and kept | Why |
+|---|---|---|---|
+| Page title (`PageHeader` `h1`) | 36px `heading-1` | 30px | Most titled pages are dashboards and forms; 2.2 itself says admin H1s must not be enormous (PRD 10: clarity over clutter). |
+| Public section `h2` | 26px | 24px | Reads as a clear step below the 48px event and society titles. |
+| Card and list titles (`h3`) | 20px Space Grotesk | 18px DM Sans | Dense event and society grids; display type stays on `h1`/`h2` and the date rail. |
+| Home hero headline | 64px | 60px | Fits two lines at 1248px; its line height is UI-008. |
+| Primary button | 48px, 16px text, 10px radius | 44px, 14px text, 9px radius; 48px with 16px text for purchase actions | Matches 2.3 (44px standard, 48-52px purchase, 36px dense) and the 9px control radius; section 4.1 is updated. |
+| Event card image | 3:2 | 16:9 | One upload serves the card and the event page hero (T11b). |
+| Notice | 3px left border (`InlineNotice`) | Full toned box with icon and title | Recorded in 16.4; status shows through wash, icon and title together. |
+| Focus ring | White 2px gap, then 2px blue | 2px blue with a transparent 2px offset | Passes on every surface checked; revisit only if an accessibility audit flags the plum column or hero. |
+| Feedback (3.6) | Toast for small saves | No toasts; results stay inline | Recorded in 16.5; persistent feedback suits PRD 11 (clear success or failure). |
+| Organiser navigation (3.5) | Groups Run, Community, Understand, Settings & tools | Ungrouped Overview, Events, Calendar, Orders, then Community, Insights, Settings | Recorded in 16.3; matches the features that exist, and OpenClaw is deferred. |
+| Pale chartreuse accent | `#DEF17B` editorial micro-accent | Removed | No category or editorial feature uses it, and an unused brand colour invites decoration (13.5: brand personality with restraint). |
+| Image placeholder | Pale violet block with a corner date label | Lilac block with a faint diagonal stripe | Society photographs replace it; the date already leads the card in the date rail. |

@@ -89,3 +89,6 @@ ds-bundle/
 *.key
 *.p12
 *.dump
+
+# Impeccable downloads its binary on first run
+.claude/skills/impeccable/scripts/bin/

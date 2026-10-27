@@ -14,7 +14,7 @@ Use the semantic names below, never raw palette classes (`bg-purple-600`, `text-
 |---|---|
 | Surfaces | `bg-paper` `bg-warm-paper` `bg-surface` `bg-surface-subtle` `bg-brand-tint` |
 | Text | `text-ink` `text-ink-soft` `text-ink-muted` `text-brand` `text-danger` `text-success` `text-warning` `text-info` `text-neutral` |
-| Brand | `bg-brand` `hover:bg-brand-hover` `bg-brand-ink` `bg-lime` (accent) |
+| Brand | `bg-brand` `hover:bg-brand-hover` `bg-brand-ink` |
 | Status | per role `success` `warning` `danger` `info` `neutral`: text `text-*`, wash `bg-*-bg`, hairline `border-*-border`, icon `text-{success,warning,danger,info}-icon` (neutral icons: `bg-neutral-icon` dots). Warning is for real risk only; drafts and disabled states are neutral |
 | Borders | `border` + `border-line` (hairline), `border-line-strong` (controls) |
 | Radius | `rounded-tag` 6px, `rounded-control` 9px, `rounded-card` 14px, `rounded-feature` 20px |

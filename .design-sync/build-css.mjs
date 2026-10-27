@@ -24,7 +24,6 @@ const safelist = `
 @source inline("max-w-{sm,md,lg,xl,2xl,3xl}");
 @source inline("{sm:,md:,lg:,}grid-cols-{1,2,3,4}");
 @source inline("{sm:,md:,lg:,}{flex,grid,flex-col,flex-wrap,w-full,mx-auto,text-center,items-start,items-center,items-end,justify-between,justify-center,justify-end}");
-@source inline("bg-lime");
 `;
 const result = await postcss([tailwind({ base: root })]).process(readFileSync(from, "utf8") + safelist, { from });
 mkdirSync(dirname(out), { recursive: true });

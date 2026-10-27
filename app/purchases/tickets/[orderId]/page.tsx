@@ -13,7 +13,7 @@ import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
 import { formatDate, formatDateRange, formatMoney, formatPrice, ticketReference } from "@/lib/format";
-import { buyerPurchaseBadge, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
+import { buyerPurchaseBadge, justIssued, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { getOwnTicketPurchase } from "@/lib/purchases/ticket-purchases";
 import { zoneCity } from "@/lib/zoned-time";
@@ -82,7 +82,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
           {order.tickets.length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">{checkout && checkout.state !== "ended" ? `Your ${order.quantity === 1 ? "ticket is" : "tickets are"} issued once Stripe confirms the payment.` : "No tickets were issued for this order."}</p>
           ) : (
-            <ul className="mt-3 grid gap-2">
+            <ul className={`mt-3 grid gap-2 ${justIssued(order.fulfilledAt) ? "issued-stagger" : ""}`}>
               {order.tickets.map((ticket) => {
                 const state = ticketState(ticket, organisation.timeZone);
                 return (

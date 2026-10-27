@@ -17,7 +17,7 @@ import { getLiveSession } from "@/lib/auth/live-session";
 import { canOpenGuestOrder, guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { formatDateRange, formatMoney, ticketReference } from "@/lib/format";
 import { getGuestOrder } from "@/lib/orders/member-tickets";
-import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
+import { justIssued, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const dynamic = "force-dynamic";
@@ -88,7 +88,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
           {going ? (
             <section aria-label="Your tickets" className="grid gap-2 rounded-card border border-line p-4">
               <h2 className="font-semibold text-ink">Your tickets</h2>
-              <ul className="grid gap-1.5">
+              <ul className={`grid gap-1.5 ${justIssued(order.fulfilledAt) ? "issued-stagger" : ""}`}>
                 {order.tickets.map((ticket) => (
                   <li className="flex justify-between gap-3 text-ink" key={ticket.id}>
                     <span>{ticketName}</span>

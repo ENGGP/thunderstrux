@@ -69,6 +69,7 @@
 
 /* Motion: menus and the dialog animate in and close instantly, so a chosen action
    never waits on a fade. The phone buy bar is the one drawer: it slides both ways.
+   Newly issued tickets arrive one by one (issued-stagger).
    Used as ease-out, ease-drawer and animate-*. */
 @theme {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -76,6 +77,7 @@
   --animate-pop-in: pop-in 160ms var(--ease-out);
   --animate-dialog-in: pop-in 200ms var(--ease-out);
   --animate-fade-in: fade-in 200ms var(--ease-out);
+  --animate-rise-in: rise-in 300ms var(--ease-out) backwards;
 
   @keyframes pop-in {
     from {
@@ -87,6 +89,35 @@
     from {
       opacity: 0;
     }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      translate: 0 8px;
+    }
+  }
+}
+
+/* The buyer's first look at tickets issued moments ago (rare: once per purchase):
+   children rise in 50ms apart, capped so ten tickets finish within 550ms. */
+@utility issued-stagger {
+  & > * {
+    animation: var(--animate-rise-in);
+  }
+  & > :nth-child(2) {
+    animation-delay: 50ms;
+  }
+  & > :nth-child(3) {
+    animation-delay: 100ms;
+  }
+  & > :nth-child(4) {
+    animation-delay: 150ms;
+  }
+  & > :nth-child(5) {
+    animation-delay: 200ms;
+  }
+  & > :nth-child(n + 6) {
+    animation-delay: 250ms;
   }
 }
 
@@ -170,12 +201,14 @@
   }
 
   /* 0s, not 0.01ms: every element defaults to transition-property: all, so any
-     non-zero duration would turn each style change (even the focus ring) into a transition. */
+     non-zero duration would turn each style change (even the focus ring) into a transition.
+     Delays go too, or a backwards-filled stagger would still reveal items one by one. */
   @media (prefers-reduced-motion: reduce) {
     *,
     ::before,
     ::after {
       animation-duration: 0s !important;
+      animation-delay: 0s !important;
       transition-duration: 0s !important;
       scroll-behavior: auto !important;
     }

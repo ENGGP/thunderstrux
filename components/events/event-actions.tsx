@@ -69,6 +69,8 @@ export function EventActions({
     style.bottom = style.top === "auto" ? `${window.innerHeight - box.top + 4}px` : "auto";
     // Grow out of the button, whichever side the menu opens on.
     style.transformOrigin = style.top === "auto" ? "bottom right" : "top right";
+    // From the keyboard (Enter or Space give a click with detail 0) the menu opens instantly.
+    style.animationName = click.detail === 0 ? "none" : "";
   }
 
   function choose(action: "unpublish" | "delete" | "cancel") {

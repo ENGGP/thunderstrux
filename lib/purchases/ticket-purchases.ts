@@ -76,6 +76,7 @@ export async function getOwnTicketPurchase(userId: string, orderId: string) {
     select: {
       ...listSelect,
       paidAt: true,
+      fulfilledAt: true,
       buyerEmailSnapshot: true,
       ticketEmailSentAt: true,
       event: {
@@ -110,7 +111,7 @@ export function getOwnOrderForCheckoutSession(userId: string, stripeSessionId: s
   return prisma.order.findFirst({
     where: { stripeSessionId, userId },
     select: {
-      id: true, ...projectionSelect, quantity: true, buyerEmailSnapshot: true, ticketEmailSentAt: true,
+      id: true, ...projectionSelect, quantity: true, buyerEmailSnapshot: true, ticketEmailSentAt: true, fulfilledAt: true,
       event: { select: { id: true, title: true, organisation: { select: { name: true } } } }
     }
   });

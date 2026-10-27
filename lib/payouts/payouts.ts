@@ -8,12 +8,16 @@ import { getStripe } from "@/lib/stripe";
 
 // PAY-005: connected accounts are on manual payouts, so money stays in the
 // society's Stripe balance until this worker sends what the release rules no
-// longer hold. A payout can never exceed the available balance, so a repeated
-// or retried run can't overpay; the daily key makes a retry the same payout.
+// longer hold. A payout can never exceed the available balance, and a sent one
+// leaves that much less available, so a repeated or retried run can't overpay.
 
 const checkEveryMs = 60 * 60 * 1000;
-// Below this a payout waits for more money.
-export const minPayout = 100;
+// Connect charges the platform A$0.25 + 0.25% a payout, so below $20 a payout
+// waits for more money, unless the society has had none for a week (or ever):
+// then anything from $1 goes, so small balances never sit long.
+export const minPayout = 2000;
+export const smallPayout = 100;
+export const smallPayoutAfterMs = 7 * 24 * 60 * 60 * 1000;
 
 // Manual payouts keep the money in Stripe until we send it; a negative balance
 // (a refund after a payout) is taken from the society's bank, not left to us.
@@ -57,9 +61,8 @@ async function record(organisationId: string, accountId: string, payout: Stripe.
 }
 
 // One society: what Stripe has available, less what the rules still hold. At
-// most one payout a UTC day (the key's day), like Eventbrite's batched payouts:
-// a second call that day would reuse the key with another amount, which Stripe
-// refuses (DEF-034). Money released later in the day goes out the next day.
+// most one payout a UTC day, like Eventbrite's batched payouts (DEF-034): money
+// released later in the day goes out the next day.
 async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountId: string }, now: Date) {
   await ensureManualPayouts(stripe, organisation.stripeAccountId);
   const day = now.toISOString().slice(0, 10);
@@ -73,10 +76,19 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   const available = balance.available.find((entry) => entry.currency === "aud")?.amount ?? 0;
   const held = await heldMoney(organisation.id, organisation.stripeAccountId, now);
   const amount = available - held.total;
-  if (amount < minPayout) return { sent: 0 };
+  const lastPaid = await prisma.societyPayout.findFirst({
+    where: { stripeAccountId: organisation.stripeAccountId, status: { not: "failed" } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true }
+  });
+  const smallAllowed = !lastPaid || now.getTime() - lastPaid.createdAt.getTime() >= smallPayoutAfterMs;
+  if (amount < (smallAllowed ? smallPayout : minPayout)) return { sent: 0 };
+  // One key per attempt: Stripe keeps a refusal under its key and refuses that key
+  // with another amount, so a per-day key blocked the rest of the day. The SDK's
+  // own network retries reuse this key; the day rule above stops a second payout.
   const payout = await stripe.payouts.create(
     { amount, currency: "aud", metadata: { organisationId: organisation.id } },
-    { stripeAccount: organisation.stripeAccountId, idempotencyKey: `payout:${organisation.stripeAccountId}:${day}` }
+    { stripeAccount: organisation.stripeAccountId, idempotencyKey: `payout:${organisation.stripeAccountId}:${now.toISOString()}` }
   );
   await record(organisation.id, organisation.stripeAccountId, payout, now);
   logInfo("payouts.sent", { organisationId: organisation.id, amount, available, held: held.total });

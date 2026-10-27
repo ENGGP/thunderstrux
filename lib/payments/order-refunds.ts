@@ -111,11 +111,12 @@ export async function requestOrderRefund(input: {
 // Checks one ticket order under its lock, sets the refund fence and records the
 // request. With `processing` the caller sends it at once under that lease;
 // without it the refund worker sends it (an event cancellation queues one per
-// order, EVT-004). `confirmation` is the order reference staff type back.
+// order, EVT-004). `confirmation` is the order reference staff type back. A null
+// actor is Thunderstrux itself, refunding on a Stripe event (an early fraud warning).
 export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   organisationId: string;
   orderId: string;
-  actor: Actor;
+  actor: Actor | null;
   reason: string;
   confirmation?: string;
   processing?: { token: string; now: Date };
@@ -145,15 +146,15 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   const created = await tx.refundRequest.create({
     data: {
       orderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
-      actorUserId: input.actor.id, operationKey: `order-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
+      actorUserId: input.actor?.id ?? null, operationKey: `order-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
       ...(input.processing ? { attempts: 1, processingToken: input.processing.token, processingStartedAt: input.processing.now } : {})
     }
   });
   await appendOrderLifecycleEvent(tx, {
-    orderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount }
+    orderId: order.id, type: "refund_requested", source: input.actor ? "staff_action" : "stripe_webhook", actorUserId: input.actor?.id ?? null, reason, facts: { amount }
   });
   await tx.auditLog.create({ data: {
-    organisationId: input.organisationId, actorUserId: input.actor.id, action: "order.refund_requested", targetType: "Order", targetId: order.id,
+    organisationId: input.organisationId, actorUserId: input.actor?.id ?? null, action: "order.refund_requested", targetType: "Order", targetId: order.id,
     metadata: { refundRequestId: created.id, amount, reason }
   } });
   return created;

@@ -11,7 +11,7 @@ import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
 import type { StaffPlan } from "@/lib/memberships/plans";
-import { calculatePlatformFee, isBelowStripeMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
+import { calculatePlatformFee, isBelowPaidMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
 import { zoneCity } from "@/lib/zoned-time";
 
 type Entitlement = StaffPlan["entitlements"][number];
@@ -121,7 +121,7 @@ export function PlanForm({
       setErrors({ priceAmount: "Enter an amount like 25.00. Use 0 for a free membership." });
       return;
     }
-    if (isBelowStripeMinimum(priceAmount)) {
+    if (isBelowPaidMinimum(priceAmount)) {
       setErrors({ priceAmount: paidPriceMinimum });
       return;
     }

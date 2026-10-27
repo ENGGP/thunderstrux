@@ -39,6 +39,9 @@ vi.mock("@/lib/stripe", async () => {
   };
 });
 
+// Both capabilities destination charges need (card_payments for on_behalf_of, transfers to pay the society).
+const active = { card_payments: "active", transfers: "active" } as const;
+
 function accountUpdated(account: Record<string, unknown>) {
   const body = JSON.stringify({ id: `evt_${account.id}`, object: "event", type: "account.updated", livemode: false, created: Math.floor(Date.now() / 1000), data: { object: account } });
   const signature = new Stripe("sk_test_connect_service").webhooks.generateTestHeaderString({ payload: body, secret: connectSecret });
@@ -71,9 +74,9 @@ describe("Stripe Connect application service", () => {
       stripeReady: true
     });
     const cases = [
-      { details_submitted: true, charges_enabled: true, state: "READY", requirements: { currently_due: [], eventually_due: ["external_account"], disabled_reason: null } },
-      { details_submitted: true, charges_enabled: false, state: "RESTRICTED", requirements: { currently_due: ["individual.verification.document"], eventually_due: [], disabled_reason: "requirements.past_due" } },
-      { details_submitted: false, charges_enabled: false, state: "CONNECTED_INCOMPLETE", requirements: { currently_due: ["business_profile.url"], eventually_due: [], disabled_reason: "requirements.past_due" } }
+      { details_submitted: true, charges_enabled: true, capabilities: active, state: "READY", requirements: { currently_due: [], eventually_due: ["external_account"], disabled_reason: null } },
+      { details_submitted: true, charges_enabled: false, capabilities: active, state: "RESTRICTED", requirements: { currently_due: ["individual.verification.document"], eventually_due: [], disabled_reason: "requirements.past_due" } },
+      { details_submitted: false, charges_enabled: false, capabilities: active, state: "CONNECTED_INCOMPLETE", requirements: { currently_due: ["business_profile.url"], eventually_due: [], disabled_reason: "requirements.past_due" } }
     ] as const;
 
     for (const { state, requirements, ...flags } of cases) {
@@ -107,6 +110,11 @@ describe("Stripe Connect application service", () => {
         stripeDetailsSubmitted: flags.details_submitted
       });
     }
+
+    // Card payments on but transfers inactive: a destination charge can't pay the society, so it can't sell.
+    stripeMocks.retrieveAccount.mockResolvedValueOnce({ id: organisation.stripeAccountId, details_submitted: true, charges_enabled: true, payouts_enabled: true, capabilities: { card_payments: "active", transfers: "inactive" }, requirements: { currently_due: [], eventually_due: [], disabled_reason: null } });
+    await expect(getOrganisationStripeConnectStatus(organisation.id)).resolves.toMatchObject({ state: "RESTRICTED", ready: false, charges_enabled: false });
+    expect(await prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id }, select: { stripeChargesEnabled: true } })).toEqual({ stripeChargesEnabled: false });
   });
 
   test("a Stripe platform not yet signed up for Connect marks the society as waiting on the platform; other errors aren't mistaken for it", async () => {
@@ -200,7 +208,7 @@ describe("Stripe Connect application service", () => {
     const accountId = `acct_${organisation.id}`;
     await prisma.organisation.update({ where: { id: organisation.id }, data: { stripeAccountId: accountId } });
     // A late event says setup is unfinished; Stripe says the account is ready.
-    stripeMocks.retrieveAccount.mockResolvedValueOnce({ id: accountId, details_submitted: true, charges_enabled: true, payouts_enabled: true, requirements: { currently_due: [], eventually_due: [] } });
+    stripeMocks.retrieveAccount.mockResolvedValueOnce({ id: accountId, details_submitted: true, charges_enabled: true, capabilities: active, payouts_enabled: true, requirements: { currently_due: [], eventually_due: [] } });
 
     expect((await accountUpdated({ id: accountId, object: "account", details_submitted: false, charges_enabled: false })).status).toBe(200);
     expect(stripeMocks.retrieveAccount).toHaveBeenLastCalledWith(accountId);
@@ -227,7 +235,7 @@ describe("Stripe Connect application service", () => {
     const alerts = () => error.mock.calls.map(([line]) => { try { return JSON.parse(String(line)); } catch { return {}; } }).filter((entry) => entry.event === "society_charges_paused");
     const deadline = Math.floor(Date.UTC(2026, 11, 1) / 1000);
     const account = (charges: boolean, currently_due: string[] = [], current_deadline: number | null = null) =>
-      ({ id: accountId, details_submitted: true, charges_enabled: charges, payouts_enabled: true, requirements: { currently_due, eventually_due: [], disabled_reason: charges ? null : "requirements.past_due", current_deadline } });
+      ({ id: accountId, details_submitted: true, charges_enabled: charges, capabilities: active, payouts_enabled: true, requirements: { currently_due, eventually_due: [], disabled_reason: charges ? null : "requirements.past_due", current_deadline } });
 
     // A deadline while still selling: one notice per deadline, shown on Payments too.
     stripeMocks.retrieveAccount.mockResolvedValue(account(true, ["individual.id_number"], deadline));

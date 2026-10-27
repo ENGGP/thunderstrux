@@ -168,7 +168,7 @@ describe("membership plans", () => {
     await publish(organisation.slug, plan.id, 3);
 
     await sell(organisation.id, await prisma.membershipProduct.findUniqueOrThrow({ where: { id: plan.id } }));
-    const locked = await update(organisation.slug, plan.id, { ...semester1, priceAmount: 100, expectedVersion: 4 });
+    const locked = await update(organisation.slug, plan.id, { ...semester1, priceAmount: 300, expectedVersion: 4 });
     expect(locked.status).toBe(409);
     expect(locked.body.error.message).toMatch(/locked/);
     expect((await update(organisation.slug, plan.id, { ...semester1, name: "Renamed", expectedVersion: 4 })).status).toBe(409);

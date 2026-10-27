@@ -52,7 +52,7 @@ export async function journal(tx: Prisma.TransactionClient, event: Stripe.Event)
 
 // The order a PaymentIntent paid for, and its charge: the Checkout Session
 // names the order, and the money went to the account the order was sold for.
-async function verifiedOrderPayment(stripe: Stripe, paymentIntentId: string) {
+export async function verifiedOrderPayment(stripe: Stripe, paymentIntentId: string) {
   const select = { id: true, stripeSessionId: true, paymentKind: true, currency: true, totalAmount: true, sellerStripeAccountId: true } as const;
   let order = await prisma.order.findFirst({ where: { stripePaymentIntentId: paymentIntentId }, select });
   if (!order) {

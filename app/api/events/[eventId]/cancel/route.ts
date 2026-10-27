@@ -21,8 +21,8 @@ const schema = z.object({
 // Cancel a published event (EVT-004): events:manage and orders:refund, the
 // event title typed back, a reason ticket holders are emailed and, unless staff
 // MFA is off, one fresh authenticator code for every refund it queues.
-// 200 { status, refundsQueued, freeCancelled, notified, skipped }; a repeat
-// answers "already_cancelled".
+// 200 { status, refundsQueued, freeCancelled, notified, skipped, releasedEarly,
+// checkoutsClosed }; a repeat answers "already_cancelled".
 export async function POST(request: Request, context: RouteContext) {
   const guard = enforceTrustedMutationRequest(request); if (guard) return guard;
   try {

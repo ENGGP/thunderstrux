@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 // PAY-005, design round F1: a society is paid once its event is over, as
@@ -66,4 +67,14 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
     commerce: { amount: commerceAmount },
     total: eventAmount + commerceAmount
   };
+}
+
+// PAY-022: an event's sales older than the cap were released before the event
+// ran, so refunding them takes the money back from the society's bank.
+export async function releasedEarly(tx: Prisma.TransactionClient, eventId: string, now = new Date()) {
+  const orders = await tx.order.findMany({
+    where: { eventId, status: "paid", paymentKind: "stripe", refundStatus: null, paidAt: { lte: new Date(now.getTime() - maxHoldMs) } },
+    select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true }
+  });
+  return { amount: orders.reduce((sum, order) => sum + share(order), 0), orders: orders.length };
 }

@@ -2,6 +2,11 @@ import type Stripe from "stripe";
 import type { Organisation, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ApiErrorDetail } from "@/lib/api/errors";
+import { appUrl } from "@/lib/app-url";
+import { enqueueNotification } from "@/lib/email/notification-outbox";
+import { formatDate } from "@/lib/format";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
+import { organisationRolesWithPermission } from "@/lib/permissions";
 import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
 import { keepStripePayoutsManual, manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
 import { heldMoney } from "@/lib/payouts/release";
@@ -30,6 +35,8 @@ export type StripeConnectStatus = {
   currently_due: string[];
   eventually_due: string[];
   disabled_reason: string | null;
+  // When Stripe pauses card payments unless `currently_due` arrives first (ISO), if it set one.
+  current_deadline: string | null;
   // The society has finished onboarding, so Stripe can sign it in to its own Express Dashboard.
   dashboard_available: boolean;
   actionUrl?: string;
@@ -178,6 +185,7 @@ function statusFromAccount(account: Stripe.Account): StripeConnectStatus {
     currently_due: account.requirements?.currently_due ?? [],
     eventually_due: account.requirements?.eventually_due ?? [],
     disabled_reason: account.requirements?.disabled_reason ?? null,
+    current_deadline: account.requirements?.current_deadline ? new Date(account.requirements.current_deadline * 1000).toISOString() : null,
     dashboard_available: Boolean(account.details_submitted)
   };
 }
@@ -194,6 +202,7 @@ export function notConnectedStatus(): StripeConnectStatus {
     currently_due: [],
     eventually_due: [],
     disabled_reason: null,
+    current_deadline: null,
     dashboard_available: false
   };
 }
@@ -210,6 +219,7 @@ export function platformNotReadyStatus(): StripeConnectStatus {
     currently_due: [],
     eventually_due: [],
     disabled_reason: null,
+    current_deadline: null,
     dashboard_available: false,
     actionUrl: stripePlatformProfileUrl,
     actionRequired: "Complete Stripe Connect platform profile",
@@ -217,26 +227,19 @@ export function platformNotReadyStatus(): StripeConnectStatus {
   };
 }
 
+// Stripe names the unfinished platform profile only in its message. Matching
+// "connect" in the error type also caught StripeConnectionError, a network failure.
 function isStripeConnectPlatformNotReadyError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
   }
 
   const message = error.message.toLowerCase();
-  const stripeError = error as Error & {
-    type?: string;
-    rawType?: string;
-    code?: string;
-  };
-  const type = (stripeError.type ?? stripeError.rawType ?? "").toLowerCase();
-  const code = (stripeError.code ?? "").toLowerCase();
 
   return (
     message.includes("responsibilities of managing losses") ||
     message.includes("signed up for connect") ||
-    message.includes("connect/platform-profile") ||
-    type.includes("connect") ||
-    code.includes("connect")
+    message.includes("connect/platform-profile")
   );
 }
 
@@ -373,16 +376,7 @@ export async function getAccountStatus(accountId: string) {
   });
   const account = await stripe.accounts.retrieve(accountId);
   const status = statusFromAccount(account);
-
-  await prisma.organisation.updateMany({
-    where: { stripeAccountId: account.id },
-    data: {
-      stripeAccountStatus: status.state,
-      stripeChargesEnabled: status.charges_enabled,
-      stripePayoutsEnabled: status.payouts_enabled,
-      stripeDetailsSubmitted: status.details_submitted
-    }
-  });
+  await persistConnectedAccountStatus(account);
 
   console.info("Stripe account status synchronised", {
     stripeAccountId: account.id,
@@ -403,18 +397,70 @@ export async function refreshConnectedAccount(accountId: string) {
   return persistConnectedAccountStatus(await getStripe().accounts.retrieve(accountId));
 }
 
+// The webhook and a Settings refresh both save through here, so neither can
+// absorb the other's change. Staff who manage Stripe hear when Stripe pauses
+// card payments, and once per deadline Stripe sets for more details.
 export async function persistConnectedAccountStatus(account: Stripe.Account) {
   const status = statusFromAccount(account);
+  const now = new Date();
 
-  return prisma.organisation.updateMany({
-    where: { stripeAccountId: account.id },
-    data: {
-      stripeAccountStatus: status.state,
-      stripeChargesEnabled: status.charges_enabled,
-      stripePayoutsEnabled: status.payouts_enabled,
-      stripeDetailsSubmitted: status.details_submitted
+  const { count, paused } = await prisma.$transaction(async (tx) => {
+    // Locked as disconnect locks it, so one transition is seen once.
+    const organisations = await tx.$queryRaw<Array<{ id: string; name: string; timeZone: string; stripeChargesEnabled: boolean }>>`
+      SELECT "id", "name", "timeZone", "stripeChargesEnabled" FROM "Organisation" WHERE "stripeAccountId" = ${account.id} FOR UPDATE
+    `;
+    await tx.organisation.updateMany({
+      where: { stripeAccountId: account.id },
+      data: {
+        stripeAccountStatus: status.state,
+        stripeChargesEnabled: status.charges_enabled,
+        stripePayoutsEnabled: status.payouts_enabled,
+        stripeDetailsSubmitted: status.details_submitted
+      }
+    });
+    const paused: string[] = [];
+    for (const organisation of organisations) {
+      if (organisation.stripeChargesEnabled && !status.charges_enabled) {
+        paused.push(organisation.id);
+        await notifyStripeManagers(tx, organisation, `stripe-charges-paused/${organisation.id}/${now.toISOString()}`, {
+          subject: `Card payments are paused for ${organisation.name}`,
+          message: `Stripe has paused card payments for ${organisation.name}, so paid tickets, memberships and merchandise are off sale. Free tickets still work. Open Payments in Thunderstrux to see what Stripe needs, then update your details in Stripe.`
+        });
+      } else if (status.charges_enabled && status.currently_due.length > 0 && status.current_deadline) {
+        // The outbox keeps one email per key, so each deadline is announced once.
+        await notifyStripeManagers(tx, organisation, `stripe-deadline/${organisation.id}/${status.current_deadline}`, {
+          subject: `Stripe needs more details from ${organisation.name}`,
+          message: `Stripe needs more details from ${organisation.name} by ${formatDate(status.current_deadline, organisation.timeZone)}, or it will pause card payments and paid sales will stop. Open Payments in Thunderstrux to update your details in Stripe.`
+        });
+      }
     }
+    return { count: organisations.length, paused };
   });
+
+  for (const organisationId of paused) {
+    emitOperationalAlert("society_charges_paused", { organisationId, stripeAccountId: account.id, disabledReason: status.disabled_reason });
+  }
+  return { count };
+}
+
+// Every active staff member who can manage the society's Stripe account.
+async function notifyStripeManagers(
+  tx: Prisma.TransactionClient,
+  organisation: { id: string },
+  eventKey: string,
+  payload: { subject: string; message: string }
+) {
+  const managers = await tx.organisationStaff.findMany({
+    where: { organisationId: organisation.id, status: "active", role: { in: organisationRolesWithPermission("stripe:manage") } },
+    select: { user: { select: { email: true } } }
+  });
+  const origin = appUrl();
+  for (const { user } of managers) {
+    await enqueueNotification(tx, {
+      eventKey, recipient: user.email, template: "business_notice", organisationId: organisation.id,
+      payload: { ...payload, subject: payload.subject.slice(0, 200), ...(origin ? { link: new URL("/dashboard/settings", origin).toString() } : {}) }
+    });
+  }
 }
 
 // Unlinks the account locally; the Stripe account and its money are untouched,
@@ -515,6 +561,7 @@ export async function markAccountStatusError(
     currently_due: [],
     eventually_due: [],
     disabled_reason: null,
+    current_deadline: null,
     dashboard_available: known.stripeDetailsSubmitted,
     error: message
   };

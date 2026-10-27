@@ -65,6 +65,22 @@ const cancel = (society: Society, eventId: string, body: Record<string, string>)
 const reason = "The venue flooded and we can't move the date.";
 
 describe("cancelling an event (EVT-004)", () => {
+  // PAY-022: Stripe holds manual-payout money at most 90 days, so sales older than 80 were already sent to the society.
+  test("names sale money already released to the society's bank, and alerts the platform", async () => {
+    const { society, event } = await societyEvent();
+    const early = await heldOrder(society, event, { paymentKind: "stripe" });
+    await prisma.order.update({ where: { id: early.id }, data: { paidAt: new Date(Date.now() - 81 * 86_400_000), feeAmount: 145 } });
+    await heldOrder(society, event, { paymentKind: "stripe" });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await parseJsonResponse(await cancel(society, event.id, { reason, confirmation: event.title }));
+    expect(result).toMatchObject({ status: "cancelled", refundsQueued: 2, releasedEarly: { amount: 1500 - 145, orders: 1 } });
+    const alerts = error.mock.calls.map(([line]) => { try { return JSON.parse(String(line)); } catch { return {}; } }).filter((entry) => entry.event === "event_cancelled_after_release");
+    expect(alerts).toEqual([expect.objectContaining({ organisationId: society.organisation.id, eventId: event.id, amount: 1355, orders: 1 })]);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "event.cancelled", targetId: event.id } }))
+      .toMatchObject({ metadata: expect.objectContaining({ releasedEarly: { amount: 1355, orders: 1 } }) });
+  });
+
   test("closes sales, queues one refund per paid order, cancels free ones, skips disputed and refunded orders, and emails each holder once", async () => {
     const { society, event } = await societyEvent();
     const paid = await heldOrder(society, event, { paymentKind: "stripe", quantity: 2 });

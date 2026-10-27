@@ -29,6 +29,8 @@ export const STUCK_AFTER_SECONDS = minutes(15);
 export const WORKER_STALE_AFTER_SECONDS = minutes(10);
 // A firing alert repeats this often, not on every run.
 export const ALERT_REPEAT_SECONDS = minutes(30);
+// A dispute Stripe still waits on alerts once its evidence is due within this long.
+export const DISPUTE_DUE_WITHIN_SECONDS = minutes(72 * 60);
 
 type Reading = { queue: QueueName; backlog: number; oldestAgeSeconds: number; stuck: number };
 type Row = { backlog: bigint; oldest: Date | null; stuck: bigint };
@@ -82,11 +84,28 @@ export async function readWorkers(now = new Date()) {
   });
 }
 
+// Disputes nobody has answered yet whose evidence is due soon. Submitting an
+// answer moves Stripe's status on, and its webhook updates providerStatus, which clears the alert.
+export function readDisputesDue(now = new Date()) {
+  return prisma.purchaseDispute.findMany({
+    where: { providerStatus: { in: ["needs_response", "warning_needs_response"] }, evidenceDueBy: { gt: now, lte: new Date(now.getTime() + DISPUTE_DUE_WITHIN_SECONDS * 1000) } },
+    orderBy: { evidenceDueBy: "asc" },
+    select: { stripeDisputeId: true, orderId: true, commerceOrderId: true, evidenceDueBy: true }
+  });
+}
+
 type Firing = { key: string; alert: OperationalAlertName; details: Record<string, unknown> };
 
 export async function runOperationsMonitor(now = new Date()) {
-  const [queues, workers] = await Promise.all([readQueues(now), readWorkers(now)]);
+  const [queues, workers, disputes] = await Promise.all([readQueues(now), readWorkers(now), readDisputesDue(now)]);
   const firing: Firing[] = [];
+  for (const dispute of disputes) {
+    firing.push({
+      key: `purchase_dispute_evidence_due:${dispute.stripeDisputeId}`,
+      alert: "purchase_dispute_evidence_due",
+      details: { disputeId: dispute.stripeDisputeId, orderId: dispute.orderId, commerceOrderId: dispute.commerceOrderId, evidenceDueBy: dispute.evidenceDueBy?.toISOString() }
+    });
+  }
   for (const reading of queues) {
     emitMetric("queue.backlog", reading.backlog, { queue: reading.queue });
     emitMetric("queue.oldest_age_seconds", reading.oldestAgeSeconds, { queue: reading.queue });

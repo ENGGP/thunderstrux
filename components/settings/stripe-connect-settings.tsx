@@ -12,7 +12,7 @@ import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, type Status } from "@/components/ui/status-badge";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
-import { formatMoney } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { calculatePlatformFee } from "@/lib/stripe/fees";
 import {
   fetchOrganisationBySlug,
@@ -41,6 +41,7 @@ type ConnectStatus = {
   currently_due: string[];
   eventually_due: string[];
   disabled_reason: string | null;
+  current_deadline: string | null;
   dashboard_available: boolean;
   actionUrl?: string;
   actionRequired?: string;
@@ -85,12 +86,23 @@ function stateContent(status: ConnectStatus | null): {
       tone: "warning"
     };
   }
+  // Ready, but Stripe wants more: said before it pauses card payments.
+  if (status.state === "READY" && status.currently_due.length > 0) {
+    return {
+      title: "Stripe needs more details",
+      description: status.current_deadline
+        ? `Send them by ${formatDate(status.current_deadline)}, or Stripe pauses card payments and paid sales stop.`
+        : "Send them to keep card payments on.",
+      badge: ["pending", "Needs details"],
+      tone: "warning"
+    };
+  }
   // Ready: the rows below say what still needs doing.
   return null;
 }
 
 function readinessBadge(status: ConnectStatus | null): [Status, string] {
-  if (status?.state === "READY") return status.payouts_enabled ? ["active", "Ready"] : ["pending", "Payouts not set up"];
+  if (status?.state === "READY" && !status.currently_due.length) return status.payouts_enabled ? ["active", "Ready"] : ["pending", "Payouts not set up"];
   return stateContent(status)?.badge ?? ["draft", "Not connected"];
 }
 
@@ -251,6 +263,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           currently_due: [],
           eventually_due: [],
           disabled_reason: null,
+          current_deadline: null,
           dashboard_available: false,
           actionUrl: error.payload.actionUrl,
           actionRequired: error.payload.actionRequired,
@@ -435,9 +448,9 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
               </Button>
             ) : null}
 
-            {status?.state === "CONNECTED_INCOMPLETE" || status?.state === "RESTRICTED" ? (
+            {status?.state === "CONNECTED_INCOMPLETE" || status?.state === "RESTRICTED" || (status?.state === "READY" && requirements.length > 0) ? (
               <Button disabled={isContinuingOnboarding} onClick={() => askForCode("continue")} type="button">
-                {isContinuingOnboarding ? "Redirecting..." : status.state === "RESTRICTED" ? "Fix in Stripe" : "Continue Stripe setup"}
+                {isContinuingOnboarding ? "Redirecting..." : status.state === "RESTRICTED" ? "Fix in Stripe" : status.state === "READY" ? "Update details in Stripe" : "Continue Stripe setup"}
               </Button>
             ) : null}
 

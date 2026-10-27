@@ -6,6 +6,7 @@ import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
+import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
 import { queueDisputeReversal } from "@/lib/payments/dispute-reversals";
 import { journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
@@ -99,7 +100,10 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
     } });
     return !existing;
   });
-  if (opened) emitOperationalAlert("purchase_dispute_opened", { commerceOrderId, disputeId: current.id, evidenceDueBy: current.evidence_details?.due_by ?? null });
+  if (opened) {
+    emitOperationalAlert("purchase_dispute_opened", { commerceOrderId, disputeId: current.id, evidenceDueBy: current.evidence_details?.due_by ?? null });
+    await stageDisputeEvidence(current, { commerceOrderId });
+  }
   logInfo("commerce.dispute.reconciled", { stripeEventId: event.id, commerceOrderId, providerStatus: current.status });
   return true;
 }

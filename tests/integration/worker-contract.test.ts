@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { runOperationsMonitor, readQueues } from "@/lib/ops/monitor";
 import { DEFAULT_WORKER_TIMEOUT_MS, runWorker, scheduledWorkers, workerTimeoutMs } from "@/lib/ops/worker";
 import { emitOperationalAlert, flushOperationalAlerts } from "@/lib/ops/alerts";
+import { createEvent, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 // T42: the worker contract (lease, pause, timeout, failure alert) and the
 // monitor's backlog, stuck-item and stale-job alerts, received over HTTP.
@@ -168,6 +169,36 @@ describe("operations monitor (T42)", () => {
       await run("monitor", () => runOperationsMonitor());
       expect(receiver.received.map((alert) => alert.dedupeKey)).toEqual(expect.arrayContaining(["queue_backlog_high:notification_outbox"]));
       expect(receiver.received).toHaveLength(3);
+    } finally {
+      await receiver.close();
+    }
+  });
+
+  test("an unanswered dispute due within 72 hours alerts until Stripe's status moves on; later, answered or past-due ones don't", async () => {
+    quiet();
+    const receiver = await alertReceiver();
+    try {
+      const { organisation } = await createOrganisationAccount({ stripeReady: true });
+      const event = await createEvent({ organisationId: organisation.id, status: "published" });
+      const hoursFromNow = (hours: number) => new Date(Date.now() + hours * 3600_000);
+      const dispute = async (providerStatus: string, evidenceDueBy: Date) => {
+        const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date() });
+        return prisma.purchaseDispute.create({ data: { orderId: order.id, organisationId: organisation.id, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"), amount: 1000, currency: "aud", providerStatus, evidenceDueBy } });
+      };
+      const due = await dispute("needs_response", hoursFromNow(48));
+      await dispute("needs_response", hoursFromNow(5 * 24));
+      await dispute("under_review", hoursFromNow(24));
+      await dispute("needs_response", hoursFromNow(-1));
+
+      await run("monitor", () => runOperationsMonitor());
+      expect(receiver.received.map((alert) => alert.dedupeKey)).toEqual([`purchase_dispute_evidence_due:${due.stripeDisputeId}`]);
+      expect(receiver.received[0].details).toMatchObject({ disputeId: due.stripeDisputeId, orderId: due.orderId });
+
+      // Answered in Stripe: the webhook moves its status and the alert stops.
+      await prisma.purchaseDispute.update({ where: { id: due.id }, data: { providerStatus: "under_review" } });
+      await prisma.workerLease.update({ where: { name: "monitor" }, data: { alertState: {} } });
+      await run("monitor", () => runOperationsMonitor());
+      expect(receiver.received).toHaveLength(1);
     } finally {
       await receiver.close();
     }

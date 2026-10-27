@@ -397,17 +397,17 @@ export async function refreshConnectedAccount(accountId: string) {
   return persistConnectedAccountStatus(await getStripe().accounts.retrieve(accountId));
 }
 
-// The webhook and a Settings refresh both save through here, so neither can
-// absorb the other's change. Staff who manage Stripe hear when Stripe pauses
-// card payments, and once per deadline Stripe sets for more details.
+// The webhook and a Settings refresh both save through here, so a transition
+// they save at the same time is emailed once. Staff who manage Stripe hear when
+// Stripe pauses card payments, and once per deadline Stripe sets for more details.
 export async function persistConnectedAccountStatus(account: Stripe.Account) {
   const status = statusFromAccount(account);
   const now = new Date();
 
   const { count, paused } = await prisma.$transaction(async (tx) => {
-    // Locked as disconnect locks it, so one transition is seen once.
-    const organisations = await tx.$queryRaw<Array<{ id: string; name: string; timeZone: string; stripeChargesEnabled: boolean }>>`
-      SELECT "id", "name", "timeZone", "stripeChargesEnabled" FROM "Organisation" WHERE "stripeAccountId" = ${account.id} FOR UPDATE
+    // Locked as disconnect locks it; the transition is read under the lock.
+    const organisations = await tx.$queryRaw<Array<{ id: string; slug: string; name: string; timeZone: string; stripeChargesEnabled: boolean }>>`
+      SELECT "id", "slug", "name", "timeZone", "stripeChargesEnabled" FROM "Organisation" WHERE "stripeAccountId" = ${account.id} FOR UPDATE
     `;
     await tx.organisation.updateMany({
       where: { stripeAccountId: account.id },
@@ -430,7 +430,7 @@ export async function persistConnectedAccountStatus(account: Stripe.Account) {
         // The outbox keeps one email per key, so each deadline is announced once.
         await notifyStripeManagers(tx, organisation, `stripe-deadline/${organisation.id}/${status.current_deadline}`, {
           subject: `Stripe needs more details from ${organisation.name}`,
-          message: `Stripe needs more details from ${organisation.name} by ${formatDate(status.current_deadline, organisation.timeZone)}, or it will pause card payments and paid sales will stop. Open Payments in Thunderstrux to update your details in Stripe.`
+          message: `Stripe needs more details from ${organisation.name} by ${formatDate(status.current_deadline, organisation.timeZone)}, or it may pause card payments or payouts. Open Payments in Thunderstrux to update your details in Stripe.`
         });
       }
     }
@@ -443,10 +443,12 @@ export async function persistConnectedAccountStatus(account: Stripe.Account) {
   return { count };
 }
 
-// Every active staff member who can manage the society's Stripe account.
+// Every active staff member who can manage the society's Stripe account. An
+// email that can't be queued (sender or address misconfigured) is logged and
+// never undoes the flags saved with it; rendering fails before any SQL runs.
 async function notifyStripeManagers(
   tx: Prisma.TransactionClient,
-  organisation: { id: string },
+  organisation: { id: string; slug: string },
   eventKey: string,
   payload: { subject: string; message: string }
 ) {
@@ -456,10 +458,15 @@ async function notifyStripeManagers(
   });
   const origin = appUrl();
   for (const { user } of managers) {
-    await enqueueNotification(tx, {
-      eventKey, recipient: user.email, template: "business_notice", organisationId: organisation.id,
-      payload: { ...payload, subject: payload.subject.slice(0, 200), ...(origin ? { link: new URL("/dashboard/settings", origin).toString() } : {}) }
-    });
+    try {
+      await enqueueNotification(tx, {
+        eventKey, recipient: user.email, template: "business_notice", organisationId: organisation.id,
+        // This society's Payments page, whichever society the manager last had open.
+        payload: { ...payload, subject: payload.subject.slice(0, 200), ...(origin ? { link: new URL(`/dashboard/${organisation.slug}/settings`, origin).toString() } : {}) }
+      });
+    } catch (error) {
+      logWarn("stripe_connect.notice_not_queued", { organisationId: organisation.id, eventKey, error });
+    }
   }
 }
 

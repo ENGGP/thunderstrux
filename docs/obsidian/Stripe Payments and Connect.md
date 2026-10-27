@@ -78,9 +78,11 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 - Settings shows two rows, **Can take payments** (charges) and **Can receive payouts** (payouts), so a society with no bank account keeps selling.
 - **Selling depends on flags, not the state:** `isOrganisationStripeReady` is `stripeAccountId && stripeChargesEnabled`. In `ERROR` sales follow the last known flags until a refresh succeeds.
 - **The `account.updated` webhook** re-reads the account (`refreshConnectedAccount`) for an account some society uses, and persists the same flags and state. An account no society uses logs `stripe_connect.webhook.ignored` (`stripe_account_not_found`) without calling Stripe.
-- **One write path:** the webhook and a Settings refresh both save through `persistConnectedAccountStatus`, which locks the society's row, so a change is seen once whichever arrives first. In the same transaction it emails (`business_notice`, link to `/dashboard/settings`) every active staff member whose role has `stripe:manage`:
+- **One write path:** the webhook and a Settings refresh both save through `persistConnectedAccountStatus`, which reads the previous flags under the society's row lock, so two saves at once email a transition once. A refresh that read Stripe before a newer webhook can still save the older flags afterwards (as before), and the next correction may email again. In the same transaction it emails (`business_notice`, linked to `/dashboard/<slug>/settings`, which opens that society) every active staff member whose role has `stripe:manage`:
   - when card payments go from on to off (key `stripe-charges-paused/<orgId>/<time>`), and alerts `society_charges_paused` after commit;
-  - while card payments are on, once per deadline Stripe sets for `currently_due` details (`requirements.current_deadline`; key `stripe-deadline/<orgId>/<deadline>`, which the outbox keeps once).
+  - while card payments are on, once per deadline Stripe sets for `currently_due` details (`requirements.current_deadline`; key `stripe-deadline/<orgId>/<deadline>`, which the outbox keeps once). The deadline may pause card payments or payouts.
+
+  An email that can't be queued (for example no `EMAIL_FROM`) logs `stripe_connect.notice_not_queued` and never undoes the flags.
 - **Ready with details due:** Settings shows "Stripe needs more details", the deadline when there is one (`current_deadline` in the status), what Stripe needs, and "Update details in Stripe" (a fresh onboarding link). The badge reads "Needs details".
 
 ## Payouts

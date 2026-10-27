@@ -66,10 +66,13 @@ const reason = "The venue flooded and we can't move the date.";
 
 describe("cancelling an event (EVT-004)", () => {
   // PAY-022: Stripe holds manual-payout money at most 90 days, so sales older than 80 were already sent to the society.
-  test("names sale money already released to the society's bank, and alerts the platform", async () => {
+  test("names refunds of sale money already released for payout, and alerts the platform", async () => {
     const { society, event } = await societyEvent();
     const early = await heldOrder(society, event, { paymentKind: "stripe" });
     await prisma.order.update({ where: { id: early.id }, data: { paidAt: new Date(Date.now() - 81 * 86_400_000), feeAmount: 145 } });
+    // Just as old, but disputed: no refund is opened, so nothing is taken back for it.
+    const disputed = await heldOrder(society, event, { paymentKind: "stripe" });
+    await prisma.order.update({ where: { id: disputed.id }, data: { paidAt: new Date(Date.now() - 90 * 86_400_000), feeAmount: 145, disputeStatus: "open" } });
     await heldOrder(society, event, { paymentKind: "stripe" });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
 

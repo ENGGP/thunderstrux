@@ -24,7 +24,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - payouts follow the payouts flag, not the state;
   - a dispute gets a draft answer staged in Stripe, a reminder and an operator runbook;
   - a society's Stripe managers are emailed when Stripe pauses card payments or sets a deadline;
-  - cancelling a long-lead event names money already released (PAY-022, accepted risk);
+  - cancelling a long-lead event names refunds of money already released for payout (PAY-022, accepted risk);
   - a network error no longer reads as "platform not ready".
 
   It registers the Low leftovers as PAY-023. No migration.

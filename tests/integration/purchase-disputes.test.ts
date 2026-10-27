@@ -139,7 +139,7 @@ describe("disputes", () => {
     expect(params.evidence.refund_policy_disclosure).toContain("Refunds up to 7 days before the event.");
     expect(params.evidence.uncategorized_text).toContain(`Order ${orderReference(fixture.order.id)}: $30.00 paid`);
     expect(params.evidence.uncategorized_text).toContain("The tickets were emailed to the buyer");
-    expect(params.evidence.uncategorized_text).toContain("Refunded $5.00 to the buyer's card from the Stripe Dashboard.");
+    expect(params.evidence.uncategorized_text).toContain("Refunded $5.00 to the buyer's card outside Thunderstrux.");
 
     // A dispute already answered is left alone.
     const answered = await paidOrder();

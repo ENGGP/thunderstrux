@@ -241,5 +241,13 @@ describe("Stripe Connect application service", () => {
     await getOrganisationStripeConnectStatus(organisation.id);
     expect(await notices("stripe-charges-paused/")).toEqual([{ recipient: user.email }]);
     expect(alerts()).toEqual([expect.objectContaining({ organisationId: organisation.id, disabledReason: "requirements.past_due" })]);
+
+    // A notice that can't be queued (no sender configured) never undoes the flags saved with it.
+    const other = await createOrganisationAccount({ stripeReady: true });
+    vi.stubEnv("EMAIL_FROM", "");
+    stripeMocks.retrieveAccount.mockResolvedValue({ ...account(false), id: other.organisation.stripeAccountId });
+    await expect(getOrganisationStripeConnectStatus(other.organisation.id)).resolves.toMatchObject({ state: "RESTRICTED", charges_enabled: false });
+    expect(await prisma.organisation.findUniqueOrThrow({ where: { id: other.organisation.id }, select: { stripeChargesEnabled: true, stripeAccountStatus: true } }))
+      .toEqual({ stripeChargesEnabled: false, stripeAccountStatus: "RESTRICTED" });
   });
 });

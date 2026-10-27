@@ -91,8 +91,8 @@ function stateContent(status: ConnectStatus | null): {
     return {
       title: "Stripe needs more details",
       description: status.current_deadline
-        ? `Send them by ${formatDate(status.current_deadline)}, or Stripe pauses card payments and paid sales stop.`
-        : "Send them to keep card payments on.",
+        ? `Send them by ${formatDate(status.current_deadline)}, or Stripe may pause card payments or payouts.`
+        : "Send them to keep card payments and payouts on.",
       badge: ["pending", "Needs details"],
       tone: "warning"
     };

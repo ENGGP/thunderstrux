@@ -13,7 +13,8 @@ import { getStripe } from "@/lib/stripe";
 
 type Purchase = { orderId: string } | { commerceOrderId: string };
 type Evidence = Stripe.DisputeUpdateParams.Evidence;
-type Refunded = { amount: number; stripeRefundId: string | null; at: Date };
+// `at` is left out where no column records when the refund happened.
+type Refunded = { amount: number; stripeRefundId: string | null; at?: Date };
 
 // Statuses where Stripe still takes an answer.
 const answerable = new Set(["needs_response", "warning_needs_response"]);
@@ -22,8 +23,8 @@ const at = (value: Date, timeZone: string) => `${formatDateTime(value, { timeZon
 
 // Money already back with the buyer, which a refunded-then-disputed payment needs said.
 function refundLines(refunds: Refunded[], externalRefundedAmount: number, timeZone: string) {
-  const lines = refunds.map((refund) => `Refunded ${formatMoney(refund.amount)} to the buyer's card on ${at(refund.at, timeZone)}${refund.stripeRefundId ? ` (Stripe refund ${refund.stripeRefundId})` : ""}.`);
-  if (externalRefundedAmount > 0) lines.push(`Refunded ${formatMoney(externalRefundedAmount)} to the buyer's card from the Stripe Dashboard.`);
+  const lines = refunds.map((refund) => `Refunded ${formatMoney(refund.amount)} to the buyer's card${refund.at ? ` on ${at(refund.at, timeZone)}` : ""}${refund.stripeRefundId ? ` (Stripe refund ${refund.stripeRefundId})` : ""}.`);
+  if (externalRefundedAmount > 0) lines.push(`Refunded ${formatMoney(externalRefundedAmount)} to the buyer's card outside Thunderstrux.`);
   return lines;
 }
 
@@ -41,7 +42,7 @@ async function ticketEvidence(orderId: string): Promise<Evidence | null> {
       event: { select: { title: true, startTime: true, location: true, organisation: { select: { name: true, timeZone: true, refundPolicy: true } } } },
       tickets: { orderBy: { issueSequence: "asc" }, select: { id: true, checkedInAt: true } },
       refundRequests: { where: { status: "succeeded" }, select: { amount: true, stripeRefundId: true, resolvedAt: true, createdAt: true } },
-      compensationRefundJob: { select: { state: true, amount: true, stripeRefundId: true, updatedAt: true } }
+      compensationRefundJob: { select: { state: true, amount: true, stripeRefundId: true } }
     }
   });
   if (!order) return null;
@@ -51,7 +52,7 @@ async function ticketEvidence(orderId: string): Promise<Evidence | null> {
   const checkedIn = order.tickets.filter((ticket) => ticket.checkedInAt);
   const refunds: Refunded[] = order.refundRequests.map((refund) => ({ amount: refund.amount, stripeRefundId: refund.stripeRefundId, at: refund.resolvedAt ?? refund.createdAt }));
   const job = order.compensationRefundJob;
-  if (job?.state === "refunded") refunds.push({ amount: job.amount, stripeRefundId: job.stripeRefundId, at: job.updatedAt });
+  if (job?.state === "refunded") refunds.push({ amount: job.amount, stripeRefundId: job.stripeRefundId });
   return {
     customer_name: buyerName(buyer),
     customer_email_address: buyer?.email,

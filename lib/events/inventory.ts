@@ -40,22 +40,38 @@ export async function readEventInventory(
   eventId: string,
   now: Date
 ): Promise<EventInventory> {
-  const [event] = await tx.$queryRaw<Array<{ capacity: number | null; issued: number }>>`
-    SELECT "capacity",
-      (SELECT COUNT(*)::int FROM "Ticket" WHERE "eventId" = ${eventId} AND "validity" <> 'void') AS "issued"
-    FROM "Event" WHERE "id" = ${eventId}
-  `;
-  const holds = await tx.$queryRaw<Array<{ ticketTypeId: string; held: number }>>`
-    SELECT "ticketTypeId", SUM("quantity")::int AS "held"
-    FROM "TicketReservation"
-    WHERE "eventId" = ${eventId} AND "status" = 'active' AND "expiresAt" > ${now}
-    GROUP BY "ticketTypeId"
-  `;
-  const holdsByType = new Map(holds.map((row) => [row.ticketTypeId, row.held]));
-  const held = holds.reduce((total, row) => total + row.held, 0);
-  const issued = event?.issued ?? 0;
+  return (await readEventsInventory(tx, [eventId], now)).get(eventId) ?? { capacity: null, occupancy: 0, issued: 0, holdsByType: new Map() };
+}
 
-  return { capacity: event?.capacity ?? null, occupancy: issued + held, issued, holdsByType };
+// The same figures for many events in two queries, for public lists (UI-007).
+export async function readEventsInventory(
+  tx: InventoryClient,
+  eventIds: string[],
+  now: Date
+): Promise<Map<string, EventInventory>> {
+  if (eventIds.length === 0) return new Map();
+  const events = await tx.$queryRaw<Array<{ id: string; capacity: number | null; issued: number }>>`
+    SELECT e."id", e."capacity",
+      (SELECT COUNT(*)::int FROM "Ticket" t WHERE t."eventId" = e."id" AND t."validity" <> 'void') AS "issued"
+    FROM "Event" e WHERE e."id" IN (${Prisma.join(eventIds)})
+  `;
+  const holds = await tx.$queryRaw<Array<{ eventId: string; ticketTypeId: string; held: number }>>`
+    SELECT "eventId", "ticketTypeId", SUM("quantity")::int AS "held"
+    FROM "TicketReservation"
+    WHERE "eventId" IN (${Prisma.join(eventIds)}) AND "status" = 'active' AND "expiresAt" > ${now}
+    GROUP BY "eventId", "ticketTypeId"
+  `;
+
+  return new Map(
+    events.map((event) => {
+      const own = holds.filter((row) => row.eventId === event.id);
+      const held = own.reduce((total, row) => total + row.held, 0);
+      return [
+        event.id,
+        { capacity: event.capacity, occupancy: event.issued + held, issued: event.issued, holdsByType: new Map(own.map((row) => [row.ticketTypeId, row.held])) }
+      ];
+    })
+  );
 }
 
 // Sellable = max(0, min(type remaining - type holds, capacity - occupancy)); the

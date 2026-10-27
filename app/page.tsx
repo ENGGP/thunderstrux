@@ -15,6 +15,22 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// PUB-01: three short notes for first-time visitors; no screenshots or claims.
+const howItWorks = [
+  {
+    title: "Find what's on",
+    body: "Browse events from every society on campus with the price shown up front, and get tickets as a guest or with an account."
+  },
+  {
+    title: "Join your societies",
+    body: "Follow a society for free to keep up with its events, or buy its semester or full-year membership when it sells one."
+  },
+  {
+    title: "Run a society",
+    body: "Sell tickets, memberships and merch in one place and check people in at the door. Free events cost nothing; paid sales carry a 3.75% plus $0.89 fee per item, card processing included."
+  }
+];
+
 export default async function Home() {
   // A society needs its own account, so signed-in visitors are not offered one here.
   const signedIn = Boolean((await getLiveSession())?.user);
@@ -24,7 +40,7 @@ export default async function Home() {
       <main id="main" tabIndex={-1} className="bg-paper">
         <section className="bg-brand-ink text-white">
           <div className="mx-auto grid max-w-page gap-6 px-4 py-14 md:px-8 md:py-20">
-            <h1 className="max-w-3xl font-display text-4xl font-semibold leading-tight md:text-6xl">
+            <h1 className="max-w-3xl text-balance font-display text-4xl font-semibold leading-[1.1] md:text-6xl md:leading-[1.06]">
               Discover events at your campus
             </h1>
             <p className="max-w-xl text-lg text-white/80">
@@ -38,30 +54,43 @@ export default async function Home() {
                   variant: "tertiary",
                   className: "bg-surface text-brand-ink no-underline hover:bg-brand-tint hover:no-underline"
                 })}
+                href="/events"
+              >
+                See what&apos;s on
+              </Link>
+              <Link
+                className={buttonClasses({
+                  size: "lg",
+                  variant: "tertiary",
+                  className: "text-white"
+                })}
                 href="/societies"
               >
                 Find a society
               </Link>
-              {signedIn ? null : (
-                <Link
-                  className={buttonClasses({
-                    size: "lg",
-                    variant: "tertiary",
-                    className: "text-white"
-                  })}
-                  href="/signup?for=society"
-                >
-                  Create a society
-                </Link>
-              )}
             </div>
           </div>
         </section>
 
-        <div className="mx-auto grid max-w-page gap-14 px-4 py-12 md:px-8 md:py-16">
+        <div className="mx-auto grid max-w-page gap-14 px-4 py-12 md:gap-20 md:px-8 md:py-16">
           <Suspense fallback={<HomeSkeleton />}>
             <HomeListings />
           </Suspense>
+          {signedIn ? null : (
+            <section aria-labelledby="how-it-works" className="grid gap-6">
+              <h2 className="border-l-[3px] border-brand pl-3 text-2xl font-semibold text-ink" id="how-it-works">
+                How Thunderstrux works
+              </h2>
+              <ul className="grid gap-6 md:grid-cols-3">
+                {howItWorks.map((step) => (
+                  <li className="grid content-start gap-2 border-t border-line pt-4" key={step.title}>
+                    <h3 className="text-lg font-semibold text-ink">{step.title}</h3>
+                    <p className="text-ink-soft">{step.body}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {signedIn ? null : (
             <section className="grid gap-4 rounded-feature bg-warm-paper p-8 md:grid-cols-[1fr_auto] md:items-center">
               <div>
@@ -136,6 +165,7 @@ async function HomeListings() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {result.events.map((event) => (
               <EventCard
+                availability={event.availability}
                 id={event.id}
                 key={event.id}
                 location={event.location}

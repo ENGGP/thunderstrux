@@ -41,7 +41,7 @@ typography:
     fontFamily: "Space Grotesk, DM Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "3.75rem"
     fontWeight: 600
-    lineHeight: 1.25
+    lineHeight: 1.06
     letterSpacing: "-0.01em"
   headline:
     fontFamily: "Space Grotesk, DM Sans, ui-sans-serif, system-ui, sans-serif"
@@ -201,10 +201,10 @@ Success (jade), warning (ochre), danger (crimson), info (lilac-grey with a brand
 **Character:** a slightly technical, squared grotesk for titles over a friendly geometric sans for reading and data; headings tighten to -0.01em.
 
 ### Hierarchy
-- **Display** (600, 60px, 1.25): home hero only.
+- **Display** (600, 60px, 1.06 from `md`, 1.1 on phones, balanced wrap): home hero only.
 - **Headline** (600, 48px, 1.0): public event and society titles.
 - **Page title** (600, 30px): every `PageHeader` `h1` in dashboards, personal pages and forms.
-- **Section** (600, 24px): public section `h2`s; inside panels `h2` drops to 18–20px.
+- **Section** (600, 24px): public section `h2`s; a panel's own heading (the buy box, the join card) is 20px.
 - **Title** (DM Sans 600, 18px): card and list item headings (`h3`).
 - **Body** (400, 16px, 1.55): default text; inputs use 16px so phones don't zoom.
 - **UI** (15px) and **Caption** (13px): dense body and meta lines; **Label** (600, 14px) for field labels and buttons.
@@ -216,7 +216,7 @@ Tables use tabular figures.
 
 ## Layout
 
-Named containers set every page width: auth 440px, read 760px, checkout 1060px, personal 1160px, page 1248px, admin 1420px. The fixed header is 60px (72px from `md`) and the layout offsets content by the same amount. Public pages stack sections 32–64px apart; the home hero has 64px vertical padding. The organiser shell is a two-column grid from `lg` (244px column plus the page); below `lg` the column collapses to the society name and a `Society menu` disclosure. Wide tables become cards below 768px (`ResponsiveTable`); tab bars scroll sideways instead of wrapping. The public event page is two columns from `lg` with the ticket box on the right, and a phone buy bar slides up when the box is off screen.
+Named containers set every page width: auth 440px, read 760px, checkout 1060px, personal 1160px, page 1248px, admin 1420px. The fixed header is 60px (72px from `md`) and the layout offsets content by the same amount. Public pages stack sections 32–64px apart; the home page 56px on phones and 80px from `md`, under a hero with 56–80px vertical padding. The organiser shell is a two-column grid from `lg` (244px column plus the page); below `lg` the column collapses to the society name and a `Society menu` disclosure. Wide tables become cards below 768px (`ResponsiveTable`); tab bars scroll sideways instead of wrapping. The public event page is two columns from `lg` with the ticket box on the right, and a phone buy bar slides up when the box is off screen.
 
 ## Elevation & Depth
 
@@ -261,6 +261,10 @@ Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards an
 - **Header:** white, 60/72px, brand wordmark left; links in Soft Ink, the current one in Ink with a 3px brand rule on the header's bottom edge. Below `md` the links fold into a `Menu` disclosure.
 - **Tabs:** 44px tall, 15px; active is semibold Midnight Plum over a 3px brand underline on a 1px hairline track.
 - **Organiser column:** Midnight Plum, white text, group labels at 70% white, 36px rows from `lg` with a 3px left marker on the current item.
+
+### Event card
+- **Order:** 16:9 image (or a striped lilac area from `sm` when a neighbour has an image), date rail, host link, title, date, place, then the selling line.
+- **Selling line:** the standard prices on sale in semibold ink ("Free", "$12.00", "From $12.00", "Free or $15.00"), or a Sold out or Sales closed badge, or "Paid tickets unavailable right now" in Soft Ink.
 
 ### Date rail (signature)
 A lilac tile with the day in Space Grotesk and the three-letter month in 12px uppercase, both Midnight Plum, leading every event card and list. It anchors "what's happening" before the title.

@@ -93,7 +93,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `components/guest` | Guest email, access and claim | `guest-email-form.tsx`, `guest-access-form.tsx`, `guest-claim.tsx` |
 | `components/layout` | Header, footer, shells, page header, switcher, verify banner | `navbar.tsx`, `site-footer.tsx`, `dashboard-shell.tsx`, `personal-shell.tsx`, `auth-shell.tsx`, `checkout-shell.tsx`, `page-header.tsx`, `context-selector.tsx`, `verify-email-banner.tsx`, `auth-session-provider.tsx` |
 | `components/memberships` | Plan form, checklist and actions; member actions; checkout action | `plan-form.tsx`, `plan-actions.tsx`, `plan-checklist.tsx`, `membership-actions.tsx`, `membership-checkout-action.tsx` |
-| `components/merchandise` | Shop, basket, checkout, product form and actions, pickup and order actions | `shop.tsx`, `checkout.tsx`, `product-form.tsx`, `product-actions.tsx`, `pickup-action.tsx`, `order-actions.tsx` |
+| `components/merchandise` | Shop, product tile, basket, checkout, product form and actions, pickup and order actions | `shop.tsx`, `product-tile.tsx`, `checkout.tsx`, `product-form.tsx`, `product-actions.tsx`, `pickup-action.tsx`, `order-actions.tsx` |
 | `components/orders` | Staff order detail actions | `order-detail-actions.tsx`, `order-review-actions.tsx` |
 | `components/organisations` | Society cards, header, join controls, search, joined list, creation | `society-header.tsx`, `society-join-card.tsx`, `society-join.tsx`, `society-card.tsx`, `organisation-search.tsx`, `member-organisations-list.tsx`, `create-organisation-form.tsx` |
 | `components/public` | Policy page layout for Fees, Help, Privacy | `policy-page.tsx` |

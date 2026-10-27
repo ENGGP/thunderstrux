@@ -29,7 +29,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 
   It registers the Low leftovers as PAY-023. No migration.
 - #205 fixes PAY-023's code items: readiness needs the `transfers` capability, paid prices start at $2.00, payouts wait for $20 (or a week) under a per-attempt key, and an actionable early fraud warning on an unused order is refunded automatically. PAY-023 keeps the webhook IP allowlist and Accounts v2. No migration.
-- 2026-10-28: the Impeccable design skill was added with `PRODUCT.md` (a PRD summary) and a code-generated `DESIGN.md`; comparing it with the visual spec registered UI-007 (no price on event cards) and UI-008 (home and event-page layout). The built values kept on purpose are in visual spec 16.8, the public layouts still to build in 16.7, and the unused lime token is gone. See [[UI Architecture Rules#Impeccable]].
+- 2026-10-28: the Impeccable design skill was added with `PRODUCT.md` (a PRD summary) and a code-generated `DESIGN.md`; comparing it with the visual spec registered UI-007 (no price on event cards) and UI-008 (home and event-page layout). The built values kept on purpose are in visual spec 16.8, and the unused lime token is gone. The same PR (#208) then closed UI-007, UI-008 and UI-004's society Overview previews: event cards show the price or selling state, the home hero leads with events, and Overview previews memberships and merchandise. See [[UI Architecture Rules#Impeccable]].
 
 **Snapshot at `912e49b`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -120,7 +120,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
    - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]]. The key needs Disputes **write**, so each dispute gets its staged draft answer, and Radar early fraud warnings **read**; the payments endpoint also subscribes to `radar.early_fraud_warning.created` and the Connect endpoint to `payout.created`.
    - Pass PAY-002 on the hosted endpoint.
 5. **When hosting is chosen,** run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
-6. **UI-004:** fold the phone filters, use one date formatter, and add the society Overview previews.
+6. **UI-004:** fold the phone filters and use one date formatter.
 7. **PAY-009, when scheduled:** shorter or society-set holds, made by closing the Stripe page early from the stale-order job. It is its own task.
 8. **Before activating account lifecycle:**
    - get an independent security and migration review, which also covers #167's payment and sign-in changes and #197's payout-hold, refund and staff-security changes, and #198's bulk refunds on event cancellation;

@@ -1,9 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
-import { eventReadiness, salesOpen, type TicketTypeUnavailableReason } from "@/lib/events/event-readiness";
+import { eventReadiness, salesOpen, ticketTypeReason, type TicketTypeUnavailableReason } from "@/lib/events/event-readiness";
 import type { ExploreRange } from "@/lib/events/explore-filters";
-import { readEventInventory, sellableQuantity } from "@/lib/events/inventory";
+import { readEventInventory, readEventsInventory, sellableQuantity } from "@/lib/events/inventory";
 import { activeEntitlementGrant } from "@/lib/memberships/grants";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
@@ -26,7 +26,15 @@ export type PublicEventListItem = {
     slug: string;
     timeZone: string;
   };
+  availability: ListingAvailability | null;
 };
+
+// What a list card says about buying (UI-007). `prices` are the standard prices
+// of the types on sale now, distinct and lowest first; member prices show on the
+// event page, which knows the viewer. Null when the event has no ticket types.
+export type ListingAvailability =
+  | { state: "on_sale"; prices: number[] }
+  | { state: "sales_closed" | "sold_out" | "paid_unavailable" };
 
 export type PublicEventsPage = {
   events: PublicEventListItem[];
@@ -137,10 +145,45 @@ export async function getPublishedEvents({
     timestampField: "startTime"
   });
 
+  const availability = await listingAvailability(page.items.map((event) => event.id), now);
   return {
-    events: page.items,
+    events: page.items.map((event) => ({ ...event, availability: availability.get(event.id) ?? null })),
     pageInfo: page.pageInfo
   };
+}
+
+// The event page's advisory stock and per-type reasons, for a whole list at once.
+export async function listingAvailability(eventIds: string[], now = new Date()): Promise<Map<string, ListingAvailability | null>> {
+  if (eventIds.length === 0) return new Map();
+  const [events, inventories] = await Promise.all([
+    prisma.event.findMany({
+      where: { id: { in: eventIds } },
+      select: {
+        id: true,
+        saleState: true,
+        salesCloseAt: true,
+        organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
+        ticketTypes: { select: { id: true, price: true, quantity: true } }
+      }
+    }),
+    readEventsInventory(prisma, eventIds, now)
+  ]);
+
+  return new Map(
+    events.map((event): [string, ListingAvailability | null] => {
+      if (event.ticketTypes.length === 0) return [event.id, null];
+      if (!salesOpen(event, now)) return [event.id, { state: "sales_closed" }];
+      const inventory = inventories.get(event.id);
+      const chargesReady = isOrganisationStripeReady(event.organisation);
+      const types = event.ticketTypes.map((ticketType) => ({
+        price: ticketType.price,
+        reason: ticketTypeReason({ ...ticketType, sellable: inventory ? sellableQuantity(ticketType, inventory) : 0 }, chargesReady)
+      }));
+      const prices = [...new Set(types.filter((type) => type.reason === null).map((type) => type.price))].sort((a, b) => a - b);
+      if (prices.length) return [event.id, { state: "on_sale", prices }];
+      return [event.id, { state: types.every((type) => type.reason === "sold_out") ? "sold_out" : "paid_unavailable" }];
+    })
+  );
 }
 
 // The societies the Explore filter offers: those with a listed event still to come.

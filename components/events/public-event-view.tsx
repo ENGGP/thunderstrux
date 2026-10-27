@@ -127,7 +127,7 @@ export function PublicEventView({
 
         {/* After the ticket box on phones, under About on desktop. */}
         <section className="grid gap-2 border-t border-line pt-5 lg:col-start-1">
-          <h2 className="text-lg font-semibold text-ink">
+          <h2 className="text-2xl font-semibold text-ink">
             Hosted by{" "}
             <Link className="text-brand underline underline-offset-4" href={`/societies/${organisation.slug}`}>
               {organisation.name}

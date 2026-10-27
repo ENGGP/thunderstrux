@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-28
 owner: engineering
 related: ["[[Project Handover]]", "[[Journey Qualification]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Production Operations Hosting]]", "[[Issue and Defect Register]]"]
 sources: [config/schema-contract.json, lib/stripe/fees.ts, lib/stripe/version.ts, lib/payouts/release.ts, lib/payouts/payouts.ts, lib/validators/events.ts, docker-compose.hosted.yml, deploy/droplet/config.env.example]
@@ -48,16 +48,40 @@ The founder asked for a fee just under Humanitix: its Australian Standard plan i
 | Sample | Society receives (old 10%) | Society receives (now) | Humanitix fee if absorbed | Platform keeps after Stripe, domestic card | international card |
 | --- | --- | --- | --- | --- | --- |
 | One $2 ticket | $1.80 | $1.03 | $1.18 | $0.64 (was −$0.13) | $0.60 |
-| One $5 ticket | $4.50 | $3.92 | $1.31 | $0.69 | $0.60 |
+| One $5 ticket | $4.50 | $3.92 | $1.31 | $0.70 | $0.60 |
 | One $12 ticket | $10.80 | $10.66 | $1.62 | $0.84 | $0.62 |
-| Two $12 tickets | $21.60 | $21.32 | $3.24 | $1.97 | $1.54 |
-| $25 membership | $22.50 | $23.17 | $2.19 | $1.10 | $0.65 |
-| $55 merchandise order | $49.50 | $52.05 | $3.51 | $1.71 | $0.72 |
+| Two $12 tickets | $21.60 | $21.32 | $3.24 | $1.98 | $1.54 |
+| $25 membership | $22.50 | $23.17 | $2.19 | $1.12 | $0.65 |
+| $55 merchandise order | $49.50 | $52.05 | $3.51 | $1.74 | $0.72 |
 
-- Domestic cost is Stripe's published Australian 1.7% + 30c (not observed); international is the observed 3.5% + 30c.
+- Domestic cost is Stripe's published Australian 1.65% + 30c from 1 October 2026 (was 1.7%; not observed), rounded to the cent ([Stripe AU pricing](https://stripe.com/au/pricing)). International is the observed 3.5% + 30c, published to fall to 2.80% + 30c on 1 April 2027.
+- Stripe Connect adds A$2 for each society paid out in a month and 0.25% + 25c per payout ([Stripe Connect pricing](https://stripe.com/au/connect/pricing)). Whether the page's separate 0.25% "funds routing" line is an extra charge is unconfirmed until the first invoice.
 - Humanitix column: 4.4% + $1.09 per ticket with GST. It sells no merchandise; that row is comparison only.
 - A full refund returns the fee to the society; the platform loses Stripe's cost (about 50c on a $12 ticket).
-- Competitiveness isn't asserted beyond these published plans; H06 tests whether societies find it fair.
+
+### Against other platforms
+
+What a society pays per ticket on a one-ticket order when it absorbs the fee, with GST and card processing included. Published Australian plans, checked 2026-10-28.
+
+| Plan | $5 | $12 | $20 | $50 | Published fee |
+| --- | --- | --- | --- | --- | --- |
+| Thunderstrux | $1.08 | $1.34 | $1.64 | $2.77 | 3.75% + $0.89, GST and processing included |
+| [Eventbrite](https://www.eventbrite.com.au/organizer/pricing/), no ABN | $1.60 | $2.02 | $2.49 | $4.25 | 5.35% + $1.19, plus GST |
+| [Humanitix](https://humanitix.com/au/pricing) Standard | $1.31 | $1.62 | $1.97 | $3.29 | 4% + $0.99, plus GST |
+| [Rubric](http://hellorubric.com/clubs-landing/pricing-au/) Standard | $1.30 | $1.60 | $1.95 | $3.23 | 3.9% + $0.99, plus GST; buyers also pay an unpublished service fee |
+| [Ticket Tailor](https://www.tickettailor.com/pricing) pay as you sell | $1.48 | $1.60 | $1.73 | $2.23 | $1.10 a ticket plus Stripe |
+| [Eventfinda](https://www.eventfinda.com.au/ticketing/pricing/), organiser absorbs | $1.07 | $1.16 | $1.76 | $2.65 | 1.3% plus a $1 to $5 booking fee by price |
+| [Ticketebo](https://www.ticketebo.com.au/pricing) | $1.20 | $1.20 | $1.20 | $2.00 | 4% of the order, at least $1.20, GST included |
+| [TryBooking](https://www.trybooking.com/pricing) | $0.63 | $0.80 | $1.00 | $1.75 | 2.5% + $0.50 ($0.15 under $5), GST included |
+| Humanitix Charities & Schools | $0.63 | $0.80 | $1.00 | $1.75 | 2.5% + $0.50, GST-exempt, on application |
+| A Stripe payment link, no ticketing | $0.38 | $0.50 | $0.63 | $1.13 | 1.65% + 30c |
+
+- Thunderstrux is cheaper than Eventbrite, Humanitix Standard and Rubric Standard at every price.
+- On $5 to $50 tickets it costs about 1.6 to 1.7 times TryBooking's 2.5% + $0.50, which anyone can use and which Humanitix also charges nonprofits that qualify. Ticketebo is cheaper above about $8 a ticket, Ticket Tailor above about $24, and Eventfinda at most prices.
+- Matching TryBooking would stay above Stripe's cost (break-even about $0.55 on a $12 ticket, assuming 10% international cards and 3% refunds), but the platform would keep about $0.24 of each $12 ticket instead of $0.77, needing about three times the volume for the same contribution. The candidate keeps its fee and competes with the low-cost plans on fit: member and non-member prices, presale caps, union rules and a final listed price.
+- Humanitix (by default) and TryBooking keep their own fee when a ticket is refunded; Thunderstrux returns it (PAY-008).
+- Music and stadium ticketers (Oztix, Moshtix, Ticketek, Ticketmaster) publish no organiser price; their fees fall on buyers.
+- Unconfirmed: whether a university society qualifies for Humanitix's nonprofit rate, Ticket Tailor's AUD fee and GST, and Eventfinda's GST basis. H06 tests whether societies find the fee fair.
 
 ## Support and response
 

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-27
+last-reviewed: 2026-10-28
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Accessibility Review]]", "[[Authentication and Dashboard Access]]"]
 sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navbar.tsx, components/layout/site-footer.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/events/event-tabs.tsx, components/settings/stripe-connect-settings.tsx, .design-sync/config.json]
@@ -36,7 +36,7 @@ sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navb
 - No raw palette classes (`bg-neutral-900`, `text-purple-600`) and no hex colours in components.
 - Bare `border` draws the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
 - The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` sets every transition and animation to `0s`; not `0.01ms`, because every element defaults to `transition-property: all`, so any duration starts a transition on every style change. Read straight after focusing, the focus ring then still reports its 3px default (`tests/e2e/society-profiles.spec.ts` caught this).
-- Motion tokens sit in their own `@theme` block: `ease-out` is the strong curve `cubic-bezier(0.23, 1, 0.32, 1)`, `ease-drawer` is `cubic-bezier(0.32, 0.72, 0, 1)` for the one drawer, `animate-pop-in` (160ms), `animate-dialog-in` (200ms) and `animate-fade-in` (200ms) are entry keyframes, and `animate-rise-in` (300ms, `backwards` fill) drives the `issued-stagger` utility. Reduced motion also zeroes animation delays. Where they are used: [[#Motion]].
+- Motion tokens sit in their own `@theme` block: `ease-out` is the strong curve `cubic-bezier(0.23, 1, 0.32, 1)`, `ease-drawer` is `cubic-bezier(0.32, 0.72, 0, 1)` for bottom sheets, `animate-pop-in` (160ms), `animate-dialog-in` (200ms) and `animate-fade-in` (200ms) are entry keyframes, `animate-sheet-in` (240ms, `ease-drawer`) slides phone bottom sheets up, and `animate-rise-in` (300ms, `backwards` fill) drives the `issued-stagger` utility. Reduced motion also zeroes animation delays. Where they are used: [[#Motion]].
 - `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through `next/font`; they are downloaded at build time and served by the app.
 - No dark mode. No icon library: `components/ui/icon.tsx` holds the outline icons, always decorative beside text.
 
@@ -122,12 +122,13 @@ Each page renders its shell after its guards pass; shells are never in route-gro
 
 ## Motion
 
-Motion shows where something came from or confirms that a change happened, and only after the server has answered (visual spec 2.4). Only `opacity`, `scale` and `translate` move. Buttons and header links cross-fade their colours on hover over 150ms, and the buy bar's `visibility` switches with its slide. **Menus and the dialog animate in and close instantly:** `ConfirmDialog` unmounts its body on close, and a chosen menu action shouldn't wait on a fade. The phone buy bar is the one drawer and slides both ways.
+Motion shows where something came from or confirms that a change happened, and only after the server has answered (visual spec 2.4). Only `opacity`, `scale` and `translate` move. Buttons and header links cross-fade their colours on hover over 150ms, and the buy bar's `visibility` switches with its slide. **Menus and the dialog animate in and close instantly:** `ConfirmDialog` unmounts its body on close, and a chosen menu action shouldn't wait on a fade. Phone bottom sheets slide through the bottom edge: the buy bar both ways, the date picker in.
 
 | Where | Motion |
 | --- | --- |
 | `buttonClasses()` and the check-in button | Press: scale to 97% over 150ms (`active:not-disabled:scale-97`) |
-| `EventActions` More menu, `DateField` calendar | `animate-pop-in` from the trigger (`placeMenu` sets the origin above or below). Both animate only when opened with a pointer; from the keyboard (a click with `detail` 0, or Alt+↓) they open instantly |
+| `EventActions` More menu | `animate-pop-in` from the trigger (`placeMenu` sets the origin above or below). It animates only when opened with a pointer; from the keyboard (a click with `detail` 0) it opens instantly |
+| `DateField` calendar | On phones a sheet that slides up through the bottom edge (`animate-sheet-in`, 240ms, `ease-drawer`), like the buy bar; from `sm` `animate-pop-in` from the field (`origin-top-left`). Both only for a pointer open; from the keyboard (a click with `detail` 0, or Alt+↓) it opens instantly |
 | `ConfirmDialog` | `animate-dialog-in` from the centre; the backdrop fades in |
 | Phone buy bar | Slides in and out through the bottom edge (240ms, `ease-drawer`), as a transition so a scroll reversal mid-slide retargets. It stays mounted; while hidden it is `invisible` and `inert` |
 | Newly issued tickets: the ticket list on `/purchases/tickets/[orderId]` and `/guest/orders/[orderId]`, the confirmation on `/success`, and the ticket numbers on `/events/[eventId]/checkout/confirmed` | `issued-stagger` while the order is live (paid or free) and `justIssued(order.fulfilledAt)` (`lib/purchases/projection.ts`) is true, which is two minutes after issue. Items fade and rise 8px over 300ms, 50ms apart (capped at 250ms). This covers both the status poller's refresh and landing after the webhook. A later visit is still; a reload inside the window replays it |

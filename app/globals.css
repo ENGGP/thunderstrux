@@ -68,8 +68,8 @@
 }
 
 /* Motion: menus and the dialog animate in and close instantly, so a chosen action
-   never waits on a fade. The phone buy bar is the one drawer: it slides both ways.
-   Newly issued tickets arrive one by one (issued-stagger).
+   never waits on a fade. Phone bottom sheets slide through the bottom edge: the buy
+   bar both ways, the date picker in. Newly issued tickets arrive one by one (issued-stagger).
    Used as ease-out, ease-drawer and animate-*. */
 @theme {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -78,6 +78,7 @@
   --animate-dialog-in: pop-in 200ms var(--ease-out);
   --animate-fade-in: fade-in 200ms var(--ease-out);
   --animate-rise-in: rise-in 300ms var(--ease-out) backwards;
+  --animate-sheet-in: sheet-in 240ms var(--ease-drawer);
 
   @keyframes pop-in {
     from {
@@ -94,6 +95,12 @@
     from {
       opacity: 0;
       translate: 0 8px;
+    }
+  }
+  /* The sheet sits 1rem (bottom-4) above the edge, so it starts that far plus its own height down. */
+  @keyframes sheet-in {
+    from {
+      translate: 0 calc(100% + 1rem);
     }
   }
 }

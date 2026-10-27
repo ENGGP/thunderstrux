@@ -170,7 +170,7 @@ function MonthPicker({ animate, label, value, min, max, onPick, onClose }: { ani
   return (
     <div
       aria-labelledby={titleId}
-      className={`fixed inset-x-4 bottom-4 z-30 origin-bottom rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-[19.5rem] sm:origin-top-left ${animate ? "animate-pop-in" : ""}`}
+      className={`fixed inset-x-4 bottom-4 z-30 rounded-card border border-line bg-surface p-3 shadow-[0_12px_32px_rgba(36,20,64,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-[19.5rem] sm:origin-top-left ${animate ? "animate-sheet-in sm:animate-pop-in" : ""}`}
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}

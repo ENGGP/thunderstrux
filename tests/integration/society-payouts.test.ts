@@ -138,7 +138,7 @@ describe("payouts worker", () => {
     expect(result.results).toContainEqual({ organisationId: fixture.organisationId, sent: 5000 - 1836 });
     expect(stripe.create).toHaveBeenCalledWith(
       { amount: 3164, currency: "aud", metadata: { organisationId: fixture.organisationId } },
-      { stripeAccount: fixture.accountId, idempotencyKey: `payout:${fixture.accountId}:${now.toISOString().slice(0, 10)}` }
+      { stripeAccount: fixture.accountId, idempotencyKey: `payout:${fixture.accountId}:${now.toISOString()}` }
     );
     expect(await prisma.societyPayout.findMany({ where: { organisationId: fixture.organisationId } })).toMatchObject([{ amount: 3164, status: "pending", stripeAccountId: fixture.accountId }]);
 
@@ -148,8 +148,8 @@ describe("payouts worker", () => {
     expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
   });
 
-  // DEF-034: the hourly check after a payout used to reuse the day's key with a new amount, which Stripe refuses.
-  test("money released later in the day waits for the next day's payout instead of reusing the day's key", async () => {
+  // DEF-034: one payout a UTC day; money released later waits for the next day.
+  test("money released later in the day waits for the next day's payout", async () => {
     const fixture = await society();
     const keys = new Map<string, number>();
     // As Stripe does: the same key with different parameters is refused.
@@ -175,7 +175,7 @@ describe("payouts worker", () => {
     await processPayoutBatch(100, tomorrow);
     expect(stripe.create).toHaveBeenLastCalledWith(
       { amount: 7000, currency: "aud", metadata: { organisationId: fixture.organisationId } },
-      { stripeAccount: fixture.accountId, idempotencyKey: `payout:${fixture.accountId}:${tomorrow.toISOString().slice(0, 10)}` }
+      { stripeAccount: fixture.accountId, idempotencyKey: `payout:${fixture.accountId}:${tomorrow.toISOString()}` }
     );
     expect(await prisma.societyPayout.findMany({ where: { organisationId: fixture.organisationId }, orderBy: { createdAt: "asc" }, select: { amount: true } })).toEqual([{ amount: 5000 }, { amount: 7000 }]);
   });
@@ -188,6 +188,48 @@ describe("payouts worker", () => {
     await processPayoutBatch(100, now);
     expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: manualPayoutSettings });
     expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
+  });
+
+  // Connect charges A$0.25 + 0.25% a payout, so a small balance waits for $20, or a week without a payout.
+  test("under $20 waits while the society was paid this week, and goes once a week has passed or if it was never paid", async () => {
+    const recent = await society();
+    const lapsed = await society();
+    const never = await society();
+    const earlier = (fixture: Awaited<ReturnType<typeof society>>, ago: number, status: "paid" | "failed" = "paid") => prisma.societyPayout.create({ data: {
+      organisationId: fixture.organisationId, stripeAccountId: fixture.accountId, stripePayoutId: unique("po"), amount: 5000, currency: "aud", status, createdAt: new Date(now.getTime() - ago)
+    } });
+    await earlier(recent, 2 * day);
+    await earlier(lapsed, 8 * day);
+    // A refused payout doesn't count as being paid.
+    await earlier(lapsed, 3 * day, "failed");
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 1500 }] });
+    stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
+
+    const result = await processPayoutBatch(100, now);
+    expect(result.results).toEqual(expect.arrayContaining([
+      { organisationId: recent.organisationId, sent: 0 },
+      { organisationId: lapsed.organisationId, sent: 1500 },
+      { organisationId: never.organisationId, sent: 1500 }
+    ]));
+  });
+
+  // Stripe keeps a refusal under its idempotency key, so a per-day key used to block the rest of the day.
+  test("after Stripe refuses a payout, the next hour's attempt that day uses a new key and goes through", async () => {
+    const fixture = await society();
+    const morning = new Date(`${now.toISOString().slice(0, 10)}T01:00:00.000Z`);
+    const later = new Date(morning.getTime() + 61 * 60_000);
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.create
+      .mockRejectedValueOnce(Object.assign(new Error("Insufficient funds in Stripe account"), { type: "StripeInvalidRequestError" }))
+      .mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await processPayoutBatch(100, morning);
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 4000 }] });
+    await processPayoutBatch(100, later);
+    const keys = stripe.create.mock.calls.filter(([, options]) => options.stripeAccount === fixture.accountId).map(([, options]) => options.idempotencyKey);
+    expect(keys).toEqual([`payout:${fixture.accountId}:${morning.toISOString()}`, `payout:${fixture.accountId}:${later.toISOString()}`]);
+    expect(await prisma.societyPayout.findMany({ where: { organisationId: fixture.organisationId }, select: { amount: true } })).toEqual([{ amount: 4000 }]);
   });
 
   test("a society that can't receive payouts is left alone", async () => {
@@ -232,7 +274,7 @@ describe("payouts worker", () => {
       .toEqual([expect.objectContaining({ organisationId: failing.organisationId })]);
     expect(await prisma.societyPayout.count({ where: { organisationId: failing.organisationId } })).toBe(0);
 
-    // Not before the hour is up; then the same day's key is tried again.
+    // Not before the hour is up; then it is tried again.
     stripe.create.mockClear();
     await processPayoutBatch(100, new Date(now.getTime() + 30 * 60_000));
     expect(stripe.create).not.toHaveBeenCalled();
@@ -253,6 +295,18 @@ describe("payout events", () => {
     const signature = new Stripe("sk_test_payouts").webhooks.generateTestHeaderString({ payload: body, secret: "whsec_payouts_test" });
     return connectWebhook(new Request("http://localhost:3000/api/stripe/connect/webhook", { method: "POST", headers: { "stripe-signature": signature }, body }));
   }
+
+  // A payout Stripe made although the worker saw an error is recorded when Stripe creates it, so that day gets no second payout.
+  test("payout.created records a payout the worker never saw succeed, and the day's check then sees it", async () => {
+    const fixture = await society();
+    const created = { id: unique("po"), object: "payout", amount: 3000, currency: "aud", status: "pending", arrival_date: null };
+    stripe.payout.mockResolvedValue(created);
+    expect((await payoutEvent(fixture.accountId, created, "payout.created")).status).toBe(200);
+    expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: created.id } })).toMatchObject({ organisationId: fixture.organisationId, status: "pending", amount: 3000 });
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    await processPayoutBatch(100, new Date());
+    expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
+  });
 
   test("Stripe's status is recorded as re-read; a refused payout shows until a later one goes through; another account's payout is ignored", async () => {
     const fixture = await society();

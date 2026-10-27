@@ -29,7 +29,7 @@ const eventFieldsSchema = z
   });
 
 // What a member with the member_prices right pays (T24b): optional, never above the price.
-// Prices follow priceAmountSchema (free, or $0.50 to $999,999.99) and stock stops
+// Prices follow priceAmountSchema (free, or $2.00 to $999,999.99) and stock stops
 // at a million, so totals stay inside a 32-bit integer (T39).
 const maxQuantity = 1_000_000;
 // An unbounded array let one request validate millions of items before authentication.

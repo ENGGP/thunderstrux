@@ -28,6 +28,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - a network error no longer reads as "platform not ready".
 
   It registers the Low leftovers as PAY-023. No migration.
+- #205 fixes PAY-023's code items: readiness needs the `transfers` capability, paid prices start at $2.00, payouts wait for $20 (or a week) under a per-attempt key, and an actionable early fraud warning on an unused order is refunded automatically. PAY-023 keeps the webhook IP allowlist and Accounts v2. No migration.
 
 **Snapshot at `912e49b`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -102,6 +103,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
 | #198 | Cancel event and buyer release of free registrations (EVT-004, EVT-005). Adds migration `20261117010000_event_cancellation` |
 | #199 | Cancelling an event closes unpaid orders' Stripe pages, and their order pages stop offering payment (EVT-006) |
 | #204 | Stripe audit fixes: payouts gate, dispute draft answers and reminder, paused-sales and deadline emails, early-released money on cancellation, connect error (PAY-022, PAY-023) |
+| #205 | Stripe audit leftovers: readiness needs `transfers`, $2 paid minimum, $20 payout minimum with a per-attempt key, early fraud warnings refunded automatically (PAY-023 code items) |
 | #196 | Documentation-audit fixes: deploy stops and restarts workers (OPS-007), ticket email zone and wording, order date filters in the society's zone, refund, payout, analytics, dispute-reversal and disconnect fixes, bounded request bodies, config faults (DEF-047 to DEF-052, PAY-011 to PAY-015, SEC-028, API-002, AUD-002, OPS-006) |
 
 ## Next safe actions
@@ -114,7 +116,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
 2. **Dev database:** it already has #197's and #198's migrations (dump above). Keep the dev folder on `codex/cancel-event` or a branch with both until they merge; older code can't read events with `cancelledAt` missing from its client.
 3. **DEBT-001 and DEBT-002 cleanup:** the dead and redundant code the documentation audit listed, and the smaller items of the journey audit. Small; no risky behaviour change.
 4. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].
-   - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]]. The key needs Disputes **write**, so each dispute gets its staged draft answer.
+   - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]]. The key needs Disputes **write**, so each dispute gets its staged draft answer, and Radar early fraud warnings **read**; the payments endpoint also subscribes to `radar.early_fraud_warning.created` and the Connect endpoint to `payout.created`.
    - Pass PAY-002 on the hosted endpoint.
 5. **When hosting is chosen,** run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
 6. **UI-004:** fold the phone filters, use one date formatter, and add the society Overview previews.

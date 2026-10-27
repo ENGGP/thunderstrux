@@ -3,12 +3,12 @@ status: living
 last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Stripe Payments and Connect]]", "[[Memberships and Merchandise]]", "[[Audit Coverage]]"]
-sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, lib/payments/purchase-disputes.ts, lib/payments/dispute-evidence.ts, lib/payments/dispute-reversals.ts, lib/payments/free-cancellation.ts, lib/commerce/payment-recovery.ts, lib/orders/order-detail.ts]
+sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, lib/payments/purchase-disputes.ts, lib/payments/dispute-evidence.ts, lib/payments/fraud-warnings.ts, lib/payments/dispute-reversals.ts, lib/payments/free-cancellation.ts, lib/commerce/payment-recovery.ts, lib/orders/order-detail.ts]
 ---
 
 # Payment Lifecycle Refunds and Disputes
 
-**Owns:** money going back after a sale, for tickets and for memberships and merchandise: whole-order refunds and "refund the rest", compensation refunds of payments that couldn't be honoured, the "refunded outside Thunderstrux" mark, refunds made in Stripe's dashboard, disputes, lost-dispute transfer reversals, and free cancellation.
+**Owns:** money going back after a sale, for tickets and for memberships and merchandise: whole-order refunds and "refund the rest", compensation refunds of payments that couldn't be honoured, the "refunded outside Thunderstrux" mark, refunds made in Stripe's dashboard, disputes, early fraud warnings, lost-dispute transfer reversals, and free cancellation.
 **Read when:** changing a refund, dispute or cancellation path, the refunds worker, or what any of them does to orders and tickets.
 **Not here:** order, ticket and hold states, fulfilment and compensation entry ([[Payment Lifecycle]]); webhook routing, payouts and the Stripe calls' parameters ([[Stripe Payments and Connect]]); membership revocation and merchandise returns ([[Memberships and Merchandise]]); refund and cancellation emails ([[Email Delivery Implementation]]).
 
@@ -21,12 +21,13 @@ sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, l
 | Ticket disputes and outside refunds | `lib/payments/purchase-disputes.ts`: `reconcileDisputeEvent`, `reconcileExternalRefundEvent`, `restoreDisputedTickets`, `markExternalRefundReviewed` |
 | Commerce disputes, outside refunds, automatic compensation | `lib/commerce/payment-recovery.ts` |
 | A dispute's draft answer, staged in Stripe | `lib/payments/dispute-evidence.ts`: `stageDisputeEvidence` |
+| Early fraud warnings | `lib/payments/fraud-warnings.ts`: `reconcileEarlyFraudWarning`, `fraudRefundReason`; commerce `queueCommerceFraudRefund` in `lib/commerce/payment-recovery.ts` |
 | Lost-dispute reversals | `lib/payments/dispute-reversals.ts`: `queueDisputeReversal`, `processDisputeReversalBatch` |
 | Free ticket cancellation | `lib/payments/free-cancellation.ts`: `cancelFreeOrder`, `cancelFreePurchase`, `releaseFreeRegistration` |
 | Event cancellation (refund every order) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` ([[Event Lifecycle#Cancelling]]) |
 | Manual refund mark, resend refusals | `lib/orders/order-detail.ts`: `markOrganisationOrderManuallyRefunded` |
 | Worker | `scripts/process-compensation-refunds.ts` (`pnpm compensation-refunds:process`) |
-| Tests | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts`, `tests/integration/purchase-disputes.test.ts`, `tests/integration/commerce-payment-recovery.test.ts`, `tests/integration/membership-refunds.test.ts`, `tests/integration/merchandise-after-sale.test.ts`, `tests/integration/free-cancellation.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/e2e/order-refunds.spec.ts` |
+| Tests | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts`, `tests/integration/purchase-disputes.test.ts`, `tests/integration/commerce-payment-recovery.test.ts`, `tests/integration/membership-refunds.test.ts`, `tests/integration/merchandise-after-sale.test.ts`, `tests/integration/free-cancellation.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/integration/early-fraud-warnings.test.ts`, `tests/e2e/order-refunds.spec.ts` |
 
 ## Staff routes
 
@@ -127,7 +128,26 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
   - Any failure (for example a key without Disputes write) logs `stripe.dispute.evidence_not_staged` and alerts `dispute_evidence_not_staged`; it never fails the webhook, because the event is already journalled.
 - **Reminder:** the monitor alerts `purchase_dispute_evidence_due` for each dispute still `needs_response` or `warning_needs_response` whose `evidenceDueBy` is within 72 hours, every 6 hours, until a submitted answer moves Stripe's status and its `charge.dispute.updated` event updates `providerStatus`.
 
+### Answering a dispute
+
+The platform operator's runbook:
+1. `purchase_dispute_opened` names the dispute and its due date. Open it in Stripe's Dashboard (the staff order page links to it).
+2. Review the staged draft, add anything the society tells you (for example messages with the buyer), and submit before the due date. Thunderstrux keeps only the current refund policy, so remove it if the society changed it after the sale. A buyer refunded and disputing anyway: submit with the refund lines.
+3. `dispute_evidence_not_staged`: nothing was staged (often a key without Disputes write). Fill the same facts in from the staff order page.
+4. `purchase_dispute_evidence_due` repeats every 6 hours from 72 hours before the due date until the answer is submitted.
+
 **Restore** (`restore_tickets`, reason 8 to 500): allowed only when `disputeStatus = won` and every unresolved dispute is won. It resolves them all together, puts `disputed` tickets back to `active`, clears `disputeStatus` and appends `dispute_resolved`. Later events for a resolved dispute are history only. A dispute is not a refund.
+
+## Early fraud warnings
+
+A card issuer's early fraud warning (`radar.early_fraud_warning.created`) usually comes before a fraud chargeback. Refunding first avoids the dispute fee and the society losing the sale (PAY-023). `reconcileEarlyFraudWarning` (`lib/payments/fraud-warnings.ts`):
+- Journals the event once in `StripeRefundWebhookEvent`, re-reads the warning, and finds its order through the warning's PaymentIntent as disputes do (`verifiedCommercePayment`, then `verifiedOrderPayment`); the charge must be the warning's. Anything else alerts `early_fraud_warning` with `outcome: "unmatched"` and changes nothing.
+- Under the purchase lock, an **actionable** warning on an **unused** order is refunded in full:
+  - Tickets: no ticket scanned (`checkedInAt`), then `openOrderRefund` with no actor (history source `stripe_webhook`), so its usual refusals apply: refunded, in progress, disputed, in compensation, marked refunded.
+  - Commerce: `queueCommerceFraudRefund`, which requires a paid, fulfilled order not refunded, disputed or in review, and merchandise not collected; the amount is the total less `externalRefundedAmount`.
+  - Either way a system `RefundRequest` (no actor, reason `fraudRefundReason`) is left `pending` for the refunds worker, as event cancellation does, and the buyer gets the usual refund email. History shows it as Thunderstrux's.
+- A key that can't read the warning (a permission, authentication or invalid-request refusal) alerts `outcome: "unreadable"` and answers 200 instead of failing every delivery; other errors answer 500 so Stripe retries.
+- Every decision alerts `early_fraud_warning` with `outcome`: `refund_queued`, or why not (`not_actionable`, `used`, `disputed`, `already_refunded`, `in_progress`, `not_refundable`, `not_found`).
 
 ## Lost-dispute reversals
 

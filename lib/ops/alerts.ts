@@ -18,6 +18,8 @@ export type OperationalAlertName =
   // A dispute's draft answer couldn't be staged in Stripe, or its due date is close.
   | "dispute_evidence_not_staged"
   | "purchase_dispute_evidence_due"
+  // A card issuer's early fraud warning: refunded automatically, or why not.
+  | "early_fraud_warning"
   | "dispute_reversal_unresolved"
   | "society_payout_failed"
   // Stripe paused a society's card payments; a cancelled event had sale money already released.

@@ -22,7 +22,7 @@ const idOf = (value: string | { id: string } | null | undefined) => (typeof valu
 
 // The commerce order a PaymentIntent paid for: its Session names the order and
 // family, and the money went to the account the order was sold for.
-async function verifiedCommercePayment(stripe: Stripe, paymentIntentId: string) {
+export async function verifiedCommercePayment(stripe: Stripe, paymentIntentId: string) {
   let commerceOrderId = (await prisma.commerceOrder.findFirst({ where: { stripePaymentIntentId: paymentIntentId }, select: { id: true } }))?.id;
   if (!commerceOrderId) {
     const session = (await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 1 })).data[0];
@@ -197,4 +197,34 @@ export async function queueCommerceCompensationRefund(tx: Prisma.TransactionClie
     organisationId: order.organisationId, actorUserId: null, action: "commerce_order.compensation_refund_queued", targetType: "CommerceOrder", targetId: commerceOrderId,
     metadata: { amount: order.totalAmount, reason }
   } });
+}
+
+// An early fraud warning on a commerce order nobody has used yet (merchandise not
+// collected): refunded in full on the ordinary request, fence and worker, as
+// compensation is. The caller holds the family lock. Answers why not otherwise.
+export async function queueCommerceFraudRefund(tx: Prisma.TransactionClient, commerceOrderId: string, reason: string) {
+  const order = await tx.commerceOrder.findUniqueOrThrow({ where: { id: commerceOrderId } });
+  if (order.disputeStatus) return "disputed";
+  if (order.refundStatus) return order.refundStatus === "refunded" ? "already_refunded" : "in_progress";
+  if (order.pickupStatus === "collected") return "used";
+  const amount = order.totalAmount - order.externalRefundedAmount;
+  if (
+    order.paymentKind !== "stripe" || order.status !== "paid" || !order.fulfilledAt || order.requiresCompensationReview ||
+    !order.stripeSessionId || !order.sellerStripeAccountId || amount <= 0
+  ) {
+    return "not_refundable";
+  }
+  await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { refundStatus: "processing" } });
+  const created = await tx.refundRequest.create({
+    data: {
+      commerceOrderId, organisationId: order.organisationId, amount, currency: order.currency, reason, actorUserId: null,
+      operationKey: `commerce-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId
+    }
+  });
+  await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "refund_requested", source: "stripe_webhook", reason, facts: { amount } });
+  await tx.auditLog.create({ data: {
+    organisationId: order.organisationId, actorUserId: null, action: "commerce_order.refund_requested", targetType: "CommerceOrder", targetId: commerceOrderId,
+    metadata: { refundRequestId: created.id, amount, reason }
+  } });
+  return "refund_queued";
 }

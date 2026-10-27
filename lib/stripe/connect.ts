@@ -159,12 +159,18 @@ function settingsUrl(returnOrigin?: string) {
   return new URL("/dashboard/settings", returnOrigin ?? getAppUrl()).toString();
 }
 
+// Destination charges pay the society through a transfer, so selling needs the
+// transfers capability as well as card payments (charges_enabled).
+function canTakePayments(account: Stripe.Account) {
+  return Boolean(account.charges_enabled) && account.capabilities?.transfers === "active";
+}
+
 function mapAccountState(account: Stripe.Account): StripeConnectState {
   if (!account.details_submitted) {
     return "CONNECTED_INCOMPLETE";
   }
 
-  if (!account.charges_enabled) {
+  if (!canTakePayments(account)) {
     return "RESTRICTED";
   }
 
@@ -179,7 +185,7 @@ function statusFromAccount(account: Stripe.Account): StripeConnectStatus {
     connected: true,
     state,
     ready: state === "READY",
-    charges_enabled: Boolean(account.charges_enabled),
+    charges_enabled: canTakePayments(account),
     payouts_enabled: Boolean(account.payouts_enabled),
     details_submitted: Boolean(account.details_submitted),
     currently_due: account.requirements?.currently_due ?? [],

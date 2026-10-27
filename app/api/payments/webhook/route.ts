@@ -7,6 +7,7 @@ import { warnOnVersionMismatch } from "@/lib/stripe/version";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
+import { reconcileEarlyFraudWarning } from "@/lib/payments/fraud-warnings";
 import { reconcileOrderRefundEvent } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
 import { reconcileCommerceDisputeEvent, reconcileCommerceExternalRefundEvent } from "@/lib/commerce/payment-recovery";
@@ -155,6 +156,11 @@ export async function POST(request: Request) {
     case "charge.dispute.closed": {
       // A membership or merchandise payment's dispute (PAY-003), else a ticket order's.
       if (!(await reconcileCommerceDisputeEvent(event))) await reconcileDisputeEvent(event);
+      return NextResponse.json({ received: true });
+    }
+
+    case "radar.early_fraud_warning.created": {
+      await reconcileEarlyFraudWarning(event);
       return NextResponse.json({ received: true });
     }
 

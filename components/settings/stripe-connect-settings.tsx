@@ -70,6 +70,15 @@ function stateContent(status: ConnectStatus | null): {
   if (status.state === "CONNECTED_INCOMPLETE") {
     return { title: "You can't sell paid tickets yet", description: "Finish setting up your account in Stripe.", badge: ["pending", "Setup incomplete"], tone: "warning" };
   }
+  // Off sale with nothing asked of the society: Stripe is still checking (a capability pending).
+  if (status.state === "RESTRICTED" && status.currently_due.length === 0 && !status.disabled_reason) {
+    return {
+      title: "Paid tickets are off sale for now",
+      description: "Stripe is checking your details. Free tickets still work, and paid sales start once Stripe finishes; refresh to check.",
+      badge: ["pending", "Stripe checking"],
+      tone: "warning"
+    };
+  }
   if (status.state === "RESTRICTED") {
     return {
       title: "Paid tickets are off sale",

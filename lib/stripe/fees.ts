@@ -20,11 +20,11 @@ export function calculatePlatformFee(totalAmount: number, items = 1) {
   return Math.min(Math.round(totalAmount * PLATFORM_FEE_RATE) + PLATFORM_FEE_PER_ITEM * items, totalAmount);
 }
 
-// Stripe's smallest AUD card payment. A paid price between 1 and 49 cents could be
-// listed but never paid, because Stripe refuses the Checkout Session.
-export const minPaidPrice = 50;
-export const paidPriceMinimum = "Paid prices start at $0.50, Stripe's smallest card payment.";
+// The lowest round price where the society keeps more than half (fee 97c, society
+// $1.03). Below 93c the capped fee took the whole price; Stripe's own floor is 50c.
+export const minPaidPrice = 200;
+export const paidPriceMinimum = "Paid prices start at $2.00, so your society keeps more than half after the Thunderstrux fee.";
 
-export function isBelowStripeMinimum(amount: number) {
+export function isBelowPaidMinimum(amount: number) {
   return amount > 0 && amount < minPaidPrice;
 }

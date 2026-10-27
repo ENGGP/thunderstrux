@@ -103,8 +103,9 @@ export async function POST(request: Request) {
     }
   }
 
-  // PAY-005: payouts from a society's balance to its bank.
-  if (event.type === "payout.paid" || event.type === "payout.failed" || event.type === "payout.canceled" || event.type === "payout.updated") {
+  // PAY-005: payouts from a society's balance to its bank. payout.created records a
+  // payout Stripe made despite an error the worker saw, so its one-a-day check sees it.
+  if (event.type === "payout.created" || event.type === "payout.paid" || event.type === "payout.failed" || event.type === "payout.canceled" || event.type === "payout.updated") {
     await reconcilePayoutEvent(event);
   }
 

@@ -84,18 +84,14 @@ Create both in Stripe Workbench (live for production, test for staging) as **sna
 
 | Endpoint | Listens to | Events | Secret |
 | --- | --- | --- | --- |
-| `https://<app>/api/payments/webhook` | your account | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` | `STRIPE_WEBHOOK_SECRET` |
-| `https://<app>/api/stripe/connect/webhook` | connected accounts | `account.updated`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| `https://<app>/api/payments/webhook` | your account | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` | `STRIPE_WEBHOOK_SECRET` |
+| `https://<app>/api/stripe/connect/webhook` | connected accounts | `account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 
 Subscribe only these. Check the endpoint list shows the pinned version, then send a test event to each and confirm HTTP 200 under Event deliveries.
 
-**Key:** a restricted key (`rk_live_…`) with only what the code calls: Checkout Sessions write (create, retrieve, list, expire); PaymentIntents and Charges read; Refunds write; Disputes write (read, and staging each dispute's draft answer); Connect accounts, account links and login links write; Transfers write (reversals; also retrieve and list reversals); on connected accounts Balance read and Payouts write. Prove it in test mode with the staging campaign first: a 403 in Workbench request logs names the missing permission. Store it as the `stripe_secret_key` secret; roll it when someone with access leaves.
+**Key:** a restricted key (`rk_live_…`) with only what the code calls: Checkout Sessions write (create, retrieve, list, expire); PaymentIntents and Charges read; Refunds write; Disputes write (read, and staging each dispute's draft answer); Radar early fraud warnings read; Connect accounts, account links and login links write; Transfers write (reversals; also retrieve and list reversals); on connected accounts Balance read and Payouts write. Prove it in test mode with the staging campaign first: a 403 in Workbench request logs names the missing permission. Store it as the `stripe_secret_key` secret; roll it when someone with access leaves.
 
-**Disputes:** on destination charges the platform answers every dispute, because it is on the platform's account and societies can't see it. The platform operator owns them. Stripe takes the amount and dispute fee from the platform; once lost, the refunds worker reverses the society's transfer by the disputed amount (PAY-004, [[Payment Lifecycle]]); the dispute fee stays with the platform. An unanswered dispute is lost.
-1. `purchase_dispute_opened` names the dispute and its due date. Open it in Stripe's Dashboard (the staff order page links to it).
-2. Thunderstrux has already staged a draft answer on it ([[Payment Lifecycle Refunds and Disputes#Disputes]]): buyer, what was bought, door scans, ticket email time, refund policy and refunds already made. Review it, add anything the society tells you (for example messages with the buyer), and submit before the due date. Thunderstrux keeps only the current refund policy, so remove it if the society changed it after the sale. A buyer refunded and disputing anyway: submit with the refund lines.
-3. `dispute_evidence_not_staged`: nothing was staged (often a key without Disputes write). Fill the same facts in from the staff order page.
-4. `purchase_dispute_evidence_due` repeats every 6 hours from 72 hours before the due date until the answer is submitted.
+**Disputes:** on destination charges the platform answers every dispute, because it is on the platform's account and societies can't see it. The platform operator owns them; an unanswered dispute is lost. Stripe takes the amount and dispute fee from the platform; once lost, the refunds worker reverses the society's transfer by the disputed amount (PAY-004); the dispute fee stays with the platform. How to answer one: [[Payment Lifecycle Refunds and Disputes#Answering a dispute]].
 Optionally the edge may accept webhook requests only from Stripe's published IP ranges; signatures stay the real protection.
 
 ## Workers and schedules
@@ -163,6 +159,7 @@ Every alert (`OperationalAlertName`). The engineering on-call owns all of them; 
 | `checkout_attempt_recovery_abandoned` | an uncertain attempt passed the 24 h replay window (`attemptReplayWindowMs`) and was closed | Look in Stripe for a Session under it; if paid, the webhook still fulfils; otherwise nothing to do. |
 | `order_refund_unresolved` | a refund request is still unknown after 6 checks; re-alerts hourly while the worker keeps asking Stripe hourly | Find the refund in Stripe's Dashboard; a `refund.*` webhook can still settle it. Don't refund by hand while it may exist. |
 | `purchase_dispute_opened` | a dispute opened on a ticket or commerce order (`evidenceDueBy`) | Review the staged draft in Stripe's Dashboard and submit it before the due date (Disputes above). |
+| `early_fraud_warning` | a card issuer flagged a payment (`outcome`: `refund_queued`, or why not, or `unmatched`) | `refund_queued`: check the refund lands. Otherwise decide in Stripe: refund, or keep it and expect a dispute. |
 | `dispute_evidence_not_staged` | Stripe refused or couldn't take a new dispute's draft answer (`lib/payments/dispute-evidence.ts`) | Check the key has Disputes write; answer the dispute by hand from the staff order page. |
 | `purchase_dispute_evidence_due` | an unanswered dispute is due within 72 hours (monitor, per dispute) | Submit the answer in Stripe's Dashboard now; it stops once Stripe's status moves. |
 | `purchase_dispute_unmatched` | a dispute doesn't match its order's charge, currency or amount | Investigate the charge in Stripe; nothing was recorded. |

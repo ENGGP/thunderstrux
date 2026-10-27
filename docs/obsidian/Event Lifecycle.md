@@ -65,7 +65,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - A draft saves without a description or location, so an organiser can stop half-way; readiness (`details_missing`) asks for both before publishing, and an edit of a published event that empties either is 400 on the field.
 - `capacity` positive, at most 1,000,000.
 - At most 50 ticket types (`MAX_TICKET_TYPES`, SEC-025): the API refuses more; the builder disables "Add ticket type" at the limit.
-- Ticket type name 1 to 120 characters. `price` and `memberPrice` follow `priceAmountSchema`: 0 (free) or $0.50 to $999,999.99 in cents. `memberPrice` at most `price` (validator and `TicketType_member_price_chk`).
+- Ticket type name 1 to 120 characters. `price` and `memberPrice` follow `priceAmountSchema`: 0 (free) or $2.00 to $999,999.99 in cents. `memberPrice` at most `price` (validator and `TicketType_member_price_chk`).
 - `quantity`: 1 to 1,000,000 on create; 0 to 1,000,000 on edit, including types added in an edit (the edit schema allows sold-out `0`).
 - Checkout caps an order at 10 tickets (`maxTicketsPerOrder` in `lib/validators/payments.ts`).
 

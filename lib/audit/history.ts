@@ -35,7 +35,9 @@ const prefixes: Record<HistoryCategory, string[]> = {
 // Outcomes Stripe reports (refunds settling, disputes closing) stay Stripe's even when a worker reads them.
 const automaticActions = [
   "order.compensation_refund_queued", "order.compensation_refund_review_required", "order.compensation_refund_started", "order.compensation_review_required",
-  "commerce_order.compensation_refund_queued", "order.dispute_funds_recovered", "commerce_order.dispute_funds_recovered", "asset.orphan_removed"
+  "commerce_order.compensation_refund_queued", "order.dispute_funds_recovered", "commerce_order.dispute_funds_recovered", "asset.orphan_removed",
+  // Without a person: the refund an early fraud warning starts (lib/payments/fraud-warnings.ts).
+  "order.refund_requested", "commerce_order.refund_requested"
 ];
 
 export const historyPageSize = 50;

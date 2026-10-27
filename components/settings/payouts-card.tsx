@@ -113,7 +113,8 @@ export function PayoutsCard({ payouts, payoutsEnabled, seeAll }: { payouts: Payo
 
         <p className="text-caption text-ink-muted">
           Stripe holds money for at most 90 days, so money from a sale made more than 80 days before its event is sent then. Money under an
-          open dispute waits until the dispute closes.
+          open dispute waits until the dispute closes. Less than $20 waits to join the next payout, and goes anyway once a week has passed
+          without one.
         </p>
       </div>
     </Card>

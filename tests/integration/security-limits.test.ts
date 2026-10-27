@@ -8,9 +8,9 @@ describe("security limits (T39)", () => {
   test("ticket prices and stock stay inside what Stripe charges and a 32-bit total holds", () => {
     const ticket = { name: "General", price: 99_999_999, quantity: 1_000_000 };
     expect(createTicketTypeSchema.safeParse(ticket).success).toBe(true);
-    for (const free of [{ price: 0 }, { memberPrice: 0 }, { price: 50, memberPrice: 50 }]) expect(createTicketTypeSchema.safeParse({ ...ticket, ...free }).success).toBe(true);
-    // Stripe refuses an AUD card payment under $0.50, so 1 to 49 cents could never be paid.
-    for (const over of [{ price: 100_000_000 }, { quantity: 1_000_001 }, { memberPrice: 100_000_000 }, { price: 2 ** 31 }, { price: 49 }, { price: 1 }, { memberPrice: 49 }]) {
+    for (const free of [{ price: 0 }, { memberPrice: 0 }, { price: 200, memberPrice: 200 }]) expect(createTicketTypeSchema.safeParse({ ...ticket, ...free }).success).toBe(true);
+    // Paid prices start at $2.00, so the society keeps more than half after the fee; below 93c it kept nothing.
+    for (const over of [{ price: 100_000_000 }, { quantity: 1_000_001 }, { memberPrice: 100_000_000 }, { price: 2 ** 31 }, { price: 199 }, { price: 50 }, { price: 1 }, { memberPrice: 199 }]) {
       expect(createTicketTypeSchema.safeParse({ ...ticket, ...over }).success).toBe(false);
       expect(updateTicketTypeSchema.safeParse({ ...ticket, ...over }).success).toBe(false);
     }

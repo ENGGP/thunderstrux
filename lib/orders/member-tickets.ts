@@ -40,6 +40,7 @@ export function getMemberTicketOrder(userId: string, eventId: string, orderId: s
       paymentKind: true,
       purchasedTicketTypeName: true,
       buyerEmailSnapshot: true,
+      fulfilledAt: true,
       ticketType: { select: { name: true } },
       tickets: { where: { validity: "active" }, select: { id: true }, orderBy: { issueSequence: "asc" } }
     }
@@ -59,6 +60,7 @@ export function getGuestOrder(orderId: string) {
       totalAmount: true,
       purchasedTicketTypeName: true,
       buyerEmailSnapshot: true,
+      fulfilledAt: true,
       userId: true,
       cancelledAt: true,
       cancelledByUserId: true,

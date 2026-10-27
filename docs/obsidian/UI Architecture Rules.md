@@ -36,7 +36,7 @@ sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navb
 - No raw palette classes (`bg-neutral-900`, `text-purple-600`) and no hex colours in components.
 - Bare `border` draws the hairline token; Tailwind's `currentColor` default is overridden in the base layer.
 - The focus ring is a 2px `--ts-focus` outline outside any layer, so `outline-none` cannot remove it. `prefers-reduced-motion` sets every transition and animation to `0s`; not `0.01ms`, because every element defaults to `transition-property: all`, so any duration starts a transition on every style change. Read straight after focusing, the focus ring then still reports its 3px default (`tests/e2e/society-profiles.spec.ts` caught this).
-- Motion tokens sit in their own `@theme` block: `ease-out` is the strong curve `cubic-bezier(0.23, 1, 0.32, 1)`, `ease-drawer` is `cubic-bezier(0.32, 0.72, 0, 1)` for the one drawer, and `animate-pop-in` (160ms), `animate-dialog-in` (200ms) and `animate-fade-in` (200ms) are entry keyframes. Where they are used: [[#Motion]].
+- Motion tokens sit in their own `@theme` block: `ease-out` is the strong curve `cubic-bezier(0.23, 1, 0.32, 1)`, `ease-drawer` is `cubic-bezier(0.32, 0.72, 0, 1)` for the one drawer, `animate-pop-in` (160ms), `animate-dialog-in` (200ms) and `animate-fade-in` (200ms) are entry keyframes, and `animate-rise-in` (300ms, `backwards` fill) drives the `issued-stagger` utility. Reduced motion also zeroes animation delays. Where they are used: [[#Motion]].
 - `app/layout.tsx` loads DM Sans (UI) and Space Grotesk (`h1`, `h2`, `font-display`) through `next/font`; they are downloaded at build time and served by the app.
 - No dark mode. No icon library: `components/ui/icon.tsx` holds the outline icons, always decorative beside text.
 
@@ -127,9 +127,10 @@ Motion shows where something came from or confirms that a change happened, and o
 | Where | Motion |
 | --- | --- |
 | `buttonClasses()` and the check-in button | Press: scale to 97% over 150ms (`active:not-disabled:scale-97`) |
-| `EventActions` More menu, `DateField` calendar | `animate-pop-in` from the trigger (`placeMenu` sets the origin above or below). The calendar animates only when opened with a pointer; from the keyboard it opens instantly |
+| `EventActions` More menu, `DateField` calendar | `animate-pop-in` from the trigger (`placeMenu` sets the origin above or below). Both animate only when opened with a pointer; from the keyboard (a click with `detail` 0, or Alt+↓) they open instantly |
 | `ConfirmDialog` | `animate-dialog-in` from the centre; the backdrop fades in |
 | Phone buy bar | Slides in and out through the bottom edge (240ms, `ease-drawer`), as a transition so a scroll reversal mid-slide retargets. It stays mounted; while hidden it is `invisible` and `inert` |
+| Newly issued tickets: the ticket list on `/purchases/tickets/[orderId]` and `/guest/orders/[orderId]`, the confirmation on `/success`, and the ticket numbers on `/events/[eventId]/checkout/confirmed` | `issued-stagger` while the order is live (paid or free) and `justIssued(order.fulfilledAt)` (`lib/purchases/projection.ts`) is true, which is two minutes after issue. Items fade and rise 8px over 300ms, 50ms apart (capped at 250ms). This covers both the status poller's refresh and landing after the webhook. A later visit is still; a reload inside the window replays it |
 
 Deliberately still:
 - Page and tab changes: back-office pages open hundreds of times a day.
@@ -139,7 +140,7 @@ Deliberately still:
 - The navbar `Menu` and every `<details>` disclosure: Chromium skips styles for closed `<details>` content, so a keyframe never restarts after the first open. Their chevrons snap too, because the content they announce snaps open.
 - Card hover shadows: they switch instantly, since `box-shadow` isn't animated.
 - Date-picker month changes: they are keyboard driven.
-- Payment or check-in success: no spinners, no celebration (visual spec 12.2).
+- Payment or check-in success: no spinners and no celebration (visual spec 12.2). The one exception is the quiet arrival of newly issued tickets above, and it runs only once the server has recorded `fulfilledAt`.
 
 The skeleton pulses only when motion is allowed.
 

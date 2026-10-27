@@ -32,6 +32,8 @@ test("members register for free tickets through the checkout page without Stripe
   await page.getByRole("button", { name: "Confirm free registration" }).click();
   await expect(page.getByRole("heading", { name: "Free registration confirmed" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Ticket numbers" }).getByRole("listitem")).toHaveCount(2);
+  // Just issued, so the numbers arrive one by one.
+  await expect(page.getByRole("list", { name: "Ticket numbers" })).toHaveClass(/issued-stagger/);
   await page.screenshot({ path: "test-results/free-confirmed-1280.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

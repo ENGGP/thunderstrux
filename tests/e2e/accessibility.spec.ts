@@ -99,6 +99,8 @@ test("keyboard users skip to the page, and a confirmation takes focus and closes
   await login(page, data.owner.email, "/dashboard/events");
   await page.getByRole("button", { name: `More actions for ${data.event.title}` }).first().focus();
   await page.keyboard.press("Enter");
+  // Opened from the keyboard, the menu doesn't animate.
+  expect(await page.locator("[popover]:popover-open").evaluate((menu) => getComputedStyle(menu).animationName)).toBe("none");
   await page.getByRole("button", { name: "Unpublish" }).first().focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog");

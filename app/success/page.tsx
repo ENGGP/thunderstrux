@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { buyerPurchaseBadge, ticketOrderProjection } from "@/lib/purchases/projection";
+import { buyerPurchaseBadge, justIssued, ticketOrderProjection } from "@/lib/purchases/projection";
 import { getOwnOrderForCheckoutSession } from "@/lib/purchases/ticket-purchases";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { getStripe, StripeConfigurationError } from "@/lib/stripe";
@@ -112,14 +112,14 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
               <Link className="font-semibold text-brand underline underline-offset-4" href="/purchases">See all purchases</Link>
             </>
           ) : going ? (
-            <>
+            <div className={`grid gap-4 ${justIssued(order.fulfilledAt) ? "issued-stagger" : ""}`}>
               <p className="text-ink">
                 {projection === "free" ? "Registration" : "Payment"} confirmed for {count} to {order.event.title}.{" "}
                 {/* The email may still be on its way; only say it was sent once the provider took it. */}
                 {order.ticketEmailSentAt ? `We've emailed them to ${order.buyerEmailSnapshot}.` : `We're emailing them to ${order.buyerEmailSnapshot}; they're in My tickets now.`}
               </p>
               <div><Link className={buttonClasses({ size: "lg" })} href="/tickets">View my tickets</Link></div>
-            </>
+            </div>
           ) : projection === "failed" || projection === "expired" ? (
             <>
               <p className="text-ink">Nothing was charged.</p>

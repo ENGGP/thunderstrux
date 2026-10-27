@@ -31,6 +31,12 @@ export function ticketOrderProjection(order: {
   return order.status;
 }
 
+// The buyer's first look at tickets issued moments ago gets a one-time entrance.
+// shortcut: a two-minute window, not a per-view flag, so a reload inside it replays; upgrade only if that matters.
+export function justIssued(fulfilledAt: Date | null, now = Date.now()) {
+  return fulfilledAt !== null && now - fulfilledAt.getTime() < 120_000;
+}
+
 // Orders created before T10 did not record the ticket name; show today's name and say so.
 export function purchasedTicketTypeLabel(purchasedName: string | null, currentName: string) {
   return purchasedName ?? `${currentName} (historical label unavailable)`;

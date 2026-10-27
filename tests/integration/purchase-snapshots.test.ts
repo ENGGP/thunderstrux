@@ -7,7 +7,7 @@ import { getWalletTickets } from "@/lib/purchases/ticket-purchases";
 import { getOrganisationOrderDetail } from "@/lib/orders/order-detail";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
-import { buyerPurchaseBadge, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
+import { buyerPurchaseBadge, justIssued, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import {
   checkInOrganisationTicket,
@@ -209,6 +209,15 @@ describe("purchase snapshots and ticket validity", () => {
     await expect(checkInOrganisationTicket(owner.organisation.id, voided.id, owner.user.id)).rejects.toMatchObject({ validity: "void", validityReason: "refunded" });
     await expect(checkInOrganisationTicket(owner.organisation.id, review.id, owner.user.id)).rejects.toBeInstanceOf(TicketNotValidError);
     await expect(checkInOrganisationTicket(owner.organisation.id, valid.id, owner.user.id)).resolves.toMatchObject({ status: "checked-in" });
+  });
+
+  test("only tickets issued in the last two minutes get the arrival entrance", () => {
+    const now = Date.parse("2026-10-27T10:00:00Z");
+    expect(justIssued(null, now)).toBe(false);
+    expect(justIssued(new Date(now - 30_000), now)).toBe(true);
+    expect(justIssued(new Date(now - 119_999), now)).toBe(true);
+    expect(justIssued(new Date(now - 120_000), now)).toBe(false);
+    expect(justIssued(new Date(now - 180_000), now)).toBe(false);
   });
 
   test("one status per order, by the UX spec's precedence, and buyers read each in their own words", async () => {

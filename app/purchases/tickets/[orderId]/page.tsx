@@ -82,7 +82,7 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
           {order.tickets.length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">{checkout && checkout.state !== "ended" ? `Your ${order.quantity === 1 ? "ticket is" : "tickets are"} issued once Stripe confirms the payment.` : "No tickets were issued for this order."}</p>
           ) : (
-            <ul className={`mt-3 grid gap-2 ${justIssued(order.fulfilledAt) ? "issued-stagger" : ""}`}>
+            <ul className={`mt-3 grid gap-2 ${(projection === "paid" || projection === "free") && justIssued(order.fulfilledAt) ? "issued-stagger" : ""}`}>
               {order.tickets.map((ticket) => {
                 const state = ticketState(ticket, organisation.timeZone);
                 return (

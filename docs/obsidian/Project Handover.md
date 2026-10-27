@@ -20,7 +20,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - This session delivered the codebase audit fixes, the UI audit and design sync, the security audit remediation (T47 to T53) and the test audit. The documentation audit (#195) rewrote the notes and registered 17 items; #196 fixes 16 of them (DEBT-001, a cleanup, is left).
 - A security and buyer-journey audit (2026-10-26, compared with Luma, Humanitix and Eventbrite) found 20 items; #197 fixes 18 of them (PAY-016, PAY-018 to PAY-021, SEC-029 to SEC-031, DEF-053 to DEF-062, UI-006) and registers event cancellation (EVT-004), buyer self-cancel of free registrations (EVT-005) and smaller leftovers (DEBT-002). It adds migration `20261116010000_guest_checkout_name`.
 - #198 (2026-10-27, built on #197's branch) resolves EVT-004 and EVT-005: "Cancel event" refunds every paid order through the refunds worker with one authenticator code, cancels free registrations and emails every holder; buyers can release their own free registration before the event, and the places go back on sale. It adds migration `20261117010000_event_cancellation` (additive: `Event.cancelledAt`, `cancellationReason`, lifecycle source `buyer_action`).
-- A read-only Stripe audit (2026-10-27, against Stripe's best-practice and Connect guidance) found four Medium gaps and one Low bug. The Stripe audit fixes PR resolves them:
+- A read-only Stripe audit (2026-10-27, against Stripe's best-practice and Connect guidance) found four Medium gaps and one Low bug. #204 resolves them:
   - payouts follow the payouts flag, not the state;
   - a dispute gets a draft answer staged in Stripe, a reminder and an operator runbook;
   - a society's Stripe managers are emailed when Stripe pauses card payments or sets a deadline;
@@ -101,7 +101,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
 | #197 | Security and journey audit fixes: payout hold (manual mark, end-time edit, disconnect), refunds or disputes before fulfilment, free-ticket cap, merchandise hold grace, capacity under review, refunds after a won dispute, fresh codes for Stripe onboarding and a password for authenticator setup; checkout dead end, guest names and door references, guest link at the door, sign-in after verification, society-zone order times, link previews, map and calendar links, event form safety (PAY-016, PAY-018 to PAY-021, SEC-029 to SEC-031, DEF-053 to DEF-062, UI-006). Adds migration `20261116010000_guest_checkout_name` |
 | #198 | Cancel event and buyer release of free registrations (EVT-004, EVT-005). Adds migration `20261117010000_event_cancellation` |
 | #199 | Cancelling an event closes unpaid orders' Stripe pages, and their order pages stop offering payment (EVT-006) |
-| Stripe audit fixes | Payouts gate, dispute draft answers and reminder, paused-sales and deadline emails, early-released money on cancellation, connect error (PAY-022, PAY-023) |
+| #204 | Stripe audit fixes: payouts gate, dispute draft answers and reminder, paused-sales and deadline emails, early-released money on cancellation, connect error (PAY-022, PAY-023) |
 | #196 | Documentation-audit fixes: deploy stops and restarts workers (OPS-007), ticket email zone and wording, order date filters in the society's zone, refund, payout, analytics, dispute-reversal and disconnect fixes, bounded request bodies, config faults (DEF-047 to DEF-052, PAY-011 to PAY-015, SEC-028, API-002, AUD-002, OPS-006) |
 
 ## Next safe actions

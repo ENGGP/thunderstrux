@@ -146,8 +146,8 @@ Each test starts from an empty `_test` database (`tests/helpers/db-reset.ts`). T
 
 ## Stripe on the dev app
 
-- With no webhook reaching the dev app, a test payment completes only when the browser returns to `/success`: a development-only fallback (`app/success/page.tsx`, off when `NODE_ENV=production`) reads the Session from Stripe. Expiries, refunds, disputes and Connect updates never arrive, and unpaid orders stay pending (no workers run).
-- For webhooks, use the Stripe CLI or test-mode Dashboard endpoints and put each signing secret in `.env` (`STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`), then `pnpm docker:restart`. Endpoints, event lists and API version: [[Stripe Payments and Connect]].
+- The dev stack runs `stale-order-worker` every minute (`docker-compose.dev.yml`, dev image, live source). Its reconciliation sweep (PAY-024) confirms a test payment within about two minutes even with no webhook, for tickets, memberships and merchandise alike, and expires unpaid checkouts after asking Stripe. The other workers don't run in dev.
+- For webhooks (instant confirmation, refunds, disputes, Connect updates), start the opt-in listener: `docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile stripe up -d stripe-listener`. Copy the `whsec_` it logs (`docker compose -f docker-compose.yml -f docker-compose.dev.yml logs stripe-listener`) into both `STRIPE_WEBHOOK_SECRET` and `STRIPE_CONNECT_WEBHOOK_SECRET` in `.env`, then `pnpm docker:restart`. Test-mode Dashboard endpoints work too. Endpoints, event lists and API version: [[Stripe Payments and Connect]].
 - Live keys are refused outside `NODE_ENV=production` (`lib/stripe/index.ts`).
 
 ## Commands

@@ -47,6 +47,35 @@ services:
     cap_drop: ["ALL"]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000"]
 
+  # PAY-024: dev runs the stale-order worker every minute, so the
+  # reconciliation sweep confirms test payments with Stripe even without a
+  # webhook listener, as production does when a webhook is lost.
+  stale-order-worker:
+    image: ${DEV_APP_IMAGE:-thunderstrux-app:dev}
+    profiles: !reset []
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      app:
+        condition: service_started
+    command: ["node", "scripts/every-minute.mjs", "scripts/process-stale-orders.mjs"]
+
+  # Opt-in Stripe webhooks for dev: `docker compose -f docker-compose.yml
+  # -f docker-compose.dev.yml --profile stripe up -d stripe-listener`. Put the
+  # whsec_ it logs in both webhook secrets in .env, then `pnpm docker:restart`.
+  # --latest: events on the app's pinned API version.
+  stripe-listener:
+    image: stripe/stripe-cli:v1.53.1@sha256:11c46caeead82e329f14823dd622d494b4cc8c1b9766f724d122d2af42c97540
+    profiles: ["stripe"]
+    restart: unless-stopped
+    environment:
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-}
+    command: [listen, --latest, --events, 'checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated', --forward-to, 'http://app:3000/api/payments/webhook', --forward-connect-to, 'http://app:3000/api/stripe/connect/webhook']
+
 volumes:
   node_modules:
   asset_data:

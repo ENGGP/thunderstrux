@@ -43,13 +43,19 @@ test("hosted contract requires external services, file secrets, and runtime hard
     "ALERT_WEBHOOK_URL"
   ].map((name) => [`${name}_FILE`, `/run/secrets/${name.toLowerCase()}`]));
   const workerEnvironment = { ALERT_WEBHOOK_URL_FILE: "/run/secrets/alert_webhook_url" };
+  const staleWorkerEnvironment = {
+    ...workerEnvironment,
+    STRIPE_SECRET_KEY_FILE: "/run/secrets/stripe_secret_key",
+    NOTIFICATION_ENCRYPTION_KEY_FILE: "/run/secrets/notification_encryption_key",
+    NEXT_PUBLIC_APP_URL: "https://thunderstrux.example"
+  };
   const config = {
     services: {
       app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true", MFA_ENFORCEMENT_MODE: "enforce", LEGACY_ORGANISATION_ACCESS_MODE: "deny" }, healthcheck: { test: ["CMD", "node"] } }),
       migration: hardenedService({ image: opsImage, profiles: ["tools"] }),
       "notification-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
       "email-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
-      "stale-order-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "stale-order-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: staleWorkerEnvironment }),
       "compensation-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
       "checkout-recovery-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
       "monitor-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment })
@@ -78,6 +84,11 @@ test("hosted contract requires external services, file secrets, and runtime hard
     ...config,
     services: { ...config.services, "email-worker": { ...config.services["email-worker"], image } }
   }), /share one ops image/);
+  // PAY-024: the stale-order worker can't confirm payments without Stripe.
+  assert.throws(() => validateHostedConfig({
+    ...config,
+    services: { ...config.services, "stale-order-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }) }
+  }), /stale-order-worker is missing STRIPE_SECRET_KEY_FILE/);
   assert.throws(() => validateHostedConfig({
     ...config,
     services: { ...config.services, app: { ...config.services.app, image: opsImage } }

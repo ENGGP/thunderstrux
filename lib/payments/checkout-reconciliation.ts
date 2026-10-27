@@ -115,7 +115,7 @@ export async function reconcileExpiredCheckoutSession(
   session: Stripe.Checkout.Session,
   // `checkout` when the buyer cancelled and Stripe confirmed the Session expired;
   // `staff_action` when the society cancelled the event (EVT-006).
-  { stripeEventId, source = "stripe_webhook" }: { stripeEventId?: string; source?: "stripe_webhook" | "checkout" | "staff_action" } = {}
+  { stripeEventId, source = "stripe_webhook" }: { stripeEventId?: string; source?: "stripe_webhook" | "reconciliation_sweep" | "checkout" | "staff_action" } = {}
 ): Promise<CheckoutReconciliationResult> {
   let result: CheckoutReconciliationResult = {
     status: "ignored",
@@ -283,7 +283,7 @@ export async function reconcileCompletedCheckoutSession(
     destination
   }: {
     stripeEventId?: string;
-    source?: "webhook" | "dev_success_fallback";
+    source?: "webhook" | "reconciliation_sweep";
     // The connected account the payment was transferred to, read from Stripe.
     // shortcut: undefined skips the check for direct test callers; production goes
     // through reconcileCompletedCheckoutSessionWithSideEffects, which always sets it.

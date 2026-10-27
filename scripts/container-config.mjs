@@ -77,6 +77,11 @@ export function validateHostedConfig(config) {
     // T42: a worker that fails must be able to page someone.
     if (!service.environment?.ALERT_WEBHOOK_URL_FILE) throw new Error(`${worker} is missing ALERT_WEBHOOK_URL_FILE`);
   }
+  // PAY-024: the stale-order worker confirms payments with Stripe before it
+  // expires an order; without these it would defer every Stripe order.
+  for (const variable of ["STRIPE_SECRET_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE", "NEXT_PUBLIC_APP_URL"]) {
+    if (!requireService(config, "stale-order-worker").environment?.[variable]) throw new Error(`stale-order-worker is missing ${variable}`);
+  }
   // T43: migration and every worker run the release's one ops image; the app runs its web image.
   const opsImages = new Set(["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"].map((name) => requireService(config, name).image));
   if (opsImages.size !== 1) throw new Error("migration and workers must share one ops image");

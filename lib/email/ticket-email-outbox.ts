@@ -129,7 +129,7 @@ export async function enqueueTicketEmail({
 export async function enqueueAutomaticTicketEmailForOrder(
   tx: Prisma.TransactionClient,
   orderId: string,
-  source: "stripe_webhook" | "development_fallback" | "checkout" = "stripe_webhook"
+  source: "stripe_webhook" | "reconciliation_sweep" | "checkout" = "stripe_webhook"
 ) {
   if (automaticOutboxEnqueueTestFailure) {
     throw automaticOutboxEnqueueTestFailure;

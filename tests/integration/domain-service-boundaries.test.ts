@@ -124,7 +124,7 @@ describe("domain service boundaries", () => {
       "request.text()",
       "getStripe()",
       "stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)",
-      "reconcileCompletedCheckoutSessionWithSideEffects(session"
+      "settleCheckoutSession(session"
     ]);
   });
 });

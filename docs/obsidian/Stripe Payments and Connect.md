@@ -197,18 +197,18 @@ Payments routing:
 What each handler does to orders, and its checks (amount, currency, metadata, destination, the order's bound Session), is in [[Payment Lifecycle]]. Identity alerts raised there: `payment_reconciliation_ambiguous_order`, `ticket_webhook_identity_mismatch` (a paid Session that isn't the order's, PAY-010), `commerce_webhook_identity_mismatch`, `purchase_dispute_unmatched`, `paid_but_unfulfilled_compensation_required`.
 
 **Idempotency.** Stripe may deliver twice and out of order.
-- Checkout events are idempotent through order state under row locks.
+- Checkout events go through `settleCheckoutSession` (`lib/payments/checkout-settlement.ts`), the same path the reconciliation sweep uses, and are idempotent through order state under row locks.
 - Refund and dispute events are journalled once by event id in `StripeRefundWebhookEvent`, and project Stripe's current state as re-read.
 - `account.updated` and `payout.*` re-read the object from Stripe, so a late event can't restore an older state.
 - Every order transition stores `stripeEventId` in the order history.
 
 Handlers do their work before answering 2xx (PAY-007, accepted risk). The hosted endpoints must subscribe to every event above ([[Production Operations]]); refund and dispute subscription is part of the PAY-002 gate.
 
-**Development fallback.** Outside production, `/success?session_id=` retrieves the Session and, if it is paid, runs the same fulfilment (`dev_success_fallback`), because Stripe redirects there even without local webhook forwarding. In production the page only shows the order's real state, and only to its buyer.
+**Reconciliation sweep (PAY-024).** The stale-order worker asks Stripe about pending checkouts and applies what it finds through the same path, so a paid order whose webhook was lost is confirmed within a few minutes and never expired ([[Payment Lifecycle#Reconciliation sweep (PAY-024)]]). It runs in every environment, dev included; no page confirms a payment, and the development success-page fallback is gone.
 
 ## Local Stripe CLI
 
-Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` ([[Environment Variables]]). Then:
+Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` ([[Environment Variables]]). The dev stack has this listener as the opt-in `stripe-listener` service (`--profile stripe`, [[Development Workflow#Stripe on the dev app]]); on the host:
 
 ```bash
 stripe login

@@ -4,14 +4,12 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
 import { warnOnVersionMismatch } from "@/lib/stripe/version";
-import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
-import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
+import { settleCheckoutSession } from "@/lib/payments/checkout-settlement";
 import { reconcileRefundEvent } from "@/lib/payments/compensation-refunds";
 import { reconcileEarlyFraudWarning } from "@/lib/payments/fraud-warnings";
 import { reconcileOrderRefundEvent } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
 import { reconcileCommerceDisputeEvent, reconcileCommerceExternalRefundEvent } from "@/lib/commerce/payment-recovery";
-import { isCommerceSession, reconcileCommerceCheckoutSession, reconcileExpiredCommerceSession } from "@/lib/commerce/reconciliation";
 import {
   getStripe,
   isLiveStripeKey,
@@ -90,55 +88,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, ignored: "mode_mismatch" });
   }
 
-  // A Session with a family is a membership or merchandise purchase (T21); one
-  // without is a ticket purchase, unless it is in fact a commerce order's.
+  // Both checkout events go through the one settlement path the reconciliation
+  // sweep also uses (PAY-024); it routes tickets, memberships and merchandise.
   if (event.type === "checkout.session.completed" || event.type === "checkout.session.expired") {
     const session = event.data.object as Stripe.Checkout.Session;
-    if (session.metadata?.family !== undefined) {
-      if (event.type === "checkout.session.completed") await reconcileCommerceCheckoutSession(session, { stripeEventId: event.id });
-      else await reconcileExpiredCommerceSession(session, { stripeEventId: event.id });
-      return NextResponse.json({ received: true });
-    }
-    if (await isCommerceSession(session.id)) {
-      logWarn("commerce.webhook.ignored", { reason: "commerce_session_without_family", stripeEventId: event.id, stripeSessionId: session.id });
-      emitOperationalAlert("commerce_webhook_identity_mismatch", { reason: "commerce_session_without_family", stripeEventId: event.id, stripeSessionId: session.id });
-      return NextResponse.json({ received: true });
-    }
+    logInfo("stripe.webhook.received", {
+      stripeEventId: event.id,
+      stripeSessionId: session.id,
+      paymentStatus: session.payment_status,
+      metadataOrderId: session.metadata?.orderId ?? session.metadata?.commerceOrderId
+    });
+    await settleCheckoutSession(session, { completed: event.type === "checkout.session.completed", stripeEventId: event.id, source: "webhook" });
+    return NextResponse.json({ received: true });
   }
 
   switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
-
-      logInfo("stripe.webhook.received", {
-        stripeEventId: event.id,
-        stripeSessionId: session.id,
-        paymentStatus: session.payment_status,
-        orderId: session.metadata?.orderId
-      });
-
-      await reconcileCompletedCheckoutSessionWithSideEffects(session, {
-        stripeEventId: event.id,
-        source: "webhook"
-      });
-
-      return NextResponse.json({ received: true });
-    }
-
-    case "checkout.session.expired": {
-      const session = event.data.object as Stripe.Checkout.Session;
-
-      logInfo("stripe.webhook.received", {
-        stripeEventId: event.id,
-        stripeSessionId: session.id,
-        metadataOrderId: session.metadata?.orderId
-      });
-
-      await reconcileExpiredCheckoutSession(session, { stripeEventId: event.id });
-
-      return NextResponse.json({ received: true });
-    }
-
     case "refund.created":
     case "refund.updated":
     case "refund.failed": {

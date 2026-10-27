@@ -9,7 +9,9 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { queueCommerceReviewNotice } from "@/lib/payments/compensation-notices";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { getStripe } from "@/lib/stripe";
-import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
+
+// Who applied a Session: the signed webhook, or the reconciliation sweep (PAY-024).
+export type CommerceSettlementSource = "stripe_webhook" | "reconciliation_sweep";
 
 // Signed Checkout Session webhooks for membership and merchandise orders
 // (T21). A Session is routed here only by its `family` metadata; the order is
@@ -67,7 +69,7 @@ async function requireCompensation(
   tx: Prisma.TransactionClient,
   order: CommerceOrderForHooks,
   reason: string,
-  facts: { stripeSessionId: string; stripePaymentIntentId: string | null; stripeEventId?: string; fromStatus: "pending" | "failed" | "expired"; holdOpen: boolean }
+  facts: { stripeSessionId: string; stripePaymentIntentId: string | null; stripeEventId?: string; fromStatus: "pending" | "failed" | "expired"; holdOpen: boolean; source: CommerceSettlementSource }
 ) {
   if (facts.holdOpen) await commerceFamilies[order.kind]?.release(tx, order, reason);
   const now = new Date();
@@ -80,7 +82,7 @@ async function requireCompensation(
   });
   await tx.checkoutAttempt.updateMany({ where: { commerceOrderId: order.id }, data: { reconcileDueAt: null, lastOutcome: "compensation_required" } });
   await appendCommerceLifecycleEvent(tx, {
-    commerceOrderId: order.id, type: "compensation_required", source: "stripe_webhook", stripeEventId: facts.stripeEventId, reason, fromStatus: facts.fromStatus, toStatus: "failed"
+    commerceOrderId: order.id, type: "compensation_required", source: facts.source, stripeEventId: facts.stripeEventId, reason, fromStatus: facts.fromStatus, toStatus: "failed"
   });
   await queueCommerceReviewNotice(tx, order.id);
   // PAY-003: refunded in full automatically, as a ticketing platform does with an order it can't complete.
@@ -89,7 +91,7 @@ async function requireCompensation(
 
 export async function reconcileCommerceCheckoutSession(
   session: Stripe.Checkout.Session,
-  { stripeEventId }: { stripeEventId?: string } = {}
+  { stripeEventId, source = "stripe_webhook" }: { stripeEventId?: string; source?: CommerceSettlementSource } = {}
 ): Promise<CommerceReconciliationResult> {
   const resolved = await resolveOrder(session, stripeEventId);
   if ("error" in resolved) return resolved.error as CommerceReconciliationResult;
@@ -110,7 +112,7 @@ export async function reconcileCommerceCheckoutSession(
     if (!paid) {
       return current.status === "pending" ? { status: "unpaid" as const } : { status: "ignored" as const, reason: "order_closed_unpaid" };
     }
-    const facts = { stripeSessionId: session.id, stripePaymentIntentId: intentId, stripeEventId, fromStatus: current.status as "pending" | "failed" | "expired", holdOpen: current.status === "pending" };
+    const facts = { stripeSessionId: session.id, stripePaymentIntentId: intentId, stripeEventId, fromStatus: current.status as "pending" | "failed" | "expired", holdOpen: current.status === "pending", source };
     const mismatch =
       session.amount_total !== current.totalAmount ? "amount_mismatch"
         : session.currency?.toLowerCase() !== current.currency ? "currency_mismatch"
@@ -134,14 +136,14 @@ export async function reconcileCommerceCheckoutSession(
       data: { status: "paid", paidAt: now, fulfilledAt: now, stripeSessionId: session.id, stripePaymentIntentId: intentId, expiresAt: null }
     });
     await tx.checkoutAttempt.updateMany({ where: { commerceOrderId: order.id }, data: { reconcileDueAt: null, lastOutcome: "fulfilled" } });
-    await appendCommerceLifecycleEvent(tx, { commerceOrderId: order.id, type: "payment_fulfilled", source: "stripe_webhook", stripeEventId, fromStatus: "pending", toStatus: "paid" });
+    await appendCommerceLifecycleEvent(tx, { commerceOrderId: order.id, type: "payment_fulfilled", source, stripeEventId, fromStatus: "pending", toStatus: "paid" });
     return { status: "fulfilled" as const };
   });
 
   const commerceOrderId = resolved.order.id;
   if (outcome.status === "unpaid") {
     // A completed Session that isn't paid: no payment to honour, so the order fails.
-    await failPendingCommerceOrder(commerceOrderId, "session_not_paid", "stripe_webhook", { stripeEventId });
+    await failPendingCommerceOrder(commerceOrderId, "session_not_paid", source, { stripeEventId });
     return { status: "failed", commerceOrderId };
   }
   if (outcome.status === "compensation_required" && !("alreadyRecorded" in outcome)) {
@@ -152,10 +154,13 @@ export async function reconcileCommerceCheckoutSession(
   return { status: outcome.status, commerceOrderId };
 }
 
-export async function reconcileExpiredCommerceSession(session: Stripe.Checkout.Session, { stripeEventId }: { stripeEventId?: string } = {}): Promise<CommerceReconciliationResult> {
+export async function reconcileExpiredCommerceSession(
+  session: Stripe.Checkout.Session,
+  { stripeEventId, source = "stripe_webhook" }: { stripeEventId?: string; source?: CommerceSettlementSource } = {}
+): Promise<CommerceReconciliationResult> {
   const resolved = await resolveOrder(session, stripeEventId);
   if ("error" in resolved) return resolved.error as CommerceReconciliationResult;
-  const expired = await failPendingCommerceOrder(resolved.order.id, "checkout_expired", "stripe_webhook", { status: "expired", stripeEventId });
+  const expired = await failPendingCommerceOrder(resolved.order.id, "checkout_expired", source, { status: "expired", stripeEventId });
   return expired ? { status: "expired", commerceOrderId: resolved.order.id } : { status: "ignored", reason: "order_not_pending", commerceOrderId: resolved.order.id };
 }
 
@@ -163,19 +168,4 @@ export async function reconcileExpiredCommerceSession(session: Stripe.Checkout.S
 // order's, it is not handed to ticket reconciliation.
 export async function isCommerceSession(stripeSessionId: string) {
   return Boolean(await prisma.commerceOrder.findUnique({ where: { stripeSessionId }, select: { id: true } }));
-}
-
-// Stale-order worker: a pending paid order whose Stripe Session has expired
-// (with a margin for a late webhook) is expired and its hold released.
-export async function expireStaleCommerceOrders({ now = new Date(), limit = 100, graceMs = lateWebhookGraceMs } = {}) {
-  const stale = await prisma.commerceOrder.findMany({
-    where: { status: "pending", paymentKind: "stripe", expiresAt: { lt: new Date(now.getTime() - graceMs) } },
-    orderBy: { expiresAt: "asc" },
-    take: Math.max(1, Math.min(limit, 500)),
-    select: { id: true }
-  });
-  let expired = 0;
-  for (const order of stale) if (await failPendingCommerceOrder(order.id, "hold_expired", "stale_cleanup", { status: "expired" })) expired += 1;
-  logInfo("commerce.stale_orders.expired", { expired, considered: stale.length });
-  return { expired, considered: stale.length };
 }

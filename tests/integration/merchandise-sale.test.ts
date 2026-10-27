@@ -6,7 +6,7 @@ import { POST as membershipCheckout } from "@/app/api/payments/checkout/membersh
 import { POST as merchandiseCheckout } from "@/app/api/payments/checkout/merchandise/route";
 import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { createCommerceCheckout } from "@/lib/commerce/checkout";
-import { expireStaleCommerceOrders } from "@/lib/commerce/reconciliation";
+import { expireStaleCommerceOrders } from "@/lib/orders/stale-orders";
 import { prisma } from "@/lib/db";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { processNotificationClaim } from "@/lib/email/notification-outbox";
@@ -34,6 +34,8 @@ vi.mock("@/lib/stripe", async () => {
 });
 beforeEach(() => {
   stripe.create.mockImplementation(async () => ({ id: unique("cs_merch"), url: "https://checkout.stripe.test/pay" }));
+  // PAY-024: unless a test says otherwise, Stripe has no record of a Session, so nothing was paid on it.
+  stripe.retrieve.mockRejectedValue(Object.assign(new Error("No such checkout.session"), { code: "resource_missing" }));
 });
 afterEach(() => { for (const mock of Object.values(stripe)) mock.mockReset(); });
 

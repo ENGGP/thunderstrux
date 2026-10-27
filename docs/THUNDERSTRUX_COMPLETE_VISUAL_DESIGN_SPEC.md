@@ -1182,16 +1182,17 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 - **ORG-15 Staff:** role hints under the invitation role; tables for current staff and past invitations, a list for pending invitations; handover form in a warning-bordered zone.
 - **AUTH-04 Account settings:** section links, signed-in summary, authenticator row only for people the authenticator page accepts.
 - **PER-01, PER-02:** profile prompt linking to Account settings; My tickets cards with short ticket and order references.
+- **PUB-01 Home (28 October 2026):** the hero's actions are **See what's on** (white, to Explore events) and Find a society; the header owns the name "Explore events", so the hero uses other words. Then Upcoming events, Discover societies (the "Find your crowd" row) and, for signed-out visitors, "How Thunderstrux works" (three short notes, no links or screenshots) and Running a society. Sections sit 56px apart on phones and 80px from `md`. No discovery strip: the hero and "Explore all events" lead to Explore.
+- **Event cards (PUB-01, PUB-02, PUB-05, 28 October 2026):** after the place, the standard prices on sale now (`Free`, `$12.00`, `From $12.00`, `Free or $15.00`), a Sold out or Sales closed badge, or "Paid tickets unavailable right now". Member prices show on the event page, which knows the viewer. Phones (one column) skip an empty image area.
+- **PUB-05 Society Overview (28 October 2026):** About and the join card, Upcoming events, then a Membership preview (the soonest plan still to end: name, dates, price, "No automatic renewal") and a Merchandise preview (the four newest products, Pickup only), each linking to its tab. Overview has no buy buttons; buying happens on the tabs.
 - **PUB-03 / BUY-01:** one ticket choice, one quantity and "Buy tickets" with the running total; unverified members see the verify prompt instead. On phones the ticket box comes before Hosted by and a bottom bar carries the total and action while the box's button is below the screen (artboard PublicEventAnonA2Mobile).
 
 ## 16.7 Still targets
 
 Event images, guest checkout, memberships, merchandise, calendar, analytics and history were delivered with T10–T46; their live treatment is recorded in [UI Architecture Rules](obsidian/UI%20Architecture%20Rules.md). QR scanning and OpenClaw remain targets with no screen. The 2026-10-25 UI audit's open consistency items are tracked as UI-004 in the issue register.
 
-The public pages are thinner than sections 5 and 10 describe, and those sections stay the target for them (decided 28 October 2026 against PRD 4, 6.2 and 6.4: discovery must show what, who, when and how to attend, and the society profile is the home base):
-- **PUB-01 Home:** **Explore events** is the hero's primary action (built: Find a society); the "Find your crowd" society row and the three-part "How Thunderstrux works" section follow the events; section rhythm 72-96px once those sections exist. The hero image mosaic waits for real society photographs. Register: UI-008.
-- **Event cards (PUB-01, PUB-02, PUB-05):** the lowest selectable price (`Free` or `From A$…`) and a Sold out or Sales closed label. Register: UI-007.
-- **PUB-05 Society Overview:** next event, the current membership offer and up to four merchandise items. Register: UI-004.
+The public page gaps found by the 28 October 2026 drift check (judged against PRD 4, 6.2 and 6.4) were built the same day; 16.6 records them. Still targets from sections 5 and 10:
+- **PUB-01 hero mosaic:** waits for real society photographs.
 - **Issued-ticket edge (1.1):** the perforated edge on issued tickets, when the ticket pages are next reworked.
 
 ## 16.8 Values kept as built
@@ -1201,9 +1202,9 @@ A design drift check on 28 October 2026 compared the code (`DESIGN.md`, generate
 | Area | Sections 2-4 | Built and kept | Why |
 |---|---|---|---|
 | Page title (`PageHeader` `h1`) | 36px `heading-1` | 30px | Most titled pages are dashboards and forms; 2.2 itself says admin H1s must not be enormous (PRD 10: clarity over clutter). |
-| Public section `h2` | 26px | 24px | Reads as a clear step below the 48px event and society titles. |
+| Public section `h2` | 26px | 24px; a panel's own heading (buy box, join card) 20px | Reads as a clear step below the 48px event and society titles. |
 | Card and list titles (`h3`) | 20px Space Grotesk | 18px DM Sans | Dense event and society grids; display type stays on `h1`/`h2` and the date rail. |
-| Home hero headline | 64px | 60px | Fits two lines at 1248px; its line height is UI-008. |
+| Home hero headline | 64px | 60px, line height 1.06 from `md` (1.1 on phones), balanced | Fits two lines at 1248px. |
 | Primary button | 48px, 16px text, 10px radius | 44px, 14px text, 9px radius; 48px with 16px text for purchase actions | Matches 2.3 (44px standard, 48-52px purchase, 36px dense) and the 9px control radius; section 4.1 is updated. |
 | Event card image | 3:2 | 16:9 | One upload serves the card and the event page hero (T11b). |
 | Notice | 3px left border (`InlineNotice`) | Full toned box with icon and title | Recorded in 16.4; status shows through wash, icon and title together. |

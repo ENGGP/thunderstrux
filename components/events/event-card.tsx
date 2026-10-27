@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { DateRail } from "@/components/events/date-rail";
-import { formatDateTime } from "@/lib/format";
+import { StatusBadge } from "@/components/ui/status-badge";
+import type { ListingAvailability } from "@/lib/events/public-events";
+import { formatDateTime, listingPriceLabel } from "@/lib/format";
 
 type EventCardProps = {
   id: string;
@@ -10,14 +12,16 @@ type EventCardProps = {
   timeZone: string;
   heroAssetId?: string | null;
   // Set when another card in the same list has an image, so every card gets a
-  // 16:9 area and the grid stays even.
+  // 16:9 area and the grid stays even. Phones show one column, so they skip it.
   media?: boolean;
+  availability?: ListingAvailability | null;
   // Omitted on a society's own page, where the host is already the page subject.
   society?: { name: string; slug: string };
 };
 
 // Date rail first: day and month in the hosting society's timezone. An event
-// image, when the society added one, sits above at 16:9; price is added later.
+// image, when the society added one, sits above at 16:9; the price or selling
+// state comes last.
 export function EventCard({
   id,
   title,
@@ -26,6 +30,7 @@ export function EventCard({
   timeZone,
   heroAssetId,
   media = false,
+  availability,
   society
 }: EventCardProps) {
   return (
@@ -34,7 +39,7 @@ export function EventCard({
         // Decorative: the title link names the event.
         <img alt="" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none object-cover" src={`/api/public/assets/${heroAssetId}`} />
       ) : media ? (
-        <div aria-hidden="true" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none bg-brand-tint bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)]" />
+        <div aria-hidden="true" className="-mx-5 -mt-5 hidden aspect-video w-[calc(100%+2.5rem)] max-w-none bg-brand-tint sm:block bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)]" />
       ) : null}
       <DateRail date={startTime} timeZone={timeZone} />
       <div className="grid min-w-0 flex-1 content-start gap-1">
@@ -58,6 +63,15 @@ export function EventCard({
         <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
           {location}
         </p>
+        {availability?.state === "on_sale" ? (
+          <p className="mt-1 font-semibold tabular-nums text-ink">{listingPriceLabel(availability.prices)}</p>
+        ) : availability?.state === "sales_closed" || availability?.state === "sold_out" ? (
+          <span className="mt-1">
+            <StatusBadge status={availability.state === "sold_out" ? "sold-out" : "sales-closed"} />
+          </span>
+        ) : availability?.state === "paid_unavailable" ? (
+          <p className="mt-1 text-sm text-ink-soft">Paid tickets unavailable right now</p>
+        ) : null}
       </div>
     </article>
   );

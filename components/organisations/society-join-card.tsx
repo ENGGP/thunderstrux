@@ -16,7 +16,7 @@ export function SocietyJoinCard({
         <>
           {/* A live region, so joining is announced after the page refreshes. */}
           <div role="status">
-            <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">You&apos;ve joined {organisation.name}</h2>
+            <h2 className="text-xl font-semibold text-ink [overflow-wrap:anywhere]">You&apos;ve joined {organisation.name}</h2>
           </div>
           <p className="text-sm text-ink-soft">You follow its events from your dashboard. A paid membership is separate, and leaving doesn&apos;t cancel one.</p>
           <Link className="w-fit text-sm font-semibold text-brand underline underline-offset-4" href="/dashboard/organisations">
@@ -25,7 +25,7 @@ export function SocietyJoinCard({
         </>
       ) : (
         <>
-          <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">Join {organisation.name}</h2>
+          <h2 className="text-xl font-semibold text-ink [overflow-wrap:anywhere]">Join {organisation.name}</h2>
           <p className="text-sm text-ink-soft">Free to join. Follow the society from your dashboard. Memberships with member prices are sold separately.</p>
           <SocietyJoin slug={organisation.slug} state={joinState} />
         </>

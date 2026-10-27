@@ -20,7 +20,7 @@ sources: [lib/events/event-lifecycle.ts, lib/events/event-cancellation.ts, lib/e
 | Cancel an event with sales (EVT-004) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` |
 | Dashboard reads | `lib/events/event-lifecycle.ts`: `listDashboardEvents` (views `upcoming`, `drafts`, `past`, `all`), `getDashboardEvent`, `getOrganisationEventForEditing` |
 | Publish readiness and per-type buyability | `lib/events/event-readiness.ts`: `eventReadiness`, `salesOpen` |
-| Locks and sellable stock | `lib/events/inventory.ts`: `lockEventInventory`, `readEventInventory`, `sellableQuantity` |
+| Locks and sellable stock | `lib/events/inventory.ts`: `lockEventInventory`, `readEventInventory` (one event), `readEventsInventory` (public lists), `sellableQuantity` |
 | Public reads | `lib/events/public-events.ts`: `getPublishedEvents`, `getPublishedEventDetail`, `getEventForViewer`, `getBookedEventDetail`, `getEventPreviewDetail`, `priceForViewer` |
 | Time and place change notices | `lib/events/event-changes.ts`: `recordEventChange`, `fanOutEventChanges` |
 | Validation | `lib/validators/events.ts`: `createEventSchema`, `updateEventSchema`, `eventPublicationSchema`, `eventSaleStateSchema`; prices `lib/validators/price.ts` |
@@ -155,7 +155,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 ### Public reads
 
-- `GET /api/public/events` (`getPublishedEvents`): published, `public`, not cancelled, not yet ended (PUB-001), ordered by start with cursor pages. No auth; no demo data; no stale-order cleanup.
+- `GET /api/public/events` (`getPublishedEvents`): published, `public`, not cancelled, not yet ended (PUB-001), ordered by start with cursor pages. Each event carries the card's `availability` from `listingAvailability`, which applies `salesOpen` and `ticketTypeReason` (the per-type rule `eventReadiness` uses) to advisory stock. No auth; no demo data; no stale-order cleanup.
 - `GET /api/public/events/[eventId]` (`getPublishedEventDetail`): published, `public` or `unlisted`; never `members_only`.
 - `/events/[eventId]` reads through `getEventForViewer`: drafts and wrong ids are 404; a members-only event opens only for a verified member whose live membership of the society carries `members_only_events`, and everyone else gets the gate ([[Memberships and Merchandise]]). Prices per viewer come from `priceForViewer`. The buyer's confirmation page uses `getBookedEventDetail`, so a ticket holder keeps the page.
 - Society profiles list up to 50 upcoming public events, never cancelled ones ([[Society Profiles and Assets]]).

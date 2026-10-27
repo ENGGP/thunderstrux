@@ -18,6 +18,15 @@ export function formatPrice(cents: number) {
   return cents === 0 ? "Free" : formatMoney(cents);
 }
 
+// An event card's prices on sale, distinct and lowest first: "Free", "$12.00",
+// "From $12.00", "Free or $12.00" or "Free or from $12.00".
+export function listingPriceLabel(prices: number[]) {
+  const [lowest, next] = prices;
+  if (lowest > 0) return `${prices.length > 1 ? "From " : ""}${formatMoney(lowest)}`;
+  if (next === undefined) return "Free";
+  return `Free or ${prices.length > 2 ? "from " : ""}${formatMoney(next)}`;
+}
+
 // "15.00" for 1500 cents: the value of a "$" price input.
 export function formatMoneyInput(cents: number) {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;

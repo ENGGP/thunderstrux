@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ProductTile } from "@/components/merchandise/product-tile";
 import { BasketLink } from "@/components/merchandise/shop";
 import { SocietyHeader } from "@/components/organisations/society-header";
 import { Icon } from "@/components/ui/icon";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { formatPrice } from "@/lib/format";
 import { membershipOffers } from "@/lib/memberships/offers";
 import { shopProducts } from "@/lib/merchandise/shop";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
@@ -71,22 +70,7 @@ export default async function SocietyMerchandisePage({ params }: { params: Promi
               <ul className="grid grid-cols-2 gap-x-4 gap-y-7 md:grid-cols-3 lg:grid-cols-4 lg:gap-x-6">
                 {products.map((product) => (
                   <li key={product.id}>
-                    <Link className="group grid gap-1.5 text-ink" href={`/societies/${organisation.slug}/merchandise/${product.id}`}>
-                      {product.coverAssetId ? (
-                        <img alt="" className={`aspect-[4/5] w-full rounded-control border border-line bg-surface-subtle object-cover ${product.soldOut ? "opacity-70" : ""}`} src={`/api/public/assets/${product.coverAssetId}`} />
-                      ) : (
-                        <span aria-hidden="true" className="aspect-[4/5] w-full rounded-control border border-line bg-surface-subtle" />
-                      )}
-                      <span className="font-semibold group-hover:underline [overflow-wrap:anywhere]">{product.name}</span>
-                      {product.soldOut ? (
-                        <StatusBadge status="sold-out" />
-                      ) : (
-                        <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{product.lowStock ? `Only ${product.lowStock} left` : product.summary || "One option"}</span>
-                      )}
-                      <span className={`font-semibold tabular-nums ${product.soldOut ? "text-ink-soft" : ""}`}>
-                        {!product.priceVaries ? formatPrice(product.minPrice) : product.minPrice === 0 ? `Free to ${formatPrice(product.maxPrice)}` : `From ${formatPrice(product.minPrice)}`}
-                      </span>
-                    </Link>
+                    <ProductTile product={product} society={organisation.slug} />
                   </li>
                 ))}
               </ul>

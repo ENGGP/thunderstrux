@@ -62,7 +62,7 @@ sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navb
 | `confirm-dialog.tsx` | `ConfirmDialog` | Native `<dialog>` naming the action and its consequences; body mounted only while open; Escape cancels and never confirms, not while busy. Use instead of `window.confirm` |
 | `icon.tsx` | `Icon` | Decorative outline icons |
 
-Shared content components: `components/events/date-rail.tsx` (day and month in the society's zone), `components/events/event-card.tsx` (16:9 image when there is one, date rail, host link, one whole-card link) and `components/organisations/society-card.tsx`. Neither shows a price or count the data model does not hold. A list of `EventCard`s passes `media` when any event has an image, so every card gets the same 16:9 area.
+Shared content components: `components/events/date-rail.tsx` (day and month in the society's zone), `components/events/event-card.tsx` (16:9 image when there is one, date rail, host link, place, then the price or selling state, one whole-card link), `components/organisations/society-card.tsx` and `components/merchandise/product-tile.tsx` (`ProductTile`: the shop grid tile, shared by the Merchandise tab and the Overview preview). They show only what the data holds. An event card's line comes from `listingAvailability` (`lib/events/public-events.ts`): the standard prices on sale now through `listingPriceLabel` (`lib/format.ts`: "Free", "$12.00", "From $12.00", "Free or $15.00"), a Sold out or Sales closed badge, or "Paid tickets unavailable right now"; member prices show on the event page. A list of `EventCard`s passes `media` when any event has an image, so every card gets the same 16:9 area from `sm`; phones (one column) skip an empty area.
 
 ## Shells
 
@@ -103,13 +103,13 @@ Each page renders its shell after its guards pass; shells are never in route-gro
 - Below `md` a native `Menu` disclosure holds the links; Sign out or Sign in stays outside it.
 - The current section is ink with a 3px brand rule on the header's bottom edge.
 - On any `/checkout` path the header drops its browsing links and Menu (visual spec 3.3).
-- The header owns the names `Explore events` and `Explore societies`; other links to those places use other words (`Events`, `Find a society`, `Browse societies`) so link names stay unique.
+- The header owns the names `Explore events` and `Explore societies`; other links to those places use other words (`Events`, `See what's on`, `Find a society`, `Browse societies`) so link names stay unique.
 - `SiteFooter` is rendered by `app/(public)/layout.tsx` (which does nothing else: no auth, context or data) and by the home page. Links: Events, Societies, Fees, Help, Privacy. Terms waits for legal drafting (LEGAL-001). The page area is a column at least one screen tall and the footer takes `mt-auto`; a page's centred `main` needs `w-full` beside `mx-auto`.
 - **Verify-email banner** (`components/layout/verify-email-banner.tsx`): under the header for a signed-in, unverified user. Close sets `thunderstrux-verify-dismissed` (`lib/auth/verify-banner.ts`) to the user id for seven days. Dismissing changes nothing: `requireVerifiedUser` and `lockVerifiedAccount` still refuse purchases, joins, society creation and invitation acceptance, and those screens prompt in place. A labelled region, not a live region; links to `/verify-email`.
 
 ## Patterns
 
-- **Headings:** each page has one `h1` (`PageHeader` or its own), sections are `h2`. Every page sets `metadata` (`{title} · Thunderstrux`); public and link-only events and society pages use their own name, members-only pages stay generic.
+- **Headings:** each page has one `h1` (`PageHeader` or its own), sections are `h2`. On public pages a section `h2` is 24px (`text-2xl`) and a panel's own heading (the buy box, the join card) 20px (`text-xl`). Every page sets `metadata` (`{title} · Thunderstrux`); public and link-only events and society pages use their own name, members-only pages stay generic.
 - **Main landmark:** every page's `<main id="main" tabIndex={-1}>` is the Skip to content target.
 - **Tabs vs pills:** sections are link tabs (`tabClasses`, `LinkTabs`); the bar scrolls sideways on narrow screens instead of wrapping. Status filters inside a tab are pills (`pillClasses`: Orders, Pickups, Members), never a second row of tabs. Every count on a tab or pill uses `Count`.
 - **Filters:** `FilterBar` GET forms; every filter, view and cursor is in the URL. A stale cursor falls back to the first page with a warning notice, never an error.
@@ -185,7 +185,7 @@ Any other failure keeps the button and shows a danger `Notice` with `Change tick
 
 ## Society pages
 
-`SocietyHeader` shows the cover only on Overview (rounded, with a quiet line pattern when there is none); Memberships and Merchandise start with logo and name. Tabs: Overview, and Memberships and Merchandise when there is something to show. Every tab uses the same `SocietyJoinCard` (heading, one line on what joining means, the action, contact). Sign-in or verification never joins automatically.
+`SocietyHeader` shows the cover only on Overview (rounded, with a quiet line pattern when there is none); Memberships and Merchandise start with logo and name. Tabs: Overview, and Memberships and Merchandise when there is something to show. Every tab uses the same `SocietyJoinCard` (heading, one line on what joining means, the action, contact). Sign-in or verification never joins automatically. Overview then lists Upcoming events, a Membership preview (the soonest plan still to end: name, dates, price, "No automatic renewal") and a Merchandise preview (the four newest products, Pickup only), each only when there is something to show and each linking to its tab; Overview has no buy buttons.
 
 ## Lists and orders
 

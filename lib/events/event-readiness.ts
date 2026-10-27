@@ -22,6 +22,12 @@ export function salesOpen(event: Pick<ReadinessEvent, "saleState" | "salesCloseA
   return event.saleState === "open" && now < event.salesCloseAt;
 }
 
+// Why one ticket type can't be bought now, or null when it can.
+export function ticketTypeReason(ticketType: ReadinessEvent["ticketTypes"][number], chargesReady: boolean): TicketTypeUnavailableReason | null {
+  if ((ticketType.sellable ?? ticketType.quantity) <= 0) return "sold_out";
+  return ticketType.price > 0 && !chargesReady ? "payments_unavailable" : null;
+}
+
 // The one place that decides whether an event may be published and which of its
 // ticket types can be bought. Publication and per-type checkout eligibility are
 // separate answers: a mixed event may publish and sell its free tickets while its
@@ -33,12 +39,7 @@ export function eventReadiness(
   { chargesReady, membersOnlyReady = false, now = new Date() }: { chargesReady: boolean; membersOnlyReady?: boolean; now?: Date }
 ) {
   const ticketTypes = event.ticketTypes.map((ticketType) => {
-    const reason: TicketTypeUnavailableReason | null =
-      (ticketType.sellable ?? ticketType.quantity) <= 0
-        ? "sold_out"
-        : ticketType.price > 0 && !chargesReady
-          ? "payments_unavailable"
-          : null;
+    const reason = ticketTypeReason(ticketType, chargesReady);
     return { id: ticketType.id, checkoutEligible: reason === null, reason };
   });
   const blockers: ReadinessBlocker[] = [];

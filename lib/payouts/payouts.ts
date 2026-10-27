@@ -85,7 +85,9 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   if (amount < (smallAllowed ? smallPayout : minPayout)) return { sent: 0 };
   // One key per attempt: Stripe keeps a refusal under its key and refuses that key
   // with another amount, so a per-day key blocked the rest of the day. The SDK's
-  // own network retries reuse this key; the day rule above stops a second payout.
+  // own network retries reuse this key. A payout Stripe made despite an error is
+  // recorded by its payout.created webhook, so the day rule above sees it; until
+  // then a second attempt can only send what was released since, never more.
   const payout = await stripe.payouts.create(
     { amount, currency: "aud", metadata: { organisationId: organisation.id } },
     { stripeAccount: organisation.stripeAccountId, idempotencyKey: `payout:${organisation.stripeAccountId}:${now.toISOString()}` }

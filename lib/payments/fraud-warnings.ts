@@ -38,7 +38,19 @@ async function warnedPurchase(stripe: Stripe, warning: Stripe.Radar.EarlyFraudWa
 export async function reconcileEarlyFraudWarning(event: Stripe.Event) {
   if (await journalled(event.id)) return;
   const stripe = getStripe();
-  const warning = await stripe.radar.earlyFraudWarnings.retrieve((event.data.object as Stripe.Radar.EarlyFraudWarning).id);
+  const warningId = (event.data.object as Stripe.Radar.EarlyFraudWarning).id;
+  let warning: Stripe.Radar.EarlyFraudWarning;
+  try {
+    warning = await stripe.radar.earlyFraudWarnings.retrieve(warningId);
+  } catch (error) {
+    // A refusal that a retry won't fix (often a key without Radar read) alerts a
+    // person instead of failing every delivery until Stripe gives up; anything else retries.
+    const type = (error as { type?: unknown } | null)?.type;
+    if (type !== "StripePermissionError" && type !== "StripeAuthenticationError" && type !== "StripeInvalidRequestError") throw error;
+    logWarn("stripe.early_fraud_warning.unreadable", { stripeEventId: event.id, warningId, error });
+    emitOperationalAlert("early_fraud_warning", { warningId, outcome: "unreadable" });
+    return;
+  }
   const facts = { warningId: warning.id, fraudType: warning.fraud_type };
   const purchase = await warnedPurchase(stripe, warning);
   if (!purchase) {

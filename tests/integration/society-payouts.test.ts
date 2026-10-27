@@ -296,6 +296,18 @@ describe("payout events", () => {
     return connectWebhook(new Request("http://localhost:3000/api/stripe/connect/webhook", { method: "POST", headers: { "stripe-signature": signature }, body }));
   }
 
+  // A payout Stripe made although the worker saw an error is recorded when Stripe creates it, so that day gets no second payout.
+  test("payout.created records a payout the worker never saw succeed, and the day's check then sees it", async () => {
+    const fixture = await society();
+    const created = { id: unique("po"), object: "payout", amount: 3000, currency: "aud", status: "pending", arrival_date: null };
+    stripe.payout.mockResolvedValue(created);
+    expect((await payoutEvent(fixture.accountId, created, "payout.created")).status).toBe(200);
+    expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: created.id } })).toMatchObject({ organisationId: fixture.organisationId, status: "pending", amount: 3000 });
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    await processPayoutBatch(100, new Date());
+    expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
+  });
+
   test("Stripe's status is recorded as re-read; a refused payout shows until a later one goes through; another account's payout is ignored", async () => {
     const fixture = await society();
     const failed = { id: unique("po"), object: "payout", amount: 4128, currency: "aud", status: "failed", failure_message: "The bank account has been closed.", arrival_date: null };

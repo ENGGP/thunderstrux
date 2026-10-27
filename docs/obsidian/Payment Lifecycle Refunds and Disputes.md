@@ -146,6 +146,7 @@ A card issuer's early fraud warning (`radar.early_fraud_warning.created`) usuall
   - Tickets: no ticket scanned (`checkedInAt`), then `openOrderRefund` with no actor (history source `stripe_webhook`), so its usual refusals apply: refunded, in progress, disputed, in compensation, marked refunded.
   - Commerce: `queueCommerceFraudRefund`, which requires a paid, fulfilled order not refunded, disputed or in review, and merchandise not collected; the amount is the total less `externalRefundedAmount`.
   - Either way a system `RefundRequest` (no actor, reason `fraudRefundReason`) is left `pending` for the refunds worker, as event cancellation does, and the buyer gets the usual refund email. History shows it as Thunderstrux's.
+- A key that can't read the warning (a permission, authentication or invalid-request refusal) alerts `outcome: "unreadable"` and answers 200 instead of failing every delivery; other errors answer 500 so Stripe retries.
 - Every decision alerts `early_fraud_warning` with `outcome`: `refund_queued`, or why not (`not_actionable`, `used`, `disputed`, `already_refunded`, `in_progress`, `not_refundable`, `not_found`).
 
 ## Lost-dispute reversals

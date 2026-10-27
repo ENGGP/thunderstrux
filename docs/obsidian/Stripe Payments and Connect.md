@@ -106,7 +106,7 @@ Societies are paid after their event, as Humanitix and Eventbrite pay organisers
   | Any of them | while `disputeStatus = open`, under compensation review, or a dispute reversal is `pending` or `uncertain` |
 
   Each sale holds its society share: total less `feeAmount` less `externalRefundedAmount`. Money already back with the buyer holds nothing: ticket orders refunded by compensation (`isManuallyRefunded` with a `CompensationRefundJob`), and lost disputes whose transfer reversal succeeded. A staff "refunded outside Thunderstrux" mark proves nothing at Stripe, so that sale waits for its event like any other (PAY-016).
-- **Payout events:** the Connect webhook passes `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated` to `reconcilePayoutEvent`. It re-reads the payout on the connected account and records `SocietyPayoutStatus`: `paid`, `failed` (failed or canceled) or `pending`. A first move to `failed` alerts `society_payout_failed`. A payout with no known society, or recorded under another account, logs `payouts.webhook.ignored` and changes nothing.
+- **Payout events:** the Connect webhook passes `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated` to `reconcilePayoutEvent`. `payout.created` records a payout Stripe made although the worker saw an error, so the one-a-day check sees it; until it arrives a second attempt can only send what was released since. It re-reads the payout on the connected account and records `SocietyPayoutStatus`: `paid`, `failed` (failed or canceled) or `pending`. A first move to `failed` alerts `society_payout_failed`. A payout with no known society, or recorded under another account, logs `payouts.webhook.ignored` and changes nothing.
 - **Payments page:** the payouts card shows money waiting for events (amount, event count, next event end), commerce money from the last 7 days, what is on its way (pending payouts), and the last 5 payouts. A refused payout shows a warning until a later payout is paid. Every payout opens in the Express dashboard.
 - **Disconnect** is refused while any money is held; once nothing is, it restores Stripe's daily schedule. If disconnect is then refused under the lock, the next worker check puts the account back on manual payouts.
 - **Not built:** early payouts and a per-payout breakdown of orders. A payout is the balance less what is held, not a set of orders.
@@ -168,7 +168,7 @@ A free price completes without reading any Stripe configuration. Commerce checko
 | Endpoint | Secret | Events handled |
 | --- | --- | --- |
 | `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` |
-| `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.updated`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
+| `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
 
 Both endpoints run the same checks, in order:
 
@@ -213,7 +213,7 @@ Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STR
 ```bash
 stripe login
 stripe listen --latest \
-  --events checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,payout.paid,payout.failed,payout.canceled,payout.updated \
+  --events checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated \
   --forward-to localhost:3000/api/payments/webhook \
   --forward-connect-to localhost:3000/api/stripe/connect/webhook
 ```

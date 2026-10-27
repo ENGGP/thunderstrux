@@ -116,7 +116,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
 2. **Dev database:** it already has #197's and #198's migrations (dump above). Keep the dev folder on `codex/cancel-event` or a branch with both until they merge; older code can't read events with `cancelledAt` missing from its client.
 3. **DEBT-001 and DEBT-002 cleanup:** the dead and redundant code the documentation audit listed, and the smaller items of the journey audit. Small; no risky behaviour change.
 4. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].
-   - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]]. The key needs Disputes **write**, so each dispute gets its staged draft answer, and Radar early fraud warnings **read**; the payments endpoint also subscribes to `radar.early_fraud_warning.created`.
+   - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]]. The key needs Disputes **write**, so each dispute gets its staged draft answer, and Radar early fraud warnings **read**; the payments endpoint also subscribes to `radar.early_fraud_warning.created` and the Connect endpoint to `payout.created`.
    - Pass PAY-002 on the hosted endpoint.
 5. **When hosting is chosen,** run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
 6. **UI-004:** fold the phone filters, use one date formatter, and add the society Overview previews.

@@ -154,4 +154,15 @@ describe("early fraud warnings", () => {
     expect(await prisma.refundRequest.count()).toBe(0);
     expect(alerts(error).map((entry: { outcome: string }) => entry.outcome)).toEqual(["unmatched", "unmatched"]);
   });
+
+  test("a key that can't read the warning alerts once and answers 200, instead of failing every delivery", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fixture = await ticketOrder();
+    const warning = { id: unique("issfr"), object: "radar.early_fraud_warning", actionable: true, charge: fixture.chargeId, payment_intent: fixture.intentId };
+    stripe.warning.mockRejectedValue(Object.assign(new Error("The provided key does not have the required permissions"), { type: "StripePermissionError" }));
+    expect((await postSigned(signedEvent("radar.early_fraud_warning.created", warning))).status).toBe(200);
+    expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
+    expect(alerts(error)).toEqual([expect.objectContaining({ warningId: warning.id, outcome: "unreadable" })]);
+  });
 });

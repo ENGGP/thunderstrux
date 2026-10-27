@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[API Reference]]", "[[API Reference Commerce]]", "[[Event Lifecycle]]", "[[Ticket Check-in Implementation]]", "[[Society Profiles and Assets]]", "[[Memberships and Merchandise]]"]
 sources: [app/api/orgs, app/api/events, app/api/tickets, app/api/public, app/api/staff/invites/accept/route.ts, app/api/merchandise/quote/route.ts, lib/organisations/http.ts, lib/events/http.ts, lib/tickets/http.ts, lib/memberships/http.ts, lib/merchandise/http.ts, lib/staff/invite-http.ts]
@@ -75,7 +75,7 @@ Writes use the selected dashboard context and need `events:manage` +MFA; errors 
 | `DELETE /api/events/[eventId]` | none | `{deleted: true}` | 400 once any order or ticket exists (`path: ["eventId"]`). Audit `event.deleted` |
 | `PATCH /api/events/[eventId]/publish` | `eventPublicationSchema`: `{targetStatus: "published" \| "draft", version}` | `{event}` | same status returns it unchanged; 400 one detail per readiness blocker (`lib/events/event-readiness.ts`, including `members_only_unavailable`), 400 unpublish after orders. Audit `event.published` / `event.unpublished` |
 | `PATCH /api/events/[eventId]/sales` | `eventSaleStateSchema`: `{saleState: "open" \| "closed", version}` | `{event}` | same state unchanged; 400 reopening after `salesCloseAt`, or on a cancelled event. Audit `event.sales_closed` / `event.sales_reopened` |
-| `POST /api/events/[eventId]/cancel` | `{confirmation, reason, mfaCode?}`: the event title typed back (case and outer spaces ignored), a message to ticket holders (8 to 500), a fresh authenticator code unless MFA is `off`. Needs `events:manage` and `orders:refund` | 200 `{status: "cancelled", cancelledAt, refundsQueued, freeCancelled, notified, skipped: [{orderId, reason}], checkoutsClosed}` (`checkoutsClosed`: unpaid orders whose Stripe page was closed afterwards); a repeat answers `already_cancelled`, changes nothing else, and closes any page still open | 400 `confirmation`, a draft, an ended event, `mfaCode` missing or wrong; 403 without `orders:refund`; 404 foreign. Effects: [[Event Lifecycle#Cancelling]]. Audit `event.cancelled` |
+| `POST /api/events/[eventId]/cancel` | `{confirmation, reason, mfaCode?}`: the event title typed back (case and outer spaces ignored), a message to ticket holders (8 to 500), a fresh authenticator code unless MFA is `off`. Needs `events:manage` and `orders:refund` | 200 `{status: "cancelled", cancelledAt, refundsQueued, freeCancelled, notified, skipped: [{orderId, reason}], releasedEarly: {amount, orders}, checkoutsClosed}` (`releasedEarly`: the society's share of refunded sales over 80 days old, already released for payout, PAY-022; `checkoutsClosed`: unpaid orders whose Stripe page was closed afterwards); a repeat answers `already_cancelled`, changes nothing else, and closes any page still open | 400 `confirmation`, a draft, an ended event, `mfaCode` missing or wrong; 403 without `orders:refund`; 404 foreign. Effects: [[Event Lifecycle#Cancelling]]. Audit `event.cancelled` |
 
 Ticket types are created and edited only through these two event writes, which version-check, lock the event and keep the 50-type cap. A type's optional `memberPrice` is at most `price`; `null` clears it.
 

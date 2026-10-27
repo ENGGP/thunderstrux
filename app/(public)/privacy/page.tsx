@@ -31,7 +31,7 @@ export default function PrivacyPage() {
       </PolicySection>
       <PolicySection title="Who else handles it">
         <ul className={list}>
-          <li><strong>Stripe</strong> takes payments. You type your card details on Stripe&apos;s own page; Thunderstrux never sees or stores them.</li>
+          <li><strong>Stripe</strong> takes payments. You type your card details on Stripe&apos;s own page; Thunderstrux never sees or stores them. If you dispute a payment with your bank, we give Stripe the order&apos;s details, when its tickets were emailed and scanned, and any refund, to answer it.</li>
           <li><strong>Resend</strong> sends our emails, so it handles your email address and the message.</li>
           <li>Our hosting and storage providers keep the service and its images running.</li>
         </ul>

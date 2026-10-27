@@ -29,6 +29,10 @@ export const STUCK_AFTER_SECONDS = minutes(15);
 export const WORKER_STALE_AFTER_SECONDS = minutes(10);
 // A firing alert repeats this often, not on every run.
 export const ALERT_REPEAT_SECONDS = minutes(30);
+// A dispute Stripe still waits on alerts once its evidence is due within this
+// long, and repeats less often than a queue so three days aren't 144 alerts.
+export const DISPUTE_DUE_WITHIN_SECONDS = minutes(72 * 60);
+export const DISPUTE_ALERT_REPEAT_SECONDS = minutes(6 * 60);
 
 type Reading = { queue: QueueName; backlog: number; oldestAgeSeconds: number; stuck: number };
 type Row = { backlog: bigint; oldest: Date | null; stuck: bigint };
@@ -82,11 +86,29 @@ export async function readWorkers(now = new Date()) {
   });
 }
 
-type Firing = { key: string; alert: OperationalAlertName; details: Record<string, unknown> };
+// Disputes nobody has answered yet whose evidence is due soon. Submitting an
+// answer moves Stripe's status on, and its webhook updates providerStatus, which clears the alert.
+export function readDisputesDue(now = new Date()) {
+  return prisma.purchaseDispute.findMany({
+    where: { providerStatus: { in: ["needs_response", "warning_needs_response"] }, evidenceDueBy: { gt: now, lte: new Date(now.getTime() + DISPUTE_DUE_WITHIN_SECONDS * 1000) } },
+    orderBy: { evidenceDueBy: "asc" },
+    select: { stripeDisputeId: true, orderId: true, commerceOrderId: true, evidenceDueBy: true }
+  });
+}
+
+type Firing = { key: string; alert: OperationalAlertName; details: Record<string, unknown>; repeatSeconds?: number };
 
 export async function runOperationsMonitor(now = new Date()) {
-  const [queues, workers] = await Promise.all([readQueues(now), readWorkers(now)]);
+  const [queues, workers, disputes] = await Promise.all([readQueues(now), readWorkers(now), readDisputesDue(now)]);
   const firing: Firing[] = [];
+  for (const dispute of disputes) {
+    firing.push({
+      key: `purchase_dispute_evidence_due:${dispute.stripeDisputeId}`,
+      alert: "purchase_dispute_evidence_due",
+      details: { disputeId: dispute.stripeDisputeId, orderId: dispute.orderId, commerceOrderId: dispute.commerceOrderId, evidenceDueBy: dispute.evidenceDueBy?.toISOString() },
+      repeatSeconds: DISPUTE_ALERT_REPEAT_SECONDS
+    });
+  }
   for (const reading of queues) {
     emitMetric("queue.backlog", reading.backlog, { queue: reading.queue });
     emitMetric("queue.oldest_age_seconds", reading.oldestAgeSeconds, { queue: reading.queue });
@@ -110,7 +132,7 @@ export async function runOperationsMonitor(now = new Date()) {
   let sent = 0;
   for (const item of firing) {
     const last = previous[item.key] ? Date.parse(previous[item.key]) : 0;
-    if (now.getTime() - last >= ALERT_REPEAT_SECONDS * 1000) {
+    if (now.getTime() - last >= (item.repeatSeconds ?? ALERT_REPEAT_SECONDS) * 1000) {
       emitOperationalAlert(item.alert, { ...item.details, dedupeKey: item.key });
       next[item.key] = now.toISOString();
       sent += 1;

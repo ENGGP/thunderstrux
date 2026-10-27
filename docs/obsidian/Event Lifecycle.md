@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[API Reference]]", "[[Ticket Check-in Implementation]]", "[[Memberships and Merchandise]]", "[[Society Profiles and Assets]]"]
 sources: [lib/events/event-lifecycle.ts, lib/events/event-cancellation.ts, lib/events/event-readiness.ts, lib/events/inventory.ts, lib/events/public-events.ts, lib/events/event-changes.ts, lib/validators/events.ts, components/events/create-event-form.tsx, app/api/events]
@@ -112,8 +112,9 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - **Open checkouts:** once the cancellation commits, Stripe closes each unpaid order's payment page (`checkout.sessions.expire`, outside the transaction, as buyer cancel does) and the order expires with source `staff_action`. A page Stripe couldn't close is logged (`event_cancellation.checkout_close_failed`), lapses within 30 minutes, and a repeat cancellation tries it again. An unpaid order of a cancelled event never offers its payment page again (`pendingCheckoutState` answers `ended`) (EVT-006).
 - **Late payments:** a payment Stripe took before its page closed can't issue tickets: fulfilment sees `cancelledAt` under the event lock and sends the payment to compensation (`event_cancelled_before_fulfilment`, [[Payment Lifecycle]]).
 - **Afterwards:** edits, publish changes and reopening sales are refused (400 "This event was cancelled"); the Edit page shows a notice instead of the form. The event leaves Explore, society profiles and discovery counts; its own page and buyers' order pages say it was cancelled. A repeat answers `already_cancelled`.
-- Audits `event.cancelled` with the counts and skipped orders, plus each order's own `order.refund_requested` or `order.free_cancelled`.
-- **Why one code and the worker:** refunding one order at a time took a fresh code each, so a 300-ticket event took hours (EVT-004). Luma and Eventbrite cancel with one confirmation that refunds everyone and emails attendees; the worker spreads the Stripe calls and retries unknown answers. Only before the end: payouts wait until two days after the event, so the society's balance still holds the money to refund.
+- **Money already released** (`releasedEarlyShare` in `lib/payouts/release.ts`): Stripe holds manual-payout money at most 90 days, so a sale paid more than 80 days ago was already released for payout (PAY-022). The response's `releasedEarly` is `{amount, orders}`: the society's share of those sales whose refund was opened (skipped orders don't count). The staff message says Stripe may take it from their bank account, and `event_cancelled_after_release` alerts the platform ([[Production Operations]]).
+- Audits `event.cancelled` with the counts, skipped orders and `releasedEarly`, plus each order's own `order.refund_requested` or `order.free_cancelled`.
+- **Why one code and the worker:** refunding one order at a time took a fresh code each, so a 300-ticket event took hours (EVT-004). Luma and Eventbrite cancel with one confirmation that refunds everyone and emails attendees; the worker spreads the Stripe calls and retries unknown answers. Only before the end: payouts wait until two days after the event, so the society's balance still holds the money to refund, except sales older than 80 days (above).
 - **Not done here:** memberships and merchandise aren't event-owned and are untouched; check-in doesn't separately refuse a cancelled event (its tickets are voided as refunds land).
 
 ### Editing

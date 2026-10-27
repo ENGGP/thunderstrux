@@ -197,6 +197,22 @@ describe("payouts worker", () => {
     expect(stripe.balance).not.toHaveBeenCalledWith({}, { stripeAccount: fixture.accountId });
   });
 
+  // A failed status refresh (ERROR) or paused card payments (RESTRICTED) used to stop payouts with no alert.
+  test("the payouts flag decides, not the state: an out-of-date or restricted society is still paid", async () => {
+    const stale = await society();
+    const restricted = await society();
+    await prisma.organisation.update({ where: { id: stale.organisationId }, data: { stripeAccountStatus: "ERROR" } });
+    await prisma.organisation.update({ where: { id: restricted.organisationId }, data: { stripeAccountStatus: "RESTRICTED", stripeChargesEnabled: false } });
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
+
+    const result = await processPayoutBatch(100, now);
+    expect(result.results).toEqual(expect.arrayContaining([
+      { organisationId: stale.organisationId, sent: 5000 },
+      { organisationId: restricted.organisationId, sent: 5000 }
+    ]));
+  });
+
   test("a payout Stripe won't send is logged and tried next hour; the other societies are still paid", async () => {
     const failing = await society();
     const other = await society();

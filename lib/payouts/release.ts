@@ -67,3 +67,9 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
     total: eventAmount + commerceAmount
   };
 }
+
+// PAY-022: a sale older than the cap was released for payout before its event
+// ran, so refunding it may take the money back from the society's bank.
+export function releasedEarlyShare(order: Parameters<typeof share>[0] & { paidAt: Date | null }, now = new Date()) {
+  return order.paidAt && order.paidAt.getTime() <= now.getTime() - maxHoldMs ? share(order) : 0;
+}

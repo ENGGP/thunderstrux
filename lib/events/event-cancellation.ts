@@ -5,10 +5,12 @@ import { EventLifecycleNotFoundError, EventLifecycleValidationError } from "@/li
 import { lockEventInventory } from "@/lib/events/inventory";
 import { formatDateRange, formatMoney } from "@/lib/format";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logWarn } from "@/lib/ops/logger";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { cancelFreeOrder } from "@/lib/payments/free-cancellation";
 import { OrderRefundError, openOrderRefund, type RefundFailureKind } from "@/lib/payments/order-refunds";
+import { releasedEarlyShare } from "@/lib/payouts/release";
 import { getStripe } from "@/lib/stripe";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -33,6 +35,8 @@ export async function cancelOrganisationEvent(
   actor: { id: string }
 ) {
   const result = await cancelInTransaction(organisationId, eventId, input, actor);
+  // PAY-022: the platform watches that Stripe can take these refunds back from the society's bank.
+  if (result.releasedEarly.amount > 0) emitOperationalAlert("event_cancelled_after_release", { organisationId, eventId, ...result.releasedEarly });
   // A repeat closes again any page an earlier attempt couldn't reach.
   return { ...result, checkoutsClosed: await closeOpenCheckouts(eventId) };
 }
@@ -77,7 +81,7 @@ async function cancelInTransaction(
       select: { title: true, status: true, startTime: true, endTime: true, cancelledAt: true, organisation: { select: { name: true, timeZone: true } } }
     });
     // A repeat answers the first cancellation and does nothing again.
-    if (event.cancelledAt) return { status: "already_cancelled" as const, cancelledAt: event.cancelledAt, refundsQueued: 0, freeCancelled: 0, notified: 0, skipped: [] as SkippedOrder[] };
+    if (event.cancelledAt) return { status: "already_cancelled" as const, cancelledAt: event.cancelledAt, refundsQueued: 0, freeCancelled: 0, notified: 0, skipped: [] as SkippedOrder[], releasedEarly: { amount: 0, orders: 0 } };
     if (event.status !== "published") {
       throw new EventLifecycleValidationError("Only a published event can be cancelled", [{ path: ["eventId"], message: "Delete the draft instead" }]);
     }
@@ -97,7 +101,7 @@ async function cancelInTransaction(
       where: { eventId: owned.id, status: "paid" },
       orderBy: { id: "asc" },
       select: {
-        id: true, paymentKind: true, cancelledAt: true, totalAmount: true, externalRefundedAmount: true, sellerName: true, ...buyerIdentitySelect,
+        id: true, paymentKind: true, cancelledAt: true, totalAmount: true, externalRefundedAmount: true, feeAmount: true, paidAt: true, sellerName: true, ...buyerIdentitySelect,
         user: { select: { email: true, firstName: true, lastName: true, displayName: true } },
         _count: { select: { tickets: { where: { validity: { not: "void" } } } } }
       }
@@ -108,6 +112,8 @@ async function cancelInTransaction(
     let refundsQueued = 0;
     let freeCancelled = 0;
     let notified = 0;
+    // PAY-022: refunds of sales already released for payout, which Stripe may take from the society's bank.
+    const early = { amount: 0, orders: 0 };
 
     for (const order of orders) {
       // Only an order whose tickets still admit someone has a holder to tell;
@@ -123,6 +129,8 @@ async function cancelInTransaction(
         try {
           await openOrderRefund(tx, { organisationId, orderId: order.id, actor, reason: orderReason });
           refundsQueued += 1;
+          const released = releasedEarlyShare(order, now);
+          if (released > 0) { early.amount += released; early.orders += 1; }
           outcome = `Your ${formatMoney(order.totalAmount - order.externalRefundedAmount)} refund has started. We'll email you again when it goes through; banks usually take 5 to 10 business days after that.`;
         } catch (error) {
           if (!(error instanceof OrderRefundError)) throw error;
@@ -147,8 +155,8 @@ async function cancelInTransaction(
 
     await tx.auditLog.create({ data: {
       organisationId, actorUserId: actor.id, action: "event.cancelled", targetType: "Event", targetId: owned.id,
-      metadata: { reason, refundsQueued, freeCancelled, notified, skipped }
+      metadata: { reason, refundsQueued, freeCancelled, notified, skipped, releasedEarly: early }
     } });
-    return { status: "cancelled" as const, cancelledAt: now, refundsQueued, freeCancelled, notified, skipped };
+    return { status: "cancelled" as const, cancelledAt: now, refundsQueued, freeCancelled, notified, skipped, releasedEarly: early };
   }, transactionOptions);
 }

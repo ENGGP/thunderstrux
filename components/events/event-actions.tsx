@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { formatMoney } from "@/lib/format";
 
 type ActionEvent = {
   id: string;
@@ -23,7 +24,7 @@ type ActionEvent = {
   cancelledAt: Date | null;
 };
 
-type CancelResult = { status: "cancelled" | "already_cancelled"; refundsQueued: number; freeCancelled: number; skipped: unknown[] };
+type CancelResult = { status: "cancelled" | "already_cancelled"; refundsQueued: number; freeCancelled: number; skipped: unknown[]; releasedEarly: { amount: number; orders: number } };
 
 const menuWidth = 288;
 const menuItem =
@@ -141,7 +142,7 @@ export function EventActions({
       setConfirming(null);
       setMessage({
         ok: true,
-        text: `Event cancelled. ${result.refundsQueued} ${result.refundsQueued === 1 ? "refund" : "refunds"} started and ${result.freeCancelled} free ${result.freeCancelled === 1 ? "registration" : "registrations"} cancelled.${result.skipped.length ? ` ${result.skipped.length} ${result.skipped.length === 1 ? "order needs" : "orders need"} you in Orders.` : ""}`
+        text: `Event cancelled. ${result.refundsQueued} ${result.refundsQueued === 1 ? "refund" : "refunds"} started and ${result.freeCancelled} free ${result.freeCancelled === 1 ? "registration" : "registrations"} cancelled.${result.skipped.length ? ` ${result.skipped.length} ${result.skipped.length === 1 ? "order needs" : "orders need"} you in Orders.` : ""}${result.releasedEarly.amount > 0 ? ` ${formatMoney(result.releasedEarly.amount)} of these refunds is from sales already released for payout, so Stripe may take it from your bank account.` : ""}`
       });
       router.refresh();
     } catch (error) {

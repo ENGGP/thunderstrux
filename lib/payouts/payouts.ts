@@ -83,10 +83,12 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   return { sent: amount };
 }
 
-// Worker: each society that can be paid, at most once an hour.
+// Worker: each society that can be paid, at most once an hour. The payouts flag
+// decides, not the state: a failed refresh (ERROR) or paused card payments
+// (RESTRICTED) don't stop money the society is owed.
 export async function processPayoutBatch(limit = 25, now = new Date()) {
   const due = await prisma.organisation.findMany({
-    where: { stripeAccountId: { not: null }, stripeAccountStatus: "READY", stripePayoutsEnabled: true, OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] },
+    where: { stripeAccountId: { not: null }, stripePayoutsEnabled: true, OR: [{ payoutCheckedAt: null }, { payoutCheckedAt: { lt: new Date(now.getTime() - checkEveryMs) } }] },
     orderBy: [{ payoutCheckedAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
     take: Math.max(1, Math.min(limit, 100)),
     select: { id: true, stripeAccountId: true, payoutCheckedAt: true }

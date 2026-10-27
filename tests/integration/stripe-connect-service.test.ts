@@ -10,7 +10,7 @@ import {
   startOrganisationStripeOnboarding
 } from "@/lib/stripe/connect";
 import { MfaInputError } from "@/lib/security/staff-mfa";
-import { createOrganisationAccount } from "@/tests/helpers/test-data";
+import { createOrganisationAccount, createOrganisationStaff, createUser, unique } from "@/tests/helpers/test-data";
 
 const stripeMocks = vi.hoisted(() => ({
   createAccount: vi.fn(),
@@ -125,6 +125,14 @@ describe("Stripe Connect application service", () => {
 
     stripeMocks.createAccount.mockRejectedValueOnce(new Error("Too many requests"));
     await expect(startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).rejects.toThrow("Too many requests");
+
+    // A network failure's type is StripeConnectionError: "connect" in its name isn't the platform profile.
+    const other = await createOrganisationAccount();
+    stripeMocks.createAccount.mockRejectedValueOnce(Object.assign(new Error("An error occurred with our connection to Stripe."), { type: "StripeConnectionError" }));
+    await expect(startOrganisationStripeOnboarding(other.organisation.id, { actor: { id: other.user.id } })).rejects.toMatchObject({ type: "StripeConnectionError" });
+    expect(await prisma.organisation.findUniqueOrThrow({ where: { id: other.organisation.id }, select: { stripeAccountStatus: true } }))
+      .toEqual({ stripeAccountStatus: "NOT_CONNECTED" });
+    expect(stripeMocks.createAccountLink).not.toHaveBeenCalled();
   });
 
   test("composes onboarding for an existing connected account", async () => {
@@ -207,5 +215,39 @@ describe("Stripe Connect application service", () => {
     stripeMocks.retrieveAccount.mockClear();
     expect((await accountUpdated({ id: "acct_not_ours", object: "account", charges_enabled: true })).status).toBe(200);
     expect(stripeMocks.retrieveAccount).not.toHaveBeenCalled();
+  });
+
+  test("staff who manage Stripe hear once when Stripe pauses card payments, and once per deadline it sets", async () => {
+    const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
+    const accountId = organisation.stripeAccountId as string;
+    const checkIn = await createUser({ email: `${unique("door")}@example.com` });
+    await createOrganisationStaff({ organisationId: organisation.id, userId: checkIn.id, role: "check_in_staff" });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const notices = (key: string) => prisma.notificationOutbox.findMany({ where: { organisationId: organisation.id, eventKey: { startsWith: key } }, select: { recipient: true } });
+    const alerts = () => error.mock.calls.map(([line]) => { try { return JSON.parse(String(line)); } catch { return {}; } }).filter((entry) => entry.event === "society_charges_paused");
+    const deadline = Math.floor(Date.UTC(2026, 11, 1) / 1000);
+    const account = (charges: boolean, currently_due: string[] = [], current_deadline: number | null = null) =>
+      ({ id: accountId, details_submitted: true, charges_enabled: charges, payouts_enabled: true, requirements: { currently_due, eventually_due: [], disabled_reason: charges ? null : "requirements.past_due", current_deadline } });
+
+    // A deadline while still selling: one notice per deadline, shown on Payments too.
+    stripeMocks.retrieveAccount.mockResolvedValue(account(true, ["individual.id_number"], deadline));
+    await expect(getOrganisationStripeConnectStatus(organisation.id)).resolves.toMatchObject({ state: "READY", current_deadline: new Date(deadline * 1000).toISOString() });
+    await accountUpdated({ id: accountId, object: "account" });
+    expect(await notices("stripe-deadline/")).toEqual([{ recipient: user.email }]);
+
+    // Stripe pauses card payments: the webhook sees it first, the refresh after it adds nothing.
+    stripeMocks.retrieveAccount.mockResolvedValue(account(false, ["individual.id_number"]));
+    await accountUpdated({ id: accountId, object: "account" });
+    await getOrganisationStripeConnectStatus(organisation.id);
+    expect(await notices("stripe-charges-paused/")).toEqual([{ recipient: user.email }]);
+    expect(alerts()).toEqual([expect.objectContaining({ organisationId: organisation.id, disabledReason: "requirements.past_due" })]);
+
+    // A notice that can't be queued (no sender configured) never undoes the flags saved with it.
+    const other = await createOrganisationAccount({ stripeReady: true });
+    vi.stubEnv("EMAIL_FROM", "");
+    stripeMocks.retrieveAccount.mockResolvedValue({ ...account(false), id: other.organisation.stripeAccountId });
+    await expect(getOrganisationStripeConnectStatus(other.organisation.id)).resolves.toMatchObject({ state: "RESTRICTED", charges_enabled: false });
+    expect(await prisma.organisation.findUniqueOrThrow({ where: { id: other.organisation.id }, select: { stripeChargesEnabled: true, stripeAccountStatus: true } }))
+      .toEqual({ stripeChargesEnabled: false, stripeAccountStatus: "RESTRICTED" });
   });
 });

@@ -18,7 +18,7 @@ import { createMember, createOrganisationAccount, unique } from "@/tests/helpers
 // merchandise orders, and the automatic refund of a payment that couldn't be filled.
 
 const webhookSecret = "whsec_commerce_recovery_test";
-const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), disputeUpdate: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
   return {
@@ -29,7 +29,7 @@ vi.mock("@/lib/stripe", async () => {
     getStripe: () => ({
       checkout: { sessions: { retrieve: stripe.retrieve, list: stripe.list } },
       refunds: { list: stripe.refunds, create: stripe.create },
-      disputes: { retrieve: stripe.dispute },
+      disputes: { retrieve: stripe.dispute, update: stripe.disputeUpdate },
       charges: { retrieve: stripe.charge },
       transfers: { retrieve: stripe.transfer, listReversals: stripe.reversals, createReversal: stripe.reverse },
       webhooks: new RealStripe("sk_test_commerce_recovery").webhooks
@@ -126,6 +126,12 @@ describe("commerce disputes", () => {
       orderId: null, commerceOrderId: fixture.order.id, organisationId: fixture.society.organisation.id, stripeChargeId: fixture.chargeId, evidenceDueBy: new Date(Date.UTC(2026, 10, 20))
     });
     expect((await grantOf(fixture)).revokedAt).toBeNull();
+    // A draft answer is staged once for the operator to submit.
+    expect(stripe.disputeUpdate).toHaveBeenCalledTimes(1);
+    expect(stripe.disputeUpdate).toHaveBeenCalledWith(`dp_${fixture.order.id}`, expect.objectContaining({
+      submit: false,
+      evidence: expect.objectContaining({ customer_email_address: fixture.order.buyerEmailSnapshot, uncategorized_text: expect.stringContaining(`Order ${orderReference(fixture.order.id)}`) })
+    }));
     await expect(requestCommerceRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "disputed" });
     expect(stripe.create).not.toHaveBeenCalled();
 

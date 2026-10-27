@@ -13,7 +13,7 @@ import { jsonRequest, routeContext } from "@/tests/helpers/http";
 import { createEvent, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 const webhookSecret = "whsec_disputes_test";
-const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), disputeUpdate: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
   return {
@@ -24,7 +24,7 @@ vi.mock("@/lib/stripe", async () => {
     getStripe: () => ({
       checkout: { sessions: { retrieve: stripe.retrieve, list: stripe.list } },
       refunds: { list: stripe.refunds, create: stripe.create },
-      disputes: { retrieve: stripe.dispute },
+      disputes: { retrieve: stripe.dispute, update: stripe.disputeUpdate },
       charges: { retrieve: stripe.charge },
       transfers: { retrieve: stripe.transfer, listReversals: stripe.reversals, createReversal: stripe.reverse },
       // Real signature checking, so the route is exercised as Stripe calls it.
@@ -115,6 +115,47 @@ describe("disputes", () => {
     expect(lost.tickets).toEqual([{ validity: "void", validityReason: "dispute_lost" }, { validity: "void", validityReason: "dispute_lost" }]);
     expect(await historyOf(fixture.order.id)).toEqual(["dispute_opened", "dispute_closed"]);
     expect(await prisma.auditLog.count({ where: { targetId: fixture.order.id, action: { startsWith: "order.dispute_" } } })).toBe(2);
+  });
+
+  test("a newly opened dispute gets a draft answer staged in Stripe once, never submitted: check-ins, the ticket email and money already refunded", async () => {
+    const fixture = await paidOrder();
+    const [first] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" } });
+    await prisma.ticket.update({ where: { id: first.id }, data: { checkedInAt: new Date() } });
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { ticketEmailSentAt: new Date(), externalRefundedAmount: 500 } });
+    await prisma.organisation.update({ where: { id: fixture.owner.organisation.id }, data: { refundPolicy: "Refunds up to 7 days before the event." } });
+    disputeNow(fixture, "needs_response");
+    const created = signedEvent("charge.dispute.created", disputeObject(fixture, "needs_response"));
+    await reconcileDisputeEvent(created);
+    await reconcileDisputeEvent(created);
+    await reconcileDisputeEvent(signedEvent("charge.dispute.updated", disputeObject(fixture, "needs_response")));
+
+    expect(stripe.disputeUpdate).toHaveBeenCalledTimes(1);
+    const [disputeId, params] = stripe.disputeUpdate.mock.calls[0];
+    expect(disputeId).toBe(`dp_${fixture.order.id}`);
+    // Stripe's default would send it to the bank; the operator submits it.
+    expect(params.submit).toBe(false);
+    expect(params.evidence.product_description).toContain(fixture.event.title);
+    expect(params.evidence.access_activity_log).toContain(`Ticket ${first.id.slice(-6).toUpperCase()} was scanned in at the door`);
+    expect(params.evidence.refund_policy_disclosure).toContain("Refunds up to 7 days before the event.");
+    expect(params.evidence.uncategorized_text).toContain(`Order ${orderReference(fixture.order.id)}: $30.00 paid`);
+    expect(params.evidence.uncategorized_text).toContain("The tickets were emailed to the buyer");
+    expect(params.evidence.uncategorized_text).toContain("Refunded $5.00 to the buyer's card outside Thunderstrux.");
+
+    // A dispute already answered is left alone.
+    const answered = await paidOrder();
+    stripe.dispute.mockResolvedValue(disputeObject(answered, "needs_response", { evidence_details: { due_by: Math.floor(Date.UTC(2026, 10, 4) / 1000), has_evidence: true } }));
+    await reconcileDisputeEvent(signedEvent("charge.dispute.created", disputeObject(answered, "needs_response")));
+    expect(stripe.disputeUpdate).toHaveBeenCalledTimes(1);
+
+    // Stripe refusing the draft (a key without Disputes write) alerts; the dispute is still recorded.
+    const refused = await paidOrder();
+    disputeNow(refused, "needs_response");
+    stripe.disputeUpdate.mockRejectedValueOnce(Object.assign(new Error("The provided key does not have the required permissions"), { type: "StripePermissionError" }));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await reconcileDisputeEvent(signedEvent("charge.dispute.created", disputeObject(refused, "needs_response")));
+    expect((await orderState(refused.order.id)).disputeStatus).toBe("open");
+    const alerts = error.mock.calls.map(([line]) => { try { return JSON.parse(String(line)); } catch { return {}; } }).filter((entry) => entry.event === "dispute_evidence_not_staged");
+    expect(alerts).toEqual([expect.objectContaining({ disputeId: `dp_${refused.order.id}`, orderId: refused.order.id })]);
   });
 
   test("a won dispute keeps the tickets under review until staff restore them with a reason", async () => {

@@ -386,6 +386,9 @@ const verify = {
     const { order, intent, event } = await paidCommerce(data);
     const dispute = await poll(async () => (await commerceState(order.id)).disputeStatus === 'open' && (await stripe.disputes.list({payment_intent: intent.id, limit: 1})).data[0], 'Dispute reconciliation');
     const opened = await eventFor(dispute.id, ['charge.dispute.created']);
+    // The app stages a draft answer for the operator, never submitted.
+    const staged = await poll(async () => { const current = await stripe.disputes.retrieve(dispute.id); return current.evidence_details.has_evidence ? current : null; }, 'Staged dispute evidence');
+    assert(staged.evidence_details.submission_count === 0 && staged.evidence.customer_email_address === order.buyerEmailSnapshot, 'The staged dispute evidence was submitted or names someone else');
     // Stripe test mode closes a dispute as lost when given this evidence.
     await stripe.disputes.update(dispute.id, {evidence: {uncategorized_text: 'losing_evidence'}});
     await poll(async () => (await commerceState(order.id)).disputeStatus === 'lost', 'Lost dispute reconciliation');

@@ -71,12 +71,12 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 | `NOT_CONNECTED` | No `stripeAccountId` | Connect Stripe |
 | `PLATFORM_NOT_READY` | No account; Stripe refused to create one because the platform's Connect profile is unfinished (detected from the error's message only; a network failure, `StripeConnectionError`, is rethrown and changes nothing) | Open Stripe Platform Settings (`stripePlatformProfileUrl`), Retry after completion, Disconnect |
 | `CONNECTED_INCOMPLETE` | `details_submitted` is false | Continue Stripe setup |
-| `RESTRICTED` | Details submitted, `charges_enabled` false | Fix in Stripe |
-| `READY` | `charges_enabled` true | Add a bank account in Stripe while `payouts_enabled` is false (badge "Payouts not set up") |
+| `RESTRICTED` | Details submitted, but `charges_enabled` false or the `transfers` capability not `active` (destination charges pay the society by transfer) | Fix in Stripe |
+| `READY` | `charges_enabled` true and `transfers` active | Add a bank account in Stripe while `payouts_enabled` is false (badge "Payouts not set up") |
 | `ERROR` | The last refresh couldn't reach Stripe. Flags keep their last values; the response says Thunderstrux couldn't reach Stripe and the provider message stays in the log | Try again |
 
 - Settings shows two rows, **Can take payments** (charges) and **Can receive payouts** (payouts), so a society with no bank account keeps selling.
-- **Selling depends on flags, not the state:** `isOrganisationStripeReady` is `stripeAccountId && stripeChargesEnabled`. In `ERROR` sales follow the last known flags until a refresh succeeds.
+- **Selling depends on flags, not the state:** `isOrganisationStripeReady` is `stripeAccountId && stripeChargesEnabled`, saved as `charges_enabled` with `transfers` active (`canTakePayments`). In `ERROR` sales follow the last known flags until a refresh succeeds.
 - **The `account.updated` webhook** re-reads the account (`refreshConnectedAccount`) for an account some society uses, and persists the same flags and state. An account no society uses logs `stripe_connect.webhook.ignored` (`stripe_account_not_found`) without calling Stripe.
 - **One write path:** the webhook and a Settings refresh both save through `persistConnectedAccountStatus`, which reads the previous flags under the society's row lock, so two saves at once email a transition once. A refresh that read Stripe before a newer webhook can still save the older flags afterwards (as before), and the next correction may email again. In the same transaction it emails (`business_notice`, linked to `/dashboard/<slug>/settings`, which opens that society) every active staff member whose role has `stripe:manage`:
   - when card payments go from on to off (key `stripe-charges-paused/<orgId>/<time>`), and alerts `society_charges_paused` after commit;
@@ -94,9 +94,9 @@ Societies are paid after their event, as Humanitix and Eventbrite pay organisers
   1. makes sure the account is on manual payouts;
   2. skips the society if a `SocietyPayout` for that account already exists this UTC day (DEF-034);
   3. reads the available AUD balance and subtracts `heldMoney`;
-  4. if at least `minPayout` (100 cents) is left, creates one payout on the connected account, key `payout:<account>:<UTC date>`, and records a `SocietyPayout`.
+  4. if at least `minPayout` ($20) is left, or `smallPayout` ($1) once the society has had no payout that wasn't refused for `smallPayoutAfterMs` (7 days) or ever, creates one payout on the connected account, key `payout:<account>:<attempt time>`, and records a `SocietyPayout`. Connect charges the platform A$0.25 + 0.25% a payout, so small balances wait.
 
-  So a society gets at most one payout a UTC day, and money released later in the day goes the next day. A payout never exceeds the available balance, so a retry can't overpay. A failure logs `payouts.failed_to_send` and is retried next hour; a payout Stripe made despite the error arrives through its webhook.
+  So a society gets at most one payout a UTC day, and money released later in the day goes the next day. A payout never exceeds the available balance, so a retry can't overpay. A failure logs `payouts.failed_to_send` and is retried next hour under a new key: Stripe keeps a refusal under its key and refuses that key with another amount, so a per-day key blocked the rest of the day. A payout Stripe made despite the error arrives through its webhook.
 - **Held money** (`heldMoney`, `lib/payouts/release.ts`) counts paid Stripe sales to that account (by seller snapshot) with `refundStatus` null or `processing`, paid within `maxHoldMs` (80 days; Stripe holds manual-payout money at most 90 days in Australia):
 
   | Sale | Held while |
@@ -141,7 +141,7 @@ Both flows build the request, store it on `CheckoutAttempt.providerRequest`, the
 - `PLATFORM_FEE_POLICY_VERSION` is `platform_fee_3_75_percent_89c_v2`. Older orders carry `platform_fee_10_percent_v1`. Bump it whenever the rate or rounding changes.
 - The fee includes card processing, which Stripe charges the platform on destination charges. The society absorbs the fee, so buyers pay the price shown. On a $20.00 ticket the society receives $18.36 and Thunderstrux keeps $1.64.
 - Refunds return the fee (`refund_application_fee`) while Stripe keeps its processing fee (PAY-008, accepted risk).
-- Paid prices start at `minPaidPrice` (50 cents, Stripe's smallest AUD card payment). Prices are 0 or at least 50 cents (`priceAmountSchema` in `lib/validators/price.ts`, `isBelowStripeMinimum`).
+- Paid prices start at `minPaidPrice` ($2.00), the lowest round price where the society keeps more than half (fee 97c, society $1.03); below 93c the capped fee took the whole price. Prices are 0 or at least $2.00 (`priceAmountSchema` in `lib/validators/price.ts`, `isBelowPaidMinimum`), checked on every save, so an older cheaper price must be raised to save that item again.
 
 ## Required conditions for checkout
 
@@ -167,7 +167,7 @@ A free price completes without reading any Stripe configuration. Commerce checko
 
 | Endpoint | Secret | Events handled |
 | --- | --- | --- |
-| `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` |
+| `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` |
 | `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.updated`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
 
 Both endpoints run the same checks, in order:
@@ -192,6 +192,7 @@ Payments routing:
 | `refund.*` with `metadata.compensationRefundJobId` | `reconcileRefundEvent` (`lib/payments/compensation-refunds.ts`) |
 | any other `refund.*` (made outside Thunderstrux) | `reconcileCommerceExternalRefundEvent`, else `reconcileExternalRefundEvent` |
 | `charge.dispute.*` | `reconcileCommerceDisputeEvent`, else `reconcileDisputeEvent` |
+| `radar.early_fraud_warning.created` | `reconcileEarlyFraudWarning` (`lib/payments/fraud-warnings.ts`): refunds an unused order automatically ([[Payment Lifecycle Refunds and Disputes#Early fraud warnings]]) |
 
 What each handler does to orders, and its checks (amount, currency, metadata, destination, the order's bound Session), is in [[Payment Lifecycle]]. Identity alerts raised there: `payment_reconciliation_ambiguous_order`, `ticket_webhook_identity_mismatch` (a paid Session that isn't the order's, PAY-010), `commerce_webhook_identity_mismatch`, `purchase_dispute_unmatched`, `paid_but_unfulfilled_compensation_required`.
 
@@ -212,7 +213,7 @@ Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STR
 ```bash
 stripe login
 stripe listen --latest \
-  --events checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,account.updated,payout.paid,payout.failed,payout.canceled,payout.updated \
+  --events checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,payout.paid,payout.failed,payout.canceled,payout.updated \
   --forward-to localhost:3000/api/payments/webhook \
   --forward-connect-to localhost:3000/api/stripe/connect/webhook
 ```
@@ -232,7 +233,7 @@ stripe listen --latest \
 - Checkout readiness is the charges flag, not `READY`. Don't gate selling on the state.
 - A fee change without a new `PLATFORM_FEE_POLICY_VERSION` makes old and new orders indistinguishable.
 - A new handled event type must also be subscribed on the hosted endpoint and added to the staging listener's `--events`.
-- Destination charges need the society's account to keep `transfers` and `card_payments`; Express creation requests both.
+- Destination charges need the society's account to keep `transfers` and `card_payments`; Express creation requests both, and readiness checks both (`canTakePayments`).
 
 ## Failure and recovery
 

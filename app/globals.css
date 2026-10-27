@@ -44,7 +44,6 @@
   --color-neutral-bg: var(--ts-neutral-bg);
   --color-neutral-border: var(--ts-neutral-border);
   --color-neutral-icon: var(--ts-neutral-icon);
-  --color-lime: var(--ts-lime);
 
   /* Two sizes between the type scale's steps that the UI uses everywhere:
      caption for meta lines and counts, ui for dense body text. */
@@ -168,7 +167,6 @@
     --ts-neutral-bg: #f3f1f6;
     --ts-neutral-border: #e2dde9;
     --ts-neutral-icon: #8e869b;
-    --ts-lime: #def17b;
   }
 
   /* Tailwind v4 borders default to currentColor; ours default to the hairline token. */

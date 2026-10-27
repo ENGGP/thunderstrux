@@ -3,7 +3,7 @@ status: living
 last-reviewed: 2026-10-28
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Accessibility Review]]", "[[Authentication and Dashboard Access]]"]
-sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navbar.tsx, components/layout/site-footer.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/events/event-tabs.tsx, components/settings/stripe-connect-settings.tsx, .design-sync/config.json]
+sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navbar.tsx, components/layout/site-footer.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/events/event-tabs.tsx, components/settings/stripe-connect-settings.tsx, .design-sync/config.json, PRODUCT.md, DESIGN.md]
 ---
 
 # UI Architecture Rules
@@ -25,6 +25,7 @@ sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navb
 | Context switcher | `components/layout/context-selector.tsx` |
 | Event workspace | `components/events/event-tabs.tsx`, `components/events/event-actions.tsx` |
 | Design sync | `.design-sync/config.json`, `.design-sync/NOTES.md`, `.design-sync/conventions.md` |
+| Design-tool context | `PRODUCT.md`, `DESIGN.md`, `.impeccable/design.json` |
 
 ## Tokens and fonts
 
@@ -218,6 +219,14 @@ Any other failure keeps the button and shows a danger `Notice` with `Change tick
 - CSS is compiled first by `node .design-sync/build-css.mjs`. `.design-sync/overrides/source-kit.mjs` drops any `components/ui/*` file importing `next/*` (so `FilterBar`, `LinkTabs`, `Count` are not synced).
 - Visual spec section 16.4 lists the implemented primitives; update it with a new primitive.
 - After a token or primitive restyle, re-run the sync and spot-check components: grades follow preview sources, not styling.
+
+## Impeccable
+
+The Impeccable design skill (`.claude/skills/impeccable/`) reads two root files. Neither is an authority.
+- `PRODUCT.md` summarises the PRD for design tools; the PRD wins, so change it first and then the summary.
+- `DESIGN.md` and its sidecar `.impeccable/design.json` are generated from the shipped code by `/impeccable document`. They record what is built. The visual spec and this note own intent, and visual spec 16.8 lists the built values kept on purpose, and any other difference is drift to register, not a new rule. Regenerate both after a token or primitive change.
+- Its design-check hook is per developer (`.claude/settings.local.json`, ignored). Its binary downloads on first run, so its binary folder is git-ignored.
+- Use its review commands (`critique`, `audit`, `clarify`, `harden`, `polish`) on a named page. Don't ask it to "redesign": that treats the current look as something to replace and rewrites `DESIGN.md`.
 
 ## Traps
 

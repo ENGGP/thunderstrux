@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T00:00:00Z",
+  "title": "Design System: Thunderstrux",
+  "extensions": {
+    "colorMeta": {
+      "brand": { "role": "primary", "displayName": "Campus Violet", "canonical": "#5b2acb" },
+      "brand-ink": { "role": "primary", "displayName": "Midnight Plum", "canonical": "#2a1550" },
+      "brand-tint": { "role": "primary", "displayName": "Lilac Wash", "canonical": "#f0eafe" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#24143b" },
+      "paper": { "role": "neutral", "displayName": "Lavender Paper", "canonical": "#fbfafd" },
+      "focus": { "role": "neutral", "displayName": "Focus Blue", "canonical": "#1e72d8" }
+    },
+    "shadows": [
+      { "name": "card", "value": "0 4px 18px rgba(36, 20, 59, 0.055)", "purpose": "Event cards on hover only." },
+      { "name": "float", "value": "0 14px 44px rgba(36, 20, 59, 0.12)", "purpose": "Menus, the confirm dialog and the phone buy bar." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Menus, dialog, fades and the issued-ticket rise." },
+      { "name": "ease-drawer", "value": "cubic-bezier(0.32, 0.72, 0, 1)", "purpose": "Phone bottom sheets." },
+      { "name": "pop-in", "value": "160ms", "purpose": "Menus open from their trigger; close instantly." },
+      { "name": "dialog-in", "value": "200ms", "purpose": "Confirm dialog entry." },
+      { "name": "sheet-in", "value": "240ms", "purpose": "Phone sheets slide up through the bottom edge." },
+      { "name": "rise-in", "value": "300ms, 50ms stagger capped at 250ms", "purpose": "Newly issued tickets, once." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one purple action in an area.",
+      "html": "<button class=\"ds-btn-primary\">Get tickets</button>",
+      "css": ".ds-btn-primary { background: #5b2acb; color: #fff; height: 44px; padding: 0 16px; border: 0; border-radius: 9px; font: 600 14px 'DM Sans', system-ui, sans-serif; transition: background-color 150ms cubic-bezier(0.23, 1, 0.32, 1), scale 150ms; } .ds-btn-primary:hover { background: #4c22af; } .ds-btn-primary:active { background: #2a1550; scale: 0.97; } .ds-btn-primary:focus-visible { outline: 2px solid #1e72d8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled field with a Control Edge border.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search by title\">",
+      "css": ".ds-input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid #9e8aac; border-radius: 9px; background: #fff; color: #24143b; font: 400 16px 'DM Sans', system-ui, sans-serif; } .ds-input::placeholder { color: #6b6276; } .ds-input:focus-visible { outline: 2px solid #1e72d8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Wash, hairline, dot and word for every status.",
+      "html": "<span class=\"ds-badge\"><span class=\"ds-badge-dot\"></span>Sales open</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid #bfe3d6; border-radius: 6px; background: #eef8f4; color: #0b6b55; font: 600 12px 'DM Sans', system-ui, sans-serif; } .ds-badge-dot { width: 6px; height: 6px; border-radius: 999px; background: #12866a; }"
+    },
+    {
+      "name": "Date Rail",
+      "kind": "custom",
+      "refersTo": "date-rail",
+      "description": "Day and month tile that leads every event card.",
+      "html": "<span class=\"ds-rail\"><b>29</b><small>OCT</small></span>",
+      "css": ".ds-rail { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 9px; background: #f0eafe; color: #2a1550; } .ds-rail b { font: 600 20px/1 'Space Grotesk', sans-serif; } .ds-rail small { margin-top: 4px; font: 600 12px 'DM Sans', sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Campus Edition",
+    "overview": "A student culture magazine, a polished ticket window and an operations desk sharing one purple-first system. Light-only, flat and hairline-led; motion is small and earned.",
+    "keyCharacteristics": [
+      "Purple carries actions, current state and identity; status colours carry meaning and never decorate.",
+      "Two typefaces: Space Grotesk for h1/h2 and display, DM Sans for everything else.",
+      "Four named radii (6, 9, 14, 20px); no generic rounded-md/lg/xl.",
+      "Every surface is opaque; no gradients except the striped image placeholder."
+    ],
+    "rules": [
+      { "name": "The Status-Only Rule", "body": "Jade, ochre and crimson appear only with a status word or icon (StatusBadge, Notice), never as decoration or brand.", "section": "colors" },
+      { "name": "The Hairline Default Rule", "body": "Borders default to the hairline token; a stronger edge marks only something you type into or press.", "section": "colors" },
+      { "name": "The Two-Voice Rule", "body": "Space Grotesk only on h1, h2 and font-display elements such as the date rail numerals; card titles stay DM Sans.", "section": "typography" },
+      { "name": "The Flat-At-Rest Rule", "body": "Nothing casts a shadow at rest except something floating above the page.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the semantic utilities (bg-brand, text-ink-soft, border-line, rounded-card, max-w-page) for every colour, radius and width.",
+      "Do keep one purple primary action per area; use secondary or tertiary for the rest.",
+      "Do show every status through StatusBadge or Notice, with its word.",
+      "Do keep check-in, list rows, tab changes and payment results still; animate only menus, dialogs, phone sheets and newly issued tickets."
+    ],
+    "donts": [
+      "Don't use raw palette classes (bg-neutral-900, text-purple-600) or hex values in components.",
+      "Don't use rounded-md, rounded-lg or rounded-xl; use the four named radii.",
+      "Don't add a dark mode, an icon library or a shadow at rest.",
+      "Don't use status colours or a society's own colours for buttons, payment or security cues."
+    ]
+  }
+}

@@ -1,11 +1,11 @@
 import { ResponsiveTable, StatusBadge } from 'thunderstrux';
 
-type Order = { id: string; buyer: string; email: string; event: string; tickets: number; total: string; status: 'paid' | 'refunded' | 'pending' };
+type Order = { id: string; buyer: string; email: string; event: string; tickets: number; total: string; status: 'paid' | 'refunded' | 'free' };
 
 const orders: Order[] = [
-  { id: 'TS-4821', buyer: 'Priya Natarajan', email: 'priya@student.unimelb.edu.au', event: 'Spring Ball 2027', tickets: 2, total: '$90.00', status: 'paid' },
-  { id: 'TS-4817', buyer: 'Tom Okafor', email: 'tom.okafor@gmail.com', event: 'Spring Ball 2027', tickets: 1, total: '$45.00', status: 'refunded' },
-  { id: 'TS-4809', buyer: 'Mei Chen', email: 'mei.chen@student.monash.edu', event: 'Chess Night', tickets: 4, total: '$20.00', status: 'pending' },
+  { id: 'K7Q2XD', buyer: 'Priya Natarajan', email: 'priya@student.unimelb.edu.au', event: 'Spring Ball 2027', tickets: 2, total: '$90.00', status: 'paid' },
+  { id: 'F3M8PA', buyer: 'Tom Okafor', email: 'tom.okafor@gmail.com', event: 'Spring Ball 2027', tickets: 1, total: '$45.00', status: 'refunded' },
+  { id: 'B9T4LC', buyer: 'Mei Chen', email: 'mei.chen@student.monash.edu', event: 'Chess Night', tickets: 4, total: 'Free', status: 'free' },
 ];
 
 export const Orders = () => (

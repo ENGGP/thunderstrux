@@ -24,11 +24,19 @@ Project: "Thunderstrux UI" — https://claude.ai/design/p/6075c42a-6f43-4f56-8d3
 - The `Icon` preview now lists all 27 icons. `text-caption`/`text-ui` compile (seen in source).
 - `conventions.md` was validated: every class, `--ts-*` token and component it names exists in the build. It does not mention the six new components yet (each has its own `.prompt.md`); adding them to its Rules bullet is a candidate edit for its owner.
 
+## Re-sync of 2026-10-28
+- **Run `node .design-sync/build-css.mjs` before the driver.** `resync.mjs` does not run `buildCmd`, so a stale `.design-sync/.cache/thunderstrux.css` ships old tokens silently: the first driver run this time still carried `bg-lime` and `--ts-lime` (removed from `app/globals.css` in #208). Grep the bundle for a token you just removed before uploading.
+- Host install: `COREPACK_ENABLE_STRICT=0 pnpm i --frozen-lockfile` on Node 22.18 only warns about the 22.23.4 pin. The dev container keeps its own `node_modules` volume, so a host install doesn't touch it.
+- All 17 re-graded (styling and bundle moved: lime removal plus the #201 to #206 motion work); every preview's render hash was unchanged.
+- Previews carry product copy, and the design agent imitates it. Four were out of date and fixed: MoneyInput's error now uses `paidPriceMinimum` ($2.00, PAY-023); ResponsiveTable uses six-character order references and Paid, Refunded and Free (pending is never a product status); TextArea uses the event form's real "Add a description."; TextInput's example address is Australian. When a product rule, status word or reference format changes, check the previews that show it.
+
 ## Known render warns
 - `[FONT_REMOTE]` DM Sans / Space Grotesk: expected, see above.
 - ConfirmDialog `Busy` cell shows a dark outline on the dialog: all buttons are disabled so the dialog itself takes focus. True to the product.
 
 ## Re-sync risks
+- **Empty prop contracts.** In synth-entry mode (no `dist/`) every `<Name>.d.ts` is `[key: string]: unknown`: the extractor reads only built `.d.ts` files, and the `tsconfig` config key does not help (tried 2026-10-28). The design agent learns props only from the `.prompt.md` examples. Fix when worth it: have `buildCmd` also emit declarations for `components/ui` (`tsc --declaration --emitDeclarationOnly`) into a `dist/` with an entry, or hand-write `cfg.dtsPropsFor`; either re-keys every grade.
+- `conventions.md` says copy is "British"; the product is Australian English (`PRODUCT.md`). Owner edit pending.
 - Re-sync of 2026-10-16 (after the UI redesign): Button and StatusBadge counted as "unchanged" because grades follow preview sources, not styling, even though their look changed (dot badges, neutral disabled buttons). They were spot-checked with `--spot-check-components`; do the same after any token or primitive restyle.
 - `Icon` uses `cardMode: column` (the labelled grid is wider than a grid cell). Its preview lists icon names by hand: add new icons there when `components/ui/icon.tsx` grows.
 - A new `components/ui/*` file that imports `next/*` silently drops out of the bundle (the fork). If it should be synced, remove the `next/*` import or stub it; if not, null its exports in `componentSrcMap`.

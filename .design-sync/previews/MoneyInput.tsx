@@ -11,7 +11,7 @@ export const Default = () => (
 
 export const WithError = () => (
   <div style={col}>
-    <MoneyInput error="Enter a price of $0.50 or more." label="Member price" onChange={noop} value="0.2" />
+    <MoneyInput error="Paid prices start at $2.00, so your society keeps more than half after the Thunderstrux fee." label="Member price" onChange={noop} value="1.50" />
   </div>
 );
 

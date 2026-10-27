@@ -14,6 +14,6 @@ export const Default = () => (
 
 export const WithError = () => (
   <div style={col}>
-    <TextArea label="Event description" defaultValue="Hi" error="Description must be at least 20 characters." />
+    <TextArea label="Event description" defaultValue="" error="Add a description." />
   </div>
 );

@@ -4,7 +4,7 @@ const col = { display: 'grid', gap: 16, maxWidth: 380 } as const;
 
 export const Default = () => (
   <div style={col}>
-    <TextInput label="Email address" type="email" placeholder="you@university.ac.uk" />
+    <TextInput label="Email address" type="email" placeholder="you@uni.edu.au" />
     <TextInput label="Society name" defaultValue="Chess Society" hint="Shown on your public page." />
   </div>
 );

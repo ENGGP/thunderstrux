@@ -219,16 +219,6 @@ export function SocietyProfile({
         ))}
       </nav>
       <form onSubmit={save} className="grid gap-5">
-        {error && (
-          <Notice role="alert" tone="danger">
-            {error}
-          </Notice>
-        )}
-        {message && (
-          <Notice role="status" tone="success">
-            {message}
-          </Notice>
-        )}
         {conflict && (
           <Notice title="Someone else saved this profile" tone="warning">
             <p>
@@ -416,8 +406,8 @@ export function SocietyProfile({
           )}
         </fieldset>
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={busy || conflict}>
-            {busy ? "Saving…" : "Save profile"}
+          <Button busy={busy} busyLabel="Saving…" type="submit" disabled={conflict}>
+            Save profile
           </Button>
           {step < 3 && (
             <Button
@@ -429,10 +419,20 @@ export function SocietyProfile({
               Continue
             </Button>
           )}
-          <span className="text-sm text-ink-muted" role="status">
+          <span className="text-sm text-ink-muted">
             {dirty ? "Unsaved changes" : "All changes saved"}
           </span>
         </div>
+        {error && (
+          <Notice reveal role="alert" tone="danger">
+            {error}
+          </Notice>
+        )}
+        {message && (
+          <Notice reveal role="status" tone="success">
+            {message}
+          </Notice>
+        )}
       </form>
       <ConfirmDialog
         confirmLabel="Discard my edits"

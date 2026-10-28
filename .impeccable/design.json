@@ -21,7 +21,8 @@
       { "name": "pop-in", "value": "160ms", "purpose": "Menus open from their trigger; close instantly." },
       { "name": "dialog-in", "value": "200ms", "purpose": "Confirm dialog entry." },
       { "name": "sheet-in", "value": "240ms", "purpose": "Phone sheets slide up through the bottom edge." },
-      { "name": "rise-in", "value": "300ms, 50ms stagger capped at 250ms", "purpose": "Newly issued tickets, once." }
+      { "name": "rise-in", "value": "300ms, 50ms stagger capped at 250ms", "purpose": "Newly issued tickets, once." },
+      { "name": "reveal", "value": "200ms", "purpose": "A result opening (row 0fr to 1fr, fade) under the action that caused it." }
     ],
     "breakpoints": [
       { "name": "sm", "value": "640px" },

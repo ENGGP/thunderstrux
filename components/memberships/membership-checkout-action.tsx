@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
+import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { newKey, waitForAttempt, type CommerceCheckoutResponse } from "@/lib/client/checkout";
 import { formatMoney } from "@/lib/format";
@@ -30,6 +31,8 @@ export function MembershipCheckoutAction({
   const router = useRouter();
   const key = useRef<string | null>(null);
   const [state, setState] = useState<"idle" | "busy" | "confirming">("idle");
+  const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
+  useResetOnRestore(() => setState("idle"));
   const [refusal, setRefusal] = useState<{ title: string; body: string; link?: { href: string; label: string } } | null>(null);
 
   const finished = (orderId: string) => router.push(`/memberships/orders/${encodeURIComponent(orderId)}`);
@@ -85,10 +88,23 @@ export function MembershipCheckoutAction({
     return { title: "Checkout didn't start", body: `${getClientErrorMessage(failure, "Something went wrong.")} Nothing has been charged.` };
   }
 
+  const payButton = (
+    <Button busy={state !== "idle"} busyLabel={state === "confirming" || total === 0 ? "Confirming…" : "Opening Stripe…"} onClick={buy} size="lg" type="button">
+      {label}
+    </Button>
+  );
+
   return (
     <div className="grid gap-3">
+      <div className="grid" ref={actionRef}>{payButton}</div>
+      <PhoneActionBar
+        show={actionBelow}
+        summary={<span className="text-lg font-semibold tabular-nums text-ink">{total === 0 ? "Free" : formatMoney(total)}</span>}
+      >
+        {payButton}
+      </PhoneActionBar>
       {refusal ? (
-        <Notice role="alert" title={refusal.title} tone="warning">
+        <Notice reveal role="alert" title={refusal.title} tone="warning">
           <p className="mt-0.5">{refusal.body}</p>
           {refusal.link ? (
             <Link className={linkClass} href={refusal.link.href}>
@@ -98,13 +114,10 @@ export function MembershipCheckoutAction({
         </Notice>
       ) : null}
       {state === "confirming" ? (
-        <Notice role="status" title="Confirming checkout…">
+        <Notice reveal role="status" title="Confirming checkout…">
           <p className="mt-0.5">We&apos;re waiting for Stripe to answer. This moves on by itself; you won&apos;t be charged twice.</p>
         </Notice>
       ) : null}
-      <Button disabled={state !== "idle"} onClick={buy} size="lg" type="button">
-        {label}
-      </Button>
     </div>
   );
 }

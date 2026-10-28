@@ -163,7 +163,7 @@ components:
 
 A student culture magazine, a polished ticket window and an operations desk sharing one purple-first system. In the built product the magazine shows in the public pages: a deep-plum hero on the home page, Space Grotesk headings, the date rail on every event card, and a 3px brand rule under the current tab and section titles. The ticket window is quieter: white surfaces, hairline borders, one purple action. The desk is the organiser shell: a 244px deep-plum navigation column beside dense, neutral pages.
 
-The system is light-only, flat and hairline-led. Depth is a border, not a shadow; shadows appear only on hover for event cards and on floating panels. Motion is small and earned: menus and dialogs pop in, phone sheets slide, freshly issued tickets rise in once, and everything else stays still.
+The system is light-only, flat and hairline-led. Depth is a border, not a shadow; shadows appear only on hover for event cards and on floating panels. Motion is small and earned: menus and dialogs pop in, phone sheets slide, a result eases open under the action that caused it, freshly issued tickets rise in once, and everything else stays still.
 
 **Key Characteristics:**
 - Purple carries actions, current state and identity; status colours carry meaning and never decorate.
@@ -241,6 +241,7 @@ Moderately squared: 6px tags and badges, 9px controls and buttons, 14px cards an
 - **Hover / Focus / Press:** colour cross-fades over 150ms; press scales to 97%; focus is the blue 2px ring with a 2px offset.
 - **Secondary:** white with a Control Edge border and Midnight Plum label, lilac wash on hover. **Tertiary:** a brand text link that underlines on hover. **Danger:** crimson outline; solid crimson only on a dialog's confirm button.
 - **Disabled:** neutral wash, neutral border, muted text.
+- **Busy:** keeps its colour and its width; the label reads the busy label ("Saving…", "Opening Stripe…") in the same space, with no spinner. Every variant carries a border, transparent where none shows, so no state changes the button's size.
 
 ### Chips (pills and badges)
 - **Status badge:** 24px, 6px radius, wash + hairline + coloured dot + word, 12px semibold.
@@ -278,7 +279,8 @@ A 14px-radius toned panel: wash, hairline, 20px icon, toned title, ink body, opt
 - **Do** use the semantic utilities (`bg-brand`, `text-ink-soft`, `border-line`, `rounded-card`, `max-w-page`) for every colour, radius and width.
 - **Do** keep one purple primary action per area; use secondary or tertiary for the rest.
 - **Do** show every status through `StatusBadge` or `Notice`, with its word.
-- **Do** keep check-in, list rows, tab changes and payment results still; animate only menus, dialogs, phone sheets and newly issued tickets.
+- **Do** keep check-in, list rows, tab changes and payment results still; animate only menus, dialogs, phone sheets, a result easing in under its action, and newly issued tickets.
+- **Do** show a result directly under the button that caused it, never at the top of the form.
 
 ### Don't:
 - **Don't** use raw palette classes (`bg-neutral-900`, `text-purple-600`) or hex values in components.

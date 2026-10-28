@@ -13,6 +13,20 @@ export function tabClasses(active: boolean) {
   }`;
 }
 
+// The active tab is semibold, the rest medium. A hidden semibold copy (::after,
+// so it is in neither the text nor the name) reserves the wider width, so
+// changing tab never nudges the labels beside it.
+export function TabLabel({ children }: { children: string }) {
+  return (
+    <span
+      className="inline-flex flex-col after:invisible after:h-0 after:overflow-hidden after:font-semibold after:content-[attr(data-label)]"
+      data-label={children}
+    >
+      {children}
+    </span>
+  );
+}
+
 // Status filters inside a tab (artboard OrdersB2): pills, so they never read as a second row of tabs.
 export const pillBarClasses = "flex flex-wrap gap-2";
 export function pillClasses(active: boolean) {
@@ -37,7 +51,7 @@ export function LinkTabs({
     <nav aria-label={label} className={tabBarClasses}>
       {tabs.map((tab) => (
         <Link aria-current={tab.active ? "page" : undefined} className={tabClasses(tab.active)} href={tab.href} key={tab.href}>
-          {tab.label}
+          <TabLabel>{tab.label}</TabLabel>
           {tab.count ? <Count active={tab.active} value={tab.count} /> : null}
         </Link>
       ))}

@@ -336,33 +336,6 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     }
   }
 
-  if (isLoading) {
-    return (
-      <Card>
-        <p className="sr-only">Loading payment settings</p>
-        <div className="grid gap-4">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-20" />
-          <Skeleton className="h-28" />
-        </div>
-      </Card>
-    );
-  }
-
-  if (!organisation) {
-    return (
-      <Notice role="alert" tone="danger">
-        {message?.text ?? "Organisation not found."}
-      </Notice>
-    );
-  }
-
-  const content = stateContent(status);
-  const badge = readinessBadge(status);
-  const requirements = status?.currently_due ?? [];
-  const isConnected = Boolean(status?.connected);
-  const isPlatformNotReady = status?.state === "PLATFORM_NOT_READY";
-  const openObligations = status?.openObligations ?? 0;
   const exampleFee = calculatePlatformFee(2000);
   const feesCard = (
     <Card>
@@ -393,6 +366,37 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     </Card>
   );
 
+  // The Fees card doesn't depend on Stripe, so it shows at once and only the account card waits.
+  if (isLoading) {
+    return (
+      <>
+        <Card>
+          <p className="sr-only">Loading payment settings</p>
+          <div className="grid gap-4">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-20" />
+            <Skeleton className="h-28" />
+          </div>
+        </Card>
+        {feesCard}
+      </>
+    );
+  }
+
+  if (!organisation) {
+    return (
+      <Notice role="alert" tone="danger">
+        {message?.text ?? "Organisation not found."}
+      </Notice>
+    );
+  }
+
+  const content = stateContent(status);
+  const badge = readinessBadge(status);
+  const requirements = status?.currently_due ?? [];
+  const isConnected = Boolean(status?.connected);
+  const isPlatformNotReady = status?.state === "PLATFORM_NOT_READY";
+  const openObligations = status?.openObligations ?? 0;
   // A failed check must never read as "Not connected": the account may be fine.
   if (!status && statusFailed) {
     return (
@@ -402,7 +406,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
             <h2 className="text-xl font-semibold text-ink">Stripe account</h2>
             <Notice
               action={
-                <Button disabled={isCheckingStatus} onClick={() => void checkStatus(organisation, true)} type="button" variant="secondary">
+                <Button busy={isCheckingStatus} busyLabel="Checking…" onClick={() => void checkStatus(organisation, true)} type="button" variant="secondary">
                   Try again
                 </Button>
               }
@@ -436,16 +440,16 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           : "Not yet. Ticket money is held in Stripe until you add a bank account. Sales keep working meanwhile.",
       action:
         status?.state === "READY" && !status.payouts_enabled ? (
-          <Button disabled={isContinuingOnboarding} onClick={() => askForCode("continue")} size="sm" type="button">
-            {isContinuingOnboarding ? "Redirecting..." : payoutsPaused(status) ? "Update your details in Stripe" : "Add a bank account in Stripe"}
+          <Button busy={isContinuingOnboarding} busyLabel="Redirecting…" onClick={() => askForCode("continue")} size="sm" type="button">
+            {payoutsPaused(status) ? "Update your details in Stripe" : "Add a bank account in Stripe"}
           </Button>
         ) : null
     }
   ];
 
   const dashboardButton = (label: string, variant: "primary" | "secondary") => (
-    <Button disabled={isOpeningDashboard || !status?.dashboard_available} onClick={() => askForCode("dashboard")} type="button" variant={variant}>
-      {isOpeningDashboard ? "Opening Stripe..." : label}
+    <Button busy={isOpeningDashboard} busyLabel="Opening Stripe…" disabled={!status?.dashboard_available} onClick={() => askForCode("dashboard")} type="button" variant={variant}>
+      {label}
     </Button>
   );
   const waiting = status?.payouts?.held.total ?? 0;
@@ -472,12 +476,6 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
               {requirements.length > 0 ? (
                 <p className="mt-1">Stripe still needs: {requirements.map(formatRequirement).join("; ")}.</p>
               ) : null}
-            </Notice>
-          ) : null}
-
-          {message ? (
-            <Notice role={message.ok ? "status" : "alert"} tone={message.ok ? "success" : "danger"}>
-              {message.text}
             </Notice>
           ) : null}
 
@@ -514,40 +512,48 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
             ) : null}
 
             {isPlatformNotReady ? (
-              <Button disabled={isStartingOnboarding} onClick={() => askForCode("onboard")} type="button" variant="secondary">
-                {isStartingOnboarding ? "Retrying..." : "Retry after completion"}
+              <Button busy={isStartingOnboarding} busyLabel="Retrying…" onClick={() => askForCode("onboard")} type="button" variant="secondary">
+                Retry after completion
               </Button>
             ) : null}
 
             {!isConnected && !isPlatformNotReady ? (
-              <Button disabled={isStartingOnboarding} onClick={() => askForCode("onboard")} type="button">
-                {isStartingOnboarding ? "Redirecting..." : "Connect Stripe"}
+              <Button busy={isStartingOnboarding} busyLabel="Redirecting…" onClick={() => askForCode("onboard")} type="button">
+                Connect Stripe
               </Button>
             ) : null}
 
             {status?.state === "CONNECTED_INCOMPLETE" || status?.state === "RESTRICTED" || (status?.state === "READY" && requirements.length > 0) ? (
-              <Button disabled={isContinuingOnboarding} onClick={() => askForCode("continue")} type="button">
-                {isContinuingOnboarding ? "Redirecting..." : status.state === "RESTRICTED" ? "Fix in Stripe" : status.state === "READY" ? "Update details in Stripe" : "Continue Stripe setup"}
+              <Button busy={isContinuingOnboarding} busyLabel="Redirecting…" onClick={() => askForCode("continue")} type="button">
+                {status.state === "RESTRICTED" ? "Fix in Stripe" : status.state === "READY" ? "Update details in Stripe" : "Continue Stripe setup"}
               </Button>
             ) : null}
 
             {isConnected ? (
               <Button
-                disabled={isCheckingStatus}
+                busy={isCheckingStatus}
+                busyLabel="Refreshing…"
                 onClick={() => organisation && void checkStatus(organisation, true)}
                 type="button"
                 variant="secondary"
               >
-                {isCheckingStatus ? "Refreshing..." : status?.state === "ERROR" ? "Try again" : "Refresh status"}
+                {status?.state === "ERROR" ? "Try again" : "Refresh status"}
               </Button>
             ) : null}
 
             {status?.dashboard_available ? (
-              <Button disabled={isOpeningDashboard} onClick={() => askForCode("dashboard")} type="button" variant="secondary">
-                {isOpeningDashboard ? "Opening Stripe..." : "Open Stripe dashboard"}
+              <Button busy={isOpeningDashboard} busyLabel="Opening Stripe…" onClick={() => askForCode("dashboard")} type="button" variant="secondary">
+                Open Stripe dashboard
               </Button>
             ) : null}
           </div>
+
+          {/* Under the buttons that produce it, so a refresh never pushes the account rows down. */}
+          {message ? (
+            <Notice reveal role={message.ok ? "status" : "alert"} tone={message.ok ? "success" : "danger"}>
+              {message.text}
+            </Notice>
+          ) : null}
         </div>
       </Card>
 

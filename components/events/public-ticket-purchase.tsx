@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -80,15 +81,8 @@ export function PublicTicketPurchase({
   const [quantity, setQuantity] = useState(1);
   const [leaving, setLeaving] = useState(false);
   // The phone bar shows only while the box's own button is still below the screen.
-  const actionRef = useRef<HTMLDivElement>(null);
-  const [actionBelow, setActionBelow] = useState(false);
-  useEffect(() => {
-    const target = actionRef.current;
-    if (!target || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(([entry]) => setActionBelow(!entry.isIntersecting && entry.boundingClientRect.top > 0));
-    observer.observe(target);
-    return () => observer.disconnect();
-  });
+  const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
+  useResetOnRestore(() => setLeaving(false));
   const selected = ticketTypes.find((ticketType) => ticketType.id === selectedId && !isUnavailable(ticketType));
   const allSoldOut = ticketTypes.length > 0 && ticketTypes.every(isSoldOut);
   const paymentsUnavailable = ticketTypes.some((ticketType) => ticketType.unavailable === "payments_unavailable");
@@ -152,7 +146,7 @@ export function PublicTicketPurchase({
     );
   }
 
-  const validQuantity = Boolean(selected) && quantity >= 1 && quantity <= maxQuantity;
+  const validQuantity = Boolean(selected) && Number.isInteger(quantity) && quantity >= 1 && quantity <= maxQuantity;
   const go = (href: string) => {
     if (!checkoutHref) return;
     setLeaving(true);
@@ -179,7 +173,9 @@ export function PublicTicketPurchase({
       <>
         {/* A guest confirms their email in checkout; signing in comes straight back to the same checkout. */}
         <Button
-          disabled={leaving || !validQuantity}
+          busy={leaving}
+          busyLabel="Opening…"
+          disabled={!validQuantity}
           onClick={() => {
             if (!checkoutHref) return;
             setLeaving(true);
@@ -217,7 +213,9 @@ export function PublicTicketPurchase({
     ) : (
       <>
         <Button
-          disabled={leaving || !validQuantity}
+          busy={leaving}
+          busyLabel="Opening…"
+          disabled={!validQuantity}
           onClick={() => {
             if (!checkoutHref) return;
             setLeaving(true);
@@ -312,7 +310,8 @@ export function PublicTicketPurchase({
           <div className="w-40">
             <TextInput
               disabled={leaving}
-              hint={`Up to ${maxTicketsPerOrder} per order`}
+              error={validQuantity ? undefined : `Choose 1 to ${Math.max(maxQuantity, 1)}.`}
+              hint={`Up to ${Math.max(Math.min(maxQuantity, maxTicketsPerOrder), 1)} per order`}
               inputMode="numeric"
               label="Quantity"
               max={Math.max(maxQuantity, 1)}
@@ -322,30 +321,28 @@ export function PublicTicketPurchase({
               value={quantity}
             />
           </div>
-          {validQuantity ? (
-            <p className="flex justify-between gap-3 border-t border-line pt-4 text-sm text-ink-soft">
-              <span>{quantity} × {selected.name}</span>
-              <span className="font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>
-            </p>
-          ) : null}
+          <p className="flex justify-between gap-3 border-t border-line pt-4 text-sm text-ink-soft">
+            <span>{validQuantity ? `${quantity} × ${selected.name}` : selected.name}</span>
+            <span className="font-semibold tabular-nums text-ink">{validQuantity ? formatPrice(selected.price * quantity) : "–"}</span>
+          </p>
         </>
       ) : null}
 
       {allSoldOut || !selected ? null : <div className="grid gap-4" ref={actionRef}>{action}</div>}
       {selected && validQuantity && (viewer === "member" || viewer === "anonymous") ? (
-        // Stays mounted and slides, so a scroll reversal mid-slide retargets instead of restarting.
-        <div
-          className={`fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-float transition-[translate,visibility] duration-240 ease-drawer lg:hidden ${actionBelow ? "visible translate-y-0" : "invisible translate-y-full"}`}
-          inert={!actionBelow}
+        <PhoneActionBar
+          show={actionBelow}
+          summary={
+            <>
+              <span className="truncate text-caption text-ink-soft">{quantity} × {selected.name}</span>
+              <span className="truncate text-lg font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>
+            </>
+          }
         >
-          <p className="grid min-w-0 flex-1">
-            <span className="truncate text-caption text-ink-soft">{quantity} × {selected.name}</span>
-            <span className="text-lg font-semibold tabular-nums text-ink">{formatPrice(selected.price * quantity)}</span>
-          </p>
-          <Button disabled={leaving} onClick={() => go(primaryHref)} size="lg" type="button">
+          <Button busy={leaving} busyLabel="Opening…" onClick={() => go(primaryHref)} size="lg" type="button">
             {primaryLabel}
           </Button>
-        </div>
+        </PhoneActionBar>
       ) : null}
     </Box>
   );

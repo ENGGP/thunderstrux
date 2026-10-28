@@ -22,6 +22,19 @@ test('phone buy bar shows only while the ticket box button is below the screen',
   await expect(buy).toHaveCount(1);
 });
 
+// The checkout's Pay sits below its summary cards on a phone, so a bar repeats it until the button is in view.
+test('phone pay bar shows only while the checkout Pay button is below the screen', async ({ page, data }) => {
+  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: `acct_e2e_mobile_${data.organisation.id}`, stripeChargesEnabled: true } });
+  await page.setViewportSize({ width: 412, height: 420 });
+  await login(page, data.member.email, `/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=1`);
+  const pay = page.getByRole('button', { name: /^(Pay A\$|Confirm free registration)/ });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(pay).toHaveCount(2);
+  await pay.first().scrollIntoViewIfNeeded();
+  await expect(pay).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test('mobile organiser sees events and an event workspace without sideways scrolling', async ({ page, data }) => {
   await login(page, data.owner.email, `/dashboard/events/${data.event.id}`);
   await expect(page.getByRole('navigation', { name: 'Event sections' })).toBeVisible();

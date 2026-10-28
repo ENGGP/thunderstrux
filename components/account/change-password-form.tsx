@@ -19,12 +19,12 @@ export function ChangePasswordForm({ mfaRequired }: { mfaRequired: boolean }) {
     } catch (failure) { setError(getClientErrorMessage(failure, "Could not change password.")); setBusy(false); }
   }
   return <form className="grid gap-3" onSubmit={submit}>
-    {error && <Notice role="alert" tone="danger">{error}</Notice>}
     {mfaRequired && <Notice action={<Link className="text-sm font-semibold text-brand underline underline-offset-4" href="/mfa?callbackUrl=/account/settings">Verify authenticator</Link>}>Verify your enrolled authenticator first.</Notice>}
     <TextInput label="Current password" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} />
     <TextInput label="New password" type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={event => setNewPassword(event.target.value)} />
     <TextInput label="Confirm new password" type="password" autoComplete="new-password" minLength={8} required value={confirmation} onChange={event => setConfirmation(event.target.value)} />
     <p className="text-sm text-ink-muted">At least 8 characters. Changing it signs you out on every device.</p>
-    <div><Button type="submit" variant="secondary" disabled={busy || mfaRequired}>{busy ? "Changing password..." : "Change password"}</Button></div>
+    <div><Button busy={busy} busyLabel="Changing password…" type="submit" variant="secondary" disabled={mfaRequired}>Change password</Button></div>
+    {error && <Notice reveal role="alert" tone="danger">{error}</Notice>}
   </form>;
 }

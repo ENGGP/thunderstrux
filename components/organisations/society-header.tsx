@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
+import { TabLabel, tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
 import { formatDate } from "@/lib/format";
 
 // The society's cover, logo, name, the viewer's Joined and membership badges,
@@ -23,17 +23,17 @@ export function SocietyHeader({
   memberUntil: Date | null;
 }) {
   const base = `/societies/${organisation.slug}`;
-  const cover = current === "overview";
   return (
     <>
       <header>
-        {!cover ? null : organisation.coverAssetId ? (
-          <img alt="" className="mt-6 aspect-video w-full rounded-feature object-cover md:aspect-[3/1]" src={`/api/public/assets/${organisation.coverAssetId}`} />
+        {/* The same header on every tab, so the tabs never move when you switch. */}
+        {organisation.coverAssetId ? (
+          <img alt="" className="mt-6 aspect-[3/1] w-full rounded-feature object-cover md:aspect-[5/1]" src={`/api/public/assets/${organisation.coverAssetId}`} />
         ) : (
           // A quiet branded pattern, not an empty box that reads as a broken image.
-          <div aria-hidden="true" className="mt-6 h-32 rounded-feature bg-brand-tint bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)] md:h-48" />
+          <div aria-hidden="true" className="mt-6 h-24 rounded-feature bg-brand-tint bg-[repeating-linear-gradient(135deg,transparent_0_15px,color-mix(in_srgb,var(--ts-brand)_9%,transparent)_15px_16px)] md:h-32" />
         )}
-        <div className={`flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 ${cover ? "-mt-9 px-2 md:px-6" : "mt-8"}`}>
+        <div className={`flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4 -mt-9 px-2 md:px-6`}>
           {organisation.logoAssetId ? (
             <img
               alt={`${organisation.name} logo`}
@@ -47,32 +47,31 @@ export function SocietyHeader({
               {organisation.name.trim().charAt(0).toUpperCase()}
             </div>
           )}
-          <div className={`min-w-0 flex-1 ${cover ? "sm:pt-10" : ""}`}>
+          <div className="min-w-0 flex-1 sm:pt-10">
             <h1 className="font-display text-3xl font-semibold text-ink [overflow-wrap:anywhere] md:text-5xl">{organisation.name}</h1>
-            {joined || memberUntil ? (
-              <div className="mt-2.5 flex flex-wrap gap-2">
-                {joined ? <StatusBadge status="joined" /> : null}
-                {memberUntil ? (
-                  <StatusBadge label={`Member until ${formatDate(new Date(memberUntil.getTime() - 1), organisation.timeZone)}`} status="active" />
-                ) : null}
-              </div>
-            ) : null}
+            {/* Kept even when empty, so joining adds a badge without moving the page. */}
+            <div className="mt-2.5 flex min-h-6 flex-wrap gap-2">
+              {joined ? <StatusBadge status="joined" /> : null}
+              {memberUntil ? (
+                <StatusBadge label={`Member until ${formatDate(new Date(memberUntil.getTime() - 1), organisation.timeZone)}`} status="active" />
+              ) : null}
+            </div>
           </div>
         </div>
       </header>
 
       <nav aria-label="Society sections" className={`mt-8 ${tabBarClasses}`}>
         <Link aria-current={current === "overview" ? "page" : undefined} className={tabClasses(current === "overview")} href={base}>
-          Overview
+          <TabLabel>Overview</TabLabel>
         </Link>
         {hasMemberships || current === "memberships" ? (
           <Link aria-current={current === "memberships" ? "page" : undefined} className={tabClasses(current === "memberships")} href={`${base}/memberships`}>
-            Memberships
+            <TabLabel>Memberships</TabLabel>
           </Link>
         ) : null}
         {hasMerchandise || current === "merchandise" ? (
           <Link aria-current={current === "merchandise" ? "page" : undefined} className={tabClasses(current === "merchandise")} href={`${base}/merchandise`}>
-            Merchandise
+            <TabLabel>Merchandise</TabLabel>
           </Link>
         ) : null}
       </nav>

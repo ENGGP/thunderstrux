@@ -47,33 +47,35 @@ export function CredentialsLoginForm({
 
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
-      {error ? (
-        <Notice role="alert" tone="danger">
-          {error}
-        </Notice>
-      ) : null}
-      {successMessage ? (
-        <Notice role="status" tone="success">
-          {successMessage}
-        </Notice>
-      ) : null}
-
       <TextInput
+        autoComplete="username"
         label="Email"
         onChange={(event) => setEmail(event.target.value)}
         type="email"
         value={email}
       />
       <TextInput
+        autoComplete="current-password"
         label="Password"
         onChange={(event) => setPassword(event.target.value)}
         type="password"
         value={password}
       />
 
-      <Button className="w-full" disabled={isSubmitting} size="lg" type="submit">
-        {isSubmitting ? "Signing in..." : "Sign in"}
+      <Button busy={isSubmitting} busyLabel="Signing in…" className="w-full" size="lg" type="submit">
+        Sign in
       </Button>
+      {error ? (
+        <Notice reveal role="alert" tone="danger">
+          {error}
+        </Notice>
+      ) : null}
+      {successMessage ? (
+        <Notice reveal role="status" tone="success">
+          {successMessage}
+        </Notice>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link className="text-sm font-medium text-brand underline" href={`/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}`}>Forgot password?</Link>
         <Link

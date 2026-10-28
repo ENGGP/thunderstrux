@@ -173,7 +173,7 @@ export default async function OrganiserEventPage({
               fallback={
                 <div className="mt-4">
                   <p className="sr-only">Loading sales over time</p>
-                  <Skeleton className="h-48" />
+                  <Skeleton className="h-64" />
                 </div>
               }
             >

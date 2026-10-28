@@ -59,7 +59,7 @@ export function StaffHandover({ orgSlug, orgName, targets }: { orgSlug: string; 
       </div>
       <p className="text-sm text-ink-soft">If you have an authenticator, verify this sign-in under Account settings, Password and security, before submitting.</p>
       <div>
-        <Button type="submit" variant="danger" disabled={busy || !target || !currentPassword || acknowledgement !== handoverAcknowledgement}>{busy ? "Handing over..." : "Hand over ownership"}</Button>
+        <Button busy={busy} busyLabel="Handing over…" type="submit" variant="danger" disabled={!target || !currentPassword || acknowledgement !== handoverAcknowledgement}>Hand over ownership</Button>
       </div>
     </form>
   );

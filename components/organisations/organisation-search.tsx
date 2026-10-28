@@ -128,18 +128,18 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
             value={query}
           />
         </div>
-        <Button disabled={isLoading || joiningSlug !== null} type="submit">
-          {isLoading ? "Searching..." : "Search"}
+        <Button busy={isLoading} busyLabel="Searching…" disabled={joiningSlug !== null} type="submit">
+          Search
         </Button>
       </form>
 
       {error ? (
-        <Notice role="alert" tone="danger">
+        <Notice reveal role="alert" tone="danger">
           {error}
         </Notice>
       ) : null}
       {message ? (
-        <Notice role="status" tone="success">
+        <Notice reveal role="status" tone="success">
           {message}
         </Notice>
       ) : null}
@@ -171,16 +171,16 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
                 </p>
               </div>
               <Button
-                disabled={organisation.joined || joiningSlug !== null}
-                onClick={() => joinOrganisation(organisation)}
+                busy={joiningSlug === organisation.slug}
+                busyLabel="Joining…"
+                disabled={organisation.joined}
+                onClick={() => {
+                  if (joiningSlug === null) void joinOrganisation(organisation);
+                }}
                 type="button"
                 variant={organisation.joined ? "secondary" : "primary"}
               >
-                {organisation.joined
-                  ? "Joined"
-                  : joiningSlug === organisation.slug
-                    ? "Joining..."
-                    : "Join society"}
+                {organisation.joined ? "Joined" : "Join society"}
               </Button>
             </article>
           ))}

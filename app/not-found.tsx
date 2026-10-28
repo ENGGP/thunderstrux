@@ -14,7 +14,7 @@ export default function NotFound() {
         The link may be out of date, or you may not have access to it.
       </p>
       <div className="flex flex-wrap gap-3">
-        <Link className={buttonClasses()} href="/">
+        <Link className={buttonClasses()} href="/events">
           Browse events
         </Link>
         <Link className={buttonClasses({ variant: "secondary" })} href="/societies">

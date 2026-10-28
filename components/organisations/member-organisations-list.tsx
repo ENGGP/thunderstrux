@@ -62,12 +62,12 @@ export function MemberOrganisationsList({
   return (
     <div className="mt-5 grid gap-4">
       {error ? (
-        <Notice role="alert" tone="danger">
+        <Notice reveal role="alert" tone="danger">
           {error}
         </Notice>
       ) : null}
       {message ? (
-        <Notice role="status" tone="success">
+        <Notice reveal role="status" tone="success">
           {message}
         </Notice>
       ) : null}

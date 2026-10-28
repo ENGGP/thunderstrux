@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { signOutTo } from "@/lib/client/sign-out";
 import { buttonClasses } from "@/components/ui/button";
+import { TabLabel } from "@/components/ui/link-tabs";
 
 const exploreLinks = [
   { href: "/events", label: "Explore events" },
@@ -66,7 +67,7 @@ export default function Navbar() {
               href={link.href}
               key={link.href}
             >
-              {link.label}
+              <TabLabel>{link.label}</TabLabel>
             </Link>
           ))}
           <span className="ml-auto flex h-full items-center gap-5">
@@ -77,7 +78,7 @@ export default function Navbar() {
                 href={link.href}
                 key={link.href}
               >
-                {link.label}
+                <TabLabel>{link.label}</TabLabel>
               </Link>
             ))}
             {user ? (

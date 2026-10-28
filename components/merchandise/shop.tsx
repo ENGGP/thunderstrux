@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatPrice } from "@/lib/format";
 import {
@@ -104,9 +105,10 @@ export function ProductPicker({ society, societyName, product }: { society: stri
     }
   }
 
+  // Selection shows in the border, wash and colour; one font weight keeps each pill its width, so the row never reflows.
   const pill = (on: boolean, off: boolean) =>
     `flex min-h-11 cursor-pointer items-center gap-2 rounded-control border px-3.5 text-ui ${
-      off ? "cursor-not-allowed border-dashed border-line-strong text-ink-muted" : on ? "border-2 border-brand bg-brand-tint px-[13px] font-semibold text-brand-ink" : "border-line-strong text-ink"
+      off ? "cursor-not-allowed border-dashed border-line-strong text-ink-muted" : on ? "border-2 border-brand bg-brand-tint px-[13px] text-brand-ink" : "border-line-strong text-ink"
     }`;
   const images = product.imageAssetIds;
 
@@ -116,7 +118,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
         {images.length ? (
           <img
             alt={`${product.name}, photo ${photo + 1} of ${images.length}`}
-            className="aspect-[4/5] w-full rounded-card border border-line bg-surface-subtle object-contain sm:flex-1"
+            className="aspect-square w-full rounded-card border border-line bg-surface-subtle object-contain sm:flex-1 sm:aspect-[4/5]"
             src={`/api/public/assets/${images[photo]}`}
           />
         ) : null}
@@ -221,7 +223,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
           {selected && selected.available > 0 ? `Add to merch basket · ${formatPrice(selected.priceAmount * quantity)}` : "Sold out"}
         </Button>
         {message ? (
-          <Notice role="status" tone={message.tone}>
+          <Notice reveal role="status" tone={message.tone}>
             <p>
               {message.text}{" "}
               {message.tone === "success" ? (
@@ -267,16 +269,20 @@ export function BasketView({ society }: { society: string }) {
   const [lowered, setLowered] = useState<Set<string>>(new Set());
   const lines = basket && basket.society === society ? basket.lines : null;
   const key = JSON.stringify(lines);
+  // Taps re-quote quickly; only the newest answer may update the page.
+  const latestQuote = useRef(0);
 
   const requote = useCallback(async () => {
     const lines: BasketLine[] | null = JSON.parse(key);
     if (!lines?.length) return setQuote(null);
+    const request = ++latestQuote.current;
     try {
       const response = await fetchJson<{ quote: Quote }>("/api/merchandise/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ society, items: lines })
       });
+      if (request !== latestQuote.current) return;
       const next = response.quote;
       // Lines no longer sold, or past the limit, leave the basket; lowered quantities stick.
       const gone = new Set(next.problems.filter((item) => item.problem === "unavailable" || item.problem === "too_many_lines").map((item) => item.variantId));
@@ -290,6 +296,7 @@ export function BasketView({ society }: { society: string }) {
       setQuote(next);
       setError("");
     } catch (failure) {
+      if (request !== latestQuote.current) return;
       setError(failure instanceof ClientApiError && failure.status === 404 ? "This society no longer sells merchandise here." : getClientErrorMessage(failure, "We couldn't check your basket. Try again."));
     }
   }, [key, society]);
@@ -303,7 +310,14 @@ export function BasketView({ society }: { society: string }) {
     writeBasket({ society, lines: quantity > 0 ? lines.map((line) => (line.variantId === variantId ? { ...line, quantity } : line)) : lines.filter((line) => line.variantId !== variantId) });
   }
 
-  if (!ready) return <p className="text-ink-soft" role="status">Checking your basket…</p>;
+  const checking = (label: string) => (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,8fr)_minmax(0,4fr)] lg:items-start">
+      <p className="sr-only" role="status">{label}</p>
+      <Skeleton className="h-36 rounded-card" />
+      <Skeleton className="h-[30rem] rounded-card" />
+    </div>
+  );
+  if (!ready) return checking("Checking your basket…");
   if (!lines?.length) {
     return (
       <section className="grid justify-items-start gap-3 rounded-card border border-line bg-surface p-6">
@@ -327,7 +341,7 @@ export function BasketView({ society }: { society: string }) {
       </Notice>
     );
   }
-  if (!quote) return <p className="text-ink-soft" role="status">Checking prices and stock…</p>;
+  if (!quote) return checking("Checking prices and stock…");
 
   const problems = new Map<string, keyof typeof problemText>(quote.problems.map((item) => [item.variantId, item.problem]));
   for (const id of lowered) if (!problems.has(id)) problems.set(id, "reduced");
@@ -346,6 +360,8 @@ export function BasketView({ society }: { society: string }) {
             {quote.lines.map((line) => {
               const problem = problems.get(line.variantId);
               const label = `${line.name}${line.option ? `, ${line.option}` : ""}`;
+              // The stepper follows the basket on this device at once; prices follow when the quote returns.
+              const count = lines.find((item) => item.variantId === line.variantId)?.quantity ?? line.quantity;
               return (
                 <li className="grid grid-cols-[64px_minmax(0,1fr)] gap-4 border-t border-line py-5 first:border-t-0 sm:grid-cols-[88px_minmax(0,1fr)_auto]" key={line.variantId}>
                   {line.coverAssetId ? (
@@ -369,15 +385,15 @@ export function BasketView({ society }: { society: string }) {
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       {problem === "sold_out" ? null : (
                         <div aria-label={`Quantity of ${label}`} className="flex items-center rounded-control border border-line-strong bg-surface" role="group">
-                          <button aria-label="One fewer" className="h-10 w-11 text-lg font-semibold text-ink disabled:text-ink-muted" disabled={line.quantity <= 1} onClick={() => setQuantity(line.variantId, line.quantity - 1)} type="button">
+                          <button aria-label="One fewer" className="h-10 w-11 text-lg font-semibold text-ink disabled:text-ink-muted" disabled={count <= 1} onClick={() => setQuantity(line.variantId, count - 1)} type="button">
                             −
                           </button>
-                          <span className="min-w-8 text-center font-semibold tabular-nums">{line.quantity}</span>
+                          <span className="min-w-8 text-center font-semibold tabular-nums">{count}</span>
                           <button
                             aria-label="One more"
                             className="h-10 w-11 text-lg font-semibold text-ink disabled:text-ink-muted"
-                            disabled={line.quantity >= Math.min(MAX_LINE_QUANTITY, line.available)}
-                            onClick={() => setQuantity(line.variantId, line.quantity + 1)}
+                            disabled={count >= Math.min(MAX_LINE_QUANTITY, line.available)}
+                            onClick={() => setQuantity(line.variantId, count + 1)}
                             type="button"
                           >
                             +

@@ -9,7 +9,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { CardGridSkeleton } from "@/components/ui/skeleton";
 import { maxSearchLength, parseExploreFilters, whenOptions, type ExploreFilters, type ExploreRange } from "@/lib/events/explore-filters";
 import { getExploreSocieties, getPublishedEvents } from "@/lib/events/public-events";
 import { formatDate } from "@/lib/format";
@@ -52,7 +52,7 @@ export default async function ExploreEventsPage({ searchParams }: { searchParams
         </FilterBar>
 
         {valid ? (
-          <Suspense fallback={<ListSkeleton label="Loading events" rows={4} />} key={JSON.stringify(params)}>
+          <Suspense fallback={<CardGridSkeleton label="Loading events" />} key={JSON.stringify(params)}>
             <ExploreResults filters={filters} params={params} range={range} societyName={societies.find((s) => s.slug === filters.society)?.name} />
           </Suspense>
         ) : (
@@ -124,7 +124,7 @@ async function ExploreResults({
   return (
     <section aria-label="Events" className="grid gap-6">
       {invalidPage ? <Notice tone="warning">That page link has expired, so this is the first page.</Notice> : null}
-      <p className="text-ink-soft">{describe(filters, societyName)}</p>
+      <h2 className="font-sans text-base font-normal tracking-normal text-ink-soft">{describe(filters, societyName)}</h2>
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {result.events.map((event) => (
           <EventCard

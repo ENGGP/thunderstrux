@@ -97,7 +97,7 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
           <form className="grid gap-3" onSubmit={begin}>
             <TextInput autoComplete="current-password" hint="Setting up an authenticator changes how you sign in, so we check it's you." label="Your password" maxLength={200} onChange={(event) => setPassword(event.target.value)} required type="password" value={password} />
             <div>
-              <Button disabled={busy} type="submit">
+              <Button busy={busy} busyLabel="Checking…" type="submit">
                 Set up authenticator
               </Button>
             </div>
@@ -133,7 +133,7 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
             value={code}
           />
           <div>
-            <Button disabled={busy} size="lg" type="submit">
+            <Button busy={busy} busyLabel="Checking…" size="lg" type="submit">
               {setup ? "Confirm setup" : "Verify and continue"}
             </Button>
           </div>

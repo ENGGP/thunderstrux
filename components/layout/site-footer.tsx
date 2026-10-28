@@ -13,7 +13,7 @@ export function SiteFooter() {
           Events and tools for student societies.
         </p>
         <nav aria-label="Footer" className="flex flex-wrap gap-5">
-          <Link className="hover:text-brand" href="/">
+          <Link className="hover:text-brand" href="/events">
             Events
           </Link>
           <Link className="hover:text-brand" href="/societies">

@@ -187,12 +187,14 @@ export function EventActions({
         {event.status === "draft" ? (
           <Button
             aria-describedby={event.publishBlocker ? blockerId : undefined}
-            disabled={busy || Boolean(event.publishBlocker)}
+            busy={Boolean(busy)}
+            busyLabel="Publishing…"
+            disabled={Boolean(event.publishBlocker)}
             onClick={() => run("publish")}
             size={size}
             type="button"
           >
-            {busy ? "Publishing..." : "Publish"}
+            Publish
           </Button>
         ) : null}
         <Link

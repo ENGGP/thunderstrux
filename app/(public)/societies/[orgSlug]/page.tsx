@@ -53,22 +53,6 @@ export default async function OrganisationDetailsPage({
             <p className="max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
               {organisation.description || "This society hasn't added a description yet."}
             </p>
-            {organisation.refundPolicy && (
-              <div>
-                <h3 className="font-semibold text-ink">Refund policy</h3>
-                <p className="mt-1 max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
-                  {organisation.refundPolicy}
-                </p>
-              </div>
-            )}
-            {organisation.pickupPolicy && (
-              <div>
-                <h3 className="font-semibold text-ink">Pickup policy</h3>
-                <p className="mt-1 max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
-                  {organisation.pickupPolicy}
-                </p>
-              </div>
-            )}
           </section>
 
           <SocietyJoinCard joinState={joinState} organisation={organisation} />
@@ -142,6 +126,29 @@ export default async function OrganisationDetailsPage({
                 </li>
               ))}
             </ul>
+          </section>
+        ) : null}
+
+        {/* Reference reading, so it comes after what's on: on a phone, events used to start a screen and a half down. */}
+        {organisation.refundPolicy || organisation.pickupPolicy ? (
+          <section aria-labelledby="policies-heading" className="mt-12 grid gap-5" id="policies">
+            <h2 className={heading} id="policies-heading">Policies</h2>
+            {organisation.refundPolicy && (
+              <div>
+                <h3 className="font-semibold text-ink">Refund policy</h3>
+                <p className="mt-1 max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
+                  {organisation.refundPolicy}
+                </p>
+              </div>
+            )}
+            {organisation.pickupPolicy && (
+              <div>
+                <h3 className="font-semibold text-ink">Pickup policy</h3>
+                <p className="mt-1 max-w-[70ch] whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">
+                  {organisation.pickupPolicy}
+                </p>
+              </div>
+            )}
           </section>
         ) : null}
       </div>

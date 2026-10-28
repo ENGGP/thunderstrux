@@ -10,6 +10,8 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
+import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { newKey, waitForAttempt, type CommerceCheckoutResponse } from "@/lib/client/checkout";
 import { formatMoney, formatPrice, payLabel } from "@/lib/format";
@@ -47,6 +49,8 @@ export function MerchandiseCheckout({
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState("");
   const [state, setState] = useState<"idle" | "busy" | "confirming">("idle");
+  const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
+  useResetOnRestore(() => setState("idle"));
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const key = useRef<string | null>(null);
   const lines = basket && basket.society === society.slug ? basket.lines : null;
@@ -128,7 +132,12 @@ export function MerchandiseCheckout({
   );
 
   if (!ready || (lines?.length && !quote && !error)) {
-    return shell("Review your order", ["Review", "Pay with Stripe", "Pickup"], 0, <p className="text-ink-soft" role="status">Checking prices and stock…</p>);
+    return shell("Review your order", ["Review", "Pay with Stripe", "Pickup"], 0, <div className="grid gap-4">
+      <p className="sr-only" role="status">Checking prices and stock…</p>
+      <Skeleton className="h-40 rounded-card" />
+      <Skeleton className="h-28 rounded-card" />
+      <Skeleton className="h-28 rounded-card" />
+    </div>);
   }
   if (!lines?.length) {
     return shell(
@@ -219,8 +228,18 @@ export function MerchandiseCheckout({
           </Notice>
         ) : (
           <>
+            <div className="grid" ref={actionRef}>
+              <Button busy={state !== "idle"} busyLabel={state === "confirming" ? "Confirming…" : free ? "Confirming…" : "Opening Stripe…"} onClick={() => void pay(quote)} size="lg" type="button">
+                {label}
+              </Button>
+            </div>
+            <PhoneActionBar show={actionBelow} summary={<span className="text-lg font-semibold tabular-nums text-ink">{free ? "Free" : formatMoney(quote.total)}</span>}>
+              <Button busy={state !== "idle"} busyLabel={state === "confirming" ? "Confirming…" : free ? "Confirming…" : "Opening Stripe…"} onClick={() => void pay(quote)} size="lg" type="button">
+                {label}
+              </Button>
+            </PhoneActionBar>
             {refusal ? (
-              <Notice role="alert" title={refusal.title} tone="warning">
+              <Notice reveal role="alert" title={refusal.title} tone="warning">
                 <p className="mt-0.5">{refusal.body}</p>
                 {refusal.toBasket ? (
                   <Link className={linkClass} href={basketHref}>
@@ -235,13 +254,10 @@ export function MerchandiseCheckout({
               </Notice>
             ) : null}
             {state === "confirming" ? (
-              <Notice role="status" title="Confirming checkout…">
+              <Notice reveal role="status" title="Confirming checkout…">
                 <p className="mt-0.5">We&apos;re waiting for Stripe to answer. This moves on by itself; you won&apos;t be charged twice.</p>
               </Notice>
             ) : null}
-            <Button disabled={state !== "idle"} onClick={() => void pay(quote)} size="lg" type="button">
-              {label}
-            </Button>
           </>
         )}
         {free ? (

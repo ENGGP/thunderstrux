@@ -63,17 +63,6 @@ export function SignupForm({
 
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
-      {error ? (
-        <Notice role="alert" tone="danger">
-          {error}
-        </Notice>
-      ) : null}
-      {successMessage ? (
-        <Notice role="status" tone="success">
-          {successMessage}
-        </Notice>
-      ) : null}
-
       <fieldset className="grid gap-2">
         <legend className="mb-2 text-sm font-semibold text-ink">This account is for</legend>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -149,9 +138,20 @@ export function SignupForm({
 
 
 
-      <Button className="w-full" disabled={isSubmitting} size="lg" type="submit">
-        {isSubmitting ? "Creating account..." : "Create account"}
+      <Button busy={isSubmitting} busyLabel="Creating account…" className="w-full" size="lg" type="submit">
+        Create account
       </Button>
+      {error ? (
+        <Notice reveal role="alert" tone="danger">
+          {error}
+        </Notice>
+      ) : null}
+      {successMessage ? (
+        <Notice reveal role="status" tone="success">
+          {successMessage}
+        </Notice>
+      ) : null}
+
       <p className="text-sm text-ink-soft">
         Already have an account?{" "}
         <Link className="font-medium text-brand underline" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>

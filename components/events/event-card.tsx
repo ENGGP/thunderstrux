@@ -34,7 +34,7 @@ export function EventCard({
   society
 }: EventCardProps) {
   return (
-    <article className="relative flex flex-wrap gap-4 overflow-hidden rounded-card border border-line bg-surface p-5 hover:shadow-card">
+    <article className="relative flex flex-wrap content-start gap-4 overflow-hidden rounded-card border border-line bg-surface p-5 hover:shadow-card">
       {heroAssetId ? (
         // Decorative: the title link names the event.
         <img alt="" className="-mx-5 -mt-5 aspect-video w-[calc(100%+2.5rem)] max-w-none object-cover" src={`/api/public/assets/${heroAssetId}`} />

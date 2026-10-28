@@ -190,6 +190,12 @@ export function CreateEventForm({
   const [notice, setNotice] = useState<{ tone: "success" | "warning" | "danger"; title: string; text: string; reload?: string } | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Save sits in the bar at the bottom while the result shows at the top: a problem takes
+  // focus, which scrolls it into view, so pressing Save never seems to do nothing.
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (notice && notice.tone !== "success") noticeRef.current?.focus();
+  }, [notice]);
   const [upload, setUpload] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const { form, choices, ticketTypes, closeFollowsStart } = state;
   const salesCloseValue = closeFollowsStart ? form.startTime : form.salesCloseAt;
@@ -315,7 +321,6 @@ export function CreateEventForm({
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const { found, times } = validate();
-    setNotice(null);
     setErrors(found);
 
     if (found.length > 0) {
@@ -434,7 +439,9 @@ export function CreateEventForm({
     <div className={`grid items-start gap-6 ${aside ? "lg:grid-cols-[minmax(0,1fr)_20rem]" : "max-w-3xl"}`}>
       <form aria-label="Event details" className="grid gap-6" noValidate onSubmit={onSubmit}>
         {notice ? (
+          <div ref={noticeRef} tabIndex={-1}>
           <Notice
+            reveal
             action={
               notice.reload ? (
                 <Button onClick={() => window.location.reload()} size="sm" type="button" variant="secondary">
@@ -448,6 +455,7 @@ export function CreateEventForm({
           >
             {notice.text}
           </Notice>
+          </div>
         ) : null}
 
         <Card>
@@ -671,21 +679,20 @@ export function CreateEventForm({
           </div>
         </Card>
 
-        <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-line bg-surface/95 px-4 py-3 sm:mx-0 sm:rounded-card sm:border">
-          {dirty ? (
-            <span className="mr-auto text-sm text-ink-soft" role="status">
-              You have unsaved changes.
-            </span>
-          ) : null}
+        {/* One opaque row at every width: the status line gives way (truncates) before the buttons do. */}
+        <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-line bg-surface px-4 py-3 sm:mx-0 sm:rounded-card sm:border">
+          <span className="mr-auto w-0 min-w-0 flex-1 truncate text-sm text-ink-soft">
+            {notice && notice.tone !== "success" ? "Not saved: see above" : dirty ? <span role="status">Unsaved changes</span> : null}
+          </span>
           <Link className={buttonClasses({ variant: "tertiary" })} href={mode === "edit" && eventId ? `/dashboard/events/${eventId}` : "/dashboard/events"}>
             Cancel
           </Link>
-          <Button disabled={saving || upload.busy} size="lg" type="submit">
-            {saving ? "Saving..." : mode === "edit" ? "Save changes" : "Create event"}
+          <Button busy={saving} busyLabel="Saving…" disabled={upload.busy} size="lg" type="submit">
+            {mode === "edit" ? "Save changes" : "Create event"}
           </Button>
         </div>
       </form>
-      {aside ? <aside aria-labelledby="ready-heading" className="lg:sticky lg:top-6">{aside}</aside> : null}
+      {aside ? <aside aria-labelledby="ready-heading" className="lg:sticky lg:top-24">{aside}</aside> : null}
     </div>
   );
 }

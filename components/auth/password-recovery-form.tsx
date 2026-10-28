@@ -29,8 +29,6 @@ export function PasswordRecoveryForm({ mode, callbackUrl }: { mode: "request" | 
     finally { setBusy(false); }
   }
   return <div className="grid gap-4">
-    {error && <Notice role="alert" tone="danger">{error}</Notice>}
-    {message && <Notice role="status" tone="success">{message}</Notice>}
     {completedPath ? <Link className={buttonClasses({ size: "lg" })} href={`/login?callbackUrl=${encodeURIComponent(completedPath)}`}>Sign in with new password</Link> : <form className="grid gap-3" onSubmit={submit}>
       {mode === "request" ? <TextInput label="Email" type="email" required maxLength={320} value={email} onChange={event => setEmail(event.target.value)} /> : <>
         {!token && <Notice>Open your reset email link, or <Link className="font-semibold text-brand underline underline-offset-4" href="/forgot-password">request a new link</Link>.</Notice>}
@@ -38,7 +36,9 @@ export function PasswordRecoveryForm({ mode, callbackUrl }: { mode: "request" | 
         <TextInput label="Confirm new password" type="password" autoComplete="new-password" minLength={8} required value={confirmation} onChange={event => setConfirmation(event.target.value)} />
         <p className="text-sm text-ink-muted">At least 8 characters.</p>
       </>}
-      <Button type="submit" disabled={busy || (mode === "reset" && !token)}>{busy ? "Submitting..." : mode === "request" ? "Send password reset email" : "Reset password"}</Button>
+      <Button busy={busy} busyLabel={mode === "request" ? "Sending…" : "Resetting…"} type="submit" disabled={mode === "reset" && !token}>{mode === "request" ? "Send password reset email" : "Reset password"}</Button>
     </form>}
+    {error && <Notice reveal role="alert" tone="danger">{error}</Notice>}
+    {message && <Notice reveal role="status" tone="success">{message}</Notice>}
   </div>;
 }

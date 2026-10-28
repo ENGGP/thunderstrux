@@ -1144,9 +1144,10 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 
 | Component | File | Contract |
 |---|---|---|
-| `Notice` | `components/ui/notice.tsx` | info, success, warning, danger; icon, toned title, optional `action` and `onDismiss`. `role="alert"`/`"status"` only for the result of an action. |
+| `Notice` | `components/ui/notice.tsx` | info, success, warning, danger; icon, toned title, optional `action` and `onDismiss`. `role="alert"`/`"status"` only for the result of an action. `reveal` opens a result's row smoothly where it lands, under the action. |
+| `Button` | `components/ui/button.tsx` | Variants and sizes as 2.x; `busy` + `busyLabel` keep the width and colour while working (no spinner); every variant carries a border so disabled never adds width. |
 | `StatusBadge` | `components/ui/status-badge.tsx` | The one mapping from a server status to word and colour, as a dot pill. |
-| `Skeleton`, `ListSkeleton` | `components/ui/skeleton.tsx` | Grey blocks hidden from assistive technology with one screen-reader label; pulse only when motion is allowed. |
+| `Skeleton`, `ListSkeleton`, `CardGridSkeleton` | `components/ui/skeleton.tsx` | Grey blocks hidden from assistive technology with one screen-reader label, shaped like what replaces them; pulse only when motion is allowed. |
 | `Icon` | `components/ui/icon.tsx` | Inline 24px outline icons, decorative by default; no icon dependency. |
 | `ConfirmDialog` | `components/ui/confirm-dialog.tsx` | Native dialog; names the action and its consequence. |
 | `PageHeader` | `components/layout/page-header.tsx` | Breadcrumb, `h1`, badge slot, actions. |
@@ -1157,7 +1158,8 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 | `EmptyState` | `components/ui/empty-state.tsx` | Dashed box, icon, title, one line and one secondary action; never used for failures. |
 | `ResponsiveTable` | `components/ui/responsive-table.tsx` | Bordered table from 768px, the caller's cards below. |
 | `FilterBar` | `components/ui/filter-bar.tsx` | GET form with Apply and Clear; filters live in the URL. |
-| `LinkTabs`, `pillClasses`, `Count` | `components/ui/link-tabs.tsx` | Route tabs; pills for status filters inside a tab; one count chip. |
+| `LinkTabs`, `pillClasses`, `Count`, `TabLabel` | `components/ui/link-tabs.tsx` | Route tabs; pills for status filters inside a tab; one count chip; `TabLabel` keeps a tab's width when it becomes current. |
+| `PhoneActionBar` | `components/purchases/phone-action-bar.tsx` | Below `lg`, repeats the summary and action while the page's own button is below the screen (buy box, checkouts). |
 | `DateField`, `DateTimeField` | `components/ui/date-field.tsx` | Typed dates with a house calendar; replaces browser date and time pickers. |
 | `MoneyInput` | `components/ui/input.tsx` | `$` prefix; callers convert to cents with `parseMoneyInput`. |
 | `AuditTimeline` | `components/ui/audit-timeline.tsx` | Buyer-safe order history rail. |

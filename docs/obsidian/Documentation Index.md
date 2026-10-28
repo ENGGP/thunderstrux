@@ -35,7 +35,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 | Change emails or notices | [[Email Delivery Implementation]] | `lib/email/` |
 | Add a sensitive action (it needs an audit row) | [[Audit Coverage]] | `lib/audit/history.ts` |
 | Add or read an environment variable | [[Environment Variables]] | `.env.example`, `docker/entrypoint.sh` |
-| Run the app or tests locally | [[Development Workflow]], [[Troubleshooting]], [[Seeding and Data]] | `package.json`, `scripts/`, `prisma/seed.mjs` |
+| Run the app or tests locally | [[Development Workflow]], [[Troubleshooting]], [[Seeding and Data]] | `package.json`, `scripts/`, `prisma/seed.mjs`, `prisma/demo-data.mjs` |
 | Validate and deliver a change | [[Engineering Delivery Workflow]], [[E2E and Staging Payments]], [[Journey Qualification]] | `scripts/run-e2e.mjs`, `tests/` |
 | Deploy, schedule workers, handle an alert, back up or restore | [[Production Operations]], [[Production Operations Alerts]], [[Production Operations Hosting]], [[Pre-hosting Candidate]] | `scripts/operations.mjs`, `scripts/droplet.mjs`, `lib/ops/` |
 | Update dependencies | [[Dependency Automation]] | `renovate.json`, `package.json` |

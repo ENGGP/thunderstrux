@@ -37,6 +37,7 @@
     "ops:droplet:rehearse": "node scripts/rehearse-droplet.mjs",
     "ops:test": "node --test tests/runner/operations.test.mjs && node scripts/run-operations-tests.mjs",
     "seed": "prisma db seed",
+    "seed:demo": "node prisma/demo-data.mjs",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",

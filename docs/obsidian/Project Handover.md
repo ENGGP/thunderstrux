@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-28
+last-reviewed: 2026-10-29
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Issue and Defect Register]]", "[[Pre-hosting Candidate]]", "[[Evidence Ledger]]", "[[Project Handover 2026-10-25]]"]
@@ -40,6 +40,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   UI-018 lists the critique's feature follow-ups.
 - 2026-10-28: #217 fixes the critique's layout-shift findings (UI-020 to UI-024): results ease in under their action, buttons keep their size while busy, loading stand-ins match their content, phones get a pay bar on every checkout and the door starts with search. UI Architecture Rules split off [[UI Page Patterns]].
 - 2026-10-29: #218 finishes the critique's fixes with its list work (UI-019): every paged list goes both ways through one `Pager`, Purchases hides checkouts that didn't complete behind a link, and long lists show a few with "See all" or say where they stop. UI-025 keeps the remaining caps.
+- 2026-10-29: `pnpm seed:demo` (`prisma/demo-data.mjs`) loads rich demo data on top of the seed: eight `demo-` societies in every Stripe, profile and staff condition, 60 members, 10 guests, about 660 ticket orders and 190 membership and merchandise orders in every state ([[Seeding and Data#Rich demo data]]). It refuses anything but the local dev database and rebuilds only its own rows. The dev database has it loaded; its accounts also use `password123`.
 - 2026-10-28: owner testing on the preview (society onboarding, four $1,200 tickets, a refund here, two Dashboard refunds, a lost dispute) behaved as designed except two defects, fixed in #215: refunded tickets never went back on sale (PAY-043, now they do, except for a cancelled event) and a lost dispute's buyer page said the tickets were under review (UI-010). The preview runs with `MFA_ENFORCEMENT_MODE=off` in `.env.preview` at the owner's request, temporarily; set it back to `enforce` and redeploy before anyone else uses it.
 - 2026-10-28: the preview runs `0a9728e` (#213; 69 migrations, its payments endpoint has the async events); before that it was deployed at `5dee7f4` (backup first; 68 migrations) and the recent fixes were checked live on dev: a refund the bank returned, a Dashboard refund not reversed and then reversed by hand, a payout made outside the worker, a payout-account change. #213 then fixes the audit's Low findings and two found in that testing (PAY-029 to PAY-042, SEC-034 to SEC-037, UI-009, DEF-063). Migration `20261120010000_stripe_account_unique`; dev was dumped first to `tmp/dev-before-sec-035-20261028.dump` (SHA-256 `a34765c622fd76c242776a2114d08e1574b007862da4a340631c9e5d6e160586`, 40 tables, owner-only, 68 migrations; 26 users, 48 orders, 44 tickets, 22 events, 2 commerce orders), then dev applied it (69). Payouts moved to [[Stripe Payments and Connect Payouts]].
 - 2026-10-28: #212 fixes the six Medium findings of the Stripe audit of dev and preview (SEC-032, PAY-025 to PAY-028, SEC-033): payouts hold until the latest end an event ever had and until Stripe shows a refund taken back from the society; refunds that fail or come back from the bank, and payouts or bank-account changes Thunderstrux didn't make, reach a person; buyers and Stripe managers are emailed. Migration `20261119010000_payout_hold_and_refund_recovery`; the dev database was dumped first to `tmp/dev-before-sec-032-20261028.dump` (SHA-256 `34c45e9fde12161f65888499ee0c4c6b87afc0b11def2231e5df177a1f6be56c`, 40 tables, owner-only, 67 migrations; 26 users, 46 orders, 42 tickets, 22 events, 2 commerce orders), then dev applied it (68). Alerts moved to [[Production Operations Alerts]].
@@ -127,7 +128,7 @@ Evidence (run IDs, counts, Stripe objects) is in [[Evidence Ledger]] and each PR
    - Send a test event from each Stripe test-mode webhook destination and confirm a 200.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Never point the tunnel at the dev stack again.
-   - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts.
+   - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
 2. **Dev database:** it already has #197's and #198's migrations (dump above). Keep the dev folder on `codex/cancel-event` or a branch with both until they merge; older code can't read events with `cancelledAt` missing from its client.
 3. **DEBT-001 and DEBT-002 cleanup:** the dead and redundant code the documentation audit listed, and the smaller items of the journey audit. Small; no risky behaviour change.
 4. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].

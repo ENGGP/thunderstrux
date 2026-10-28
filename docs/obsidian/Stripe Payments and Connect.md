@@ -204,8 +204,8 @@ stripe listen --latest \
 
 ## Traps
 
-- Never mark an order paid from a browser redirect. Only a signed webhook fulfils in production.
-- Adding a non-card payment method first needs `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` handling, because ticket fulfilment requires `payment_status = paid`.
+- Never mark an order paid from a browser redirect. Only a signed webhook, or the sweep reading the Session from Stripe (PAY-024), fulfils.
+- Checkout is card-only (`allowed_payment_method_types: ["card"]`). Delayed methods are already handled (`async_payment_*`, PAY-030), so adding one needs those events on every payments endpoint and an end-to-end test of a processing payment first.
 - Never put `family` in ticket Session metadata: it routes the event to commerce.
 - Checkout readiness is the charges flag, not `READY`. Don't gate selling on the state.
 - A fee change without a new `PLATFORM_FEE_POLICY_VERSION` makes old and new orders indistinguishable.

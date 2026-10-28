@@ -174,8 +174,8 @@ export async function createCommerceCheckout(input: {
   const metadata = { family: input.family, commerceOrderId: order.id, organisationId: order.organisationId };
   const sessionRequest: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
-    // Card only, so a completed Session is paid at once: fulfilment needs no
-    // async payment events. Endive removed payment_method_types for this filter.
+    // Card only, so a completed Session is paid at once; delayed methods' async
+    // payment events are handled anyway (PAY-030). Endive removed payment_method_types for this filter.
     allowed_payment_method_types: ["card"],
     integration_identifier: checkoutIntegrationIdentifiers.commerce,
     // A free option in a paid basket is on the order, not on the card statement.

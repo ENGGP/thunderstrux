@@ -8,7 +8,7 @@ test("an owner reads what changed in History and filters it", async ({ page, dat
   // Typing before the form is interactive is lost, so wait until it counts as a change.
   await expect(async () => {
     await page.getByLabel("Location", { exact: true }).fill("The Pav");
-    await expect(page.getByRole("status").filter({ hasText: "You have unsaved changes." })).toBeVisible({ timeout: 1000 });
+    await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible({ timeout: 1000 });
   }).toPass();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Event saved" })).toBeVisible();

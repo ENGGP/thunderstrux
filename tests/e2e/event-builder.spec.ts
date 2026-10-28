@@ -44,7 +44,7 @@ test("organisers build an event in the society's time zone with a dollar price a
   const buffer = await sharp({ create: { width: 32, height: 18, channels: 3, background: "teal" } }).png().toBuffer();
   await page.locator('input[type="file"]').setInputFiles({ name: "hero.png", mimeType: "image/png", buffer });
   await expect(page.getByRole("img", { name: "Event image preview" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "You have unsaved changes." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible();
 
   for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
@@ -92,7 +92,7 @@ test("moving a ticketed event emails the holder, and a member turns renewal remi
   // Typing before the form is interactive is lost, so wait until it counts as a change.
   await expect(async () => {
     await page.getByLabel("Location", { exact: true }).fill("Great Hall");
-    await expect(page.getByRole("status").filter({ hasText: "You have unsaved changes." })).toBeVisible({ timeout: 1000 });
+    await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible({ timeout: 1000 });
   }).toPass();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Event saved" })).toBeVisible();

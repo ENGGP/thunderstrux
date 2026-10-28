@@ -682,7 +682,7 @@ export function CreateEventForm({
         {/* One opaque row at every width: the status line gives way (truncates) before the buttons do. */}
         <div className="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-3 border-t border-line bg-surface px-4 py-3 sm:mx-0 sm:rounded-card sm:border">
           <span className="mr-auto w-0 min-w-0 flex-1 truncate text-sm text-ink-soft">
-            {notice && notice.tone !== "success" ? "Not saved: see the message above." : dirty ? <span role="status">You have unsaved changes.</span> : null}
+            {notice && notice.tone !== "success" ? "Not saved: see above" : dirty ? <span role="status">Unsaved changes</span> : null}
           </span>
           <Link className={buttonClasses({ variant: "tertiary" })} href={mode === "edit" && eventId ? `/dashboard/events/${eventId}` : "/dashboard/events"}>
             Cancel

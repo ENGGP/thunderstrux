@@ -39,7 +39,7 @@ sources: [lib/payments/checkout-creation.ts, lib/payments/checkout-reconciliatio
 | --- | --- | --- |
 | `pending` | paid checkout | Unpaid; holds stock; may have a bound Session |
 | `paid` | fulfilment, or a free order at creation | Fulfilled (`paidAt`, `fulfilledAt`). With `paymentKind = free` nothing was charged |
-| `failed` | a definite Stripe refusal (`failureReason = stripe_error`); a completed but unpaid Session (`webhook_mismatch`); compensation (`requiresCompensationReview`, reason below) | Not fulfilled |
+| `failed` | a definite Stripe refusal (`failureReason = stripe_error`); a paid Session the order can't match (`webhook_mismatch`); compensation (`requiresCompensationReview`, reason below) | Not fulfilled |
 | `expired` | stale-order job, `checkout.session.expired`, buyer cancel | Unpaid and closed; `failureReason` is null |
 
 Facts that sit beside the status: `requiresCompensationReview` (charged, not honoured), `refundStatus`, `disputeStatus`, `externalRefundedAmount` and `externalRefundReviewedAt`, `cancelledAt` (free only), `isManuallyRefunded` ([[Payment Lifecycle Refunds and Disputes]]). A refund or dispute never changes `status`.
@@ -120,7 +120,7 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 3. Lock the event and ticket type, then the order.
 4. Already `paid`: no change (a ticket count that differs from `quantity` is logged for review).
 5. Under compensation review: stays in review if manually refunded, if its compensation job has left `review_required`, or if no live hold remains; otherwise fulfilment is retried as a recovery.
-6. Session not paid: a `pending` order fails (`webhook_mismatch`, hold released); others stay as they are.
+6. Session complete but not paid yet: a delayed payment method still processing (checkout is card-only, so not today). The order and hold wait for `checkout.session.async_payment_succeeded` (applied as completed) or `_failed` (applied as expired) (PAY-030).
 7. Paid, then each failure goes to compensation with its reason:
 
 | Check | Reason |
@@ -131,7 +131,8 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | The order had failed ordinarily | `paid_session_received_after_order_failed` |
 | A refund made in Stripe (`externalRefundedAmount`) or a dispute (`disputeStatus`) reached the order before this webhook | `refunded_or_disputed_before_fulfilment` |
 | The society cancelled the event before the payment was confirmed (EVT-004) | `event_cancelled_before_fulfilment` |
-| Hold expired or lapsed / missing | `reservation_expired_after_payment` / `reservation_missing_after_payment` |
+| Hold lapsed while still pending, and the event sells (`saleState` open, not over) with room (`sellableQuantity`) | tickets issued: the hold is re-taken under the event lock, as a late merchandise payment is (PAY-031) |
+| Hold expired or lapsed without room / missing | `reservation_expired_after_payment` / `reservation_missing_after_payment` |
 | Hold quantity differs | `reservation_quantity_mismatch_after_payment` |
 | Member-price membership revoked (read `FOR SHARE`) | `member_price_membership_revoked` |
 | Event capacity below occupancy | `capacity_exceeded_after_payment` |
@@ -168,8 +169,8 @@ The stale job locks each candidate and re-checks it before expiring; candidate d
 
 The signed webhook is the main path; the sweep makes sure a lost one never strands a paid buyer. Both reach the same idempotent fulfilment through `settleCheckoutSession` (`lib/payments/checkout-settlement.ts`), Stripe's fulfil-checkout pattern: it routes a Session to the ticket reconciler or, by its `family` metadata, to the commerce one, and either may run any number of times, in any order, even at once.
 
-- **Early check** (`sweepPendingCheckouts`, start of every `stale-orders` run): pending Stripe orders of every family with a bound Session, created over 2 minutes ago (`sweepFirstCheckAfterMs`) and not asked about in the last 2 minutes (`sweepRecheckEveryMs`, paced by `stripeCheckedAt`), least recently asked first, 25 per family per run. The Session is read from Stripe: `complete` is applied as a completed Session, `expired` as an expired one, `open` is left and stamped.
-- **Before expiry** (`mayExpireAfterStripeCheck`, inside `processStaleOrderCleanupBatch` and `expireStaleCommerceOrders`): an order with a Session is asked about first. Paid: fulfilled, not expired. Still open past its hold: the page is closed at Stripe (`checkout.sessions.expire`), then the order expires through the expired-Session path. Stripe has no such Session: it expires. Stripe can't be asked: it stays pending with its hold and is counted in `stripeDeferred`, and the run alerts `checkout_reconciliation_unavailable`. A worker without a Stripe key expires as before outside production but never expires a Stripe order in production.
+- **Early check** (`sweepPendingCheckouts`, start of every `stale-orders` run): pending Stripe orders of every family with a bound Session, created over 2 minutes ago (`sweepFirstCheckAfterMs`) and not asked about in the last 2 minutes (`sweepRecheckEveryMs`, paced by `stripeCheckedAt`), least recently asked first, in pages of 25 per family until none are due or 45 seconds pass (`sweepRunBudgetMs`). Every look is stamped, failed ones too (PAY-029). The Session is read from Stripe: `complete` and paid is applied as completed, complete but unpaid is left as processing unless its payment failed (applied as expired) (PAY-030), `expired` is applied as expired, `open` is left, except that a ticket order's page is closed first when its event was cancelled (PAY-032).
+- **Before expiry** (`mayExpireAfterStripeCheck`, inside `processStaleOrderCleanupBatch` and `expireStaleCommerceOrders`): an order with a Session is asked about first. Paid: fulfilled, not expired. Still open past its hold: the page is closed at Stripe (`checkout.sessions.expire`), then the order expires through the expired-Session path. Stripe has no such Session: it expires. Stripe can't be asked, the look failed here (a bug or database error: `checkout.sweep.settle_failed`, alert `checkout_settlement_failed`), or a delayed payment is processing: it stays pending with its hold and is counted in `stripeDeferred`; Stripe being unreachable alerts `checkout_reconciliation_unavailable`. A worker without a Stripe key expires as before outside production but never expires a Stripe order in production.
 - **Alert:** every paid Session the sweep applies to a pending order raises `stripe_webhook_missed` (family, order, Session, outcome, minutes since checkout). In production that means webhooks are broken; see [[Production Operations]].
 - **History:** sweep entries use source `reconciliation_sweep`; a late webhook afterwards finds the order already paid and changes nothing.
 - **Pages** never confirm anything: order pages poll their status every 3 seconds for a minute, then every 15 seconds for ten more minutes under "Still confirming", and refresh when it changes (`components/purchases/payment-status-poller.tsx`).

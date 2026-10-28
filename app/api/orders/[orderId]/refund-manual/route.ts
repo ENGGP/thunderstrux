@@ -22,8 +22,9 @@ type RouteContext = {
 
 const schema = z.object({ mfaCode: z.string().trim().max(20).optional() }).strict();
 
-// The mark voids the tickets and ends the order's payout hold, so unless staff
-// MFA is off it needs a fresh authenticator code, as a refund does.
+// The mark voids the tickets and emails the buyer (payouts still hold the sale
+// until its event is over, PAY-016), so unless staff MFA is off it needs a fresh
+// authenticator code, as a refund does.
 export async function PATCH(request: Request, context: RouteContext) {
   const trustedOriginError = enforceTrustedMutationRequest(request);
 

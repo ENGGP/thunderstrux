@@ -109,7 +109,8 @@ model Organisation {
   logoAsset           Asset?               @relation("SocietyLogo", fields: [logoAssetId, id], references: [id, organisationId], onDelete: Restrict)
   coverAsset          Asset?               @relation("SocietyCover", fields: [coverAssetId, id], references: [id, organisationId], onDelete: Restrict)
   accountUserId       String?              @unique
-  stripeAccountId     String?
+  // SEC-035: one Stripe account per society (unique; NULL for many unconnected ones).
+  stripeAccountId     String?              @unique
   stripeAccountStatus String?
   stripeChargesEnabled Boolean              @default(false)
   stripePayoutsEnabled Boolean              @default(false)
@@ -138,7 +139,6 @@ model Organisation {
   payouts             SocietyPayout[]
 
   @@index([accountUserId])
-  @@index([stripeAccountId])
   @@index([name, id])
 }
 

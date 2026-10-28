@@ -44,7 +44,7 @@ function Figure({ label, amount, note }: { label: string; amount: number; note: 
 }
 
 // Without a bank account, the Stripe account card above already offers to add one.
-export function PayoutsCard({ payouts, payoutsEnabled, seeAll }: { payouts: PayoutSummaryView; payoutsEnabled: boolean; seeAll: ReactNode }) {
+export function PayoutsCard({ payouts, payoutsEnabled, payoutsPaused = false, seeAll }: { payouts: PayoutSummaryView; payoutsEnabled: boolean; payoutsPaused?: boolean; seeAll: ReactNode }) {
   const { events, commerce } = payouts.held;
   if (!payoutsEnabled) {
     return (
@@ -52,7 +52,9 @@ export function PayoutsCard({ payouts, payoutsEnabled, seeAll }: { payouts: Payo
         <div className="grid gap-3">
           <h2 className="text-xl font-semibold text-ink">Payouts</h2>
           <p className="text-ui text-ink-soft">
-            Add a bank account in Stripe and Thunderstrux sends your money as each event ends. Sales keep working meanwhile
+            {payoutsPaused
+              ? "Stripe has paused payouts. Update your details in Stripe and Thunderstrux sends your money again. Sales keep working meanwhile"
+              : "Add a bank account in Stripe and Thunderstrux sends your money as each event ends. Sales keep working meanwhile"}
             {payouts.held.total > 0 ? `; ${formatMoney(payouts.held.total)} is waiting` : ""}.
           </p>
         </div>

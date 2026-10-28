@@ -292,7 +292,7 @@ describe("webhook reconciliation", () => {
     );
   });
 
-  test("non-paid metadata organisation mismatch remains ordinary failed order", async () => {
+  test("a completed session not paid yet leaves the order and hold waiting, whatever its metadata (PAY-030)", async () => {
     vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
     vi.spyOn(console, "info").mockImplementation(() => {});
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
@@ -336,25 +336,17 @@ describe("webhook reconciliation", () => {
       })
     );
 
-    const failedOrder = await prisma.order.findUniqueOrThrow({
+    const waiting = await prisma.order.findUniqueOrThrow({
       where: { id: order.id },
       include: { reservation: true, tickets: true, emailOutboxJobs: true }
     });
 
-    expect(result).toEqual({
-      status: "failed",
-      orderId: order.id,
-      reason: "webhook_mismatch"
-    });
-    expect(failedOrder.status).toBe("failed");
-    expect(failedOrder.requiresCompensationReview).toBe(false);
-    expect(failedOrder.paidAt).toBeNull();
-    expect(failedOrder.failureReason).toBe("webhook_mismatch");
-    expect(failedOrder.fulfilmentFailedAt).toBeNull();
-    expect(failedOrder.fulfilmentFailureReason).toBeNull();
-    expect(failedOrder.reservation?.status).toBe("released");
-    expect(failedOrder.tickets).toHaveLength(0);
-    expect(failedOrder.emailOutboxJobs).toHaveLength(0);
+    // A delayed payment method still processing: the async_payment_* event decides,
+    // and a paid one is checked against the order's metadata then.
+    expect(result).toEqual({ status: "ignored", orderId: order.id, reason: "payment_processing" });
+    expect(waiting).toMatchObject({ status: "pending", requiresCompensationReview: false, paidAt: null, reservation: { status: "active" } });
+    expect(waiting.tickets).toHaveLength(0);
+    expect(waiting.emailOutboxJobs).toHaveLength(0);
   });
 
   test("reconciliation does not send ticket email directly", async () => {
@@ -1166,11 +1158,20 @@ describe("webhook reconciliation", () => {
     expect(replayMismatches()).toBe(1);
   });
 
-  test("a completed session that isn't paid fails the order without compensation", async () => {
+  test("a delayed payment waits; when it fails the order expires without compensation, and when it succeeds the tickets are issued (PAY-030)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const { order, session, state } = await pendingWithHold();
-    expect(await reconcileCompletedCheckoutSession(session({ paymentStatus: "unpaid" }))).toMatchObject({ status: "failed", orderId: order.id });
-    expect(await state()).toMatchObject({ status: "failed", failureReason: "webhook_mismatch", requiresCompensationReview: false, compensationRefundJob: null, tickets: [] });
+    const failed = await pendingWithHold();
+    expect(await reconcileCompletedCheckoutSession(failed.session({ paymentStatus: "unpaid" }))).toMatchObject({ status: "ignored", reason: "payment_processing" });
+    expect(await failed.state()).toMatchObject({ status: "pending", reservation: { status: "active" } });
+    // checkout.session.async_payment_failed settles as an expired Session.
+    await reconcileExpiredCheckoutSession(failed.session({ paymentStatus: "unpaid" }));
+    expect(await failed.state()).toMatchObject({ status: "expired", requiresCompensationReview: false, compensationRefundJob: null, tickets: [] });
+
+    const succeeded = await pendingWithHold();
+    await reconcileCompletedCheckoutSession(succeeded.session({ paymentStatus: "unpaid" }));
+    // checkout.session.async_payment_succeeded carries the paid Session.
+    expect(await reconcileCompletedCheckoutSession(succeeded.session())).toMatchObject({ status: "fulfilled" });
+    expect((await succeeded.state()).tickets).toHaveLength(1);
   });
 
   // Paid-session guards that had no test (2026-10-26 test audit). Each one keeps

@@ -38,7 +38,8 @@ export function OrderDetailActions({
   // Set when this staff member may refund this order through Stripe.
   // rest: part of the order was already refunded in Stripe; this refunds what is left.
   refund?: { amount: string; rest?: boolean; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
-  // Marking a refund made outside Thunderstrux asks for a fresh authenticator code unless staff MFA is off.
+  // Marking a refund made outside Thunderstrux, or confirming one made in Stripe (SEC-036), asks for a
+  // fresh authenticator code unless staff MFA is off.
   markNeedsCode?: boolean;
 }) {
   const router = useRouter();
@@ -92,20 +93,16 @@ export function OrderDetailActions({
     setIsBusy(true);
     setMessage(null);
     try {
-      const response = await fetchWithCsrf(
-        `/api/orders/${orderId}/compensation-refund/confirm`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ refundId })
-        }
-      );
-      if (!response.ok) {
-        setMessage({ ok: false, text: "The Stripe refund could not be verified for this order." });
-        return;
-      }
+      await fetchJson(`/api/orders/${orderId}/compensation-refund/confirm`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refundId, ...(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {}) })
+      });
       setMessage({ ok: true, text: "Stripe refund verified and compensation resolved." });
       router.refresh();
+    } catch (failure) {
+      // Says what is missing, such as a transfer not reversed (PAY-027) or the code.
+      setMessage({ ok: false, text: getClientErrorMessage(failure, "The Stripe refund could not be verified for this order.") });
     } finally {
       setIsBusy(false);
     }
@@ -218,7 +215,12 @@ export function OrderDetailActions({
                 value={refundId}
               />
             </div>
-            <Button disabled={isBusy || !refundId.trim()} onClick={confirmCompensationRefund} type="button">
+            {markNeedsCode ? (
+              <div className="w-full sm:w-48">
+                <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
+              </div>
+            ) : null}
+            <Button disabled={isBusy || !refundId.trim() || (markNeedsCode && !refundForm.mfaCode.trim())} onClick={confirmCompensationRefund} type="button">
               Verify completed refund
             </Button>
           </div>

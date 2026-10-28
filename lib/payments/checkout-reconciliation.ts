@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { isTransactionConflict } from "@/lib/transaction-conflict";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
-import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
+import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/events/inventory";
 import { queueTicketReviewNotice } from "@/lib/payments/compensation-notices";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
@@ -16,6 +16,7 @@ import {
   confirmReservationForOrder,
   expireReservationForOrder,
   findActiveReservationForOrder,
+  lateWebhookGraceMs,
   lockedPurchaseTransactionOptions,
   releaseReservationForOrder
 } from "@/lib/tickets/reservations";
@@ -357,7 +358,9 @@ export async function reconcileCompletedCheckoutSession(
       event: {
         select: {
           organisationId: true,
-          cancelledAt: true
+          cancelledAt: true,
+          saleState: true,
+          endTime: true
         }
       },
       tickets: {
@@ -745,10 +748,11 @@ export async function reconcileCompletedCheckoutSession(
               };
         return;
       }
-      await failOrder("webhook_mismatch", {
-        mismatchReason: "Stripe session is not paid",
-        paymentStatus: session.payment_status
-      });
+      // PAY-030: completed but not paid yet is a delayed payment method still
+      // processing (checkout is card-only, so this can't happen today). The hold
+      // and order wait; checkout.session.async_payment_succeeded or _failed settles it.
+      logInfo("stripe.checkout.payment_processing", { source, orderId: localOrder.id, stripeSessionId: session.id, paymentStatus: session.payment_status });
+      result = { status: "ignored", orderId: localOrder.id, reason: "payment_processing" };
       return;
     }
 
@@ -908,11 +912,42 @@ export async function reconcileCompletedCheckoutSession(
     }
 
     const now = new Date();
-    const activeReservation = await findActiveReservationForOrder(
+    let activeReservation = await findActiveReservationForOrder(
       tx,
       localOrder.id,
       now
     );
+
+    if (!activeReservation) {
+      const existingReservation = await tx.ticketReservation.findUnique({
+        where: { orderId: localOrder.id },
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          quantity: true
+        }
+      });
+
+      // PAY-031: paid in time but confirmed after the hold ran out (a late
+      // webhook, or the sweep behind). As a late merchandise payment is, the
+      // tickets are issued when the event still has room, sells and isn't over,
+      // under the event lock taken above; otherwise compensation, as before.
+      // Only a hold that lapsed with time; one expired or released on purpose stays so.
+      const lapsed = existingReservation?.status === "active" && existingReservation.expiresAt <= now;
+      if (lapsed && existingReservation.quantity === localOrder.quantity && localOrder.event.saleState === "open" && localOrder.event.endTime > now) {
+        const ticketType = await tx.ticketType.findUnique({ where: { id: localOrder.ticketTypeId }, select: { id: true, quantity: true } });
+        const room = ticketType ? sellableQuantity(ticketType, await readEventInventory(tx, localOrder.eventId, now)) : 0;
+        if (room >= localOrder.quantity) {
+          await tx.ticketReservation.update({
+            where: { id: existingReservation.id },
+            data: { status: "active", expiresAt: new Date(now.getTime() + lateWebhookGraceMs) }
+          });
+          console.info("Stripe checkout completed after hold expiry; seats still free, honoured", { source, orderId: localOrder.id, stripeSessionId: session.id });
+          activeReservation = await findActiveReservationForOrder(tx, localOrder.id, now);
+        }
+      }
+    }
 
     if (!activeReservation) {
       const existingReservation = await tx.ticketReservation.findUnique({

@@ -360,8 +360,10 @@ export function SocietyProfile({
                   ))}
                 </optgroup>
               </Select>
+              {/* UI-009: one policy is shown at every checkout, so it should cover each kind of sale. */}
               <TextArea
-                label="Public refund policy"
+                hint="Shown when people buy tickets, memberships or merchandise, so cover each. For example: tickets refunded up to 48 hours before the event; memberships and uncollected merchandise within 14 days."
+                label="Refund policy for tickets, memberships and merchandise"
                 value={profile.refundPolicy}
                 maxLength={5000}
                 onChange={(event) => field("refundPolicy", event.target.value)}

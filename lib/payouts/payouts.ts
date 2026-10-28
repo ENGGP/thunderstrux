@@ -162,11 +162,17 @@ export async function reconcilePayoutEvent(event: Stripe.Event) {
   }
   // Re-read so a late event can't undo a newer status.
   const current = await getStripe().payouts.retrieve(payout.id, {}, { stripeAccount: accountId });
+  // PAY-042: Stripe sends a payout's events at once, so "first seen" is whichever
+  // delivery inserts its row, not a read made before any of them saved it.
+  const firstSeen = (await prisma.societyPayout.createMany({
+    data: [{ organisationId, stripeAccountId: accountId, stripePayoutId: current.id, amount: current.amount, currency: current.currency, status: statusOf(current) }],
+    skipDuplicates: true
+  })).count === 1;
   const saved = await record(organisationId, accountId, current);
   if (saved.status === "failed" && known?.status !== "failed") {
     emitOperationalAlert("society_payout_failed", { organisationId, stripePayoutId: current.id, amount: current.amount, failureCode: current.failure_code ?? null });
   }
-  if (!known && current.metadata?.organisationId !== organisationId && saved.status !== "failed") {
+  if (firstSeen && current.metadata?.organisationId !== organisationId && saved.status !== "failed") {
     emitOperationalAlert("society_payout_unexpected", {
       organisationId, stripePayoutId: current.id, amount: current.amount, method: current.method, automatic: current.automatic, dedupeKey: `society_payout_unexpected:${current.id}`
     });

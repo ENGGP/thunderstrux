@@ -1,4 +1,5 @@
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
+import { queueManualRefundNotice } from "@/lib/payments/compensation-notices";
 import { latestRefundRequest } from "@/lib/payments/order-refunds";
 import { latestPurchaseDispute } from "@/lib/payments/purchase-disputes";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
@@ -181,7 +182,7 @@ export async function markOrganisationOrderManuallyRefunded(
     if (order.refundStatus) {
       throw new OrganisationOrderOperationError("This order has a refund through Thunderstrux");
     }
-    if (order.disputeStatus) {
+    if (order.disputeStatus === "open" || order.disputeStatus === "lost") {
       throw new OrganisationOrderOperationError("The buyer has disputed this payment");
     }
     if (order.isManuallyRefunded) return;
@@ -213,6 +214,7 @@ export async function markOrganisationOrderManuallyRefunded(
       organisationId, actorUserId: actorUserId ?? null,
       action: "order.manual_refund_marked", targetType: "Order", targetId: orderId
     } });
+    await queueManualRefundNotice(tx, orderId);
   });
 
   return prisma.order.findFirstOrThrow({

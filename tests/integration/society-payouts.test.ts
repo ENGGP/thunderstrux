@@ -145,6 +145,26 @@ describe("what is held", () => {
   });
 });
 
+describe("what is held while money may still move", () => {
+  // PAY-033 and PAY-037: a refund still being sent, or a bank's open inquiry, holds the sale past its event.
+  test("a refund in progress and an open inquiry hold the sale; a closed inquiry doesn't", async () => {
+    const fixture = await society();
+    await ticketSale(fixture, -10 * day, { refundStatus: "processing" });
+    const requested = await ticketSale(fixture, -10 * day);
+    await prisma.refundRequest.create({ data: {
+      orderId: requested.id, organisationId: fixture.organisationId, amount: 2000, currency: "aud", reason: "Pending refund", operationKey: unique("op"), status: "uncertain"
+    } });
+    const inquiry = await ticketSale(fixture, -10 * day);
+    const dispute = await prisma.purchaseDispute.create({ data: {
+      orderId: inquiry.id, organisationId: fixture.organisationId, stripeDisputeId: unique("dp"), stripeChargeId: unique("ch"),
+      amount: 2000, currency: "aud", providerStatus: "warning_needs_response"
+    } });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836 * 3);
+    await prisma.purchaseDispute.update({ where: { id: dispute.id }, data: { providerStatus: "warning_closed" } });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836 * 2);
+  });
+});
+
 describe("payouts worker", () => {
   test("pays out what is available less what is held, once a day per society, and checks each society at most hourly", async () => {
     const fixture = await society();
@@ -364,5 +384,17 @@ describe("payout events", () => {
     expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: manualPayoutSettings });
     // Still recorded, so Payments lists it.
     expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: instant.id } })).toMatchObject({ organisationId: fixture.organisationId, amount: 9000 });
+  });
+
+  // PAY-042: Stripe sends a payout's events at once; seen on dev as three alerts for one payout.
+  test("a payout's events delivered at once alert once", async () => {
+    const fixture = await society();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const instant = { id: unique("po"), object: "payout", amount: 100, currency: "aud", status: "paid", method: "standard", automatic: false, arrival_date: null, metadata: {} };
+    stripe.payout.mockResolvedValue(instant);
+    await Promise.all(["payout.created", "payout.updated", "payout.paid", "payout.updated"].map((type) => payoutEvent(fixture.accountId, instant, type)));
+    const alerts = error.mock.calls.map(([line]) => JSON.parse(String(line))).filter((entry) => entry.event === "society_payout_unexpected");
+    expect(alerts).toHaveLength(1);
+    expect(await prisma.societyPayout.count({ where: { stripePayoutId: instant.id } })).toBe(1);
   });
 });

@@ -2,7 +2,7 @@ import { test, expect, login, prisma } from './fixtures';
 
 test('mobile member can sign in and inspect an event', async ({ page, data }) => {
   // Paid tickets are only offered once the society can take payments (T15a).
-  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: 'acct_e2e_mobile', stripeChargesEnabled: true } });
+  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: `acct_e2e_mobile_${data.organisation.id}`, stripeChargesEnabled: true } });
   await login(page, data.member.email, `/events/${data.event.id}`);
   await expect(page.getByRole('heading', {name: data.event.title, exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Buy tickets'})).toBeVisible();
@@ -10,7 +10,7 @@ test('mobile member can sign in and inspect an event', async ({ page, data }) =>
 });
 
 test('phone buy bar shows only while the ticket box button is below the screen', async ({ page, data }) => {
-  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: 'acct_e2e_mobile', stripeChargesEnabled: true } });
+  await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: `acct_e2e_mobile_${data.organisation.id}`, stripeChargesEnabled: true } });
   await page.setViewportSize({ width: 412, height: 420 });
   await login(page, data.member.email, `/events/${data.event.id}`);
   const buy = page.getByRole('button', { name: 'Buy tickets' });

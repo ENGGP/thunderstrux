@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mapRouteError } from "@/lib/api/errors";
 import { requireOrganisationStripeConnectAccess, requireStripeConnectCapability } from "@/lib/auth/access";
 import { requireOrganisationId } from "@/lib/db/organisation-scope";
+import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { getOrganisationStripeConnectStatus } from "@/lib/stripe/connect";
 import { connectRouteRules } from "@/lib/stripe/http";
 
@@ -12,6 +13,8 @@ export async function GET(request: Request) {
     await requireStripeConnectCapability();
     const organisationId = requireOrganisationId(searchParams.get("organisationId"));
     await requireOrganisationStripeConnectAccess(organisationId);
+    const limitResponse = await enforceRateLimit({ policy: "stripe_connect_status", request, keyParts: [organisationId] });
+    if (limitResponse) return limitResponse;
 
     return NextResponse.json(await getOrganisationStripeConnectStatus(organisationId));
   } catch (error) {

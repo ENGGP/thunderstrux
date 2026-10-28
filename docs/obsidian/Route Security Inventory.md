@@ -51,14 +51,14 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `refund-manual` | origin → context → `orders:refund_mark` → sign-in → strict body → `staff_mfa_verify` when a code is sent → fresh code unless `off` |
 | `resend` | origin → context → `orders:email_resend` → order in this society (404) → `order_resend` → sign-in |
 | Email and notification requeue | origin → context → `orders:email_resend` → order/job exists (404) → `order_resend` → bounded strict body → sign-in |
-| `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in (no rate limit) |
+| `compensation-refund/confirm` | origin → body → context → `orders:refund` → sign-in → `staff_mfa_verify` when a code is sent → fresh code unless MFA is `off` (SEC-036) |
 | Society slug routes (`organisationActor`: profile, assets, calendar, memberships, merchandise) | origin (writes) → sign-in → slug → permission (+MFA) → rate limit where one applies → body |
 | Staff end routes (membership revoke/cancel/refund, merchandise refund/cancel) | as slug routes, then `staff_mfa_verify` when a code is sent → fresh code unless `off` |
 | Staff management | list: slug → `staff:manage`. `PATCH`: origin → body → sign-in → slug → `staff:manage`. Invites: origin → body → verified → slug → `staff:manage` (owner role needs an owner) → invite limits. Handover: origin → body → verified → slug → owner → `account_security_change` |
 | Invite acceptance | origin → body → `account_token_ip` → `account_token_digest` (keys prefixed `staff_invite`) → verified |
 | Society bootstrap `POST /api/orgs` | origin → organisation account → verified → `organisation_create` → body |
 | Join / leave | origin → member account → (join only) verified → `organisation_join_leave` |
-| Stripe Connect | origin → `requireStripeConnectCapability` (`stripe:manage` somewhere, +MFA) → body → `organisationId` → `stripe:manage` on it (+MFA) → `stripe_connect_mutation` → `staff_mfa_verify` when a code is sent. Status `GET`: capability → target |
+| Stripe Connect | origin → `requireStripeConnectCapability` (`stripe:manage` somewhere, +MFA) → body → `organisationId` → `stripe:manage` on it (+MFA) → `stripe_connect_mutation` → `staff_mfa_verify` when a code is sent. Status `GET`: capability → target → `stripe_connect_status` (SEC-037) |
 | Checkout (`payments/checkout/*`) | origin → body → guest branch (no login and a guest cookie: `checkout` session → guest CSRF → `checkout_create`) or member branch (verified → member account → `checkout_create`) |
 | Buyer cancel (`purchases/tickets/[orderId]/cancel`, `purchases/tickets/[orderId]/cancel-registration`, `commerce/orders/[orderId]/cancel`) | origin → order → guest (guest CSRF) or sign-in → buyer owns it (else 404) → `checkout_create` (`authorizeBuyer` in `lib/purchases/pending-checkout-http.ts`) |
 | Buyer reads (status, attempts, commerce order) | session or guest session → ownership (else 404); no origin check, no rate limit |
@@ -108,6 +108,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `organisation_join_leave` | 30 / 10 min | open | user, slug, `join`/`leave` | join, leave |
 | `ticket_check_in_out` | 300 / 1 min | open | society, `check-in`/`check-out` | check-in, check-out |
 | `stripe_connect_mutation` | 20 / 10 min | open | society, action | Connect onboard, continue, dashboard, disconnect |
+| `stripe_connect_status` | 30 / 10 min | open | society | Connect status read (each asks Stripe) |
 | `staff_invite_actor` | 20 / 1 h | closed | actor, society | invite create, resend, revoke |
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
@@ -171,7 +172,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds and cancel also code |
 | `PATCH` `/api/orders/[orderId]/refund-manual` | origin, ctx, `orders:refund_mark` +MFA, fresh code |
 | `POST` `/api/orders/[orderId]/resend`, `/api/orders/[orderId]/email-jobs/[jobId]/requeue` | origin, ctx, `orders:email_resend` +MFA, `order_resend` |
-| `POST` `/api/orders/[orderId]/compensation-refund/confirm` | origin, ctx, `orders:refund` +MFA, Stripe refund evidence |
+| `POST` `/api/orders/[orderId]/compensation-refund/confirm` | origin, ctx, `orders:refund` +MFA, a fresh code unless MFA is `off`, Stripe refund evidence with the transfer reversed and the fee refunded |
 | `GET` `/api/notifications`; `POST` `/api/notifications/[jobId]/requeue` | ctx, `orders:email_resend` +MFA; requeue: origin, `order_resend` |
 | `GET` `/api/orgs`; `POST` `/api/orgs` | signed in; create: origin, verified organisation account, `organisation_create` |
 | `GET` `/api/orgs/search` | member account |

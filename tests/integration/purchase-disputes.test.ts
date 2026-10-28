@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { POST as reviewRoute } from "@/app/api/orders/[orderId]/review/route";
 import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { prisma } from "@/lib/db";
-import { enqueueOrganisationOrderTicketEmail } from "@/lib/orders/order-detail";
+import { enqueueOrganisationOrderTicketEmail, markOrganisationOrderManuallyRefunded } from "@/lib/orders/order-detail";
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { orderReference, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
@@ -89,6 +89,46 @@ const refundInput = (fixture: Fixture) => ({
 });
 
 describe("disputes", () => {
+  // PAY-037: a bank's inquiry moves no money; only a chargeback puts tickets under review.
+  test("an inquiry leaves the tickets valid and the order refundable; a chargeback that follows puts them under review", async () => {
+    const fixture = await paidOrder();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    disputeNow(fixture, "warning_needs_response");
+    expect((await postSigned(signedEvent("charge.dispute.created", disputeObject(fixture, "warning_needs_response")))).status).toBe(200);
+    const inquiry = await orderState(fixture.order.id);
+    expect(inquiry.disputeStatus).toBeNull();
+    expect(inquiry.tickets.every((ticket) => ticket.validity === "active")).toBe(true);
+
+    disputeNow(fixture, "needs_response");
+    await postSigned(signedEvent("charge.dispute.updated", disputeObject(fixture, "needs_response")));
+    const chargeback = await orderState(fixture.order.id);
+    expect(chargeback.disputeStatus).toBe("open");
+    expect(chargeback.tickets.every((ticket) => ticket.validity === "refund_review")).toBe(true);
+  });
+
+  // PAY-036: the society kept a won dispute's money, so the order can still be refunded.
+  test("a won dispute doesn't block a refund", async () => {
+    const fixture = await paidOrder();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    disputeNow(fixture, "won");
+    await postSigned(signedEvent("charge.dispute.closed", disputeObject(fixture, "won")));
+    expect((await orderState(fixture.order.id)).disputeStatus).toBe("won");
+    stripe.create.mockImplementation(async (params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("re"), status: "succeeded", amount: params.amount, currency: "aud", payment_intent: fixture.intentId, metadata: params.metadata }));
+    expect(await requestOrderRefund(refundInput(fixture))).toMatchObject({ status: "succeeded" });
+    const refunded = await orderState(fixture.order.id);
+    expect(refunded.refundStatus).toBe("refunded");
+    expect(refunded.tickets.every((ticket) => ticket.validity === "void")).toBe(true);
+  });
+
+  // PAY-039: the buyer hears that their tickets were cancelled.
+  test("marking an order refunded outside Thunderstrux emails the buyer once", async () => {
+    const fixture = await paidOrder();
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { buyerEmailSnapshot: "buyer@example.com", buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "purchase" } });
+    await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id);
+    await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id);
+    expect(await prisma.notificationOutbox.findMany({ where: { eventKey: `refund-marked/${fixture.order.id}` }, select: { recipient: true } })).toEqual([{ recipient: "buyer@example.com" }]);
+  });
+
   test("a verified dispute puts the tickets under review and pauses refunds and resends; replays and late events change nothing; a lost one voids them", async () => {
     const fixture = await paidOrder();
     disputeNow(fixture, "needs_response");
@@ -139,7 +179,7 @@ describe("disputes", () => {
     expect(params.submit).toBe(false);
     expect(params.evidence.product_description).toContain(fixture.event.title);
     expect(params.evidence.access_activity_log).toContain(`Ticket ${first.id.slice(-6).toUpperCase()} was scanned in at the door`);
-    expect(params.evidence.refund_policy_disclosure).toContain("Refunds up to 7 days before the event.");
+    expect(params.evidence.refund_policy_disclosure).toContain("\"Refund policy: Refunds up to 7 days before the event.\"");
     expect(params.evidence.uncategorized_text).toContain(`Order ${orderReference(fixture.order.id)}: $30.00 paid`);
     expect(params.evidence.uncategorized_text).toContain("The tickets were emailed to the buyer");
     expect(params.evidence.uncategorized_text).toContain("Refunded $5.00 to the buyer's card outside Thunderstrux.");

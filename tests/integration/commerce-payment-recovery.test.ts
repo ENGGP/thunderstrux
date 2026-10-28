@@ -6,6 +6,7 @@ import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { reconcileCommerceCheckoutSession } from "@/lib/commerce/reconciliation";
 import { prisma } from "@/lib/db";
+import { queueCommerceCompensationRefund } from "@/lib/commerce/payment-recovery";
 import { listPickups } from "@/lib/merchandise/pickups";
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { orderReference, processOrderRefundBatch, requestCommerceRefund } from "@/lib/payments/order-refunds";
@@ -258,6 +259,19 @@ describe("commerce refunds made in Stripe", () => {
 });
 
 describe("commerce compensation", () => {
+  // PAY-038: part already refunded in Stripe; compensation refunds only the rest.
+  test("compensation after a partial refund in Stripe refunds only what is left, and nothing once it is all back", async () => {
+    const fixture = await paid("merchandise");
+    await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { externalRefundedAmount: 1000 } });
+    await prisma.$transaction((tx) => queueCommerceCompensationRefund(tx, fixture.order.id, "test"));
+    expect(await prisma.refundRequest.findFirstOrThrow({ where: { commerceOrderId: fixture.order.id } })).toMatchObject({ amount: fixture.order.totalAmount - 1000 });
+
+    const all = await paid("membership");
+    await prisma.commerceOrder.update({ where: { id: all.order.id }, data: { externalRefundedAmount: all.order.totalAmount } });
+    await prisma.$transaction((tx) => queueCommerceCompensationRefund(tx, all.order.id, "test"));
+    expect(await prisma.refundRequest.count({ where: { commerceOrderId: all.order.id } })).toBe(0);
+  });
+
   test("a payment for an order that had already expired is refunded in full automatically, through the refund worker", async () => {
     const fixture = await paid("merchandise");
     await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { status: "expired", paidAt: null, fulfilledAt: null, pickupStatus: null } });

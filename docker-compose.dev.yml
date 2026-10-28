@@ -74,7 +74,7 @@ services:
     restart: unless-stopped
     environment:
       STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-}
-    command: [listen, --latest, --events, 'checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated', --forward-to, 'http://app:3000/api/payments/webhook', --forward-connect-to, 'http://app:3000/api/stripe/connect/webhook']
+    command: [listen, --latest, --events, 'checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated', --forward-to, 'http://app:3000/api/payments/webhook', --forward-connect-to, 'http://app:3000/api/stripe/connect/webhook']
 
 volumes:
   node_modules:

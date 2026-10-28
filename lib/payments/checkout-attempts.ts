@@ -66,12 +66,13 @@ export type CheckoutAttemptWithOrder = NonNullable<Awaited<ReturnType<typeof fin
 
 // Stripe answered and did not create anything: safe to release the hold. Any
 // other error (timeout, connection, 5xx, unknown) may have created a Session.
+// PAY-035: a 429 (StripeRateLimitError) is not a refusal; it is retried as uncertain,
+// so a busy minute never fails a refund, reversal or checkout for good.
 const definiteProviderFailures = new Set([
   "StripeCardError",
   "StripeInvalidRequestError",
   "StripeAuthenticationError",
-  "StripePermissionError",
-  "StripeRateLimitError"
+  "StripePermissionError"
 ]);
 
 export function isDefiniteProviderFailure(error: unknown) {

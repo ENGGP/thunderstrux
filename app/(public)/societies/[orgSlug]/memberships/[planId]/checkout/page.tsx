@@ -152,7 +152,7 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
               The membership is for you only: {buyer}, {session.user.email}.
             </li>
             {offer.startsAt > new Date() ? <li>Benefits start on {day(offer.startsAt)}, not when you {free ? "confirm" : "pay"}.</li> : null}
-            {organisation.refundPolicy ? <li className="[overflow-wrap:anywhere]">Refunds: {organisation.refundPolicy}</li> : null}
+            {organisation.refundPolicy ? <li className="[overflow-wrap:anywhere]">Refund policy: {organisation.refundPolicy}</li> : null}
             {organisation.supportEmail ? (
               <li className="[overflow-wrap:anywhere]">
                 Questions:{" "}

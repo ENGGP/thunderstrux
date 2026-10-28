@@ -222,12 +222,15 @@ describe("commerce checkout", () => {
     expect((await prisma.commerceOrder.findFirstOrThrow()).stripeSessionId).toEqual(expect.stringMatching(/^cs_commerce/));
   });
 
-  test("an unpaid completed Session, and a hold whose Session has expired, close the order and release the hold", async () => {
+  test("a delayed payment waits until its async event, a failed one closes the order, and a hold whose Session has expired does too (PAY-030)", async () => {
     const { checkout } = await shop();
     await checkout();
     const unpaid = await prisma.commerceOrder.findFirstOrThrow({ where: { status: "pending" } });
+    // Completed but not paid yet: a delayed method still processing. The order and its hold wait.
     await deliver("checkout.session.completed", await sessionFor(unpaid.id, { payment_status: "unpaid" }));
-    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: unpaid.id } })).toMatchObject({ status: "failed", requiresCompensationReview: false, failureReason: "session_not_paid" });
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: unpaid.id } })).toMatchObject({ status: "pending" });
+    await deliver("checkout.session.async_payment_failed", await sessionFor(unpaid.id, { payment_status: "unpaid" }));
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: unpaid.id } })).toMatchObject({ status: "expired", requiresCompensationReview: false });
 
     await checkout();
     const stale = await prisma.commerceOrder.findFirstOrThrow({ where: { status: "pending" } });

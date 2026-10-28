@@ -60,8 +60,12 @@ test("dependency volume planning requires the exact app mount and Compose owners
   const plan = dependencyVolumePlan(config);
   assert.deepEqual(plan, {
     projectName: "thunderstrux-test",
-    volumeName: "thunderstrux-test_node_modules"
+    volumeName: "thunderstrux-test_node_modules",
+    sharers: []
   });
+  // DEF-063: a worker sharing the volume is stopped and restarted with the app.
+  const withWorker = { ...config, services: { ...config.services, "stale-order-worker": { volumes: [{ type: "volume", source: "node_modules", target: "/app/node_modules" }] }, db: { volumes: [{ type: "volume", source: "postgres_data", target: "/var/lib/postgresql/data" }] } } };
+  assert.deepEqual(dependencyVolumePlan(withWorker).sharers, ["stale-order-worker"]);
   assert.doesNotThrow(() => assertDependencyVolume({
     Name: plan.volumeName,
     Labels: {

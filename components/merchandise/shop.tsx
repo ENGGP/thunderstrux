@@ -419,7 +419,7 @@ export function BasketView({ society }: { society: string }) {
             </Link>
           )}
           <p className="text-sm text-ink-soft">Prices and stock are checked again when you check out. We hold your items for 30 minutes while you pay.</p>
-          {quote.refundPolicy ? <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">Refunds: {quote.refundPolicy}</p> : null}
+          {quote.refundPolicy ? <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">Refund policy: {quote.refundPolicy}</p> : null}
         </aside>
       </div>
       <p className="text-sm text-ink-soft">Up to 10 different items, 10 of each. This basket stays on this device.</p>

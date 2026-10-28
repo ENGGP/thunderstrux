@@ -26,7 +26,11 @@ const ownedOrg = name => `${runId}-${name}`;
 // Resend's test sink accepts and "delivers" these, so no real inbox is ever written to.
 const sinkEmail = (name, who) => `delivered+${ownedOrg(name)}-${who}@resend.dev`;
 const resendConfigured = /^re_[A-Za-z0-9_]+$/.test(process.env.RESEND_API_KEY ?? '') && process.env.RESEND_API_KEY !== 're_capture_only';
-const worker = name => execFileSync('node', [`scripts/${name}.mjs`], {stdio: 'pipe'});
+const worker = (name, env = {}) => execFileSync('node', [`scripts/${name}.mjs`], {stdio: 'pipe', env: {...process.env, ...env}});
+// PAY-024: the stale-order job closes an open Stripe page before it expires an order,
+// so an order expires with its page still payable only where no Stripe key is set
+// outside production. The compensation scenarios expire through that path.
+const expireWithoutStripe = () => worker('process-stale-orders', {STRIPE_SECRET_KEY: '', NODE_ENV: 'development'});
 let browser;
 
 async function preflight() {
@@ -304,7 +308,7 @@ const prepare = {
     await page.goto(`/events/${event.id}/checkout?ticketTypeId=${event.ticketTypes[0].id}&quantity=1`);
     const data = await ticketCheckout(page, name, event, 'Pay $12.00', {amount: 1200});
     await db.ticketReservation.updateMany({where: {orderId: data.orderId}, data: {expiresAt: new Date(Date.now() - 60_000)}});
-    worker('process-stale-orders');
+    expireWithoutStripe();
     assert((await orderState(data.orderId)).status === 'expired', 'The order did not expire locally');
     return data;
   },
@@ -315,7 +319,7 @@ const prepare = {
     const data = await prepare.merchandise(name);
     // Past the stale worker's grace locally, while the Session stays payable.
     await db.commerceOrder.update({where: {id: data.commerceOrderId}, data: {expiresAt: new Date(Date.now() - 10 * 60_000)}});
-    worker('process-stale-orders');
+    expireWithoutStripe();
     assert((await commerceState(data.commerceOrderId)).status === 'expired', 'The order did not expire locally');
     return data;
   }

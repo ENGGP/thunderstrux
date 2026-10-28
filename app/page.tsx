@@ -27,7 +27,7 @@ const howItWorks = [
   },
   {
     title: "Run a society",
-    body: "Sell tickets, memberships and merch in one place and check people in at the door. Free events cost nothing; paid sales carry a 3.75% plus $0.89 fee per item, card processing included."
+    body: "Sell tickets, memberships and merch in one place and check people in at the door. Free events cost nothing; paid sales carry a 3.75% plus $0.89 fee per ticket, membership or merchandise order, card processing included."
   }
 ];
 

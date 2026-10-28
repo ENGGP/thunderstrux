@@ -32,7 +32,7 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 
 | `validity` | Check in or out | 409 `reason` | Console verdict |
 | --- | --- | --- | --- |
-| `active` | allowed | `already_checked_in` / `not_checked_in` on a repeat | Valid (Check in) or Checked in (Undo check-in) |
+| `active` | allowed | `already_checked_in` / `not_checked_in` on a repeat | Valid (Check in), Checked in (Undo check-in), or Already used after a refused repeat |
 | `void` | refused, attendance kept | `not_valid` | Don't admit: refunded, cancelled or reversed after a dispute, with the date |
 | `refund_review` | refused, attendance kept | `under_review` | Under review: "Ask an owner or finance manager before admitting" |
 
@@ -54,7 +54,9 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 - Phone first. It shows "{n} of {total} checked in" and a "Find a ticket" field that searches as you type, from 2 characters. A late answer to an older search never replaces a newer one.
 - One card per ticket shows: the buyer, the purchased ticket type name, the short reference with "n of m", and the email ("guest" on guest orders). Then comes the verdict and its button. Buttons name the attendee in screen-reader text ("Check in Alex Lee").
 - After any server answer the card re-reads its ticket (`?q={ticketId}`) and the page refreshes the counts.
-- With no answer in 10 seconds the card shows "Status unknown" and Reload ticket. It never claims a check-in it can't confirm, and a reload of one that did save shows it as already checked in.
+- Every state has one detail line ("Not checked in yet." while valid), so admitting someone never pushes the button down. A check-in this card made reads "Checked in just now." and its button slot shows a still "Checked in" for 2 seconds, so a second tap can't land on Undo; then Undo check-in is a small link at the slot's end. A 409 `already_checked_in` reads "Already used" (warning): "Checked in at {time} by {name}. Don't admit twice." A ticket already in when the list loaded reads "Checked in at {time} by {name}."
+- 401, 403 and 429 save nothing and say nothing about the ticket, so the card keeps its state and shows why on the card (sign in again, no check-in access, wait) as an alert; `fetchWithCsrf` returns these rather than throwing.
+- With no answer in 10 seconds the card shows "Status unknown" and Reload ticket. It never claims a check-in it can't confirm, and a reload of one that did save shows it as checked in.
 
 ## Traps
 

@@ -3,12 +3,12 @@ status: living
 last-reviewed: 2026-10-28
 owner: engineering
 related: ["[[Frontend and Backend Flow]]", "[[Accessibility Review]]", "[[Authentication and Dashboard Access]]"]
-sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navbar.tsx, components/layout/site-footer.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/events/event-tabs.tsx, components/settings/stripe-connect-settings.tsx, .design-sync/config.json, PRODUCT.md, DESIGN.md]
+sources: [app/globals.css, app/layout.tsx, components/ui, components/layout/navbar.tsx, components/layout/site-footer.tsx, components/layout/dashboard-shell.tsx, components/layout/personal-shell.tsx, components/events/event-tabs.tsx, .design-sync/config.json, PRODUCT.md, DESIGN.md]
 ---
 
 # UI Architecture Rules
 
-**Owns:** design tokens and fonts, the `components/ui/*` primitives, the shells and global header and footer, shared UI patterns and copy rules, the Stripe settings card, and the design-sync setup.
+**Owns:** design tokens and fonts, the `components/ui/*` primitives, the shells and global header and footer, shared UI patterns and copy rules, and the design-sync setup.
 **Read when:** building or restyling any screen, adding a primitive or status, or changing navigation.
 **Not here:** which page lives where, its guard and data ([[Frontend and Backend Flow]]); what is scanned for accessibility ([[Accessibility Review]]); target presentation ([[THUNDERSTRUX_COMPLETE_VISUAL_DESIGN_SPEC|Visual Design]]); Connect states and their meaning ([[Stripe Payments and Connect]]).
 
@@ -69,7 +69,7 @@ Shared content components: `components/events/date-rail.tsx` (day and month in t
 Each page renders its shell after its guards pass; shells are never in route-group layouts (a layout would not re-render when authority changes, and integration tests render page output directly).
 
 - **Auth shell** (`AuthShell`): narrow column for sign-in, signup, verification, recovery, email-change confirmation, guest access, staff invitation, staff MFA, `/dashboard/create` and the payment-return fallbacks. Title, optional description, nothing else.
-- **Checkout shell** (`CheckoutShell`): every purchase step. "Booking for {society}", a way back (Change tickets, Back to basket), the steps, then the content and its summary.
+- **Checkout shell** (`CheckoutShell`): every purchase step. "Booking for {society}" ("Buying from" for memberships and merchandise, `lead`), a way back (Change tickets, Back to basket), the steps, then the content and its summary.
 - **Personal shell** (`PersonalShell`): `/dashboard` in personal context, `/dashboard/organisations`, `/tickets`, `/purchases`, `/purchases/tickets/[orderId]`, `/memberships`, `/account/settings`. Navigation (labelled `Personal navigation`): Overview, My tickets, Memberships, Societies, Purchases, Account; organisation accounts see Overview and Account only. Purchases stays current on its order pages. The switcher shows only when the page passes `contexts` and the person staffs a society, with "Switch to a society you staff to manage its events." It never shows society management controls.
 - **Organisation shell** (`DashboardShell`): owns organisation navigation; don't duplicate these links in pages.
 
@@ -99,8 +99,8 @@ Each page renders its shell after its guards pass; shells are never in route-gro
 
 - `Navbar` is rendered once by `app/layout.tsx`: fixed, `h-[60px] md:h-[72px]` including its border; the layout offsets content by the same amounts.
 - It reads only the session; it never shows a society, role or email.
-- Links: `Thunderstrux` (`/`), `Explore events`, `Explore societies`; signed in, `My tickets` (members), `Dashboard`, `Account` and a `Sign out` button; signed out, `Sign in` and `Create a society` (`/signup?for=society`). Home shows society calls to action only to signed-out visitors, because a society needs its own account.
-- Below `md` a native `Menu` disclosure holds the links; Sign out or Sign in stays outside it.
+- Links: `Thunderstrux` (`/`), `Explore events`, `Explore societies`; signed in, `My tickets` (members), `Dashboard`, `Account` and a `Sign out` button; signed out, a quiet `Create a society` link (`/signup?for=society`), `Sign in` and a `Sign up` button (`/signup`, a member account), so a student never has to pick the society route to sign up. Home shows society calls to action only to signed-out visitors, because a society needs its own account.
+- Below `md` a native `Menu` disclosure holds the links (signed out: Sign up and Create a society); Sign out or Sign in stays outside it.
 - The current section is ink with a 3px brand rule on the header's bottom edge.
 - On any `/checkout` path the header drops its browsing links and Menu (visual spec 3.3).
 - The header owns the names `Explore events` and `Explore societies`; other links to those places use other words (`Events`, `See what's on`, `Find a society`, `Browse societies`) so link names stay unique.
@@ -162,11 +162,11 @@ The skeleton pulses only when motion is allowed.
 ## Public event page and buy box
 
 - `PublicEventView` (`components/events/public-event-view.tsx`) is shared with the organiser's draft preview: 16:9 image, society link, title, date range with zone, location, About, Hosted by with support email and refund policy when set. Below `lg` the ticket box comes before Hosted by; from `lg` it sits in the right column.
-- Buy box (`components/events/public-ticket-purchase.tsx`): "Prices in AUD"; each type's price or Free and "N left", Sold out or "Paid tickets unavailable right now"; a Sales closed or Sold out badge replaces the choices when nothing can be bought. One ticket choice, one `Quantity` ("Up to 10 per order"), then `Get free tickets`, `Buy tickets` or `Continue as guest` with the running total, opening the checkout page. The action follows the viewer (sign in, verify email, society account, buy). Below `lg`, while the box's button is off screen, a fixed bottom bar repeats the selection and action; hidden for society and unverified viewers.
+- Buy box (`components/events/public-ticket-purchase.tsx`): "Prices in AUD"; each type's price or Free and "N left", Sold out or "Paid tickets unavailable right now"; a Sales closed or Sold out badge replaces the choices when nothing can be bought. One ticket choice, one `Quantity` ("Up to 10 per order"), then `Get free tickets`, `Get tickets` or `Continue as guest` (UX spec 5.4) with the running total, opening the checkout page. The action follows the viewer (sign in, verify email, society account, buy). Below `lg`, while the box's button is off screen, a fixed bottom bar repeats the selection and action; hidden for society and unverified viewers.
 
 ## Checkout state screens
 
-The checkout page (`components/purchases/checkout-action.tsx`) shows tickets and total ("Free" and "No payment needed." for free; "No booking fee" for paid), who the tickets go to, the 30-minute hold for paid tickets, and the refund policy and support email when set. The action is `Confirm free registration` or `Pay $X.XX`; it sends the price shown and one idempotency key per reviewed quote, and any server answer ends that key. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds.
+The checkout page (`components/purchases/checkout-action.tsx`) shows tickets and total ("Free" and "No payment needed." for free; "No booking fee" for paid), who the tickets go to, the 30-minute hold for paid tickets, and the refund policy and support email when set. The action is `Confirm free registration` or `Pay A$X.XX` (`payLabel`, `lib/format.ts`; membership and merchandise checkouts too); it sends the price shown and one idempotency key per reviewed quote, and any server answer ends that key. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds.
 
 A refusal replaces the action with a titled `Notice` (`role="alert"`) chosen from the API detail's `reason` and `value`, never by parsing the message. Every refusal says nothing has been charged.
 
@@ -193,25 +193,6 @@ Any other failure keeps the button and shows a danger `Notice` with `Change tick
 - Order detail: breadcrumb `Orders`, title `Order` plus the short reference, status badge. The ticket line uses the purchased ticket name; an order from before T10 shows today's name with "(historical label unavailable)". A Summary card and a `Manage this order` card (resend, refund, record an outside refund through `ConfirmDialog`, verify a compensation refund id, Stripe session with copy and link). `Order history` sits in exactly one `<section>`; browser tests locate it that way.
 - Memberships: plans table from 768px with Runs in the society zone, Price or Free, a status (Draft, Published, Ended, Archived) and holders. Plan form: Term (Semester 1, Semester 2, Full year or Custom dates), Details, Price with the fee example, What it unlocks. Member page actions each confirm, ask for a reason and the authenticator code; a refund dialog names the amount and asks for the order's short reference.
 - Staff settings: invite with email and `Invitation role` (hint says what the role can do); role changes and revocations confirm; pending invitations and a separate history table; owners also see `Committee handover`.
-
-## Stripe settings
-
-`components/settings/stripe-connect-settings.tsx` renders from the server's Connect state, never from "an account id exists".
-
-| State | Badge | Main action |
-| --- | --- | --- |
-| `NOT_CONNECTED` | Not connected | `Connect Stripe` |
-| `PLATFORM_NOT_READY` | Setup incomplete | `Open Stripe Platform Settings`, `Retry after completion` |
-| `CONNECTED_INCOMPLETE` | Setup incomplete | `Continue Stripe setup` |
-| `RESTRICTED` | Needs attention | `Fix in Stripe`, with Stripe's reason and requirements |
-| `READY` | Ready, or Payouts not set up | `Add a bank account in Stripe` until payouts are on |
-| `ERROR` | Out of date | `Try again` |
-
-- Two rows, Can take payments and Can receive payouts, each with its next action, plus the Stripe account id; `Refresh status` and `Open Stripe dashboard` (asks for the authenticator code first when staff MFA is on).
-- A Payouts card (`components/settings/payouts-card.tsx`) for a connected society; a failed payout puts a warning above the cards.
-- A Fees card with the one-$20.00-ticket worked example from `calculatePlatformFee`.
-- `Disconnect Stripe account` (connected states and `PLATFORM_NOT_READY`) sits in its own zone, confirms, and is blocked with "You can't disconnect right now" while open orders need the account. It only unlinks; the Stripe account and its money are untouched.
-- A skeleton shows while status loads.
 
 ## Design sync
 

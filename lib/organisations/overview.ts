@@ -58,7 +58,7 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
           take: 5,
           select: {
             id: true, status: true, paymentKind: true, requiresCompensationReview: true, refundStatus: true, disputeStatus: true,
-            externalRefundedAmount: true, externalRefundReviewedAt: true, cancelledAt: true, quantity: true, totalAmount: true,
+            externalRefundedAmount: true, externalRefundReviewedAt: true, cancelledAt: true, isManuallyRefunded: true, quantity: true, totalAmount: true,
             createdAt: true, paidAt: true, event: { select: { title: true } }, ...buyerIdentitySelect,
             user: { select: { email: true, firstName: true, lastName: true, displayName: true } }
           }

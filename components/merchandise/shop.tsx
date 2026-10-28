@@ -218,7 +218,7 @@ export function ProductPicker({ society, societyName, product }: { society: stri
         ) : null}
 
         <Button disabled={!selected || selected.available === 0} onClick={() => add()} size="lg">
-          {selected && selected.available > 0 ? `Add to basket · ${formatPrice(selected.priceAmount * quantity)}` : "Sold out"}
+          {selected && selected.available > 0 ? `Add to merch basket · ${formatPrice(selected.priceAmount * quantity)}` : "Sold out"}
         </Button>
         {message ? (
           <Notice role="status" tone={message.tone}>

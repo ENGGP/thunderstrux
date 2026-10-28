@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { formatTime } from "@/components/calendar/layout";
 import { AuthShell } from "@/components/layout/auth-shell";
+import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
 import { UnpaidOrderActions } from "@/components/purchases/unpaid-order-actions";
 import { buttonClasses } from "@/components/ui/button";
 import { getLiveSession } from "@/lib/auth/live-session";
@@ -29,8 +31,21 @@ export default async function CancelPage({ searchParams }: { searchParams: Promi
   const checkout = own && projection === "processing" ? await pendingCheckoutState({ kind: "ticket", id: own.id }) : null;
   const orderHref = own ? (own.userId ? `/purchases/tickets/${own.id}` : `/guest/orders/${own.id}`) : "/purchases";
 
-  // Paid in another tab after all, or Stripe has the payment: say so rather than "no payment".
-  if (own && (checkout?.state === "confirming" || (projection !== "processing" && projection !== "failed" && projection !== "expired"))) {
+  // Stripe has the payment but hasn't told us yet: say that, and update by itself.
+  if (own && checkout?.state === "confirming") {
+    return (
+      <AuthShell description="Your payment reached Stripe after you left its page. This page updates by itself once Stripe confirms it." title="Confirming your payment">
+        <div className="grid gap-4">
+          <PaymentStatusPoller orderId={own.id} />
+          <div>
+            <Link className={buttonClasses({ variant: "secondary" })} href={orderHref}>See your order</Link>
+          </div>
+        </div>
+      </AuthShell>
+    );
+  }
+  // Paid in another tab after all: say so rather than "no payment".
+  if (own && (projection === "paid" || projection === "free")) {
     return (
       <AuthShell description="Your payment reached Stripe after you left its page." title="Your order went through">
         <div>
@@ -39,6 +54,8 @@ export default async function CancelPage({ searchParams }: { searchParams: Promi
       </AuthShell>
     );
   }
+  // Refunded, disputed, cancelled or under review since: the order page says which.
+  if (own && projection !== "processing" && projection !== "failed" && projection !== "expired") redirect(orderHref);
   if (own && checkout?.state === "waiting") {
     const what = `${own.quantity} ${own.quantity === 1 ? "ticket" : "tickets"}`;
     return (

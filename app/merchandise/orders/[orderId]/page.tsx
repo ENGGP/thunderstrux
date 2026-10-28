@@ -68,7 +68,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
   const steps = [...(guest ? ["Your email"] : []), "Review", ...(free ? [] : ["Pay with Stripe"]), "Pickup"];
 
   return (
-    <CheckoutShell backHref={`/societies/${order.organisation.slug}/merchandise`} backLabel="Back to merchandise" current={paid ? steps.length - 1 : steps.length - 2} society={order.sellerName} steps={steps} title={title}>
+    <CheckoutShell lead="Buying from" backHref={`/societies/${order.organisation.slug}/merchandise`} backLabel="Back to merchandise" current={paid ? steps.length - 1 : steps.length - 2} society={order.sellerName} steps={steps} title={title}>
       <Card>
         <div className="grid gap-4">
           {closed ? (

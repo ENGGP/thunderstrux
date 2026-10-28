@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 // way back, the step the buyer is on, then the step's content and its summary.
 export function CheckoutShell({
   society,
+  lead = "Booking for",
   backHref,
   backLabel = "Change tickets",
   title,
@@ -14,6 +15,8 @@ export function CheckoutShell({
   children
 }: {
   society: string;
+  // Tickets are booked; memberships and merchandise are bought.
+  lead?: "Booking for" | "Buying from";
   backHref?: string;
   backLabel?: string;
   title: string;
@@ -26,7 +29,7 @@ export function CheckoutShell({
     <main id="main" tabIndex={-1} className="min-h-screen bg-paper">
       <div className="mx-auto grid max-w-5xl gap-6 px-4 py-8 sm:px-6 lg:py-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-ink-soft [overflow-wrap:anywhere]">Booking for {society}</p>
+          <p className="text-sm font-semibold text-ink-soft [overflow-wrap:anywhere]">{lead} {society}</p>
           {backHref ? (
             <Link className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline underline-offset-4" href={backHref}>
               {backLabel}

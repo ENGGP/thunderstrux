@@ -119,6 +119,9 @@ describe("disputes", () => {
     const refunded = await orderState(fixture.order.id);
     expect(refunded.refundStatus).toBe("refunded");
     expect(refunded.tickets.every((ticket) => ticket.validity === "void")).toBe(true);
+    // The won dispute no longer says the tickets are under review: the order reads Refunded everywhere.
+    expect(ticketOrderProjection(refunded)).toBe("refunded");
+    expect(buyerPurchaseBadge(refunded)).toEqual({ status: "refunded" });
   });
 
   // PAY-039: the buyer hears that their tickets were cancelled.
@@ -128,6 +131,10 @@ describe("disputes", () => {
     await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id);
     await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id);
     expect(await prisma.notificationOutbox.findMany({ where: { eventKey: `refund-marked/${fixture.order.id}` }, select: { recipient: true } })).toEqual([{ recipient: "buyer@example.com" }]);
+    // Staff see where it was refunded; the buyer just sees Refunded, never Paid with void tickets.
+    const marked = await orderState(fixture.order.id);
+    expect(ticketOrderProjection(marked)).toBe("refunded-outside");
+    expect(buyerPurchaseBadge(marked)).toEqual({ status: "refunded" });
   });
 
   test("a verified dispute puts the tickets under review and pauses refunds and resends; replays and late events change nothing; a lost one voids them", async () => {

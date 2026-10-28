@@ -29,7 +29,7 @@ export default async function MerchandiseCheckoutPage({ params }: { params: Prom
 
   if (session && !session.user.emailVerifiedAt) {
     return (
-      <CheckoutShell backHref={basket} backLabel="Back to basket" current={0} society={organisation.name} steps={["Review", "Pay with Stripe", "Pickup"]} title="Review your order">
+      <CheckoutShell lead="Buying from" backHref={basket} backLabel="Back to basket" current={0} society={organisation.name} steps={["Review", "Pay with Stripe", "Pickup"]} title="Review your order">
         <Notice title="Verify your email to continue">
           <p className="mt-0.5">We email receipts and pickup notices, so we need to know the address works.</p>
           <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`/verify-email?callbackUrl=${encodeURIComponent(self)}`}>

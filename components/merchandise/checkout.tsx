@@ -12,7 +12,7 @@ import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { newKey, waitForAttempt, type CommerceCheckoutResponse } from "@/lib/client/checkout";
-import { formatMoney, formatPrice } from "@/lib/format";
+import { formatMoney, formatPrice, payLabel } from "@/lib/format";
 import { readBasket, writeBasket } from "@/lib/merchandise/basket";
 import type { Quote } from "@/lib/merchandise/shop";
 
@@ -113,7 +113,7 @@ export function MerchandiseCheckout({
   function refusalFor(failure: unknown): Refusal {
     const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
     // A member opens the open order to pay or cancel it; a guest's may belong to an earlier email link.
-    if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: "Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing more has been charged.", openOrder: guestCsrf ? undefined : detail.id };
+    if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: "Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing has been charged.", openOrder: guestCsrf ? undefined : detail.id };
     if (detail?.reason === "unavailable") return { title: "An item is no longer sold", body: "Remove it from your basket to continue. Nothing has been charged.", toBasket: true };
     if (detail?.reason === "sold_out" || detail?.reason === "not_enough" || detail?.reason === "quote_changed" || detail?.path?.[0] === "expectedTotal") {
       return { title: "Some items changed", body: "A price or stock level changed while you were checking out. Nothing has been charged.", toBasket: true };
@@ -122,7 +122,7 @@ export function MerchandiseCheckout({
   }
 
   const shell = (title: string, steps: string[], current: number, children: ReactNode, aside?: ReactNode) => (
-    <CheckoutShell aside={aside} backHref={basketHref} backLabel="Back to basket" current={current} society={society.name} steps={steps} title={title}>
+    <CheckoutShell lead="Buying from" aside={aside} backHref={basketHref} backLabel="Back to basket" current={current} society={society.name} steps={steps} title={title}>
       {children}
     </CheckoutShell>
   );
@@ -187,7 +187,7 @@ export function MerchandiseCheckout({
 
   // Anything the basket page would flag (sold out, fewer left, no longer sold) is fixed there first.
   const changed = quote.problems.length > 0 || quote.lines.length !== lines.length;
-  const label = free ? "Confirm free order" : `Pay ${formatMoney(quote.total)}`;
+  const label = free ? "Confirm free order" : payLabel(quote.total);
   const aside = (
     <Card>
       <div className="grid gap-4">

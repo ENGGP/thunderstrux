@@ -131,6 +131,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // The last status check failed, so an empty status means "unknown", not "not connected".
+  const [statusFailed, setStatusFailed] = useState(false);
   const [isStartingOnboarding, setIsStartingOnboarding] = useState(false);
   const [isContinuingOnboarding, setIsContinuingOnboarding] = useState(false);
   const [isOpeningDashboard, setIsOpeningDashboard] = useState(false);
@@ -156,6 +158,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         );
 
         setStatus(data);
+        setStatusFailed(false);
 
         if (showMessage) {
           setMessage({
@@ -167,6 +170,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           });
         }
       } catch (error) {
+        setStatusFailed(true);
         if (showMessage) {
           setMessage({
             ok: false,
@@ -360,6 +364,61 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   const isPlatformNotReady = status?.state === "PLATFORM_NOT_READY";
   const openObligations = status?.openObligations ?? 0;
   const exampleFee = calculatePlatformFee(2000);
+  const feesCard = (
+    <Card>
+      <div className="grid gap-4">
+        <div className="grid gap-1">
+          <h2 className="text-xl font-semibold text-ink">Fees</h2>
+          <p className="text-ui text-ink-soft">
+            Thunderstrux keeps 3.75% of each paid order plus $0.89 for each ticket, membership or merchandise order,
+            rounded to the cent once per order. Buyers pay the price you set, with nothing added. Free sales have no fee.
+          </p>
+        </div>
+        <div className="grid gap-2 rounded-control bg-surface-subtle px-5 py-4">
+          <p className="text-sm font-semibold text-ink-soft">Example: one $20.00 ticket</p>
+          <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-ui tabular-nums">
+            <dt>The buyer pays</dt>
+            <dd className="text-right font-semibold">{formatMoney(2000)}</dd>
+            <dt>Thunderstrux keeps</dt>
+            <dd className="text-right">{formatMoney(exampleFee)}</dd>
+            <dt className="border-t border-line pt-1.5 font-semibold">Your society receives</dt>
+            <dd className="border-t border-line pt-1.5 text-right font-semibold">{formatMoney(2000 - exampleFee)}</dd>
+          </dl>
+          <p className="text-caption text-ink-muted">
+            Card processing is included: Stripe charges its processing fee to Thunderstrux, not to your society.
+          </p>
+        </div>
+        <p className="text-sm text-ink-soft">Each order keeps the fee it was sold under, so a later change never alters past sales.</p>
+      </div>
+    </Card>
+  );
+
+  // A failed check must never read as "Not connected": the account may be fine.
+  if (!status && statusFailed) {
+    return (
+      <>
+        <Card>
+          <div className="grid gap-5">
+            <h2 className="text-xl font-semibold text-ink">Stripe account</h2>
+            <Notice
+              action={
+                <Button disabled={isCheckingStatus} onClick={() => void checkStatus(organisation, true)} type="button" variant="secondary">
+                  Try again
+                </Button>
+              }
+              role={message && !message.ok ? "alert" : undefined}
+              title="We couldn't check your Stripe account"
+              tone="danger"
+            >
+              <p>Nothing has changed with your account or your sales. Try again in a moment.</p>
+            </Notice>
+          </div>
+        </Card>
+        {feesCard}
+      </>
+    );
+  }
+
   const rows = [
     {
       label: "Can take payments",
@@ -501,32 +560,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         />
       ) : null}
 
-      <Card>
-        <div className="grid gap-4">
-          <div className="grid gap-1">
-            <h2 className="text-xl font-semibold text-ink">Fees</h2>
-            <p className="text-ui text-ink-soft">
-              Thunderstrux keeps 3.75% of each paid order plus $0.89 for each ticket, membership or merchandise order,
-              rounded to the cent once per order. Buyers pay the price you set, with nothing added. Free sales have no fee.
-            </p>
-          </div>
-          <div className="grid gap-2 rounded-control bg-surface-subtle px-5 py-4">
-            <p className="text-sm font-semibold text-ink-soft">Example: one $20.00 ticket</p>
-            <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-ui tabular-nums">
-              <dt>The buyer pays</dt>
-              <dd className="text-right font-semibold">{formatMoney(2000)}</dd>
-              <dt>Thunderstrux keeps</dt>
-              <dd className="text-right">{formatMoney(exampleFee)}</dd>
-              <dt className="border-t border-line pt-1.5 font-semibold">Your society receives</dt>
-              <dd className="border-t border-line pt-1.5 text-right font-semibold">{formatMoney(2000 - exampleFee)}</dd>
-            </dl>
-            <p className="text-caption text-ink-muted">
-              Card processing is included: Stripe charges its processing fee to Thunderstrux, not to your society.
-            </p>
-          </div>
-          <p className="text-sm text-ink-soft">Each order keeps the fee it was sold under, so a later change never alters past sales.</p>
-        </div>
-      </Card>
+      {feesCard}
 
       {isConnected || isPlatformNotReady ? (
         <div className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:p-6">

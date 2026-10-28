@@ -31,7 +31,7 @@ function PurchaseTotal({ order }: { order: Payable }) {
   const projection = ticketOrderProjection(order);
   if (projection === "failed" || projection === "expired") return <span className="text-ink-soft">Not charged</span>;
   if (order.paymentKind === "free") return <span>Free</span>;
-  if (projection === "refunded") return <s className="text-ink-muted">{formatPrice(order.totalAmount)}</s>;
+  if (projection === "refunded" || projection === "refunded-outside") return <s className="text-ink-muted">{formatPrice(order.totalAmount)}</s>;
   return <span>{formatPrice(order.totalAmount)}</span>;
 }
 

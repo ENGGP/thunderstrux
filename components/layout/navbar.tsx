@@ -84,14 +84,15 @@ export default function Navbar() {
               signOutButton
             ) : (
               <>
+                {/* A member account is the common case; a society account is a shared committee login. */}
+                <Link className={linkClass} href="/signup?for=society">
+                  Create a society
+                </Link>
                 <Link className={linkClass} href="/login">
                   Sign in
                 </Link>
-                <Link
-                  className={buttonClasses({ variant: "secondary", size: "sm" })}
-                  href="/signup?for=society"
-                >
-                  Create a society
+                <Link className={buttonClasses({ variant: "secondary", size: "sm" })} href="/signup">
+                  Sign up
                 </Link>
               </>
             )}
@@ -119,12 +120,14 @@ export default function Navbar() {
                 </Link>
               ))}
               {user ? null : (
-                <Link
-                  className="rounded-control px-3 py-2.5 text-ink hover:bg-surface-subtle"
-                  href="/signup?for=society"
-                >
-                  Create a society
-                </Link>
+                <>
+                  <Link className="rounded-control px-3 py-2.5 text-ink hover:bg-surface-subtle" href="/signup">
+                    Sign up
+                  </Link>
+                  <Link className="rounded-control px-3 py-2.5 text-ink hover:bg-surface-subtle" href="/signup?for=society">
+                    Create a society
+                  </Link>
+                </>
               )}
             </nav>
           </details>

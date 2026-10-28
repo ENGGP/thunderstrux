@@ -6,17 +6,21 @@ import { useState } from "react";
 import { useAccountLinkToken } from "@/components/auth/account-link-token";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
-import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
+
+// The server refused the link itself; a timeout, rate limit or outage says nothing about it.
+function linkRefused(failure: unknown) {
+  return failure instanceof ClientApiError && failure.status >= 400 && failure.status < 500 && failure.status !== 408 && failure.status !== 429;
+}
 
 export function GuestAccessForm() {
   const router = useRouter();
-  const [token, setToken] = useAccountLinkToken();
+  const [token, setToken, ready] = useAccountLinkToken();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function confirm() {
     setBusy(true);
-    setError("");
     try {
       const result = await fetchJson<{ callbackUrl: string }>("/api/guest/email/confirm", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token })
@@ -24,10 +28,25 @@ export function GuestAccessForm() {
       setToken("");
       router.replace(result.callbackUrl);
     } catch (failure) {
-      setToken("");
-      setError(getClientErrorMessage(failure, "This link has stopped working."));
+      if (linkRefused(failure)) {
+        setToken("");
+        setError(getClientErrorMessage(failure, "This link has stopped working."));
+      } else {
+        setError("We couldn't check your link just now. It still works, so try again.");
+      }
       setBusy(false);
     }
+  }
+
+  // Until the link is read (always on the server render), say so at the size of
+  // the Continue step, rather than flashing "stopped working" at a valid link.
+  if (!ready) {
+    return (
+      <div className="grid gap-4">
+        <p className="text-ink-soft">Checking your link…</p>
+        <div aria-hidden="true" className="h-12" />
+      </div>
+    );
   }
 
   if (!token) {
@@ -51,6 +70,7 @@ export function GuestAccessForm() {
     <div className="grid gap-4">
       <p className="text-ink-soft">Continue to confirm your email and go back to your order.</p>
       <Button disabled={busy} onClick={confirm} size="lg" type="button">{busy ? "Confirming…" : "Continue"}</Button>
+      {error ? <Notice role="alert" tone="danger">{error}</Notice> : null}
     </div>
   );
 }

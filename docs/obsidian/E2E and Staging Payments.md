@@ -94,7 +94,7 @@ Events fetched back from Stripe's API carry the account's default version, so on
 | Scenario (`allStagingScenarios`, run order) | Proves |
 | --- | --- |
 | `free` | a member's free ticket from the event page, no Stripe; Resend accepts the receipt. No card or terminal |
-| `success` | Buy tickets → Pay $12.00: destination charge, fee, fulfilment, stock, buyer's Tickets page, Resend; then finance refunds the whole order in the app: transfer reversed, fee returned, tickets void |
+| `success` | Get tickets → Pay A$12.00: destination charge, fee, fulfilment, stock, buyer's Tickets page, Resend; then finance refunds the whole order in the app: transfer reversed, fee returned, tickets void |
 | `decline` | decline card (4000 0000 0000 0002), then forced expiry: no tickets, stock restored |
 | `cancel` | manually attested return to the cancel page, then forced expiry |
 | `member` | free membership, then the ticket at member price ($9.00 not $15.00), linked to the membership |

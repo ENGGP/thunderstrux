@@ -101,7 +101,7 @@ test("a guest pays for tickets, opens them from another browser, is admitted onc
     const results = staff.getByRole("list", { name: "Matching tickets" });
     await staff.getByLabel("Find a ticket").fill(first.id.slice(-6).toUpperCase());
     await results.getByRole("button", { name: /^Check in/ }).click();
-    await expect(results.getByRole("listitem")).toContainText("Already checked in at");
+    await expect(results.getByRole("listitem")).toContainText("Checked in just now");
     expect(await prisma.auditLog.count({ where: { targetId: first.id, action: "ticket.checked_in" } })).toBe(1);
 
     // 5. Finance refunds the order: Stripe confirms with a signed refund event, twice.

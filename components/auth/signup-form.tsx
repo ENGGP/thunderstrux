@@ -79,8 +79,9 @@ export function SignupForm({
         <div className="grid gap-2 sm:grid-cols-2">
           {(
             [
-              ["member", "Me", "Buy tickets and join societies."],
-              ["organisation", "A society", "Run events and sell tickets."]
+              ["member", "Me", "Get tickets, memberships and merch, and join societies."],
+              // An organisation account can't hold tickets and can't become a member account later.
+              ["organisation", "A society", "A shared committee login for running events and sales. It can't get tickets."]
             ] as const
           ).map(([value, label, help]) => (
             <label
@@ -130,12 +131,14 @@ export function SignupForm({
       ) : null}
 
       <TextInput
+        autoComplete="email"
         label="Email"
         onChange={(event) => setEmail(event.target.value)}
         type="email"
         value={email}
       />
       <TextInput
+        autoComplete="new-password"
         hint="At least 8 characters"
         label="Password"
         minLength={8}

@@ -21,3 +21,17 @@ test("the Payments page explains connecting, fees and what free tickets need", a
     await page.screenshot({ path: `test-results/payments-${width}.png`, fullPage: true });
   }
 });
+
+// A failed status check must never read as "Not connected": the account may be fine.
+test("when the Stripe status can't be read, the Payments page says so and offers a retry, never Connect Stripe", async ({ page, data }) => {
+  await page.route("**/api/stripe/connect/status**", (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "Internal error", details: [] } }) }));
+  await login(page, data.owner.email, "/dashboard/settings");
+  await expect(page.getByText("We couldn't check your Stripe account")).toBeVisible();
+  await expect(page.getByText("Not connected", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Connect Stripe", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Fees" })).toBeVisible();
+
+  await page.unroute("**/api/stripe/connect/status**");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("button", { name: "Connect Stripe", exact: true })).toBeVisible();
+});

@@ -1671,7 +1671,7 @@ The approved Claude Design redesign was delivered in PRs [#63](https://github.co
 
 | Journey | Live behaviour |
 |---|---|
-| C-D Buy tickets | One ticket choice, one quantity, "Buy tickets". A signed-in member without a verified email sees "Verify your email to buy tickets" with a link instead of a button that fails at checkout. Checkout still enforces verification. |
+| C-D Buy tickets | One ticket choice, one quantity, "Get tickets" (5.4; "Buy tickets" until the 2026-10-28 critique). A signed-in member without a verified email sees "Verify your email to get tickets" with a link instead of a button that fails at checkout. Checkout still enforces verification. |
 | G-I Create, tickets, publish | Publish blockers ("Add a ticket type before publishing.") show next to the disabled Publish button on the list and in the event header; publish and unpublish are available inside the event. |
 | J-K Manage, sales, attendees | Events list with Upcoming, Drafts, Past and All views, counts, title search and sold/left; each event opens a workspace with Summary, Attendees, Orders and Edit tabs filtered by permission. |
 | L Society admin | Settings group; Society profile, Staff, Payments and Email delivery share page headers and inline results. |

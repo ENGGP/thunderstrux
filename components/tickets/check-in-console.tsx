@@ -25,8 +25,28 @@ async function readTicket(eventId: string, ticketId: string): Promise<ConsoleTic
   return body.tickets.find((ticket) => ticket.id === ticketId) ?? null;
 }
 
+// What this card's own last check-in did: admitted just now, or refused because
+// someone had already used the ticket. Null when the card hasn't acted.
+type Outcome = "checked-in" | "already-used" | null;
+
+// Answers that saved nothing and say nothing about the ticket: keep the card as it was.
+const refusals: Record<number, string> = {
+  401: "Not saved: your sign-in has ended. Sign in again, then try.",
+  403: "Not saved: this account can't check people in any more. Ask an owner.",
+  429: "Not saved: too many check-ins at once. Wait a few seconds, then try again."
+};
+
+async function conflictReason(response: Response) {
+  try {
+    const body = (await response.json()) as { error?: { details?: Array<{ reason?: string }> } };
+    return body.error?.details?.[0]?.reason ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // What the door should do with this ticket, in words and colour.
-function verdict(ticket: ConsoleTicket, timeZone: string) {
+function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
   const day = (value: Date | string | null) => (value ? shortMonths(new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", timeZone }).format(new Date(value))) : null);
   if (ticket.validity === "refund_review") {
     return { tone: "warning", label: "Under review", detail: "The payment is disputed. Ask an owner or finance manager before admitting." };
@@ -44,9 +64,14 @@ function verdict(ticket: ConsoleTicket, timeZone: string) {
   }
   if (ticket.checkedInAt) {
     const time = new Intl.DateTimeFormat("en-AU", { timeStyle: "short", timeZone }).format(new Date(ticket.checkedInAt));
-    return { tone: "info", label: "Checked in", detail: `Already checked in at ${time}${ticket.checkedInBy ? ` by ${ticket.checkedInBy}` : ""}` };
+    const by = ticket.checkedInBy ? ` by ${ticket.checkedInBy}` : "";
+    // Admitted by this tap, or a second person on one ticket: the door must tell them apart.
+    if (outcome === "checked-in") return { tone: "success", label: "Checked in", detail: "Checked in just now." };
+    if (outcome === "already-used") return { tone: "warning", label: "Already used", detail: `Checked in at ${time}${by}. Don't admit twice.` };
+    return { tone: "info", label: "Checked in", detail: `Checked in at ${time}${by}.` };
   }
-  return { tone: "success", label: "Valid", detail: null };
+  // Every state has a detail line, so admitting someone never pushes the button down.
+  return { tone: "success", label: "Valid", detail: "Not checked in yet." };
 }
 
 const tones: Record<string, { card: string; label: string }> = {
@@ -65,7 +90,16 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   const [ticket, setTicket] = useState(initial);
   const [unknown, setUnknown] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  // Briefly after admitting someone the action can't be pressed, so a second tap never lands on Undo.
+  const [locked, setLocked] = useState(false);
   useEffect(() => setTicket(initial), [initial]);
+  useEffect(() => {
+    if (!locked) return;
+    const timer = setTimeout(() => setLocked(false), 2000);
+    return () => clearTimeout(timer);
+  }, [locked]);
 
   async function reload() {
     setBusy(true);
@@ -84,12 +118,29 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
 
   async function act(action: "check-in" | "check-out") {
     setBusy(true);
+    let response: Response;
     try {
-      await fetchWithCsrf(`/api/tickets/${ticket.id}/${action}`, { method: "POST", signal: AbortSignal.timeout(requestTimeoutMs) });
+      response = await fetchWithCsrf(`/api/tickets/${ticket.id}/${action}`, { method: "POST", signal: AbortSignal.timeout(requestTimeoutMs) });
     } catch {
+      setRefusal(null);
       setUnknown(true);
       setBusy(false);
       return;
+    }
+    const refused = refusals[response.status];
+    if (refused) {
+      setRefusal(refused);
+      setBusy(false);
+      return;
+    }
+    setRefusal(null);
+    if (action === "check-in" && response.ok) {
+      setOutcome("checked-in");
+      setLocked(true);
+    } else if (action === "check-in" && response.status === 409 && (await conflictReason(response)) === "already_checked_in") {
+      setOutcome("already-used");
+    } else {
+      setOutcome(null);
     }
     // Saved, or refused for a reason (already checked in, refunded): either way show the ticket as it is now.
     await reload();
@@ -97,9 +148,10 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   }
 
   const name = ticket.buyerName ?? ticket.buyerEmail ?? "Unknown buyer";
-  const state = unknown ? { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved." } : verdict(ticket, timeZone);
+  const state = unknown ? { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved." } : verdict(ticket, timeZone, outcome);
   const tone = tones[state.tone];
   const big = "min-h-14 w-full text-lg md:w-auto md:min-h-11 md:text-ui";
+  const detail = refusal ?? state.detail;
 
   return (
     <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
@@ -115,13 +167,18 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
       </div>
       <div className="grid gap-0.5">
         <strong className={`hidden md:block ${tone.label}`}>{state.label}</strong>
-        {state.detail ? <p className={`text-sm font-semibold ${state.tone === "danger" ? "text-danger" : "text-ink"}`} role={unknown ? "status" : undefined}>{state.detail}</p> : null}
+        {detail ? <p className={`text-sm font-semibold ${refusal || state.tone === "danger" ? "text-danger" : "text-ink"}`} role={refusal ? "alert" : unknown ? "status" : undefined}>{detail}</p> : null}
       </div>
-      <div>
+      <div className={ticket.validity === "active" || unknown ? "flex min-h-14 items-center justify-end md:min-h-11" : undefined}>
         {unknown ? (
           <button className={buttonClasses({ className: big })} disabled={busy} onClick={reload} type="button">Reload ticket</button>
-        ) : ticket.validity !== "active" ? null : ticket.checkedInAt ? (
-          <button className={buttonClasses({ variant: "secondary", className: big })} disabled={busy} onClick={() => act("check-out")} type="button">
+        ) : ticket.validity !== "active" ? null : ticket.checkedInAt && locked ? (
+          <span aria-hidden="true" className={`inline-flex items-center justify-center rounded-control border border-success-border bg-surface px-4 font-semibold text-success ${big}`}>
+            Checked in
+          </span>
+        ) : ticket.checkedInAt ? (
+          // Small and to the side, away from where Check in was tapped.
+          <button className={buttonClasses({ variant: "tertiary", size: "sm" })} disabled={busy} onClick={() => act("check-out")} type="button">
             Undo check-in<span className="sr-only"> for {name}</span>
           </button>
         ) : (

@@ -28,7 +28,7 @@ test("a price changed while reviewing shows the new total and continues at it", 
 
   await login(page, data.member.email, checkoutPath(event.id, ticketType.id, 2));
   await prisma.ticketType.update({ where: { id: ticketType.id }, data: { price: 1700 } });
-  await page.getByRole("button", { name: "Pay $30.00" }).click();
+  await page.getByRole("button", { name: "Pay A$30.00" }).click();
 
   const screen = page.getByRole("alert").filter({ hasText: "The price changed" });
   await expect(screen).toContainText("General admission is now $17.00 per ticket. Your new total is $34.00. Nothing has been charged.");
@@ -95,7 +95,7 @@ test("a society that cannot take payments points back to its free tickets", asyn
 
   // The seeded society has no Stripe account.
   await login(page, data.member.email, checkoutPath(event.id, paid.id, 1));
-  await page.getByRole("button", { name: "Pay $10.00" }).click();
+  await page.getByRole("button", { name: "Pay A$10.00" }).click();
   const screen = page.getByRole("alert").filter({ hasText: "Paid checkout unavailable" });
   await expect(screen).toContainText(`${data.organisation.name} can't take payments right now. Free tickets are still available. Nothing has been charged.`);
   await expect(screen.getByRole("link", { name: "Back to ticket options" })).toBeVisible();

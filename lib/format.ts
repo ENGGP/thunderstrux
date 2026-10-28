@@ -18,6 +18,11 @@ export function formatPrice(cents: number) {
   return cents === 0 ? "Free" : formatMoney(cents);
 }
 
+// The final pay button (UX spec 5.4): "Pay A$12.00", so the currency is never in doubt.
+export function payLabel(cents: number) {
+  return `Pay A${formatMoney(cents)}`;
+}
+
 // An event card's prices on sale, distinct and lowest first: "Free", "$12.00",
 // "From $12.00", "Free or $12.00" or "Free or from $12.00".
 export function listingPriceLabel(prices: number[]) {

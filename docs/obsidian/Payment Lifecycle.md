@@ -223,15 +223,17 @@ Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `reconciliation_
 | Status | When |
 | --- | --- |
 | `cancelled` | `cancelledAt` set (a free order cancelled by staff) |
-| `disputed` | `disputeStatus` set |
+| `disputed` | `disputeStatus` `open` or `lost` |
 | `refunded` | `refundStatus = refunded` |
 | `refund-processing` | `refundStatus = processing` |
+| `refunded-outside` / `refunded` | `isManuallyRefunded` (staff mark, or a confirmed compensation refund): the first on a `paid` order |
+| `disputed` | `disputeStatus = won`, until staff restore the tickets |
 | `review` | `requiresCompensationReview`, or an outside partial refund not yet reviewed |
 | `processing` | `pending` |
 | `paid` / `free` | `paid`, by `paymentKind` |
 | `failed` / `expired` | the order status |
 
-`buyerPurchaseBadge` words it for buyers: failed and expired "Didn't complete", processing "Waiting for payment", cancelled "Cancelled by the society", review "Payment issue" or "Partly refunded", a lost dispute "Refunded by your bank".
+`buyerPurchaseBadge` words it for buyers: failed and expired "Didn't complete", processing "Waiting for payment", cancelled "Cancelled by the society", review "Payment issue" or "Partly refunded", a lost dispute "Refunded by your bank", a staff mark Refunded.
 
 ## Transaction rules
 

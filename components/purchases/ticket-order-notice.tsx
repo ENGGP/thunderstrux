@@ -32,6 +32,7 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
       </Notice>
     );
   }
+  if (projection === "refunded-outside") return <Notice title="Refunded"><p>{society} refunded this order directly, not through Thunderstrux. The tickets are no longer valid; contact {society} if the money hasn&apos;t arrived.</p></Notice>;
   if (projection === "refund-processing") return <Notice role="status" title="Refund processing"><p>{order.event.cancelledAt ? `${society} cancelled this event and` : society} has started a refund. Banks usually take 5 to 10 business days once it goes through.</p></Notice>;
   if (projection === "cancelled") {
     if (releasedByBuyer(order)) return <Notice title="You cancelled this registration"><p>Your place went back to {society} for someone else, and the tickets are no longer valid.</p></Notice>;

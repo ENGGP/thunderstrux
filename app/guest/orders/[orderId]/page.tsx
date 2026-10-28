@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { GuestClaim } from "@/components/guest/guest-claim";
+import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
 import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
 import { UnpaidOrderNotice } from "@/components/purchases/unpaid-order-notice";
 import { ReleaseRegistration } from "@/components/purchases/release-registration";
@@ -73,7 +74,11 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
               checkout={checkout}
               confirming={
                 <Notice role="status" title="Confirming your payment">
-                  <p>Stripe has your payment and is telling us about it. This usually takes under a minute. <Link className="font-semibold text-brand underline underline-offset-4" href={`/guest/orders/${order.id}`}>Refresh</Link> to check again.</p>
+                  <p>Stripe has your payment and is telling us about it. This usually takes under a minute; this page updates by itself.</p>
+                  <PaymentStatusPoller
+                    orderId={order.id}
+                    slowMessage="Stripe hasn't confirmed yet. If you paid, your tickets will show on this page and arrive by email when it does."
+                  />
                 </Notice>
               }
               guestCsrf={sessionId ? guestCsrfToken(sessionId) : undefined}

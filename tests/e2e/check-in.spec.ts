@@ -1,6 +1,18 @@
 import { test, expect, prisma, login, selectStaffContext, createMember } from "./fixtures";
 import { createOrder } from "@/tests/helpers/test-data";
 
+// A refusal that saved nothing (lost access, signed out, rate limited) says so on the card and leaves the ticket as it was.
+test("a check-in the server refuses says why on the card and admits no one", async ({ page, data }) => {
+  const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, status: "paid", paidAt: new Date(), quantity: 1, unitPrice: 1500 });
+  const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id } });
+  await login(page, data.owner.email, `/dashboard/events/${data.event.id}/tickets`);
+  await page.route("**/api/tickets/*/check-in", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { code: "FORBIDDEN", message: "Forbidden", details: [] } }) }));
+  await page.getByRole("button", { name: /^Check in / }).click();
+  const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: /^Check in / }) });
+  await expect(card.getByRole("alert")).toContainText("can't check people in");
+  expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).checkedInAt).toBeNull();
+});
+
 test("check-in staff find a ticket on a phone, admit it once, see why others can't come in, and recover from a lost answer", async ({ page, data }) => {
   await prisma.organisationStaff.update({ where: { id: data.staff.id }, data: { role: "check_in_staff" } });
   const buyer = await prisma.user.update({ where: { id: data.member.id }, data: { firstName: "Sam", lastName: "Lee" } });
@@ -32,7 +44,7 @@ test("check-in staff find a ticket on a phone, admit it once, see why others can
   await page.getByLabel("Find a ticket").fill(first.id.slice(-6).toUpperCase());
   await expect(results.getByRole("listitem")).toHaveCount(1);
   await results.getByRole("button", { name: /^Check in/ }).click();
-  await expect(results.getByRole("listitem", { name: "Sam Lee, Checked in" })).toContainText("Already checked in at");
+  await expect(results.getByRole("listitem", { name: "Sam Lee, Checked in" })).toContainText("Checked in just now");
   await expect(page.getByText("1 of 2 checked in")).toBeVisible();
 
   // The check-in saves but its answer never arrives: the card says it doesn't know, then reloads the truth.

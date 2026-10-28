@@ -22,7 +22,8 @@ const projectionSelect = {
   disputeStatus: true,
   externalRefundedAmount: true,
   externalRefundReviewedAt: true,
-  cancelledAt: true
+  cancelledAt: true,
+  isManuallyRefunded: true
 } satisfies Prisma.OrderSelect;
 
 const listSelect = {

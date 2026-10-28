@@ -115,6 +115,14 @@ describe("purchases and order status", () => {
     await expect(confirmed(fixture.event.id)).rejects.toMatchObject(notFound);
     asMember(fixture.stranger);
     await expect(confirmed(fixture.event.id, fixture.order.id)).rejects.toMatchObject(notFound);
+
+    // It says the tickets were emailed only once they were, and never "ready" after a refund.
+    asMember(fixture.buyer);
+    expect(page).toContain("We&#x27;re emailing them");
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { ticketEmailSentAt: new Date() } });
+    expect(await renderPage(await confirmed(fixture.event.id, fixture.order.id))).toContain("We&#x27;ve emailed them");
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { refundStatus: "refunded" } });
+    await expect(confirmed(fixture.event.id, fixture.order.id)).rejects.toMatchObject({ digest: expect.stringContaining(`/purchases/tickets/${fixture.order.id}`) });
   });
 
   test("the cancel page names the order only to its buyer", async () => {
@@ -126,6 +134,11 @@ describe("purchases and order status", () => {
     expect(foreign).not.toContain("Engineering Mixer");
     asMember(fixture.buyer);
     expect(await cancel()).toContain("Back to Engineering Mixer");
+    // Paid after all, then refunded: the page sends the buyer to the order, never "went through".
+    await fulfil(fixture);
+    expect(await cancel()).toContain("Your order went through");
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { refundStatus: "refunded" } });
+    await expect(cancel()).rejects.toMatchObject({ digest: expect.stringContaining(`/purchases/tickets/${fixture.order.id}`) });
   });
 
   test("Purchases lists every order in the buyer's words; the wallet splits tickets into upcoming, past and not valid", async () => {

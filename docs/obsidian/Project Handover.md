@@ -30,7 +30,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   It registers the Low leftovers as PAY-023. No migration.
 - #205 fixes PAY-023's code items: readiness needs the `transfers` capability, paid prices start at $2.00, payouts wait for $20 (or a week) under a per-attempt key, and an actionable early fraud warning on an unused order is refunded automatically. PAY-023 keeps the webhook IP allowlist and Accounts v2. No migration.
 - 2026-10-28: the Impeccable design skill was added with `PRODUCT.md` (a PRD summary) and a code-generated `DESIGN.md`; comparing it with the visual spec registered UI-007 (no price on event cards) and UI-008 (home and event-page layout). The built values kept on purpose are in visual spec 16.8, and the unused lime token is gone. #209 then closed UI-007, UI-008 and UI-004's society Overview previews: event cards show the price or selling state, the home hero leads with events, and Overview previews memberships and merchandise. See [[UI Architecture Rules#Impeccable]].
-- 2026-10-28: an Impeccable critique of all 64 pages (24/40) found wrong statements at money moments. #PRNUM fixes them (UI-011 to UI-017, no migration):
+- 2026-10-28: an Impeccable critique of all 64 pages (24/40) found wrong statements at money moments. #216 fixes them (UI-011 to UI-017, no migration):
   - order status ranks a refund above a won dispute and shows staff marks;
   - the refund dialog says places go back on sale;
   - Payments says when it can't read Stripe;

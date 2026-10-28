@@ -197,11 +197,19 @@ describe("checkout reconciliation sweep: tickets", () => {
   // PAY-030: a delayed payment method, complete but not paid yet.
   test("a completed but unpaid Session is left processing and its order never expires meanwhile", async () => {
     const { orderId, session } = await pendingCheckout();
-    stripe.retrieve.mockResolvedValue(session({ status: "complete", payment_status: "unpaid" }));
+    // A bank transfer awaiting funds is "requires_action"; either way it waits.
+    stripe.retrieve.mockResolvedValue(session({ status: "complete", payment_status: "unpaid", payment_intent: { id: unique("pi"), status: "requires_action" } as Stripe.PaymentIntent }));
     await expect(sweepPendingCheckouts({ now: minutes(3) })).resolves.toMatchObject({ processing: 1, settled: 0 });
     await expect(processStaleOrderCleanupBatch({ now: afterHold() })).resolves.toMatchObject({ ordersExpired: 0, stripeDeferred: 1 });
     expect(await state(orderId)).toMatchObject({ status: "pending", reservation: { status: "active" } });
     expect(stripe.expire).not.toHaveBeenCalled();
+  });
+
+  test("a delayed payment that failed while its webhook was lost fails its order", async () => {
+    const { orderId, session } = await pendingCheckout();
+    stripe.retrieve.mockResolvedValue(session({ status: "complete", payment_status: "unpaid", payment_intent: { id: unique("pi"), status: "requires_payment_method" } as Stripe.PaymentIntent }));
+    await expect(sweepPendingCheckouts({ now: minutes(3) })).resolves.toMatchObject({ processing: 0, settled: 1 });
+    expect(await state(orderId)).toMatchObject({ status: "expired", requiresCompensationReview: false, tickets: [] });
   });
 
   // PAY-032: the society cancels the event while the buyer's Stripe page is being created.

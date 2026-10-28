@@ -105,7 +105,10 @@ async function lookUp(order: PendingCheckout, { now, closeIfOpen }: { now: Date;
     let session = await getStripe().checkout.sessions.retrieve(order.stripeSessionId, { expand: ["payment_intent"] });
     // PAY-030: completed but unpaid is a delayed payment method still processing;
     // its async_payment_* webhook settles it, and the order waits, never expiring.
-    if (session.status === "complete" && session.payment_status === "unpaid") {
+    // A payment that failed (its async_payment_failed webhook missed) fails here as that webhook would.
+    const unpaid = session.status === "complete" && session.payment_status === "unpaid";
+    const intentStatus = typeof session.payment_intent === "object" ? session.payment_intent?.status : undefined;
+    if (unpaid && intentStatus !== "requires_payment_method" && intentStatus !== "canceled") {
       await markChecked(order, now);
       return "processing";
     }
@@ -116,7 +119,7 @@ async function lookUp(order: PendingCheckout, { now, closeIfOpen }: { now: Date;
       }
       session = await getStripe().checkout.sessions.expire(session.id);
     }
-    const settled = await settleCheckoutSession(session, { completed: session.status === "complete", source: "reconciliation_sweep" });
+    const settled = await settleCheckoutSession(session, { completed: session.status === "complete" && !unpaid, source: "reconciliation_sweep" });
     const outcome = settled.result.status;
     if (session.status === "complete" && session.payment_status === "paid" && (outcome === "fulfilled" || outcome === "compensation_required")) {
       // Only a webhook that never arrived leaves a paid Session for the sweep to find.

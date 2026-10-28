@@ -2,8 +2,12 @@ import Stripe from "stripe";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { POST as connectWebhook } from "@/app/api/stripe/connect/webhook/route";
 import { prisma } from "@/lib/db";
+import { GET as statusRoute } from "@/app/api/stripe/connect/status/route";
+import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
+import { setMockSession } from "@/tests/helpers/auth";
 import {
   continueOrganisationStripeOnboarding,
+  createExpressAccount,
   getOrganisationStripeConnectStatus,
   OrganisationStripeConnectNotFoundError,
   OrganisationStripeConnectValidationError,
@@ -178,7 +182,7 @@ describe("Stripe Connect application service", () => {
     await expect(startOrganisationStripeOnboarding(organisation.id, { actor: { id: user.id } })).resolves.toBe("https://connect.stripe.test/new");
     // The society is the settlement merchant (on_behalf_of), and a double click returns the same account.
     expect(stripeMocks.createAccount).toHaveBeenLastCalledWith(
-      { type: "express", capabilities: { card_payments: { requested: true }, transfers: { requested: true } }, settings: { payouts: { schedule: { interval: "manual" }, debit_negative_balances: true } } },
+      { type: "express", capabilities: { card_payments: { requested: true }, transfers: { requested: true } }, settings: { payouts: { schedule: { interval: "manual" }, debit_negative_balances: true } }, metadata: { organisationId: organisation.id } },
       { idempotencyKey: `connect-account:${organisation.id}:0` }
     );
     expect(await prisma.auditLog.findFirst({ where: { organisationId: organisation.id, action: "stripe_connect.account_created" } })).toMatchObject({
@@ -288,5 +292,64 @@ describe("Stripe Connect application service", () => {
     // An account no society uses is ignored.
     expect((await signedConnectEvent({ id: unique("evt"), type: "account.external_account.created", account: "acct_unknown", data: { object: bank } })).status).toBe(200);
     expect(await prisma.auditLog.count({ where: { action: "stripe_connect.payout_account_changed" } })).toBe(2);
+  });
+
+  // SEC-034: two onboarding requests at once, the second reading after the first committed.
+  test("two account creations at once link one account; the other is logged as an orphan", async () => {
+    const { organisation, user } = await createOrganisationAccount();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stripeMocks.createAccount.mockResolvedValueOnce({ id: "acct_race_first" }).mockResolvedValueOnce({ id: "acct_race_second" });
+    const results = await Promise.all([createExpressAccount(organisation.id, user.id), createExpressAccount(organisation.id, user.id)]);
+    const linked = (await prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id } })).stripeAccountId;
+    expect(results.map((result) => result.accountId)).toEqual([linked, linked]);
+    expect(await prisma.auditLog.count({ where: { organisationId: organisation.id, action: "stripe_connect.account_created" } })).toBe(1);
+    expect(warn.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"stripe_connect.account_orphaned"'))).toHaveLength(1);
+  });
+
+  // SEC-035: two societies on one account would each hold back only their own money.
+  test("one Stripe account can't be linked to two societies", async () => {
+    const first = await createOrganisationAccount({ stripeReady: true });
+    const second = await createOrganisationAccount();
+    await expect(prisma.organisation.update({ where: { id: second.organisation.id }, data: { stripeAccountId: first.organisation.stripeAccountId } })).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  // PAY-034: an account this platform can no longer reach stops selling, and the webhook stops retrying.
+  test("an account Stripe no longer lets us reach is taken off sale and alerted once", async () => {
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    stripeMocks.retrieveAccount.mockRejectedValue(Object.assign(new Error("The provided key does not have access to account"), { type: "StripePermissionError", code: "account_invalid" }));
+    await expect(getOrganisationStripeConnectStatus(organisation.id)).resolves.toMatchObject({ state: "ERROR", charges_enabled: false, payouts_enabled: false });
+    expect(await prisma.organisation.findUniqueOrThrow({ where: { id: organisation.id } })).toMatchObject({ stripeChargesEnabled: false, stripePayoutsEnabled: false, stripeAccountStatus: "ERROR" });
+    expect((await accountUpdated({ id: organisation.stripeAccountId, object: "account" })).status).toBe(200);
+    expect(error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"society_account_unreachable"'))).toHaveLength(1);
+  });
+
+  // PAY-041: payouts that worked and stopped.
+  test("staff who manage Stripe hear when Stripe pauses payouts", async () => {
+    const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
+    await prisma.organisation.update({ where: { id: organisation.id }, data: { stripePayoutsEnabled: true } });
+    stripeMocks.retrieveAccount.mockResolvedValue({ id: organisation.stripeAccountId, details_submitted: true, charges_enabled: true, capabilities: active, payouts_enabled: false, requirements: { currently_due: [], eventually_due: [], disabled_reason: null, current_deadline: null } });
+    await accountUpdated({ id: organisation.stripeAccountId, object: "account" });
+    await accountUpdated({ id: organisation.stripeAccountId, object: "account" });
+    expect(await prisma.notificationOutbox.findMany({ where: { organisationId: organisation.id, eventKey: { startsWith: "stripe-payouts-paused/" } }, select: { recipient: true } })).toEqual([{ recipient: user.email }]);
+  });
+
+  // SEC-037: each status read asks Stripe; the page no longer refreshes on every focus.
+  test("the status endpoint is rate limited per society", async () => {
+    const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
+    setRateLimitTestEnabled(true);
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    try {
+      setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+      stripeMocks.retrieveAccount.mockResolvedValue({ id: organisation.stripeAccountId, details_submitted: true, charges_enabled: true, capabilities: active, payouts_enabled: true, requirements: { currently_due: [], eventually_due: [], disabled_reason: null, current_deadline: null } });
+      const read = () => statusRoute(new Request(`http://localhost:3000/api/stripe/connect/status?organisationId=${organisation.id}`));
+      const statuses: number[] = [];
+      for (let n = 0; n < 31; n++) statuses.push((await read()).status);
+      expect(statuses.slice(0, 30).every((status) => status === 200)).toBe(true);
+      expect(statuses[30]).toBe(429);
+    } finally {
+      setRateLimitTestEnabled(null);
+      setRateLimitTestBackend(null);
+    }
   });
 });

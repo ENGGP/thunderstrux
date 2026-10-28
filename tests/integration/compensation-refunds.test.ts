@@ -590,6 +590,23 @@ describe("compensation refunds", () => {
     await expect(prisma.compensationRefundJob.findUniqueOrThrow({ where: { id: fixture.job.id } })).resolves.toMatchObject({ state: "refunded" });
     expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.compensation_refund_confirmed", targetId: fixture.order.id } })).toMatchObject({ actorUserId: fixture.owner.id });
   });
+
+  // SEC-036: confirming settles a paid order's review, so it needs a fresh code, as a refund does.
+  test("with staff MFA on, the confirm route needs an authenticator code before asking Stripe", async () => {
+    const fixture = await automaticCompensationFixture();
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { state: "review_required" } });
+    // "enroll" lets the dashboard through without a grant, so the route's own code check answers.
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
+    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    setMockSession({ userId: fixture.owner.id, email: fixture.owner.email, accountRole: "organisation" });
+    const response = await confirmRoute(jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/compensation-refund/confirm`, { refundId: "re_needs_code" }), routeContext({ orderId: fixture.order.id }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.details).toEqual([expect.objectContaining({ path: ["mfaCode"] })]);
+    expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled();
+    await expect(prisma.compensationRefundJob.findUniqueOrThrow({ where: { id: fixture.job.id } })).resolves.toMatchObject({ state: "review_required" });
+  });
+
   // PAY-026: a compensation refund that stops for a person raises an alert.
   const reviewAlerts = (spy: { mock: { calls: unknown[][] } }) =>
     spy.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"compensation_refund_needs_review"')).map((line) => JSON.parse(line));

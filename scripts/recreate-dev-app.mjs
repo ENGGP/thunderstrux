@@ -42,7 +42,13 @@ export function dependencyVolumePlan(config) {
     throw new Error("App /app/node_modules mount is not the Compose dependency volume");
   }
 
-  return { projectName, volumeName };
+  // DEF-063: other services mounting the same volume (the dev stale-order worker)
+  // must stop too, or Docker refuses to remove it and leaves the app down.
+  const sharers = Object.entries(config.services ?? {})
+    .filter(([name, service]) => name !== "app" && service?.volumes?.some((mount) => mount?.type === "volume" && mount?.source === "node_modules"))
+    .map(([name]) => name);
+
+  return { projectName, volumeName, sharers };
 }
 
 export function assertDependencyVolume(volume, plan) {
@@ -95,10 +101,12 @@ function verifyRuntimeDependencies() {
 export function recreateDevelopmentApp() {
   runDocker([...composeArgs, "build", "app"]);
   const plan = developmentDependencyVolume();
-  runDocker([...composeArgs, "rm", "-s", "-f", "app"]);
+  runDocker([...composeArgs, "rm", "-s", "-f", "app", ...plan.sharers]);
   removeDependencyCache(plan);
   runDocker([...composeArgs, "up", "-d", "app"]);
   verifyRuntimeDependencies();
+  // Started once the app has reinstalled the dependencies they share.
+  if (plan.sharers.length) runDocker([...composeArgs, "up", "-d", ...plan.sharers]);
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

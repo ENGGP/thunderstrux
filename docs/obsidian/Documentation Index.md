@@ -27,7 +27,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 | Change events, ticket types, publishing or sales | [[Event Lifecycle]] | `lib/events/`, `lib/validators/events.ts` |
 | Change checkout, orders or holds | [[Payment Lifecycle]], [[Stripe Payments and Connect]] | `lib/payments/`, `lib/tickets/reservations.ts`, `lib/commerce/`, `lib/purchases/` |
 | Change refunds, disputes, reversals or compensation | [[Payment Lifecycle Refunds and Disputes]], [[Payment Lifecycle]] | `lib/payments/order-refunds.ts`, `lib/payments/compensation-refunds.ts`, `lib/payments/purchase-disputes.ts`, `lib/payments/dispute-reversals.ts` |
-| Change Stripe Connect, payouts, fees or webhooks | [[Stripe Payments and Connect]] | `lib/stripe/`, `lib/payouts/`, `app/api/payments/webhook/`, `app/api/stripe/connect/` |
+| Change Stripe Connect, payouts, fees or webhooks | [[Stripe Payments and Connect]], [[Stripe Payments and Connect Payouts]] | `lib/stripe/`, `lib/payouts/`, `app/api/payments/webhook/`, `app/api/stripe/connect/` |
 | Change memberships or merchandise | [[Memberships and Merchandise]], [[Payment Lifecycle]] | `lib/memberships/`, `lib/merchandise/`, `lib/commerce/` |
 | Change society profiles, joining or images | [[Society Profiles and Assets]] | `lib/organisations/`, `lib/assets/` |
 | Change check-in | [[Ticket Check-in Implementation]] | `lib/tickets/check-in.ts` |
@@ -46,7 +46,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 
 - **Start:** [[Project Handover]] · [[Engineering Delivery Workflow]] · [[Issue and Defect Register]] · [[Glossary]]
 - **Architecture:** [[Architecture Overview]] · [[Thunderstrux Codebase Map]] · [[Database and Multi Tenancy]]
-- **Domain:** [[Authentication and Dashboard Access]] · [[Event Lifecycle]] · [[Ticket Check-in Implementation]] · [[Payment Lifecycle]] · [[Payment Lifecycle Refunds and Disputes]] · [[Stripe Payments and Connect]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]] · [[Analytics and Calendar]] · [[Email Delivery Implementation]] · [[Audit Coverage]]
+- **Domain:** [[Authentication and Dashboard Access]] · [[Event Lifecycle]] · [[Ticket Check-in Implementation]] · [[Payment Lifecycle]] · [[Payment Lifecycle Refunds and Disputes]] · [[Stripe Payments and Connect]] · [[Stripe Payments and Connect Payouts]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]] · [[Analytics and Calendar]] · [[Email Delivery Implementation]] · [[Audit Coverage]]
 - **Interfaces:** [[API Reference]] · [[Route Security Inventory]] · [[Frontend and Backend Flow]] · [[UI Architecture Rules]] · [[Accessibility Review]]
 - **Operations:** [[Environment Variables]] · [[Development Workflow]] · [[Troubleshooting]] · [[Seeding and Data]] · [[Production Operations]] · [[Production Operations Alerts]] · [[Production Operations Hosting]] · [[Pre-hosting Candidate]] · [[Dependency Automation]] · [[E2E and Staging Payments]] · [[Journey Qualification]]
 - **History** (dated; read only for evidence): [[Resolved Defects]] · [[Evidence Ledger]] · [[Project Handover 2026-10-25]] · [[Project Handover 2026-10-15]] · [[Project Handover 2026-10-12]] · [[Docker Architecture Assessment 2026-09-29]] · [[Production Readiness Verification 2026-09-22]] · [[Dependency Advisory Triage 2026-09-18]]

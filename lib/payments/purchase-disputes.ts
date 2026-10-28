@@ -30,10 +30,17 @@ const idOf = (value: string | { id: string } | null | undefined) => (typeof valu
 export const outcomeOf = (status: string): OrderDisputeStatus =>
   status === "lost" ? "lost" : status === "won" || status === "warning_closed" || status === "prevented" ? "won" : "open";
 
+// PAY-037: an inquiry (warning_*) is a bank's question before any chargeback;
+// no money moves, so it doesn't fence refunds or put tickets under review. Its
+// sale's payout is held while it is open (lib/payouts/release.ts).
+export const isInquiry = (status: string) => status.startsWith("warning_");
+
 // A charge can carry more than one dispute; the order shows the worst, so one
-// won dispute can't release another's fence or payout hold (SEC-024).
-export const worstOutcome = (statuses: string[]): OrderDisputeStatus => {
-  const outcomes = statuses.map(outcomeOf);
+// won dispute can't release another's fence or payout hold (SEC-024). Inquiries
+// don't count, so a charge with only inquiries has no dispute status.
+export const worstOutcome = (statuses: string[]): OrderDisputeStatus | null => {
+  const outcomes = statuses.filter((status) => !isInquiry(status)).map(outcomeOf);
+  if (outcomes.length === 0) return null;
   return outcomes.includes("lost") ? "lost" : outcomes.includes("open") ? "open" : "won";
 };
 
@@ -107,11 +114,14 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
       create: { ...fields, orderId, organisationId: owner.organisationId, stripeDisputeId: current.id, stripeChargeId: payment.chargeId as string, currency: current.currency },
       update: fields
     });
-    if (existing && outcomeOf(existing.providerStatus) === outcome) return false;
+    if (existing && outcomeOf(existing.providerStatus) === outcome && isInquiry(existing.providerStatus) === isInquiry(current.status)) return false;
     const all = await tx.purchaseDispute.findMany({ where: { orderId }, select: { providerStatus: true } });
     await tx.order.update({ where: { id: orderId }, data: { disputeStatus: worstOutcome(all.map((row) => row.providerStatus)), stripePaymentIntentId: intentId } });
-    if (!existing) {
+    // Tickets go under review once there is a chargeback, not for an inquiry.
+    if (!isInquiry(current.status) && (!existing || isInquiry(existing.providerStatus))) {
       await tx.ticket.updateMany({ where: { orderId, validity: "active" }, data: { validity: "refund_review", validityReason: "disputed", validityChangedAt: now } });
+    }
+    if (!existing) {
       await appendOrderLifecycleEvent(tx, { orderId, type: "dispute_opened", source: "stripe_webhook", stripeEventId: event.id, reason: current.reason, facts: { amount: current.amount } });
     }
     if (outcome === "lost") {

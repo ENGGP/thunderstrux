@@ -297,7 +297,9 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
         // destination charges need transfers.
         capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
         // PAY-005: Thunderstrux sends the money once each event is over.
-        settings: manualPayoutSettings
+        settings: manualPayoutSettings,
+        // SEC-034: an account left over by a race can still be traced to its society.
+        metadata: { organisationId: organisation.id }
       },
       { idempotencyKey: `connect-account:${organisation.id}:${earlierAccounts}` }
     );
@@ -324,9 +326,11 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
     throw error;
   }
 
-  await prisma.$transaction([
-    prisma.organisation.update({
-      where: { id: organisation.id },
+  // SEC-034: only a society still without an account takes this one, so two
+  // requests at once can never overwrite each other; the loser uses the winner's.
+  const linked = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.organisation.updateMany({
+      where: { id: organisation.id, stripeAccountId: null },
       data: {
         stripeAccountId: account.id,
         stripeAccountStatus: "CONNECTED_INCOMPLETE",
@@ -334,8 +338,9 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
         stripePayoutsEnabled: false,
         stripeDetailsSubmitted: false
       }
-    }),
-    prisma.auditLog.create({
+    });
+    if (claimed.count !== 1) return (await tx.organisation.findUniqueOrThrow({ where: { id: organisation.id }, select: { stripeAccountId: true } })).stripeAccountId;
+    await tx.auditLog.create({
       data: {
         organisationId: organisation.id,
         actorUserId,
@@ -344,16 +349,24 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
         targetId: organisation.id,
         metadata: { stripeAccountId: account.id }
       }
-    })
-  ]);
-
-  console.info("Stripe Express account created", {
-    organisationId: organisation.id,
-    stripeAccountId: account.id
+    });
+    return account.id;
   });
 
+  if (linked !== account.id) {
+    // Unused, with no details; Stripe keeps it under the society's id in metadata.
+    logWarn("stripe_connect.account_orphaned", { organisationId: organisation.id, stripeAccountId: account.id, linkedStripeAccountId: linked });
+    // Unlinked again in between (a disconnect): nothing to onboard; the caller retries.
+    if (!linked) throw new Error("Stripe account could not be linked");
+  } else {
+    console.info("Stripe Express account created", {
+      organisationId: organisation.id,
+      stripeAccountId: account.id
+    });
+  }
+
   return {
-    accountId: account.id,
+    accountId: linked as string,
     orgSlug: organisation.slug
   };
 }
@@ -400,7 +413,27 @@ export async function getAccountStatus(accountId: string) {
 export async function refreshConnectedAccount(accountId: string) {
   const known = await prisma.organisation.count({ where: { stripeAccountId: accountId } });
   if (known === 0) return { count: 0 };
-  return persistConnectedAccountStatus(await getStripe().accounts.retrieve(accountId));
+  let account: Stripe.Account;
+  try {
+    account = await getStripe().accounts.retrieve(accountId);
+  } catch (error) {
+    // Retrying a 403 forever helps nobody: the webhook answers 200 once it is recorded.
+    if (!isAccountOutOfReach(error)) throw error;
+    await markAccountOutOfReach(accountId);
+    return { count: known };
+  }
+  return persistConnectedAccountStatus(account);
+}
+
+// PAY-034: Stripe answers 403 for an account this platform can no longer see
+// (deleted, or made under another platform key). Nothing can be sold or paid out
+// through it, so its society stops selling now, and a person is told once.
+async function markAccountOutOfReach(accountId: string) {
+  const changed = await prisma.organisation.updateMany({
+    where: { stripeAccountId: accountId, OR: [{ stripeChargesEnabled: true }, { stripePayoutsEnabled: true }, { stripeAccountStatus: { not: "ERROR" } }] },
+    data: { stripeAccountStatus: "ERROR", stripeChargesEnabled: false, stripePayoutsEnabled: false }
+  });
+  if (changed.count > 0) emitOperationalAlert("society_account_unreachable", { stripeAccountId: accountId, organisations: changed.count, dedupeKey: `society_account_unreachable:${accountId}` });
 }
 
 // SEC-033: where a society's payouts go changed: Stripe added a bank account (or
@@ -444,8 +477,8 @@ export async function persistConnectedAccountStatus(account: Stripe.Account) {
 
   const { count, paused } = await prisma.$transaction(async (tx) => {
     // Locked as disconnect locks it; the transition is read under the lock.
-    const organisations = await tx.$queryRaw<Array<{ id: string; slug: string; name: string; timeZone: string; stripeChargesEnabled: boolean }>>`
-      SELECT "id", "slug", "name", "timeZone", "stripeChargesEnabled" FROM "Organisation" WHERE "stripeAccountId" = ${account.id} FOR UPDATE
+    const organisations = await tx.$queryRaw<Array<{ id: string; slug: string; name: string; timeZone: string; stripeChargesEnabled: boolean; stripePayoutsEnabled: boolean }>>`
+      SELECT "id", "slug", "name", "timeZone", "stripeChargesEnabled", "stripePayoutsEnabled" FROM "Organisation" WHERE "stripeAccountId" = ${account.id} FOR UPDATE
     `;
     await tx.organisation.updateMany({
       where: { stripeAccountId: account.id },
@@ -469,6 +502,13 @@ export async function persistConnectedAccountStatus(account: Stripe.Account) {
         await notifyStripeManagers(tx, organisation, `stripe-deadline/${organisation.id}/${status.current_deadline}`, {
           subject: `Stripe needs more details from ${organisation.name}`,
           message: `Stripe needs more details from ${organisation.name} by ${formatDate(status.current_deadline, organisation.timeZone)}, or it may pause card payments or payouts. Open Payments in Thunderstrux to update your details in Stripe.`
+        });
+      }
+      // PAY-041: payouts that worked and stopped, so money stays in Stripe until the society acts.
+      if (organisation.stripePayoutsEnabled && !status.payouts_enabled) {
+        await notifyStripeManagers(tx, organisation, `stripe-payouts-paused/${organisation.id}/${now.toISOString()}`, {
+          subject: `Payouts are paused for ${organisation.name}`,
+          message: `Stripe has paused payouts for ${organisation.name}, so money from your sales stays in Stripe and doesn't reach your bank. Open Payments in Thunderstrux to see what Stripe needs, then update your details in Stripe.`
         });
       }
     }
@@ -716,9 +756,13 @@ export async function getOrganisationStripeConnectStatus(orgId: string) {
       throw error;
     }
 
+    const outOfReach = isAccountOutOfReach(error);
+    if (outOfReach) await markAccountOutOfReach(organisation.stripeAccountId);
     // The provider's own message stays in the log, not the response.
     return {
-      ...(await markAccountStatusError(orgId, organisation.stripeAccountId, "Thunderstrux couldn't reach Stripe to refresh this account.")),
+      ...(await markAccountStatusError(orgId, organisation.stripeAccountId, outOfReach
+        ? "Stripe no longer lets Thunderstrux reach this account, so paid sales are off. Disconnect it and connect again."
+        : "Thunderstrux couldn't reach Stripe to refresh this account.")),
       openObligations,
       payouts
     };

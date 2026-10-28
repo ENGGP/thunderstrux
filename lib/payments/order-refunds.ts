@@ -133,7 +133,8 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   }
   if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
   if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
-  if (order.disputeStatus) throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
+  // PAY-036: only an open or lost dispute fences a refund; the society kept a won one.
+  if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
   // After a partial refund made in Stripe, this refunds the rest.
   const amount = order.totalAmount - order.externalRefundedAmount;
   if (
@@ -184,7 +185,8 @@ export async function requestCommerceRefund(input: {
     }
     if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
     if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
-    if (order.disputeStatus) throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
+    // PAY-036: only an open or lost dispute fences a refund; the society kept a won one.
+    if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
     const amount = order.totalAmount - order.externalRefundedAmount;
     if (
       order.paymentKind !== "stripe" || order.status !== "paid" || !order.fulfilledAt || order.requiresCompensationReview ||

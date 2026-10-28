@@ -37,7 +37,11 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
   const paidTo = { sellerStripeAccountId: stripeAccountId, paymentKind: "stripe" as const, paidAt: { gt: capped }, OR: [{ refundStatus: null }, { refundStatus: "processing" as const }, unreversed] };
   // A lost dispute's money stays held until its transfer reversal settles (T53).
   const reversing = { disputes: { some: { reversalStatus: { in: ["pending" as const, "uncertain" as const] } } } };
-  const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }, reversing, unreversed];
+  // PAY-033: a refund still being sent holds its sale, so a late reversal never debits the society's bank.
+  const refunding = [{ refundStatus: "processing" as const }, { refundRequests: { some: { status: { in: ["pending" as const, "uncertain" as const] } } } }];
+  // PAY-037: a bank's inquiry moves no money, but can become a chargeback.
+  const inquiry = { disputes: { some: { providerStatus: { in: ["warning_needs_response", "warning_under_review"] } } } };
+  const stillOpen = [{ disputeStatus: "open" as const }, { requiresCompensationReview: true }, reversing, unreversed, ...refunding, inquiry];
   // PAY-012: a lost dispute whose money is already back from the society holds nothing.
   const notRecovered = { OR: [{ disputeStatus: null }, { disputeStatus: { not: "lost" as const } }, { disputes: { none: { reversalStatus: "succeeded" as const } } }, reversing] };
   const ended = new Date(now.getTime() - ticketHoldAfterEventMs);

@@ -84,7 +84,7 @@ Create both in Stripe Workbench (live for production, test for staging) as **sna
 
 | Endpoint | Listens to | Events | Secret |
 | --- | --- | --- | --- |
-| `https://<app>/api/payments/webhook` | your account | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` | `STRIPE_WEBHOOK_SECRET` |
+| `https://<app>/api/payments/webhook` | your account | `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` | `STRIPE_WEBHOOK_SECRET` |
 | `https://<app>/api/stripe/connect/webhook` | connected accounts | `account.updated`, `account.external_account.created`, `account.external_account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 
 Subscribe only these. Check the endpoint list shows the pinned version, then send a test event to each and confirm HTTP 200 under Event deliveries.

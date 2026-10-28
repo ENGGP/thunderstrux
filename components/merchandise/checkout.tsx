@@ -309,7 +309,7 @@ export function MerchandiseCheckout({
           <h2 className="text-lg font-semibold text-ink">Before you {free ? "confirm" : "pay"}</h2>
           <ul className="grid list-disc gap-1.5 pl-5 text-ui text-ink-soft">
             {free ? null : <li>We hold these items for 30 minutes while you pay.</li>}
-            {quote.refundPolicy ? <li className="whitespace-pre-wrap [overflow-wrap:anywhere]">Refunds: {quote.refundPolicy}</li> : null}
+            {quote.refundPolicy ? <li className="whitespace-pre-wrap [overflow-wrap:anywhere]">Refund policy: {quote.refundPolicy}</li> : null}
             {quote.supportEmail ? (
               <li className="[overflow-wrap:anywhere]">
                 Questions:{" "}

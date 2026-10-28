@@ -7,7 +7,7 @@ import {
   type CommerceReconciliationResult
 } from "@/lib/commerce/reconciliation";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
-import { logInfo, logWarn } from "@/lib/ops/logger";
+import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileExpiredCheckoutSession, type CheckoutReconciliationResult } from "@/lib/payments/checkout-reconciliation";
@@ -54,17 +54,22 @@ export async function settleCheckoutSession(
 // normally lands within seconds), then at most this often.
 export const sweepFirstCheckAfterMs = 2 * 60_000;
 export const sweepRecheckEveryMs = 2 * 60_000;
-// Stripe reads per family per run; the stale-order batch adds its own.
+// Stripe reads per family per page. A run takes pages until nothing is due or
+// `sweepRunBudgetMs` has passed, so a backlog is worked through, not 25 a minute.
 export const sweepBatchLimit = 25;
+export const sweepRunBudgetMs = 45_000;
 
 type Family = "ticket" | "commerce";
-type PendingCheckout = { family: Family; id: string; stripeSessionId: string; createdAt: Date };
-// What one look at Stripe did: applied the Session; found it still open; Stripe
-// has no such Session; couldn't ask (Stripe failed); or Stripe isn't configured here.
-type Look = "settled" | "open" | "missing" | "unavailable" | "unconfigured";
+type PendingCheckout = { family: Family; id: string; stripeSessionId: string; createdAt: Date; eventCancelled?: boolean };
+// What one look at Stripe did: applied the Session; found it still open; found
+// it paid by a delayed method still processing; Stripe has no such Session;
+// couldn't ask (Stripe failed); failed here (a local error); or Stripe isn't configured.
+type Look = "settled" | "open" | "processing" | "missing" | "unavailable" | "failed" | "unconfigured";
 
 const isConfigurationError = (error: unknown) =>
   error instanceof Error && (error.name === "StripeConfigurationError" || error.constructor?.name === "StripeConfigurationError");
+// stripe-node names every API and network error's `type` Stripe…Error.
+const isStripeError = (error: unknown) => /^Stripe[A-Za-z]*Error$/.test(String((error as { type?: unknown } | null)?.type ?? ""));
 
 async function markChecked(order: PendingCheckout, now: Date) {
   const where = { id: order.id, status: "pending" as const };
@@ -73,19 +78,37 @@ async function markChecked(order: PendingCheckout, now: Date) {
   else await prisma.commerceOrder.updateMany({ where, data });
 }
 
-function failedLook(order: PendingCheckout, error: unknown): Look {
-  if (isConfigurationError(error)) return "unconfigured";
-  if ((error as { code?: string } | null)?.code === "resource_missing") return "missing";
-  logWarn("checkout.sweep.stripe_unavailable", { family: order.family, orderId: order.id, stripeSessionId: order.stripeSessionId, error });
-  return "unavailable";
+// PAY-029: every look is stamped, failed ones too, so a few broken orders can't take the
+// front of every run (they come round again after `sweepRecheckEveryMs`).
+async function failedLook(order: PendingCheckout, error: unknown, now: Date): Promise<Look> {
+  const details = { family: order.family, orderId: order.id, stripeSessionId: order.stripeSessionId, error };
+  let look: Look;
+  if (isConfigurationError(error)) look = "unconfigured";
+  else if ((error as { code?: string } | null)?.code === "resource_missing") look = "missing";
+  else if (isStripeError(error)) {
+    logWarn("checkout.sweep.stripe_unavailable", details);
+    look = "unavailable";
+  } else {
+    // Not Stripe: a bug or a database error while applying the Session.
+    logError("checkout.sweep.settle_failed", details);
+    look = "failed";
+  }
+  if (look !== "unconfigured") await markChecked(order, now).catch((stampError) => logWarn("checkout.sweep.stamp_failed", { orderId: order.id, error: stampError }));
+  return look;
 }
 
 // Ask Stripe about one pending order and apply what it says. `closeIfOpen` is
-// for an order whose hold has ended: its page is closed first, so nothing can
-// be paid on it after it expires here.
+// for an order whose hold has ended, or whose event was cancelled: its page is
+// closed first, so nothing can be paid on it after it expires here.
 async function lookUp(order: PendingCheckout, { now, closeIfOpen }: { now: Date; closeIfOpen: boolean }): Promise<Look> {
   try {
     let session = await getStripe().checkout.sessions.retrieve(order.stripeSessionId, { expand: ["payment_intent"] });
+    // PAY-030: completed but unpaid is a delayed payment method still processing;
+    // its async_payment_* webhook settles it, and the order waits, never expiring.
+    if (session.status === "complete" && session.payment_status === "unpaid") {
+      await markChecked(order, now);
+      return "processing";
+    }
     if (session.status === "open") {
       if (!closeIfOpen) {
         await markChecked(order, now);
@@ -109,22 +132,25 @@ async function lookUp(order: PendingCheckout, { now, closeIfOpen }: { now: Date;
     await markChecked(order, now);
     return "settled";
   } catch (error) {
-    return failedLook(order, error);
+    return failedLook(order, error, now);
   }
 }
 
 const pendingSelect = { id: true, stripeSessionId: true, createdAt: true } as const;
-const asPending = (family: Family) => (order: { id: string; stripeSessionId: string | null; createdAt: Date }): PendingCheckout => ({
+const asPending = (family: Family) => (order: { id: string; stripeSessionId: string | null; createdAt: Date; event?: { cancelledAt: Date | null } }): PendingCheckout => ({
   family,
   id: order.id,
   stripeSessionId: order.stripeSessionId as string,
-  createdAt: order.createdAt
+  createdAt: order.createdAt,
+  eventCancelled: Boolean(order.event?.cancelledAt)
 });
 
 // The early check: pending Stripe orders past their first-check age and not
-// asked about recently, least recently asked first.
+// asked about recently, least recently asked first, page by page. A ticket
+// order of a cancelled event has its page closed now (PAY-032: a cancellation's own
+// close can fail, or miss a Session bound after it), so nobody pays for it later.
 export async function sweepPendingCheckouts({ now = new Date(), limit = sweepBatchLimit }: { now?: Date; limit?: number } = {}) {
-  const counts = { checked: 0, settled: 0, open: 0, missing: 0, unavailable: 0 };
+  const counts = { checked: 0, settled: 0, open: 0, processing: 0, missing: 0, unavailable: 0, failed: 0 };
   try {
     getStripe();
   } catch (error) {
@@ -140,18 +166,23 @@ export async function sweepPendingCheckouts({ now = new Date(), limit = sweepBat
     OR: [{ stripeCheckedAt: null }, { stripeCheckedAt: { lt: new Date(now.getTime() - sweepRecheckEveryMs) } }]
   };
   const orderBy = [{ stripeCheckedAt: { sort: "asc" as const, nulls: "first" as const } }, { createdAt: "asc" as const }];
-  const [tickets, commerce] = await Promise.all([
-    prisma.order.findMany({ where, orderBy, take: limit, select: pendingSelect }),
-    prisma.commerceOrder.findMany({ where, orderBy, take: limit, select: pendingSelect })
-  ]);
-  for (const order of [...tickets.map(asPending("ticket")), ...commerce.map(asPending("commerce"))]) {
-    const look = await lookUp(order, { now, closeIfOpen: false });
-    counts.checked += 1;
-    if (look === "settled" || look === "open" || look === "missing" || look === "unavailable") counts[look] += 1;
+  const started = Date.now();
+  while (Date.now() - started < sweepRunBudgetMs) {
+    const [tickets, commerce] = await Promise.all([
+      prisma.order.findMany({ where, orderBy, take: limit, select: { ...pendingSelect, event: { select: { cancelledAt: true } } } }),
+      prisma.commerceOrder.findMany({ where, orderBy, take: limit, select: pendingSelect })
+    ]);
+    if (tickets.length === 0 && commerce.length === 0) break;
+    for (const order of [...tickets.map(asPending("ticket")), ...commerce.map(asPending("commerce"))]) {
+      const look = await lookUp(order, { now, closeIfOpen: Boolean(order.eventCancelled) });
+      counts.checked += 1;
+      if (look !== "unconfigured") counts[look] += 1;
+    }
   }
   logInfo("checkout.sweep.processed", counts);
   emitMetric("checkout_sweep_settled_total", counts.settled);
   if (counts.unavailable > 0) emitOperationalAlert("checkout_reconciliation_unavailable", { stage: "early_check", ...counts });
+  if (counts.failed > 0) emitOperationalAlert("checkout_settlement_failed", { stage: "early_check", failed: counts.failed });
   return counts;
 }
 
@@ -167,7 +198,8 @@ export async function mayExpireAfterStripeCheck(family: Family, id: string, now 
       : await prisma.commerceOrder.findUnique({ where: { id }, select: { ...pendingSelect, status: true } });
   if (!order?.stripeSessionId || order.status !== "pending") return true;
   const look = await lookUp(asPending(family)(order), { now, closeIfOpen: true });
-  if (look === "unavailable") return false;
+  // Couldn't ask, failed here, or a delayed payment still processing: not now.
+  if (look === "unavailable" || look === "failed" || look === "processing") return false;
   if (look === "unconfigured") return process.env.NODE_ENV !== "production";
   return true;
 }

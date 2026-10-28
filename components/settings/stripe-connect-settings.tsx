@@ -110,8 +110,13 @@ function stateContent(status: ConnectStatus | null): {
   return null;
 }
 
+// PAY-041: payouts off after onboarding with no bank account due means Stripe paused them.
+function payoutsPaused(status: ConnectStatus | null) {
+  return Boolean(status && !status.payouts_enabled && status.details_submitted && ![...status.currently_due, ...status.eventually_due].includes("external_account"));
+}
+
 function readinessBadge(status: ConnectStatus | null): [Status, string] {
-  if (status?.state === "READY" && !status.currently_due.length) return status.payouts_enabled ? ["active", "Ready"] : ["pending", "Payouts not set up"];
+  if (status?.state === "READY" && !status.currently_due.length) return status.payouts_enabled ? ["active", "Ready"] : ["pending", payoutsPaused(status) ? "Payouts paused" : "Payouts not set up"];
   return stateContent(status)?.badge ?? ["draft", "Not connected"];
 }
 
@@ -210,15 +215,17 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       return;
     }
 
+    // SEC-037: back from Stripe's tab, refresh once; not on every focus, nor more than every 30 seconds.
+    let lastRefresh = Date.now();
     const refreshStatus = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastRefresh < 30_000) return;
+      lastRefresh = Date.now();
       void checkStatus(organisation);
     };
 
-    window.addEventListener("focus", refreshStatus);
     document.addEventListener("visibilitychange", refreshStatus);
 
     return () => {
-      window.removeEventListener("focus", refreshStatus);
       document.removeEventListener("visibilitychange", refreshStatus);
     };
   }, [checkStatus, organisation]);
@@ -365,11 +372,13 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
       ok: Boolean(status?.payouts_enabled),
       text: status?.payouts_enabled
         ? "Yes. Thunderstrux sends your money to your bank once each event is over; see Payouts below."
-        : "Not yet. Ticket money is held in Stripe until you add a bank account. Sales keep working meanwhile.",
+        : payoutsPaused(status)
+          ? "Paused by Stripe. Your money stays in Stripe until you update what Stripe asks for. Sales keep working meanwhile."
+          : "Not yet. Ticket money is held in Stripe until you add a bank account. Sales keep working meanwhile.",
       action:
         status?.state === "READY" && !status.payouts_enabled ? (
           <Button disabled={isContinuingOnboarding} onClick={() => askForCode("continue")} size="sm" type="button">
-            {isContinuingOnboarding ? "Redirecting..." : "Add a bank account in Stripe"}
+            {isContinuingOnboarding ? "Redirecting..." : payoutsPaused(status) ? "Update your details in Stripe" : "Add a bank account in Stripe"}
           </Button>
         ) : null
     }
@@ -487,6 +496,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
         <PayoutsCard
           payouts={status.payouts}
           payoutsEnabled={status.payouts_enabled}
+          payoutsPaused={payoutsPaused(status)}
           seeAll={status.dashboard_available ? <div>{dashboardButton("See every payout in Stripe", "secondary")}</div> : null}
         />
       ) : null}

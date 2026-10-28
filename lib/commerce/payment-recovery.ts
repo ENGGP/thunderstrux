@@ -8,7 +8,7 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
 import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
-import { alertOutsideRefundNotReversed, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
+import { alertOutsideRefundNotReversed, isInquiry, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-003: what Stripe reports about a membership or merchandise payment that
@@ -82,7 +82,7 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       create: { ...fields, commerceOrderId, organisationId, stripeDisputeId: current.id, stripeChargeId: payment.chargeId as string, currency: current.currency },
       update: fields
     });
-    if (existing && outcomeOf(existing.providerStatus) === outcome) return false;
+    if (existing && outcomeOf(existing.providerStatus) === outcome && isInquiry(existing.providerStatus) === isInquiry(current.status)) return false;
     const worst = worstOutcome((await tx.purchaseDispute.findMany({ where: { commerceOrderId }, select: { providerStatus: true } })).map((row) => row.providerStatus));
     await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId } });
     if (!existing) {
@@ -185,21 +185,23 @@ export async function markCommerceExternalRefundReviewed(tx: Prisma.TransactionC
 export async function queueCommerceCompensationRefund(tx: Prisma.TransactionClient, commerceOrderId: string, reason: string) {
   const order = await tx.commerceOrder.findUniqueOrThrow({
     where: { id: commerceOrderId },
-    select: { organisationId: true, totalAmount: true, currency: true, sellerStripeAccountId: true, paymentKind: true, refundStatus: true }
+    select: { organisationId: true, totalAmount: true, currency: true, sellerStripeAccountId: true, paymentKind: true, refundStatus: true, externalRefundedAmount: true }
   });
-  if (order.paymentKind !== "stripe" || order.totalAmount <= 0 || order.refundStatus) return;
+  // PAY-038: only what isn't already back with the buyer, as the fraud refund below.
+  const amount = order.totalAmount - order.externalRefundedAmount;
+  if (order.paymentKind !== "stripe" || amount <= 0 || order.refundStatus) return;
   await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { refundStatus: "processing" } });
   await tx.refundRequest.create({
     data: {
-      commerceOrderId, organisationId: order.organisationId, amount: order.totalAmount, currency: order.currency,
+      commerceOrderId, organisationId: order.organisationId, amount, currency: order.currency,
       reason: `Paid but couldn't be filled (${reason})`.slice(0, 500), actorUserId: null,
       operationKey: `commerce-compensation:${commerceOrderId}:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId
     }
   });
-  await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "refund_requested", source: "stripe_webhook", reason: "compensation", facts: { amount: order.totalAmount } });
+  await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "refund_requested", source: "stripe_webhook", reason: "compensation", facts: { amount } });
   await tx.auditLog.create({ data: {
     organisationId: order.organisationId, actorUserId: null, action: "commerce_order.compensation_refund_queued", targetType: "CommerceOrder", targetId: commerceOrderId,
-    metadata: { amount: order.totalAmount, reason }
+    metadata: { amount, reason }
   } });
 }
 

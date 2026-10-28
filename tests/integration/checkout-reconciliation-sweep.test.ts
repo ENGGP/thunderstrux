@@ -146,4 +146,79 @@ describe("checkout reconciliation sweep: tickets", () => {
     }
     expect(await state(orderId)).toMatchObject({ status: "pending", reservation: { status: "active" } });
   });
+
+  // PAY-029: a failed look is stamped, so a few broken orders can't take every run.
+  test("a failed look is stamped and alerts; a local error is told apart from Stripe being unreachable", async () => {
+    const first = await pendingCheckout();
+    const second = await pendingCheckout();
+    stripe.retrieve.mockImplementation(async (id: string) => {
+      if (id === first.sessionId) throw new TypeError("Cannot read properties of undefined");
+      throw Object.assign(new Error("socket hang up"), { type: "StripeConnectionError" });
+    });
+    const now = minutes(3);
+    await expect(sweepPendingCheckouts({ now })).resolves.toMatchObject({ checked: 2, failed: 1, unavailable: 1 });
+    expect(await state(first.orderId)).toMatchObject({ status: "pending", stripeCheckedAt: now });
+    expect(await state(second.orderId)).toMatchObject({ status: "pending", stripeCheckedAt: now });
+    expect(alertCount(second.errors, "checkout_settlement_failed")).toBe(1);
+    expect(alertCount(second.errors, "checkout_reconciliation_unavailable")).toBe(1);
+    // Asked about again only after the recheck interval.
+    await expect(sweepPendingCheckouts({ now: minutes(4) })).resolves.toMatchObject({ checked: 0 });
+  });
+
+  test("a run works through the backlog page by page", async () => {
+    await pendingCheckout();
+    const second = await pendingCheckout();
+    stripe.retrieve.mockImplementation(async (id: string) => second.session({ id, status: "open", payment_status: "unpaid" }));
+    await expect(sweepPendingCheckouts({ now: minutes(3), limit: 1 })).resolves.toMatchObject({ checked: 2, open: 2 });
+  });
+
+  // PAY-031: paid in time, confirmed after the hold ran out.
+  test("a payment found after its hold lapsed gets its tickets while the event has room", async () => {
+    const { orderId, session } = await pendingCheckout();
+    await prisma.ticketReservation.update({ where: { orderId }, data: { expiresAt: minutes(-1) } });
+    stripe.retrieve.mockResolvedValue(session());
+    await expect(sweepPendingCheckouts({ now: minutes(3) })).resolves.toMatchObject({ settled: 1 });
+    expect(await state(orderId)).toMatchObject({ status: "paid", reservation: { status: "confirmed" } });
+    expect((await state(orderId)).tickets).toHaveLength(1);
+  });
+
+  // PAY-032: a cancellation's own close can fail, or miss a page bound after it.
+  test("an open page of a cancelled event is closed and its order expired", async () => {
+    const { orderId, sessionId, session } = await pendingCheckout();
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    await prisma.event.update({ where: { id: order.eventId }, data: { cancelledAt: new Date() } });
+    stripe.retrieve.mockResolvedValue(session({ status: "open", payment_status: "unpaid" }));
+    stripe.expire.mockResolvedValue(session({ status: "expired", payment_status: "unpaid" }));
+    await sweepPendingCheckouts({ now: minutes(3) });
+    expect(stripe.expire).toHaveBeenCalledWith(sessionId);
+    expect(await state(orderId)).toMatchObject({ status: "expired" });
+  });
+
+  // PAY-030: a delayed payment method, complete but not paid yet.
+  test("a completed but unpaid Session is left processing and its order never expires meanwhile", async () => {
+    const { orderId, session } = await pendingCheckout();
+    stripe.retrieve.mockResolvedValue(session({ status: "complete", payment_status: "unpaid" }));
+    await expect(sweepPendingCheckouts({ now: minutes(3) })).resolves.toMatchObject({ processing: 1, settled: 0 });
+    await expect(processStaleOrderCleanupBatch({ now: afterHold() })).resolves.toMatchObject({ ordersExpired: 0, stripeDeferred: 1 });
+    expect(await state(orderId)).toMatchObject({ status: "pending", reservation: { status: "active" } });
+    expect(stripe.expire).not.toHaveBeenCalled();
+  });
+
+  // PAY-032: the society cancels the event while the buyer's Stripe page is being created.
+  test("a Session created as the event is cancelled is never attached, so the buyer isn't sent to pay", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const member = await createMember();
+    stripe.createSession.mockReset().mockImplementationOnce(async () => {
+      await prisma.event.update({ where: { id: event.id }, data: { cancelledAt: new Date() } });
+      return { id: unique("cs_cancelled"), url: "https://checkout.stripe.test/cancelled" };
+    });
+    const ticketType = event.ticketTypes[0];
+    await expect(createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: ticketType.id, quantity: 1, expectedUnitPrice: ticketType.price, idempotencyKey: unique("cancelled") })).rejects.toThrow();
+    const order = await prisma.order.findFirstOrThrow({ where: { eventId: event.id } });
+    expect(order).toMatchObject({ status: "pending", stripeSessionId: null });
+    expect(await prisma.checkoutAttempt.findFirstOrThrow({ where: { orderId: order.id } })).toMatchObject({ state: "failed", lastOutcome: "event_cancelled_at_attach" });
+  });
 });

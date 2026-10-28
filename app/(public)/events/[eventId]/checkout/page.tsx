@@ -81,7 +81,7 @@ export default async function CheckoutPage({
   const buyerEmail = session ? session.user.email : guestCheckout?.email;
   const verified = session ? Boolean(session.user.emailVerifiedAt) : true;
   const policy = [
-    organisation.refundPolicy ? `${free ? "Can't make it? " : "Refunds: "}${organisation.refundPolicy}` : null,
+    organisation.refundPolicy ? `${free ? "Can't make it? " : "Refund policy: "}${organisation.refundPolicy}` : null,
     organisation.supportEmail ? `Questions: ${organisation.supportEmail}` : null
   ].filter(Boolean);
 

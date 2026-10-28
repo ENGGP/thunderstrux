@@ -125,7 +125,7 @@ services:
     image: stripe/stripe-cli:v1.53.1@sha256:11c46caeead82e329f14823dd622d494b4cc8c1b9766f724d122d2af42c97540
     env_file: ${E2E_RUNTIME_FILE:?Run through pnpm test:payments:staging}
     # --latest: events at Stripe's latest version (the app's pin, 2026-09-30.endive), not the account default.
-    command: [listen, --latest, --events, 'checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed', --forward-to, 'http://app:3100/api/payments/webhook']
+    command: [listen, --latest, --events, 'checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed', --forward-to, 'http://app:3100/api/payments/webhook']
     profiles: [staging]
 volumes:
   test_database:

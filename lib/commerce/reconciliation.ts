@@ -142,9 +142,10 @@ export async function reconcileCommerceCheckoutSession(
 
   const commerceOrderId = resolved.order.id;
   if (outcome.status === "unpaid") {
-    // A completed Session that isn't paid: no payment to honour, so the order fails.
-    await failPendingCommerceOrder(commerceOrderId, "session_not_paid", source, { stripeEventId });
-    return { status: "failed", commerceOrderId };
+    // PAY-030: a delayed payment method still processing (checkout is card-only,
+    // so not today). The order waits; checkout.session.async_payment_* settles it.
+    logInfo("commerce.checkout.payment_processing", { commerceOrderId, stripeSessionId: session.id });
+    return { status: "ignored", reason: "payment_processing", commerceOrderId };
   }
   if (outcome.status === "compensation_required" && !("alreadyRecorded" in outcome)) {
     emitOperationalAlert("paid_but_unfulfilled_compensation_required", { commerceOrderId, stripeSessionId: session.id, reason: outcome.reason, family: resolved.order.kind });

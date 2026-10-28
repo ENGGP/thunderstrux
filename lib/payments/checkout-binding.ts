@@ -81,7 +81,7 @@ export async function attachStripeSession(
     }
     const order = await tx.order.findUniqueOrThrow({
       where: { id: orderId },
-      select: { status: true, stripeSessionId: true }
+      select: { status: true, stripeSessionId: true, event: { select: { cancelledAt: true } } }
     });
     const attachAttempt = () =>
       tx.checkoutAttempt.updateMany({
@@ -94,12 +94,14 @@ export async function attachStripeSession(
       await attachAttempt();
       return "attached" as const;
     }
-    if (order.status !== "pending" || order.stripeSessionId) {
+    // PAY-032: an event cancelled while its Session was being created never gets
+    // the page: the buyer isn't sent there, and the stale-order job expires the order.
+    if (order.status !== "pending" || order.stripeSessionId || order.event.cancelledAt) {
       await tx.checkoutAttempt.updateMany({
         where: { orderId },
         // Keep the Session on record. A payment on it reaches compensation through the
         // webhook when the order closed; when the order holds another Session, it alerts a person (PAY-010).
-        data: { state: "failed", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: "order_not_pending_at_attach" }
+        data: { state: "failed", stripeSessionId, stripeSessionUrl, reconcileDueAt: null, lastOutcome: order.event.cancelledAt ? "event_cancelled_at_attach" : "order_not_pending_at_attach" }
       });
       // Report it after the transaction commits, so this record is not rolled back.
       return "order_closed" as const;

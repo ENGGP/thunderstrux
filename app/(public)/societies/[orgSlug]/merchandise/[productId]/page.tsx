@@ -47,7 +47,7 @@ export default async function ProductPage({ params }: Props) {
         <section aria-label="Pickup" className="grid max-w-3xl gap-1.5 rounded-card border border-line bg-surface p-5 text-ui">
           <strong>Collect it in person, no delivery</strong>
           {organisation.pickupPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">{organisation.pickupPolicy}</span> : null}
-          {organisation.refundPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">Refunds: {organisation.refundPolicy}</span> : null}
+          {organisation.refundPolicy ? <span className="whitespace-pre-wrap text-ink-soft [overflow-wrap:anywhere]">Refund policy: {organisation.refundPolicy}</span> : null}
           {organisation.supportEmail ? (
             <span className="text-ink-soft [overflow-wrap:anywhere]">
               Questions:{" "}

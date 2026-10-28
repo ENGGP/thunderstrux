@@ -24,6 +24,7 @@ export type RateLimitPolicy =
   | "organisation_join_leave"
   | "ticket_check_in_out"
   | "stripe_connect_mutation"
+  | "stripe_connect_status"
   | "staff_invite_actor"
   | "staff_invite_email"
   | "staff_mfa_setup"
@@ -87,6 +88,8 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
     windowSeconds: 10 * 60,
     failureMode: "open"
   },
+  // SEC-037: each status read asks Stripe and locks the society's row; Stripe's read limit is shared with checkout.
+  stripe_connect_status: { limit: 30, windowSeconds: 10 * 60, failureMode: "open" },
   staff_invite_actor: { limit: 20, windowSeconds: 3600, failureMode: "closed" },
   staff_invite_email: { limit: 3, windowSeconds: 3600, failureMode: "closed" },
   staff_mfa_setup: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },

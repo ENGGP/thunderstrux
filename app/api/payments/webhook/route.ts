@@ -88,9 +88,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, ignored: "mode_mismatch" });
   }
 
-  // Both checkout events go through the one settlement path the reconciliation
-  // sweep also uses (PAY-024); it routes tickets, memberships and merchandise.
-  if (event.type === "checkout.session.completed" || event.type === "checkout.session.expired") {
+  // Checkout events go through the one settlement path the reconciliation sweep
+  // also uses (PAY-024); it routes tickets, memberships and merchandise. A delayed
+  // payment method settles on async_payment_succeeded, or fails as an expiry (PAY-030).
+  const settles = ["checkout.session.completed", "checkout.session.async_payment_succeeded"];
+  if (settles.includes(event.type) || event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
     const session = event.data.object as Stripe.Checkout.Session;
     logInfo("stripe.webhook.received", {
       stripeEventId: event.id,
@@ -98,7 +100,7 @@ export async function POST(request: Request) {
       paymentStatus: session.payment_status,
       metadataOrderId: session.metadata?.orderId ?? session.metadata?.commerceOrderId
     });
-    await settleCheckoutSession(session, { completed: event.type === "checkout.session.completed", stripeEventId: event.id, source: "webhook" });
+    await settleCheckoutSession(session, { completed: settles.includes(event.type), stripeEventId: event.id, source: "webhook" });
     return NextResponse.json({ received: true });
   }
 

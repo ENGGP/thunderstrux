@@ -136,6 +136,8 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | Compensation refund confirmed (ticket) | `compensation-refund/{jobId}` | `business_notice` | `tests/integration/compensation-refunds.test.ts` |
 | A refund came back from the buyer's bank (PAY-025) | `refund-returned/{requestId}`, `compensation-refund-returned/{jobId}` | `business_notice` | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts` |
 | A cancelled event's refund failed (PAY-026) | `refund-failed/{requestId}` | `business_notice` | `tests/integration/order-refunds.test.ts` |
+| Payouts paused by Stripe, to each `stripe:manage` staff member (PAY-041) | `stripe-payouts-paused/{organisationId}/{time}` | `business_notice` | `tests/integration/stripe-connect-service.test.ts` |
+| Staff marked an order refunded outside Thunderstrux (PAY-039) | `refund-marked/{orderId}` | `business_notice` | `tests/integration/purchase-disputes.test.ts` |
 | Payout bank account added or made default, to each `stripe:manage` staff member (SEC-033) | `stripe-payout-account/{organisationId}/{stripeEventId}` | `business_notice` | `tests/integration/stripe-connect-service.test.ts` |
 | Free ticket registration cancelled | `cancellation/{orderId}` | `business_notice` | `tests/integration/free-cancellation.test.ts` |
 | Payment review (ticket or commerce) | `payment-review/{orderId}` | `business_notice` | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/commerce-checkout.test.ts` |

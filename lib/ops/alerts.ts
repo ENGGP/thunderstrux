@@ -13,6 +13,8 @@ export type OperationalAlertName =
   // or couldn't ask Stripe before expiring a pending order.
   | "stripe_webhook_missed"
   | "checkout_reconciliation_unavailable"
+  // PAY-029: applying a Session the sweep found failed here (a bug or database error), not at Stripe.
+  | "checkout_settlement_failed"
   | "stale_order_worker_failed"
   | "checkout_attempt_recovery_failed"
   | "checkout_attempt_recovery_abandoned"
@@ -34,6 +36,8 @@ export type OperationalAlertName =
   | "society_payout_failed"
   // PAY-028: a payout the payout worker didn't make (an instant payout, or a changed schedule).
   | "society_payout_unexpected"
+  // PAY-034: Stripe answers that this platform can no longer reach a society's account.
+  | "society_account_unreachable"
   // Stripe paused a society's card payments; a cancelled event had sale money already released.
   | "society_charges_paused"
   | "event_cancelled_after_release"

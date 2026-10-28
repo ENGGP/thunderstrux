@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { renderSVG } from "uqr";
 import { signOutTo } from "@/lib/client/sign-out";
+import { RecoveryCodes } from "@/components/auth/recovery-codes";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
@@ -9,7 +11,12 @@ import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 type Setup = { secret: string; otpauthUrl: string };
 
-export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }: { enabled: boolean; destination: string; requiresNewLogin?: boolean }) {
+// The set-up link as a QR code, drawn here from the link the API sends: an SVG
+// in an <img> (the CSP allows data: images), dark on white so it scans in dark mode too.
+const qrSource = (otpauthUrl: string) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderSVG(otpauthUrl, { border: 2, whiteColor: "#ffffff", blackColor: "#000000" }))}`;
+
+export function StaffMfaForm({ enabled, destination, email, requiresNewLogin = false }: { enabled: boolean; destination: string; email?: string | null; requiresNewLogin?: boolean }) {
   const [setup, setSetup] = useState<Setup | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [code, setCode] = useState("");
@@ -74,11 +81,9 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
       <p className="text-sm font-semibold text-ink-soft">Step 2 of 2</p>
       <h2 className="text-2xl font-semibold text-ink">Save these recovery codes</h2>
       <Notice title="Shown only once" tone="warning">
-        Each code works one time if you lose your phone. Store them somewhere safe, such as a password manager.
+        Each code works one time if you lose your phone. Store them somewhere safe, such as a password manager. You can replace them later in Account settings.
       </Notice>
-      <ul className="grid grid-cols-2 gap-2 rounded-card bg-surface-subtle p-4 font-mono text-ui text-ink">
-        {recoveryCodes.map((entry) => <li key={entry}>{entry}</li>)}
-      </ul>
+      <RecoveryCodes codes={recoveryCodes} email={email} />
       <div>
         <Button onClick={() => window.location.assign(destination)} type="button">
           I saved my codes
@@ -109,13 +114,21 @@ export function StaffMfaForm({ enabled, destination, requiresNewLogin = false }:
           <p className="text-sm font-semibold text-ink-soft">Step 1 of 2</p>
           <ol className="grid list-decimal gap-3 pl-5 text-ink-soft">
             <li>
-              Open your authenticator app and add an account. On this device you can{" "}
-              <a className="font-semibold text-brand underline underline-offset-4" href={setup.otpauthUrl}>
-                open it in your authenticator app
-              </a>.
+              Open your authenticator app, add an account and scan this code.
+              <img
+                alt="QR code to add Thunderstrux to your authenticator app"
+                className="mt-2 block size-48 rounded-control border border-line bg-white"
+                height={192}
+                src={qrSource(setup.otpauthUrl)}
+                width={192}
+              />
             </li>
             <li>
-              Or enter this key by hand:
+              Setting up on this device? You can{" "}
+              <a className="font-semibold text-brand underline underline-offset-4" href={setup.otpauthUrl}>
+                open it in your authenticator app
+              </a>{" "}
+              or enter this key by hand:
               <code className="mt-2 block select-all break-all rounded-control bg-surface-subtle px-3 py-2 font-mono text-ink">{setup.secret}</code>
             </li>
             <li>Enter the 6-digit code the app shows.</li>

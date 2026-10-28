@@ -30,7 +30,7 @@ export default async function MfaPage({ searchParams }: {
       wide
     >
       <Card>
-        <StaffMfaForm enabled={status.enabled} destination={destination}
+        <StaffMfaForm enabled={status.enabled} destination={destination} email={session.user.email}
           requiresNewLogin={!session.user.staffMfaSessionId} />
       </Card>
     </AuthShell>

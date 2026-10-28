@@ -139,7 +139,11 @@ async function lockMfaAccount(tx: Prisma.TransactionClient, userId: string, allo
   const user = await lockAccount(tx, userId);
   if (!user || user.disabledAt) throw new MfaInputError("Active account required for MFA");
   await requireStaffEligibility(userId, allowEnrolled, tx);
+  return user;
 }
+
+const recoveryCodeCount = 10;
+const newRecoveryCodes = () => Array.from({ length: recoveryCodeCount }, () => randomBytes(10).toString("hex").toUpperCase());
 
 async function auditStaffMfa(tx: Prisma.TransactionClient, userId: string, action: string) {
   const [staff, legacy] = await Promise.all([
@@ -201,7 +205,7 @@ export async function confirmStaffMfaEnrollment(userId: string, code: string, se
   }
   const step = acceptedStep(decrypt(mfa.pendingEncryptedSecret), code, now, null);
   if (step === null) throw new MfaInputError("Invalid authenticator code");
-  const recoveryCodes = Array.from({ length: 10 }, () => randomBytes(10).toString("hex").toUpperCase());
+  const recoveryCodes = newRecoveryCodes();
   await prisma.$transaction(async (tx) => {
     await lockMfaAccount(tx, userId);
     const updated = await tx.userMfa.updateMany({
@@ -249,6 +253,33 @@ export async function verifyStaffMfa(userId: string, code: string, sessionDigest
       update: { userId, verifiedAt: now, expiresAt: new Date(now.getTime() + grantLifetimeMs) } });
     await auditStaffMfa(tx, userId, step === null ? "staff_mfa.recovery_used" : "staff_mfa.verified");
   });
+}
+
+// A new set of recovery codes replaces every unused one (UI-018). It takes the
+// password and a current authenticator code (never a recovery code), so neither
+// a stolen session nor a phone alone can mint codes that get round the other.
+// It is audited for each society; no email is sent, as for set-up.
+export async function replaceRecoveryCodes(userId: string, password: string, code: string, now = new Date()) {
+  if (!/^\d{6}$/.test(code)) throw new MfaInputError("Enter the 6-digit code from your authenticator app");
+  await confirmPasswordForMfaSetup(userId, password);
+  const mfa = await prisma.userMfa.findUnique({ where: { userId } });
+  if (!mfa?.enabledAt || !mfa.encryptedSecret) throw new MfaInputError("Set up an authenticator app first");
+  const step = acceptedStep(decrypt(mfa.encryptedSecret), code, now, mfa.lastAcceptedStep);
+  if (step === null) throw new MfaInputError("Invalid authenticator code");
+  const recoveryCodes = newRecoveryCodes();
+  await prisma.$transaction(async (tx) => {
+    await lockMfaAccount(tx, userId, true);
+    const changed = await tx.userMfa.updateMany({ where: { userId, enabledAt: { not: null },
+      OR: [{ lastAcceptedStep: null }, { lastAcceptedStep: { lt: BigInt(step) } }] },
+      data: { lastAcceptedStep: BigInt(step) } });
+    if (changed.count !== 1) throw new MfaInputError("Authenticator code was already used");
+    await tx.mfaRecoveryCode.deleteMany({ where: { userId } });
+    await tx.mfaRecoveryCode.createMany({ data: recoveryCodes.map((entry) => ({
+      userId, codeHash: recoveryHash(userId, entry)
+    })) });
+    await auditStaffMfa(tx, userId, "staff_mfa.recovery_codes_replaced");
+  });
+  return { recoveryCodes };
 }
 
 export async function requireStaffMfa(userId: string, sessionDigest: string | null, now = new Date()) {

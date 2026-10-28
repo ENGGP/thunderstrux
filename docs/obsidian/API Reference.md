@@ -93,6 +93,7 @@ MFA writes answer 503 "Staff verification is unavailable" unless `MFA_ENCRYPTION
 | `GET /api/me/mfa/status` | session; staff-eligible or enrolled | — | `{enabled, mode}` | 403 not eligible |
 | `POST /api/me/mfa/setup` | `staff_mfa_setup` | strict `{password}` | `{secret, otpauthUrl}`; pending 10 minutes | 400 no password or no email, 403 wrong password, not eligible or already enabled |
 | `POST /api/me/mfa/confirm` | `staff_mfa_verify` | `{code}` | `{recoveryCodes}` (ten, shown once); grants this login; audit `staff_mfa.enabled` | 400 bad, expired or changed setup |
+| `POST /api/me/mfa/recovery-codes` | `staff_mfa_verify` | strict `{password, code}` (six digits) | `{recoveryCodes}` (ten, shown once); every earlier code stops working; audit `staff_mfa.recovery_codes_replaced` | 400 wrong password, wrong or reused code, or not enrolled |
 | `POST /api/me/mfa/verify` | `staff_mfa_verify` | `{code}` (six digits or a recovery code) | `{verified: true}`; 12-hour grant; audit `staff_mfa.verified` or `staff_mfa.recovery_used` | 400 wrong or reused code, 403 not enrolled |
 | `GET /api/me/context` | session | — | `{mode: "personal" \| "staff", selected, organisations: [{id, name, slug, createdAt, staffRole, permissions}], accountRole}` | 401 |
 | `POST /api/me/context` | session; no bucket | strict `{mode: "personal"}` or `{mode: "staff", organisationId}` | `{selected: true}` and the `thunderstrux-context` cookie | 403 no login id ("Sign out and sign in again…"), 403 no `events:read` or MFA on the target |

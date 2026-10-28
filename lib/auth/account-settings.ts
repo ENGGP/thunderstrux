@@ -7,7 +7,7 @@ export async function readAccountSettings(actor: AccountActor, now = new Date())
   const user = await prisma.user.findUnique({ where: { id: actor.id }, select: {
     id: true, email: true, accountRole: true, authVersion: true, disabledAt: true, emailVerifiedAt: true,
     firstName: true, lastName: true, displayName: true, phone: true, studentNumber: true, onboardingCompletedAt: true, renewalReminders: true,
-    mfa: { select: { enabledAt: true } }, securityEvents: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 10, select: { type: true, createdAt: true } }
+    mfa: { select: { enabledAt: true } }, _count: { select: { mfaRecoveryCodes: true } }, securityEvents: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 10, select: { type: true, createdAt: true } }
   } });
   if (!user || user.disabledAt || user.authVersion !== actor.authVersion) throw new AccountSecurityError("stale_session", "Sign in again to continue");
   const digest = mfaGrantDigest(actor.mfaSessionId);
@@ -17,7 +17,7 @@ export async function readAccountSettings(actor: AccountActor, now = new Date())
   return { user: { id: user.id, email: user.email, accountRole: user.accountRole, emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
     firstName: user.firstName, lastName: user.lastName, displayName: user.displayName, phone: user.phone, studentNumber: user.studentNumber,
     onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null, renewalReminders: user.renewalReminders },
-    mfa: { enabled: Boolean(user.mfa?.enabledAt), verified: Boolean(grant) },
+    mfa: { enabled: Boolean(user.mfa?.enabledAt), verified: Boolean(grant), recoveryCodesLeft: user._count.mfaRecoveryCodes },
     pendingEmailChange: pendingEmail?.newEmail ? { email: pendingEmail.newEmail, expiresAt: pendingEmail.expiresAt.toISOString() } : null,
     securityEvents: user.securityEvents.map(event => ({ type: event.type, createdAt: event.createdAt.toISOString() })) };
 }

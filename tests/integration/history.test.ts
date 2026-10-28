@@ -174,7 +174,7 @@ describe("History (T38)", () => {
     ...["created", "updated", "published", "archived", "restored"].map((step) => `merchandise_product.${step}`),
     "merchandise_order.ready", "merchandise_order.collected", "merchandise_order.return_recorded", "merchandise_order.free_cancelled",
     "staff.updated", "staff.ownership.handed_over", ...["created", "resent", "revoked", "accepted"].map((step) => `staff.invite.${step}`),
-    "staff_mfa.enabled", "staff_mfa.verified", "staff_mfa.recovery_used",
+    "staff_mfa.enabled", "staff_mfa.verified", "staff_mfa.recovery_used", "staff_mfa.recovery_codes_replaced",
     "stripe_connect.account_created", "stripe_connect.disconnected", "stripe_connect.dashboard_opened", "stripe_connect.payout_account_changed",
     "organisation.created", "organisation.profile_updated", "asset.uploaded", "asset.deleted", "asset.orphan_removed"
   ];

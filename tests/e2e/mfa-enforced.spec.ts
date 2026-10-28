@@ -49,6 +49,40 @@ test('enforced staff MFA survives session refresh and denies a new password-only
   }
 });
 
+// UI-018: set-up shows a QR code; the codes copy and download, and settings replaces them.
+test('set-up shows a QR code, and a verified staff member downloads and replaces their recovery codes', async ({ page, data }) => {
+  await login(page, data.manager.email, '/mfa');
+  await page.goto('/mfa?callbackUrl=/account/settings');
+  await page.getByLabel('Your password').fill('password123');
+  await page.getByRole('button', { name: 'Set up authenticator' }).click();
+  await expect(page.getByRole('img', { name: 'QR code to add Thunderstrux to your authenticator app' })).toBeVisible();
+  const secret = (await page.locator('code').textContent())!;
+  expect(secret).toMatch(/^[A-Z2-7]{32}$/);
+  await page.getByLabel('Authenticator code').fill(totpCode(secret, Math.floor(Date.now() / 30_000)));
+  await page.getByRole('button', { name: 'Confirm setup' }).click();
+  await expect(page.locator('main li')).toHaveCount(10);
+  const oldCodes = await page.locator('main li').allTextContents();
+  await expect(page.getByRole('button', { name: 'Copy all' })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download' }).click();
+  expect((await download).suggestedFilename()).toBe('thunderstrux-recovery-codes.txt');
+  await page.getByRole('button', { name: 'I saved my codes' }).click();
+  await expect(page).toHaveURL(/\/account\/settings$/);
+
+  const security = page.locator('#security');
+  await expect(security.getByText('10 of 10 left.')).toBeVisible();
+  await security.getByRole('button', { name: 'Get new recovery codes' }).click();
+  await security.getByLabel('Your password').fill('password123');
+  // A step after the one set-up used, so it isn't a replay.
+  await security.getByLabel('Authenticator code').fill(totpCode(secret, Math.floor(Date.now() / 30_000) + 1));
+  await security.getByRole('button', { name: 'Replace recovery codes' }).click();
+  await expect(security.getByText('Your old codes no longer work.')).toBeVisible();
+  const newCodes = await security.getByRole('listitem').filter({ hasText: /^[A-F0-9]{20}$/ }).allTextContents();
+  expect(newCodes).toHaveLength(10);
+  expect(newCodes.some((code) => oldCodes.includes(code))).toBe(false);
+  expect(await prisma.mfaRecoveryCode.count({ where: { user: { email: data.manager.email } } })).toBe(10);
+});
+
 test('pre-rollout staff session asks for a fresh password sign-in', async ({ page, data }) => {
   await login(page, data.manager.email, '/mfa');
   const cookie = (await page.context().cookies()).find((entry) => entry.name.endsWith('authjs.session-token'));

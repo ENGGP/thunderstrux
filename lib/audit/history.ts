@@ -341,6 +341,7 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   } else if (a === "staff_mfa.enabled") sentence = ["turned on their authenticator app"];
   else if (a === "staff_mfa.verified") sentence = ["signed in with their authenticator app"];
   else if (a === "staff_mfa.recovery_used") sentence = ["signed in with a recovery code"];
+  else if (a === "staff_mfa.recovery_codes_replaced") sentence = ["replaced their recovery codes"];
   else if (a === "stripe_connect.account_created") sentence = ["started connecting a Stripe account"];
   else if (a === "stripe_connect.disconnected") sentence = ["disconnected the Stripe account"];
   else if (a === "stripe_connect.dashboard_opened") sentence = ["opened the Stripe dashboard"];

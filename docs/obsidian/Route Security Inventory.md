@@ -42,7 +42,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Account security (`me/account/password`, `me/account/email/*`, `POST me/account/closure`) | origin → sign-in (live `authVersion`) → `account_security_change` → body → email confirm only: `account_token_ip`/`account_token_digest` → service (current password, enrolled MFA) |
 | Profile, notification preferences | origin → body → sign-in → service (no rate limit) |
 | Dashboard context `POST me/context` | origin → body → sign-in → login id present → staff mode: `events:read` + MFA on the target |
-| Staff MFA (`me/mfa/setup`, `confirm`, `verify`) | origin → config (`MFA_ENCRYPTION_KEY`, `RATE_LIMIT_ENABLED=true`, else 503) → sign-in → `staff_mfa_setup` / `staff_mfa_verify` → bounded strict body → setup: the account password |
+| Staff MFA (`me/mfa/setup`, `confirm`, `verify`, `recovery-codes`) | origin → config (`MFA_ENCRYPTION_KEY`, `RATE_LIMIT_ENABLED=true`, else 503) → sign-in → `staff_mfa_setup` / `staff_mfa_verify` → bounded strict body → setup and `recovery-codes`: the account password |
 | Event writes (`PATCH`/`DELETE events/[eventId]`, `publish`, `sales`) | origin → dashboard context (+MFA) → `events:manage` → sign-in → body |
 | `POST /api/events` | origin → body → `events:manage` on the body's `organisationId` → sign-in |
 | Event reads (`GET events`, `GET events/[eventId]`) | `orgId` query → `events:manage` |
@@ -112,7 +112,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `staff_invite_actor` | 20 / 1 h | closed | actor, society | invite create, resend, revoke |
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
-| `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm and verify; every fresh-code action when a code is sent (not required) |
+| `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm, verify and new recovery codes; every fresh-code action when a code is sent (not required) |
 | `asset_upload` | 20 / 1 h | closed | `actor`, user; and `tenant`, society (two buckets) | asset upload |
 | `asset_delete` | 30 / 10 min | closed | user, society | asset delete |
 | `organisation_profile` | 30 / 10 min | closed | user, society | profile `PATCH` (not required) |
@@ -164,7 +164,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `PATCH` `/api/me/profile` | origin + CSRF, member account |
 | `PATCH` `/api/me/notification-preferences` | origin + CSRF, signed in |
 | `GET`/`POST` `/api/me/context` | signed in; staff selection `events:read` +MFA |
-| `GET` `/api/me/mfa/status`; `POST` `/api/me/mfa/setup`, `/api/me/mfa/confirm`, `/api/me/mfa/verify` | signed in, staff-eligible; writes: origin, MFA config, MFA limits |
+| `GET` `/api/me/mfa/status`; `POST` `/api/me/mfa/setup`, `/api/me/mfa/confirm`, `/api/me/mfa/verify`, `/api/me/mfa/recovery-codes` | signed in, staff-eligible; writes: origin, MFA config, MFA limits |
 | `GET`/`POST` `/api/events`; `GET`/`PATCH`/`DELETE` `/api/events/[eventId]`; `PATCH` `/api/events/[eventId]/publish`, `/api/events/[eventId]/sales` | `events:manage` +MFA; writes: origin, ctx |
 | `POST` `/api/events/[eventId]/cancel` | origin, ctx, `events:manage` and `orders:refund` +MFA, typed title, fresh code (`staff_mfa_verify` when sent) |
 | `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |

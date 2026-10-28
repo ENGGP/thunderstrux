@@ -1,5 +1,6 @@
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as confirmRoute } from "@/app/api/me/mfa/confirm/route";
+import { POST as recoveryCodesRoute } from "@/app/api/me/mfa/recovery-codes/route";
 import { POST as setupRoute } from "@/app/api/me/mfa/setup/route";
 import { POST as verifyRoute } from "@/app/api/me/mfa/verify/route";
 import { prisma } from "@/lib/db";
@@ -13,7 +14,7 @@ import { lockOrganisationActor } from "@/lib/organisations/authority";
 import { updateOrganisationStaff } from "@/lib/staff/management";
 import { beginStaffMfaEnrollment, confirmStaffMfaEnrollment, requireStaffMfa,
   totpCode, verifyStaffMfa, MfaRequiredError, assertStaffMfaConfiguration,
-  assertStaffMfaMutationConfiguration, mfaEnforcementMode, deleteExpiredMfaGrants } from "@/lib/security/staff-mfa";
+  assertStaffMfaMutationConfiguration, mfaEnforcementMode, deleteExpiredMfaGrants, replaceRecoveryCodes } from "@/lib/security/staff-mfa";
 
 const encryptionKey = Buffer.alloc(32, 7).toString("base64");
 const now = new Date(Math.floor(Date.now() / 30_000) * 30_000);
@@ -89,6 +90,37 @@ describe("staff MFA", () => {
       .rejects.toThrow("Invalid MFA");
     await expect(prisma.mfaRecoveryCode.count({ where: { userId: user.id } })).resolves.toBe(9);
     expect(await prisma.auditLog.count({ where: { targetId: user.id, actorUserId: user.id, action: "staff_mfa.recovery_used" } })).toBe(1);
+  });
+
+  // UI-018: a new set replaces every unused code, only with the password and a fresh authenticator code.
+  test("replacing recovery codes needs the password and a fresh authenticator code, and retires every old code", async () => {
+    configureMfa();
+    const { user } = await createOrganisationAccount();
+    const stepNow = Math.floor(now.getTime() / 30_000);
+    await expect(replaceRecoveryCodes(user.id, "password123", "123456", now)).rejects.toThrow("Set up an authenticator app first");
+    const setup = await beginStaffMfaEnrollment(user.id, user.email, now);
+    const { recoveryCodes: old } = await confirmStaffMfaEnrollment(user.id, totpCode(setup.secret, stepNow), mfaGrantDigest(sessionA)!, now);
+    await verifyStaffMfa(user.id, old[0], mfaGrantDigest(sessionA)!, now);
+    const later = new Date(now.getTime() + 30_000);
+    const fresh = totpCode(setup.secret, stepNow + 1);
+
+    await expect(replaceRecoveryCodes(user.id, "not-the-password", fresh, later)).rejects.toThrow("Your password is incorrect");
+    // Without the phone, a password guess is never checked: the code fails first.
+    await expect(replaceRecoveryCodes(user.id, "not-the-password", "000000", later)).rejects.toThrow("Invalid authenticator code");
+    await expect(replaceRecoveryCodes(user.id, "password123", "000000", later)).rejects.toThrow("Invalid authenticator code");
+    // A recovery code can't stand in for the authenticator, and a step already used can't be replayed.
+    await expect(replaceRecoveryCodes(user.id, "password123", old[1], later)).rejects.toThrow("6-digit code");
+    await expect(replaceRecoveryCodes(user.id, "password123", totpCode(setup.secret, stepNow), later)).rejects.toThrow("Invalid authenticator code");
+    expect(await prisma.mfaRecoveryCode.count({ where: { userId: user.id } })).toBe(9);
+
+    const { recoveryCodes } = await replaceRecoveryCodes(user.id, "password123", fresh, later);
+    expect(recoveryCodes).toHaveLength(10);
+    expect(new Set(recoveryCodes).size).toBe(10);
+    expect(await prisma.mfaRecoveryCode.count({ where: { userId: user.id } })).toBe(10);
+    await expect(replaceRecoveryCodes(user.id, "password123", fresh, later)).rejects.toThrow();
+    await expect(verifyStaffMfa(user.id, old[1], mfaGrantDigest(sessionB)!, later)).rejects.toThrow("Invalid MFA");
+    await verifyStaffMfa(user.id, recoveryCodes[0], mfaGrantDigest(sessionB)!, later);
+    expect(await prisma.auditLog.count({ where: { targetId: user.id, action: "staff_mfa.recovery_codes_replaced" } })).toBe(1);
   });
 
   test("a permitted staff action keeps the MFA challenge when other permissions are denied", async () => {
@@ -256,7 +288,20 @@ describe("staff MFA", () => {
     await expect(requireCurrentOrganisationAccount()).resolves.toMatchObject({ id: organisation.id });
     expect((await call(verifyRoute, "verify", { code: totpCode(secret, step + 1) })).status).toBe(400);
 
+    // UI-018: new recovery codes through the route, with a strict body (its own count on the verify limit).
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    // Codes from now on are within the window but at or below the step verify used, so start again just before it.
+    await prisma.userMfa.update({ where: { userId: user.id }, data: { lastAcceptedStep: BigInt(step - 2) } });
+    const current = () => totpCode(secret, Math.floor(Date.now() / 30_000));
+    expect((await call(recoveryCodesRoute, "recovery-codes", { password: "password123", code: current(), extra: true })).status).toBe(400);
+    expect((await call(recoveryCodesRoute, "recovery-codes", { password: "not-the-password", code: current() })).status).toBe(400);
+    const replaced = await call(recoveryCodesRoute, "recovery-codes", { password: "password123", code: current() });
+    expect(replaced.status).toBe(200);
+    expect(replaced.headers.get("Cache-Control")).toBe("no-store");
+    expect((await parseJsonResponse(replaced)).recoveryCodes).toHaveLength(10);
+
     vi.stubEnv("RATE_LIMIT_ENABLED", "false");
-    expect((await call(verifyRoute, "verify", { code: totpCode(secret, step + 2) })).status).toBe(503);
+    expect((await call(verifyRoute, "verify", { code: totpCode(secret, step + 3) })).status).toBe(503);
+    expect((await call(recoveryCodesRoute, "recovery-codes", { password: "password123", code: totpCode(secret, step + 3) })).status).toBe(503);
   });
 });

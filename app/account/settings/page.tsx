@@ -6,6 +6,7 @@ import { AccountSecurityError } from "@/lib/auth/account-lifecycle";
 import { readAccountSettings } from "@/lib/auth/account-settings";
 import { MemberProfileForm } from "@/components/account/member-profile-form";
 import { ChangePasswordForm } from "@/components/account/change-password-form";
+import { ReplaceRecoveryCodesForm } from "@/components/account/replace-recovery-codes-form";
 import { CloseAccountForm } from "@/components/account/close-account-form";
 import { readAccountClosureEligibility } from "@/lib/auth/account-closure";
 import { ChangeEmailForm } from "@/components/account/change-email-form";
@@ -137,6 +138,20 @@ export default async function AccountSettingsPage() {
               <Link className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline underline-offset-4" href="/mfa?callbackUrl=/account/settings">
                 {account.mfa.enabled ? "Verify authenticator" : "Set up authenticator"}
               </Link>
+            </div>
+          ) : null}
+          {authenticator && account.mfa.enabled ? (
+            <div className="grid gap-3 border-t border-line pt-5">
+              <div className="grid gap-0.5">
+                <h3 className={subheading}>Recovery codes</h3>
+                <p className="text-sm text-ink-soft">
+                  <span className={account.mfa.recoveryCodesLeft <= 3 ? "font-semibold text-warning" : "text-ink"}>
+                    {account.mfa.recoveryCodesLeft} of 10 left.
+                  </span>{" "}
+                  Each works once, when you can&apos;t use your authenticator app. Lost them? Get a new set.
+                </p>
+              </div>
+              <ReplaceRecoveryCodesForm email={account.user.email} />
             </div>
           ) : null}
           <div className="grid gap-1 border-t border-line pt-5">

@@ -84,9 +84,9 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 
 | Entry | What | Key files |
 | --- | --- | --- |
-| `components/account` | Account settings forms | `member-profile-form.tsx`, `change-password-form.tsx`, `change-email-form.tsx`, `notification-preferences-form.tsx`, `close-account-form.tsx` |
+| `components/account` | Account settings forms | `member-profile-form.tsx`, `change-password-form.tsx`, `change-email-form.tsx`, `notification-preferences-form.tsx`, `close-account-form.tsx`, `replace-recovery-codes-form.tsx` |
 | `components/analytics` | Charts | `bar-chart.tsx` |
-| `components/auth` | Sign-in, signup, verification, recovery, email change, staff invite and MFA forms | `credentials-login-form.tsx`, `signup-form.tsx`, `staff-mfa-form.tsx`, `account-link-token.ts` |
+| `components/auth` | Sign-in, signup, verification, recovery, email change, staff invite and MFA forms | `credentials-login-form.tsx`, `signup-form.tsx`, `staff-mfa-form.tsx`, `recovery-codes.tsx`, `account-link-token.ts` |
 | `components/calendar` | Society calendar grids and date helpers | `calendar-views.tsx`, `layout.ts` |
 | `components/commerce` | Shared commerce notices | `stripe-review-notice.tsx` |
 | `components/events` | Event builder, workspace header and actions, public event view and buy box, cards | `create-event-form.tsx`, `event-tabs.tsx`, `event-actions.tsx`, `public-event-view.tsx`, `public-ticket-purchase.tsx`, `event-card.tsx`, `date-rail.tsx`, `readiness-checklist.tsx`, `members-only-gate.tsx`, `explore-filter-fields.tsx` |

@@ -9,6 +9,10 @@ export type OperationalAlertName =
   | "stripe_webhook_signature_failure"
   | "stripe_webhook_mode_mismatch"
   | "stripe_webhook_version_mismatch"
+  // PAY-024: the sweep found a payment Stripe completed that no webhook delivered,
+  // or couldn't ask Stripe before expiring a pending order.
+  | "stripe_webhook_missed"
+  | "checkout_reconciliation_unavailable"
   | "stale_order_worker_failed"
   | "checkout_attempt_recovery_failed"
   | "checkout_attempt_recovery_abandoned"
@@ -42,7 +46,7 @@ export type OperationalAlertPayload = {
   stripeSessionId: string;
   eventId: string;
   reason: string;
-  source: "webhook" | "dev_success_fallback";
+  source: "webhook" | "reconciliation_sweep";
 } | Record<string, unknown>;
 
 const ALERT_DELIVERY_TIMEOUT_MS = 3_000;

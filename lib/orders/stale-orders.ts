@@ -1,11 +1,14 @@
 import { prisma } from "@/lib/db";
+import { failPendingCommerceOrder } from "@/lib/commerce/binding";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
+import { mayExpireAfterStripeCheck } from "@/lib/payments/checkout-settlement";
 import {
   appendOrderLifecycleEvent,
   lockOrder
 } from "@/lib/payments/order-lifecycle";
+import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
 
 export const stalePreCheckoutOrderMinutes = 30;
 export const defaultStaleOrderCleanupBatchLimit = 100;
@@ -29,6 +32,8 @@ export type StaleOrderCleanupBatchResult = {
   legacyOrdersSelected: number;
   legacyOrdersExpired: number;
   ordersExpired: number;
+  // Kept pending this run because Stripe couldn't be asked whether they were paid (PAY-024).
+  stripeDeferred: number;
 };
 
 function normaliseBatchLimit(limit: number | undefined) {
@@ -238,13 +243,22 @@ async function processStaleOrderCleanupBatchInternal({
       alreadyExpiredReservationBackedOrdersExpired: 0,
       legacyOrdersSelected: legacyOrderCandidates.length,
       legacyOrdersExpired: 0,
-      ordersExpired: 0
+      ordersExpired: 0,
+      stripeDeferred: 0
     };
   }
 
+  let stripeDeferred = 0;
   const expire = async (orderIds: string[], reason: ExpiryReason) => {
     let expired = 0;
-    for (const orderId of orderIds) if (await expirePendingOrder(orderId, reason, now, legacyPendingCutoff)) expired += 1;
+    for (const orderId of orderIds) {
+      // PAY-024: ask Stripe first, so a paid order whose webhook was lost is fulfilled, not expired.
+      if (!(await mayExpireAfterStripeCheck("ticket", orderId, now))) {
+        stripeDeferred += 1;
+        continue;
+      }
+      if (await expirePendingOrder(orderId, reason, now, legacyPendingCutoff)) expired += 1;
+    }
     return expired;
   };
   const reservationBackedOrdersExpired = await expire(reservationCandidates.map((candidate) => candidate.orderId), "reservation_expired");
@@ -269,8 +283,32 @@ async function processStaleOrderCleanupBatchInternal({
     ordersExpired:
       reservationBackedOrdersExpired +
       alreadyExpiredReservationBackedOrdersExpired +
-      legacyOrdersExpired
+      legacyOrdersExpired,
+    stripeDeferred
   };
+}
+
+// Membership and merchandise orders whose Stripe Session has expired, with a
+// margin for a late webhook (T21): asked about at Stripe first (PAY-024), then
+// expired and their holds released.
+export async function expireStaleCommerceOrders({ now = new Date(), limit = 100, graceMs = lateWebhookGraceMs } = {}) {
+  const stale = await prisma.commerceOrder.findMany({
+    where: { status: "pending", paymentKind: "stripe", expiresAt: { lt: new Date(now.getTime() - graceMs) } },
+    orderBy: { expiresAt: "asc" },
+    take: Math.max(1, Math.min(limit, 500)),
+    select: { id: true }
+  });
+  let expired = 0;
+  let stripeDeferred = 0;
+  for (const order of stale) {
+    if (!(await mayExpireAfterStripeCheck("commerce", order.id, now))) {
+      stripeDeferred += 1;
+      continue;
+    }
+    if (await failPendingCommerceOrder(order.id, "hold_expired", "stale_cleanup", { status: "expired" })) expired += 1;
+  }
+  logInfo("commerce.stale_orders.expired", { expired, considered: stale.length, stripeDeferred });
+  return { expired, considered: stale.length, stripeDeferred };
 }
 
 export function parseStaleOrderCleanupCliOptions(args: string[]) {

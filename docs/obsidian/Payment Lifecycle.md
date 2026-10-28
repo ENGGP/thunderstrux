@@ -22,13 +22,14 @@ sources: [lib/payments/checkout-creation.ts, lib/payments/checkout-reconciliatio
 | Attempt recovery | `lib/payments/checkout-attempt-recovery.ts`: `processCheckoutAttemptRecoveryBatch` |
 | Ticket fulfilment and expiry | `lib/payments/checkout-reconciliation.ts`: `reconcileCompletedCheckoutSession`, `reconcileExpiredCheckoutSession` |
 | Holds, lock options | `lib/tickets/reservations.ts`; stock `lib/events/inventory.ts`: `lockEventInventory`, `readEventInventory`, `sellableQuantity` |
-| Stale-order expiry | `lib/orders/stale-orders.ts`: `processStaleOrderCleanupBatch` |
-| Commerce checkout, binding, webhook, expiry | `lib/commerce/checkout.ts`, `lib/commerce/binding.ts`, `lib/commerce/reconciliation.ts`, `lib/commerce/families.ts`, `lib/commerce/orders.ts` |
+| Stale-order expiry | `lib/orders/stale-orders.ts`: `processStaleOrderCleanupBatch`, `expireStaleCommerceOrders` |
+| Settlement and reconciliation sweep (PAY-024) | `lib/payments/checkout-settlement.ts`: `settleCheckoutSession`, `sweepPendingCheckouts`, `mayExpireAfterStripeCheck` |
+| Commerce checkout, binding, webhook | `lib/commerce/checkout.ts`, `lib/commerce/binding.ts`, `lib/commerce/reconciliation.ts`, `lib/commerce/families.ts`, `lib/commerce/orders.ts` |
 | Unpaid order state and buyer cancel | `lib/purchases/pending-checkout.ts`, `lib/purchases/pending-checkout-http.ts` |
 | Display status | `lib/purchases/projection.ts`: `ticketOrderProjection`, `buyerPurchaseBadge` |
 | Order history | `lib/payments/order-lifecycle.ts`: `lockOrder`, `appendOrderLifecycleEvent`; `lib/payments/order-lifecycle-history.ts` |
 | Workers | `scripts/process-checkout-attempts.ts`, `scripts/process-stale-orders.ts`, `scripts/process-compensation-refunds.ts` |
-| Tests | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/checkout-attempts.test.ts`, `tests/integration/checkout-attempt-recovery.test.ts`, `tests/integration/checkout-reservations.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/free-tickets.test.ts`, `tests/integration/pending-checkout.test.ts`, `tests/integration/commerce-checkout.test.ts`, `tests/integration/payment-lifecycle.test.ts`, `tests/integration/purchase-snapshots.test.ts` |
+| Tests | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/checkout-attempts.test.ts`, `tests/integration/checkout-attempt-recovery.test.ts`, `tests/integration/checkout-reservations.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/free-tickets.test.ts`, `tests/integration/pending-checkout.test.ts`, `tests/integration/commerce-checkout.test.ts`, `tests/integration/payment-lifecycle.test.ts`, `tests/integration/purchase-snapshots.test.ts`, `tests/integration/checkout-reconciliation-sweep.test.ts` |
 
 ## States
 
@@ -145,6 +146,8 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | Path | Tickets | Commerce |
 | --- | --- | --- |
 | Stale-order job | An active hold past `expiresAt` → hold and order `expired`; a pending order whose hold already expired; a pending order with no hold older than `stalePreCheckoutOrderMinutes` (30) | Pending Stripe orders whose `expiresAt` is more than `lateWebhookGraceMs` past → `expired` (`hold_expired`), family holds released |
+
+Either stale-order path asks Stripe about an order's Session before expiring it ([[#Reconciliation sweep (PAY-024)]]).
 | `checkout.session.expired` | A `pending` order → `expired`, hold `expired`; paid, failed and expired orders unchanged; an order bound to another Session ignored | `failPendingCommerceOrder` (`checkout_expired`) |
 | Buyer cancel | `reconcileExpiredCheckoutSession` with source `checkout` | `failPendingCommerceOrder` (`buyer_cancelled`) as `expired` |
 | Event cancellation | After the cancellation commits, Stripe expires each open Session and `reconcileExpiredCheckoutSession` runs with source `staff_action` ([[Event Lifecycle#Cancelling]]) | Not event-owned |
@@ -160,6 +163,16 @@ The stale job locks each candidate and re-checks it before expiring; candidate d
 | `GET /api/payments/checkout/attempts/[attemptId]` | The attempt's own actor; else 404. `checkoutAttemptStatus`, `no-store` |
 
 `pendingCheckoutState` asks Stripe each time an unpaid order's page loads: `waiting` (Session open and held; offers the same payment page and Cancel order), `confirming` (Stripe has the payment, the webhook is due), or `ended`. Without Stripe's answer the hold decides and no payment page is offered. An unpaid order of a cancelled event is `ended` unless Stripe already has its payment. Lists show unpaid orders as Waiting for payment without asking Stripe. `cancelledByBuyer` tells a buyer's cancel apart from a lapsed hold by the `order_expired` source `checkout`.
+
+## Reconciliation sweep (PAY-024)
+
+The signed webhook is the main path; the sweep makes sure a lost one never strands a paid buyer. Both reach the same idempotent fulfilment through `settleCheckoutSession` (`lib/payments/checkout-settlement.ts`), Stripe's fulfil-checkout pattern: it routes a Session to the ticket reconciler or, by its `family` metadata, to the commerce one, and either may run any number of times, in any order, even at once.
+
+- **Early check** (`sweepPendingCheckouts`, start of every `stale-orders` run): pending Stripe orders of every family with a bound Session, created over 2 minutes ago (`sweepFirstCheckAfterMs`) and not asked about in the last 2 minutes (`sweepRecheckEveryMs`, paced by `stripeCheckedAt`), least recently asked first, 25 per family per run. The Session is read from Stripe: `complete` is applied as a completed Session, `expired` as an expired one, `open` is left and stamped.
+- **Before expiry** (`mayExpireAfterStripeCheck`, inside `processStaleOrderCleanupBatch` and `expireStaleCommerceOrders`): an order with a Session is asked about first. Paid: fulfilled, not expired. Still open past its hold: the page is closed at Stripe (`checkout.sessions.expire`), then the order expires through the expired-Session path. Stripe has no such Session: it expires. Stripe can't be asked: it stays pending with its hold and is counted in `stripeDeferred`, and the run alerts `checkout_reconciliation_unavailable`. A worker without a Stripe key expires as before outside production but never expires a Stripe order in production.
+- **Alert:** every paid Session the sweep applies to a pending order raises `stripe_webhook_missed` (family, order, Session, outcome, minutes since checkout). In production that means webhooks are broken; see [[Production Operations]].
+- **History:** sweep entries use source `reconciliation_sweep`; a late webhook afterwards finds the order already paid and changes nothing.
+- **Pages** never confirm anything: order pages poll their status every 3 seconds for a minute, then every 15 seconds for ten more minutes under "Still confirming", and refresh when it changes (`components/purchases/payment-status-poller.tsx`).
 
 ## Checkout attempt recovery
 
@@ -196,7 +209,7 @@ The `checkout-recovery` worker (`processCheckoutAttemptRecoveryBatch`, tickets a
 | Ticket email | `email_enqueued` (also an operator requeue), `email_retry_scheduled`, `email_provider_accepted`, `email_delivery_exhausted` |
 | Legacy | `legacy_baseline` |
 
-Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `development_fallback`, `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy`, `buyer_action` (a buyer releasing a free registration).
+Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `reconciliation_sweep` (PAY-024), `stale_cleanup`, `staff_action`, `email_worker`, `refund_worker`, `checkout_recovery`, `legacy`, `buyer_action` (a buyer releasing a free registration), and `development_fallback` (history only: the retired development success-page fallback).
 
 - An order with no history gets `legacy_baseline` (source `legacy`) before its first new event, and the timeline warns that earlier history is incomplete.
 - Duplicate deliveries and idempotent replays append nothing. Worker claims and leases are not history.

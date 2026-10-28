@@ -9,8 +9,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { buyerPurchaseBadge, justIssued, ticketOrderProjection } from "@/lib/purchases/projection";
 import { getOwnOrderForCheckoutSession } from "@/lib/purchases/ticket-purchases";
-import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
-import { getStripe, StripeConfigurationError } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Checking payment status", robots: { index: false, follow: false } };
@@ -21,62 +19,14 @@ type SuccessPageProps = {
   }>;
 };
 
-async function runDevCheckoutFallback(sessionId: string | undefined) {
-  if (process.env.NODE_ENV === "production") {
-    return;
-  }
-
-  if (!sessionId) {
-    console.warn(
-      "DEV CHECKOUT FALLBACK skipped: success page loaded without session_id. Use Stripe Checkout success_url with {CHECKOUT_SESSION_ID}."
-    );
-    return;
-  }
-
-  try {
-    const stripe = getStripe();
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-    console.warn("DEV CHECKOUT FALLBACK running", {
-      stripeSessionId: session.id,
-      paymentStatus: session.payment_status,
-      orderId: session.metadata?.orderId
-    });
-
-    if (session.payment_status !== "paid") {
-      console.warn("DEV CHECKOUT FALLBACK skipped unpaid session", {
-        stripeSessionId: session.id,
-        paymentStatus: session.payment_status
-      });
-      return;
-    }
-
-    await reconcileCompletedCheckoutSessionWithSideEffects(session, {
-      source: "dev_success_fallback"
-    });
-  } catch (error) {
-    if (error instanceof StripeConfigurationError) {
-      console.warn("DEV CHECKOUT FALLBACK skipped: Stripe is not configured", {
-        message: error.message
-      });
-      return;
-    }
-
-    console.error("DEV CHECKOUT FALLBACK failed", {
-      sessionId,
-      error
-    });
-  }
-}
-
 export default async function SuccessPage({ searchParams }: SuccessPageProps) {
   const { session_id: sessionId } = await searchParams;
-  await runDevCheckoutFallback(sessionId);
   const live = await getLiveSession();
   const order = sessionId && live ? await getOwnOrderForCheckoutSession(live.user.id, sessionId) : null;
 
-  // Arriving here proves nothing about payment: only the signed webhook does.
-  // The page shows the order's real state, and only to the member who bought it.
+  // Arriving here proves nothing about payment: the signed webhook, or the
+  // reconciliation sweep asking Stripe (PAY-024), confirms it, in every
+  // environment. The page shows the order's real state, only to its buyer.
   if (!order) {
     return (
       <AuthShell

@@ -37,7 +37,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | `PORT` | Next server (`server.js`), web image healthcheck | Container port; default `3000`. | no | no |
 | `HOSTNAME` | Next standalone server | `0.0.0.0` in the web image. | no | no |
 | `APP_PORT` | Compose | Host port on `127.0.0.1`; default `3000` (base), `3200` (`docker-compose.operations.yml`). `.env.example` sets `3080`. | no | no |
-| `NEXT_PUBLIC_APP_URL` | `lib/app-url.ts` (via `appUrl()`), `prisma/seed.mjs` | Public origin: trusted origin for writes, email and notification links, Stripe return URLs (`getAppUrl()` falls back to `http://localhost:3000`). | dev and hosted: compose; also the email and notification workers | no |
+| `NEXT_PUBLIC_APP_URL` | `lib/app-url.ts` (via `appUrl()`), `prisma/seed.mjs` | Public origin: trusted origin for writes, email and notification links, Stripe return URLs (`getAppUrl()` falls back to `http://localhost:3000`). | dev and hosted: compose; also the email, notification and stale-order workers | no |
 | `AUTH_URL` | `lib/auth/public-origin.ts`, `prisma/seed.mjs`, Auth.js | Auth.js public URL. Its `https:` scheme makes `proxy.ts` and the app read and set secure (`__Secure-`) cookies even when TLS ends at a proxy. | dev and hosted: compose | no |
 | `NEXTAUTH_URL` | `lib/auth/public-origin.ts`, `prisma/seed.mjs`, Auth.js | Fallback for `AUTH_URL`; keep both equal. | dev and hosted: compose | no |
 | `TRUSTED_APP_ORIGINS` | `lib/security/request-guard.ts` | Comma-separated extra origins accepted for cookie-authenticated writes and Stripe returns. Unset: only `NEXT_PUBLIC_APP_URL`. | hosted: compose | no |
@@ -73,7 +73,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 
 | Variable | Read by | Purpose; when unset | Required | `_FILE` |
 | --- | --- | --- | --- | --- |
-| `STRIPE_SECRET_KEY` | `lib/stripe/index.ts`, `lib/orders/order-detail.ts`, `scripts/staging-driver.mjs` | Platform key. Missing: Stripe calls throw `StripeConfigurationError` (Connect routes 503 "Stripe is not configured."; webhooks 503). `sk_live_`/`rk_live_` keys are refused outside production. `order-detail.ts` picks live or test Dashboard links with `isLiveStripeKey` (`sk_live_` or `rk_live_`). | for paid flows; compensation and checkout-recovery workers | yes |
+| `STRIPE_SECRET_KEY` | `lib/stripe/index.ts`, `lib/orders/order-detail.ts`, `scripts/staging-driver.mjs` | Platform key. Missing: Stripe calls throw `StripeConfigurationError` (Connect routes 503 "Stripe is not configured."; webhooks 503). `sk_live_`/`rk_live_` keys are refused outside production. `order-detail.ts` picks live or test Dashboard links with `isLiveStripeKey` (`sk_live_` or `rk_live_`). | for paid flows; compensation, checkout-recovery and stale-order workers (the stale-order worker defers every Stripe order in production without it, PAY-024) | yes |
 | `STRIPE_WEBHOOK_SECRET` | `lib/stripe/index.ts` | Signing secret for `/api/payments/webhook`; missing is 503. Must match the CLI listener or Dashboard endpoint in use. | for payment webhooks | yes |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | `lib/stripe/index.ts` | Signing secret for `/api/stripe/connect/webhook`; missing is 503. | for Connect webhooks | yes |
 
@@ -83,7 +83,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | --- | --- | --- | --- | --- |
 | `RESEND_API_KEY` | `lib/email/ticket-delivery.ts`, `scripts/staging-driver.mjs` | Resend key. Missing (or `EMAIL_FROM` missing) fails each send with a configuration error inside the worker; fulfilment still succeeds and queues the email. | for delivery | yes |
 | `EMAIL_FROM` | `lib/email/ticket-delivery.ts`, `lib/email/notification-outbox.ts`, `lib/auth/account-lifecycle.ts` | Sender. Notifications freeze it into the stored message when queued. | hosted: compose | no |
-| `NOTIFICATION_ENCRYPTION_KEY` | `lib/email/notification-crypto.ts` | Base64 of exactly 32 bytes; encrypts queued notification payloads. Missing or invalid: readiness 503 in every stack, and signup, verification and guest access refuse. Never replace it while encrypted jobs exist; back it up with database backups. | dev and hosted (readiness) | yes |
+| `NOTIFICATION_ENCRYPTION_KEY` | `lib/email/notification-crypto.ts` | Base64 of exactly 32 bytes; encrypts queued notification payloads. Missing or invalid: readiness 503 in every stack, and signup, verification and guest access refuse. Never replace it while encrypted jobs exist; back it up with database backups. | dev and hosted (readiness); notification and stale-order workers | yes |
 | `EMAIL_OUTBOX_BATCH_SIZE` | `lib/email/ticket-email-outbox.ts` | Jobs per run; default `25`. A non-positive or non-integer value uses the default. | no | no |
 | `EMAIL_OUTBOX_MAX_ATTEMPTS` | `lib/email/ticket-email-outbox.ts` | Attempts before a job is exhausted; default `5`. | no | no |
 | `EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS` | `lib/email/ticket-email-outbox.ts` | Age after which a claimed job is reclaimed; default `600`. | no | no |

@@ -156,14 +156,20 @@ services:
     pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
     cpus: ${OPS_CPUS:?OPS_CPUS is required}
     mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    # PAY-024: confirms pending checkouts with Stripe before expiring them.
     environment:
       NODE_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
       ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
       WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+      STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+      NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     secrets:
       - *database-secret
       - *alert-secret
+      - stripe_secret_key
+      - notification_encryption_key
     command: ["node", "scripts/process-stale-orders.mjs"]
 
   compensation-worker:

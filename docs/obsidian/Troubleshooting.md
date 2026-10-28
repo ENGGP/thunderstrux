@@ -161,7 +161,7 @@ WHERE slug = 'engineering-society';
 
 **Webhook answers 200 with `ignored: "mode_mismatch"`.** A test-mode event reached a live-key deployment or the reverse; it is ignored and alerts `stripe_webhook_mode_mismatch`. Point the endpoint at the matching deployment.
 
-**Test payment never completes without returning to `/success`.** The dev stack has no webhook endpoint unless you add one; see [[Development Workflow#Stripe on the dev app]].
+**A test payment stays "Still confirming".** Without a webhook listener, the dev stack's `stale-order-worker` confirms it within about two minutes (PAY-024). Check it runs (`docker compose -f docker-compose.yml -f docker-compose.dev.yml ps stale-order-worker`) and its logs show `checkout.sweep.processed`; `checkout.sweep.stripe_unavailable` means it couldn't reach Stripe. For instant confirmation start the `stripe-listener`; see [[Development Workflow#Stripe on the dev app]].
 
 ## Email
 

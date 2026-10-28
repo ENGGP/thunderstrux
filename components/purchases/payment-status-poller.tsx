@@ -6,11 +6,16 @@ import { Notice } from "@/components/ui/notice";
 
 const intervalMs = 3000;
 const maxChecks = 20;
+// After that, a webhook is late or lost; the reconciliation sweep (PAY-024) asks
+// Stripe within a few minutes, so keep looking slowly for ten more minutes.
+const slowIntervalMs = 15_000;
+const maxSlowChecks = 40;
 
 // While Stripe's confirmation is on its way, check the order's status every
 // few seconds and refresh the page once it changes. After about a minute it
-// stops and says so; it never claims success itself. A membership order
-// (T24a) passes its commerce order's status URL, whose pending is "processing".
+// says it is still confirming and keeps checking slowly; it never claims
+// success itself. A membership or merchandise order passes its commerce
+// order's status URL, whose pending is "pending".
 export function PaymentStatusPoller({
   orderId,
   statusUrl = `/api/purchases/tickets/${orderId}/status`,
@@ -42,7 +47,7 @@ export function PaymentStatusPoller({
       }
       if (stopped) return;
       if (checks >= maxChecks) setSlow(true);
-      else timer = setTimeout(check, intervalMs);
+      if (checks < maxChecks + maxSlowChecks) timer = setTimeout(check, checks < maxChecks ? intervalMs : slowIntervalMs);
     }
     timer = setTimeout(check, intervalMs);
     return () => {

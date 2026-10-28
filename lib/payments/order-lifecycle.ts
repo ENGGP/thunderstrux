@@ -107,7 +107,7 @@ export async function appendOrderLifecycleEvent(
 }
 
 export function reconciliationLifecycleSource(
-  source: "webhook" | "dev_success_fallback"
-): "stripe_webhook" | "development_fallback" {
-  return source === "webhook" ? "stripe_webhook" : "development_fallback";
+  source: "webhook" | "reconciliation_sweep"
+): "stripe_webhook" | "reconciliation_sweep" {
+  return source === "webhook" ? "stripe_webhook" : "reconciliation_sweep";
 }

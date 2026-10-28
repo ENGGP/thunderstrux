@@ -158,22 +158,18 @@ describe("purchases and order status", () => {
   });
 
   // AGENTS.md: an order is never marked paid from the browser's success page.
-  test("in production the success page never asks Stripe; in development an unpaid visit fulfils nothing; other outcomes say where the order stands", async () => {
+  test("the success page never asks Stripe or confirms a payment, in any environment; other outcomes say where the order stands", async () => {
     const fixture = await pendingPurchase();
     asMember(fixture.buyer);
     const visit = () => SuccessPage({ searchParams: Promise.resolve({ session_id: fixture.order.stripeSessionId as string }) }).then(renderPage);
-    const sessionSays = (paymentStatus: string) => stripe.retrieve.mockResolvedValue({ id: fixture.order.stripeSessionId, payment_status: paymentStatus, metadata: { orderId: fixture.order.id } });
+    stripe.retrieve.mockResolvedValue({ id: fixture.order.stripeSessionId, payment_status: "paid", metadata: { orderId: fixture.order.id } });
 
-    sessionSays("paid");
-    vi.stubEnv("NODE_ENV", "production");
-    expect(await visit()).toContain("Confirming your payment");
+    // PAY-024: the webhook or the reconciliation sweep confirms it; arriving here proves nothing.
+    for (const environment of ["production", "development", "test"]) {
+      vi.stubEnv("NODE_ENV", environment);
+      expect(await visit()).toContain("Confirming your payment");
+    }
     expect(stripe.retrieve).not.toHaveBeenCalled();
-
-    vi.stubEnv("NODE_ENV", "test");
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    sessionSays("unpaid");
-    expect(await visit()).toContain("Confirming your payment");
-    expect(stripe.retrieve).toHaveBeenCalledWith(fixture.order.stripeSessionId);
     expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id }, select: { status: true, paidAt: true } })).toEqual({ status: "pending", paidAt: null });
 
     await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "failed", failedAt: new Date() } });

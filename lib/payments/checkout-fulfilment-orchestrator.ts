@@ -15,8 +15,9 @@ async function paymentDestination(session: Stripe.Checkout.Session) {
   return typeof destination === "string" ? destination : destination?.id ?? null;
 }
 
-// The only entry for production fulfilment (signed webhook and the development
-// success fallback): it always supplies the verified destination.
+// The only entry for ticket fulfilment (signed webhook and the reconciliation
+// sweep, through lib/payments/checkout-settlement.ts): it always supplies the
+// verified destination.
 export async function reconcileCompletedCheckoutSessionWithSideEffects(
   session: Stripe.Checkout.Session,
   {
@@ -24,7 +25,7 @@ export async function reconcileCompletedCheckoutSessionWithSideEffects(
     source = "webhook"
   }: {
     stripeEventId?: string;
-    source?: "webhook" | "dev_success_fallback";
+    source?: "webhook" | "reconciliation_sweep";
   } = {}
 ): Promise<CheckoutReconciliationResult> {
   return reconcileCompletedCheckoutSession(session, {

@@ -23,6 +23,14 @@ import {
 } from "@/tests/helpers/test-data";
 
 // The dashboard and personal shells read the pathname.
+// PAY-024: cleanup asks Stripe before expiring an order with a Session; these
+// fixtures' Sessions were never created there, so Stripe has no record of them.
+vi.mock("@/lib/stripe", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/stripe")>()),
+  getStripe: () => ({
+    checkout: { sessions: { retrieve: async () => Promise.reject(Object.assign(new Error("No such checkout.session"), { code: "resource_missing" })) } }
+  })
+}));
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
   usePathname: () => "/dashboard/orders",

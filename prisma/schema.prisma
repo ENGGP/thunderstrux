@@ -353,6 +353,8 @@ model Order {
   unitPrice       Int
   totalAmount     Int
   stripeSessionId String?      @unique
+  // When the reconciliation sweep last asked Stripe about this pending order (PAY-024).
+  stripeCheckedAt DateTime?
   createdAt       DateTime     @default(now())
   paidAt          DateTime?
   failedAt        DateTime?
@@ -941,6 +943,7 @@ enum OrderLifecycleSource {
   checkout_recovery
   legacy
   buyer_action
+  reconciliation_sweep
 }
 
 model NotificationOutbox {
@@ -1044,6 +1047,8 @@ model CommerceOrder {
   // A pending paid order's hold ends with its Stripe Session (T21).
   expiresAt                  DateTime?
   stripeSessionId            String?       @unique
+  // When the reconciliation sweep last asked Stripe about this pending order (PAY-024).
+  stripeCheckedAt            DateTime?
   stripePaymentIntentId      String?
   requiresCompensationReview Boolean       @default(false)
   reviewReason               String?

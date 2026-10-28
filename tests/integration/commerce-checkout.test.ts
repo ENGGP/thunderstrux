@@ -5,14 +5,15 @@ import { POST as merchandiseCheckout } from "@/app/api/payments/checkout/merchan
 import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { prisma } from "@/lib/db";
 import { createCommerceCheckout } from "@/lib/commerce/checkout";
-import { expireStaleCommerceOrders } from "@/lib/commerce/reconciliation";
+import { expireStaleCommerceOrders } from "@/lib/orders/stale-orders";
 import { processCheckoutAttemptRecoveryBatch } from "@/lib/payments/checkout-attempt-recovery";
+import { sweepPendingCheckouts } from "@/lib/payments/checkout-settlement";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
 import { createEvent, createMember, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 const webhookSecret = "whsec_commerce_test";
-const stripe = vi.hoisted(() => ({ create: vi.fn(), intent: vi.fn() }));
+const stripe = vi.hoisted(() => ({ create: vi.fn(), intent: vi.fn(), retrieve: vi.fn(), expire: vi.fn() }));
 // A merchandise family for the tests; production registers none until T27.
 const family = vi.hoisted(() => ({ price: 1500, fulfil: true, fulfilled: [] as string[], released: [] as string[] }));
 
@@ -23,7 +24,7 @@ vi.mock("@/lib/stripe", async () => {
     getAppUrl: () => "http://localhost:3000",
     isLiveStripeKey: () => false,
     getStripeWebhookSecret: () => "whsec_commerce_test",
-    getStripe: () => ({ checkout: { sessions: { create: stripe.create } }, paymentIntents: { retrieve: stripe.intent }, webhooks: new RealStripe("sk_test_commerce").webhooks })
+    getStripe: () => ({ checkout: { sessions: { create: stripe.create, retrieve: stripe.retrieve, expire: stripe.expire } }, paymentIntents: { retrieve: stripe.intent }, webhooks: new RealStripe("sk_test_commerce").webhooks })
   };
 });
 vi.mock("@/lib/commerce/families", async () => {
@@ -48,9 +49,11 @@ vi.mock("@/lib/commerce/families", async () => {
 
 beforeEach(() => {
   stripe.create.mockImplementation(async () => ({ id: unique("cs_commerce"), url: "https://checkout.stripe.test/pay" }));
+  // Unless a test says otherwise, Stripe has no record of the Session: nothing was paid on it.
+  stripe.retrieve.mockRejectedValue(Object.assign(new Error("No such checkout.session"), { code: "resource_missing" }));
   Object.assign(family, { price: 1500, fulfil: true, fulfilled: [], released: [] });
 });
-afterEach(() => { stripe.create.mockReset(); stripe.intent.mockReset(); });
+afterEach(() => { stripe.create.mockReset(); stripe.intent.mockReset(); stripe.retrieve.mockReset(); stripe.expire.mockReset(); });
 
 async function shop() {
   const society = await createOrganisationAccount({ stripeReady: true });
@@ -233,6 +236,39 @@ describe("commerce checkout", () => {
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: stale.id } })).toMatchObject({ status: "expired" });
     expect(await prisma.checkoutAttempt.findFirstOrThrow({ where: { commerceOrderId: stale.id } })).toMatchObject({ state: "failed" });
     expect(family.released).toEqual([unpaid.id, stale.id]);
+  });
+
+  test("PAY-024: the sweep confirms a paid checkout whose webhook was lost, alerts once, and a paid order is never expired", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { checkout } = await shop();
+    await checkout();
+    const lost = await prisma.commerceOrder.findFirstOrThrow({ where: { status: "pending" } });
+    const paid = await sessionFor(lost.id, { status: "complete" });
+    stripe.retrieve.mockImplementation(async (id: string) => (id === lost.stripeSessionId ? paid : Promise.reject(Object.assign(new Error("No such checkout.session"), { code: "resource_missing" }))));
+
+    await expect(sweepPendingCheckouts({ now: new Date(Date.now() + 3 * 60_000) })).resolves.toMatchObject({ checked: 1, settled: 1 });
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: lost.id } })).toMatchObject({ status: "paid" });
+    expect(family.fulfilled).toEqual([lost.id]);
+    expect(await prisma.commerceLifecycleEvent.findFirstOrThrow({ where: { commerceOrderId: lost.id, type: "payment_fulfilled" } })).toMatchObject({ source: "reconciliation_sweep" });
+    expect(alerts(errors, "stripe_webhook_missed")).toBe(1);
+    // The late webhook changes nothing.
+    await deliver("checkout.session.completed", paid);
+    expect(family.fulfilled).toEqual([lost.id]);
+
+    // Past its hold, a paid order is fulfilled rather than expired; an order Stripe can't be asked about waits.
+    await checkout({ idempotencyKey: unique("commerce-key-0001") });
+    const late = await prisma.commerceOrder.findFirstOrThrow({ where: { status: "pending" } });
+    const latePaid = await sessionFor(late.id, { status: "complete" });
+    stripe.retrieve.mockResolvedValue(latePaid);
+    const afterHold = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    await expect(expireStaleCommerceOrders({ now: afterHold })).resolves.toMatchObject({ expired: 0, stripeDeferred: 0 });
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: late.id } })).toMatchObject({ status: "paid" });
+
+    await checkout({ idempotencyKey: unique("commerce-key-0002") });
+    const unreachable = await prisma.commerceOrder.findFirstOrThrow({ where: { status: "pending" } });
+    stripe.retrieve.mockRejectedValue(Object.assign(new Error("socket hang up"), { type: "StripeConnectionError" }));
+    await expect(expireStaleCommerceOrders({ now: afterHold })).resolves.toMatchObject({ expired: 0, stripeDeferred: 1 });
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: unreachable.id } })).toMatchObject({ status: "pending" });
   });
 
   test("a family that isn't on sale yet is a 404, and only members may buy", async () => {

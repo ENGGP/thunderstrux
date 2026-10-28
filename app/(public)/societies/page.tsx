@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SocietyCard } from "@/components/organisations/society-card";
-import { Button, buttonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { Pager } from "@/components/ui/pager";
 import { Notice } from "@/components/ui/notice";
 import { TextInput } from "@/components/ui/input";
 import {
@@ -88,24 +89,13 @@ export default async function SocietiesPage({
             ))}
           </div>
         )}
-        <nav aria-label="Society result pages" className="flex flex-wrap gap-3">
-          {page.pageInfo.hasPreviousPage && (
-            <Link
-              className={buttonClasses({ variant: "secondary" })}
-              href={`/societies?${new URLSearchParams({ q: input.q, limit: String(input.limit) })}`}
-            >
-              First page
-            </Link>
-          )}
-          {page.pageInfo.nextCursor && (
-            <Link
-              className={buttonClasses({ variant: "secondary" })}
-              href={`/societies?${next}`}
-            >
-              More societies
-            </Link>
-          )}
-        </nav>
+        {/* The name cursor only runs forward, so going back starts from the first page. */}
+        <Pager
+          label="Society result pages"
+          next={page.pageInfo.nextCursor && `/societies?${next}`}
+          previous={page.pageInfo.hasPreviousPage ? `/societies?${new URLSearchParams({ q: input.q, limit: String(input.limit) })}` : null}
+          previousLabel="First page"
+        />
       </div>
     </main>
   );

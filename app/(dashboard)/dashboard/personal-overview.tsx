@@ -27,8 +27,8 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count} ${cou
 const lastDay = (endsAt: Date, timeZone: string) => formatDate(new Date(endsAt.getTime() - 1), timeZone);
 
 export async function PersonalOverview({ userId }: { userId: string }) {
-  // A few more than shown, so checkouts that didn't complete can be left out below.
-  const firstPage = { limit: 10, direction: "next" as const };
+  // Three of each family, newest first; checkouts that didn't complete are left out by the readers.
+  const firstPage = { limit: 3, direction: "next" as const };
   const now = new Date();
   const [profile, wallet, active, upcomingTerms, tickets, commerce, societies] = await Promise.all([
     readMemberProfile(userId),
@@ -39,7 +39,9 @@ export async function PersonalOverview({ userId }: { userId: string }) {
     getOwnCommerceOrders(userId, firstPage),
     getAccessibleOrganisationsForCurrentAccount()
   ]);
-  const eventCounts = await upcomingEventCounts(societies.map((society) => society.id), now);
+  // The first five joined societies; the rest are a click away (UI-019).
+  const joined = societies.slice(0, 5);
+  const eventCounts = await upcomingEventCounts(joined.map((society) => society.id), now);
 
   // Valid tickets grouped by event, soonest first.
   const plans: Array<{ event: (typeof wallet.tickets)[number]["event"]; count: number; types: Set<string> }> = [];
@@ -64,8 +66,6 @@ export async function PersonalOverview({ userId }: { userId: string }) {
       };
     })
   ]
-    // A checkout that didn't complete isn't a purchase; Purchases still lists it.
-    .filter((purchase) => !["expired", "failed"].includes(ticketOrderProjection(purchase.order)))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 3);
   const memberships = [...active.memberships, ...upcomingTerms.memberships];
@@ -199,11 +199,11 @@ export async function PersonalOverview({ userId }: { userId: string }) {
           <Card>
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-xl font-semibold text-ink">Societies you&apos;ve joined</h2>
-              <Link className={moreLink} href="/dashboard/organisations">Manage</Link>
+              <Link className={moreLink} href="/dashboard/organisations">{societies.length > joined.length ? `See all ${societies.length}` : "Manage"}</Link>
             </div>
             {societies.length ? (
               <ul className="mt-3 grid">
-                {societies.map((society) => (
+                {joined.map((society) => (
                   <li className="flex items-center gap-3 border-t border-line py-3.5 first:border-0" key={society.id}>
                     <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-ink text-sm font-semibold text-white">
                       {society.name.split(/\s+/).slice(0, 2).map((word) => word[0]?.toUpperCase()).join("")}

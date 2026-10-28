@@ -94,6 +94,23 @@ describe("event card availability (UI-007)", () => {
 });
 
 describe("society overview previews (PUB-05)", () => {
+  // UI-019: six events, then a link to Explore filtered to the society.
+  test("the overview lists the next six events and links to all of them on Explore", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const render = async () => renderPage(await OrganisationDetailsPage({ params: Promise.resolve({ orgSlug: organisation.slug }) }));
+    const titles = [];
+    for (let index = 0; index < 7; index += 1) {
+      const event = await createEvent({ organisationId: organisation.id, status: "published", title: unique(`Night ${index}`) });
+      await prisma.event.update({ where: { id: event.id }, data: { startTime: new Date(Date.now() + (index + 1) * DAY), endTime: new Date(Date.now() + (index + 1) * DAY + 3600000) } });
+      titles.push(event.title);
+    }
+    const html = await render();
+    for (const title of titles.slice(0, 6)) expect(html).toContain(title);
+    expect(html).not.toContain(titles[6]);
+    expect(html).toContain("See all 7 events");
+    expect(html).toContain(`/events?society=${organisation.slug}`);
+  });
+
   test("the overview previews the next membership and up to four products, and leaves each out when there is none", async () => {
     const { organisation } = await createOrganisationAccount({ stripeReady: true });
     const render = async () => renderPage(await OrganisationDetailsPage({ params: Promise.resolve({ orgSlug: organisation.slug }) }));

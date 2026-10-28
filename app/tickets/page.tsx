@@ -88,7 +88,11 @@ export default async function MyTicketsPage({ searchParams }: { searchParams: Pr
           );
         })
       )}
-      {truncated ? <p className="text-sm text-ink-soft">Showing the first 100 tickets. Older ones are in Purchases.</p> : null}
+      {truncated ? (
+        <p className="text-sm text-ink-soft">
+          {view === "upcoming" ? "Showing the soonest 100 tickets. Later ones show here as these events pass." : "Showing the latest 100 tickets. Every order is in Purchases."}
+        </p>
+      ) : null}
       <p className="text-sm text-ink-soft">Show the ticket reference and your name at the door.</p>
     </PersonalShell>
   );

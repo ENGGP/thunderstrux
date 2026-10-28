@@ -22,6 +22,7 @@ type StaffRow = {
   id: string;
   role: StaffRole;
   status: "invited" | "active" | "revoked";
+  revokedAt?: string | Date | null;
   user: {
     email: string;
     firstName: string | null;
@@ -56,6 +57,8 @@ const roleLabels: Record<StaffRole, string> = {
 };
 
 const roles = Object.keys(roleLabels) as StaffRole[];
+// How many past staff and past invitations the server sends (listOrganisationStaff, listPastStaffInvites).
+const historyShown = 25;
 
 // What each role can do, shown under the invitation role.
 const roleHints: Record<StaffRole, string> = {
@@ -85,6 +88,9 @@ export function StaffManagement({
 }) {
   const router = useRouter();
   const [staff, setStaff] = useState(initialStaff);
+  // Revoked staff are history, listed apart (the server sends only the most recent).
+  const current = staff.filter((row) => row.status !== "revoked");
+  const past = staff.filter((row) => row.status === "revoked");
   const [invites, setInvites] = useState(initialInvites);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<StaffRole>("event_manager");
@@ -229,7 +235,7 @@ export function StaffManagement({
               </tr>
             </thead>
             <tbody>
-              {staff.map((row) => {
+              {current.map((row) => {
                 const lastOwner = row.role === "owner" && row.status === "active" && staff.filter((other) => other.role === "owner" && other.status === "active").length === 1;
                 return (
                 <tr className="grid gap-2 border-t border-line py-3 align-top first:border-0 md:table-row md:py-0 md:first:border-t" key={row.id}>
@@ -317,9 +323,32 @@ export function StaffManagement({
         </Card>
       ) : null}
 
+      {past.length > 0 ? (
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">Past staff</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            {past.length >= historyShown ? `The ${historyShown} most recently revoked. ` : ""}They no longer have access. To bring someone back, invite them again.
+          </p>
+          <ul aria-label="Past staff" className="mt-2 grid">
+            {past.map((row) => (
+              <li className="grid gap-0.5 border-t border-line py-3 first:border-0 sm:flex sm:items-baseline sm:justify-between sm:gap-4" key={row.id}>
+                <span className="min-w-0">
+                  {personName(row) ? <span className="block font-semibold text-ink">{personName(row)}</span> : null}
+                  <span className="block text-sm text-ink-soft [overflow-wrap:anywhere]">{row.user.email}</span>
+                </span>
+                <span className="shrink-0 text-sm text-ink-soft">
+                  {roleLabels[row.role]}{row.revokedAt ? ` · revoked ${formatDate(row.revokedAt)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
       {pastInvites.length > 0 ? (
         <Card>
           <h2 className="text-lg font-semibold text-ink">Past invitations</h2>
+          {pastInvites.length >= historyShown ? <p className="mt-1 text-sm text-ink-soft">The {historyShown} most recent.</p> : null}
           <div aria-label="Past invitations" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
             <table className="w-full border-collapse text-left text-ui md:min-w-[520px]">
               <thead className="sr-only md:not-sr-only md:table-header-group">

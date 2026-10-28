@@ -42,6 +42,32 @@ async function societyWithEvents() {
 }
 
 describe("dashboard events read", () => {
+  // UI-019: a view pages 25 at a time either way; Past and All run newest first.
+  test("views page 25 at a time, back and forth, and an unreadable cursor starts again", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const start = Date.now() - 400 * 86400000;
+    const ids: string[] = [];
+    for (let index = 0; index < 26; index += 1) {
+      const event = await createEvent({ organisationId: organisation.id, title: `Past ${index}`, status: "published" });
+      await prisma.event.update({ where: { id: event.id }, data: { startTime: new Date(start + index * 86400000), endTime: new Date(start + index * 86400000 + 3600000) } });
+      ids.push(event.id);
+    }
+    const newest = [...ids].reverse();
+    const read = (options: { view?: "past" | "all"; cursor?: string; direction?: "next" | "prev" } = {}) =>
+      listDashboardEvents(organisation.id, { view: "past", publishedOnly: false, includeSales: false, ...options });
+    const first = await read();
+    expect(first.events.map((event) => event.id)).toEqual(newest.slice(0, 25));
+    expect(first.previousCursor).toBeNull();
+    const second = await read({ cursor: first.nextCursor! });
+    expect(second.events.map((event) => event.id)).toEqual(newest.slice(25));
+    expect(second.nextCursor).toBeNull();
+    expect((await read({ cursor: second.previousCursor!, direction: "prev" })).events.map((event) => event.id)).toEqual(newest.slice(0, 25));
+    expect((await read({ view: "all" })).events[0].id).toBe(newest[0]);
+    const restarted = await read({ cursor: "not-a-cursor", direction: "prev" });
+    expect(restarted.restarted).toBe(true);
+    expect(restarted.events.map((event) => event.id)).toEqual(newest.slice(0, 25));
+  }, 90_000);
+
   test("views, counts, search and sales stay inside the society", async () => {
     const { organisation, live, draft, past } = await societyWithEvents();
     const read = (view: "upcoming" | "past", query?: string) =>

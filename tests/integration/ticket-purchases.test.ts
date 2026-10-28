@@ -141,7 +141,7 @@ describe("purchases and order status", () => {
     await expect(cancel()).rejects.toMatchObject({ digest: expect.stringContaining(`/purchases/tickets/${fixture.order.id}`) });
   });
 
-  test("Purchases lists every order in the buyer's words; the wallet splits tickets into upcoming, past and not valid", async () => {
+  test("Purchases lists orders in the buyer's words, checkouts that didn't complete behind a link; the wallet splits tickets into upcoming, past and not valid", async () => {
     const fixture = await pendingPurchase();
     const pastEvent = await createEvent({ organisationId: fixture.owner.organisation.id, status: "published", title: "Last Year's Ball" });
     await prisma.event.update({ where: { id: pastEvent.id }, data: { startTime: new Date(Date.now() - 2 * 86400000), endTime: new Date(Date.now() - 86400000) } });
@@ -164,10 +164,17 @@ describe("purchases and order status", () => {
     expect(notValid).toContain("Refunded");
     expect(notValid).toContain("Ticket 2 of 2");
     const purchases = await renderPage(await PurchasesPage({ searchParams: Promise.resolve({}) }));
-    expect(purchases).toContain("Didn&#x27;t complete");
-    expect(purchases).toContain("Not charged");
+    expect(purchases).not.toContain("Didn&#x27;t complete");
+    expect(purchases).toContain("Show 1 checkout that didn&#x27;t complete");
+    expect(purchases).toContain("/purchases?incomplete=1");
     expect(purchases).toContain(`/purchases/tickets/${past.id}`);
     expect(purchases).not.toContain(theirs.id);
+    const everything = await renderPage(await PurchasesPage({ searchParams: Promise.resolve({ incomplete: "1" }) }));
+    expect(everything).toContain("Didn&#x27;t complete");
+    expect(everything).toContain("Not charged");
+    expect(everything).toContain("Checkouts that didn&#x27;t complete took no money.");
+    expect(everything).toContain(`/purchases/tickets/${past.id}`);
+    expect(everything).not.toContain(theirs.id);
   });
 
   // AGENTS.md: an order is never marked paid from the browser's success page.

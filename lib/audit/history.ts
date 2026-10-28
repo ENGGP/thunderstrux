@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { formatMoney, formatPrice, membershipLabel, orderReference } from "@/lib/format";
-import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
+import { decodeTimestampCursor, descendingCursorWhere, orderByForDirection, pageInfoForPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { nextDay, startOfZonedDay, toZonedInput } from "@/lib/zoned-time";
 
 // The society History (T38, design round C2): AuditLog rows of one society,
@@ -69,7 +69,7 @@ const rowSelect = {
 } satisfies Prisma.AuditLogSelect;
 type Row = Prisma.AuditLogGetPayload<{ select: typeof rowSelect }>;
 
-export async function readHistory(organisationId: string, filters: HistoryFilters, timeZone: string, cursor?: string) {
+export async function readHistory(organisationId: string, filters: HistoryFilters, timeZone: string, cursor?: string, direction: PaginationDirection = "next") {
   let after: { createdAt: Date; id: string } | undefined;
   if (cursor) {
     try {
@@ -79,18 +79,19 @@ export async function readHistory(organisationId: string, filters: HistoryFilter
     }
   }
   const where = filterWhere(organisationId, filters, timeZone);
+  const way = after ? direction : "next";
   const rows = await prisma.auditLog.findMany({
-    where: after ? { AND: [where, { OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }] }] } : where,
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    where: after ? { AND: [where, descendingCursorWhere("createdAt", after, way)] } : where,
+    orderBy: orderByForDirection("createdAt", way, "desc"),
     take: historyPageSize + 1,
     select: rowSelect
   });
-  const page = rows.slice(0, historyPageSize);
-  const targets = await readTargets(organisationId, page);
-  const last = page.at(-1);
+  const page = pageInfoForPage({ items: rows, limit: historyPageSize, direction: way, cursor, timestampField: "createdAt" });
+  const targets = await readTargets(organisationId, page.items);
   return {
-    entries: page.map((row) => describe(row, targets, timeZone)),
-    nextCursor: rows.length > historyPageSize && last ? encodeTimestampCursor("createdAt", last) : null
+    entries: page.items.map((row) => describe(row, targets, timeZone)),
+    nextCursor: page.pageInfo.nextCursor,
+    previousCursor: page.pageInfo.previousCursor
   };
 }
 

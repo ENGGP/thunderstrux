@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
+import { decodeTimestampCursor, descendingCursorWhere, orderByForDirection, pageInfoForPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { encryptNotification, decryptNotification } from "./notification-crypto";
 import { businessTemplates, notificationTemplateSchema, renderNotification, renderedNotificationSchema, type NotificationTemplate } from "./templates";
 import { sendWithResend } from "./ticket-delivery";
@@ -18,22 +18,20 @@ type Claim = { id: string; processingToken: string };
 type NotificationOutcome = "skipped" | "cancelled" | "failed" | "sent" | "retried";
 
 export class NotificationCursorError extends Error {}
-export async function listFailedBusinessNotifications(organisationId: string, cursor?: string) {
+export async function listFailedBusinessNotifications(organisationId: string, cursor?: string, direction: PaginationDirection = "next") {
   // The shared timestamp cursor (PAG-001); a bad one keeps this list's own error.
   let after: { createdAt: Date; id: string } | undefined;
   if (cursor) {
     try { after = decodeTimestampCursor("createdAt", cursor); } catch { throw new NotificationCursorError("Invalid notification cursor"); }
   }
+  const way = after ? direction : "next";
   const jobs = await prisma.notificationOutbox.findMany({
-    where: { organisationId, privacy: "business", status: "failed", ...(after ? { OR: [
-      { createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }
-    ] } : {}) },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 26,
+    where: { organisationId, privacy: "business", status: "failed", ...(after ? descendingCursorWhere("createdAt", after, way) : {}) },
+    orderBy: orderByForDirection("createdAt", way, "desc"), take: 26,
     select: { id: true, template: true, attempts: true, lastError: true, createdAt: true }
   });
-  const page = jobs.slice(0, 25); const last = page.at(-1);
-  return { jobs: page, nextCursor: jobs.length > 25 && last
-    ? encodeTimestampCursor("createdAt", last) : null };
+  const page = pageInfoForPage({ items: jobs, limit: 25, direction: way, cursor, timestampField: "createdAt" });
+  return { jobs: page.items, nextCursor: page.pageInfo.nextCursor, previousCursor: page.pageInfo.previousCursor };
 }
 
 export async function businessNotificationExists(jobId: string, organisationId: string) {

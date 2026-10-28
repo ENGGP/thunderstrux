@@ -7,6 +7,7 @@ import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
+import { Pager } from "@/components/ui/pager";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
 import { getOwnCommerceOrders } from "@/lib/commerce/orders";
@@ -98,8 +99,9 @@ const summary = (order: CommerceRow) => {
 
 // Purchases (T19a; family tabs T29a, design round B2): every ticket order,
 // membership and merchandise order the member has made, newest first. Ticket
-// URLs are unchanged; each family opens its own order page.
-export default async function PurchasesPage({ searchParams }: { searchParams: Promise<{ family?: string; limit?: string; cursor?: string; direction?: string }> }) {
+// URLs are unchanged; each family opens its own order page. Checkouts that
+// didn't complete are hidden behind a link (`?incomplete=1`, UI-019).
+export default async function PurchasesPage({ searchParams }: { searchParams: Promise<{ family?: string; incomplete?: string; limit?: string; cursor?: string; direction?: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuthenticatedUser>>;
   try {
     user = await requireAuthenticatedUser();
@@ -111,10 +113,11 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
 
   const raw = await searchParams;
   const family = families.find((name) => name === raw.family) ?? "tickets";
-  const params = Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[0] !== "family"));
+  const incomplete = raw.incomplete === "1";
+  const params = Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[0] !== "family" && entry[0] !== "incomplete"));
   let pagination: ParsedPaginationOptions & { invalid?: boolean } = parsePaginationOptionsOrDefault(new URLSearchParams(params));
   const read = (options: ParsedPaginationOptions) =>
-    family === "tickets" ? getOwnTicketPurchases(user.id, options) : getOwnCommerceOrders(user.id, options, family === "memberships" ? "membership" : "merchandise");
+    family === "tickets" ? getOwnTicketPurchases(user.id, options, { incomplete }) : getOwnCommerceOrders(user.id, options, family === "memberships" ? "membership" : "merchandise", { incomplete });
   let result: Awaited<ReturnType<typeof read>>;
   try {
     result = await read(pagination);
@@ -125,9 +128,12 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
   }
   const counts = await ownPurchaseCounts(user.id);
   const { pageInfo } = result;
-  const pageHref = (cursor: string, direction: "next" | "prev") =>
-    `/purchases?${new URLSearchParams({ ...(family !== "tickets" ? { family } : {}), ...(pageInfo.limit !== 25 ? { limit: String(pageInfo.limit) } : {}), cursor, direction })}`;
-  const pageLink = buttonClasses({ variant: "secondary", size: "sm" });
+  const hrefFor = (name: Family, extra: Record<string, string> = {}, showIncomplete = incomplete) => {
+    const query = new URLSearchParams({ ...(name !== "tickets" ? { family: name } : {}), ...(showIncomplete ? { incomplete: "1" } : {}), ...extra });
+    return query.size ? `/purchases?${query}` : "/purchases";
+  };
+  const pageHref = (cursor: string, direction: "next" | "prev") => hrefFor(family, { ...(pageInfo.limit !== 25 ? { limit: String(pageInfo.limit) } : {}), cursor, direction });
+  const hidden = counts.abandoned[family];
   const tickets = family === "tickets" ? (result as Awaited<ReturnType<typeof getOwnTicketPurchases>>).items : [];
   const commerce = family === "tickets" ? [] : (result as Awaited<ReturnType<typeof getOwnCommerceOrders>>).items;
   const empty = family === "tickets" ? tickets.length === 0 : commerce.length === 0;
@@ -140,7 +146,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
       </div>
       <LinkTabs
         label="Purchase types"
-        tabs={families.map((name) => ({ href: name === "tickets" ? "/purchases" : `/purchases?family=${name}`, label: familyLabels[name], active: name === family, count: counts[name] }))}
+        tabs={families.map((name) => ({ href: hrefFor(name), label: familyLabels[name], active: name === family, count: counts[name] + (incomplete ? counts.abandoned[name] : 0) }))}
       />
       {pagination.invalid ? <Notice tone="warning">Invalid pagination parameters were ignored. Showing the first page.</Notice> : null}
       {empty ? (
@@ -220,12 +226,15 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
       {family === "merchandise" && !empty ? (
         <p className="text-sm text-ink-soft">Payment and pickup are tracked separately: a paid order still needs collecting, and a refund doesn&apos;t mean the item came back.</p>
       ) : null}
-      {pageInfo.previousCursor || pageInfo.nextCursor ? (
-        <nav aria-label="Purchases pagination" className="flex flex-wrap items-center justify-between gap-3">
-          {pageInfo.previousCursor ? <Link className={pageLink} href={pageHref(pageInfo.previousCursor, "prev")}>Previous</Link> : <span />}
-          {pageInfo.nextCursor ? <Link className={pageLink} href={pageHref(pageInfo.nextCursor, "next")}>Next</Link> : null}
-        </nav>
+      {hidden ? (
+        <p className="text-sm text-ink-soft">
+          {incomplete ? "Checkouts that didn't complete took no money. " : null}
+          <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={hrefFor(family, {}, !incomplete)}>
+            {incomplete ? "Hide them" : `Show ${hidden} ${hidden === 1 ? "checkout" : "checkouts"} that didn't complete`}
+          </Link>
+        </p>
       ) : null}
+      <Pager label="Purchases pagination" next={pageInfo.nextCursor && pageHref(pageInfo.nextCursor, "next")} previous={pageInfo.previousCursor && pageHref(pageInfo.previousCursor, "prev")} />
     </PersonalShell>
   );
 }

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/input";
 import { Count, LinkTabs, pillClasses } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
+import { Pager } from "@/components/ui/pager";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -29,23 +30,26 @@ const emptyText: Record<PickupStage, [string, string]> = {
   review: ["Nothing needs review", "A payment that arrived after the items ran out would show here."]
 };
 
-function href(stage: PickupStage, query = "", cursor?: string) {
+function href(stage: PickupStage, query = "", cursor?: string, direction?: "next" | "prev", done?: string) {
   const params = new URLSearchParams();
   if (stage !== "prepare") params.set("stage", stage);
   if (query) params.set("q", query);
   if (cursor) params.set("cursor", cursor);
+  if (cursor && direction === "prev") params.set("direction", direction);
+  if (done) params.set("done", done);
   const search = params.toString();
   return search ? `/dashboard/merchandise/pickups?${search}` : "/dashboard/merchandise/pickups";
 }
 
 // Pickups (T28a, design round B2): fulfilled merchandise orders by stage, for
 // staff with merchandise:fulfil. To prepare and Ready list oldest first.
-export default async function PickupsPage({ searchParams }: { searchParams: Promise<{ stage?: string; q?: string; cursor?: string; done?: string }> }) {
+export default async function PickupsPage({ searchParams }: { searchParams: Promise<{ stage?: string; q?: string; cursor?: string; direction?: string; done?: string }> }) {
   const organisation = await requireManagementPage("merchandise:fulfil", "/dashboard/merchandise/pickups");
   const params = await searchParams;
   const stage = pickupStages.find((name) => name === params.stage) ?? "prepare";
   const query = params.q?.trim().slice(0, 100) ?? "";
   const cursor = params.cursor?.slice(0, 500) || undefined;
+  const direction = params.direction === "prev" ? "prev" : "next";
   const [{ timeZone, pickupPolicy }, toPrepare, done] = await Promise.all([
     pickupSettings(organisation.id),
     toPrepareCount(organisation.id),
@@ -72,7 +76,7 @@ export default async function PickupsPage({ searchParams }: { searchParams: Prom
         </Notice>
       ) : null}
       <Suspense fallback={<ListSkeleton label="Loading pickups" />}>
-        <Pickups cursor={cursor} organisationId={organisation.id} orgSlug={organisation.slug} query={query} stage={stage} timeZone={timeZone} />
+        <Pickups cursor={cursor} direction={direction} organisationId={organisation.id} orgSlug={organisation.slug} query={query} stage={stage} timeZone={timeZone} />
       </Suspense>
       {pickupPolicy ? <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">Pickup: {pickupPolicy}</p> : null}
       <div className="grid gap-4 md:grid-cols-2">
@@ -89,8 +93,8 @@ export default async function PickupsPage({ searchParams }: { searchParams: Prom
   );
 }
 
-async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone }: { organisationId: string; orgSlug: string; stage: PickupStage; query: string; cursor?: string; timeZone: string }) {
-  const { orders, counts, nextCursor } = await listPickups(organisationId, { stage, query, cursor });
+async function Pickups({ organisationId, orgSlug, stage, query, cursor, direction, timeZone }: { organisationId: string; orgSlug: string; stage: PickupStage; query: string; cursor?: string; direction: "next" | "prev"; timeZone: string }) {
+  const { orders, counts, nextCursor, previousCursor } = await listPickups(organisationId, { stage, query, cursor, direction });
   const when = (date: Date) => formatDateTime(date, { timeZone });
   const working = stage === "prepare" || stage === "ready";
   const items = (order: PickupRow) => (
@@ -115,7 +119,7 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
     stage === "review" ? "Don't hand this over yet." : stage !== "prepare" && order.step ? `${when(order.step.at)}${stage === "collected" ? ` by ${order.step.by}` : ""}` : when(order.createdAt);
   const action = (order: PickupRow, wide = false) =>
     working ? (
-      <PickupAction order={order} orgSlug={orgSlug} stage={stage} step={stage === "prepare" ? "ready" : "collected"} wide={wide} />
+      <PickupAction after={href(stage, query, cursor, direction, order.id)} order={order} orgSlug={orgSlug} stage={stage} step={stage === "prepare" ? "ready" : "collected"} wide={wide} />
     ) : stage === "collected" ? (
       <StatusBadge status="collected" />
     ) : null;
@@ -201,11 +205,7 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, timeZone
       <p className="text-sm text-ink-soft">
         {stage === "prepare" || stage === "ready" ? "Oldest first, in the order they came in. " : "Newest first. "}Only paid and free orders appear here; checkouts still waiting on Stripe don&apos;t.
       </p>
-      {nextCursor ? (
-        <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={href(stage, query, nextCursor)}>
-          Next page
-        </Link>
-      ) : null}
+      <Pager label="Pickup pages" next={nextCursor && href(stage, query, nextCursor)} previous={previousCursor && href(stage, query, previousCursor, "prev")} />
     </>
   );
 }

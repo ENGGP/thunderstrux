@@ -1,4 +1,6 @@
 import { renderPage } from "@/tests/helpers/render";
+import { createElement } from "react";
+import { StaffManagement } from "@/components/settings/staff-management";
 import { describe, expect, test, vi } from "vitest";
 import PublicEventPage from "@/app/(public)/events/[eventId]/page";
 import LegacyNewEventPage from "@/app/(dashboard)/dashboard/[orgSlug]/events/new/page";
@@ -260,6 +262,29 @@ describe("dashboard read services", () => {
       data: { startTime: new Date(Date.now() - 2 * 86400000), endTime: new Date(Date.now() - 86400000) }
     });
     expect(await getUpcomingTicketOrders(member.id)).toEqual([]);
+  });
+
+  // UI-019: revoked staff come after current staff, only the 25 most recent.
+  test("revoked staff are listed after current staff and capped at the 25 most recent", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const revoked = [];
+    for (let index = 0; index < 26; index += 1) {
+      const member = await createMember();
+      const row = await createOrganisationStaff({ organisationId: organisation.id, userId: member.id, role: "event_manager" });
+      revoked.push(await prisma.organisationStaff.update({ where: { id: row.id }, data: { status: "revoked", revokedAt: new Date(Date.now() - (26 - index) * 1000) } }));
+    }
+    const current = await createMember();
+    await createOrganisationStaff({ organisationId: organisation.id, userId: current.id, role: "admin" });
+    const { staff } = await listOrganisationStaff(organisation.id);
+    const past = staff.filter((row) => row.status === "revoked");
+    expect(staff.findIndex((row) => row.status === "revoked")).toBe(staff.filter((row) => row.status !== "revoked").length);
+    expect(past).toHaveLength(25);
+    expect(past.map((row) => row.id)).toEqual(revoked.slice(1).reverse().map((row) => row.id));
+    // The staff screen lists them apart from who has access now.
+    const html = await renderPage(createElement(StaffManagement, { canManageOwners: true, initialInvites: [], initialStaff: staff, orgSlug: organisation.slug, pastInvites: [] }));
+    expect(html).toContain("Past staff");
+    expect(html).toContain("The 25 most recently revoked.");
+    expect(html.match(/Revoke access for /g)).toHaveLength(1);
   });
 
   test("past invitations are classified and pending ones are left out", async () => {

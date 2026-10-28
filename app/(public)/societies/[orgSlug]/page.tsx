@@ -58,8 +58,15 @@ export default async function OrganisationDetailsPage({
           <SocietyJoinCard joinState={joinState} organisation={organisation} />
         </div>
 
-        <section className="mt-12 grid gap-5" id="events">
-          <h2 className={heading}>Upcoming events</h2>
+        <section aria-labelledby="events-heading" className="mt-12 grid gap-5" id="events">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <h2 className={heading} id="events-heading">Upcoming events</h2>
+            {organisation._count.events > organisation.events.length ? (
+              <Link className={more} href={`/events?society=${encodeURIComponent(organisation.slug)}`}>
+                See all {organisation._count.events} events
+              </Link>
+            ) : null}
+          </div>
           {!organisation.events.length ? (
             <p className="text-ink-soft">No upcoming events.</p>
           ) : (

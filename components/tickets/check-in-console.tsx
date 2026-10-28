@@ -191,11 +191,15 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   );
 }
 
+const searchLimit = 25;
+
 // Search the event's tickets as staff type (from 2 characters); with no
-// search it shows the server's page of tickets that admit.
+// search it shows the server's page of tickets that admit. A search shows its
+// first 25 matches and says so when there are more, and the list on screen
+// stays until the answer arrives.
 export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { eventId: string; timeZone: string; initialTickets: ConsoleTicket[]; footer?: ReactNode }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ConsoleTicket[] | null>(null);
+  const [results, setResults] = useState<{ tickets: ConsoleTicket[]; more: boolean } | null>(null);
   const [failed, setFailed] = useState(false);
   const latest = useRef(0);
   const searching = query.trim().length >= 2;
@@ -208,12 +212,12 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
     const request = ++latest.current;
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/events/${eventId}/tickets?q=${encodeURIComponent(query.trim())}`, { cache: "no-store", signal: AbortSignal.timeout(requestTimeoutMs) });
+        const response = await fetch(`/api/events/${eventId}/tickets?q=${encodeURIComponent(query.trim())}&limit=${searchLimit}`, { cache: "no-store", signal: AbortSignal.timeout(requestTimeoutMs) });
         if (!response.ok) throw new Error(String(response.status));
-        const body = (await response.json()) as { tickets: ConsoleTicket[] };
+        const body = (await response.json()) as { tickets: ConsoleTicket[]; pageInfo?: { hasNextPage: boolean } };
         // An older search that answers late never replaces a newer one.
         if (request === latest.current) {
-          setResults(body.tickets);
+          setResults({ tickets: body.tickets, more: Boolean(body.pageInfo?.hasNextPage) });
           setFailed(false);
         }
       } catch {
@@ -223,7 +227,9 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
     return () => clearTimeout(timer);
   }, [eventId, query, searching]);
 
-  const shown = searching ? results : initialTickets;
+  // Until the first answer, the list on screen stays rather than emptying.
+  const shown = searching && results ? results.tickets : initialTickets;
+  const pending = searching && !results;
   return (
     <div className="grid gap-4">
       <label className="grid max-w-2xl gap-1.5 text-sm font-semibold text-ink">
@@ -240,16 +246,17 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
         <span className="text-caption font-normal text-ink-muted">Name, email, order or ticket reference. Results update as you type.</span>
       </label>
       {failed ? <p className="text-sm text-danger" role="alert">Search didn&apos;t answer. Check the connection and type again.</p> : null}
-      {shown === null ? null : shown.length === 0 ? (
+      {shown.length === 0 ? (
         <div className="grid gap-1.5 rounded-card border border-dashed border-line-strong bg-surface p-5" role="status">
-          <strong className="text-ink">{searching ? `No ticket matches "${query.trim()}"` : "No issued tickets yet."}</strong>
-          {searching ? <span className="text-sm text-ink-soft">Check the spelling, or ask for the ticket reference from their email.</span> : null}
+          <strong className="text-ink">{searching && !pending ? `No ticket matches "${query.trim()}"` : "No issued tickets yet."}</strong>
+          {searching && !pending ? <span className="text-sm text-ink-soft">Check the spelling, or ask for the ticket reference from their email.</span> : null}
         </div>
       ) : (
-        <ul aria-label={searching ? "Matching tickets" : "Tickets"} className="grid gap-3">
+        <ul aria-busy={pending || undefined} aria-label={searching && !pending ? "Matching tickets" : "Tickets"} className="grid gap-3">
           {shown.map((ticket) => <CheckInCard eventId={eventId} initial={ticket} key={ticket.id} timeZone={timeZone} />)}
         </ul>
       )}
+      {searching && results?.more ? <p className="text-sm text-ink-soft">Showing the first {searchLimit} matches. Keep typing to narrow it down.</p> : null}
       {searching ? null : footer}
     </div>
   );

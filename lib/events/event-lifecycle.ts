@@ -8,6 +8,7 @@ import { eventReadiness, salesOpen } from "@/lib/events/event-readiness";
 import { assetReferenced } from "@/lib/assets/references";
 import { lockEventInventory, readEventInventory } from "@/lib/events/inventory";
 import { entitlementOnSale } from "@/lib/memberships/offers";
+import { ascendingCursorWhere, descendingCursorWhere, orderByForDirection, pageInfoForPage, readCursorOrFirstPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import {
   createEventSchema,
@@ -197,9 +198,11 @@ function toDashboardEvent(
 
 export type DashboardEvent = ReturnType<typeof toDashboardEvent>;
 
-// One view of the dashboard events list (at most `take` rows), the count for
-// every view, and tickets sold per event only when the caller may see sales.
-// Upcoming means not yet ended, so an event in progress still shows there.
+// One page of a dashboard events view (`take` rows, a page either way from a
+// cursor), the count for every view, and tickets sold per event only when the
+// caller may see sales. Upcoming means not yet ended, so an event in progress
+// still shows there. Upcoming and Drafts run soonest first; Past and All newest
+// first. An unreadable cursor starts again from the first page (`restarted`).
 export async function listDashboardEvents(
   organisationId: string,
   {
@@ -207,13 +210,17 @@ export async function listDashboardEvents(
     query,
     publishedOnly,
     includeSales,
-    take = 100
+    take = 25,
+    cursor,
+    direction
   }: {
     view: EventView;
     query?: string;
     publishedOnly: boolean;
     includeSales: boolean;
     take?: number;
+    cursor?: string;
+    direction?: PaginationDirection;
   }
 ) {
   const now = new Date();
@@ -228,17 +235,22 @@ export async function listDashboardEvents(
     past: { endTime: { lt: now } },
     all: {}
   };
-  const [rows, counts] = await Promise.all([
+  const order = view === "past" || view === "all" ? "desc" : "asc";
+  const from = readCursorOrFirstPage("startTime", cursor, direction);
+  const after = from.at ? [(order === "asc" ? ascendingCursorWhere : descendingCursorWhere)("startTime", from.at, from.direction)] : [];
+  const [found, counts] = await Promise.all([
     prisma.event.findMany({
-      where: { AND: [base, viewWhere[view]] },
-      orderBy: [{ startTime: view === "past" ? "desc" : "asc" }, { id: "asc" }],
-      take,
+      where: { AND: [base, viewWhere[view], ...after] },
+      orderBy: orderByForDirection("startTime", from.direction, order),
+      take: take + 1,
       select: dashboardEventSelect
     }),
     Promise.all(
       eventViews.map((name) => prisma.event.count({ where: { AND: [base, viewWhere[name]] } }))
     )
   ]);
+  const page = pageInfoForPage({ items: found, limit: take, direction: from.direction, cursor: from.cursor, timestampField: "startTime" });
+  const rows = page.items;
   const sold =
     includeSales && rows.length > 0
       ? await prisma.order.groupBy({
@@ -262,7 +274,10 @@ export async function listDashboardEvents(
     counts: Object.fromEntries(eventViews.map((name, index) => [name, counts[index]])) as Record<
       EventView,
       number
-    >
+    >,
+    nextCursor: page.pageInfo.nextCursor,
+    previousCursor: page.pageInfo.previousCursor,
+    restarted: Boolean(cursor) && !from.at
   };
 }
 

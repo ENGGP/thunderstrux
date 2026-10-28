@@ -10,6 +10,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { Icon } from "@/components/ui/icon";
 import { Select } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
+import { Pager } from "@/components/ui/pager";
 import { Skeleton } from "@/components/ui/skeleton";
 import { localToday } from "@/lib/analytics/range";
 import { HistoryCursorError, hasHistory, historyCategories, historyPeople, readHistory, type HistoryCategory, type HistoryEntry, type HistoryFilters } from "@/lib/audit/history";
@@ -20,7 +21,7 @@ import { zoneCity } from "@/lib/zoned-time";
 
 export const metadata: Metadata = { title: "History" };
 
-type Params = { category?: string; who?: string; from?: string; to?: string; cursor?: string };
+type Params = { category?: string; who?: string; from?: string; to?: string; cursor?: string; direction?: string };
 
 // /dashboard/history (T38, design round C2): what staff, Stripe and
 // Thunderstrux did in the society, newest first, for owners and admins.
@@ -69,9 +70,9 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
             <Skeleton className="h-20" />
           </div>
         }
-        key={`${query}|${params.cursor ?? ""}`}
+        key={`${query}|${params.cursor ?? ""}|${params.direction ?? ""}`}
       >
-        <HistoryList cursor={params.cursor} filtered={filtered} filters={filters} organisationId={organisation.id} query={query} timeZone={timeZone} />
+        <HistoryList cursor={params.cursor} direction={params.direction === "prev" ? "prev" : "next"} filtered={filtered} filters={filters} organisationId={organisation.id} query={query} timeZone={timeZone} />
       </Suspense>
       <p className="text-sm text-ink-muted">
         History is for handovers and accountability, not accounting: amounts link to their orders, which hold the full record. It never shows buyers&apos; email addresses, card details or what Stripe sends. Owners and admins see this page.
@@ -80,11 +81,11 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   );
 }
 
-async function HistoryList({ organisationId, filters, filtered, timeZone, cursor, query }: { organisationId: string; filters: HistoryFilters; filtered: boolean; timeZone: string; cursor?: string; query: string }) {
+async function HistoryList({ organisationId, filters, filtered, timeZone, cursor, direction, query }: { organisationId: string; filters: HistoryFilters; filtered: boolean; timeZone: string; cursor?: string; direction: "next" | "prev"; query: string }) {
   let page: Awaited<ReturnType<typeof readHistory>>;
   let restarted = false;
   try {
-    page = await readHistory(organisationId, filters, timeZone, cursor);
+    page = await readHistory(organisationId, filters, timeZone, cursor, direction);
   } catch (error) {
     if (!(error instanceof HistoryCursorError)) throw error;
     page = await readHistory(organisationId, filters, timeZone);
@@ -113,7 +114,8 @@ async function HistoryList({ organisationId, filters, filtered, timeZone, cursor
     if (days.at(-1)?.day !== day) days.push({ day, entries: [] });
     days.at(-1)!.entries.push(entry);
   }
-  const older = page.nextCursor ? `/dashboard/history?${new URLSearchParams([...new URLSearchParams(query), ["cursor", page.nextCursor]])}` : null;
+  const pageHref = (at: string | null, way: "next" | "prev") =>
+    at && `/dashboard/history?${new URLSearchParams([...new URLSearchParams(query), ["cursor", at], ...(way === "prev" ? [["direction", "prev"]] : [])])}`;
 
   return (
     <div className="grid gap-2">
@@ -128,14 +130,10 @@ async function HistoryList({ organisationId, filters, filtered, timeZone, cursor
           </ol>
         </section>
       ))}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
-        {older ? (
-          <>
-            <p className="text-sm text-ink-muted">Showing up to 50 at a time.</p>
-            <Link className="inline-flex min-h-11 items-center rounded-control border border-line-strong bg-surface px-4 text-sm font-semibold text-ink hover:border-brand" href={older}>
-              Older entries
-            </Link>
-          </>
+      <div className="grid gap-3 border-t border-line pt-3">
+        <Pager label="History pages" next={pageHref(page.nextCursor, "next")} nextLabel="Older entries" previous={pageHref(page.previousCursor, "prev")} previousLabel="Newer entries" />
+        {page.nextCursor ? (
+          <p className="text-sm text-ink-muted">Showing up to 50 at a time.</p>
         ) : (
           <div className="flex items-start gap-3 rounded-control border border-line bg-surface px-4 py-3.5">
             <Icon className="mt-0.5 text-brand" name="info" />

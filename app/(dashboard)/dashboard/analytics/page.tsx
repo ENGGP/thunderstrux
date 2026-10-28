@@ -10,7 +10,7 @@ import { LinkTabs } from "@/components/ui/link-tabs";
 import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { analyticsAccess } from "@/lib/analytics/metrics";
-import { addDays, AnalyticsRangeError, analyticsBuckets, analyticsRange, localToday, maxRangeDays, type AnalyticsRange } from "@/lib/analytics/range";
+import { addDays, AnalyticsRangeError, analyticsBuckets, analyticsRange, localToday, maxDailyDays, maxRangeDays, tooLongByDay, type AnalyticsRange } from "@/lib/analytics/range";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { listEventOptions } from "@/lib/events/event-lifecycle";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -46,6 +46,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     rangeError = error.message;
     range = analyticsRange({}, timeZone);
   }
+  const regrouped = range.bucket === "day" && tooLongByDay(range.from, range.to);
+  if (regrouped) range = { ...range, bucket: "week" };
   const events = tab === "tickets" ? await listEventOptions(organisation.id) : [];
   // Only this society's events can filter; anything else is ignored.
   const event = events.find((option) => option.id === params.eventId);
@@ -104,11 +106,16 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             </Select>
           ) : <span aria-hidden="true" />}
         </FilterBar>
-        <p className="text-sm text-ink-muted">Up to {maxRangeDays} days. Weeks start on Monday.</p>
+        <p className="text-sm text-ink-muted">Up to {maxRangeDays} days, by day up to {maxDailyDays}. Weeks start on Monday.</p>
       </section>
       {rangeError ? (
         <Notice role="alert" title="Pick a shorter range" tone="danger">
           {rangeError}. Showing the last 30 days instead.
+        </Notice>
+      ) : null}
+      {regrouped ? (
+        <Notice title="Shown by week" tone="info">
+          By day covers up to {maxDailyDays} days. Pick a shorter range to see each day.
         </Notice>
       ) : null}
       {event ? (

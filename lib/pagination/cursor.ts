@@ -139,6 +139,24 @@ export function parsePaginationOptionsOrDefault(
   }
 }
 
+// Where a page starts, for lists that start again from the first page on an
+// unreadable cursor rather than refusing it: the decoded cursor, or the first
+// page going forward.
+export function readCursorOrFirstPage<Field extends string>(
+  timestampField: Field,
+  cursor: string | undefined,
+  direction: PaginationDirection = "next"
+): { at: TimestampCursor<Field> | null; cursor?: string; direction: PaginationDirection } {
+  if (cursor) {
+    try {
+      return { at: decodeTimestampCursor(timestampField, cursor), cursor, direction };
+    } catch {
+      // Falls through to the first page.
+    }
+  }
+  return { at: null, direction: "next" };
+}
+
 export function descendingCursorWhere<Field extends string>(
   timestampField: Field,
   cursor: TimestampCursor<Field>,

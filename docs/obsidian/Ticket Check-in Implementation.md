@@ -51,7 +51,7 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 
 ## Console behaviour
 
-- Phone first. It shows "{n} of {total} checked in" and a "Find a ticket" field that searches as you type, from 2 characters. A late answer to an older search never replaces a newer one.
+- Phone first. It shows "{n} of {total} checked in" and a "Find a ticket" field that searches as you type, from 2 characters. A late answer to an older search never replaces a newer one. A search asks for 25 matches and says "Showing the first 25 matches. Keep typing to narrow it down." when there are more; the list on screen stays until the first answer.
 - One card per ticket shows: the buyer, the purchased ticket type name, the short reference with "n of m", and the email ("guest" on guest orders). Then comes the verdict and its button. Buttons name the attendee in screen-reader text ("Check in Alex Lee").
 - After any server answer the card re-reads its ticket (`?q={ticketId}`) and the page refreshes the counts.
 - Every state has one detail line ("Not checked in yet." while valid), so admitting someone never pushes the button down. A check-in this card made reads "Checked in just now." and its button slot shows a still "Checked in" for 2 seconds, so a second tap can't land on Undo; then Undo check-in is a small link at the slot's end. A 409 `already_checked_in` reads "Already used" (warning): "Checked in at {time} by {name}. Don't admit twice." A ticket already in when the list loaded reads "Checked in at {time} by {name}."

@@ -1,6 +1,7 @@
 import type { MembershipEntitlement } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { activeEntitlementGrant, grantState, type GrantState } from "@/lib/memberships/grants";
+import { grantViewWhere } from "@/lib/memberships/roster";
 
 // What members see of memberships (T24a): a society's offers with the
 // viewer's own standing, and their memberships across societies. Checkout
@@ -90,37 +91,44 @@ export const myMembershipViews = ["active", "upcoming", "expired", "revoked"] as
 export type MyMembershipView = (typeof myMembershipViews)[number];
 
 // The member's own memberships in every society, by state, newest term first,
-// each with what ended it early and the next plan they could renew with.
+// each with what ended it early and the next plan they could renew with. Every
+// state is counted in the database, so a long history never skews the tabs.
 export async function myMemberships(userId: string, view: MyMembershipView, now = new Date()) {
-  const grants = await prisma.membershipGrant.findMany({
-    where: { userId },
-    orderBy: [{ startsAt: "desc" }, { id: "desc" }],
-    take: 200,
-    select: {
-      id: true, organisationId: true, startsAt: true, endsAt: true, revokedAt: true, revocationReason: true, entitlements: true,
-      product: { select: { name: true } },
-      organisation: { select: { name: true, slug: true, timeZone: true, logoAssetId: true } },
-      line: { select: { order: { select: { id: true, paymentKind: true, totalAmount: true, cancelledAt: true, refundStatus: true } } } }
-    }
-  });
-  const counts = Object.fromEntries(myMembershipViews.map((name) => [name, 0])) as Record<MyMembershipView, number>;
-  for (const grant of grants) counts[grantState(grant, now)] += 1;
-  const shown = grants.filter((grant) => grantState(grant, now) === view);
+  const [shown, ...totals] = await Promise.all([
+    prisma.membershipGrant.findMany({
+      where: { userId, ...grantViewWhere(view, now) },
+      orderBy: [{ startsAt: "desc" }, { id: "desc" }],
+      // shortcut: one view's first 200; page with lib/pagination/cursor if a member ever holds more.
+      take: 200,
+      select: {
+        id: true, organisationId: true, startsAt: true, endsAt: true, revokedAt: true, revocationReason: true, entitlements: true,
+        product: { select: { name: true } },
+        organisation: { select: { name: true, slug: true, timeZone: true, logoAssetId: true } },
+        line: { select: { order: { select: { id: true, paymentKind: true, totalAmount: true, cancelledAt: true, refundStatus: true } } } }
+      }
+    }),
+    ...myMembershipViews.map((name) => prisma.membershipGrant.count({ where: { userId, ...grantViewWhere(name, now) } }))
+  ]);
+  const counts = Object.fromEntries(myMembershipViews.map((name, index) => [name, totals[index]])) as Record<MyMembershipView, number>;
 
   // Renewal: the earliest published plan of that society starting at or after
   // this membership ends and overlapping none of the member's memberships there.
   const renewals = new Map<string, { id: string; name: string; priceAmount: number; startsAt: Date }>();
   if (view === "active" || view === "upcoming") {
     const societies = [...new Set(shown.map((grant) => grant.organisationId))];
-    const plans = societies.length
-      ? await prisma.membershipProduct.findMany({
-          where: { organisationId: { in: societies }, status: "published", endsAt: { gt: now } },
-          orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-          select: { id: true, name: true, priceAmount: true, startsAt: true, endsAt: true, organisationId: true }
-        })
-      : [];
+    // Every unrevoked membership there, in any state, so a renewal never overlaps one.
+    const [plans, kept] = societies.length
+      ? await Promise.all([
+          prisma.membershipProduct.findMany({
+            where: { organisationId: { in: societies }, status: "published", endsAt: { gt: now } },
+            orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+            select: { id: true, name: true, priceAmount: true, startsAt: true, endsAt: true, organisationId: true }
+          }),
+          prisma.membershipGrant.findMany({ where: { userId, organisationId: { in: societies }, revokedAt: null }, select: { organisationId: true, startsAt: true, endsAt: true } })
+        ])
+      : [[], []];
     for (const grant of shown) {
-      const held = grants.filter((other) => other.organisationId === grant.organisationId && !other.revokedAt);
+      const held = kept.filter((other) => other.organisationId === grant.organisationId);
       const next = plans.find((plan) => plan.organisationId === grant.organisationId && plan.startsAt >= grant.endsAt && !held.some((other) => overlaps(other, plan)));
       if (next) renewals.set(grant.id, { id: next.id, name: next.name, priceAmount: next.priceAmount, startsAt: next.startsAt });
     }

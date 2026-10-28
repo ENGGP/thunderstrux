@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
+import { descendingCursorWhere, orderByForDirection, pageInfoForPage, readCursorOrFirstPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { grantState, type GrantState } from "@/lib/memberships/grants";
 
 // The society's membership roster (T23, members:read). Members, free joins and
@@ -11,7 +11,8 @@ export const rosterViews = ["active", "upcoming", "expired", "revoked"] as const
 export type RosterView = (typeof rosterViews)[number];
 const pageSize = 25;
 
-function viewWhere(view: RosterView, now: Date): Prisma.MembershipGrantWhereInput {
+// The grants in one state, as grantState reads them.
+export function grantViewWhere(view: RosterView, now: Date): Prisma.MembershipGrantWhereInput {
   if (view === "revoked") return { revokedAt: { not: null } };
   if (view === "upcoming") return { revokedAt: null, startsAt: { gt: now } };
   if (view === "expired") return { revokedAt: null, endsAt: { lte: now } };
@@ -23,27 +24,18 @@ function search(query: string): Prisma.UserWhereInput | undefined {
   return { OR: ["email", "firstName", "lastName"].map((field) => ({ [field]: { contains: query, mode: "insensitive" as const } })) };
 }
 
-// Newest grant first; an unreadable cursor starts again from the first page.
-function after(cursor: string | undefined, field: "grantedAt" | "createdAt") {
-  if (!cursor) return undefined;
-  try {
-    const at = decodeTimestampCursor(field, cursor);
-    return { OR: [{ [field]: { lt: at[field] } }, { [field]: at[field], id: { lt: at.id } }] };
-  } catch {
-    return undefined;
-  }
-}
-
 export const memberName = (user: { firstName: string | null; lastName: string | null; email: string }) =>
   [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email;
 
-export async function listRoster(organisationId: string, { view, query = "", cursor, now = new Date() }: { view: RosterView; query?: string; cursor?: string; now?: Date }) {
+// Newest grant first, a page either way; an unreadable cursor starts again from the first page.
+export async function listRoster(organisationId: string, { view, query = "", cursor, direction, now = new Date() }: { view: RosterView; query?: string; cursor?: string; direction?: PaginationDirection; now?: Date }) {
   const user = search(query);
-  const where: Prisma.MembershipGrantWhereInput = { organisationId, ...viewWhere(view, now), ...(user ? { user } : {}) };
+  const where: Prisma.MembershipGrantWhereInput = { organisationId, ...grantViewWhere(view, now), ...(user ? { user } : {}) };
+  const from = readCursorOrFirstPage("grantedAt", cursor, direction);
   const [rows, ...counts] = await Promise.all([
     prisma.membershipGrant.findMany({
-      where: { ...where, ...after(cursor, "grantedAt") },
-      orderBy: [{ grantedAt: "desc" }, { id: "desc" }],
+      where: { ...where, ...(from.at ? descendingCursorWhere("grantedAt", from.at, from.direction) : {}) },
+      orderBy: orderByForDirection("grantedAt", from.direction, "desc"),
       take: pageSize + 1,
       select: {
         id: true, startsAt: true, endsAt: true, revokedAt: true, grantedAt: true,
@@ -52,13 +44,12 @@ export async function listRoster(organisationId: string, { view, query = "", cur
         line: { select: { order: { select: { id: true, paymentKind: true } } } }
       }
     }),
-    ...rosterViews.map((name) => prisma.membershipGrant.count({ where: { organisationId, ...viewWhere(name, now) } })),
+    ...rosterViews.map((name) => prisma.membershipGrant.count({ where: { organisationId, ...grantViewWhere(name, now) } })),
     prisma.organisationMember.count({ where: { organisationId, role: "member" } })
   ]);
-  const page = rows.slice(0, pageSize);
-  const last = page.at(-1);
+  const page = pageInfoForPage({ items: rows, limit: pageSize, direction: from.direction, cursor: from.cursor, timestampField: "grantedAt" });
   return {
-    members: page.map((grant) => ({
+    members: page.items.map((grant) => ({
       id: grant.id,
       name: memberName(grant.user),
       email: grant.user.email,
@@ -70,29 +61,31 @@ export async function listRoster(organisationId: string, { view, query = "", cur
       orderId: grant.line.order.id
     })),
     counts: { ...Object.fromEntries(rosterViews.map((name, index) => [name, counts[index]])), joins: counts[rosterViews.length] } as Record<RosterView | "joins", number>,
-    nextCursor: rows.length > pageSize && last ? encodeTimestampCursor("grantedAt", last) : null
+    nextCursor: page.pageInfo.nextCursor,
+    previousCursor: page.pageInfo.previousCursor
   };
 }
 
 // People who joined the society for free. A join gives no member prices.
-export async function listFreeJoins(organisationId: string, { query = "", cursor }: { query?: string; cursor?: string }) {
+export async function listFreeJoins(organisationId: string, { query = "", cursor, direction }: { query?: string; cursor?: string; direction?: PaginationDirection }) {
   const user = search(query);
+  const from = readCursorOrFirstPage("createdAt", cursor, direction);
   const rows = await prisma.organisationMember.findMany({
-    where: { organisationId, role: "member", ...(user ? { user } : {}), ...after(cursor, "createdAt") },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    where: { organisationId, role: "member", ...(user ? { user } : {}), ...(from.at ? descendingCursorWhere("createdAt", from.at, from.direction) : {}) },
+    orderBy: orderByForDirection("createdAt", from.direction, "desc"),
     take: pageSize + 1,
     select: { id: true, createdAt: true, userId: true, user: { select: { firstName: true, lastName: true, email: true } } }
   });
-  const page = rows.slice(0, pageSize);
+  const page = pageInfoForPage({ items: rows, limit: pageSize, direction: from.direction, cursor: from.cursor, timestampField: "createdAt" });
   const members = await prisma.membershipGrant.findMany({
-    where: { organisationId, revokedAt: null, endsAt: { gt: new Date() }, userId: { in: page.map((row) => row.userId) } },
+    where: { organisationId, revokedAt: null, endsAt: { gt: new Date() }, userId: { in: page.items.map((row) => row.userId) } },
     select: { userId: true }
   });
   const holders = new Set(members.map((grant) => grant.userId));
-  const last = page.at(-1);
   return {
-    joins: page.map((row) => ({ id: row.id, name: memberName(row.user), email: row.user.email, joinedAt: row.createdAt, member: holders.has(row.userId) })),
-    nextCursor: rows.length > pageSize && last ? encodeTimestampCursor("createdAt", last) : null
+    joins: page.items.map((row) => ({ id: row.id, name: memberName(row.user), email: row.user.email, joinedAt: row.createdAt, member: holders.has(row.userId) })),
+    nextCursor: page.pageInfo.nextCursor,
+    previousCursor: page.pageInfo.previousCursor
   };
 }
 

@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { listFailedBusinessNotifications, NotificationCursorError } from "@/lib/email/notification-outbox";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { FailedNotifications } from "@/components/settings/failed-notifications";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { Pager } from "@/components/ui/pager";
 
 export const metadata: Metadata = { title: "Email delivery" };
 
-export default async function NotificationsPage({ searchParams }: { searchParams: Promise<{ cursor?: string }> }) {
+export default async function NotificationsPage({ searchParams }: { searchParams: Promise<{ cursor?: string; direction?: string }> }) {
   const organisation = await requireManagementPage("orders:email_resend", "/dashboard/notifications");
-  const { cursor } = await searchParams;
+  const { cursor, direction } = await searchParams;
   let page;
-  try { page = await listFailedBusinessNotifications(organisation.id, cursor); }
+  try { page = await listFailedBusinessNotifications(organisation.id, cursor, direction === "prev" ? "prev" : "next"); }
   catch (error) { if (error instanceof NotificationCursorError) redirect("/dashboard/notifications"); throw error; }
-  const link = "text-sm font-semibold text-brand underline underline-offset-4";
+  const pageHref = (at: string | null, way: "next" | "prev") =>
+    at && `/dashboard/notifications?${new URLSearchParams({ cursor: at, ...(way === "prev" ? { direction: way } : {}) })}`;
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -25,16 +26,13 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       />
       <div className="grid max-w-4xl gap-4">
         <FailedNotifications jobs={page.jobs} />
-        {page.nextCursor || cursor ? (
-          <nav aria-label="Failed email pages" className="flex flex-wrap gap-4">
-            {cursor ? <Link className={link} href="/dashboard/notifications">Newest failed notifications</Link> : null}
-            {page.nextCursor ? (
-              <Link className={link} href={`/dashboard/notifications?cursor=${encodeURIComponent(page.nextCursor)}`}>
-                Older failed notifications
-              </Link>
-            ) : null}
-          </nav>
-        ) : null}
+        <Pager
+          label="Failed email pages"
+          next={pageHref(page.nextCursor, "next")}
+          nextLabel="Older emails"
+          previous={pageHref(page.previousCursor, "prev")}
+          previousLabel="Newer emails"
+        />
       </div>
     </DashboardShell>
   );

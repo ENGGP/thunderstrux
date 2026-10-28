@@ -7,7 +7,7 @@ import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { formatDateTime } from "@/lib/format";
 import { MerchandiseCatalogueError } from "@/lib/merchandise/catalogue";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
-import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/pagination/cursor";
+import { ascendingCursorWhere, descendingCursorWhere, orderByForDirection, pageInfoForPage, readCursorOrFirstPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { orderReference } from "@/lib/payments/order-refunds";
 
 // Pickups (T28a, design round B2): fulfilled merchandise orders, which staff
@@ -37,32 +37,22 @@ function search(query: string): Prisma.CommerceOrderWhereInput | null {
   return { OR: [{ buyerNameSnapshot: contains }, { buyerEmailSnapshot: contains }, ...(/^[a-z0-9]{6}$/i.test(query) ? [{ id: { endsWith: query.toLowerCase() } }] : [])] };
 }
 
-// An unreadable cursor starts again from the first page.
-function after(cursor: string | undefined, ascending: boolean): Prisma.CommerceOrderWhereInput | null {
-  if (!cursor) return null;
-  try {
-    const at = decodeTimestampCursor("createdAt", cursor);
-    const beyond = ascending ? { gt: at.createdAt } : { lt: at.createdAt };
-    return { OR: [{ createdAt: beyond }, { createdAt: at.createdAt, id: ascending ? { gt: at.id } : { lt: at.id } }] };
-  } catch {
-    return null;
-  }
-}
-
 const personName = (person: { firstName: string | null; lastName: string | null; email: string } | null) =>
   person ? [person.firstName, person.lastName].filter(Boolean).join(" ") || person.email : "Someone";
 
 // One stage, oldest first while there is work to do (the order they came in)
 // and newest first once collected or under review, with every stage's count.
-export async function listPickups(organisationId: string, { stage, query = "", cursor }: { stage: PickupStage; query?: string; cursor?: string }) {
+// A page either way; an unreadable cursor starts again from the first page.
+export async function listPickups(organisationId: string, { stage, query = "", cursor, direction }: { stage: PickupStage; query?: string; cursor?: string; direction?: PaginationDirection }) {
   const base = { organisationId, kind: "merchandise" as const };
   const ascending = stage === "prepare" || stage === "ready";
-  const direction = ascending ? ("asc" as const) : ("desc" as const);
-  const where = [base, stageWhere(stage), search(query), after(cursor, ascending)].filter((part): part is Prisma.CommerceOrderWhereInput => part !== null);
+  const from = readCursorOrFirstPage("createdAt", cursor, direction);
+  const after = from.at ? (ascending ? ascendingCursorWhere : descendingCursorWhere)("createdAt", from.at, from.direction) : null;
+  const where = [base, stageWhere(stage), search(query), after].filter((part): part is Prisma.CommerceOrderWhereInput => part !== null);
   const [rows, ...counts] = await Promise.all([
     prisma.commerceOrder.findMany({
       where: { AND: where },
-      orderBy: [{ createdAt: direction }, { id: direction }],
+      orderBy: orderByForDirection("createdAt", from.direction, ascending ? "asc" : "desc"),
       take: pageSize + 1,
       select: {
         id: true, version: true, createdAt: true, paymentKind: true, buyerNameSnapshot: true, buyerEmailSnapshot: true, guestIdentityId: true, reviewReason: true,
@@ -77,10 +67,9 @@ export async function listPickups(organisationId: string, { stage, query = "", c
     }),
     ...pickupStages.map((name) => prisma.commerceOrder.count({ where: { ...base, ...stageWhere(name) } }))
   ]);
-  const page = rows.slice(0, pageSize);
-  const last = page.at(-1);
+  const page = pageInfoForPage({ items: rows, limit: pageSize, direction: from.direction, cursor: from.cursor, timestampField: "createdAt" });
   return {
-    orders: page.map(({ lifecycleEvents: [step], ...order }) => ({
+    orders: page.items.map(({ lifecycleEvents: [step], ...order }) => ({
       ...order,
       reference: orderReference(order.id),
       buyer: order.buyerNameSnapshot || order.buyerEmailSnapshot,
@@ -88,7 +77,8 @@ export async function listPickups(organisationId: string, { stage, query = "", c
       step: step ? { at: step.createdAt, by: personName(step.actor) } : null
     })),
     counts: Object.fromEntries(pickupStages.map((name, index) => [name, counts[index]])) as Record<PickupStage, number>,
-    nextCursor: rows.length > pageSize && last ? encodeTimestampCursor("createdAt", last) : null
+    nextCursor: page.pageInfo.nextCursor,
+    previousCursor: page.pageInfo.previousCursor
   };
 }
 export type PickupRow = Awaited<ReturnType<typeof listPickups>>["orders"][number];

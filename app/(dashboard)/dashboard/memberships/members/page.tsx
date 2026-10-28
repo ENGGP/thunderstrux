@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/input";
 import { Count, LinkTabs, pillClasses } from "@/components/ui/link-tabs";
+import { Pager } from "@/components/ui/pager";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
@@ -29,21 +30,23 @@ const emptyText: Record<View, string> = {
   joins: "Nobody has joined the society for free yet."
 };
 
-function href(view: View, query: string, cursor?: string) {
+function href(view: View, query: string, cursor?: string, direction?: "prev") {
   const params = new URLSearchParams();
   if (view !== "active") params.set("view", view);
   if (query) params.set("q", query);
   if (cursor) params.set("cursor", cursor);
+  if (cursor && direction) params.set("direction", direction);
   const search = params.toString();
   return search ? `/dashboard/memberships/members?${search}` : "/dashboard/memberships/members";
 }
 
-export default async function MembersPage({ searchParams }: { searchParams: Promise<{ view?: string; q?: string; cursor?: string }> }) {
+export default async function MembersPage({ searchParams }: { searchParams: Promise<{ view?: string; q?: string; cursor?: string; direction?: string }> }) {
   const organisation = await requireManagementPage("members:read", "/dashboard/memberships/members");
   const params = await searchParams;
   const view = ([...rosterViews, "joins"] as View[]).find((name) => name === params.view) ?? "active";
   const query = params.q?.trim().slice(0, 100) ?? "";
   const cursor = params.cursor?.slice(0, 500) || undefined;
+  const direction = params.direction === "prev" ? "prev" : "next";
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -58,7 +61,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
         />
       ) : null}
       <Suspense fallback={<ListSkeleton label="Loading members" />}>
-        <Roster cursor={cursor} organisationId={organisation.id} query={query} view={view} />
+        <Roster cursor={cursor} direction={direction} organisationId={organisation.id} query={query} view={view} />
       </Suspense>
       <section aria-labelledby="lists-heading" className="grid gap-1.5 rounded-card border border-line bg-surface-subtle p-5">
         <h2 className="font-semibold text-ink" id="lists-heading">
@@ -73,11 +76,11 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
   );
 }
 
-async function Roster({ organisationId, view, query, cursor }: { organisationId: string; view: View; query: string; cursor?: string }) {
+async function Roster({ organisationId, view, query, cursor, direction }: { organisationId: string; view: View; query: string; cursor?: string; direction: "next" | "prev" }) {
   const timeZone = await readTimeZone(organisationId);
-  const roster = await listRoster(organisationId, { view: view === "joins" ? "active" : view, query, cursor: view === "joins" ? undefined : cursor });
-  const joins = view === "joins" ? await listFreeJoins(organisationId, { query, cursor }) : null;
-  const nextCursor = joins ? joins.nextCursor : roster.nextCursor;
+  const roster = await listRoster(organisationId, { view: view === "joins" ? "active" : view, query, ...(view === "joins" ? {} : { cursor, direction }) });
+  const joins = view === "joins" ? await listFreeJoins(organisationId, { query, cursor, direction }) : null;
+  const { nextCursor, previousCursor } = joins ?? roster;
   const rows = joins ? joins.joins.length : roster.members.length;
   const runs = (startsAt: Date, endsAt: Date) => formatTerm(startsAt, endsAt, timeZone);
   const nameLink = "font-semibold text-ink underline-offset-4 hover:underline [overflow-wrap:anywhere]";
@@ -174,11 +177,7 @@ async function Roster({ organisationId, view, query, cursor }: { organisationId:
           </ul>
         </>
       )}
-      {nextCursor ? (
-        <Link className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={href(view, query, nextCursor)}>
-          Next page
-        </Link>
-      ) : null}
+      <Pager label="Member pages" next={nextCursor && href(view, query, nextCursor)} previous={previousCursor && href(view, query, previousCursor, "prev")} />
     </>
   );
 }

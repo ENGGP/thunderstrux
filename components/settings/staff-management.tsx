@@ -91,6 +91,10 @@ export function StaffManagement({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Only the invite form says "Creating…"; a role change or invite action elsewhere just waits.
+  const [inviting, setInviting] = useState(false);
+  // Which card the last result belongs to: it shows at the end of that card, under the action.
+  const [resultAt, setResultAt] = useState<"invite" | "staff" | "invites">("invite");
   const [pending, setPending] = useState<PendingChange | null>(null);
 
   async function refreshStaff() {
@@ -107,7 +111,9 @@ export function StaffManagement({
     event.preventDefault();
     setError(null);
     setNotice(null);
+    setResultAt("invite");
     setIsSubmitting(true);
+    setInviting(true);
 
     try {
       await fetchJson<{ invite: InviteRow }>(`/api/orgs/${orgSlug}/staff/invites`, {
@@ -124,12 +130,14 @@ export function StaffManagement({
       );
     } finally {
       setIsSubmitting(false);
+      setInviting(false);
     }
   }
 
   async function updateStaff(staffId: string, data: { role?: StaffRole; status?: string }) {
     setError(null);
     setNotice(null);
+    setResultAt("staff");
     setIsSubmitting(true);
 
     try {
@@ -151,7 +159,7 @@ export function StaffManagement({
   }
 
   async function manageInvite(inviteId: string, action: "resend" | "revoke") {
-    setError(null); setNotice(null); setIsSubmitting(true);
+    setError(null); setNotice(null); setResultAt("invites"); setIsSubmitting(true);
     try {
       await fetchJson(`/api/orgs/${orgSlug}/staff/invites/${inviteId}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       setNotice(action === "resend" ? "New invitation email queued. The previous link is now invalid." : "Invitation revoked.");
@@ -160,20 +168,16 @@ export function StaffManagement({
     finally { setIsSubmitting(false); }
   }
 
+  const results = (at: typeof resultAt) =>
+    resultAt === at ? (
+      <>
+        {error ? <Notice className="mt-4" reveal role="alert" tone="danger">{error}</Notice> : null}
+        {notice ? <Notice className="mt-4" reveal role="status" tone="success">{notice}</Notice> : null}
+      </>
+    ) : null;
+
   return (
     <div className="grid grid-cols-1 gap-6">
-      {error ? (
-        <Notice role="alert" tone="danger">
-          {error}
-        </Notice>
-      ) : null}
-
-      {notice ? (
-        <Notice role="status" tone="success">
-          {notice}
-        </Notice>
-      ) : null}
-
       <Card>
         <form className="grid gap-4" onSubmit={inviteStaff}>
           <h2 className="text-lg font-semibold text-ink">Invite staff</h2>
@@ -197,8 +201,8 @@ export function StaffManagement({
                 </option>
               ))}
             </Select>
-            <Button className="md:mt-[26px]" disabled={isSubmitting || email.trim().length === 0} type="submit">
-              {isSubmitting ? "Creating..." : "Create invite"}
+            <Button busy={inviting} busyLabel="Creating…" className="md:mt-[26px]" disabled={isSubmitting || email.trim().length === 0} type="submit">
+              Create invite
             </Button>
           </div>
           <p className="text-sm text-ink-soft">
@@ -207,6 +211,9 @@ export function StaffManagement({
             accepts it themselves.
           </p>
         </form>
+        {results("invite")}
+        {/* The last pending invitation was revoked, so its card is gone: say so here. */}
+        {invites.length === 0 ? results("invites") : null}
       </Card>
 
       <Card>
@@ -275,6 +282,7 @@ export function StaffManagement({
             </tbody>
           </table>
         </div>
+        {results("staff")}
       </Card>
 
       {invites.length > 0 ? (
@@ -305,6 +313,7 @@ export function StaffManagement({
               </li>
             ))}
           </ul>
+          {results("invites")}
         </Card>
       ) : null}
 

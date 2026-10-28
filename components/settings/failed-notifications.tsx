@@ -20,7 +20,7 @@ export function FailedNotifications({ jobs }: { jobs: Array<{ id: string; templa
     <Card>
       <h2 className="text-lg font-semibold text-ink">Failed emails</h2>
       {result ? (
-        <Notice className="mt-4" role={result.ok ? "status" : "alert"} tone={result.ok ? "success" : "danger"}>
+        <Notice className="mt-4" reveal role={result.ok ? "status" : "alert"} tone={result.ok ? "success" : "danger"}>
           {result.text}
         </Notice>
       ) : null}
@@ -61,8 +61,8 @@ export function FailedNotifications({ jobs }: { jobs: Array<{ id: string; templa
                 required
               />
               <div>
-                <Button disabled={busy !== null} type="submit" variant="secondary">
-                  {busy === job.id ? "Sending..." : "Send again"}
+                <Button busy={busy === job.id} busyLabel="Sending…" disabled={busy !== null} type="submit" variant="secondary">
+                  Send again
                 </Button>
               </div>
             </form>

@@ -55,17 +55,6 @@ export function CreateOrganisationForm() {
 
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
-      {error ? (
-        <Notice role="alert" tone="danger">
-          {error}
-        </Notice>
-      ) : null}
-      {successMessage ? (
-        <Notice role="status" tone="success">
-          {successMessage}
-        </Notice>
-      ) : null}
-
       <TextInput
         hint="Your public address is made from the name and does not change later."
         label="Society name"
@@ -75,9 +64,20 @@ export function CreateOrganisationForm() {
         value={name}
       />
 
-      <Button disabled={isSubmitting || name.trim().length === 0} type="submit">
-        {isSubmitting ? "Creating..." : "Create society"}
+      <Button busy={isSubmitting} busyLabel="Creating…" disabled={name.trim().length === 0} type="submit">
+        Create society
       </Button>
+      {error ? (
+        <Notice reveal role="alert" tone="danger">
+          {error}
+        </Notice>
+      ) : null}
+      {successMessage ? (
+        <Notice reveal role="status" tone="success">
+          {successMessage}
+        </Notice>
+      ) : null}
+
     </form>
   );
 }

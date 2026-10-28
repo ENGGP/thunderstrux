@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PublicEventLoading() {
   return (
-    <main id="main" tabIndex={-1} className="bg-paper">
+    <main id="main" tabIndex={-1} className="min-h-[calc(100svh-60px)] bg-paper md:min-h-[calc(100svh-72px)]">
       <div className="mx-auto grid max-w-page gap-8 px-4 py-10 md:px-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <p className="sr-only">Loading event</p>
         <div className="grid gap-4">

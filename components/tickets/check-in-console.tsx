@@ -230,6 +230,8 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
         Find a ticket
         <input
           autoComplete="off"
+          // The door is search-first: the field takes focus, which also brings it into view on a phone.
+          autoFocus
           className="h-14 rounded-[12px] border-2 border-brand bg-surface px-4 text-xl font-normal text-ink md:h-[52px] md:text-lg"
           onChange={(event) => setQuery(event.target.value)}
           type="search"

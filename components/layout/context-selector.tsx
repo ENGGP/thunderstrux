@@ -86,10 +86,16 @@ export function ContextSelector({
       {currentRole ? <p className={`text-xs ${tone === "dark" ? "text-white/75" : "text-ink-soft"}`}>Your role: {roleLabels[currentRole]}</p> : null}
       {error ? (
         <p role="alert">
-          {error}{" "}
-          <a className="font-semibold underline" href="/mfa?callbackUrl=/dashboard">
-            Verify staff authenticator
-          </a>
+          {error}
+          {/* Offer the authenticator only when that is what stopped the switch. */}
+          {/authenticator|MFA/i.test(error) ? (
+            <>
+              {" "}
+              <a className="font-semibold underline" href="/mfa?callbackUrl=/dashboard">
+                Verify staff authenticator
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
     </div>

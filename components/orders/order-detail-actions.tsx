@@ -43,7 +43,8 @@ export function OrderDetailActions({
   markNeedsCode?: boolean;
 }) {
   const router = useRouter();
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Each result names the action it answers and shows under that action, so the card never jumps.
+  const [message, setMessage] = useState<{ ok: boolean; text: string; at: "resend" | "verify" | "mark" | "copy" } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [confirmingRefund, setConfirmingRefund] = useState(false);
   const [refundId, setRefundId] = useState("");
@@ -98,11 +99,11 @@ export function OrderDetailActions({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ refundId, ...(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {}) })
       });
-      setMessage({ ok: true, text: "Stripe refund verified and compensation resolved." });
+      setMessage({ ok: true, text: "Stripe refund verified and compensation resolved.", at: "verify" });
       router.refresh();
     } catch (failure) {
       // Says what is missing, such as a transfer not reversed (PAY-027) or the code.
-      setMessage({ ok: false, text: getClientErrorMessage(failure, "The Stripe refund could not be verified for this order.") });
+      setMessage({ ok: false, text: getClientErrorMessage(failure, "The Stripe refund could not be verified for this order."), at: "verify" });
     } finally {
       setIsBusy(false);
     }
@@ -118,7 +119,7 @@ export function OrderDetailActions({
         body: JSON.stringify(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {})
       });
       setConfirmingRefund(false);
-      setMessage({ ok: true, text: "Marked as refunded." });
+      setMessage({ ok: true, text: "Marked as refunded.", at: "mark" });
       router.refresh();
     } catch (failure) {
       setRefundError(getClientErrorMessage(failure, "The order wasn't marked. Nothing changed."));
@@ -137,11 +138,13 @@ export function OrderDetailActions({
       });
 
       if (!response.ok) {
-        setMessage({ ok: false, text: "Could not queue ticket resend." });
+        setMessage({ ok: false, text: "The tickets weren’t resent. Try again in a moment.", at: "resend" });
         return;
       }
 
-      setMessage({ ok: true, text: "Ticket resend queued." });
+      setMessage({ ok: true, text: "Ticket resend queued.", at: "resend" });
+    } catch {
+      setMessage({ ok: false, text: "We couldn’t reach Thunderstrux, so nothing was resent. Check your connection and try again.", at: "resend" });
     } finally {
       setIsBusy(false);
     }
@@ -152,20 +155,24 @@ export function OrderDetailActions({
       return;
     }
 
-    await navigator.clipboard.writeText(stripeSessionId);
-    setMessage({ ok: true, text: "Stripe session ID copied." });
+    try {
+      await navigator.clipboard.writeText(stripeSessionId);
+      setMessage({ ok: true, text: "Stripe session ID copied.", at: "copy" });
+    } catch {
+      setMessage({ ok: false, text: "Couldn’t copy it. Select the ID and copy it yourself.", at: "copy" });
+    }
   }
 
   const block = "grid gap-2 border-t border-line pt-4";
+  const result = (at: NonNullable<typeof message>["at"]) =>
+    message?.at === at ? (
+      <Notice reveal role={message.ok ? "status" : "alert"} tone={message.ok ? "success" : "danger"}>
+        {message.text}
+      </Notice>
+    ) : null;
 
   return (
     <div className="mt-4 grid gap-4">
-      {message ? (
-        <Notice role={message.ok ? "status" : "alert"} tone={message.ok ? "success" : "danger"}>
-          {message.text}
-        </Notice>
-      ) : null}
-
       <div className="grid gap-2">
         <p className="font-semibold text-ink">Ticket email</p>
         <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
@@ -182,6 +189,7 @@ export function OrderDetailActions({
             Resend tickets
           </Button>
         </div>
+        {result("resend")}
       </div>
 
       {free ? (
@@ -224,6 +232,7 @@ export function OrderDetailActions({
               Verify completed refund
             </Button>
           </div>
+          {result("verify")}
         </div>
       ) : disputed ? null : (
         <>
@@ -256,6 +265,7 @@ export function OrderDetailActions({
                   Mark as refunded
                 </Button>
               </div>
+              {result("mark")}
             </>
           )}
         </div>
@@ -282,6 +292,7 @@ export function OrderDetailActions({
             </a>
           ) : null}
         </div>
+        {result("copy")}
       </div>}
 
       {refund ? (

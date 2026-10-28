@@ -20,7 +20,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 | --- | --- | --- |
 | Look up a word ("society", "hold", "compensation", "family") | [[Glossary]] | — |
 | Find where something lives | [[Thunderstrux Codebase Map]], [[Architecture Overview]] | — |
-| Change a page, layout or component | [[Frontend and Backend Flow]], [[UI Architecture Rules]], [[Accessibility Review]] | `app/`, `components/` |
+| Change a page, layout or component | [[Frontend and Backend Flow]], [[UI Architecture Rules]], [[UI Page Patterns]], [[Accessibility Review]] | `app/`, `components/` |
 | Add or change an API route | [[API Reference]], [[Route Security Inventory]], [[Audit Coverage]] | `app/api/`, `lib/api/errors.ts`, `lib/security/request-guard.ts` |
 | Touch sign-in, sessions, roles, permissions, MFA, staff, guests or closure | [[Authentication and Dashboard Access]] | `lib/auth/`, `lib/permissions/index.ts`, `lib/staff/`, `lib/guest/`, `proxy.ts`, `auth.ts` |
 | Change the schema, a migration or tenant scoping | [[Database and Multi Tenancy]] | `prisma/schema.prisma`, `prisma/migrations/`, `config/schema-contract.json` |
@@ -47,7 +47,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 - **Start:** [[Project Handover]] · [[Engineering Delivery Workflow]] · [[Issue and Defect Register]] · [[Glossary]]
 - **Architecture:** [[Architecture Overview]] · [[Thunderstrux Codebase Map]] · [[Database and Multi Tenancy]]
 - **Domain:** [[Authentication and Dashboard Access]] · [[Event Lifecycle]] · [[Ticket Check-in Implementation]] · [[Payment Lifecycle]] · [[Payment Lifecycle Refunds and Disputes]] · [[Stripe Payments and Connect]] · [[Stripe Payments and Connect Payouts]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]] · [[Analytics and Calendar]] · [[Email Delivery Implementation]] · [[Audit Coverage]]
-- **Interfaces:** [[API Reference]] · [[Route Security Inventory]] · [[Frontend and Backend Flow]] · [[UI Architecture Rules]] · [[Accessibility Review]]
+- **Interfaces:** [[API Reference]] · [[Route Security Inventory]] · [[Frontend and Backend Flow]] · [[UI Architecture Rules]] · [[UI Page Patterns]] · [[Accessibility Review]]
 - **Operations:** [[Environment Variables]] · [[Development Workflow]] · [[Troubleshooting]] · [[Seeding and Data]] · [[Production Operations]] · [[Production Operations Alerts]] · [[Production Operations Hosting]] · [[Pre-hosting Candidate]] · [[Dependency Automation]] · [[E2E and Staging Payments]] · [[Journey Qualification]]
 - **History** (dated; read only for evidence): [[Resolved Defects]] · [[Evidence Ledger]] · [[Project Handover 2026-10-25]] · [[Project Handover 2026-10-15]] · [[Project Handover 2026-10-12]] · [[Docker Architecture Assessment 2026-09-29]] · [[Production Readiness Verification 2026-09-22]] · [[Dependency Advisory Triage 2026-09-18]]
 

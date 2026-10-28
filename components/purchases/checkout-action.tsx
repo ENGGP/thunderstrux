@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
+import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney } from "@/lib/format";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
@@ -89,6 +90,8 @@ export function CheckoutAction({
   const [selection, setSelection] = useState<Selection>({ quantity, unitPrice });
   const [state, setState] = useState<"idle" | "busy" | "confirming">("idle");
   const [screen, setScreen] = useState<Screen | null>(null);
+  const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
+  useResetOnRestore(() => setState("idle"));
 
   function finished(orderId: string) {
     router.push(guestCsrf ? `/guest/orders/${encodeURIComponent(orderId)}` : `/events/${eventId}/checkout/confirmed?orderId=${encodeURIComponent(orderId)}`);
@@ -237,10 +240,36 @@ export function CheckoutAction({
       );
   }
 
+  const payButton = (
+    <Button
+      busy={state === "busy" || state === "confirming"}
+      busyLabel={state === "confirming" ? "Confirming checkout…" : selection.unitPrice === 0 ? "Confirming…" : "Opening Stripe…"}
+      disabled={state !== "idle"}
+      onClick={() => submit()}
+      size="lg"
+      type="button"
+    >
+      {label}
+    </Button>
+  );
+
   return (
     <div className="grid gap-3">
+      <div className="grid" ref={actionRef}>{payButton}</div>
+      <PhoneActionBar
+        show={actionBelow}
+        summary={
+          <>
+            <span className="truncate text-caption text-ink-soft">{selection.quantity} × {ticketTypeName}</span>
+            <span className="text-lg font-semibold tabular-nums text-ink">{selection.unitPrice === 0 ? "Free" : formatMoney(selection.unitPrice * selection.quantity)}</span>
+          </>
+        }
+      >
+        {payButton}
+      </PhoneActionBar>
+      {/* Under the button, so pressing it never moves it. */}
       {screen?.kind === "error" ? (
-        <Notice role="alert" tone="danger">
+        <Notice reveal role="alert" tone="danger">
           <p>{screen.message}</p>
           <div className="mt-1">{changeTickets}</div>
         </Notice>
@@ -250,18 +279,21 @@ export function CheckoutAction({
           Confirming your checkout… This usually takes a few seconds. Your tickets are held, and you will not be charged twice.
         </p>
       ) : null}
-      <Button disabled={state !== "idle"} onClick={() => submit()} size="lg" type="button">
-        {state === "confirming" ? "Confirming checkout..." : state === "busy" ? (selection.unitPrice === 0 ? "Confirming..." : "Opening Stripe...") : label}
-      </Button>
     </div>
   );
 }
 
 function StateScreen({ tone, title, actions, children }: { tone: "info" | "warning" | "danger"; title: string; actions: ReactNode; children: ReactNode }) {
+  // It replaces the Pay button, which had focus: take focus here so keyboard and
+  // screen-reader users land on the answer and its actions, not the top of the page.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => ref.current?.focus(), []);
   return (
-    <Notice role="alert" title={title} tone={tone}>
-      <p>{children}</p>
-      <div className="mt-2.5 flex flex-wrap items-center gap-3">{actions}</div>
-    </Notice>
+    <div ref={ref} tabIndex={-1}>
+      <Notice role="alert" title={title} tone={tone}>
+        <p>{children}</p>
+        <div className="mt-2.5 flex flex-wrap items-center gap-3">{actions}</div>
+      </Notice>
+    </div>
   );
 }

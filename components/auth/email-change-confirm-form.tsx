@@ -32,12 +32,12 @@ export function EmailChangeConfirmForm() {
     finally { setBusy(false); }
   }
   return <form className="grid gap-3" onSubmit={submit}>
-    {error && <Notice role="alert" tone="danger">{error}</Notice>}
     {!token && <Notice>Open the confirmation link from your new inbox, or <Link className="font-semibold text-brand underline underline-offset-4" href="/account/settings">request another email change</Link>.</Notice>}
     {session?.user?.id ? <p className="text-ink-soft">Signed in as {session.user.email}. Enter your current password to confirm the new address.</p> : <><p className="text-ink-soft">Sign in to your existing account first. Keep this page open while you sign in.</p><TextInput label="Current account email" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></>}
     <TextInput label="Current account password" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} />
     {session?.user?.id && <p className="text-sm text-ink-soft">If you have an enrolled authenticator, <Link className="font-semibold text-brand underline underline-offset-4" href="/mfa?callbackUrl=/account/settings" target="_blank" rel="noopener noreferrer">verify authenticator in another tab</Link>, then return here. Refreshing this page requires reopening the email link.</p>}
     {mfaRequired && <Notice tone="warning">Authenticator verification is required before confirmation.</Notice>}
-    <Button type="submit" disabled={busy || status === "loading" || !token}>{busy ? "Submitting..." : session?.user?.id ? "Confirm email change" : "Sign in to confirm"}</Button>
+    <Button busy={busy} busyLabel="Submitting…" type="submit" disabled={status === "loading" || !token}>{session?.user?.id ? "Confirm email change" : "Sign in to confirm"}</Button>
+    {error && <Notice reveal role="alert" tone="danger">{error}</Notice>}
   </form>;
 }

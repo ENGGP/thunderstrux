@@ -78,7 +78,16 @@
   --animate-fade-in: fade-in 200ms var(--ease-out);
   --animate-rise-in: rise-in 300ms var(--ease-out) backwards;
   --animate-sheet-in: sheet-in 240ms var(--ease-drawer);
+  /* A result arriving under the action that caused it: its row opens from
+     nothing while it fades in, so whatever is below eases down instead of jumping. */
+  --animate-reveal: reveal 200ms var(--ease-out);
 
+  @keyframes reveal {
+    from {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+  }
   @keyframes pop-in {
     from {
       opacity: 0;
@@ -181,6 +190,26 @@
   body {
     margin: 0;
     min-height: 100%;
+  }
+
+  html {
+    /* Anchors and focused controls land below the fixed header (60px, 72px from md). */
+    scroll-padding-top: 76px;
+    /* Short and long pages keep the same scrollbar space, so nothing slides sideways between them. */
+    scrollbar-gutter: stable;
+  }
+
+  @media (min-width: 48rem) {
+    html {
+      scroll-padding-top: 88px;
+    }
+  }
+
+  /* Below lg the phone action bars can cover the bottom of the screen. */
+  @media (max-width: 63.999rem) {
+    html {
+      scroll-padding-bottom: 96px;
+    }
   }
 
   body {

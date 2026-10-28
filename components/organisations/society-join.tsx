@@ -58,10 +58,11 @@ export function SocietyJoin({
         <Button
           type="button"
           variant="secondary"
-          disabled={busy}
+          busy={busy}
+          busyLabel="Joining…"
           onClick={join}
         >
-          {busy ? "Joining…" : "Join society"}
+          Join society
         </Button>
       )}
       {state === "joined" && (

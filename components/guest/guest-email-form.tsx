@@ -50,7 +50,6 @@ export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoin
 
   return (
     <form className="grid gap-4" onSubmit={send}>
-      {error ? <Notice role="alert" tone="warning">{error}</Notice> : null}
       {checkout ? (
         <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
           <TextInput autoComplete="given-name" label="First name" maxLength={80} onChange={(event) => setFirstName(event.target.value)} required value={firstName} />
@@ -58,7 +57,8 @@ export function GuestEmailForm({ endpoint, submitLabel, callbackUrl }: { endpoin
         </div>
       ) : null}
       <TextInput autoComplete="email" hint={checkout ? "We'll email a link to confirm it's yours. Your tickets and receipt go here too." : undefined} label="Email" maxLength={320} onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
-      <Button disabled={busy} size="lg" type="submit">{busy ? "Sending…" : submitLabel}</Button>
+      <Button busy={busy} busyLabel="Sending…" size="lg" type="submit">{submitLabel}</Button>
+      {error ? <Notice reveal role="alert" tone="warning">{error}</Notice> : null}
       <p className="text-sm text-ink-soft">
         Have an account? <Link className="font-semibold text-brand underline underline-offset-4" href={checkout && callbackUrl ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : "/login"}>{checkout ? "Sign in instead" : "Sign in"}</Link>{checkout ? "." : " to see My tickets."}
       </p>

@@ -38,6 +38,23 @@ function OverviewSkeleton({ label }: { label: string }) {
   );
 }
 
+// The member overview: the next-plans card across the top, then two columns of cards.
+function PersonalOverviewSkeleton() {
+  return (
+    <div className="grid gap-6">
+      <p className="sr-only">Loading your overview</p>
+      <Skeleton className="h-64 rounded-card" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Skeleton className="h-80 rounded-card" />
+        <div className="grid content-start gap-6">
+          <Skeleton className="h-36 rounded-card" />
+          <Skeleton className="h-40 rounded-card" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 async function OrganisationDashboard(contexts: ContextChoices) {
   // The account and permission checks finish before anything streams.
   const organisation = await requireCurrentOrganisationAccount();
@@ -93,7 +110,7 @@ export default async function DashboardPage() {
   return (
     <PersonalShell contexts={contextChoices(context)}>
       <h1 className="text-3xl font-semibold text-ink">Overview</h1>
-      <Suspense fallback={<OverviewSkeleton label="Loading your overview" />}>
+      <Suspense fallback={<PersonalOverviewSkeleton />}>
         <PersonalOverview userId={user.id} />
       </Suspense>
     </PersonalShell>

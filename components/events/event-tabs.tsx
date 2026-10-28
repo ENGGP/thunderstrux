@@ -3,7 +3,7 @@ import { EventActions } from "@/components/events/event-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { Icon } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
+import { TabLabel, tabBarClasses, tabClasses } from "@/components/ui/link-tabs";
 import type { DashboardEvent } from "@/lib/events/event-lifecycle";
 import { formatDateRange, formatDateTime } from "@/lib/format";
 import {
@@ -115,7 +115,7 @@ export function EventWorkspaceHeader({
               href={hrefs[tab.id]}
               key={tab.id}
             >
-              {tab.label}
+              <TabLabel>{tab.label}</TabLabel>
             </Link>
           ))}
         </nav>

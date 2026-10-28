@@ -32,6 +32,8 @@ test("a price changed while reviewing shows the new total and continues at it", 
 
   const screen = page.getByRole("alert").filter({ hasText: "The price changed" });
   await expect(screen).toContainText("General admission is now $17.00 per ticket. Your new total is $34.00. Nothing has been charged.");
+  // The screen replaced the focused Pay button, so it takes focus: keyboard and screen-reader users land on it.
+  await expect(screen.locator("..")).toBeFocused();
   await expect(screen.getByRole("link", { name: "Change tickets" })).toBeVisible();
   // The summary reloads with the new price beside the screen.
   await expect(page.getByText("$34.00 AUD", { exact: true })).toBeVisible();

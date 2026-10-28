@@ -5,7 +5,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { SocietyCard } from "@/components/organisations/society-card";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { getPublishedEvents } from "@/lib/events/public-events";
 import {
@@ -114,17 +114,24 @@ export default async function Home() {
   );
 }
 
+// Shaped like the listings it stands in for (six event cards, then four
+// society cards), so the sections below don't jump when they stream in.
 function HomeSkeleton() {
   return (
-    <div className="grid gap-6">
-      <p className="sr-only">Loading events</p>
-      <Skeleton className="h-8 w-56" />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }, (_, index) => (
-          <Skeleton className="h-28 rounded-card" key={index} />
-        ))}
+    <>
+      <div className="grid gap-6">
+        <Skeleton className="h-8 w-56" />
+        <CardGridSkeleton label="Loading events" />
       </div>
-    </div>
+      <div aria-hidden="true" className="grid gap-6">
+        <Skeleton className="h-8 w-56" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton className="h-28 rounded-card" key={index} />
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 

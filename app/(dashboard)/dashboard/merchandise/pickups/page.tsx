@@ -63,7 +63,7 @@ export default async function PickupsPage({ searchParams }: { searchParams: Prom
         ]}
       />
       {done ? (
-        <Notice role="status" title={done.collected ? "Collected" : "Ready to collect"} tone="success">
+        <Notice reveal role="status" title={done.collected ? "Collected" : "Ready to collect"} tone="success">
           <p className="mt-0.5">
             {done.collected
               ? `Order ${done.reference} was handed over by ${done.by} at ${formatDateTime(done.at, { timeZone })}.`

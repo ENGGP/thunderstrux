@@ -37,8 +37,6 @@ export function NotificationPreferencesForm({ renewalReminders: initial }: { ren
 
   return (
     <form className="grid max-w-2xl gap-4" onSubmit={onSubmit}>
-      {error ? <Notice role="alert" tone="danger">{error}</Notice> : null}
-      {message ? <Notice role="status" tone="success">{message}</Notice> : null}
       <label className="flex items-start gap-3">
         <input
           checked={renewalReminders}
@@ -52,10 +50,12 @@ export function NotificationPreferencesForm({ renewalReminders: initial }: { ren
         </span>
       </label>
       <div>
-        <Button disabled={isSubmitting} type="submit" variant="secondary">
-          {isSubmitting ? "Saving..." : "Save preferences"}
+        <Button busy={isSubmitting} busyLabel="Saving…" type="submit" variant="secondary">
+          Save preferences
         </Button>
       </div>
+      {error ? <Notice reveal role="alert" tone="danger">{error}</Notice> : null}
+      {message ? <Notice reveal role="status" tone="success">{message}</Notice> : null}
     </form>
   );
 }

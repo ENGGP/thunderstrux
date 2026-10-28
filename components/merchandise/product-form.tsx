@@ -329,27 +329,9 @@ export function ProductForm({
         </div>
       </Card>
 
-      {conflict ? (
-        <Notice role="alert" title="This product changed since you opened it" tone="warning">
-          <p className="mt-0.5">{error} Your edits are still in the form.</p>
-          <Button className="mt-2" onClick={() => window.location.reload()} type="button" variant="secondary">
-            Reload product
-          </Button>
-        </Notice>
-      ) : error ? (
-        <Notice role="alert" title="Not saved" tone="danger">
-          <p className="mt-0.5">{error}</p>
-        </Notice>
-      ) : null}
-      {message ? (
-        <Notice role="status" tone="success">
-          <p>{message}</p>
-        </Notice>
-      ) : null}
-
       {archived ? null : (
         <div className="flex flex-wrap gap-3">
-          <Button disabled={busy || upload.busy} size="lg" type="submit">
+          <Button busy={busy} busyLabel="Saving…" disabled={upload.busy} size="lg" type="submit">
             {product ? "Save changes" : "Save draft"}
           </Button>
           <Link className={buttonClasses({ variant: "secondary", size: "lg" })} href="/dashboard/merchandise">
@@ -357,6 +339,24 @@ export function ProductForm({
           </Link>
         </div>
       )}
+      {/* Under Save, so the result never moves the button that was pressed. */}
+      {conflict ? (
+        <Notice reveal role="alert" title="This product changed since you opened it" tone="warning">
+          <p className="mt-0.5">{error} Your edits are still in the form.</p>
+          <Button className="mt-2" onClick={() => window.location.reload()} type="button" variant="secondary">
+            Reload product
+          </Button>
+        </Notice>
+      ) : error ? (
+        <Notice reveal role="alert" title="Not saved" tone="danger">
+          <p className="mt-0.5">{error}</p>
+        </Notice>
+      ) : null}
+      {message ? (
+        <Notice reveal role="status" tone="success">
+          <p>{message}</p>
+        </Notice>
+      ) : null}
     </form>
   );
 }

@@ -69,8 +69,8 @@ export function GuestAccessForm() {
   return (
     <div className="grid gap-4">
       <p className="text-ink-soft">Continue to confirm your email and go back to your order.</p>
-      <Button disabled={busy} onClick={confirm} size="lg" type="button">{busy ? "Confirming…" : "Continue"}</Button>
-      {error ? <Notice role="alert" tone="danger">{error}</Notice> : null}
+      <Button busy={busy} busyLabel="Confirming…" onClick={confirm} size="lg" type="button">Continue</Button>
+      {error ? <Notice reveal role="alert" tone="danger">{error}</Notice> : null}
     </div>
   );
 }

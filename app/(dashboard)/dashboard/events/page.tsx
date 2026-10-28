@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { EventActions } from "@/components/events/event-actions";
 import { SaleBadge, tabBarClasses, tabClasses } from "@/components/events/event-tabs";
-import { Count } from "@/components/ui/link-tabs";
+import { Count, TabLabel } from "@/components/ui/link-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClasses } from "@/components/ui/button";
@@ -128,7 +128,7 @@ async function EventsResults({
               href={viewHref(name, query)}
               key={name}
             >
-              {viewLabels[name]}
+              <TabLabel>{viewLabels[name]}</TabLabel>
               <Count active={name === view} value={counts[name]} />
             </Link>
           ))}

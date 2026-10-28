@@ -54,17 +54,6 @@ export function MemberProfileForm({
 
   return (
     <form className="grid max-w-2xl gap-4" onSubmit={onSubmit}>
-      {error ? (
-        <Notice role="alert" tone="danger">
-          {error}
-        </Notice>
-      ) : null}
-      {message ? (
-        <Notice role="status" tone="success">
-          {message}
-        </Notice>
-      ) : null}
-
       <div className="grid gap-4 sm:grid-cols-2">
         <TextInput
           label="First name"
@@ -112,10 +101,21 @@ export function MemberProfileForm({
         />
       </div>
       <div>
-        <Button disabled={isSubmitting} type="submit">
-          {isSubmitting ? "Saving..." : "Save profile"}
+        <Button busy={isSubmitting} busyLabel="Saving…" type="submit">
+          Save profile
         </Button>
       </div>
+      {error ? (
+        <Notice reveal role="alert" tone="danger">
+          {error}
+        </Notice>
+      ) : null}
+      {message ? (
+        <Notice reveal role="status" tone="success">
+          {message}
+        </Notice>
+      ) : null}
+
     </form>
   );
 }

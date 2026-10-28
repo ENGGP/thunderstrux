@@ -19,12 +19,16 @@ export function Notice({
   className = "",
   onDismiss,
   action,
+  reveal = false,
   children
 }: {
   tone?: "info" | "success" | "warning" | "danger";
   title?: string;
   role?: "alert" | "status";
   className?: string;
+  // A result that appears after an action: it opens smoothly where it lands
+  // (animate-reveal) instead of pushing what's below in one jump.
+  reveal?: boolean;
   // A link or button that resolves the message, shown at the end of the row.
   action?: ReactNode;
   // Only from client components; dismissing hides the message, it never resolves it.
@@ -33,9 +37,9 @@ export function Notice({
 }) {
   const style = tones[tone];
 
-  return (
+  const box = (
     <div
-      className={`flex items-start gap-3 rounded-card border px-4 py-3 text-sm ${style.box} ${className}`}
+      className={`flex items-start gap-3 rounded-card border px-4 py-3 text-sm ${style.box} ${reveal ? "" : className}`}
       role={role}
     >
       <Icon className={`mt-px ${style.icon}`} name={style.name} size={20} />
@@ -54,6 +58,14 @@ export function Notice({
           <Icon name="close" size={16} />
         </button>
       ) : null}
+    </div>
+  );
+
+  if (!reveal) return box;
+  // The row animates from 0fr; clipping (not hiding) keeps a focus ring visible inside it.
+  return (
+    <div className={`grid animate-reveal grid-rows-[1fr] ${className}`}>
+      <div className="min-h-0 overflow-clip [overflow-clip-margin:4px]">{box}</div>
     </div>
   );
 }

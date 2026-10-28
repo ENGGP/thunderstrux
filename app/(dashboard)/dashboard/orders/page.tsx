@@ -12,7 +12,7 @@ import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
-import { ListSkeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { dateFilterBound } from "@/lib/zoned-time";
@@ -37,6 +37,18 @@ import {
 } from "@/lib/pagination/cursor";
 
 export const metadata: Metadata = { title: "Orders" };
+
+// The commerce list streams its status pills and filters with the rows, so its
+// placeholder has all three and nothing pops in above the table.
+function CommerceOrdersSkeleton() {
+  return (
+    <>
+      <Skeleton className="h-10 w-full max-w-xl rounded-full" />
+      <Skeleton className="h-36 rounded-card sm:h-28" />
+      <ListSkeleton label="Loading orders" rows={6} />
+    </>
+  );
+}
 
 function filterLabel(status: OrderStatusFilter) {
   return status.charAt(0).toUpperCase() + status.slice(1);
@@ -164,7 +176,7 @@ export default async function OrganisationOrdersPage({
         </>
       )}
       {family !== "tickets" && !event ? (
-        <Suspense fallback={<ListSkeleton label="Loading orders" rows={6} />}>
+        <Suspense fallback={<CommerceOrdersSkeleton />}>
           <CommerceOrders organisationId={organisation.id} pagination={pagination} params={{ ...params, family }} />
         </Suspense>
       ) : (

@@ -343,6 +343,11 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   else if (a === "stripe_connect.account_created") sentence = ["started connecting a Stripe account"];
   else if (a === "stripe_connect.disconnected") sentence = ["disconnected the Stripe account"];
   else if (a === "stripe_connect.dashboard_opened") sentence = ["opened the Stripe dashboard"];
+  else if (a === "stripe_connect.payout_account_changed") {
+    // SEC-033: Stripe reports it; whoever made the change did so in Stripe.
+    sentence = ["reported a new account for the society's payouts"];
+    if (text(m.last4)) facts = [{ label: "Account ending", value: text(m.last4) as string }];
+  }
   else if (a === "organisation.created") sentence = ["set up the society"];
   else if (a === "organisation.profile_updated") {
     sentence = ["updated the society profile"];

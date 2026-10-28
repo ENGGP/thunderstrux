@@ -105,6 +105,8 @@ describe("staff MFA", () => {
     const fresh = totpCode(setup.secret, stepNow + 1);
 
     await expect(replaceRecoveryCodes(user.id, "not-the-password", fresh, later)).rejects.toThrow("Your password is incorrect");
+    // Without the phone, a password guess is never checked: the code fails first.
+    await expect(replaceRecoveryCodes(user.id, "not-the-password", "000000", later)).rejects.toThrow("Invalid authenticator code");
     await expect(replaceRecoveryCodes(user.id, "password123", "000000", later)).rejects.toThrow("Invalid authenticator code");
     // A recovery code can't stand in for the authenticator, and a step already used can't be replayed.
     await expect(replaceRecoveryCodes(user.id, "password123", old[1], later)).rejects.toThrow("6-digit code");

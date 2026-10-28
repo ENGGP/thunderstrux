@@ -258,14 +258,15 @@ export async function verifyStaffMfa(userId: string, code: string, sessionDigest
 // A new set of recovery codes replaces every unused one (UI-018). It takes the
 // password and a current authenticator code (never a recovery code), so neither
 // a stolen session nor a phone alone can mint codes that get round the other.
-// It is audited for each society; no email is sent, as for set-up.
+// It is audited for each society; no email is sent, as for set-up. The code is
+// checked before the password, so a session without the phone can't test passwords.
 export async function replaceRecoveryCodes(userId: string, password: string, code: string, now = new Date()) {
   if (!/^\d{6}$/.test(code)) throw new MfaInputError("Enter the 6-digit code from your authenticator app");
-  await confirmPasswordForMfaSetup(userId, password);
   const mfa = await prisma.userMfa.findUnique({ where: { userId } });
   if (!mfa?.enabledAt || !mfa.encryptedSecret) throw new MfaInputError("Set up an authenticator app first");
   const step = acceptedStep(decrypt(mfa.encryptedSecret), code, now, mfa.lastAcceptedStep);
   if (step === null) throw new MfaInputError("Invalid authenticator code");
+  await confirmPasswordForMfaSetup(userId, password);
   const recoveryCodes = newRecoveryCodes();
   await prisma.$transaction(async (tx) => {
     await lockMfaAccount(tx, userId, true);

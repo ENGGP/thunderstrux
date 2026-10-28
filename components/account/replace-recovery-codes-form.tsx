@@ -31,7 +31,7 @@ export function ReplaceRecoveryCodesForm({ email }: { email: string }) {
       setPassword("");
       setCode("");
       setOpen(false);
-      // The count and Recent security activity read the new state.
+      // The "N of 10 left" count reads the new state.
       router.refresh();
     } catch (failure) {
       setError(getClientErrorMessage(failure, "Couldn't replace your recovery codes. Nothing changed."));

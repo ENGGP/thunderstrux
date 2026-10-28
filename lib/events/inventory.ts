@@ -24,6 +24,25 @@ export async function lockEventInventory(
   return true;
 }
 
+// A ticket order's event and ticket type, locked before the order itself (the
+// lock order above), for paths that may put its places back on sale.
+export async function lockOrderInventory(tx: Prisma.TransactionClient, orderId: string) {
+  const order = await tx.order.findUnique({ where: { id: orderId }, select: { eventId: true, ticketTypeId: true } });
+  if (order) await lockEventInventory(tx, order.eventId, [order.ticketTypeId]);
+}
+
+// The buyer of a paid order got the money back (a refund here or in Stripe, a
+// staff mark, a lost dispute), so the places those voided tickets held go back on
+// sale, as Eventbrite and Humanitix do (product decision 2026-10-28). `count` is
+// what this transaction voided, so a repeat adds nothing. A cancelled event sells
+// nothing again. The caller holds lockOrderInventory.
+export async function returnTicketsToSale(tx: Prisma.TransactionClient, orderId: string, count: number) {
+  if (count <= 0) return;
+  const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { ticketTypeId: true, event: { select: { cancelledAt: true } } } });
+  if (order.event.cancelledAt) return;
+  await tx.ticketType.update({ where: { id: order.ticketTypeId }, data: { quantity: { increment: count } } });
+}
+
 export type EventInventory = {
   capacity: number | null;
   // Valid issued tickets plus active unexpired holds across every ticket type.

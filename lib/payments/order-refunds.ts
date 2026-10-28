@@ -5,6 +5,7 @@ import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
+import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
 import { formatMoney, orderReference } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
@@ -344,18 +345,19 @@ async function queueRefundTroubleNotice(
   });
 }
 
-// A confirmed ticket refund voids the tickets (attendance is kept, stock is
-// not restored) and emails the buyer.
+// A confirmed ticket refund voids the tickets (attendance is kept), puts their
+// places back on sale and emails the buyer.
 async function refundTickets(tx: Prisma.TransactionClient, request: { id: string; orderId: string; organisationId: string; amount: number }, now: Date) {
   const order = await tx.order.update({
     where: { id: request.orderId },
     data: { refundStatus: "refunded" },
     select: { buyerEmailSnapshot: true, event: { select: { title: true } } }
   });
-  await tx.ticket.updateMany({
+  const voided = await tx.ticket.updateMany({
     where: { orderId: request.orderId, validity: { not: "void" } },
     data: { validity: "void", validityReason: "refunded", validityChangedAt: now }
   });
+  await returnTicketsToSale(tx, request.orderId, voided.count);
   if (order.buyerEmailSnapshot) {
     await enqueueNotification(tx, {
       eventKey: `refund/${request.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: request.organisationId,
@@ -405,6 +407,8 @@ async function applyOutcome(
   let alert = null as RefundAlert | null;
   const result = await prisma.$transaction(async (tx) => {
     const request = await tx.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
+    // A confirmed ticket refund puts the places back on sale: event and ticket type first.
+    if (request.orderId) await lockOrderInventory(tx, request.orderId);
     if (!(await lockPurchase(tx, request))) return request.status;
     if (webhook) {
       // Journalled with the outcome, so a delivery that fails to apply is

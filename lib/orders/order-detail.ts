@@ -1,3 +1,4 @@
+import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { queueManualRefundNotice } from "@/lib/payments/compensation-notices";
 import { latestRefundRequest } from "@/lib/payments/order-refunds";
@@ -155,7 +156,10 @@ export async function markOrganisationOrderManuallyRefunded(
       },
       select: { id: true }
     });
-    if (!owned || !(await lockOrder(tx, orderId))) {
+    if (!owned) throw new OrganisationOrderAccessError();
+    // The mark puts the places back on sale: event and ticket type before the order.
+    await lockOrderInventory(tx, orderId);
+    if (!(await lockOrder(tx, orderId))) {
       throw new OrganisationOrderAccessError();
     }
     const order = await tx.order.findUniqueOrThrow({
@@ -196,7 +200,8 @@ export async function markOrganisationOrderManuallyRefunded(
     });
     if (updated.count === 0) return;
     // The buyer has their money back, so the tickets stop admitting, as after a refund made in Stripe.
-    await tx.ticket.updateMany({ where: { orderId, validity: { not: "void" } }, data: { validity: "void", validityReason: "refunded_outside", validityChangedAt: new Date() } });
+    const voided = await tx.ticket.updateMany({ where: { orderId, validity: { not: "void" } }, data: { validity: "void", validityReason: "refunded_outside", validityChangedAt: new Date() } });
+    await returnTicketsToSale(tx, orderId, voided.count);
     await appendOrderLifecycleEvent(tx, {
       orderId,
       type: "manual_refund_marked",

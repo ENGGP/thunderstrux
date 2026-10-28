@@ -59,5 +59,7 @@ export function buyerPurchaseBadge(order: Parameters<typeof ticketOrderProjectio
   if (projection === "cancelled") return { status: projection, label: releasedByBuyer(order) ? "You cancelled" : "Cancelled by the society" };
   // Payment review is either a charge awaiting compensation or a partial refund made in Stripe.
   if (projection === "review") return { status: projection, label: order.requiresCompensationReview ? "Payment issue" : "Partly refunded" };
+  // A lost dispute is the buyer's money back; staff still see it as disputed.
+  if (projection === "disputed" && order.disputeStatus === "lost") return { status: "refunded", label: "Refunded by your bank" };
   return { status: projection };
 }

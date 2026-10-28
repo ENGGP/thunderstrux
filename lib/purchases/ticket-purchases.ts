@@ -63,6 +63,7 @@ const buyerTimelineLabels: Partial<Record<OrderLifecycleEventType, string>> = {
   compensation_refunded: "Refunded",
   external_refund_recorded: "Refund recorded",
   dispute_opened: "Payment disputed",
+  dispute_closed: "Dispute closed",
   dispute_resolved: "Tickets restored",
   free_cancelled: "Cancelled by the society",
   order_expired: "Checkout didn't complete"
@@ -94,13 +95,16 @@ export async function getOwnTicketPurchase(userId: string, orderId: string) {
     where: { orderId, type: { in: Object.keys(buyerTimelineLabels) as OrderLifecycleEventType[] } },
     orderBy: { sequence: "desc" },
     take: 10,
-    select: { id: true, type: true, source: true, createdAt: true }
+    select: { id: true, type: true, source: true, reason: true, createdAt: true }
   });
   return {
     ...order,
     history: history.map((event) => ({
       id: event.id,
-      label: event.type === "free_cancelled" && event.source === "buyer_action" ? "You cancelled your registration" : buyerTimelineLabels[event.type] as string,
+      label: event.type === "free_cancelled" && event.source === "buyer_action" ? "You cancelled your registration"
+        // The dispute's reason is Stripe's status: "lost" means the buyer's bank returned the money.
+        : event.type === "dispute_closed" && event.reason === "lost" ? "Refunded by your bank"
+        : buyerTimelineLabels[event.type] as string,
       createdAt: event.createdAt
     }))
   };

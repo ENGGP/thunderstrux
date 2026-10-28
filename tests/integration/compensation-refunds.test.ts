@@ -24,7 +24,9 @@ const stripeMock = vi.hoisted(() => ({
     list: vi.fn(),
     create: vi.fn(),
     retrieve: vi.fn()
-  }
+  },
+  transfers: { retrieve: vi.fn() },
+  applicationFees: { retrieve: vi.fn() }
 }));
 
 vi.mock("@/lib/stripe", async (importOriginal) => ({
@@ -98,6 +100,8 @@ describe("compensation refunds", () => {
     stripeMock.refunds.list.mockReset();
     stripeMock.refunds.create.mockReset();
     stripeMock.refunds.retrieve.mockReset();
+    stripeMock.transfers.retrieve.mockReset();
+    stripeMock.applicationFees.retrieve.mockReset();
   });
 
   test("fences and completes one eligible automatic destination-charge refund", async () => {
@@ -585,5 +589,82 @@ describe("compensation refunds", () => {
     expect(await confirmed.json()).toEqual({ confirmed: true });
     await expect(prisma.compensationRefundJob.findUniqueOrThrow({ where: { id: fixture.job.id } })).resolves.toMatchObject({ state: "refunded" });
     expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.compensation_refund_confirmed", targetId: fixture.order.id } })).toMatchObject({ actorUserId: fixture.owner.id });
+  });
+  // PAY-026: a compensation refund that stops for a person raises an alert.
+  const reviewAlerts = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"compensation_refund_needs_review"')).map((line) => JSON.parse(line));
+
+  test("a refund that goes to review or fails alerts a person once", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unrelated = await automaticCompensationFixture();
+    configureEligibleStripe(unrelated);
+    stripeMock.refunds.list.mockResolvedValue({ data: [{ id: "re_other", metadata: {}, status: "succeeded" }] });
+    await processCompensationRefundBatch();
+
+    const declined = await automaticCompensationFixture();
+    configureEligibleStripe(declined);
+    stripeMock.refunds.create.mockResolvedValue({
+      id: "re_declined_alert", status: "failed", amount: declined.order.totalAmount, currency: "aud", payment_intent: "pi_compensation",
+      metadata: { compensationRefundJobId: declined.job.id, orderId: declined.order.id }
+    });
+    await processCompensationRefundBatch();
+
+    expect(reviewAlerts(error)).toEqual([
+      expect.objectContaining({ compensationRefundJobId: unrelated.job.id, orderId: unrelated.order.id, state: "review_required", reason: "existing_refund_requires_review" }),
+      expect.objectContaining({ compensationRefundJobId: declined.job.id, orderId: declined.order.id, state: "refund_failed", reason: "provider_refund_failed" })
+    ]);
+  });
+
+  // PAY-025: Stripe returns the money to Thunderstrux's balance; a person repays the buyer.
+  test("a refund that came back from the bank after succeeding keeps the job refunded, alerts once and tells the buyer", async () => {
+    const fixture = await automaticCompensationFixture();
+    await prisma.compensationRefundJob.update({
+      where: { id: fixture.job.id },
+      data: { state: "refunded", stripePaymentIntentId: "pi_compensation", stripeRefundId: "re_returned", resolvedAt: new Date() }
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const refundEvent = (id: string, type: string) => ({
+      id, type, created: Math.floor(Date.now() / 1000),
+      data: { object: {
+        id: "re_returned", status: "failed", failure_reason: "lost_or_stolen_card", amount: fixture.order.totalAmount, currency: "aud", payment_intent: "pi_compensation",
+        metadata: { compensationRefundJobId: fixture.job.id, orderId: fixture.order.id }
+      } }
+    }) as never;
+
+    await reconcileRefundEvent(refundEvent("evt_refund_returned", "refund.failed"));
+    await reconcileRefundEvent(refundEvent("evt_refund_returned_update", "refund.updated"));
+
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refunded", providerStatus: "failed", lastErrorCode: "provider_refund_returned" });
+    expect(await prisma.orderLifecycleEvent.findMany({ where: { orderId: fixture.order.id, type: "compensation_refund_failed" }, select: { reason: true } })).toEqual([{ reason: "returned_by_bank" }]);
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: `compensation-refund-returned/${fixture.job.id}` } })).toBe(1);
+    expect(reviewAlerts(error)).toEqual([expect.objectContaining({ compensationRefundJobId: fixture.job.id, state: "refunded", reason: "returned_by_bank" })]);
+  });
+
+  // PAY-027: a Dashboard refund settles the order only once the money came back from the society too.
+  test("manual confirmation needs the society's transfer reversed and Thunderstrux's fee refunded", async () => {
+    const fixture = await automaticCompensationFixture();
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { state: "review_required" } });
+    const total = fixture.order.totalAmount;
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: "re_dashboard", status: "succeeded", amount: total, currency: "aud", payment_intent: "pi_dashboard", metadata: {} });
+    stripeMock.checkout.sessions.retrieve.mockResolvedValue({
+      id: fixture.order.stripeSessionId, payment_status: "paid", amount_total: total, currency: "aud", metadata: { orderId: fixture.order.id },
+      payment_intent: {
+        id: "pi_dashboard", transfer_data: { destination: fixture.organisation.stripeAccountId },
+        latest_charge: { id: "ch_dashboard", amount_refunded: total, transfer: "tr_dashboard", application_fee: "fee_dashboard" }
+      }
+    });
+    const confirm = () => confirmCompensationRefund(fixture.organisation.id, fixture.order.id, "re_dashboard", fixture.member.id);
+
+    stripeMock.transfers.retrieve.mockResolvedValue({ id: "tr_dashboard", amount_reversed: 0 });
+    stripeMock.applicationFees.retrieve.mockResolvedValue({ id: "fee_dashboard", amount: 100, amount_refunded: 100 });
+    await expect(confirm()).rejects.toMatchObject({ code: "manual_refund_not_reversed", message: expect.stringContaining("Reverse the transfer") });
+    stripeMock.transfers.retrieve.mockResolvedValue({ id: "tr_dashboard", amount_reversed: total });
+    stripeMock.applicationFees.retrieve.mockResolvedValue({ id: "fee_dashboard", amount: 100, amount_refunded: 0 });
+    await expect(confirm()).rejects.toMatchObject({ code: "manual_refund_not_reversed" });
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "review_required" });
+
+    stripeMock.applicationFees.retrieve.mockResolvedValue({ id: "fee_dashboard", amount: 100, amount_refunded: 100 });
+    await confirm();
+    await expect(jobState(fixture.job.id)).resolves.toMatchObject({ state: "refunded", stripeRefundId: "re_dashboard" });
   });
 });

@@ -101,12 +101,13 @@ Societies are paid after their event, as Humanitix and Eventbrite pay organisers
 
   | Sale | Held while |
   | --- | --- |
-  | Ticket order of the society's event | until `ticketHoldAfterEventMs` (2 days) after the event ends, or after the latest end it had (`EventChange.previousEndTime`), whichever is later, so moving the end earlier can't release it (SEC-029) |
+  | Ticket order of the society's event | until `ticketHoldAfterEventMs` (2 days) after the event ends, or after the latest end it ever had (`Event.latestEndTime`, kept by every edit, tickets or not), whichever is later, so moving the end earlier can't release it (SEC-029, SEC-032) |
   | Membership or merchandise order | `commerceHoldMs` (7 days) after payment |
-  | Any of them | while `disputeStatus = open`, under compensation review, or a dispute reversal is `pending` or `uncertain` |
+  | Any of them | while `disputeStatus = open`, under compensation review, a dispute reversal is `pending` or `uncertain`, or a refund made in Stripe wasn't taken back from the society (`externalUnreversedAmount` > 0, PAY-027) |
 
-  Each sale holds its society share: total less `feeAmount` less `externalRefundedAmount`. Money already back with the buyer holds nothing: ticket orders refunded by compensation (`isManuallyRefunded` with a `CompensationRefundJob`), and lost disputes whose transfer reversal succeeded. A staff "refunded outside Thunderstrux" mark proves nothing at Stripe, so that sale waits for its event like any other (PAY-016).
-- **Payout events:** the Connect webhook passes `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated` to `reconcilePayoutEvent`. `payout.created` records a payout Stripe made although the worker saw an error, so the one-a-day check sees it; until it arrives a second attempt can only send what was released since. It re-reads the payout on the connected account and records `SocietyPayoutStatus`: `paid`, `failed` (failed or canceled) or `pending`. A first move to `failed` alerts `society_payout_failed`. A payout with no known society, or recorded under another account, logs `payouts.webhook.ignored` and changes nothing.
+  Each sale holds its society share: total less `feeAmount` less what was refunded outside Thunderstrux and taken back from its transfer (`externalRefundedAmount` − `externalUnreversedAmount`, from Stripe's `amount_refunded` and the transfer's `amount_reversed`, re-read before each payout run). Money already back with the buyer holds nothing: ticket orders refunded by compensation (`isManuallyRefunded` with a `CompensationRefundJob`), and lost disputes whose transfer reversal succeeded. A staff "refunded outside Thunderstrux" mark proves nothing at Stripe, so that sale waits for its event like any other (PAY-016).
+- **Payout events:** the Connect webhook passes `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled` and `payout.updated` to `reconcilePayoutEvent`. `payout.created` records a payout Stripe made although the worker saw an error, so the one-a-day check sees it; until it arrives a second attempt can only send what was released since. It re-reads the payout on the connected account and records `SocietyPayoutStatus`: `paid`, `failed` (failed or canceled) or `pending`. A first move to `failed` alerts `society_payout_failed`. A payout with no known society, or recorded under another account, logs `payouts.webhook.ignored` and changes nothing. One without the worker's `metadata.organisationId` (an Instant Payout, or Stripe's own schedule) alerts `society_payout_unexpected` and goes back to manual payouts (PAY-028).
+- **Payout account changes (SEC-033):** `account.external_account.created`, and `.updated` when another account becomes the default, email every `stripe:manage` staff member once per event (`notifyPayoutAccountChanged`) and audit `stripe_connect.payout_account_changed`.
 - **Payments page:** the payouts card shows money waiting for events (amount, event count, next event end), commerce money from the last 7 days, what is on its way (pending payouts), and the last 5 payouts. A refused payout shows a warning until a later payout is paid. Every payout opens in the Express dashboard.
 - **Disconnect** is refused while any money is held; once nothing is, it restores Stripe's daily schedule. If disconnect is then refused under the lock, the next worker check puts the account back on manual payouts.
 - **Not built:** early payouts and a per-payout breakdown of orders. A payout is the balance less what is held, not a set of orders.
@@ -168,7 +169,7 @@ A free price completes without reading any Stripe configuration. Commerce checko
 | Endpoint | Secret | Events handled |
 | --- | --- | --- |
 | `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` |
-| `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
+| `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.updated`, `account.external_account.created`, `account.external_account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
 
 Both endpoints run the same checks, in order:
 
@@ -213,7 +214,7 @@ Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STR
 ```bash
 stripe login
 stripe listen --latest \
-  --events checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated \
+  --events checkout.session.completed,checkout.session.expired,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated \
   --forward-to localhost:3000/api/payments/webhook \
   --forward-connect-to localhost:3000/api/stripe/connect/webhook
 ```

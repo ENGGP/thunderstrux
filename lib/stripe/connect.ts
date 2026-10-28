@@ -403,6 +403,38 @@ export async function refreshConnectedAccount(accountId: string) {
   return persistConnectedAccountStatus(await getStripe().accounts.retrieve(accountId));
 }
 
+// SEC-033: where a society's payouts go changed: Stripe added a bank account (or
+// debit card), or made another one the default. Its Stripe managers hear of it
+// whoever made the change, so a committee notices one it didn't make.
+export async function notifyPayoutAccountChanged(event: Stripe.Event) {
+  const external = event.data.object as (Stripe.BankAccount | Stripe.Card) & { default_for_currency?: boolean | null };
+  const previous = event.data.previous_attributes as { default_for_currency?: boolean | null } | undefined;
+  if (event.type === "account.external_account.updated" && !(previous && "default_for_currency" in previous && external.default_for_currency)) return { count: 0 };
+  const accountId = event.account;
+  if (!accountId) return { count: 0 };
+  const where = external.object === "bank_account" ? `${external.bank_name ?? "a bank account"} ending ${external.last4}` : `a card ending ${external.last4}`;
+  return prisma.$transaction(async (tx) => {
+    const organisations = await tx.organisation.findMany({ where: { stripeAccountId: accountId }, select: { id: true, slug: true, name: true } });
+    for (const organisation of organisations) {
+      // Stripe may deliver an event twice; the email is keyed to it, and so is this row.
+      const recorded = await tx.auditLog.findFirst({
+        where: { organisationId: organisation.id, action: "stripe_connect.payout_account_changed", metadata: { path: ["stripeEventId"], equals: event.id } },
+        select: { id: true }
+      });
+      if (recorded) continue;
+      await notifyStripeManagers(tx, organisation, `stripe-payout-account/${organisation.id}/${event.id}`, {
+        subject: `Payout details changed for ${organisation.name}`,
+        message: `Payouts for ${organisation.name} can now go to ${where}. If nobody on your committee made this change, contact Thunderstrux straight away.`
+      });
+      await tx.auditLog.create({ data: {
+        organisationId: organisation.id, actorUserId: null, action: "stripe_connect.payout_account_changed", targetType: "Organisation", targetId: organisation.id,
+        metadata: { stripeAccountId: accountId, stripeEventId: event.id, last4: external.last4 }
+      } });
+    }
+    return { count: organisations.length };
+  });
+}
+
 // The webhook and a Settings refresh both save through here, so a transition
 // they save at the same time is emailed once. Staff who manage Stripe hear when
 // Stripe pauses card payments, and once per deadline Stripe sets for more details.

@@ -134,6 +134,9 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | Free merchandise order cancelled | `merchandise-cancelled/{orderId}` | `business_notice` | `tests/integration/merchandise-after-sale.test.ts` |
 | Confirmed refund (ticket or commerce) | `refund/{requestId}` | `business_notice` | `tests/integration/order-refunds.test.ts`, `tests/integration/membership-refunds.test.ts` |
 | Compensation refund confirmed (ticket) | `compensation-refund/{jobId}` | `business_notice` | `tests/integration/compensation-refunds.test.ts` |
+| A refund came back from the buyer's bank (PAY-025) | `refund-returned/{requestId}`, `compensation-refund-returned/{jobId}` | `business_notice` | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts` |
+| A cancelled event's refund failed (PAY-026) | `refund-failed/{requestId}` | `business_notice` | `tests/integration/order-refunds.test.ts` |
+| Payout bank account added or made default, to each `stripe:manage` staff member (SEC-033) | `stripe-payout-account/{organisationId}/{stripeEventId}` | `business_notice` | `tests/integration/stripe-connect-service.test.ts` |
 | Free ticket registration cancelled | `cancellation/{orderId}` | `business_notice` | `tests/integration/free-cancellation.test.ts` |
 | Payment review (ticket or commerce) | `payment-review/{orderId}` | `business_notice` | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/commerce-checkout.test.ts` |
 | Event cancelled (one per holder; each refund then sends its own `refund/{requestId}`) | `event-cancelled/{eventId}/{orderId}` | `event_cancelled` | `tests/integration/event-cancellation.test.ts` |
@@ -181,7 +184,7 @@ Both requeue routes take a strict `{reason}` of 8 to 500 characters through `val
 ## Failure and recovery
 
 - **`email_outbox_retry_exhausted` or `notification_outbox_retry_exhausted`:** fix the provider or environment, check the provider's idempotency record (a failed finalisation doesn't prove nothing was sent), then requeue. Past 23 hours a notification can't be requeued; the owning service must issue a new intent.
-- **Backlog:** the operations monitor watches queue age ([[Production Operations#Logs, metrics and alerts]]). Without the scheduled worker, orders are still fulfilled but buyers get no email.
+- **Backlog:** the operations monitor watches queue age ([[Production Operations Alerts]]). Without the scheduled worker, orders are still fulfilled but buyers get no email.
 - **Lost notification key:** encrypted jobs can't be read (`invalid_payload`). Back the key up with database backups; an app rollback keeps the table and key and pauses the worker.
 - **Rollback past `20261108010000_event_changes_and_preferences`:** older code records no `EventChange`, so its edits email nobody; an older worker ignores pending changes, which the new worker sends when it returns (late, not lost).
 - **Ticket outbox checks:**

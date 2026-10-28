@@ -64,7 +64,7 @@ Next.js App Router with React and TypeScript; Prisma on PostgreSQL 16; Auth.js (
 - Cookie-authenticated mutations pass `enforceTrustedMutationRequest` (`lib/security/request-guard.ts`): first-party Origin or Referer and a session-bound CSRF token. Guest mutations use `verifyGuestCsrf`. Stripe webhooks verify their signed raw body instead.
 - Rate limits: `enforceRateLimit` (`lib/security/rate-limit.ts`), Redis-backed, bucket keys hashed; security-sensitive policies fail closed, door and purchase paths fail open with a warning. Policies and numbers: [[Route Security Inventory#Rate limits]].
 - `next.config.ts` sets the Content-Security-Policy, `nosniff`, `X-Frame-Options: DENY`, referrer and permissions policies, HSTS in production, and `private, no-store` on every `/api` answer except `/api/public/*` and health.
-- Logs are one JSON object a line with redaction (`lib/ops/logger.ts`); alerts and metrics: [[Production Operations#Logs, metrics and alerts]].
+- Logs are one JSON object a line with redaction (`lib/ops/logger.ts`); alerts and metrics: [[Production Operations Alerts]].
 
 ## Multi-tenancy
 

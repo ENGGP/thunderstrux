@@ -13,7 +13,7 @@ import { jsonRequest, routeContext } from "@/tests/helpers/http";
 import { createEvent, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 const webhookSecret = "whsec_disputes_test";
-const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), disputeUpdate: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), disputeUpdate: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn(), intent: vi.fn() }));
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
   return {
@@ -26,6 +26,7 @@ vi.mock("@/lib/stripe", async () => {
       refunds: { list: stripe.refunds, create: stripe.create },
       disputes: { retrieve: stripe.dispute, update: stripe.disputeUpdate },
       charges: { retrieve: stripe.charge },
+      paymentIntents: { retrieve: stripe.intent },
       transfers: { retrieve: stripe.transfer, listReversals: stripe.reversals, createReversal: stripe.reverse },
       // Real signature checking, so the route is exercised as Stripe calls it.
       webhooks: new RealStripe("sk_test_disputes").webhooks
@@ -50,6 +51,8 @@ async function paidOrder() {
     payment_intent: { id: intentId, currency: "aud", amount_received: 3000, transfer_data: { destination: owner.organisation.stripeAccountId }, latest_charge: { id: chargeId, disputed: false } }
   });
   stripe.refunds.mockResolvedValue({ data: [] });
+  // Refunds Thunderstrux sends reverse the transfer, so nothing is owed back by default (PAY-027).
+  stripe.intent.mockResolvedValue({ id: intentId, latest_charge: null });
   return { owner, event, order, intentId, chargeId };
 }
 
@@ -289,6 +292,26 @@ describe("refunds made outside Thunderstrux", () => {
     expect(full.tickets).toEqual([{ validity: "void", validityReason: "refunded_outside" }, { validity: "void", validityReason: "refunded_outside" }]);
     expect(ticketOrderProjection(full)).toBe("refunded");
     await expect(requestOrderRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "already_refunded" });
+  });
+  // PAY-027: Thunderstrux paid the buyer back, so the society's share is owed until Stripe shows it reversed.
+  test("a refund in Stripe that didn't reverse the transfer is recorded as owed by the society and alerts once", async () => {
+    const fixture = await paidOrder();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    stripe.refunds.mockResolvedValue({ data: [dashboardRefund(fixture, 3000)] });
+    stripe.intent.mockResolvedValue({ id: fixture.intentId, latest_charge: { id: fixture.chargeId, amount_refunded: 3000, transfer: "tr_not_reversed" } });
+    stripe.transfer.mockResolvedValue({ id: "tr_not_reversed", amount_reversed: 0 });
+    await reconcileExternalRefundEvent(signedEvent("refund.created", dashboardRefund(fixture, 3000)));
+    await reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(fixture, 3000)));
+
+    expect(await orderState(fixture.order.id)).toMatchObject({ externalRefundedAmount: 3000, externalUnreversedAmount: 3000, refundStatus: "refunded" });
+    const alerts = () => error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"outside_refund_not_reversed"')).map((line) => JSON.parse(line));
+    expect(alerts()).toEqual([expect.objectContaining({ orderId: fixture.order.id, unreversed: 3000 })]);
+
+    // Reversed by hand in Stripe: the next refund event records it, with no new alert.
+    stripe.transfer.mockResolvedValue({ id: "tr_not_reversed", amount_reversed: 3000 });
+    await reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(fixture, 3000)));
+    expect(await orderState(fixture.order.id)).toMatchObject({ externalUnreversedAmount: 0 });
+    expect(alerts()).toHaveLength(1);
   });
 });
 

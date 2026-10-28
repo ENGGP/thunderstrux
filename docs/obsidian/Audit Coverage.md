@@ -66,6 +66,7 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 | `POST .../staff/invites`, `.../[inviteId]/resend`, `.../[inviteId]/revoke`; `POST /api/staff/invites/accept` | `lib/staff/invites.ts` | `staff.invite.created`, `staff.invite.resent`, `staff.invite.revoked`, `staff.invite.accepted` | role; the invited address in the sentence |
 | `POST /api/me/mfa/confirm`, `verify`, and every fresh-code staff action (refunds, cancellations, revoke, Connect dashboard and disconnect) | `lib/security/staff-mfa.ts` | `staff_mfa.enabled`, `staff_mfa.verified`, `staff_mfa.recovery_used`, one row per society the person staffs | — |
 | `POST /api/stripe/connect/onboard` (new account only), `disconnect`, `dashboard` | `lib/stripe/connect.ts` | `stripe_connect.account_created`, `stripe_connect.disconnected`, `stripe_connect.dashboard_opened` (who opened the Express Dashboard, where payout details can change) | — |
+| Connect webhook `account.external_account.created`, `.updated` (made default) | `lib/stripe/connect.ts` | `stripe_connect.payout_account_changed` (SEC-033; no actor, the Stripe event id and last 4 digits) | — |
 | `POST /api/guest/orders/[orderId]/claim` | `lib/guest/guest-claim.ts` | `order.guest_claimed` | — |
 | `POST /api/purchases/tickets/[orderId]/cancel`, `POST /api/commerce/orders/[orderId]/cancel` | `lib/purchases/pending-checkout.ts` | none: the buyer's cancel writes lifecycle events only (source `checkout`) | — |
 

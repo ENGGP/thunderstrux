@@ -28,6 +28,17 @@ const maxAttempts = 6;
 const idOf = (value: string | { id: string } | null | undefined) => (typeof value === "string" ? value : value?.id ?? null);
 const reversalKey = (stripeDisputeId: string) => `dispute-reversal:${stripeDisputeId}`;
 
+// PAY-027: of a payment's refunds, what Stripe shows not yet taken back from the
+// society's transfer, whether the reversal came with the refund or by hand. Takes
+// the payment's charge, or its PaymentIntent id.
+// shortcut: a lost dispute's reversal also counts toward amount_reversed, so it can hide an unreversed refund on the same payment; that order stays held by its dispute until the reversal settles.
+export async function unreversedRefundAmount(stripe: Stripe, payment: Stripe.Charge | string) {
+  const charge = typeof payment === "string" ? (await stripe.paymentIntents.retrieve(payment, { expand: ["latest_charge"] })).latest_charge : payment;
+  if (!charge || typeof charge === "string" || charge.amount_refunded === 0) return 0;
+  const transfer = typeof charge.transfer === "string" ? await stripe.transfers.retrieve(charge.transfer) : charge.transfer;
+  return transfer ? Math.max(0, charge.amount_refunded - transfer.amount_reversed) : 0;
+}
+
 // Called with the purchase locked, when Stripe has just closed the dispute as lost.
 export async function queueDisputeReversal(tx: Prisma.TransactionClient, stripeDisputeId: string, now: Date) {
   await tx.purchaseDispute.updateMany({

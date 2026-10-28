@@ -4,7 +4,7 @@ import { POST as refundRoute } from "@/app/api/orders/[orderId]/refunds/route";
 import { prisma } from "@/lib/db";
 import { lockOrder } from "@/lib/payments/order-lifecycle";
 import { processCompensationRefundBatch } from "@/lib/payments/compensation-refunds";
-import { OrderRefundError, orderReference, processOrderRefundBatch, reconcileOrderRefundEvent, requestOrderRefund } from "@/lib/payments/order-refunds";
+import { OrderRefundError, openOrderRefund, orderReference, processOrderRefundBatch, reconcileOrderRefundEvent, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { createTestRateLimitBackend, setRateLimitTestBackend } from "@/lib/security/rate-limit";
 import { setMockSession } from "@/tests/helpers/auth";
 import { enrolStaffMfa } from "@/tests/helpers/mfa";
@@ -316,5 +316,70 @@ describe("whole-order refunds", () => {
     await processCompensationRefundBatch();
     expect(await prisma.compensationRefundJob.findUniqueOrThrow({ where: { orderId: fixture.order.id } })).toMatchObject({ state: "review_required", lastErrorCode: "local_state_not_eligible" });
     expect(stripe.create).not.toHaveBeenCalled();
+  });
+});
+
+// PAY-025, PAY-026: a refund that fails, or comes back from the bank after
+// succeeding, reaches a person, and the buyer hears when money they were promised isn't coming.
+describe("refunds that fail or come back", () => {
+  const refundEvent = (refund: Stripe.Refund, type = "refund.updated") =>
+    ({ id: unique("evt"), type, created: Math.floor(Date.now() / 1000), data: { object: refund } }) as unknown as Stripe.Event;
+  const alerts = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"refund_failed"')).map((line) => JSON.parse(line));
+
+  test("a refund that succeeded and then came back from the bank keeps the order refunded, alerts once and tells the buyer", async () => {
+    const fixture = await paidOrder();
+    let sent: Stripe.Refund | undefined;
+    stripe.create.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => (sent = providerRefund(fixture, params.metadata.refundRequestId)));
+    const refunded = await requestOrderRefund(refundInput(fixture));
+    expect(refunded.status).toBe("succeeded");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const returned = { ...sent, status: "failed", failure_reason: "expired_or_canceled_card" } as Stripe.Refund;
+    await reconcileOrderRefundEvent(refundEvent(returned, "refund.failed"));
+    // Stripe also sends refund.updated for the same change: nothing more happens.
+    await reconcileOrderRefundEvent(refundEvent(returned));
+
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: refunded.refundRequestId } }))
+      .toMatchObject({ status: "succeeded", providerStatus: "failed", lastErrorCode: "provider_refund_returned" });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
+    expect(await prisma.ticket.count({ where: { orderId: fixture.order.id, validity: "void" } })).toBe(2);
+    expect(await prisma.orderLifecycleEvent.findMany({ where: { orderId: fixture.order.id, type: "refund_failed" }, select: { reason: true } })).toEqual([{ reason: "returned_by_bank" }]);
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: `refund-returned/${refunded.refundRequestId}`, recipient: "buyer@example.com" } })).toBe(1);
+    expect(alerts(error)).toEqual([expect.objectContaining({ refundRequestId: refunded.refundRequestId, orderId: fixture.order.id, reason: "returned_by_bank", code: "expired_or_canceled_card" })]);
+  });
+
+  test("a refund the worker sends for a cancelled event that Stripe refuses alerts and tells the buyer; staff's own refused refund doesn't alert", async () => {
+    const fixture = await paidOrder();
+    await prisma.event.update({ where: { id: fixture.event.id }, data: { cancelledAt: new Date() } });
+    const request = await prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, actor: { id: fixture.owner.user.id }, reason: "Event cancelled: storm" }));
+    stripe.create.mockRejectedValue(Object.assign(new Error("insufficient funds"), { type: "StripeInvalidRequestError" }));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await processOrderRefundBatch(25, new Date(Date.now() + 60_000));
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } })).toMatchObject({ status: "failed", lastErrorCode: "provider_refused" });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: null });
+    expect(alerts(error)).toEqual([expect.objectContaining({ refundRequestId: request.id, orderId: fixture.order.id, reason: "provider_refused" })]);
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: `refund-failed/${request.id}`, recipient: "buyer@example.com" } })).toBe(1);
+
+    // Staff see their own refused refund on screen: no alert, and no email for an event still on.
+    const staff = await paidOrder();
+    stripe.create.mockReset().mockRejectedValue(Object.assign(new Error("insufficient funds"), { type: "StripeInvalidRequestError" }));
+    await expect(requestOrderRefund(refundInput(staff))).rejects.toMatchObject({ kind: "provider_refused" });
+    expect(alerts(error)).toHaveLength(1);
+  });
+
+  test("a pending refund Stripe later fails alerts, and a buyer whose event is still on isn't emailed", async () => {
+    const fixture = await paidOrder();
+    let sent: Stripe.Refund | undefined;
+    stripe.create.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => (sent = providerRefund(fixture, params.metadata.refundRequestId, "pending")));
+    const pending = await requestOrderRefund(refundInput(fixture));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await reconcileOrderRefundEvent(refundEvent({ ...sent, status: "failed", failure_reason: "declined" } as Stripe.Refund, "refund.failed"));
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: pending.refundRequestId } })).toMatchObject({ status: "failed" });
+    expect(await prisma.ticket.count({ where: { orderId: fixture.order.id, validity: "active" } })).toBe(2);
+    expect(alerts(error)).toEqual([expect.objectContaining({ refundRequestId: pending.refundRequestId, reason: "provider_refund_failed", code: "declined" })]);
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: "refund-" } } })).toBe(0);
   });
 });

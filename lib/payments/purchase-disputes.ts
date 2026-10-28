@@ -6,7 +6,7 @@ import { markCommerceExternalRefundReviewed } from "@/lib/commerce/payment-recov
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
-import { queueDisputeReversal } from "@/lib/payments/dispute-reversals";
+import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -180,20 +180,22 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
   const outside = refunds.data
     .filter((item) => item.status === "succeeded" && !item.metadata?.refundRequestId && !item.metadata?.compensationRefundJobId)
     .reduce((sum, item) => sum + item.amount, 0);
+  // PAY-027: payouts hold what a refund didn't take back from the society.
+  const unreversed = await unreversedRefundAmount(stripe, intentId);
   const orderId = payment.order.id;
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    if (!(await journal(tx, event)) || !(await lockOrder(tx, orderId))) return;
+  const recorded = await prisma.$transaction(async (tx) => {
+    if (!(await journal(tx, event)) || !(await lockOrder(tx, orderId))) return false;
     const order = await tx.order.findUniqueOrThrow({
       where: { id: orderId },
-      select: { status: true, totalAmount: true, externalRefundedAmount: true, event: { select: { organisationId: true } } }
+      select: { status: true, totalAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, event: { select: { organisationId: true } } }
     });
-    if (outside === order.externalRefundedAmount) return;
+    if (outside === order.externalRefundedAmount && unreversed === order.externalUnreversedAmount) return false;
     // shortcut: a later drop (a refund that failed after succeeding) is recorded but voided tickets stay void; staff review it in Stripe.
     const full = outside >= order.totalAmount && order.status === "paid";
     await tx.order.update({
       where: { id: orderId },
-      data: { externalRefundedAmount: outside, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded" } : {}) }
+      data: { externalRefundedAmount: outside, externalUnreversedAmount: unreversed, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded" } : {}) }
     });
     if (full) {
       await tx.ticket.updateMany({ where: { orderId, validity: { not: "void" } }, data: { validity: "void", validityReason: "refunded_outside", validityChangedAt: now } });
@@ -203,9 +205,18 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
     });
     await tx.auditLog.create({ data: {
       organisationId: order.event.organisationId, actorUserId: null, action: "order.external_refund_recorded", targetType: "Order", targetId: orderId,
-      metadata: { refundId: refund.id, refundedOutside: outside, totalAmount: order.totalAmount }
+      metadata: { refundId: refund.id, refundedOutside: outside, totalAmount: order.totalAmount, notReversed: unreversed }
     } });
+    return true;
   });
+  if (recorded && unreversed > 0) alertOutsideRefundNotReversed({ orderId }, unreversed);
+}
+
+// PAY-027: a refund made in Stripe's Dashboard that didn't reverse the transfer.
+// Thunderstrux paid the buyer; the society's share stays held until Stripe shows it taken back.
+export function alertOutsideRefundNotReversed(purchase: { orderId: string } | { commerceOrderId: string }, unreversed: number) {
+  const id = "orderId" in purchase ? purchase.orderId : purchase.commerceOrderId;
+  emitOperationalAlert("outside_refund_not_reversed", { ...purchase, unreversed, dedupeKey: `outside_refund_not_reversed:${id}:${unreversed}` });
 }
 
 // Staff confirm they have looked at a partial refund made outside

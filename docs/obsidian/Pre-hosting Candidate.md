@@ -87,7 +87,7 @@ What a society pays per ticket on a one-ticket order when it absorbs the fee, wi
 
 - **Purchases:** each society answers for its own; its contact email and refund policy appear on every event and shop page.
 - **Thunderstrux contact:** none chosen, so `PLATFORM_SUPPORT_EMAIL` is unset; the founder decides address and owner before the pilot.
-- **Alerts:** the deployment's engineering on-call owns every alert; refund and dispute alerts also go to whoever handles society support ([[Production Operations#Logs, metrics and alerts]]).
+- **Alerts:** the deployment's engineering on-call owns every alert; refund and dispute alerts also go to whoever handles society support ([[Production Operations Alerts]]).
 
 ## Rollback
 

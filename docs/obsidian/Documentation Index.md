@@ -37,7 +37,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 | Add or read an environment variable | [[Environment Variables]] | `.env.example`, `docker/entrypoint.sh` |
 | Run the app or tests locally | [[Development Workflow]], [[Troubleshooting]], [[Seeding and Data]] | `package.json`, `scripts/`, `prisma/seed.mjs` |
 | Validate and deliver a change | [[Engineering Delivery Workflow]], [[E2E and Staging Payments]], [[Journey Qualification]] | `scripts/run-e2e.mjs`, `tests/` |
-| Deploy, schedule workers, handle an alert, back up or restore | [[Production Operations]], [[Production Operations Hosting]], [[Pre-hosting Candidate]] | `scripts/operations.mjs`, `scripts/droplet.mjs`, `lib/ops/` |
+| Deploy, schedule workers, handle an alert, back up or restore | [[Production Operations]], [[Production Operations Alerts]], [[Production Operations Hosting]], [[Pre-hosting Candidate]] | `scripts/operations.mjs`, `scripts/droplet.mjs`, `lib/ops/` |
 | Update dependencies | [[Dependency Automation]] | `renovate.json`, `package.json` |
 | Debug something that looks broken | [[Troubleshooting]], [[Issue and Defect Register]], [[Resolved Defects]] | — |
 | Check product intent or a target design | [[THUNDERSTRUX_PRD\|Product Requirements]], then the specs below by section | — |
@@ -48,7 +48,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 - **Architecture:** [[Architecture Overview]] · [[Thunderstrux Codebase Map]] · [[Database and Multi Tenancy]]
 - **Domain:** [[Authentication and Dashboard Access]] · [[Event Lifecycle]] · [[Ticket Check-in Implementation]] · [[Payment Lifecycle]] · [[Payment Lifecycle Refunds and Disputes]] · [[Stripe Payments and Connect]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]] · [[Analytics and Calendar]] · [[Email Delivery Implementation]] · [[Audit Coverage]]
 - **Interfaces:** [[API Reference]] · [[Route Security Inventory]] · [[Frontend and Backend Flow]] · [[UI Architecture Rules]] · [[Accessibility Review]]
-- **Operations:** [[Environment Variables]] · [[Development Workflow]] · [[Troubleshooting]] · [[Seeding and Data]] · [[Production Operations]] · [[Production Operations Hosting]] · [[Pre-hosting Candidate]] · [[Dependency Automation]] · [[E2E and Staging Payments]] · [[Journey Qualification]]
+- **Operations:** [[Environment Variables]] · [[Development Workflow]] · [[Troubleshooting]] · [[Seeding and Data]] · [[Production Operations]] · [[Production Operations Alerts]] · [[Production Operations Hosting]] · [[Pre-hosting Candidate]] · [[Dependency Automation]] · [[E2E and Staging Payments]] · [[Journey Qualification]]
 - **History** (dated; read only for evidence): [[Resolved Defects]] · [[Evidence Ledger]] · [[Project Handover 2026-10-25]] · [[Project Handover 2026-10-15]] · [[Project Handover 2026-10-12]] · [[Docker Architecture Assessment 2026-09-29]] · [[Production Readiness Verification 2026-09-22]] · [[Dependency Advisory Triage 2026-09-18]]
 
 ## Specs and plans outside the living notes
@@ -91,7 +91,7 @@ Every living note follows the same shape so it is quick to scan:
 | Every `lib/*` and `components/*` entry | [[Thunderstrux Codebase Map]] |
 | Every Prisma model and enum | [[Database and Multi Tenancy]] |
 | Every `process.env` read | [[Environment Variables]] |
-| Every alert name | [[Production Operations]] |
+| Every alert name | [[Production Operations Alerts]] |
 | Every permission and staff role | [[Authentication and Dashboard Access]] |
 | Every rate-limit policy | [[Route Security Inventory]] |
 | Every audit action | [[Audit Coverage]] |

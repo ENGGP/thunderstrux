@@ -16,6 +16,7 @@ import {
   PATCH as updateEventRoute
 } from "@/app/api/events/[eventId]/route";
 import { PATCH as publishEventRoute } from "@/app/api/events/[eventId]/publish/route";
+import { heldMoney } from "@/lib/payouts/release";
 import {
   eventTicketTypeMetrics,
   ticketMetrics
@@ -491,6 +492,39 @@ describe("event lifecycle", () => {
     // Moving it later is still fine.
     const later = await edit(event.startTime, new Date(event.endTime.getTime() + hour), event.version);
     expect(later.status).toBe(200);
+  });
+
+  test("with no ticket active, moving the end earlier still holds the sale until 2 days after the latest end (SEC-032)", async () => {
+    const { user, organisation } = await createOrganisationAccount({ stripeReady: true });
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const hour = 3_600_000;
+    const day = 24 * hour;
+    const created = await createEvent({ organisationId: organisation.id, status: "published" });
+    const end = new Date(Date.now() + 5 * day);
+    const event = await prisma.event.update({ where: { id: created.id }, data: { startTime: new Date(end.getTime() - 2 * hour), salesCloseAt: new Date(end.getTime() - 3 * hour), endTime: end }, include: { ticketTypes: true } });
+    // A paid sale whose tickets were all voided ("refunded outside"), so no ticket is active.
+    const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date() });
+    await prisma.order.update({ where: { id: order.id }, data: { sellerStripeAccountId: organisation.stripeAccountId, feeAmount: 100, isManuallyRefunded: true } });
+    const edit = (startTime: Date, endTime: Date, version: number) => updateEventRoute(jsonRequest(`http://localhost/api/events/${event.id}`, {
+      organisationId: organisation.id, title: event.title, description: event.description, location: event.location, version,
+      startTime: startTime.toISOString(), endTime: endTime.toISOString(), salesCloseAt: new Date(startTime.getTime() - 60_000).toISOString(),
+      ticketTypes: event.ticketTypes.map((type) => ({ id: type.id, name: type.name, price: type.price, quantity: type.quantity, expectedQuantity: type.quantity }))
+    }, { method: "PATCH" }), routeContext({ eventId: event.id }));
+
+    const soon = new Date(Date.now() + hour);
+    expect((await edit(new Date(soon.getTime() - hour / 2), soon, event.version)).status).toBe(200);
+    // No ticket holder to tell, so no change is recorded, but the latest end is.
+    expect(await prisma.eventChange.count({ where: { eventId: event.id } })).toBe(0);
+    expect(await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).toMatchObject({ endTime: soon, latestEndTime: end });
+    // Moving it later and back again never lowers it.
+    expect((await edit(new Date(end.getTime() + hour), new Date(end.getTime() + 2 * hour), event.version + 1)).status).toBe(200);
+    expect((await edit(new Date(soon.getTime() - hour / 2), soon, event.version + 2)).status).toBe(200);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).latestEndTime).toEqual(new Date(end.getTime() + 2 * hour));
+
+    const share = order.totalAmount - 100;
+    const accountId = organisation.stripeAccountId as string;
+    expect((await heldMoney(organisation.id, accountId, new Date(soon.getTime() + 2 * day + hour))).total).toBe(share);
+    expect((await heldMoney(organisation.id, accountId, new Date(end.getTime() + 2 * day + 3 * hour))).total).toBe(0);
   });
 
   test("event analytics use event ownership when order organisation is inconsistent", async () => {

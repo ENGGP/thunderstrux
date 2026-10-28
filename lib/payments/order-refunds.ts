@@ -288,14 +288,14 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
 
 // A refund that will not happen: the fence is lifted and nothing is voided or revoked.
 async function fail(requestId: string, token: string | null, code: string, source: "staff_action" | "refund_worker" = "staff_action") {
-  await prisma.$transaction(async (tx) => {
+  const failed = await prisma.$transaction(async (tx) => {
     const request = await tx.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
-    if (!(await lockPurchase(tx, request))) return;
+    if (!(await lockPurchase(tx, request))) return null;
     const updated = await tx.refundRequest.updateMany({
       where: { id: requestId, status: { in: ["pending", "uncertain"] }, ...(token ? { processingToken: token } : {}) },
       data: { status: "failed", processingToken: null, processingStartedAt: null, lastErrorCode: code, resolvedAt: new Date() }
     });
-    if (updated.count !== 1) return;
+    if (updated.count !== 1) return null;
     await liftFence(tx, request);
     await appendHistory(tx, request, { type: "refund_failed", source, reason: code });
     const target = auditTarget(request);
@@ -303,6 +303,42 @@ async function fail(requestId: string, token: string | null, code: string, sourc
       organisationId: request.organisationId, actorUserId: null, action: `${target.action}.refund_failed`, targetType: target.targetType, targetId: target.targetId,
       metadata: { refundRequestId: requestId, reason: code }
     } });
+    if (source !== "staff_action") await queueRefundTroubleNotice(tx, request, "failed");
+    return request;
+  });
+  if (failed && source !== "staff_action") alertRefundFailed(failed, code);
+}
+
+// PAY-026: staff see their own refund fail on screen; any other failure (the
+// worker's, an event cancellation's, a fraud warning's, or Stripe's later answer)
+// reaches a person.
+type RefundAlert = { request: { id: string; orderId: string | null; commerceOrderId: string | null }; reason: string; code?: string | null };
+function alertRefundFailed(request: RefundAlert["request"], reason: string, code?: string | null) {
+  emitOperationalAlert("refund_failed", {
+    refundRequestId: request.id, orderId: request.orderId, commerceOrderId: request.commerceOrderId, reason, code: code ?? null, dedupeKey: `refund_failed:${request.id}:${reason}`
+  });
+}
+
+// PAY-025, PAY-026: the buyer was told money is coming that now isn't. A refund
+// that came back from the bank was promised by the refund email; a failed one by
+// the event-cancelled email (EVT-004), so only a cancelled event's buyers hear of that.
+async function queueRefundTroubleNotice(
+  tx: Prisma.TransactionClient,
+  request: { id: string; orderId: string | null; commerceOrderId: string | null; organisationId: string; amount: number },
+  trouble: "returned" | "failed"
+) {
+  const order = request.commerceOrderId
+    ? await tx.commerceOrder.findUniqueOrThrow({ where: { id: request.commerceOrderId }, select: { buyerEmailSnapshot: true, sellerName: true } })
+    : await tx.order.findUniqueOrThrow({ where: { id: request.orderId as string }, select: { buyerEmailSnapshot: true, event: { select: { title: true, cancelledAt: true } } } });
+  const event = "event" in order ? order.event : null;
+  if (!order.buyerEmailSnapshot || (trouble === "failed" && !event?.cancelledAt)) return;
+  const purchase = event ? `your order for ${event.title}` : `your order from ${"sellerName" in order ? order.sellerName : "the society"}`;
+  const message = trouble === "returned"
+    ? `The refund of ${formatMoney(request.amount)} for ${purchase} came back from your bank, so it hasn't reached you. Thunderstrux will contact you to return it another way.`
+    : `We couldn't refund ${purchase} automatically, so the refund hasn't started. Thunderstrux has been told and will contact you to sort it out.`;
+  await enqueueNotification(tx, {
+    eventKey: `refund-${trouble}/${request.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: request.organisationId,
+    payload: { subject: trouble === "returned" ? "Your refund came back" : "Your refund hasn't started", message }
   });
 }
 
@@ -363,7 +399,9 @@ async function applyOutcome(
   const status = providerStatus(refund);
   const now = new Date();
   const { stripeEventId, eventCreatedAt } = webhook ?? {};
-  return prisma.$transaction(async (tx) => {
+  // Raised after commit, so an alert never names a change that rolled back.
+  let alert = null as RefundAlert | null;
+  const result = await prisma.$transaction(async (tx) => {
     const request = await tx.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
     if (!(await lockPurchase(tx, request))) return request.status;
     if (webhook) {
@@ -373,6 +411,20 @@ async function applyOutcome(
       if (journal.count === 0) return request.status;
     }
     const current = await tx.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
+    // PAY-025: a refund that succeeded can still come back from the bank. Stripe
+    // returns the money to Thunderstrux's balance, so the order stays refunded
+    // (the society's share was taken back) and a person repays the buyer another way.
+    if (current.status === "succeeded" && status === "failed" && current.stripeRefundId === refund.id) {
+      if (current.lastErrorCode === "provider_refund_returned") return current.status;
+      await tx.refundRequest.update({
+        where: { id: requestId },
+        data: { providerStatus: refund.status, lastProviderEventAt: eventCreatedAt ?? current.lastProviderEventAt, lastErrorCode: "provider_refund_returned" }
+      });
+      await appendHistory(tx, request, { type: "refund_failed", source, stripeEventId, reason: "returned_by_bank" });
+      await queueRefundTroubleNotice(tx, request, "returned");
+      alert = { request, reason: "returned_by_bank", code: refund.failure_reason };
+      return current.status;
+    }
     if (current.status === "succeeded" || current.status === "failed") return current.status;
     if (eventCreatedAt && current.lastProviderEventAt && current.lastProviderEventAt > eventCreatedAt) return current.status;
     const updated = await tx.refundRequest.updateMany({
@@ -393,6 +445,10 @@ async function applyOutcome(
     if (status === "failed") {
       await liftFence(tx, request);
       await appendHistory(tx, request, { type: "refund_failed", source, stripeEventId, reason: "provider_refund_failed" });
+      if (source !== "staff_action") {
+        await queueRefundTroubleNotice(tx, request, "failed");
+        alert = { request, reason: "provider_refund_failed", code: refund.failure_reason };
+      }
     } else if (request.commerceOrderId) {
       const memberships = await refundCommerce(tx, { ...request, commerceOrderId: request.commerceOrderId }, now);
       await appendHistory(tx, request, { type: "refunded", source, stripeEventId, facts: { amount: request.amount, membershipsEnded: memberships } });
@@ -407,6 +463,8 @@ async function applyOutcome(
     } });
     return status;
   });
+  if (alert) alertRefundFailed(alert.request, alert.reason, alert.code);
+  return result;
 }
 
 // Worker: pending and uncertain requests, and leases left by a crashed request.

@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
+import { unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
 import { heldMoney, type HeldMoney } from "@/lib/payouts/release";
 import { getStripe } from "@/lib/stripe";
 
@@ -60,6 +61,23 @@ async function record(organisationId: string, accountId: string, payout: Stripe.
   });
 }
 
+// PAY-027: a refund made in Stripe that wasn't taken back from the society keeps
+// its share held. Asked again before each payout, so a transfer reversed by hand
+// releases it within the hour.
+async function refreshUnreversedRefunds(stripe: Stripe, organisationId: string) {
+  const unreversed = { externalUnreversedAmount: { gt: 0 }, stripePaymentIntentId: { not: null } };
+  const [tickets, commerce] = await Promise.all([
+    prisma.order.findMany({ where: { ...unreversed, event: { organisationId } }, select: { id: true, stripePaymentIntentId: true } }),
+    prisma.commerceOrder.findMany({ where: { ...unreversed, organisationId }, select: { id: true, stripePaymentIntentId: true } })
+  ]);
+  for (const order of tickets) {
+    await prisma.order.update({ where: { id: order.id }, data: { externalUnreversedAmount: await unreversedRefundAmount(stripe, order.stripePaymentIntentId as string) } });
+  }
+  for (const order of commerce) {
+    await prisma.commerceOrder.update({ where: { id: order.id }, data: { externalUnreversedAmount: await unreversedRefundAmount(stripe, order.stripePaymentIntentId as string) } });
+  }
+}
+
 // One society: what Stripe has available, less what the rules still hold. At
 // most one payout a UTC day, like Eventbrite's batched payouts (DEF-034): money
 // released later in the day goes out the next day.
@@ -74,6 +92,7 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   if (paidToday) return { sent: 0 };
   const balance = await stripe.balance.retrieve({}, { stripeAccount: organisation.stripeAccountId });
   const available = balance.available.find((entry) => entry.currency === "aud")?.amount ?? 0;
+  await refreshUnreversedRefunds(stripe, organisation.id);
   const held = await heldMoney(organisation.id, organisation.stripeAccountId, now);
   const amount = available - held.total;
   const lastPaid = await prisma.societyPayout.findFirst({
@@ -127,7 +146,10 @@ export async function processPayoutBatch(limit = 25, now = new Date()) {
 }
 
 // payout.* from a connected account: Stripe's status is the truth. A payout the
-// bank refused alerts, and the society sees it on Payments.
+// bank refused alerts, and the society sees it on Payments. PAY-028: the worker's
+// payouts name the society; any other (an Instant Payout from the Express
+// Dashboard, or Stripe's own schedule) may have sent held money to the bank, so
+// a person hears of it and the account goes back to manual payouts.
 export async function reconcilePayoutEvent(event: Stripe.Event) {
   const payout = event.data.object as Stripe.Payout;
   const accountId = event.account;
@@ -143,6 +165,17 @@ export async function reconcilePayoutEvent(event: Stripe.Event) {
   const saved = await record(organisationId, accountId, current);
   if (saved.status === "failed" && known?.status !== "failed") {
     emitOperationalAlert("society_payout_failed", { organisationId, stripePayoutId: current.id, amount: current.amount, failureCode: current.failure_code ?? null });
+  }
+  if (!known && current.metadata?.organisationId !== organisationId && saved.status !== "failed") {
+    emitOperationalAlert("society_payout_unexpected", {
+      organisationId, stripePayoutId: current.id, amount: current.amount, method: current.method, automatic: current.automatic, dedupeKey: `society_payout_unexpected:${current.id}`
+    });
+    try {
+      await ensureManualPayouts(getStripe(), accountId);
+    } catch (error) {
+      // The hourly payout run puts it back too.
+      logWarn("payouts.manual_not_restored", { organisationId, stripeAccountId: accountId, error });
+    }
   }
 }
 

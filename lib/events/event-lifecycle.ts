@@ -550,6 +550,7 @@ export async function updateOrganisationEvent(
         description: true,
         startTime: true,
         endTime: true,
+        latestEndTime: true,
         location: true,
         capacity: true,
         salesCloseAt: true,
@@ -629,6 +630,8 @@ export async function updateOrganisationEvent(
         description: input.description,
         startTime: input.startTime,
         endTime: input.endTime,
+        // SEC-032: payouts wait for the latest end ever set, active tickets or not.
+        latestEndTime: new Date(Math.max((locked.latestEndTime ?? locked.endTime).getTime(), locked.endTime.getTime(), input.endTime.getTime())),
         location: input.location,
         capacity,
         salesCloseAt,

@@ -18,7 +18,7 @@ import { createMember, createOrganisationAccount, unique } from "@/tests/helpers
 // merchandise orders, and the automatic refund of a payment that couldn't be filled.
 
 const webhookSecret = "whsec_commerce_recovery_test";
-const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), disputeUpdate: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn() }));
+const stripe = vi.hoisted(() => ({ retrieve: vi.fn(), list: vi.fn(), refunds: vi.fn(), create: vi.fn(), dispute: vi.fn(), disputeUpdate: vi.fn(), charge: vi.fn(), transfer: vi.fn(), reversals: vi.fn(), reverse: vi.fn(), intent: vi.fn() }));
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
   return {
@@ -31,6 +31,7 @@ vi.mock("@/lib/stripe", async () => {
       refunds: { list: stripe.refunds, create: stripe.create },
       disputes: { retrieve: stripe.dispute, update: stripe.disputeUpdate },
       charges: { retrieve: stripe.charge },
+      paymentIntents: { retrieve: stripe.intent },
       transfers: { retrieve: stripe.transfer, listReversals: stripe.reversals, createReversal: stripe.reverse },
       webhooks: new RealStripe("sk_test_commerce_recovery").webhooks
     })
@@ -78,6 +79,8 @@ async function paid(kind: "membership" | "merchandise") {
     payment_intent: { id: intentId, currency: "aud", amount_received: order.totalAmount, transfer_data: { destination: society.organisation.stripeAccountId }, latest_charge: { id: chargeId, disputed: false } }
   });
   stripe.refunds.mockResolvedValue({ data: [] });
+  // Refunds Thunderstrux sends reverse the transfer, so nothing is owed back by default (PAY-027).
+  stripe.intent.mockResolvedValue({ id: intentId, latest_charge: null });
   setMockSession({ userId: society.user.id, email: society.user.email, accountRole: "organisation" });
   return { society, buyer, order, grantId, intentId, chargeId };
 }
@@ -236,6 +239,21 @@ describe("commerce refunds made in Stripe", () => {
     expect(await order(fixture.order.id)).toMatchObject({ externalRefundedAmount: 1500, refundStatus: "refunded", status: "paid" });
     expect((await grantOf(fixture)).revocationReason).toBe("Refunded in Stripe");
     expect(await historyOf(fixture.order.id)).toEqual(["order_created", "external_refund_recorded"]);
+  });
+
+  // PAY-027: Thunderstrux paid the buyer back, so the society's share is owed until Stripe shows it reversed.
+  test("a refund in Stripe that didn't reverse the transfer is recorded as owed by the society and alerts", async () => {
+    const fixture = await paid("merchandise");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const part = outsideRefund(fixture, 1000);
+    stripe.refunds.mockResolvedValue({ data: [part] });
+    stripe.intent.mockResolvedValue({ id: fixture.intentId, latest_charge: { id: fixture.chargeId, amount_refunded: 1000, transfer: "tr_merch" } });
+    stripe.transfer.mockResolvedValue({ id: "tr_merch", amount_reversed: 0 });
+    await postSigned(signedEvent("refund.created", part));
+
+    expect(await order(fixture.order.id)).toMatchObject({ externalRefundedAmount: 1000, externalUnreversedAmount: 1000 });
+    expect(error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"outside_refund_not_reversed"')).map((line) => JSON.parse(line)))
+      .toEqual([expect.objectContaining({ commerceOrderId: fixture.order.id, unreversed: 1000 })]);
   });
 });
 

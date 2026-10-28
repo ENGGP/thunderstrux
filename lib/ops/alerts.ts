@@ -17,6 +17,12 @@ export type OperationalAlertName =
   | "checkout_attempt_recovery_failed"
   | "checkout_attempt_recovery_abandoned"
   | "order_refund_unresolved"
+  // PAY-025, PAY-026: a refund Thunderstrux sent failed, or came back from the
+  // bank after succeeding; a compensation refund needs a person.
+  | "refund_failed"
+  | "compensation_refund_needs_review"
+  // PAY-027: a refund made in Stripe that didn't take the money back from the society.
+  | "outside_refund_not_reversed"
   | "purchase_dispute_opened"
   | "purchase_dispute_unmatched"
   // A dispute's draft answer couldn't be staged in Stripe, or its due date is close.
@@ -26,6 +32,8 @@ export type OperationalAlertName =
   | "early_fraud_warning"
   | "dispute_reversal_unresolved"
   | "society_payout_failed"
+  // PAY-028: a payout the payout worker didn't make (an instant payout, or a changed schedule).
+  | "society_payout_unexpected"
   // Stripe paused a society's card payments; a cancelled event had sale money already released.
   | "society_charges_paused"
   | "event_cancelled_after_release"

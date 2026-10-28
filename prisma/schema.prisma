@@ -294,6 +294,9 @@ model Event {
   description    String
   startTime      DateTime
   endTime        DateTime
+  // SEC-032: the latest end this event has had, once an edit set it; null means
+  // endTime. Payouts hold ticket money until two days after it.
+  latestEndTime  DateTime?
   location       String
   status         EventStatus @default(draft)
   // Optional event-wide ceiling, separate from each ticket type's remaining quantity.
@@ -389,6 +392,8 @@ model Order {
   // Succeeded refunds made outside Thunderstrux (the Stripe dashboard), as Stripe reports them.
   externalRefundedAmount  Int          @default(0)
   externalRefundReviewedAt DateTime?
+  // PAY-027: of the payment's refunds, what Stripe shows not yet taken back from the society's transfer.
+  externalUnreversedAmount Int          @default(0)
   // T18c: a free purchase cancelled by staff. Nothing was charged, so this is
   // never a refund; the order keeps status paid and its original fulfilment.
   cancelledAt             DateTime?
@@ -1071,6 +1076,7 @@ model CommerceOrder {
   disputeStatus              OrderDisputeStatus?
   externalRefundedAmount     Int           @default(0)
   externalRefundReviewedAt   DateTime?
+  externalUnreversedAmount   Int           @default(0)
 
   organisation     Organisation             @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   cancelledBy      User?                    @relation("CommerceOrderCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)

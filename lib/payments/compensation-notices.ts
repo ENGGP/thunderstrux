@@ -49,6 +49,27 @@ export async function queueCommerceReviewNotice(tx: Prisma.TransactionClient, co
   });
 }
 
+// PAY-025: that compensation refund came back from the buyer's bank after Stripe confirmed it.
+export async function queueCompensationRefundReturnedNotice(tx: Prisma.TransactionClient, job: { id: string; orderId: string; amount: number }) {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: job.orderId },
+    select: {
+      organisationId: true, ...buyerIdentitySelect,
+      user: { select: { email: true, firstName: true, lastName: true, displayName: true } },
+      event: { select: { title: true } }
+    }
+  });
+  const recipient = retainedBuyerIdentity(order)?.email;
+  if (!recipient) return;
+  await enqueueNotification(tx, {
+    eventKey: `compensation-refund-returned/${job.id}`, recipient, template: "business_notice", organisationId: order.organisationId,
+    payload: {
+      subject: "Your refund came back",
+      message: `The refund of ${formatMoney(job.amount)} for your payment for ${order.event.title} came back from your bank, so it hasn't reached you. Thunderstrux will contact you to return it another way.`
+    }
+  });
+}
+
 // Stripe confirmed a ticket order's compensation refund.
 export async function queueCompensationRefundNotice(tx: Prisma.TransactionClient, job: { id: string; orderId: string; amount: number }) {
   const order = await tx.order.findUniqueOrThrow({

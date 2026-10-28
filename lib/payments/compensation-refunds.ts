@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type CompensationRefundState } from "@prisma/client";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
+import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
-import { queueCompensationRefundNotice } from "@/lib/payments/compensation-notices";
+import { queueCompensationRefundNotice, queueCompensationRefundReturnedNotice } from "@/lib/payments/compensation-notices";
+import { unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -28,10 +30,18 @@ type ClaimedRefund = {
 };
 
 export class CompensationRefundVerificationError extends Error {
-  constructor(readonly code: string) {
-    super("Refund details could not be verified for this compensation order");
+  constructor(readonly code: string, message = "Refund details could not be verified for this compensation order") {
+    super(message);
     this.name = "CompensationRefundVerificationError";
   }
+}
+
+// PAY-026: a compensation refund that stopped for a person (runbook in Payment
+// Lifecycle Refunds and Disputes). Raised after the state change commits.
+function alertNeedsReview(job: { id: string; orderId: string }, state: CompensationRefundState, reason: string) {
+  emitOperationalAlert("compensation_refund_needs_review", {
+    compensationRefundJobId: job.id, orderId: job.orderId, state, reason, dedupeKey: `compensation_refund_needs_review:${job.id}:${state}:${reason}`
+  });
 }
 
 export class CompensationRefundNotFoundError extends Error {
@@ -64,7 +74,8 @@ function refundState(refund: Stripe.Refund): CompensationRefundState {
 
 async function claimNextRefund(now = new Date()): Promise<ClaimedRefund | null> {
   const staleBefore = new Date(now.getTime() - processingLeaseMs);
-  return prisma.$transaction(async (tx) => {
+  let ineligible = null as { id: string; orderId: string } | null;
+  const claimed = await prisma.$transaction(async (tx) => {
     const candidate = await tx.compensationRefundJob.findFirst({
       where: {
         nextAttemptAt: { lte: now },
@@ -139,6 +150,7 @@ async function claimNextRefund(now = new Date()): Promise<ClaimedRefund | null> 
           lastErrorAt: now
         }
       });
+      ineligible = job;
       return null;
     }
 
@@ -175,11 +187,13 @@ async function claimNextRefund(now = new Date()): Promise<ClaimedRefund | null> 
       stripeAccountId: account
     };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  if (ineligible) alertNeedsReview(ineligible, "review_required", "local_state_not_eligible");
+  return claimed;
 }
 
 async function moveToReview(job: ClaimedRefund, code: string) {
-  await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, job.orderId))) return;
+  const moved = await prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, job.orderId))) return false;
     const updated = await tx.compensationRefundJob.updateMany({
       where: { id: job.id, state: "auto_processing", processingToken: job.token },
       data: {
@@ -200,14 +214,16 @@ async function moveToReview(job: ClaimedRefund, code: string) {
         metadata: { reason: code }
       } });
     }
+    return updated.count === 1;
   });
+  if (moved) alertNeedsReview(job, "review_required", code);
 }
 
 async function scheduleRetry(job: ClaimedRefund, code: string) {
   const exhausted = job.attempts >= maxAttempts;
   const delayMinutes = Math.min(2 ** Math.max(job.attempts - 1, 0), 30);
-  await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, job.orderId))) return;
+  const failed = await prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, job.orderId))) return false;
     const updated = await tx.compensationRefundJob.updateMany({
       where: { id: job.id, state: "auto_processing", processingToken: job.token },
       data: {
@@ -228,7 +244,9 @@ async function scheduleRetry(job: ClaimedRefund, code: string) {
         facts: { compensationReview: true }
       });
     }
+    return updated.count === 1 && exhausted;
   });
+  if (failed) alertNeedsReview(job, "refund_failed", code);
 }
 
 async function persistRefund(job: ClaimedRefund, refund: Stripe.Refund) {
@@ -239,8 +257,8 @@ async function persistRefund(job: ClaimedRefund, refund: Stripe.Refund) {
     ? "review_required"
     : providerState;
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    if (!(await lockOrder(tx, job.orderId))) return;
+  const applied = await prisma.$transaction(async (tx) => {
+    if (!(await lockOrder(tx, job.orderId))) return false;
     const updated = await tx.compensationRefundJob.updateMany({
       where: {
         id: job.id,
@@ -266,7 +284,7 @@ async function persistRefund(job: ClaimedRefund, refund: Stripe.Refund) {
         lastErrorAt: state === "refund_failed" || pendingNeedsReview ? now : null
       }
     });
-    if (updated.count !== 1) return;
+    if (updated.count !== 1) return false;
     if (state === "refunded") {
       await tx.order.update({
         where: { id: job.orderId },
@@ -297,7 +315,11 @@ async function persistRefund(job: ClaimedRefund, refund: Stripe.Refund) {
       targetId: job.orderId,
       metadata: { refundId: refund.id, providerStatus: refund.status }
     } });
+    return true;
   });
+  if (applied && (state === "refund_failed" || state === "review_required")) {
+    alertNeedsReview(job, state, state === "refund_failed" ? "provider_refund_failed" : "provider_refund_pending_review");
+  }
   return state;
 }
 
@@ -414,6 +436,7 @@ export async function processCompensationRefundBatch(limit = 25) {
 export async function reconcileRefundEvent(event: Stripe.Event) {
   const refund = event.data.object as Stripe.Refund;
   const eventCreatedAt = new Date(event.created * 1000);
+  let review = null as { job: { id: string; orderId: string }; state: CompensationRefundState; reason: string } | null;
   await prisma.$transaction(async (tx) => {
     if (await tx.stripeRefundWebhookEvent.findUnique({ where: { stripeEventId: event.id } })) {
       return;
@@ -459,6 +482,22 @@ export async function reconcileRefundEvent(event: Stripe.Event) {
         eventCreatedAt
       }
     });
+    // PAY-025: the refund came back from the bank after succeeding. Stripe returns
+    // the money to Thunderstrux's balance; the job stays refunded and a person
+    // repays the buyer another way.
+    if (job.state === "refunded" && refundState(refund) === "refund_failed" && job.stripeRefundId === refund.id) {
+      if (job.lastErrorCode === "provider_refund_returned") return;
+      await tx.compensationRefundJob.update({
+        where: { id: job.id },
+        data: { providerStatus: refund.status, lastProviderEventAt: eventCreatedAt, lastErrorCode: "provider_refund_returned", lastErrorAt: new Date() }
+      });
+      await appendOrderLifecycleEvent(tx, {
+        orderId: job.orderId, type: "compensation_refund_failed", source: "stripe_webhook", stripeEventId: event.id, reason: "returned_by_bank"
+      });
+      await queueCompensationRefundReturnedNotice(tx, job);
+      review = { job, state: "refunded", reason: "returned_by_bank" };
+      return;
+    }
     if (
       job.state === "recovered" ||
       job.state === "refunded" ||
@@ -515,7 +554,9 @@ export async function reconcileRefundEvent(event: Stripe.Event) {
       targetId: job.orderId,
       metadata: { refundId: refund.id, providerStatus: refund.status }
     } });
+    if (state === "refund_failed") review = { job, state, reason: "provider_refund_failed" };
   });
+  if (review) alertNeedsReview(review.job, review.state, review.reason);
 }
 
 export async function confirmCompensationRefund(
@@ -570,6 +611,17 @@ export async function confirmCompensationRefund(
     !latestCharge ||
     (refund.metadata?.orderId !== undefined && refund.metadata.orderId !== orderId)
   ) throw new CompensationRefundVerificationError("manual_refund_verification_failed");
+  // PAY-027: a Dashboard refund is only settled once the society's transfer and
+  // Thunderstrux's fee came back with it, as they do with the refunds Thunderstrux sends.
+  const fee = latestCharge.application_fee
+    ? typeof latestCharge.application_fee === "string" ? await stripe.applicationFees.retrieve(latestCharge.application_fee) : latestCharge.application_fee
+    : null;
+  if ((await unreversedRefundAmount(stripe, latestCharge)) > 0 || (fee && fee.amount_refunded < fee.amount)) {
+    throw new CompensationRefundVerificationError(
+      "manual_refund_not_reversed",
+      "Stripe shows the refund, but the society's transfer wasn't reversed or the Thunderstrux fee wasn't refunded. Reverse the transfer and refund the application fee in Stripe, then confirm again."
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, orderId))) throw new CompensationRefundNotFoundError();

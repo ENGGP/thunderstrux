@@ -22,7 +22,7 @@ sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, l
 | Commerce disputes, outside refunds, automatic compensation | `lib/commerce/payment-recovery.ts` |
 | A dispute's draft answer, staged in Stripe | `lib/payments/dispute-evidence.ts`: `stageDisputeEvidence` |
 | Early fraud warnings | `lib/payments/fraud-warnings.ts`: `reconcileEarlyFraudWarning`, `fraudRefundReason`; commerce `queueCommerceFraudRefund` in `lib/commerce/payment-recovery.ts` |
-| Lost-dispute reversals | `lib/payments/dispute-reversals.ts`: `queueDisputeReversal`, `processDisputeReversalBatch` |
+| Lost-dispute reversals; what a refund didn't take back | `lib/payments/dispute-reversals.ts`: `queueDisputeReversal`, `processDisputeReversalBatch`, `unreversedRefundAmount` |
 | Free ticket cancellation | `lib/payments/free-cancellation.ts`: `cancelFreeOrder`, `cancelFreePurchase`, `releaseFreeRegistration` |
 | Event cancellation (refund every order) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` ([[Event Lifecycle#Cancelling]]) |
 | Manual refund mark, resend refusals | `lib/orders/order-detail.ts`: `markOrganisationOrderManuallyRefunded` |
@@ -63,7 +63,8 @@ A `RefundRequest` refunds one ticket order or one commerce order (database check
    - `succeeded` on tickets: `refundStatus = refunded`, every ticket `void` (`refunded`, check-ins kept, stock not restored), `refunded`, and the buyer's `refund/{requestId}` notice.
    - `succeeded` on commerce: `refundStatus = refunded`, review cleared, every membership it bought revoked (`Refunded: {reason}`, by the requester), an uncollected pickup cancelled, and the buyer's notice. Stock comes back only through a return.
    - `pending`: the fence stays; `refund_pending` once, polled every minute.
-   - `failed`, `canceled`, a verification mismatch or a definite refusal: request `failed`, fence lifted, `refund_failed`. Tickets stay valid and memberships active.
+   - `failed`, `canceled`, a verification mismatch or a definite refusal: request `failed`, fence lifted, `refund_failed`. Tickets stay valid and memberships active. Unless staff saw it fail on screen (a refund the worker, an event cancellation, a fraud warning or commerce compensation sent, or Stripe's later answer), it alerts `refund_failed`, and a cancelled event's buyer, told the refund had started, gets `refund-failed/{requestId}` (PAY-026).
+   - **Came back after succeeding** (`refund.failed` on a `succeeded` request, PAY-025): the bank returned it and Stripe put the money in Thunderstrux's balance. The request stays `succeeded` (`lastErrorCode = provider_refund_returned`), tickets stay void (the society's share was taken back), `refund_failed` (`returned_by_bank`) is appended once, the buyer gets `refund-returned/{requestId}`, and `refund_failed` alerts a person to repay them another way.
 5. **No answer:** the request becomes `uncertain`. The worker (`processOrderRefundBatch`) claims due `pending` and `uncertain` requests with a 10-minute lease and looks up the request's own refund at Stripe before sending the same key again. Once a PaymentIntent was recorded the refund may exist, so a failed lookup or refusal keeps it `uncertain` rather than failing it; Stripe's signed outcome settles it (SEC-011). After 6 attempts it keeps the fence, alerts `order_refund_unresolved` and asks Stripe hourly instead of every minute, so a late answer still settles it.
 6. **Webhook** (`refund.*` with `refundRequestId`): the refund must name the request's purchase (and not the other kind), match amount, currency and the recorded PaymentIntent. It is journalled in `StripeRefundWebhookEvent` in the transaction that applies it, so a delivery that fails to apply is applied by Stripe's retry instead of being dropped as a duplicate.
 
@@ -89,8 +90,9 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
 - **Verify:** the Session, PaymentIntent and charge must match the job's amount, currency `aud` and the ticket metadata, and transfer to the society's connected account. As above, the charge's `disputed` flag is not read; the claim already refuses an order with `disputeStatus`. Its own earlier refund (metadata `compensationRefundJobId`) is reused; any other refund on the payment → `review_required` (`existing_refund_requires_review`).
 - **Send:** `refunds.create` with `reverse_transfer`, `refund_application_fee`, metadata `compensationRefundJobId` and `orderId`, key `compensation-refund:<orderId>`.
 - **Outcome:** succeeded → `refunded`: review cleared, `isManuallyRefunded = true`, buyer notice `compensation-refund/{jobId}`, `compensation_refunded`. Failed or canceled → `refund_failed`. Pending → `refund_pending`, or `review_required` once 5 attempts are used (`provider_refund_pending_review`). Any other error → `auto_queued` after min(2^(n−1), 30) minutes, or `refund_failed` at 5 attempts.
-- **Webhook** (`refund.*` with `compensationRefundJobId`): must match the job, its order, amount, currency and recorded PaymentIntent, is journalled once, and never moves a job out of `recovered`, `refunded` or `refund_failed` or back to an older event's state.
-- **Staff confirmation** (`confirmCompensationRefund`): staff paste the Stripe refund id of a refund made in the dashboard. It must have succeeded for the job's amount on the order's payment, and the payment must still verify. Allowed from `review_required`, `refund_pending` or `refund_failed`; it ends `refunded` with the same effects and audit `order.compensation_refund_confirmed`.
+- **Webhook** (`refund.*` with `compensationRefundJobId`): must match the job, its order, amount, currency and recorded PaymentIntent, is journalled once, and never moves a job out of `recovered`, `refunded` or `refund_failed` or back to an older event's state. A `refunded` job whose refund came back from the bank stays `refunded` (`provider_refund_returned`), appends `compensation_refund_failed` (`returned_by_bank`) and emails `compensation-refund-returned/{jobId}` (PAY-025).
+- **Alert:** `compensation_refund_needs_review` whenever a job reaches `review_required` or `refund_failed`, or its refund came back (PAY-026).
+- **Staff confirmation** (`confirmCompensationRefund`): staff paste the Stripe refund id of a refund made in the dashboard. It must have succeeded for the job's amount on the order's payment, and the payment must still verify. Stripe must also show the society's transfer reversed (`unreversedRefundAmount` is 0) and the application fee refunded, or it answers 409 asking for both (PAY-027). Allowed from `review_required`, `refund_pending` or `refund_failed`; it ends `refunded` with the same effects and audit `order.compensation_refund_confirmed`.
 - Tickets never come back, because none were issued.
 
 **Commerce** has no compensation mode or job: compensation queues a system `RefundRequest` (no actor, key `commerce-compensation:<id>:<uuid>`) under the usual fence, through the order refund path above. A verification mismatch fails the request and leaves the order in review for staff. A full refund made in Stripe also settles it.
@@ -105,6 +107,7 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
 - Full amount on a `paid` ticket order: `refundStatus = refunded`, tickets `void` (`refunded_outside`). Commerce: also when the order is under review; memberships end and review clears.
 - Partial: tickets stay valid and the order reads Payment review until staff `mark_reviewed` (`external_refund_reviewed`), or a refund here takes the rest.
 - A later drop (a refund that failed after succeeding) is recorded, but voided tickets and ended memberships stay so.
+- **Not taken back from the society (PAY-027):** `externalUnreversedAmount` records what Stripe shows refunded on the payment but not reversed from its transfer (`unreversedRefundAmount`: the charge's `amount_refunded` less the transfer's `amount_reversed`). Above 0 it alerts `outside_refund_not_reversed`, and the payout hold keeps the sale's share until Stripe shows it reversed; the payout worker re-reads it before each run, so a reversal made by hand is seen within the hour.
 
 ## Disputes
 
@@ -194,7 +197,9 @@ Free memberships and free merchandise orders cancel the same way through their o
 
 - **`order_refund_unresolved`:** the request is still uncertain after 6 tries and the fence stays; the worker keeps asking Stripe hourly. Check Stripe for a refund with that `refundRequestId`; there is no tool to settle it by hand.
 - **`dispute_reversal_unresolved`:** reverse the transfer in Stripe's Dashboard, or decide not to.
-- **Compensation `refund_failed` or `review_required`:** refund in Stripe's Dashboard, then confirm the refund id on the order page.
+- **Compensation `refund_failed` or `review_required`** (`compensation_refund_needs_review`): refund in Stripe's Dashboard with **Reverse transfer** and **Refund application fee** ticked, then confirm the refund id on the order page. Any Dashboard refund needs both ticked, or the society keeps money Thunderstrux paid back.
+- **`refund_failed`:** a failed refund can be sent again from the order page. One that came back from the bank (`returned_by_bank`) is in Thunderstrux's balance; repay the buyer another way.
+- **`outside_refund_not_reversed`:** reverse the transfer by `unreversed` in Stripe (Connect, Transfers) and refund the application fee.
 - **`purchase_dispute_unmatched`:** the dispute's payment didn't verify as any order's; investigate in Stripe.
 - **`dispute_evidence_not_staged` or `purchase_dispute_evidence_due`:** answer the dispute in Stripe's Dashboard from the order page's facts ([[Production Operations]]).
 

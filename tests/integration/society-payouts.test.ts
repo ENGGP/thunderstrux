@@ -10,7 +10,7 @@ import { createEvent, createMember, createOrder, createOrganisationAccount, uniq
 // PAY-005, design round F1: a society's money stays in its Stripe balance until
 // its event is over, then the refunds worker pays it out.
 
-const stripe = vi.hoisted(() => ({ account: vi.fn(), update: vi.fn(), balance: vi.fn(), create: vi.fn(), payout: vi.fn() }));
+const stripe = vi.hoisted(() => ({ account: vi.fn(), update: vi.fn(), balance: vi.fn(), create: vi.fn(), payout: vi.fn(), intent: vi.fn(), transfer: vi.fn() }));
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
   return {
@@ -22,6 +22,8 @@ vi.mock("@/lib/stripe", async () => {
       accounts: { retrieve: stripe.account, update: stripe.update },
       balance: { retrieve: stripe.balance },
       payouts: { create: stripe.create, retrieve: stripe.payout },
+      paymentIntents: { retrieve: stripe.intent },
+      transfers: { retrieve: stripe.transfer },
       webhooks: new RealStripe("sk_test_payouts").webhooks
     })
   };
@@ -111,19 +113,35 @@ describe("what is held", () => {
     const fixture = await society();
     // A staff mark proves nothing at Stripe, so the sale waits with its event.
     await ticketSale(fixture, 5 * day, { isManuallyRefunded: true });
-    // The end moved to just after now holds until 2 days after the end it had before (SEC-004).
+    // An end moved earlier holds until 2 days after the latest end it had (SEC-004,
+    // SEC-032; the edit path is in event-lifecycle.test.ts).
     const moved = await ticketSale(fixture, -3 * day);
-    const event = await prisma.event.findUniqueOrThrow({ where: { id: moved.eventId } });
-    await prisma.eventChange.create({ data: {
-      eventId: event.id, organisationId: fixture.organisationId, eventVersion: event.version + 1,
-      previousStartTime: new Date(now.getTime() + 30 * day - 3600_000), previousEndTime: new Date(now.getTime() + 30 * day), previousLocation: event.location,
-      startTime: event.startTime, endTime: event.endTime, location: event.location, completedAt: now, outcome: "sent"
-    } });
+    await prisma.event.update({ where: { id: moved.eventId }, data: { latestEndTime: new Date(now.getTime() + 30 * day) } });
     const held = await heldMoney(fixture.organisationId, fixture.accountId, now);
     expect(held.events).toMatchObject({ amount: 1836 * 2, eventCount: 2 });
     expect(held.events.nextEndsAt?.getTime()).toBe(now.getTime() + 5 * day);
     // Once the latest end has passed too, the money goes.
     expect((await heldMoney(fixture.organisationId, fixture.accountId, new Date(now.getTime() + 33 * day))).total).toBe(0);
+  });
+  // PAY-027: a refund made in Stripe's Dashboard without reversing the transfer.
+  test("a refund made in Stripe that didn't take the money back from the society stays held until Stripe shows the reversal", async () => {
+    const fixture = await society();
+    const intentId = unique("pi");
+    // Refunded in full outside Thunderstrux, event long over, transfer not reversed.
+    await ticketSale(fixture, -10 * day, { refundStatus: "refunded", externalRefundedAmount: 2000, externalUnreversedAmount: 2000, stripePaymentIntentId: intentId });
+    // Half refunded outside, $5.00 of it not reversed: $18.36 - ($10.00 - $5.00).
+    await ticketSale(fixture, 5 * day, { externalRefundedAmount: 1000, externalUnreversedAmount: 500, stripePaymentIntentId: unique("pi") });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836 + 1336);
+
+    // Reversed by hand in Stripe: the next payout run sees it and releases the share.
+    stripe.intent.mockImplementation(async (id: string) => ({ id, latest_charge: { amount_refunded: id === intentId ? 2000 : 1000, transfer: id === intentId ? "tr_full" : "tr_half" } }));
+    stripe.transfer.mockImplementation(async (id: string) => ({ id, amount_reversed: id === "tr_full" ? 2000 : 500 }));
+    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 10_000 }] });
+    stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
+    await processPayoutBatch(100, now);
+    expect(stripe.intent).toHaveBeenCalledWith(intentId, { expand: ["latest_charge"] });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1336);
+    expect(stripe.create).toHaveBeenCalledWith({ amount: 10_000 - 1336, currency: "aud", metadata: { organisationId: fixture.organisationId } }, expect.anything());
   });
 });
 
@@ -299,7 +317,7 @@ describe("payout events", () => {
   // A payout Stripe made although the worker saw an error is recorded when Stripe creates it, so that day gets no second payout.
   test("payout.created records a payout the worker never saw succeed, and the day's check then sees it", async () => {
     const fixture = await society();
-    const created = { id: unique("po"), object: "payout", amount: 3000, currency: "aud", status: "pending", arrival_date: null };
+    const created = { id: unique("po"), object: "payout", amount: 3000, currency: "aud", status: "pending", arrival_date: null, metadata: { organisationId: fixture.organisationId } };
     stripe.payout.mockResolvedValue(created);
     expect((await payoutEvent(fixture.accountId, created, "payout.created")).status).toBe(200);
     expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: created.id } })).toMatchObject({ organisationId: fixture.organisationId, status: "pending", amount: 3000 });
@@ -319,7 +337,7 @@ describe("payout events", () => {
 
     // A later payout reaches the bank: the warning goes.
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const paid = { id: unique("po"), object: "payout", amount: 4128, currency: "aud", status: "paid", arrival_date: Math.floor(Date.now() / 1000) };
+    const paid = { id: unique("po"), object: "payout", amount: 4128, currency: "aud", status: "paid", arrival_date: Math.floor(Date.now() / 1000), metadata: { organisationId: fixture.organisationId } };
     stripe.payout.mockResolvedValue(paid);
     await payoutEvent(fixture.accountId, paid, "payout.paid");
     const summary = await payoutSummary(fixture.organisationId, fixture.accountId, now);
@@ -330,5 +348,21 @@ describe("payout events", () => {
     stripe.payout.mockClear();
     await payoutEvent("acct_not_this_one", { ...paid, status: "failed" }, "payout.failed");
     expect(stripe.payout).not.toHaveBeenCalled();
+  });
+  // PAY-028: an Instant Payout from the Express Dashboard, or Stripe's schedule after it was changed.
+  test("a payout the worker didn't make alerts once and puts the account back on manual payouts", async () => {
+    const fixture = await society();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const instant = { id: unique("po"), object: "payout", amount: 9000, currency: "aud", status: "pending", method: "instant", automatic: false, arrival_date: null, metadata: {} };
+    stripe.payout.mockResolvedValue(instant);
+    stripe.account.mockResolvedValue({ settings: { payouts: { schedule: { interval: "daily" }, debit_negative_balances: true } } });
+    expect((await payoutEvent(fixture.accountId, instant, "payout.created")).status).toBe(200);
+    await payoutEvent(fixture.accountId, instant, "payout.updated");
+
+    const alerts = error.mock.calls.map(([line]) => JSON.parse(String(line))).filter((entry) => entry.event === "society_payout_unexpected");
+    expect(alerts).toEqual([expect.objectContaining({ organisationId: fixture.organisationId, stripePayoutId: instant.id, amount: 9000, method: "instant", automatic: false })]);
+    expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: manualPayoutSettings });
+    // Still recorded, so Payments lists it.
+    expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: instant.id } })).toMatchObject({ organisationId: fixture.organisationId, amount: 9000 });
   });
 });

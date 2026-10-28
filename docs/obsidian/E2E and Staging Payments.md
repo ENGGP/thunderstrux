@@ -101,10 +101,10 @@ Events fetched back from Stripe's API carry the account's default version, so on
 | `guest` | guest confirms email from the captured link and pays; order belongs to the verified guest; Resend accepts |
 | `membership` | paid membership ($25.00): commerce order fulfilled, grant made |
 | `merchandise` | two lines ($55.00): each option's stock drops; finance refunds the order in the app |
-| `compensation` | ticket order expired locally (`automatic_full`) while its Session stays open; paying it issues nothing and the refunds worker refunds in full |
+| `compensation` | ticket order expired locally (`automatic_full`) while its Session stays open; paying it issues nothing and the refunds worker refunds in full. Since PAY-024 the stale-order job closes an open page before expiring, so the run expires it with no Stripe key outside production, the one path that still leaves the page payable |
 | `commerce-dispute` | paid membership with the dispute card (4000 0000 0000 0259); the order records the dispute, the run submits losing evidence, the lost dispute ends the membership and the transfer is reversed |
 | `commerce-outside-refund` | $15.00 of a merchandise order refunded outside Thunderstrux; recorded, marked reviewed, the app refunds only the remaining $40.00 |
-| `commerce-compensation` | merchandise order expired locally, paid anyway: nothing fulfilled, stock unchanged, refunded in full by the worker |
+| `commerce-compensation` | merchandise order expired locally (the same way), paid anyway: nothing fulfilled, stock unchanged, refunded in full by the worker |
 
 Unpaid Sessions are explicitly expired through Stripe; natural timeout is never observed. Connect webhooks (`account.updated`, `payout.*`) are not forwarded by the listener.
 

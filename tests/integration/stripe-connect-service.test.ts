@@ -42,10 +42,14 @@ vi.mock("@/lib/stripe", async () => {
 // Both capabilities destination charges need (card_payments for on_behalf_of, transfers to pay the society).
 const active = { card_payments: "active", transfers: "active" } as const;
 
-function accountUpdated(account: Record<string, unknown>) {
-  const body = JSON.stringify({ id: `evt_${account.id}`, object: "event", type: "account.updated", livemode: false, created: Math.floor(Date.now() / 1000), data: { object: account } });
+function signedConnectEvent(event: Record<string, unknown>) {
+  const body = JSON.stringify({ object: "event", livemode: false, created: Math.floor(Date.now() / 1000), ...event });
   const signature = new Stripe("sk_test_connect_service").webhooks.generateTestHeaderString({ payload: body, secret: connectSecret });
   return connectWebhook(new Request("http://localhost:3000/api/stripe/connect/webhook", { method: "POST", headers: { "stripe-signature": signature }, body }));
+}
+
+function accountUpdated(account: Record<string, unknown>) {
+  return signedConnectEvent({ id: `evt_${account.id}`, type: "account.updated", data: { object: account } });
 }
 
 describe("Stripe Connect application service", () => {
@@ -257,5 +261,32 @@ describe("Stripe Connect application service", () => {
     await expect(getOrganisationStripeConnectStatus(other.organisation.id)).resolves.toMatchObject({ state: "RESTRICTED", charges_enabled: false });
     expect(await prisma.organisation.findUniqueOrThrow({ where: { id: other.organisation.id }, select: { stripeChargesEnabled: true, stripeAccountStatus: true } }))
       .toEqual({ stripeChargesEnabled: false, stripeAccountStatus: "RESTRICTED" });
+  });
+  // SEC-033: Stripe's own email goes only to whoever onboarded the account.
+  test("every staff member who manages Stripe hears once when the payout bank account is added or made the default; other changes say nothing", async () => {
+    const { organisation, user } = await createOrganisationAccount({ stripeReady: true });
+    const accountId = organisation.stripeAccountId as string;
+    const treasurer = await createUser({ email: `${unique("treasurer")}@example.com` });
+    await createOrganisationStaff({ organisationId: organisation.id, userId: treasurer.id, role: "admin" });
+    const door = await createUser({ email: `${unique("door")}@example.com` });
+    await createOrganisationStaff({ organisationId: organisation.id, userId: door.id, role: "check_in_staff" });
+    const bank = { id: unique("ba"), object: "bank_account", bank_name: "Westpac", last4: "6789", account: accountId, default_for_currency: true };
+    const notices = () => prisma.notificationOutbox.findMany({ where: { organisationId: organisation.id, eventKey: { startsWith: "stripe-payout-account/" } }, select: { recipient: true }, orderBy: { recipient: "asc" } });
+
+    const added = { id: unique("evt"), type: "account.external_account.created", account: accountId, data: { object: bank } };
+    expect((await signedConnectEvent(added)).status).toBe(200);
+    // Stripe may deliver an event twice.
+    await signedConnectEvent(added);
+    expect(await notices()).toEqual([user.email, treasurer.email].sort().map((recipient) => ({ recipient })));
+    expect(await prisma.auditLog.count({ where: { organisationId: organisation.id, action: "stripe_connect.payout_account_changed" } })).toBe(1);
+
+    // A change that isn't a new default (say, its metadata) says nothing; becoming the default does.
+    await signedConnectEvent({ id: unique("evt"), type: "account.external_account.updated", account: accountId, data: { object: bank, previous_attributes: { metadata: {} } } });
+    expect(await notices()).toHaveLength(2);
+    await signedConnectEvent({ id: unique("evt"), type: "account.external_account.updated", account: accountId, data: { object: bank, previous_attributes: { default_for_currency: false } } });
+    expect(await notices()).toHaveLength(4);
+    // An account no society uses is ignored.
+    expect((await signedConnectEvent({ id: unique("evt"), type: "account.external_account.created", account: "acct_unknown", data: { object: bank } })).status).toBe(200);
+    expect(await prisma.auditLog.count({ where: { action: "stripe_connect.payout_account_changed" } })).toBe(2);
   });
 });

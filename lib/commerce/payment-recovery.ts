@@ -7,8 +7,8 @@ import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
-import { queueDisputeReversal } from "@/lib/payments/dispute-reversals";
-import { journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
+import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
+import { alertOutsideRefundNotReversed, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-003: what Stripe reports about a membership or merchandise payment that
@@ -128,20 +128,22 @@ export async function reconcileCommerceExternalRefundEvent(event: Stripe.Event) 
   const outside = refunds.data
     .filter((item) => item.status === "succeeded" && !item.metadata?.refundRequestId)
     .reduce((sum, item) => sum + item.amount, 0);
+  // PAY-027: payouts hold what a refund didn't take back from the society.
+  const unreversed = await unreversedRefundAmount(stripe, intentId);
   const { id: commerceOrderId, organisationId } = payment.order;
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    if (!(await journal(tx, event)) || !(await lockCommerceOrderForFamily(tx, commerceOrderId))) return;
+  const recorded = await prisma.$transaction(async (tx) => {
+    if (!(await journal(tx, event)) || !(await lockCommerceOrderForFamily(tx, commerceOrderId))) return false;
     const order = await tx.commerceOrder.findUniqueOrThrow({
       where: { id: commerceOrderId },
-      select: { status: true, totalAmount: true, externalRefundedAmount: true, requiresCompensationReview: true, refundStatus: true }
+      select: { status: true, totalAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, requiresCompensationReview: true, refundStatus: true }
     });
-    if (outside === order.externalRefundedAmount) return;
+    if (outside === order.externalRefundedAmount && unreversed === order.externalUnreversedAmount) return false;
     // shortcut: a later drop (a refund that failed after succeeding) is recorded, but an ended membership stays ended; staff review it in Stripe.
     const full = outside >= order.totalAmount && (order.status === "paid" || order.requiresCompensationReview) && order.refundStatus !== "refunded";
     await tx.commerceOrder.update({
       where: { id: commerceOrderId },
-      data: { externalRefundedAmount: outside, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded", requiresCompensationReview: false } : {}) }
+      data: { externalRefundedAmount: outside, externalUnreversedAmount: unreversed, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded", requiresCompensationReview: false } : {}) }
     });
     const ended = full ? await endMemberships(tx, commerceOrderId, "Refunded in Stripe", now) : 0;
     await appendCommerceLifecycleEvent(tx, {
@@ -149,9 +151,11 @@ export async function reconcileCommerceExternalRefundEvent(event: Stripe.Event) 
     });
     await tx.auditLog.create({ data: {
       organisationId, actorUserId: null, action: "commerce_order.external_refund_recorded", targetType: "CommerceOrder", targetId: commerceOrderId,
-      metadata: { refundId: refund.id, refundedOutside: outside, totalAmount: order.totalAmount }
+      metadata: { refundId: refund.id, refundedOutside: outside, totalAmount: order.totalAmount, notReversed: unreversed }
     } });
+    return true;
   });
+  if (recorded && unreversed > 0) alertOutsideRefundNotReversed({ commerceOrderId }, unreversed);
   return true;
 }
 

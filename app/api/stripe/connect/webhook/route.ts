@@ -11,7 +11,7 @@ import {
   StripeConfigurationError
 } from "@/lib/stripe";
 import { reconcilePayoutEvent } from "@/lib/payouts/payouts";
-import { refreshConnectedAccount } from "@/lib/stripe/connect";
+import { notifyPayoutAccountChanged, refreshConnectedAccount } from "@/lib/stripe/connect";
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -107,6 +107,11 @@ export async function POST(request: Request) {
   // payout Stripe made despite an error the worker saw, so its one-a-day check sees it.
   if (event.type === "payout.created" || event.type === "payout.paid" || event.type === "payout.failed" || event.type === "payout.canceled" || event.type === "payout.updated") {
     await reconcilePayoutEvent(event);
+  }
+
+  // SEC-033: the account a society's payouts go to was added or made the default.
+  if (event.type === "account.external_account.created" || event.type === "account.external_account.updated") {
+    await notifyPayoutAccountChanged(event);
   }
 
   return NextResponse.json({ received: true });

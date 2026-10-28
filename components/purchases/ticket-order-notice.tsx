@@ -37,6 +37,8 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
     if (releasedByBuyer(order)) return <Notice title="You cancelled this registration"><p>Your place went back to {society} for someone else, and the tickets are no longer valid.</p></Notice>;
     return <Notice title={order.event.cancelledAt ? "Event cancelled" : "Cancelled by the society"}><p>{society} cancelled this {order.event.cancelledAt ? "event" : "free registration"}. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p></Notice>;
   }
+  // Stripe's "lost" is the buyer's win: their bank returned the payment, and the tickets were voided.
+  if (projection === "disputed" && order.disputeStatus === "lost") return <Notice title="Refunded by your bank"><p>Your bank upheld your dispute and returned the payment to you, so the tickets are no longer valid.</p></Notice>;
   if (projection === "disputed") return <Notice title="Payment disputed" tone="warning"><p>Your bank has disputed this payment, so the tickets are under review. Contact {society} before the event.</p></Notice>;
   if (projection === "review") {
     return order.requiresCompensationReview ? (

@@ -7,7 +7,8 @@ import { enqueueOrganisationOrderTicketEmail, markOrganisationOrderManuallyRefun
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { orderReference, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { reconcileDisputeEvent, reconcileExternalRefundEvent } from "@/lib/payments/purchase-disputes";
-import { ticketOrderProjection } from "@/lib/purchases/projection";
+import { buyerPurchaseBadge, ticketOrderProjection } from "@/lib/purchases/projection";
+import { getOwnTicketPurchase } from "@/lib/purchases/ticket-purchases";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, routeContext } from "@/tests/helpers/http";
 import { createEvent, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
@@ -520,5 +521,86 @@ describe("lost dispute recovery", () => {
     expect(await processDisputeReversalBatch(25, new Date(now.getTime() + 60 * 60_000))).toMatchObject({ results: [{ status: "succeeded" }] });
     expect(stripe.reverse).not.toHaveBeenCalled();
     expect(await disputeRow(fixture)).toMatchObject({ reversalStatus: "succeeded", stripeTransferReversalId: "trr_late" });
+  });
+});
+
+// Product decision 2026-10-28: when the buyer gets the money back, their places go back on sale, once.
+describe("places back on sale", () => {
+  const stock = async (fixture: Fixture) => (await prisma.ticketType.findUniqueOrThrow({ where: { id: fixture.event.ticketTypes[0].id }, select: { quantity: true } })).quantity;
+  const dashboardRefund = (fixture: Fixture) => ({ id: `re_dash_${fixture.order.id}`, object: "refund", payment_intent: fixture.intentId, amount: 3000, currency: "aud", status: "succeeded", metadata: {} });
+  const refundInStripe = (fixture: Fixture) => {
+    stripe.refunds.mockResolvedValue({ data: [dashboardRefund(fixture)] });
+    return reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(fixture)));
+  };
+  const loseDispute = async (fixture: Fixture) => {
+    disputeNow(fixture, "needs_response");
+    await reconcileDisputeEvent(signedEvent("charge.dispute.created", disputeObject(fixture, "needs_response")));
+    disputeNow(fixture, "lost");
+    await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(fixture, "lost")));
+  };
+
+  test("a refund here or in Stripe, a staff mark and a lost dispute each return the order's two places once", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const refunded = await paidOrder();
+    const refundedBefore = await stock(refunded);
+    stripe.create.mockImplementation(async (params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("re"), status: "succeeded", amount: params.amount, currency: "aud", payment_intent: refunded.intentId, metadata: params.metadata }));
+    await requestOrderRefund(refundInput(refunded));
+    expect(await stock(refunded)).toBe(refundedBefore + 2);
+
+    const outside = await paidOrder();
+    const outsideBefore = await stock(outside);
+    await refundInStripe(outside);
+    await refundInStripe(outside);
+    expect(await stock(outside)).toBe(outsideBefore + 2);
+
+    const marked = await paidOrder();
+    const markedBefore = await stock(marked);
+    await markOrganisationOrderManuallyRefunded(marked.owner.organisation.id, marked.order.id, marked.owner.user.id);
+    await markOrganisationOrderManuallyRefunded(marked.owner.organisation.id, marked.order.id, marked.owner.user.id);
+    expect(await stock(marked)).toBe(markedBefore + 2);
+
+    // Under review a ticket keeps its place; lost, the place comes back, once.
+    const disputed = await paidOrder();
+    const disputedBefore = await stock(disputed);
+    disputeNow(disputed, "needs_response");
+    await reconcileDisputeEvent(signedEvent("charge.dispute.created", disputeObject(disputed, "needs_response")));
+    expect(await stock(disputed)).toBe(disputedBefore);
+    await loseDispute(disputed);
+    await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(disputed, "lost")));
+    expect(await stock(disputed)).toBe(disputedBefore + 2);
+  });
+
+  test("a cancelled event's places stay off sale", async () => {
+    const fixture = await paidOrder();
+    await prisma.event.update({ where: { id: fixture.event.id }, data: { cancelledAt: new Date() } });
+    const before = await stock(fixture);
+    await refundInStripe(fixture);
+    expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "void")).toBe(true);
+    expect(await stock(fixture)).toBe(before);
+  });
+
+  test("a staff mark and a refund in Stripe arriving together return the places once", async () => {
+    const fixture = await paidOrder();
+    const before = await stock(fixture);
+    stripe.refunds.mockResolvedValue({ data: [dashboardRefund(fixture)] });
+    await Promise.allSettled([
+      markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id),
+      reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(fixture)))
+    ]);
+    expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "void")).toBe(true);
+    expect(await stock(fixture)).toBe(before + 2);
+  });
+
+  // Stripe's "lost" is the buyer's win; staff still see the dispute.
+  test("a buyer whose dispute was lost reads it as refunded by their bank", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paidOrder();
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { userId: fixture.owner.user.id } });
+    await loseDispute(fixture);
+    const order = await orderState(fixture.order.id);
+    expect(ticketOrderProjection(order)).toBe("disputed");
+    expect(buyerPurchaseBadge(order)).toEqual({ status: "refunded", label: "Refunded by your bank" });
+    const purchase = await getOwnTicketPurchase(fixture.owner.user.id, fixture.order.id);
+    expect(purchase?.history.map((entry) => entry.label)).toEqual(["Refunded by your bank", "Payment disputed"]);
   });
 });

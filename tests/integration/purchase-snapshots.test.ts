@@ -226,7 +226,8 @@ describe("purchase snapshots and ticket validity", () => {
     const at = new Date();
     const rows: Array<[string, Parameters<typeof ticketOrderProjection>[0], string, string | undefined]> = [
       ["cancelled outranks a dispute and a refund", { ...paid, paymentKind: "free", cancelledAt: at, disputeStatus: "open", refundStatus: "refunded" }, "cancelled", "Cancelled by the society"],
-      ["a dispute outranks a refund and review", { ...paid, disputeStatus: "lost", refundStatus: "refunded", requiresCompensationReview: true }, "disputed", undefined],
+      ["a dispute outranks a refund and review", { ...paid, disputeStatus: "open", refundStatus: "refunded", requiresCompensationReview: true }, "disputed", undefined],
+      ["a lost dispute is the buyer's money back; staff still see the dispute", { ...paid, disputeStatus: "lost" }, "disputed", "Refunded by your bank"],
       ["refunded outranks review", { ...paid, refundStatus: "refunded", externalRefundedAmount: 500 }, "refunded", undefined],
       ["a refund in progress outranks review", { ...paid, refundStatus: "processing", externalRefundedAmount: 500 }, "refund-processing", undefined],
       ["a charge that couldn't be fulfilled", { ...paid, status: "failed", requiresCompensationReview: true }, "review", "Payment issue"],

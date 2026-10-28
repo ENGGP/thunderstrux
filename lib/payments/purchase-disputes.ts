@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { markCommerceExternalRefundReviewed } from "@/lib/commerce/payment-recovery";
+import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
@@ -99,7 +100,10 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
   const orderId = payment.order.id;
   const now = new Date();
   const opened = await prisma.$transaction(async (tx) => {
-    if (!(await journal(tx, event)) || !(await lockOrder(tx, orderId))) return false;
+    if (!(await journal(tx, event))) return false;
+    // A lost dispute puts the places back on sale: event and ticket type before the order.
+    if (outcome === "lost") await lockOrderInventory(tx, orderId);
+    if (!(await lockOrder(tx, orderId))) return false;
     const { event: owner } = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { event: { select: { organisationId: true } } } });
     const existing = await tx.purchaseDispute.findUnique({ where: { stripeDisputeId: current.id } });
     // Restored by staff: later events are history only.
@@ -127,7 +131,8 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
     if (outcome === "lost") {
       // PAY-004: the society bears a lost dispute; the refunds worker takes the money back.
       await queueDisputeReversal(tx, current.id, now);
-      await tx.ticket.updateMany({ where: { orderId, validity: "refund_review", validityReason: "disputed" }, data: { validity: "void", validityReason: "dispute_lost", validityChangedAt: now } });
+      const voided = await tx.ticket.updateMany({ where: { orderId, validity: "refund_review", validityReason: "disputed" }, data: { validity: "void", validityReason: "dispute_lost", validityChangedAt: now } });
+      await returnTicketsToSale(tx, orderId, voided.count);
     }
     if (outcome !== "open") {
       await appendOrderLifecycleEvent(tx, { orderId, type: "dispute_closed", source: "stripe_webhook", stripeEventId: event.id, reason: current.status });
@@ -195,7 +200,10 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
   const orderId = payment.order.id;
   const now = new Date();
   const recorded = await prisma.$transaction(async (tx) => {
-    if (!(await journal(tx, event)) || !(await lockOrder(tx, orderId))) return false;
+    if (!(await journal(tx, event))) return false;
+    // A full refund puts the places back on sale: event and ticket type before the order.
+    await lockOrderInventory(tx, orderId);
+    if (!(await lockOrder(tx, orderId))) return false;
     const order = await tx.order.findUniqueOrThrow({
       where: { id: orderId },
       select: { status: true, totalAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, event: { select: { organisationId: true } } }
@@ -208,7 +216,8 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
       data: { externalRefundedAmount: outside, externalUnreversedAmount: unreversed, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded" } : {}) }
     });
     if (full) {
-      await tx.ticket.updateMany({ where: { orderId, validity: { not: "void" } }, data: { validity: "void", validityReason: "refunded_outside", validityChangedAt: now } });
+      const voided = await tx.ticket.updateMany({ where: { orderId, validity: { not: "void" } }, data: { validity: "void", validityReason: "refunded_outside", validityChangedAt: now } });
+      await returnTicketsToSale(tx, orderId, voided.count);
     }
     await appendOrderLifecycleEvent(tx, {
       orderId, type: "external_refund_recorded", source: "stripe_webhook", stripeEventId: event.id, reason: full ? "full" : "partial", facts: { amount: outside }

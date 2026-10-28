@@ -76,7 +76,7 @@ export function MembershipCheckoutAction({
     const reason = detail?.reason;
     if (reason === "term_overlap") return { title: "You already have a membership for these dates", body: "Nothing has been charged.", link: { href: "/memberships", label: "View my memberships" } };
     // The open order's page offers Return to payment and Cancel.
-    if (reason === "purchase_in_progress") return { title: "A checkout for these dates is already in progress", body: "Finish it or cancel it. Nothing more has been charged.", link: detail?.id ? { href: `/memberships/orders/${encodeURIComponent(detail.id)}`, label: "Open your checkout" } : { href: "/purchases?family=memberships", label: "Go to Purchases" } };
+    if (reason === "purchase_in_progress") return { title: "A checkout for these dates is already in progress", body: "Finish it or cancel it. Nothing has been charged.", link: detail?.id ? { href: `/memberships/orders/${encodeURIComponent(detail.id)}`, label: "Open your checkout" } : { href: "/purchases?family=memberships", label: "Go to Purchases" } };
     if (reason === "plan_unavailable") return { title: "This membership is no longer on sale", body: "Nothing has been charged.", link: { href: backHref, label: "See memberships" } };
     if (detail?.path?.[0] === "expectedTotal") {
       router.refresh();

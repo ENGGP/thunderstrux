@@ -254,10 +254,10 @@ const prepare = {
     const event = await ticketEvent(await society(name), {price: 1200});
     const buyer = await person(name, 'buyer');
     const page = await signIn(buyer.email);
-    // The real path: Buy tickets opens the review page, Pay starts Stripe Checkout.
+    // The real path: Get tickets opens the review page, Pay starts Stripe Checkout.
     await page.goto(`/events/${event.id}`);
-    await page.getByRole('button', {name: 'Buy tickets'}).click();
-    return {email: buyer.email, ...await ticketCheckout(page, name, event, 'Pay $12.00', {amount: 1200})};
+    await page.getByRole('button', {name: 'Get tickets', exact: true}).click();
+    return {email: buyer.email, ...await ticketCheckout(page, name, event, 'Pay A$12.00', {amount: 1200})};
   },
   async decline(name) { return prepare.success(name); },
   async cancel(name) { return prepare.success(name); },
@@ -271,7 +271,7 @@ const prepare = {
     const joined = await post(page, '/api/payments/checkout/membership', {organisationId, selection: {planId: plan.id}, expectedTotal: 0, idempotencyKey: `t45-${randomUUID()}`});
     assert(joined.ok() && (await joined.json()).kind === 'fulfilled', 'Free membership was not fulfilled');
     await page.goto(`/events/${event.id}/checkout?ticketTypeId=${event.ticketTypes[0].id}&quantity=1`);
-    return ticketCheckout(page, name, event, 'Pay $9.00', {amount: 900});
+    return ticketCheckout(page, name, event, 'Pay A$9.00', {amount: 900});
   },
   async guest(name) {
     const event = await ticketEvent(await society(name), {price: 1500});
@@ -279,7 +279,7 @@ const prepare = {
     const page = await (await browser.newContext({baseURL})).newPage();
     await page.goto(`/events/${event.id}`);
     await confirmGuest(page, sinkEmail(name, 'guest'));
-    return ticketCheckout(page, name, event, 'Pay $15.00', {amount: 1500, guest: true});
+    return ticketCheckout(page, name, event, 'Pay A$15.00', {amount: 1500, guest: true});
   },
   async membership(name) {
     const organisationId = await society(name);
@@ -306,7 +306,7 @@ const prepare = {
     const event = await ticketEvent(await society(name), {price: 1200}, 'automatic_full');
     const page = await signIn((await person(name, 'buyer')).email);
     await page.goto(`/events/${event.id}/checkout?ticketTypeId=${event.ticketTypes[0].id}&quantity=1`);
-    const data = await ticketCheckout(page, name, event, 'Pay $12.00', {amount: 1200});
+    const data = await ticketCheckout(page, name, event, 'Pay A$12.00', {amount: 1200});
     await db.ticketReservation.updateMany({where: {orderId: data.orderId}, data: {expiresAt: new Date(Date.now() - 60_000)}});
     expireWithoutStripe();
     assert((await orderState(data.orderId)).status === 'expired', 'The order did not expire locally');

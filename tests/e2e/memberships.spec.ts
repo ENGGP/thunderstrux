@@ -221,7 +221,7 @@ test("an event's member price shows to a member with member prices, and everyone
   }
   await page.goto(`/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=2`);
   await expect(page.getByText("(member price)")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pay $20.00" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pay A$20.00" })).toBeVisible();
 });
 
 // T24b2: the members-only gate's safety contract, checked on the full response.

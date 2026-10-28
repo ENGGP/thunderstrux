@@ -248,7 +248,8 @@ export function OrderDetailActions({
             <>
               <p className="text-sm text-ink-soft">
                 Use only after you have refunded the buyer yourself. This records it, stops the
-                tickets working and cannot be undone; it does not send money.
+                tickets working, puts their places back on sale and emails the buyer. It cannot be
+                undone and does not send money.
               </p>
               <div>
                 <Button disabled={isBusy} onClick={() => setConfirmingRefund(true)} type="button" variant="danger">
@@ -298,7 +299,7 @@ export function OrderDetailActions({
             <ul className="grid list-disc gap-1 pl-5">
               <li>{refund.ticketCount === 1 ? "The ticket stops" : `All ${refund.ticketCount} tickets stop`} working straight away.</li>
               <li>Anyone already checked in stays in the attendance record.</li>
-              <li>The tickets don&apos;t go back on sale. You can add stock on the event if you want to.</li>
+              <li>Their places go back on sale, unless the event is cancelled.</li>
               <li>The refund comes out of the society&apos;s Stripe balance, and the Thunderstrux fee is returned too.</li>
             </ul>
             <TextInput hint="Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} value={refundForm.reason} />
@@ -348,8 +349,9 @@ export function OrderDetailActions({
         <div className="grid gap-3">
           {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
           <p>
-            Do this only after you have refunded the buyer yourself. The tickets stop working straight away, and
-            this can&apos;t be undone. It doesn&apos;t send money or change the payment in Stripe.
+            Do this only after you have refunded the buyer yourself. The tickets stop working straight away, their
+            places go back on sale unless the event is cancelled, and the buyer is emailed. This can&apos;t be
+            undone. It doesn&apos;t send money or change the payment in Stripe.
           </p>
           {markNeedsCode ? (
             <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />

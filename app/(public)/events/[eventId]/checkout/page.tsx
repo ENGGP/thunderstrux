@@ -14,7 +14,7 @@ import { getEventForViewer, priceForViewer } from "@/lib/events/public-events";
 import { memberPricePlan } from "@/lib/memberships/offers";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
-import { formatDateTime, formatMoney, membershipLabel } from "@/lib/format";
+import { formatDateTime, formatMoney, membershipLabel, payLabel } from "@/lib/format";
 import { reservationMinutes } from "@/lib/tickets/reservations";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
 import { zoneCity } from "@/lib/zoned-time";
@@ -115,7 +115,7 @@ export default async function CheckoutPage({
                 eventId={event.id}
                 eventTitle={event.title}
                 freeTicketsAvailable={event.ticketTypes.some((type) => type.price === 0 && type.availableQuantity > 0)}
-                label={free ? "Confirm free registration" : `Pay ${formatMoney(total)}`}
+                label={free ? "Confirm free registration" : payLabel(total)}
                 quantity={quantity}
                 society={organisation.name}
                 ticketTypeId={ticketType.id}

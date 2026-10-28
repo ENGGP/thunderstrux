@@ -56,7 +56,7 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
             : "Your membership";
 
   return (
-    <CheckoutShell backHref={back} backLabel="Back to memberships" current={grant ? 2 : 1} society={order.sellerName} steps={["Review", "Pay with Stripe", "Membership"]} title={title}>
+    <CheckoutShell lead="Buying from" backHref={back} backLabel="Back to memberships" current={grant ? 2 : 1} society={order.sellerName} steps={["Review", "Pay with Stripe", "Membership"]} title={title}>
       <Card>
         <div className="grid gap-4">
           {closed ? (

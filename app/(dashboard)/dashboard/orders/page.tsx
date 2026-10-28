@@ -363,8 +363,7 @@ async function OrderResults({
     );
   const status = (order: Row) => (
     <div className="grid gap-1">
-      <StatusBadge label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined} status={order.projection} />
-      {order.isManuallyRefunded && order.status !== "paid" ? <p className="text-sm text-ink-soft">Refunded manually</p> : null}
+      <StatusBadge status={order.projection} />
       {order.requiresCompensationReview ? <p className="max-w-56 text-sm font-medium text-warning">Payment received; fulfilment review required</p> : null}
     </div>
   );

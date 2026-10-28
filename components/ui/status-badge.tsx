@@ -18,6 +18,7 @@ const statuses = {
   free: ["Free", "success"],
   review: ["Payment review", "warning"],
   refunded: ["Refunded", "neutral"],
+  "refunded-outside": ["Refunded outside Thunderstrux", "neutral"],
   "refund-processing": ["Refund processing", "warning"],
   disputed: ["Disputed", "warning"],
   cancelled: ["Cancelled", "neutral"],

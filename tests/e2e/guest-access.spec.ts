@@ -27,6 +27,13 @@ test("a guest confirms their email from the link, which works once", async ({ pa
     await page.screenshot({ path: `test-results/guest-access-${width}.png`, fullPage: true });
   }
 
+  // A blip on the way (the server busy, the network dropping) keeps the link: the buyer just tries again.
+  await page.route("**/api/guest/email/confirm", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "Unavailable", details: [] } }) }));
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("It still works, so try again");
+  await expect(page.getByRole("heading", { name: "This link has stopped working" })).toHaveCount(0);
+  await page.unroute("**/api/guest/email/confirm");
+
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(`http://localhost:3100${callback}`);
   const cookie = (await page.context().cookies()).find((item) => item.name === "thunderstrux-guest");

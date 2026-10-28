@@ -3,7 +3,7 @@ status: living
 last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Troubleshooting]]"]
-sources: [lib/stripe/index.ts, lib/stripe/version.ts, lib/stripe/connect.ts, lib/stripe/fees.ts, lib/stripe/http.ts, lib/payouts/payouts.ts, lib/payouts/release.ts, lib/payments/checkout-creation.ts, lib/commerce/checkout.ts, app/api/payments/webhook/route.ts, app/api/stripe/connect/webhook/route.ts]
+sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, lib/stripe/version.ts, lib/stripe/connect.ts, lib/stripe/fees.ts, lib/stripe/http.ts, lib/payouts/payouts.ts, lib/payouts/release.ts, lib/payments/checkout-creation.ts, lib/commerce/checkout.ts, app/api/payments/webhook/route.ts, app/api/stripe/connect/webhook/route.ts]
 ---
 
 # Stripe Payments and Connect
@@ -83,6 +83,26 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 
   An email that can't be queued (for example no `EMAIL_FROM`) logs `stripe_connect.notice_not_queued` and never undoes the flags.
 - **Ready with details due:** Settings shows "Stripe needs more details", the deadline when there is one (`current_deadline` in the status), what Stripe needs, and "Update details in Stripe" (a fresh onboarding link). The badge reads "Needs details".
+
+## Stripe settings
+
+`components/settings/stripe-connect-settings.tsx` renders from the server's Connect state, never from "an account id exists".
+
+| State | Badge | Main action |
+| --- | --- | --- |
+| `NOT_CONNECTED` | Not connected | `Connect Stripe` |
+| `PLATFORM_NOT_READY` | Setup incomplete | `Open Stripe Platform Settings`, `Retry after completion` |
+| `CONNECTED_INCOMPLETE` | Setup incomplete | `Continue Stripe setup` |
+| `RESTRICTED` | Needs attention | `Fix in Stripe`, with Stripe's reason and requirements |
+| `READY` | Ready, or Payouts not set up | `Add a bank account in Stripe` until payouts are on |
+| `ERROR` | Out of date | `Try again` |
+
+- Two rows, Can take payments and Can receive payouts, each with its next action, plus the Stripe account id; `Refresh status` and `Open Stripe dashboard` (asks for the authenticator code first when staff MFA is on).
+- A Payouts card (`components/settings/payouts-card.tsx`) for a connected society; a failed payout puts a warning above the cards.
+- A Fees card with the one-$20.00-ticket worked example from `calculatePlatformFee`.
+- `Disconnect Stripe account` (connected states and `PLATFORM_NOT_READY`) sits in its own zone, confirms, and is blocked with "You can't disconnect right now" while open orders need the account. It only unlinks; the Stripe account and its money are untouched.
+- A skeleton shows while status loads.
+- A status check that fails leaves the state unknown, never "Not connected": the card says "We couldn't check your Stripe account" with Try again, and hides the badge, Connect Stripe and Disconnect; the Fees card still shows (UI-013).
 
 ## Payouts
 

@@ -3,7 +3,7 @@ import type { OrderDisputeStatus, OrderRefundStatus, OrderStatus, PaymentKind } 
 // Bump when the set of facts recorded at purchase changes.
 export const PURCHASE_SNAPSHOT_VERSION = 1;
 
-export type TicketOrderProjection = "processing" | "paid" | "free" | "review" | "failed" | "expired" | "refunded" | "refund-processing" | "disputed" | "cancelled";
+export type TicketOrderProjection = "processing" | "paid" | "free" | "review" | "failed" | "expired" | "refunded" | "refunded-outside" | "refund-processing" | "disputed" | "cancelled";
 
 // The one status shown for a ticket order, and for a membership or merchandise
 // order (T29a), which carries the same facts. `paid` on a free order is a storage
@@ -18,12 +18,19 @@ export function ticketOrderProjection(order: {
   externalRefundedAmount?: number;
   externalRefundReviewedAt?: Date | null;
   cancelledAt?: Date | null;
+  isManuallyRefunded?: boolean;
 }): TicketOrderProjection {
   // A cancelled free purchase reads Cancelled, never Refunded or Free.
   if (order.cancelledAt) return "cancelled";
-  if (order.disputeStatus) return "disputed";
+  if (order.disputeStatus === "open" || order.disputeStatus === "lost") return "disputed";
   if (order.refundStatus === "refunded") return "refunded";
   if (order.refundStatus === "processing") return "refund-processing";
+  // Staff marked a paid order refunded outside Thunderstrux; a compensation
+  // refund (only ever on a failed order) sets the same flag and reads Refunded.
+  if (order.isManuallyRefunded) return order.status === "paid" ? "refunded-outside" : "refunded";
+  // A won dispute keeps its tickets under review until staff restore them,
+  // which clears it; a refund after it reads Refunded above.
+  if (order.disputeStatus === "won") return "disputed";
   // A partial refund made in Stripe stays flagged until staff review it.
   if (order.requiresCompensationReview || (order.externalRefundedAmount && !order.externalRefundReviewedAt)) return "review";
   if (order.status === "pending") return "processing";
@@ -61,5 +68,7 @@ export function buyerPurchaseBadge(order: Parameters<typeof ticketOrderProjectio
   if (projection === "review") return { status: projection, label: order.requiresCompensationReview ? "Payment issue" : "Partly refunded" };
   // A lost dispute is the buyer's money back; staff still see it as disputed.
   if (projection === "disputed" && order.disputeStatus === "lost") return { status: "refunded", label: "Refunded by your bank" };
+  // Where the society refunded is staff detail; the buyer was refunded either way.
+  if (projection === "refunded-outside") return { status: "refunded" };
   return { status: projection };
 }

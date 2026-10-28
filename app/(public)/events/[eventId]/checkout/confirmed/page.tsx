@@ -8,7 +8,7 @@ import { getLiveSession } from "@/lib/auth/live-session";
 import { getBookedEventDetail } from "@/lib/events/public-events";
 import { formatDateTime, ticketReference } from "@/lib/format";
 import { getMemberTicketOrder } from "@/lib/orders/member-tickets";
-import { justIssued, purchasedTicketTypeLabel } from "@/lib/purchases/projection";
+import { justIssued, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const metadata: Metadata = { title: "Tickets confirmed" };
@@ -33,6 +33,10 @@ export default async function CheckoutConfirmedPage({
 
   const free = order.paymentKind === "free";
   const count = order.tickets.length;
+  // Refunded, disputed or cancelled since: the order page says which, never "ready".
+  const projection = ticketOrderProjection(order);
+  const live = projection === "paid" || projection === "free" || (projection === "review" && !order.requiresCompensationReview);
+  if (!live || count === 0) redirect(`/purchases/tickets/${order.id}`);
   const { organisation } = event;
 
   return (
@@ -45,7 +49,7 @@ export default async function CheckoutConfirmedPage({
       <Card>
         <div className="grid gap-4">
           <p className="text-ink" role="status">
-            Your {count} {count === 1 ? "ticket is" : "tickets are"} ready. We&apos;ve emailed{" "}
+            Your {count} {count === 1 ? "ticket is" : "tickets are"} ready. {order.ticketEmailSentAt ? "We've emailed" : "We're emailing"}{" "}
             {count === 1 ? "it" : "them"} to {order.buyerEmailSnapshot ?? session.user.email}.
           </p>
           {event.heroAssetId ? (

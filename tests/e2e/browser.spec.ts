@@ -74,7 +74,7 @@ test('signup, duplicate email, incorrect password, logout and protected callback
   await expect(page.getByText('Verify your email to use purchases and society features.')).toHaveCount(0);
   // The ticket box asks for verification before offering to buy (T15a).
   await expect(page.getByText('Verify your email to get tickets')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Buy tickets' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Get tickets', exact: true })).toHaveCount(0);
   const csrf = await (await page.request.get('/api/security/csrf')).json();
   const blocked = await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': csrf.token }, data: { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1, expectedUnitPrice: data.ticket.price, idempotencyKey: `e2e-${Date.now()}-verify` } });
   expect(blocked.status()).toBe(403);
@@ -150,19 +150,19 @@ test('checkout validates quantities, readiness, origin and absent provider confi
   await login(page, data.member.email, `/events/${data.event.id}`);
   // The ticket box shows why a paid ticket can't be bought instead of failing at checkout (T15a).
   await expect(page.getByText('Paid tickets unavailable right now')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Buy tickets' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Get tickets', exact: true })).toHaveCount(0);
   // Checkout still refuses on its own when reached directly.
   await page.goto(`/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=1`);
-  await page.getByRole('button', { name: 'Pay $12.00' }).click();
+  await page.getByRole('button', { name: 'Pay A$12.00' }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Paid checkout unavailable' })).toBeVisible();
   const body = { eventId: data.event.id, ticketTypeId: data.ticket.id, quantity: 1, expectedUnitPrice: data.ticket.price, idempotencyKey: `e2e-${Date.now()}-config` };
   expect((await page.request.post('/api/payments/checkout/event', { headers: { Origin: 'https://example.com' }, data: body })).status()).toBe(403);
   await prisma.organisation.update({ where: {id: data.organisation.id}, data: {stripeAccountId: 'acct_synthetic', stripeChargesEnabled: true} });
   await page.goto(`/events/${data.event.id}`);
   await page.getByLabel('Quantity').fill('0');
-  await expect(page.getByRole('button', { name: 'Buy tickets' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Get tickets', exact: true })).toBeDisabled();
   await page.getByLabel('Quantity').fill('1');
-  await expect(page.getByRole('button', { name: 'Buy tickets' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Get tickets', exact: true })).toBeEnabled();
   expect((await page.request.post('/api/payments/checkout/event', {headers: { Origin: 'http://localhost:3100' }, data: body})).status()).toBe(403);
   const { token } = await (await page.request.get('/api/security/csrf')).json();
   expect((await page.request.post('/api/payments/checkout/event', {headers: { Origin: 'http://localhost:3100', 'x-thunderstrux-csrf-token': token }, data: body})).status()).toBe(503);
@@ -325,8 +325,11 @@ test('organisers check attendees in and confirm before recording a refund', asyn
   await page.getByRole('button', { name: 'Mark as refunded', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText("can't be undone");
+  await expect(dialog).toContainText('places go back on sale');
   await dialog.getByRole('button', { name: 'Mark as refunded', exact: true }).click();
   await expect(page.getByText('This order is marked as refunded.')).toBeVisible();
+  // Staff see where it was refunded, never a green Paid on an order whose tickets are void.
+  await expect(page.getByText('Refunded outside Thunderstrux').first()).toBeVisible();
   expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(true);
   expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ validity: 'void', validityReason: 'refunded_outside' });
 });

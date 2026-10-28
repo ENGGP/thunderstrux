@@ -230,6 +230,11 @@ describe("purchase snapshots and ticket validity", () => {
       ["a lost dispute is the buyer's money back; staff still see the dispute", { ...paid, disputeStatus: "lost" }, "disputed", "Refunded by your bank"],
       ["refunded outranks review", { ...paid, refundStatus: "refunded", externalRefundedAmount: 500 }, "refunded", undefined],
       ["a refund in progress outranks review", { ...paid, refundStatus: "processing", externalRefundedAmount: 500 }, "refund-processing", undefined],
+      // A won dispute stays under review until staff restore the tickets, which clears it; a refund after it is just Refunded.
+      ["a refund after a won dispute reads refunded", { ...paid, disputeStatus: "won", refundStatus: "refunded" }, "refunded", undefined],
+      ["a won dispute alone is still disputed", { ...paid, disputeStatus: "won" }, "disputed", undefined],
+      ["staff marked a paid order refunded outside Thunderstrux; the buyer reads Refunded", { ...paid, isManuallyRefunded: true }, "refunded-outside", undefined],
+      ["a compensation refund (on a failed order) reads refunded, not Didn't complete", { ...paid, status: "failed", isManuallyRefunded: true }, "refunded", undefined],
       ["a charge that couldn't be fulfilled", { ...paid, status: "failed", requiresCompensationReview: true }, "review", "Payment issue"],
       ["a partial refund made in Stripe, until reviewed", { ...paid, externalRefundedAmount: 500 }, "review", "Partly refunded"],
       ["a reviewed partial refund", { ...paid, externalRefundedAmount: 500, externalRefundReviewedAt: at }, "paid", undefined],
@@ -243,6 +248,8 @@ describe("purchase snapshots and ticket validity", () => {
       expect(ticketOrderProjection(order), why).toBe(projection);
       expect(buyerPurchaseBadge(order).label, why).toBe(label);
     }
+    // Where the society refunded is staff detail: the buyer's badge is plain Refunded.
+    expect(buyerPurchaseBadge({ ...paid, isManuallyRefunded: true }).status).toBe("refunded");
 
     const owner = await createOrganisationAccount();
     const event = await createEvent({ organisationId: owner.organisation.id, status: "published" });

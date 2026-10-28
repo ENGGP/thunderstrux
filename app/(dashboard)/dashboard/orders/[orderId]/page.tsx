@@ -88,12 +88,7 @@ export default async function OrganisationOrderDetailPage({
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <PageHeader
-        badge={
-          <StatusBadge
-            label={order.isManuallyRefunded && order.projection === "paid" ? "Paid · recorded outside Thunderstrux" : undefined}
-            status={order.projection}
-          />
-        }
+        badge={<StatusBadge status={order.projection} />}
         breadcrumbs={[{ label: "Orders", href: "/dashboard/orders" }]}
         title={`Order ${order.id.slice(-6).toUpperCase()}`}
       />

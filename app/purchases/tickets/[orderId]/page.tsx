@@ -44,7 +44,8 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
   const badge = checkout?.state === "confirming" ? { status: "processing" as const, label: "Confirming payment" } : checkout?.state === "ended" ? { status: "expired" as const, label: "Didn't complete" } : buyerPurchaseBadge(order);
   const ticketType = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
   const notCharged = projection === "failed" || projection === "expired" || checkout?.state === "ended";
-  const totalLabel = order.paymentKind === "free" ? "Free" : notCharged ? "Not charged" : checkout?.state === "waiting" ? "To pay" : "Paid";
+  // The amount stays what was paid; the label says it came back.
+  const totalLabel = order.paymentKind === "free" ? "Free" : notCharged ? "Not charged" : checkout?.state === "waiting" ? "To pay" : badge.status === "refunded" ? "Paid, then refunded" : "Paid";
   // A free registration can be released until the event starts (EVT-005).
   const activeTickets = order.tickets.filter((ticket) => ticket.validity === "active").length;
   const canRelease = projection === "free" && activeTickets > 0 && event.startTime > new Date() && !event.cancelledAt;

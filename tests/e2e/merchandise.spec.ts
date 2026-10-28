@@ -61,13 +61,13 @@ test("an owner drafts a product with a photo and options, publishes it and archi
   await expect(page.getByRole("heading", { name: "EngSoc hoodie", level: 1 })).toBeVisible();
   await expect(page.getByText("only 5 left")).toBeVisible();
   await page.getByRole("button", { name: "One more" }).click();
-  await page.getByRole("button", { name: "Add to basket · $90.00" }).click();
+  await page.getByRole("button", { name: "Add to merch basket · $90.00" }).click();
   await expect(page.getByText("Added 2 × EngSoc hoodie (Navy, L) to your basket.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Basket · 2 items" })).toBeVisible();
   await shoot(page, "product");
   // The free option, then the basket: re-quoted by the server.
   await page.getByText("Sticker pack", { exact: true }).click();
-  await page.getByRole("button", { name: "Add to basket · Free" }).click();
+  await page.getByRole("button", { name: "Add to merch basket · Free" }).click();
   await page.getByRole("link", { name: "View basket" }).click();
   await expect(page.getByRole("heading", { name: /merchandise basket/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "Checkout merchandise" })).toBeVisible();
@@ -79,7 +79,7 @@ test("an owner drafts a product with a photo and options, publishes it and archi
   await page.evaluate(() => localStorage.setItem("thunderstrux:merchandise-basket", JSON.stringify({ society: "another-society", lines: [{ variantId: "x", quantity: 1 }] })));
   await page.goto(shop);
   await page.getByRole("link", { name: /EngSoc hoodie/ }).click();
-  await page.getByRole("button", { name: /Add to basket/ }).click();
+  await page.getByRole("button", { name: /Add to merch basket/ }).click();
   await expect(page.getByRole("dialog").getByText("Your basket has another society's items")).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Clear and add this" }).click();
   await expect(page.getByRole("link", { name: "Basket · 1 item" })).toBeVisible();
@@ -173,7 +173,7 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   await expect(page.getByRole("heading", { name: "Review your order" })).toBeVisible();
   await expect(page.getByText("We hold these items for 30 minutes while you pay.")).toBeVisible();
   await shoot(page, "review");
-  await page.getByRole("button", { name: "Pay $45.00" }).click();
+  await page.getByRole("button", { name: "Pay A$45.00" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Checkout didn't start" })).toContainText("Nothing has been charged.");
 
   // The order page for a member's paid order: confirming, left Stripe, and held for review.

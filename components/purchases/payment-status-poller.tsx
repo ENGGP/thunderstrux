@@ -27,6 +27,7 @@ export function PaymentStatusPoller({
 }) {
   const router = useRouter();
   const [slow, setSlow] = useState(false);
+  const [stoppedChecking, setStoppedChecking] = useState(false);
 
   useEffect(() => {
     let checks = 0;
@@ -48,6 +49,7 @@ export function PaymentStatusPoller({
       if (stopped) return;
       if (checks >= maxChecks) setSlow(true);
       if (checks < maxChecks + maxSlowChecks) timer = setTimeout(check, checks < maxChecks ? intervalMs : slowIntervalMs);
+      else setStoppedChecking(true);
     }
     timer = setTimeout(check, intervalMs);
     return () => {
@@ -59,6 +61,7 @@ export function PaymentStatusPoller({
   return slow ? (
     <Notice role="status" title="Still confirming">
       <p>{slowMessage}</p>
+      {stoppedChecking ? <p className="mt-1">This page has stopped checking by itself. Refresh it to check again.</p> : null}
     </Notice>
   ) : null;
 }

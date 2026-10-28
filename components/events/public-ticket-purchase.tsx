@@ -158,7 +158,7 @@ export function PublicTicketPurchase({
     setLeaving(true);
     router.push(href);
   };
-  const primaryLabel = viewer === "anonymous" ? "Continue as guest" : free ? "Get free tickets" : "Buy tickets";
+  const primaryLabel = viewer === "anonymous" ? "Continue as guest" : free ? "Get free tickets" : "Get tickets";
   const primaryHref = viewer === "anonymous" ? `${checkoutHref}&guest=1` : checkoutHref;
   const action =
     viewer === "society" ? (
@@ -201,7 +201,7 @@ export function PublicTicketPurchase({
           type="button"
           variant="secondary"
         >
-          {free ? "Sign in to get free tickets" : "Sign in to buy"}
+          {free ? "Sign in to get free tickets" : "Sign in to get tickets"}
         </Button>
         <p className="text-caption text-ink-muted">
           As a guest you confirm your email and your tickets go there. Signed-in members also see them in My tickets. New here?{" "}
@@ -226,7 +226,7 @@ export function PublicTicketPurchase({
           size="lg"
           type="button"
         >
-          {free ? "Get free tickets" : "Buy tickets"}
+          {free ? "Get free tickets" : "Get tickets"}
         </Button>
         <p className="text-caption text-ink-muted">
           {free

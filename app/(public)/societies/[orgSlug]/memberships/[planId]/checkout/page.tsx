@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { formatDate, formatMoney, formatTerm } from "@/lib/format";
+import { formatDate, formatMoney, formatTerm, payLabel } from "@/lib/format";
 import { membershipOffer } from "@/lib/memberships/offers";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
 import { zoneCity } from "@/lib/zoned-time";
@@ -39,7 +39,7 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
   const buyer = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ") || session.user.email;
   const unlockWords = { member_prices: `member prices on ${organisation.name} tickets`, members_only_events: "booking members-only events" } as const;
   const unlocks = offer.entitlements.map((key) => unlockWords[key]);
-  const label = free ? "Confirm free membership" : `Pay ${formatMoney(offer.priceAmount)}`;
+  const label = free ? "Confirm free membership" : payLabel(offer.priceAmount);
   const blocked =
     offer.state.kind === "held" || offer.state.kind === "covered"
       ? "You already have a membership for these dates"
@@ -49,6 +49,7 @@ export default async function MembershipCheckoutPage({ params }: { params: Promi
 
   return (
     <CheckoutShell
+      lead="Buying from"
       aside={
         <Card>
           <div className="grid gap-4">

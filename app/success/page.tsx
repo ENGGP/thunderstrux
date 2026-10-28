@@ -57,7 +57,7 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
           {projection === "processing" ? (
             <>
               <p className="text-ink" role="status">Stripe is telling us about your payment for {order.event.title}. This usually takes under a minute; this page updates by itself.</p>
-              <p className="text-sm text-ink-soft">Your {count} are held while we wait. You won&apos;t be charged twice.</p>
+              <p className="text-sm text-ink-soft">Your {count} {order.quantity === 1 ? "is" : "are"} held while we wait. You won&apos;t be charged twice.</p>
               <PaymentStatusPoller orderId={order.id} />
               <Link className="font-semibold text-brand underline underline-offset-4" href="/purchases">See all purchases</Link>
             </>

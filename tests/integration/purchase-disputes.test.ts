@@ -179,7 +179,7 @@ describe("disputes", () => {
     expect(params.submit).toBe(false);
     expect(params.evidence.product_description).toContain(fixture.event.title);
     expect(params.evidence.access_activity_log).toContain(`Ticket ${first.id.slice(-6).toUpperCase()} was scanned in at the door`);
-    expect(params.evidence.refund_policy_disclosure).toContain("Refunds up to 7 days before the event.");
+    expect(params.evidence.refund_policy_disclosure).toContain("\"Refund policy: Refunds up to 7 days before the event.\"");
     expect(params.evidence.uncategorized_text).toContain(`Order ${orderReference(fixture.order.id)}: $30.00 paid`);
     expect(params.evidence.uncategorized_text).toContain("The tickets were emailed to the buyer");
     expect(params.evidence.uncategorized_text).toContain("Refunded $5.00 to the buyer's card outside Thunderstrux.");

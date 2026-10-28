@@ -63,7 +63,7 @@ async function ticketEvidence(orderId: string): Promise<Evidence | null> {
       : checkedIn.length
         ? checkedIn.map((ticket) => `Ticket ${ticketReference(ticket.id)} was scanned in at the door at ${at(ticket.checkedInAt as Date, timeZone)}.`).join("\n")
         : `None of the order's ${order.tickets.length} tickets was scanned in at the door.`,
-    refund_policy_disclosure: refundPolicy ? `Shown on the checkout page before payment (current wording): "Refunds: ${refundPolicy}"` : undefined,
+    refund_policy_disclosure: refundPolicy ? `Shown on the checkout page before payment (current wording): "Refund policy: ${refundPolicy}"` : undefined,
     uncategorized_text: [
       `Order ${orderReference(order.id)}: ${formatMoney(order.totalAmount)} paid${order.paidAt ? ` on ${at(order.paidAt, timeZone)}` : ""}${buyer ? ` by ${buyer.email}` : ""}.`,
       ...(order.ticketEmailSentAt ? [`The tickets were emailed to the buyer on ${at(order.ticketEmailSentAt, timeZone)}.`] : []),
@@ -89,7 +89,7 @@ async function commerceEvidence(commerceOrderId: string): Promise<Evidence | nul
     customer_name: order.buyerNameSnapshot ?? undefined,
     customer_email_address: order.buyerEmailSnapshot,
     product_description: `${order.lines.map((line) => `${line.quantity} × ${line.nameSnapshot}`).join(", ")} from ${order.sellerName}, sold through Thunderstrux.`,
-    refund_policy_disclosure: refundPolicy ? `Shown on the checkout page before payment (current wording): "Refunds: ${refundPolicy}"` : undefined,
+    refund_policy_disclosure: refundPolicy ? `Shown on the checkout page before payment (current wording): "Refund policy: ${refundPolicy}"` : undefined,
     uncategorized_text: [
       `Order ${orderReference(order.id)}: ${formatMoney(order.totalAmount)} paid${order.paidAt ? ` on ${at(order.paidAt, timeZone)}` : ""} by ${order.buyerEmailSnapshot}.`,
       ...(order.kind === "merchandise" && order.pickupStatus === "collected" ? ["The buyer collected the items in person."] : []),

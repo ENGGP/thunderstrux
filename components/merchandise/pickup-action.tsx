@@ -41,16 +41,16 @@ export function PickupAction({ orgSlug, order, step, stage, wide = false, after 
 
   return (
     <div className={`grid gap-2 ${wide ? "" : "justify-items-end"}`}>
-      {error ? (
-        <Notice className="text-left" title={error.includes(" marked order ") ? "Someone got there first" : "Not done"} tone="warning">
-          <p className="mt-0.5">{error} Check before handing anything over.</p>
-        </Notice>
-      ) : null}
       {/* The spoken name starts with the visible words, so voice control finds it (WCAG 2.5.3). */}
       {/* relative keeps the hidden words inside the button, so they can't widen a scrolling table. */}
       <Button className={wide ? "relative w-full" : "relative"} onClick={() => setOpen(true)} size={wide ? "lg" : "sm"} type="button">
         {ready ? "Mark ready" : "Mark collected"}<span className="sr-only"> for order {order.reference}</span>
       </Button>
+      {error ? (
+        <Notice reveal className="text-left" title={error.includes(" marked order ") ? "Someone got there first" : "Not done"} tone="warning">
+          <p className="mt-0.5">{error} Check before handing anything over.</p>
+        </Notice>
+      ) : null}
       <ConfirmDialog
         busy={busy}
         cancelLabel={ready ? "Not yet" : "Cancel"}

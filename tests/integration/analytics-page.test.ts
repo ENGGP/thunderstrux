@@ -54,6 +54,18 @@ describe("analytics page", () => {
     expect(html).toContain("tab=engagement");
   });
 
+  // UI-019: by day past 62 days would be hundreds of rows, so it reads by week.
+  test("by day over a long range is shown by week, and says so", async () => {
+    await society();
+    const today = new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.now() - 89 * 86400000).toISOString().slice(0, 10);
+    const long = await page({ from, to: today, bucket: "day" });
+    expect(long).toContain("Shown by week");
+    expect(long).toContain("by week");
+    expect(long).not.toContain("Sales by day, in numbers");
+    expect(await page()).not.toContain("Shown by week");
+  });
+
   test("a range over 366 days says so and falls back; another society's event is ignored; check-in staff are refused", async () => {
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
     const { staff } = await society();

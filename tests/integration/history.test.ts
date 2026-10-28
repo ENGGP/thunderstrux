@@ -97,6 +97,9 @@ describe("History (T38)", () => {
     expect(first.entries).toHaveLength(50);
     const second = await readHistory(organisation.id, {}, zone, first.nextCursor!);
     expect(second.nextCursor).toBeNull();
+    const back = await readHistory(organisation.id, {}, zone, second.previousCursor!, "prev");
+    expect(back.entries.map((entry) => entry.id)).toEqual(first.entries.map((entry) => entry.id));
+    expect(back.previousCursor).toBeNull();
     expect(new Set([...first.entries, ...second.entries].map((entry) => entry.id)).size).toBe(first.entries.length + second.entries.length);
   });
 

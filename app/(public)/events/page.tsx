@@ -4,9 +4,9 @@ import { Suspense } from "react";
 import { EventCard } from "@/components/events/event-card";
 import { ExploreFilterFields } from "@/components/events/explore-filter-fields";
 import { buttonClasses } from "@/components/ui/button";
+import { Pager } from "@/components/ui/pager";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
@@ -141,24 +141,13 @@ async function ExploreResults({
           />
         ))}
       </div>
-      {result.pageInfo.previousCursor || result.pageInfo.nextCursor ? (
-        <nav aria-label="Pages of events" className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
-          {result.pageInfo.previousCursor ? (
-            <Link className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-brand" href={hrefFor(filters, { cursor: result.pageInfo.previousCursor, direction: "prev" })}>
-              <Icon className="rotate-180" name="chevronRight" />
-              Earlier events
-            </Link>
-          ) : (
-            <span />
-          )}
-          {result.pageInfo.nextCursor ? (
-            <Link className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-brand" href={hrefFor(filters, { cursor: result.pageInfo.nextCursor, direction: "next" })}>
-              Later events
-              <Icon name="chevronRight" />
-            </Link>
-          ) : null}
-        </nav>
-      ) : null}
+      <Pager
+        label="Pages of events"
+        next={result.pageInfo.nextCursor && hrefFor(filters, { cursor: result.pageInfo.nextCursor, direction: "next" })}
+        nextLabel="Later events"
+        previous={result.pageInfo.previousCursor && hrefFor(filters, { cursor: result.pageInfo.previousCursor, direction: "prev" })}
+        previousLabel="Earlier events"
+      />
     </section>
   );
 }

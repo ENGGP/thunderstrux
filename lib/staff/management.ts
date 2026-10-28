@@ -1,4 +1,4 @@
-import type { OrganisationStaffRole, OrganisationStaffStatus } from "@prisma/client";
+import type { OrganisationStaffRole, OrganisationStaffStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { lockAccount, type AccountActor } from "@/lib/auth/account-lifecycle";
 import { liveStaffRole, roleHasPermission } from "@/lib/staff/live-authority";
@@ -44,18 +44,23 @@ export async function updateOrganisationStaff(actor: AccountActor, organisationI
   }, { timeout: 15000 });
 }
 
+// Current staff, then revoked staff as history: only the 25 most recently
+// revoked, so years of committees don't bury who has access now (UI-019).
+const pastStaffShown = 25;
+const staffSelect = { id: true, role: true, status: true, createdAt: true, acceptedAt: true, revokedAt: true,
+  user: { select: { id: true, email: true, firstName: true, lastName: true } } } satisfies Prisma.OrganisationStaffSelect;
 export async function listOrganisationStaff(organisationId: string, now = new Date()) {
-  const [staff, invites] = await Promise.all([
-    prisma.organisationStaff.findMany({ take: 100, where: { organisationId },
-      orderBy: [{ status: "asc" }, { role: "asc" }, { createdAt: "asc" }],
-      select: { id: true, role: true, status: true, createdAt: true, acceptedAt: true, revokedAt: true,
-        user: { select: { id: true, email: true, firstName: true, lastName: true } } } }),
+  const [current, past, invites] = await Promise.all([
+    prisma.organisationStaff.findMany({ take: 100, where: { organisationId, status: { not: "revoked" } },
+      orderBy: [{ status: "asc" }, { role: "asc" }, { createdAt: "asc" }], select: staffSelect }),
+    prisma.organisationStaff.findMany({ take: pastStaffShown, where: { organisationId, status: "revoked" },
+      orderBy: [{ revokedAt: "desc" }, { id: "desc" }], select: staffSelect }),
     // An expired invitation is history (listPastStaffInvites), not pending.
     prisma.organisationStaffInvite.findMany({ where: { organisationId, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
       take: 100, orderBy: { createdAt: "desc" },
       select: { id: true, email: true, role: true, expiresAt: true, createdAt: true } })
   ]);
-  return { staff, invites };
+  return { staff: [...current, ...past], invites };
 }
 // Accounts the acting owner may hand ownership to: active, verified, enabled and, under enforcement, MFA-enrolled.
 export async function listHandoverTargets(organisationId: string, actorUserId: string) {

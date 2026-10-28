@@ -1,5 +1,6 @@
 import type { CommerceKind, CommerceLifecycleEventType, OrderLifecycleSource, OrderStatus, PaymentKind, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { abandonedWhere } from "@/lib/purchases/projection";
 import {
   decodeTimestampCursor,
   descendingCursorWhere,
@@ -189,10 +190,10 @@ export async function getOrganisationCommerceOrder(organisationId: string, comme
 }
 
 // The member's commerce orders, newest first, for the unified Purchases (T29).
-export async function getOwnCommerceOrders(userId: string, { limit, cursor, direction }: ParsedPaginationOptions, kind?: CommerceKind) {
+export async function getOwnCommerceOrders(userId: string, { limit, cursor, direction }: ParsedPaginationOptions, kind?: CommerceKind, { incomplete = false } = {}) {
   const decoded = cursor ? decodeTimestampCursor("createdAt", cursor) : null;
   const orders = await prisma.commerceOrder.findMany({
-    where: { userId, ...(kind ? { kind } : {}), ...(decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}) },
+    where: { userId, ...(kind ? { kind } : {}), ...(incomplete ? {} : { NOT: abandonedWhere }), ...(decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}) },
     orderBy: orderByForDirection("createdAt", direction, "desc"),
     take: limit + 1,
     select: {

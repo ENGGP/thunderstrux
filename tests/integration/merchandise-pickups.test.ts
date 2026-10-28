@@ -37,6 +37,20 @@ async function step(slug: string, orderId: string, body: unknown) {
 const emails = (orderId: string, step: string) => prisma.notificationOutbox.count({ where: { eventKey: `merchandise-${step}/${orderId}` } });
 
 describe("merchandise pickups", () => {
+  // UI-019: To prepare runs oldest first, a page either way.
+  test("pickup stages page forward and back in the order orders came in", async () => {
+    const { organisation, order } = await society();
+    const created = [];
+    for (let index = 0; index < 26; index += 1) created.push(await order());
+    const first = await listPickups(organisation.id, { stage: "prepare" });
+    expect(first.orders.map((row) => row.id)).toEqual(created.slice(0, 25).map((row) => row.id));
+    expect(first.previousCursor).toBeNull();
+    const second = await listPickups(organisation.id, { stage: "prepare", cursor: first.nextCursor! });
+    expect(second.orders.map((row) => row.id)).toEqual([created[25].id]);
+    const back = await listPickups(organisation.id, { stage: "prepare", cursor: second.previousCursor!, direction: "prev" });
+    expect(back.orders.map((row) => row.id)).toEqual(first.orders.map((row) => row.id));
+  }, 90_000);
+
   test("staff mark an order ready, then collected, once each: the buyer is emailed once per step and who did it is recorded", async () => {
     const { organisation, user, order } = await society();
     const first = await order();

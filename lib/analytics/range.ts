@@ -33,6 +33,11 @@ export function analyticsRange(input: { from?: string; to?: string; bucket?: str
   return { from, to, bucket, timeZone };
 }
 
+// By day reads well up to about two months; a longer range by day is hundreds
+// of rows, so pages show it by week instead (UI-019).
+export const maxDailyDays = 62;
+export const tooLongByDay = (from: string, to: string) => (utc(to) - utc(from)) / day + 1 > maxDailyDays;
+
 // Every bucket start in the range, as a local date, for zero fill.
 export function bucketStarts({ from, to, bucket }: AnalyticsRange) {
   const first = new Date(utc(from));

@@ -28,7 +28,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
 
 ## Ranges
 
-- A range is whole local days in the society's zone, at most `maxRangeDays` (366), grouped by `day`, `week` (from Monday) or `month`. The default is the last 30 days by day.
+- A range is whole local days in the society's zone, at most `maxRangeDays` (366), grouped by `day`, `week` (from Monday) or `month`. The default is the last 30 days by day. The page shows by day up to `maxDailyDays` (62); a longer range asked for by day shows by week with a notice (`tooLongByDay`), which the event Summary's chart also uses.
 - Bounds and buckets are computed in SQL with `AT TIME ZONE` (`startOf`, `endOf`, `bucketOf`), so a local day stays a local day across daylight saving and a sale at 00:30 on the 1st belongs to that month.
 - Every bucket is returned; missing ones are zero (`zeroFill`).
 - Bad dates, an end before the start, more than 366 days or another grouping raise `AnalyticsRangeError`.

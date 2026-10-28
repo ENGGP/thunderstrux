@@ -32,8 +32,12 @@ test("a member sees every purchase in their own words and a wallet of ticket fac
 
   await page.getByRole("navigation", { name: "Personal navigation" }).getByRole("link", { name: "Purchases" }).click();
   const list = page.getByRole("region", { name: "Purchases" });
-  await expect(list.getByText("Didn't complete").filter({ visible: true })).toHaveCount(1);
   await expect(list.getByText("Refunded", { exact: true }).filter({ visible: true })).toHaveCount(1);
+  // A checkout that didn't complete is hidden behind a link (UI-019).
+  await expect(list.getByText("Didn't complete").filter({ visible: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Show 1 checkout that didn't complete" }).click();
+  await expect(list.getByText("Didn't complete").filter({ visible: true })).toHaveCount(1);
+  await expect(page.getByText("Checkouts that didn't complete took no money.")).toBeVisible();
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

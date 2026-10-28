@@ -38,6 +38,19 @@ export function ticketOrderProjection(order: {
   return order.status;
 }
 
+// A checkout that took no money and left nothing to follow up: failed or
+// expired, with no refund, dispute, review, outside refund or cancellation (the
+// orders ticketOrderProjection reads as failed or expired). Purchases hides them
+// unless the buyer asks (UI-019). The same shape filters commerce orders.
+export const abandonedWhere = {
+  status: { in: ["failed", "expired"] satisfies OrderStatus[] },
+  requiresCompensationReview: false,
+  refundStatus: null,
+  disputeStatus: null,
+  externalRefundedAmount: 0,
+  cancelledAt: null
+};
+
 // The buyer's first look at tickets issued moments ago gets a one-time entrance.
 // shortcut: a two-minute window, not a per-view flag, so a reload inside it replays; upgrade only if that matters.
 export function justIssued(fulfilledAt: Date | null, now = Date.now()) {

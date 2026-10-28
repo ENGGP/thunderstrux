@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { CheckInConsole } from "@/components/tickets/check-in-console";
-import { buttonClasses } from "@/components/ui/button";
+import { Pager } from "@/components/ui/pager";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
 import { PaginationError, parsePaginationOptions } from "@/lib/pagination/cursor";
@@ -44,7 +43,6 @@ export default async function OrganiserEventTicketsPage({
 
   const pageHref = (cursor: string, direction: "next" | "prev") =>
     `/dashboard/events/${eventId}/tickets?${new URLSearchParams({ limit: String(payload.pageInfo.limit), cursor, direction })}`;
-  const pageLink = buttonClasses({ variant: "secondary", size: "sm" });
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -55,12 +53,11 @@ export default async function OrganiserEventTicketsPage({
       <CheckInConsole
         eventId={eventId}
         footer={
-          payload.pageInfo.previousCursor || payload.pageInfo.nextCursor ? (
-            <nav aria-label="Ticket pagination" className="flex flex-wrap items-center justify-between gap-3 text-sm">
-              {payload.pageInfo.previousCursor ? <Link className={pageLink} href={pageHref(payload.pageInfo.previousCursor, "prev")}>Previous</Link> : <span />}
-              {payload.pageInfo.nextCursor ? <Link className={pageLink} href={pageHref(payload.pageInfo.nextCursor, "next")}>Next</Link> : null}
-            </nav>
-          ) : null
+          <Pager
+            label="Ticket pagination"
+            next={payload.pageInfo.nextCursor && pageHref(payload.pageInfo.nextCursor, "next")}
+            previous={payload.pageInfo.previousCursor && pageHref(payload.pageInfo.previousCursor, "prev")}
+          />
         }
         initialTickets={payload.tickets}
         timeZone={event.timeZone}

@@ -25,13 +25,14 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joiningSlug, setJoiningSlug] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // A new search replaces the list; "More" adds to it, so the list stays put.
+  const [loading, setLoading] = useState<"search" | "more" | null>("search");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [searchedQuery, setSearchedQuery] = useState("");
 
   async function search(nextQuery = query, cursor?: string) {
     const requestId = ++revision.current;
-    setIsLoading(true);
+    setLoading(cursor ? "more" : "search");
     setError(null);
 
     try {
@@ -59,7 +60,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
         getClientErrorMessage(searchError, "Unable to search societies."),
       );
     } finally {
-      if (requestId === revision.current) setIsLoading(false);
+      if (requestId === revision.current) setLoading(null);
     }
   }
 
@@ -73,7 +74,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
   useEffect(() => {
     if (joinedRevision.current !== joinedIds) {
       revision.current++;
-      setIsLoading(false);
+      setLoading(null);
       joinedRevision.current = joinedIds;
     }
     const joined = new Set(joinedIds);
@@ -89,7 +90,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
 
   async function joinOrganisation(organisation: SearchOrganisation) {
     revision.current++;
-    setIsLoading(false);
+    setLoading(null);
     setJoiningSlug(organisation.slug);
     setError(null);
     setMessage(null);
@@ -128,7 +129,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
             value={query}
           />
         </div>
-        <Button busy={isLoading} busyLabel="Searching…" disabled={joiningSlug !== null} type="submit">
+        <Button busy={loading === "search"} busyLabel="Searching…" disabled={joiningSlug !== null || loading === "more"} type="submit">
           Search
         </Button>
       </form>
@@ -144,7 +145,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
         </Notice>
       ) : null}
 
-      {isLoading ? (
+      {loading === "search" ? (
         <ListSkeleton label="Loading societies" rows={3} />
       ) : organisations.length === 0 ? (
         <div className="rounded-card border border-line bg-surface p-5 text-sm text-ink-muted">
@@ -188,10 +189,12 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
       )}
       {nextCursor && (
         <Button
+          busy={loading === "more"}
+          busyLabel="Loading…"
+          disabled={loading === "search" || joiningSlug !== null}
+          onClick={() => search(searchedQuery, nextCursor)}
           type="button"
           variant="secondary"
-          disabled={isLoading || joiningSlug !== null}
-          onClick={() => search(searchedQuery, nextCursor)}
         >
           More societies
         </Button>

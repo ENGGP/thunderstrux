@@ -131,4 +131,22 @@ describe("dashboards (T34)", () => {
     const empty = await page();
     for (const text of ["Nothing booked yet", "Explore events", "No memberships", "You haven&#x27;t joined a society"]) expect(empty).toContain(text);
   });
+
+  // UI-019: the readers leave out checkouts that didn't complete, so ten newer
+  // ones never crowd out real purchases; five joined societies, then See all.
+  test("recent purchases survive many newer checkouts that didn't complete, and joined societies stop at five", async () => {
+    const member = await createMember();
+    const { organisation } = await createOrganisationAccount();
+    for (const [index, title] of ["Real one", "Real two", "Real three"].entries()) {
+      const event = await eventAt(organisation.id, title, at((index + 2) * day));
+      await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: member.id, status: "paid", paidAt: at(-day), createdAt: at(-day - index) });
+    }
+    const lapsed = await eventAt(organisation.id, "Lapsed checkout", at(5 * day));
+    for (let index = 0; index < 10; index += 1) await createOrder({ organisationId: organisation.id, eventId: lapsed.id, ticketTypeId: lapsed.ticketTypes[0].id, userId: member.id, status: "expired" });
+    for (let index = 0; index < 6; index += 1) await joinOrganisation(member.id, (await createOrganisationAccount()).organisation.id);
+    setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
+    const html = await page();
+    for (const title of ["Real one", "Real two", "Real three", "See all 6"]) expect(html).toContain(title);
+    expect(html).not.toContain("Lapsed checkout");
+  });
 });

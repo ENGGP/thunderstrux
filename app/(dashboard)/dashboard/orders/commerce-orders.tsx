@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { CommerceKind } from "@prisma/client";
-import { buttonClasses } from "@/components/ui/button";
+import { Pager } from "@/components/ui/pager";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
@@ -105,7 +105,6 @@ export async function CommerceOrders({
     ) : (
       <span className="text-sm text-ink-soft">{order.pickupStatus ? "Not collected" : "No pickup"}</span>
     );
-  const pageLink = buttonClasses({ variant: "secondary", size: "sm" });
 
   return (
     <>
@@ -138,9 +137,19 @@ export async function CommerceOrders({
       </FilterBar>
       {pagination.invalid ? <Notice tone="warning">Invalid pagination parameters were ignored. Showing the first page.</Notice> : null}
       {orders.length === 0 ? (
-        <EmptyState icon={merchandise ? "bag" : "receipt"} title={`No ${filter === "all" ? "" : `${filterLabels[filter].toLowerCase()} `}${merchandise ? "merchandise" : "membership"} orders`}>
-          {search || params.productId || params.startDate || params.endDate ? "Nothing matches these filters. Clear them to see every order." : merchandise ? "Orders show here once buyers check out." : "Orders show here once members buy a membership or get a free one."}
-        </EmptyState>
+        search || params.productId || params.startDate || params.endDate ? (
+          <EmptyState
+            action={<Link className="font-semibold text-brand underline underline-offset-4" href={href({ search: undefined, productId: undefined, startDate: undefined, endDate: undefined, cursor: undefined })}>Clear filters</Link>}
+            icon="search"
+            title="No matching orders"
+          >
+            Nothing matches these filters. Clear them to see every {filter === "all" ? "" : `${filterLabels[filter].toLowerCase()} `}order.
+          </EmptyState>
+        ) : (
+          <EmptyState icon={merchandise ? "bag" : "receipt"} title={`No ${filter === "all" ? "" : `${filterLabels[filter].toLowerCase()} `}${merchandise ? "merchandise" : "membership"} orders`}>
+            {merchandise ? "Orders show here once buyers check out." : "Orders show here once members buy a membership or get a free one."}
+          </EmptyState>
+        )
       ) : (
         <ResponsiveTable
           card={(order) => (
@@ -179,13 +188,12 @@ export async function CommerceOrders({
         />
       )}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-sm text-ink-soft">Newest first. Each tab keeps its own filters.</p>
-        {pageInfo.previousCursor || pageInfo.nextCursor ? (
-          <nav aria-label="Order pagination" className="flex gap-2">
-            {pageInfo.previousCursor ? <Link className={pageLink} href={href({ cursor: pageInfo.previousCursor, direction: "prev" })}>Previous</Link> : null}
-            {pageInfo.nextCursor ? <Link className={pageLink} href={href({ cursor: pageInfo.nextCursor, direction: "next" })}>Next page</Link> : null}
-          </nav>
-        ) : null}
+        <p className="text-sm text-ink-soft">Newest first.</p>
+        <Pager
+          label="Order pagination"
+          next={pageInfo.nextCursor && href({ cursor: pageInfo.nextCursor, direction: "next" })}
+          previous={pageInfo.previousCursor && href({ cursor: pageInfo.previousCursor, direction: "prev" })}
+        />
       </div>
       <section aria-labelledby="who-sees" className="grid gap-1.5 rounded-card border border-line bg-surface-subtle p-5">
         <h2 className="font-semibold text-ink" id="who-sees">

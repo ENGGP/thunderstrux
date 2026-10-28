@@ -10,6 +10,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
+import { Pager } from "@/components/ui/pager";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
@@ -38,10 +40,12 @@ const viewNouns: Record<EventView, [string, string]> = {
   all: ["event", "events"]
 };
 
-function viewHref(view: EventView, query: string) {
+function viewHref(view: EventView, query: string, cursor?: string | null, direction?: "next" | "prev") {
   const params = new URLSearchParams();
   if (view !== "upcoming") params.set("view", view);
   if (query) params.set("q", query);
+  if (cursor) params.set("cursor", cursor);
+  if (cursor && direction === "prev") params.set("direction", direction);
   const search = params.toString();
   return search ? `/dashboard/events?${search}` : "/dashboard/events";
 }
@@ -49,7 +53,7 @@ function viewHref(view: EventView, query: string) {
 export default async function EventsPage({
   searchParams
 }: {
-  searchParams: Promise<{ view?: string; q?: string }>;
+  searchParams: Promise<{ view?: string; q?: string; cursor?: string; direction?: string }>;
 }) {
   const organisation = await requireManagementPage("events:read", "/dashboard/events");
   const params = await searchParams;
@@ -59,6 +63,8 @@ export default async function EventsPage({
   );
   const view = views.find((name) => name === params.view) ?? "upcoming";
   const query = params.q?.trim().slice(0, 100) ?? "";
+  const cursor = params.cursor?.slice(0, 500) || undefined;
+  const direction = params.direction === "prev" ? "prev" : "next";
 
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -74,6 +80,8 @@ export default async function EventsPage({
       />
       <Suspense fallback={<ListSkeleton label="Loading events" />}>
         <EventsResults
+          cursor={cursor}
+          direction={direction}
           organisationId={organisation.id}
           query={query}
           staffRole={organisation.staffRole}
@@ -90,21 +98,27 @@ async function EventsResults({
   staffRole,
   view,
   views,
-  query
+  query,
+  cursor,
+  direction
 }: {
   organisationId: string;
   staffRole: OrganisationStaffRole;
   view: EventView;
   views: EventView[];
   query: string;
+  cursor?: string;
+  direction: "next" | "prev";
 }) {
   const canManage = hasOrganisationPermission(staffRole, "events:manage");
   const showSales = hasOrganisationPermission(staffRole, "analytics:read");
-  const { events, counts } = await listDashboardEvents(organisationId, {
+  const { events, counts, nextCursor, previousCursor, restarted } = await listDashboardEvents(organisationId, {
     view,
     query,
     publishedOnly: staffRole === "check_in_staff",
-    includeSales: showSales
+    includeSales: showSales,
+    cursor,
+    direction
   });
   // Check-in staff land on the attendee list; everyone else on the summary.
   const eventHref = (event: DashboardEvent) =>
@@ -144,6 +158,11 @@ async function EventsResults({
         </Form>
       </div>
 
+      {restarted ? (
+        <Notice title="Showing the first page" tone="warning">
+          That page of events is no longer available, so the list starts again.
+        </Notice>
+      ) : null}
       {events.length === 0 ? (
         <div className="grid justify-items-center gap-3 rounded-card border border-line bg-surface px-6 py-12 text-center">
           <Icon className={query ? "text-ink-soft" : "text-brand"} name={query ? "search" : "calendar"} size={36} />
@@ -240,9 +259,10 @@ async function EventsResults({
         <p className="text-sm text-ink-soft">
           Showing {events.length}
           {counts[view] > events.length ? ` of ${counts[view]}` : ""}{" "}
-          {counts[view] === 1 ? singular : plural}. Times are shown in {zoneCity(events[0].timeZone)}.
+          {counts[view] === 1 ? singular : plural}, {view === "past" || view === "all" ? "newest" : "soonest"} first. Times are shown in {zoneCity(events[0].timeZone)}.
         </p>
       ) : null}
+      <Pager label="Event pages" next={nextCursor && viewHref(view, query, nextCursor)} previous={previousCursor && viewHref(view, query, previousCursor, "prev")} />
     </>
   );
 }

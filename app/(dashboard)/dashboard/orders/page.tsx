@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Suspense } from "react";
 import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { CommerceOrders } from "./commerce-orders";
-import { buttonClasses } from "@/components/ui/button";
+import { Pager } from "@/components/ui/pager";
 import { LinkTabs, pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { DateField } from "@/components/ui/date-field";
@@ -362,7 +363,6 @@ async function OrderResults({
     return `/dashboard/orders?${params.toString()}`;
   }
 
-  const pageLink = buttonClasses({ variant: "secondary", size: "sm" });
   type Row = (typeof orders)[number];
   // Order detail serves settled orders only, so a pending one is not a link.
   const buyer = (order: Row) =>
@@ -389,11 +389,19 @@ async function OrderResults({
       ) : null}
 
       {orders.length === 0 ? (
-        <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">
-          {eventId && !orderResult.event
-            ? "No orders found for this event."
-            : `No ${activeFilter === "all" ? "" : `${activeFilter} `}orders yet.`}
-        </div>
+        eventId && !orderResult.event ? (
+          <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">No orders found for this event.</div>
+        ) : eventId || filters.search || startDateParam || endDateParam ? (
+          <EmptyState
+            action={<Link className="font-semibold text-brand underline underline-offset-4" href={`/dashboard/orders${activeFilter !== "all" ? `?status=${activeFilter}` : ""}`}>Clear filters</Link>}
+            icon="search"
+            title="No matching orders"
+          >
+            Nothing matches these filters. Clear them to see every {activeFilter === "all" ? "" : `${activeFilter} `}order.
+          </EmptyState>
+        ) : (
+          <div className="rounded-card border border-line bg-surface p-6 text-ink-soft">{`No ${activeFilter === "all" ? "" : `${activeFilter} `}orders yet.`}</div>
+        )
       ) : (
         <ResponsiveTable
           card={(order) => (
@@ -428,20 +436,11 @@ async function OrderResults({
         <Link className="text-sm font-semibold text-brand underline underline-offset-4" href={systemToggleHref}>
           {includeSystemOrders ? "Hide system orders" : "Show system orders (pending checkouts)"}
         </Link>
-        {pageInfo.hasPreviousPage || pageInfo.hasNextPage ? (
-          <nav aria-label="Order pagination" className="flex gap-2">
-            {pageInfo.previousCursor ? (
-              <Link className={pageLink} href={paginationHref(pageInfo.previousCursor, "prev")}>
-                Previous
-              </Link>
-            ) : null}
-            {pageInfo.nextCursor ? (
-              <Link className={pageLink} href={paginationHref(pageInfo.nextCursor, "next")}>
-                Next
-              </Link>
-            ) : null}
-          </nav>
-        ) : null}
+        <Pager
+          label="Order pagination"
+          next={pageInfo.nextCursor && paginationHref(pageInfo.nextCursor, "next")}
+          previous={pageInfo.previousCursor && paginationHref(pageInfo.previousCursor, "prev")}
+        />
       </div>
     </>
   );

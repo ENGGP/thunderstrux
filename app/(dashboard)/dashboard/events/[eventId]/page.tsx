@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { analyticsAccess, eventSalesDays, eventTicketTypeMetrics, ticketAttendance, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
-import { addDays, maxRangeDays } from "@/lib/analytics/range";
+import { addDays, maxRangeDays, tooLongByDay } from "@/lib/analytics/range";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
 import { formatDateTime, formatMoney, formatPrice, shortMonths } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
@@ -230,7 +230,7 @@ async function SalesOverTime({ access, organisationId, eventId, timeZone }: { ac
   if (!days) return <p className="mt-4 text-sm text-ink-soft">No paid sales yet.</p>;
   const earliest = addDays(days.last, 1 - maxRangeDays);
   const from = days.first > earliest ? days.first : earliest;
-  const weekly = from < addDays(days.last, -62);
+  const weekly = tooLongByDay(from, days.last);
   const { series } = await ticketMetrics(organisationId, { from, to: days.last, bucket: weekly ? "week" : "day", timeZone }, access, eventId);
   return (
     <div className="mt-4">

@@ -1156,6 +1156,7 @@ Text on its wash is at least 6:1 and icons at least 3:1. Colour never carries me
 | `DateRail` | `components/events/date-rail.tsx` | Day and month in the society's zone. |
 | `VerifyEmailBanner` | `components/layout/verify-email-banner.tsx` | Dismissible labelled region; never changes verification. |
 | `EmptyState` | `components/ui/empty-state.tsx` | Dashed box, icon, title, one line and one secondary action; never used for failures. |
+| `Pager` | `components/ui/pager.tsx` | Previous and Next under a paged list: secondary buttons with chevrons, a side only when there is a page that way; a list never stops silently. |
 | `ResponsiveTable` | `components/ui/responsive-table.tsx` | Bordered table from 768px, the caller's cards below. |
 | `FilterBar` | `components/ui/filter-bar.tsx` | GET form with Apply and Clear; filters live in the URL. |
 | `LinkTabs`, `pillClasses`, `Count`, `TabLabel` | `components/ui/link-tabs.tsx` | Route tabs; pills for status filters inside a tab; one count chip; `TabLabel` keeps a tab's width when it becomes current. |

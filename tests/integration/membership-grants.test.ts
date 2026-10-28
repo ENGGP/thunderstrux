@@ -274,6 +274,11 @@ describe("membership grants", () => {
     expect(first.members).toHaveLength(25);
     expect(new Set(ids).size).toBe(first.counts.upcoming);
     expect(second.nextCursor).toBeNull();
+    // Previous comes back to the same first page (UI-019).
+    const back = await listRoster(organisation.id, { view: "upcoming", cursor: second.previousCursor!, direction: "prev" });
+    expect(back.members.map((row) => row.id)).toEqual(first.members.map((row) => row.id));
+    expect(back.previousCursor).toBeNull();
     expect((await listRoster(organisation.id, { view: "upcoming", cursor: "not-a-cursor" })).members).toHaveLength(25);
+    expect((await listRoster(organisation.id, { view: "upcoming", cursor: "not-a-cursor", direction: "prev" })).members.map((row) => row.id)).toEqual(first.members.map((row) => row.id));
   }, 90_000);
 });

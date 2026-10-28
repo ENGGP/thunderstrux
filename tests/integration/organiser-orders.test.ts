@@ -122,7 +122,9 @@ describe("organiser commerce orders", () => {
     }
     const page = await listFailedBusinessNotifications(organisation.id);
     expect(page.jobs).toHaveLength(25);
-    expect((await listFailedBusinessNotifications(organisation.id, page.nextCursor ?? undefined)).jobs).toHaveLength(2);
+    const older = await listFailedBusinessNotifications(organisation.id, page.nextCursor ?? undefined);
+    expect(older.jobs).toHaveLength(2);
+    expect((await listFailedBusinessNotifications(organisation.id, older.previousCursor!, "prev")).jobs.map((job) => job.id)).toEqual(page.jobs.map((job) => job.id));
     await expect(listFailedBusinessNotifications(organisation.id, "not-a-cursor")).rejects.toBeInstanceOf(NotificationCursorError);
   });
 });

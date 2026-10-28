@@ -9,8 +9,8 @@ export async function GET(request?: Request) {
     const organisation = await requireCurrentOrganisationAccount();
     await requireOrganisationPermission(organisation.id, "orders:email_resend");
     const cursor = request ? new URL(request.url).searchParams.get("cursor") ?? undefined : undefined;
-    const result = await listFailedBusinessNotifications(organisation.id, cursor);
-    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+    const { jobs, nextCursor } = await listFailedBusinessNotifications(organisation.id, cursor);
+    return NextResponse.json({ jobs, nextCursor }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return mapRouteError(error, { operation: "notifications.list", request, rules: [
       authenticationRule, organisationAccessRule,

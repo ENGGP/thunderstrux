@@ -1,6 +1,7 @@
 import type { OrderLifecycleEventType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { canOpenGuestOrder, type GuestSession } from "@/lib/guest/guest-access";
+import { abandonedWhere } from "@/lib/purchases/projection";
 import {
   decodeTimestampCursor,
   descendingCursorWhere,
@@ -26,6 +27,9 @@ const projectionSelect = {
   isManuallyRefunded: true
 } satisfies Prisma.OrderSelect;
 
+// Ticket orders also carry the manual-refund flag (compensation refunds set it too).
+const abandonedOrderWhere = { ...abandonedWhere, isManuallyRefunded: false } satisfies Prisma.OrderWhereInput;
+
 const listSelect = {
   id: true,
   ...projectionSelect,
@@ -40,11 +44,11 @@ const listSelect = {
   event: { select: { id: true, title: true, organisation: { select: { name: true } } } }
 } satisfies Prisma.OrderSelect;
 
-// Every ticket order the member has made, newest first, whatever its state.
-export async function getOwnTicketPurchases(userId: string, { limit, cursor, direction }: ParsedPaginationOptions) {
+// The member's ticket orders, newest first; checkouts that didn't complete only when asked.
+export async function getOwnTicketPurchases(userId: string, { limit, cursor, direction }: ParsedPaginationOptions, { incomplete = false } = {}) {
   const decoded = cursor ? decodeTimestampCursor("createdAt", cursor) : null;
   const orders = await prisma.order.findMany({
-    where: { userId, ...(decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}) },
+    where: { userId, ...(incomplete ? {} : { NOT: abandonedOrderWhere }), ...(decoded ? descendingCursorWhere("createdAt", decoded, direction) : {}) },
     orderBy: orderByForDirection("createdAt", direction, "desc"),
     take: limit + 1,
     select: listSelect
@@ -178,12 +182,18 @@ export async function getWalletTickets(userId: string, view: WalletView, now = n
   };
 }
 
-// How many purchases of each family the member has, for the Purchases tabs (T29a).
+// How many purchases of each family the member has, for the Purchases tabs
+// (T29a), and how many checkouts that didn't complete are hidden from each.
 export async function ownPurchaseCounts(userId: string) {
-  const [tickets, commerce] = await Promise.all([
-    prisma.order.count({ where: { userId } }),
-    prisma.commerceOrder.groupBy({ by: ["kind"], where: { userId }, _count: { _all: true } })
+  const [tickets, abandonedTickets, commerce, abandonedCommerce] = await Promise.all([
+    prisma.order.count({ where: { userId, NOT: abandonedOrderWhere } }),
+    prisma.order.count({ where: { userId, ...abandonedOrderWhere } }),
+    prisma.commerceOrder.groupBy({ by: ["kind"], where: { userId, NOT: abandonedWhere }, _count: { _all: true } }),
+    prisma.commerceOrder.groupBy({ by: ["kind"], where: { userId, ...abandonedWhere }, _count: { _all: true } })
   ]);
-  const of = (kind: string) => commerce.find((row) => row.kind === kind)?._count._all ?? 0;
-  return { tickets, memberships: of("membership"), merchandise: of("merchandise") };
+  const of = (rows: typeof commerce, kind: string) => rows.find((row) => row.kind === kind)?._count._all ?? 0;
+  return {
+    tickets, memberships: of(commerce, "membership"), merchandise: of(commerce, "merchandise"),
+    abandoned: { tickets: abandonedTickets, memberships: of(abandonedCommerce, "membership"), merchandise: of(abandonedCommerce, "merchandise") }
+  };
 }

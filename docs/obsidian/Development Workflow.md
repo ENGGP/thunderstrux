@@ -188,6 +188,7 @@ Run app-side commands in the dev container: `docker compose -f docker-compose.ym
 | `pnpm ops:test` | `tests/runner/operations.test.mjs`, then `scripts/run-operations-tests.mjs` | Disposable operations rehearsal. |
 | `pnpm seed` | `prisma db seed` (`node prisma/seed.mjs`) | Demo data ([[Seeding and Data]]). |
 | `pnpm prisma:seed` | `node prisma/seed.mjs` | Same seed without the Prisma wrapper. |
+| `pnpm seed:demo` | `node prisma/demo-data.mjs` | Rich demo societies on top of the seed; dev database only ([[Seeding and Data#Rich demo data]]). |
 | `pnpm prisma:migrate` | `prisma migrate dev` | Create a migration from schema changes. Interactive; may offer to reset the database on drift. Dev only. |
 | `pnpm prisma:migrate:deploy` | `prisma migrate deploy` | Apply pending migrations (dev startup does this). |
 | `pnpm prisma:generate` | `prisma generate` | Regenerate Prisma Client. |

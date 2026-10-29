@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { getAccessibleOrganisationsForCurrentAccount } from "@/lib/auth/access";
 import { readMemberProfile } from "@/lib/auth/account-settings";
 import { getOwnCommerceOrders } from "@/lib/commerce/orders";
-import { formatDate, formatDateRange, formatPrice, formatTerm, membershipLabel } from "@/lib/format";
+import { formatDate, formatDateRange, formatMonthYear, formatPrice, formatTerm, membershipLabel } from "@/lib/format";
 import { myMemberships } from "@/lib/memberships/offers";
 import { upcomingEventCounts } from "@/lib/organisations/overview";
 import { buyerPurchaseBadge, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
@@ -211,7 +211,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
                     <div className="grid min-w-0 gap-0.5">
                       <Link className={titleLink} href={`/societies/${society.slug}`}>{society.name}</Link>
                       <span className="text-sm text-ink-soft">
-                        {society.joinedAt ? `Joined ${new Intl.DateTimeFormat("en-AU", { month: "short", year: "numeric", timeZone: society.timeZone ?? undefined }).format(society.joinedAt)} · ` : ""}
+                        {society.joinedAt ? `Joined ${formatMonthYear(society.joinedAt, society.timeZone ?? undefined)} · ` : ""}
                         {plural(eventCounts.get(society.id) ?? 0, "event")} coming up
                       </span>
                     </div>

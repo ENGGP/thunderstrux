@@ -168,7 +168,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 ### Dashboard surfaces
 
-- `/dashboard/events` (`events:read`) lists events with a selling badge (Sales open, Sold out, Sales closed, Event cancelled), "Link only" for unlisted, and times in the society zone; sales columns need `analytics:read`.
+- `/dashboard/events` (`events:read`) lists events with a selling badge (Sales open, Sold out, Sales closed, Event cancelled), "Link only" for unlisted, and times in the society zone; sales columns need `analytics:read`. Sold counts valid tickets, as the event workspace does, so refunded and cancelled ones aren't sold (DEBT-002).
 - `/dashboard/events/[eventId]` (`analytics:read`) shows details, the ticket table (price, sold, held, left), a Capacity tile, and for a draft the readiness checklist with links to the field or payment setup. More offers Close sales and Reopen sales. Money needs `orders:read` too ([[Analytics and Calendar]]).
 - `/dashboard/events/[eventId]/preview` (`events:manage`) renders a draft as the public page under "Draft preview" with buying off; a published event redirects to its public page.
 - `components/events/event-actions.tsx` shows Publish, Unpublish and Delete with confirmation and the reason an action is disabled; the routes still enforce the rules. On the event's own page, staff who may also refund see "Cancel event" (typed title, message, code; `cancelBlocker` says why it's unavailable). A cancelled event shows no actions.

@@ -56,6 +56,8 @@ export async function SocietyOverview({ organisation, timeZone }: { organisation
   }
   if (overview.failedEmails) tasks.push({ key: "emails", icon: "mail", title: `${plural(overview.failedEmails, "email")} couldn't be delivered`, text: "Check each one and send it again from Email delivery.", href: "/dashboard/notifications", link: "Open Email delivery" });
   for (const draft of overview.drafts) tasks.push({ key: `draft-${draft.id}`, icon: "calendar", title: `${draft.title} is still a draft`, text: `It starts ${formatDay(localDay(draft.startTime, timeZone))}.`, href: eventHref(draft.id), link: "Open the event" });
+  const moreDrafts = overview.draftsSoon - overview.drafts.length;
+  if (moreDrafts > 0) tasks.push({ key: "more-drafts", icon: "calendar", title: `And ${plural(moreDrafts, "more draft")} starting in the next 7 days`, text: "Publish them or move their dates.", href: "/dashboard/events?view=drafts", link: "See all drafts" });
   const settingUp = tasks.length > 0 && tasks.every((task) => task.setup);
 
   const tiles: Array<{ label: string; value: string; note: ReactNode }> = [

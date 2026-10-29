@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Field, Select, control } from "@/components/ui/input";
+import { formatCalendarDay, formatCalendarMonth, formatClock } from "@/lib/format";
 import { formatDayInput, localTodayInBrowser, monthWeeks, parseDayInput, shiftDay, shiftMonth } from "@/lib/date-input";
 
 // The house date picker: a text field people can type into ("22 Oct 2026",
@@ -24,8 +25,8 @@ type DateFieldProps = {
   max?: string;
 };
 
-const monthTitle = (day: string) => new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`));
-const longDay = (day: string) => new Intl.DateTimeFormat("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`));
+const monthTitle = formatCalendarMonth;
+const longDay = (day: string) => formatCalendarDay(day, true);
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function DateField({ label, hint, error, id, name, value: controlled, defaultValue = "", onChange, required, min, max }: DateFieldProps) {
@@ -259,7 +260,7 @@ export function DateTimeField({ label, hint, error, id, value, onChange }: { lab
   const times = Array.from({ length: 96 }, (_, index) => `${String(Math.floor(index / 4)).padStart(2, "0")}:${String((index % 4) * 15).padStart(2, "0")}`);
   if (time && !times.includes(time)) times.push(time);
   times.sort();
-  const clock = (hhmm: string) => new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(new Date(`2000-01-01T${hhmm}:00Z`));
+  const clock = (hhmm: string) => formatClock(`2000-01-01T${hhmm}:00Z`, "UTC");
 
   return (
     <fieldset className="grid min-w-0 gap-1.5">

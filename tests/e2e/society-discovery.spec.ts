@@ -138,7 +138,10 @@ test("personal search paginates and ignores an older response", async ({
         organisations: [
           { id: name, name, slug: name.replaceAll(" ", "-"), joined: false },
         ],
-        pageInfo: { nextCursor: !q && !params.has("cursor") ? "next" : null },
+        pageInfo: {
+          nextCursor: !q && !params.has("cursor") ? "next" : null,
+          previousCursor: params.has("cursor") ? "prev" : null,
+        },
       },
     });
   });
@@ -146,13 +149,15 @@ test("personal search paginates and ignores an older response", async ({
   await expect(
     page.getByRole("heading", { name: "First search result" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "More societies" }).click();
+  // Paging replaces the list, both ways (UI-025).
+  await page.getByRole("button", { name: "Next page" }).click();
   await expect(
     page.getByRole("heading", { name: "Second search result" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "First search result" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Previous page" })).toBeVisible();
   const query = page.getByLabel("Search societies");
   await query.fill("slow");
   await page.getByRole("button", { name: "Search", exact: true }).click();

@@ -53,6 +53,7 @@ A `MembershipGrant` is one member's membership from one purchased line: unique p
 - **State** comes only from the clock and `revokedAt` (`grantState`): `upcoming` before `startsAt`, `active` in `[startsAt, endsAt)`, `expired` from `endsAt`, `revoked` once revoked. No job changes it.
 - **Running membership** (`activeEntitlementGrant`): unrevoked, started, not ended, in that society, carrying the right asked for.
 - **Roster** (`members:read`, owners and admins): `/dashboard/memberships/members` lists Active, Upcoming, Expired and Revoked grants, newest first, with stable pages and name or email search, and Free joins as a separate list (joiners who also hold a membership are marked). `/dashboard/memberships/members/[grantId]` shows term, rights, source order (Paid or Free and its short reference), the free join, other terms, whether the person is staff and a history (granted, started, ended early). Another society's grant is 404. The page also accepts `orders:read`, so a finance manager can refund from it but sees no revoke.
+- **Lists** (UI-025): Plans and Products page 25 at a time and the public shop 24 (whole rows), both ways on the shared cursor.
 
 ## Buying a membership
 

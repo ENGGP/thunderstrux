@@ -121,7 +121,7 @@ export async function CommerceOrders({
           </Link>
         ))}
       </nav>
-      <FilterBar action="/dashboard/orders" className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_auto]" label="Filter orders">
+      <FilterBar action="/dashboard/orders" active={[search, params.productId, params.startDate, params.endDate].filter(Boolean).length} className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_auto]" label="Filter orders">
         <input name="family" type="hidden" value={params.family} />
         {filter !== "all" ? <input name="status" type="hidden" value={filter} /> : null}
         <TextInput defaultValue={search ?? ""} label="Buyer email" name="search" placeholder="Contains…" type="search" />

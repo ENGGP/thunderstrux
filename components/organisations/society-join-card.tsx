@@ -1,3 +1,4 @@
+import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import Link from "next/link";
 import { SocietyJoin, type JoinState } from "@/components/organisations/society-join";
 
@@ -30,14 +31,15 @@ export function SocietyJoinCard({
           <SocietyJoin slug={organisation.slug} state={joinState} />
         </>
       )}
-      {organisation.supportEmail ? (
-        <div className="grid gap-1 border-t border-line pt-3.5 text-sm">
-          <span className="font-semibold text-ink">Contact</span>
+      <div className="grid gap-1 border-t border-line pt-3.5 text-sm">
+        <span className="font-semibold text-ink">Contact</span>
+        <ContactSocietyLink slug={organisation.slug} society={organisation.name} />
+        {organisation.supportEmail ? (
           <a className="w-fit text-brand underline underline-offset-4 [overflow-wrap:anywhere]" href={`mailto:${organisation.supportEmail}`}>
             {organisation.supportEmail}
           </a>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </aside>
   );
 }

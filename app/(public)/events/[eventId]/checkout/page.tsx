@@ -3,7 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { GuestEmailForm } from "@/components/guest/guest-email-form";
-import { CheckoutShell } from "@/components/layout/checkout-shell";
+import { CheckoutShell, ticketSteps } from "@/components/layout/checkout-shell";
 import { CheckoutAction } from "@/components/purchases/checkout-action";
 import { MoneySummary } from "@/components/purchases/money-summary";
 import { Card } from "@/components/ui/card";
@@ -62,9 +62,11 @@ export default async function CheckoutPage({
   const total = ticketType.price * quantity;
   const { organisation } = event;
   const callback = `/events/${eventId}/checkout?ticketTypeId=${ticketType.id}&quantity=${quantity}`;
+  // "Change tickets" goes back to the event with this choice still picked.
+  const changeHref = `${eventHref}?ticketTypeId=${encodeURIComponent(ticketType.id)}&quantity=${quantity}`;
   if (!session && !guestCheckout) {
     return (
-      <CheckoutShell backHref={eventHref} current={0} society={organisation.name} steps={free ? ["Your email", "Confirm"] : ["Your email", "Review", "Pay with Stripe"]} title="Where should we send your tickets?">
+      <CheckoutShell backHref={changeHref} current={0} society={organisation.name} steps={ticketSteps({ guest: true, free })} title="Where should we send your tickets?">
         <Card>
           <GuestEmailForm callbackUrl={callback} endpoint="/api/guest/email/request" submitLabel="Email me a link" />
         </Card>
@@ -111,7 +113,7 @@ export default async function CheckoutPage({
             {verified ? (
               <CheckoutAction
                 guestCsrf={guestCheckout && guestSessionId ? guestCsrfToken(guestSessionId) : undefined}
-                backHref={eventHref}
+                backHref={changeHref}
                 eventId={event.id}
                 eventTitle={event.title}
                 freeTicketsAvailable={event.ticketTypes.some((type) => type.price === 0 && type.availableQuantity > 0)}
@@ -137,10 +139,10 @@ export default async function CheckoutPage({
           </div>
         </Card>
       }
-      backHref={eventHref}
+      backHref={changeHref}
       current={guestCheckout ? 1 : 0}
       society={organisation.name}
-      steps={guestCheckout ? (free ? ["Your email", "Confirm"] : ["Your email", "Review", "Pay with Stripe"]) : free ? ["Review", "Tickets"] : ["Review", "Pay with Stripe", "Tickets"]}
+      steps={ticketSteps({ guest: Boolean(guestCheckout), free })}
       title={free ? "Confirm your free tickets" : "Review your order"}
     >
       <Card>

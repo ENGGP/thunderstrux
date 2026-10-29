@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -25,34 +26,29 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joiningSlug, setJoiningSlug] = useState<string | null>(null);
-  // A new search replaces the list; "More" adds to it, so the list stays put.
-  const [loading, setLoading] = useState<"search" | "more" | null>("search");
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // A new search shows the skeleton; paging keeps the list until the next page arrives (UI-025).
+  const [loading, setLoading] = useState<"search" | "next" | "prev" | null>("search");
+  const [pages, setPages] = useState<{ next: string | null; previous: string | null }>({ next: null, previous: null });
   const [searchedQuery, setSearchedQuery] = useState("");
 
-  async function search(nextQuery = query, cursor?: string) {
+  async function search(nextQuery = query, page?: { cursor: string; direction: "next" | "prev" }) {
     const requestId = ++revision.current;
-    setLoading(cursor ? "more" : "search");
+    setLoading(page?.direction ?? "search");
     setError(null);
 
     try {
       const params = new URLSearchParams({ q: nextQuery, limit: "25" });
-      if (cursor) params.set("cursor", cursor);
+      if (page) {
+        params.set("cursor", page.cursor);
+        params.set("direction", page.direction);
+      }
       const data = await fetchJson<{
         organisations: SearchOrganisation[];
-        pageInfo: { nextCursor: string | null };
+        pageInfo: { nextCursor: string | null; previousCursor?: string | null };
       }>(`/api/orgs/search?${params}`);
       if (requestId !== revision.current) return;
-      setOrganisations((current) =>
-        cursor
-          ? [
-              ...new Map(
-                [...current, ...data.organisations].map((row) => [row.id, row]),
-              ).values(),
-            ]
-          : data.organisations,
-      );
-      setNextCursor(data.pageInfo.nextCursor);
+      setOrganisations(data.organisations);
+      setPages({ next: data.pageInfo.nextCursor, previous: data.pageInfo.previousCursor ?? null });
       setSearchedQuery(nextQuery);
     } catch (searchError) {
       if (requestId !== revision.current) return;
@@ -129,7 +125,7 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
             value={query}
           />
         </div>
-        <Button busy={loading === "search"} busyLabel="Searching…" disabled={joiningSlug !== null || loading === "more"} type="submit">
+        <Button busy={loading === "search"} busyLabel="Searching…" disabled={joiningSlug !== null || loading === "next" || loading === "prev"} type="submit">
           Search
         </Button>
       </form>
@@ -187,18 +183,38 @@ export function OrganisationSearch({ joinedIds }: { joinedIds: string[] }) {
           ))}
         </div>
       )}
-      {nextCursor && (
-        <Button
-          busy={loading === "more"}
-          busyLabel="Loading…"
-          disabled={loading === "search" || joiningSlug !== null}
-          onClick={() => search(searchedQuery, nextCursor)}
-          type="button"
-          variant="secondary"
-        >
-          More societies
-        </Button>
-      )}
+      {pages.next || pages.previous ? (
+        <nav aria-label="Society search pages" className="flex flex-wrap items-center justify-between gap-3">
+          {pages.previous ? (
+            <Button
+              busy={loading === "prev"}
+              busyLabel="Loading…"
+              disabled={loading !== null || joiningSlug !== null}
+              onClick={() => search(searchedQuery, { cursor: pages.previous as string, direction: "prev" })}
+              type="button"
+              variant="secondary"
+            >
+              <Icon className="rotate-180" name="chevronRight" />
+              Previous page
+            </Button>
+          ) : (
+            <span />
+          )}
+          {pages.next ? (
+            <Button
+              busy={loading === "next"}
+              busyLabel="Loading…"
+              disabled={loading !== null || joiningSlug !== null}
+              onClick={() => search(searchedQuery, { cursor: pages.next as string, direction: "next" })}
+              type="button"
+              variant="secondary"
+            >
+              Next page
+              <Icon name="chevronRight" />
+            </Button>
+          ) : null}
+        </nav>
+      ) : null}
     </div>
   );
 }

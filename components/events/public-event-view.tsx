@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PublicTicketPurchase, type BuyBoxViewer } from "@/components/events/public-ticket-purchase";
+import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import { Icon } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PublicEventDetail } from "@/lib/events/public-events";
@@ -29,13 +30,16 @@ export function PublicEventView({
   event,
   viewer,
   memberPlan = null,
-  preview = false
+  preview = false,
+  selection
 }: {
   // The viewer's membership plan giving member prices, if any (T24b).
   memberPlan?: string | null;
   event: PublicEventDetail;
   viewer: BuyBoxViewer;
   preview?: boolean;
+  // A ticket type and quantity to start the ticket box on, from checkout's "Change tickets".
+  selection?: { ticketTypeId?: string; quantity?: number };
 }) {
   const { organisation } = event;
   const timeZone = organisation.timeZone;
@@ -114,6 +118,7 @@ export function PublicEventView({
         <div className="lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <PublicTicketPurchase
             eventId={event.id}
+            initial={selection}
             memberPlan={memberPlan}
             preview={preview}
             societySlug={organisation.slug}
@@ -154,6 +159,7 @@ export function PublicEventView({
               ) : null}
             </dl>
           ) : null}
+          {preview ? null : <ContactSocietyLink eventId={event.id} slug={organisation.slug} society={organisation.name} />}
         </section>
       </div>
     </div>

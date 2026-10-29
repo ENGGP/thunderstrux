@@ -5,6 +5,7 @@ import { PersonalShell } from "@/components/layout/personal-shell";
 import { OrganisationSearch } from "@/components/organisations/organisation-search";
 import { MemberOrganisationsList } from "@/components/organisations/member-organisations-list";
 import { Card } from "@/components/ui/card";
+import { Pager } from "@/components/ui/pager";
 import {
   OrganisationAccessError,
   requireAccountRole,
@@ -13,7 +14,21 @@ import {
 
 export const metadata: Metadata = { title: "Societies" };
 
-export default async function MemberOrganisationsPage() {
+const pageSize = 25;
+
+// A page of the joined societies, by name, from the society after (or before)
+// the cursor; an unknown cursor starts again at the first page (UI-025).
+function joinedPage<Row extends { id: string }>(rows: Row[], cursor: string | undefined, direction: string | undefined) {
+  const at = cursor ? rows.findIndex((row) => row.id === cursor) : -1;
+  const back = direction === "prev" && at >= 0;
+  const start = back ? Math.max(0, at - pageSize) : at + 1;
+  const end = back ? at : start + pageSize;
+  const page = rows.slice(start, end);
+  return { page, previous: start > 0 ? page[0]?.id : undefined, next: end < rows.length ? page.at(-1)?.id : undefined };
+}
+
+export default async function MemberOrganisationsPage({ searchParams }: { searchParams: Promise<{ cursor?: string; direction?: string }> }) {
+  const params = await searchParams;
   try {
     await requireAccountRole("member");
   } catch (error) {
@@ -21,6 +36,8 @@ export default async function MemberOrganisationsPage() {
     throw error;
   }
   const organisations = await getAccessibleOrganisationsForCurrentAccount();
+  const { page, previous, next } = joinedPage(organisations, params.cursor, params.direction);
+  const pageHref = (cursor: string, direction: "next" | "prev") => `/dashboard/organisations?${new URLSearchParams({ cursor, direction })}`;
   return (
     <PersonalShell>
       <header className="grid gap-2">
@@ -37,7 +54,12 @@ export default async function MemberOrganisationsPage() {
         <p className="mt-2 text-sm text-ink-soft">
           Joining is free and follows a society&apos;s events. Memberships are bought separately.
         </p>
-        <MemberOrganisationsList organisations={organisations} />
+        <MemberOrganisationsList key={page[0]?.id ?? "none"} organisations={page} />
+        {previous || next ? (
+          <div className="mt-4">
+            <Pager label="Joined society pages" next={next && pageHref(next, "next")} previous={previous && pageHref(previous, "prev")} />
+          </div>
+        ) : null}
       </Card>
       <Card>
         <OrganisationSearch

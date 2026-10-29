@@ -157,6 +157,22 @@ export function readCursorOrFirstPage<Field extends string>(
   return { at: null, direction: "next" };
 }
 
+// The query for one page of a list ordered by `field` then id, starting again from
+// the first page on an unreadable cursor. Fetch one row more than the page, then
+// hand the rows to `pageInfoForPage` with `from`.
+export function cursorPage<Field extends string>(
+  field: Field,
+  order: "asc" | "desc",
+  { cursor, direction }: { cursor?: string; direction?: PaginationDirection } = {}
+) {
+  const from = readCursorOrFirstPage(field, cursor, direction);
+  return {
+    from,
+    after: from.at ? [(order === "asc" ? ascendingCursorWhere : descendingCursorWhere)(field, from.at, from.direction)] : [],
+    orderBy: orderByForDirection(field, from.direction, order)
+  };
+}
+
 export function descendingCursorWhere<Field extends string>(
   timestampField: Field,
   cursor: TimestampCursor<Field>,

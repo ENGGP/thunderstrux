@@ -3,6 +3,10 @@ import { prisma } from "@/lib/db";
 import { LOW_STOCK, MAX_BASKET_LINES, MAX_LINE_QUANTITY } from "@/lib/merchandise/basket";
 import { optionSummary } from "@/lib/merchandise/catalogue";
 import { heldByVariant, quoteVersion } from "@/lib/merchandise/sale";
+import { cursorPage, pageInfoForPage, type PaginationDirection } from "@/lib/pagination/cursor";
+
+// A shop page fills whole rows of two, three or four tiles.
+export const shopPageSize = 24;
 
 // What anyone may see of a society's merchandise (T26, design round B2):
 // published products, their photos and the options still on sale. Drafts,
@@ -18,20 +22,31 @@ async function availability(options: Array<{ id: string }>) {
   return (option: { id: string; remaining: number }) => Math.max(0, option.remaining - (held.get(option.id) ?? 0));
 }
 
-export async function shopProducts(organisationId: string) {
-  const products = await prisma.merchandiseProduct.findMany({
-    where: liveProduct(organisationId),
-    orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-    take: 100,
+// Newest published first, a page at a time both ways (UI-025).
+export async function shopProducts(organisationId: string, page: { cursor?: string; direction?: PaginationDirection } = {}) {
+  const query = cursorPage("publishedAt", "desc", page);
+  const rows = await prisma.merchandiseProduct.findMany({
+    where: { AND: [liveProduct(organisationId), ...query.after] },
+    orderBy: query.orderBy,
+    take: shopPageSize + 1,
     select: {
       id: true,
       name: true,
+      publishedAt: true,
       images: { where: { position: 0 }, select: { assetId: true } },
       variants: { where: { archivedAt: null }, orderBy: [{ position: "asc" }, { id: "asc" }], select: optionSelect }
     }
   });
+  // A published product always has publishedAt (MerchandiseProduct_published_chk).
+  const { items: products, pageInfo } = pageInfoForPage({
+    items: rows.map((row) => ({ ...row, publishedAt: row.publishedAt as Date })),
+    limit: shopPageSize,
+    direction: query.from.direction,
+    cursor: query.from.cursor,
+    timestampField: "publishedAt"
+  });
   const available = await availability(products.flatMap((product) => product.variants));
-  return products.map((product) => {
+  const tiles = products.map((product) => {
     const prices = product.variants.map((option) => option.priceAmount);
     const left = product.variants.reduce((total, option) => total + available(option), 0);
     const distinct = (values: string[]) => [...new Set(values.filter(Boolean))];
@@ -47,8 +62,9 @@ export async function shopProducts(organisationId: string) {
       lowStock: left > 0 && left <= LOW_STOCK ? left : null
     };
   });
+  return { products: tiles, nextCursor: pageInfo.nextCursor, previousCursor: pageInfo.previousCursor };
 }
-export type ShopProduct = Awaited<ReturnType<typeof shopProducts>>[number];
+export type ShopProduct = Awaited<ReturnType<typeof shopProducts>>["products"][number];
 
 export function hasShop(organisationId: string) {
   return prisma.merchandiseProduct.count({ where: liveProduct(organisationId) }).then((count) => count > 0);

@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { buttonClasses } from "@/components/ui/button";
+import { Pager } from "@/components/ui/pager";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LinkTabs } from "@/components/ui/link-tabs";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -16,7 +17,10 @@ import { toPrepareCount } from "@/lib/merchandise/pickups";
 export const metadata: Metadata = { title: "Merchandise" };
 
 // Products (T25, design round B2), beside the Pickups tab (T28a).
-export default async function MerchandisePage() {
+type Page = { cursor?: string; direction?: string };
+
+export default async function MerchandisePage({ searchParams }: { searchParams: Promise<Page> }) {
+  const page = await searchParams;
   const organisation = await requireManagementPage("merchandise:manage", "/dashboard/merchandise");
   const toPrepare = await toPrepareCount(organisation.id);
   return (
@@ -38,7 +42,7 @@ export default async function MerchandisePage() {
         ]}
       />
       <Suspense fallback={<ListSkeleton label="Loading products" />}>
-        <Products organisationId={organisation.id} orgSlug={organisation.slug} />
+        <Products organisationId={organisation.id} orgSlug={organisation.slug} page={page} />
       </Suspense>
     </DashboardShell>
   );
@@ -51,8 +55,9 @@ const price = (row: Row) =>
   row.minPrice === null ? "No options" : row.minPrice === row.maxPrice ? formatPrice(row.minPrice) : `${formatPrice(row.minPrice)} to ${formatPrice(row.maxPrice ?? row.minPrice)}`;
 const soldOut = (row: Row) => row.status !== "archived" && row.options > 0 && row.remaining === 0;
 
-async function Products({ organisationId, orgSlug }: { organisationId: string; orgSlug: string }) {
-  const { products, pickupPolicy } = await listProducts(organisationId);
+async function Products({ organisationId, orgSlug, page }: { organisationId: string; orgSlug: string; page: Page }) {
+  const { products, pickupPolicy, nextCursor, previousCursor } = await listProducts(organisationId, { cursor: page.cursor, direction: page.direction === "prev" ? "prev" : "next" });
+  const pageHref = (cursor: string, direction: "next" | "prev") => `/dashboard/merchandise?${new URLSearchParams({ cursor, direction })}`;
   if (!products.length) {
     return (
       <EmptyState
@@ -142,6 +147,7 @@ async function Products({ organisationId, orgSlug }: { organisationId: string; o
           </li>
         ))}
       </ul>
+      <Pager label="Product pages" next={nextCursor && pageHref(nextCursor, "next")} previous={previousCursor && pageHref(previousCursor, "prev")} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <section className="grid content-start gap-2 rounded-card border border-line bg-surface p-5">

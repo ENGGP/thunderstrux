@@ -41,7 +41,7 @@ describe("merchandise shop", () => {
     ]);
     await prisma.merchandiseVariant.updateMany({ where: { organisationId: organisation.id, size: "L" }, data: { position: 1 } });
     await prisma.merchandiseVariant.updateMany({ where: { organisationId: organisation.id, size: "M" }, data: { position: 0 } });
-    const [card] = await shopProducts(organisation.id);
+    const [card] = (await shopProducts(organisation.id)).products;
     expect(card.summary).toBe("Navy · M to L");
   });
 
@@ -58,7 +58,7 @@ describe("merchandise shop", () => {
     const other = await createOrganisationAccount();
     const foreign = await product(other.organisation.id, other.user.id, [{ priceAmount: 100, remaining: 5 }]);
 
-    const listed = await shopProducts(organisation.id);
+    const listed = (await shopProducts(organisation.id)).products;
     expect(listed.map((row) => row.id).sort()).toEqual([hoodie.product.id, cap.product.id].sort());
     expect(listed.find((row) => row.id === hoodie.product.id)).toMatchObject({ summary: "Navy · M to XXL", minPrice: 4500, priceVaries: true, soldOut: false, lowStock: 3 });
     expect(listed.find((row) => row.id === cap.product.id)).toMatchObject({ soldOut: true, lowStock: null, priceVaries: false });

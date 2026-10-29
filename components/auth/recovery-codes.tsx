@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
+import { formatDateTime } from "@/lib/format";
 
 // Ten one-time recovery codes, with Copy all and Download (UI-018), after set-up
 // and after replacing them. The list holds only the codes: browser tests count its items.
@@ -22,7 +23,8 @@ export function RecoveryCodes({ codes, email }: { codes: string[]; email?: strin
     const lines = [
       "Thunderstrux recovery codes",
       ...(email ? [`Account: ${email}`] : []),
-      `Created: ${new Date().toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}`,
+      // The reader's own clock: the file is theirs, wherever they are.
+      `Created: ${formatDateTime(new Date(), { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })}`,
       "",
       "Each code works once, when you can't use your authenticator app.",
       "",

@@ -19,6 +19,7 @@ export default function PrivacyPage() {
           <li><strong>What you buy:</strong> each ticket, membership and merchandise order, its price, and the name and email you bought it with.</li>
           <li><strong>Buying as a guest:</strong> the email address you confirm at checkout.</li>
           <li><strong>At events:</strong> when a ticket was checked in.</li>
+          <li><strong>Messages to a society:</strong> when you use Contact, we email your name, address and message to that society so it can reply.</li>
           <li><strong>Society staff:</strong> your role and the changes you make, so the society can see who did what. Authenticator app secrets are stored encrypted.</li>
         </ul>
       </PolicySection>
@@ -45,7 +46,7 @@ export default function PrivacyPage() {
       </PolicySection>
       <PolicySection title="Questions">
         <p>
-          {support ? <>Email <a className="font-semibold text-brand underline underline-offset-4" href={`mailto:${support}`}>{support}</a>. For something you bought, the society that sold it can also help.</> : "For something you bought, ask the society that sold it: its contact email is on every event and shop page."}
+          {support ? <>Email <a className="font-semibold text-brand underline underline-offset-4" href={`mailto:${support}`}>{support}</a>. For something you bought, the society that sold it can also help.</> : "For something you bought, ask the society that sold it: use Contact on its event or society page."}
         </p>
       </PolicySection>
     </PolicyPage>

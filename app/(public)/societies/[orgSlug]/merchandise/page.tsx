@@ -5,6 +5,7 @@ import { ProductTile } from "@/components/merchandise/product-tile";
 import { BasketLink } from "@/components/merchandise/shop";
 import { SocietyHeader } from "@/components/organisations/society-header";
 import { Icon } from "@/components/ui/icon";
+import { Pager } from "@/components/ui/pager";
 import { membershipOffers } from "@/lib/memberships/offers";
 import { shopProducts } from "@/lib/merchandise/shop";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
@@ -14,11 +15,22 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Merchandise" };
 
 // PUB-07 (T26, design round B2): a society's published products, pickup only.
-export default async function SocietyMerchandisePage({ params }: { params: Promise<{ orgSlug: string }> }) {
+export default async function SocietyMerchandisePage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ orgSlug: string }>;
+  searchParams: Promise<{ cursor?: string; direction?: string }>;
+}) {
+  const page = await searchParams;
   const organisation = await publicOrganisation((await params).orgSlug);
   if (!organisation) notFound();
   const viewer = await societyViewer(organisation.id);
-  const [{ offers, memberUntil }, products] = await Promise.all([membershipOffers(organisation.id, viewer.memberId), shopProducts(organisation.id)]);
+  const [{ offers, memberUntil }, { products, nextCursor, previousCursor }] = await Promise.all([
+    membershipOffers(organisation.id, viewer.memberId),
+    shopProducts(organisation.id, { cursor: page.cursor, direction: page.direction === "prev" ? "prev" : "next" })
+  ]);
+  const pageHref = (cursor: string, direction: "next" | "prev") => `/societies/${organisation.slug}/merchandise?${new URLSearchParams({ cursor, direction })}`;
 
   return (
     <main id="main" tabIndex={-1} className="bg-paper pb-14">
@@ -74,6 +86,7 @@ export default async function SocietyMerchandisePage({ params }: { params: Promi
                   </li>
                 ))}
               </ul>
+              <Pager label="Product pages" next={nextCursor && pageHref(nextCursor, "next")} nextLabel="More products" previous={previousCursor && pageHref(previousCursor, "prev")} />
               {organisation.refundPolicy ? (
                 <div>
                   <h3 className="font-semibold text-ink">Refunds</h3>

@@ -6,6 +6,7 @@ import { assetReferenced } from "@/lib/assets/references";
 import { prisma } from "@/lib/db";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
 import { heldByVariant } from "@/lib/merchandise/sale";
+import { cursorPage, defaultPageLimit, pageInfoForPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { priceAmountSchema } from "@/lib/validators/price";
 
@@ -392,23 +393,27 @@ export async function readProduct(organisationId: string, productId: string) {
 }
 export type StaffProduct = NonNullable<Awaited<ReturnType<typeof readProduct>>>["product"];
 
-// Every product of the society, newest first, with its cover photo and a
-// summary of the options still on sale.
-export async function listProducts(organisationId: string) {
-  const [organisation, products] = await Promise.all([
+// The society's products, newest first, 25 a page both ways (UI-025), with
+// its cover photo and a summary of the options still on sale.
+export async function listProducts(organisationId: string, page: { cursor?: string; direction?: PaginationDirection } = {}) {
+  const query = cursorPage("createdAt", "desc", page);
+  const [organisation, rows] = await Promise.all([
     prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { pickupPolicy: true } }),
     prisma.merchandiseProduct.findMany({
-      where: { organisationId },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 200,
+      where: { AND: [{ organisationId }, ...query.after] },
+      orderBy: query.orderBy,
+      take: defaultPageLimit + 1,
       include: {
         images: { where: { position: 0 }, select: { assetId: true } },
         variants: { where: { archivedAt: null }, orderBy: [{ position: "asc" }, { id: "asc" }], select: { colour: true, size: true, priceAmount: true, remaining: true } }
       }
     })
   ]);
+  const { items: products, pageInfo } = pageInfoForPage({ items: rows, limit: defaultPageLimit, direction: query.from.direction, cursor: query.from.cursor, timestampField: "createdAt" });
   return {
     pickupPolicy: organisation.pickupPolicy,
+    nextCursor: pageInfo.nextCursor,
+    previousCursor: pageInfo.previousCursor,
     products: products.map((product) => {
       const prices = product.variants.map((option) => option.priceAmount);
       const distinct = (values: string[]) => [...new Set(values.filter(Boolean))];

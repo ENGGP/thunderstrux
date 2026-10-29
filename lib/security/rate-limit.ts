@@ -36,7 +36,8 @@ export type RateLimitPolicy =
   | "guest_email_address"
   | "guest_token_ip"
   | "guest_token_digest"
-  | "data_export";
+  | "data_export"
+  | "society_enquiry";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -100,7 +101,9 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   guest_token_ip: { limit: 50, windowSeconds: 600, failureMode: "closed" },
   guest_token_digest: { limit: 10, windowSeconds: 600, failureMode: "closed" },
   // Spreadsheet downloads of orders and attendees carry buyer emails (UI-018).
-  data_export: { limit: 20, windowSeconds: 60 * 60, failureMode: "closed" }
+  data_export: { limit: 20, windowSeconds: 60 * 60, failureMode: "closed" },
+  // "Contact {society}" takes no session: per address and society, and per sender (DEBT-002).
+  society_enquiry: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" }
 };
 
 const REDIS_CONNECT_TIMEOUT_MS = 1_500;

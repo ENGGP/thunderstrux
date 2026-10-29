@@ -26,7 +26,7 @@ export default async function OrganisationDetailsPage({
   const organisation = await publicOrganisation((await params).orgSlug);
   if (!organisation) notFound();
   const { joinState, memberId } = await societyViewer(organisation.id);
-  const [{ offers, memberUntil }, products, availability] = await Promise.all([
+  const [{ offers, memberUntil }, { products }, availability] = await Promise.all([
     membershipOffers(organisation.id, memberId),
     shopProducts(organisation.id),
     listingAvailability(organisation.events.map((event) => event.id))

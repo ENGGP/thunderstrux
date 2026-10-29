@@ -7,17 +7,20 @@ import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { engagementMetrics, membershipMetrics, merchandiseMetrics, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
 import type { AnalyticsRange } from "@/lib/analytics/range";
-import { formatDate, formatMoney, shortMonths } from "@/lib/format";
+import { formatDate, formatDayMonth, formatMoney, formatMonthYear } from "@/lib/format";
 
 // The four Analytics tabs (T32, design round C1). Each shows at most three
 // tiles, a chart and a table with the same numbers, all from lib/analytics.
 // Money only reaches this file for finance roles: the metrics return null
 // otherwise, and the Memberships and Merchandise tabs aren't offered.
 
-const day = (start: string, options: Intl.DateTimeFormatOptions) =>
-  shortMonths(new Intl.DateTimeFormat("en-AU", { ...options, timeZone: "UTC" }).format(new Date(`${start}T00:00:00Z`)));
-export const bucketLabel = (start: string, range: AnalyticsRange) =>
-  range.bucket === "month" ? day(start, { month: "short", year: range.from.slice(0, 4) === range.to.slice(0, 4) ? undefined : "2-digit" }) : day(start, { day: "numeric", month: "short" });
+// A bucket's start day: "23 Oct", or for months "Oct", with the year when the range spans two.
+export const bucketLabel = (start: string, range: AnalyticsRange) => {
+  const noon = `${start}T12:00:00Z`;
+  if (range.bucket !== "month") return formatDayMonth(noon, "UTC");
+  const month = formatMonthYear(noon, "UTC");
+  return range.from.slice(0, 4) === range.to.slice(0, 4) ? month.split(" ")[0] : month;
+};
 const dollars = (cents: number) => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(cents / 100);
 const money = (cents: number | null) => formatMoney(cents ?? 0);
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;

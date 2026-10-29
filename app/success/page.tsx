@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthShell } from "@/components/layout/auth-shell";
-import { CheckoutShell } from "@/components/layout/checkout-shell";
+import { CheckoutShell, ticketSteps } from "@/components/layout/checkout-shell";
 import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -50,7 +50,7 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
   const title = projection === "processing" ? "Confirming your payment" : going ? "You're going" : projection === "failed" || projection === "expired" ? "This checkout didn't complete" : "Your order";
 
   return (
-    <CheckoutShell current={going ? 2 : 1} society={order.event.organisation.name} steps={["Review", "Pay with Stripe", "Tickets"]} title={title}>
+    <CheckoutShell current={going ? 2 : 1} society={order.event.organisation.name} steps={ticketSteps({ guest: false, free: false })} title={title}>
       <Card>
         <div className="grid gap-4">
           <div><StatusBadge label={badge.label} status={badge.status} /></div>

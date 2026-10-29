@@ -33,7 +33,14 @@ async function societyWithEvents() {
     data: { startTime: new Date(Date.now() - 2 * 86400000), endTime: new Date(Date.now() - 86400000) }
   });
   const order = { organisationId: organisation.id, eventId: live.id, ticketTypeId: live.ticketTypes[0].id, userId: buyer.id };
-  await createOrder({ ...order, status: "paid", paidAt: new Date(), quantity: 2 });
+  const ticket = (orderId: string, issueSequence: number, validity: "active" | "void" = "active") =>
+    prisma.ticket.create({ data: { orderId, eventId: live.id, ticketTypeId: live.ticketTypes[0].id, organisationId: organisation.id, issueSequence, validity } });
+  const paid = await createOrder({ ...order, status: "paid", paidAt: new Date(), quantity: 2 });
+  await ticket(paid.id, 1);
+  await ticket(paid.id, 2);
+  // Refunded: still a paid order, but its ticket no longer admits anyone (DEBT-002).
+  const refunded = await createOrder({ ...order, status: "paid", paidAt: new Date(), quantity: 1 });
+  await ticket(refunded.id, 1, "void");
   await createOrder({ ...order, status: "pending", quantity: 3 });
   const foreign = await createOrganisationAccount();
   await createEvent({ organisationId: foreign.organisation.id, title: "Zebra Elsewhere", status: "published" });
@@ -76,7 +83,7 @@ describe("dashboard events read", () => {
     const upcoming = await read("upcoming");
     expect(upcoming.events.map((event) => event.id).sort()).toEqual([live.id, draft.id].sort());
     expect(upcoming.counts).toEqual({ upcoming: 2, drafts: 1, past: 1, all: 3 });
-    // Sold counts paid orders only.
+    // Sold counts tickets that still admit someone: not refunded ones or unpaid holds.
     expect(upcoming.events.find((event) => event.id === live.id)).toMatchObject({ sold: 2, remaining: 10 });
     expect((await read("past")).events.map((event) => event.id)).toEqual([past.id]);
 
@@ -87,7 +94,7 @@ describe("dashboard events read", () => {
 
   test("check-in staff get published events and no sales read", async () => {
     const { organisation, live } = await societyWithEvents();
-    const groupBy = vi.spyOn(prisma.order, "groupBy");
+    const groupBy = vi.spyOn(prisma.ticket, "groupBy");
 
     const result = await listDashboardEvents(organisation.id, {
       view: "upcoming",

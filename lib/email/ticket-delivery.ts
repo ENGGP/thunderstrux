@@ -104,12 +104,14 @@ export async function loadTicketDeliveryOrder(orderId: string) {
       },
       event: {
         select: {
+          id: true,
           title: true,
           startTime: true,
           location: true,
           organisation: {
             select: {
               name: true,
+              slug: true,
               timeZone: true
             }
           }
@@ -164,6 +166,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
     .join("");
   const origin = appUrl();
   const memberLink = order.userId && origin ? new URL(`/purchases/tickets/${order.id}`, origin).toString() : undefined;
+  const contactLink = origin ? new URL(`/societies/${order.event.organisation.slug}/contact?event=${order.event.id}`, origin).toString() : undefined;
   const subject = `Your tickets for ${order.event.title.replace(/[\r\n]+/g, " ")}`;
   // Purchase-time facts; the event date and place stay live.
   const ticketName = purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name);
@@ -192,6 +195,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
     ticketIdLines || "- Not available",
     "",
     "At the door, give your name or show this email with your ticket reference.",
+    ...(contactLink ? ["", `Questions? Contact ${seller}: ${contactLink}`] : []),
     ...(memberLink ? ["", `View your tickets: ${memberLink}`] : []),
     ...(guestOrderLink ? ["", `Open your order (works once, for 24 hours; after that use Find your purchase): ${guestOrderLink}`] : [])
   ].join("\n");
@@ -216,6 +220,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
       <p><strong>Your tickets</strong></p>
       <ul>${ticketIdHtml || "<li>Not available</li>"}</ul>
       <p>At the door, give your name or show this email with your ticket reference.</p>
+      ${contactLink ? `<p>Questions? <a href="${escapeHtml(contactLink)}">Contact ${escapeHtml(seller)}</a></p>` : ""}
       ${memberLink ? `<p><a href="${escapeHtml(memberLink)}">View your tickets</a></p>` : ""}
       ${guestOrderLink ? `<p><a href="${escapeHtml(guestOrderLink)}">Open your order</a> (works once, for 24 hours; after that use Find your purchase).</p>` : ""}
     </div>
@@ -231,6 +236,7 @@ export async function sendWithResend({
   html,
   idempotencyKey,
   from: frozenFrom,
+  replyTo,
   notification = false
 }: {
   to: string;
@@ -239,6 +245,8 @@ export async function sendWithResend({
   html: string;
   idempotencyKey?: string;
   from?: string;
+  // A validated address (renderedNotificationSchema): only enquiries carry one.
+  replyTo?: string;
   notification?: boolean;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -274,7 +282,8 @@ export async function sendWithResend({
       to,
       subject,
       text,
-      html
+      html,
+      ...(replyTo ? { reply_to: replyTo } : {})
     })
   });
 

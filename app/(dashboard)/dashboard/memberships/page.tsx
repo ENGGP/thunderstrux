@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LinkTabs } from "@/components/ui/link-tabs";
+import { Pager } from "@/components/ui/pager";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireManagementPage } from "@/lib/auth/page-access";
@@ -18,7 +19,10 @@ export const metadata: Metadata = { title: "Memberships" };
 
 const unlockWords = { member_prices: "Member prices", members_only_events: "Members-only events" } as const;
 
-export default async function MembershipsPage() {
+type Page = { cursor?: string; direction?: string };
+
+export default async function MembershipsPage({ searchParams }: { searchParams: Promise<Page> }) {
+  const page = await searchParams;
   const organisation = await requireManagementPage("memberships:manage", "/dashboard/memberships");
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
@@ -41,7 +45,7 @@ export default async function MembershipsPage() {
         />
       ) : null}
       <Suspense fallback={<ListSkeleton label="Loading membership plans" />}>
-        <Plans organisationId={organisation.id} />
+        <Plans organisationId={organisation.id} page={page} />
       </Suspense>
     </DashboardShell>
   );
@@ -62,8 +66,9 @@ function holdersText(plan: Row, now: Date) {
   return `${plan.holders} ${word}`;
 }
 
-async function Plans({ organisationId }: { organisationId: string }) {
-  const { plans, timeZone } = await listPlans(organisationId);
+async function Plans({ organisationId, page }: { organisationId: string; page: Page }) {
+  const { plans, timeZone, nextCursor, previousCursor } = await listPlans(organisationId, new Date(), { cursor: page.cursor, direction: page.direction === "prev" ? "prev" : "next" });
+  const pageHref = (cursor: string, direction: "next" | "prev") => `/dashboard/memberships?${new URLSearchParams({ cursor, direction })}`;
   const now = new Date();
   if (!plans.length) {
     return (
@@ -151,6 +156,7 @@ async function Plans({ organisationId }: { organisationId: string }) {
           </li>
         ))}
       </ul>
+      <Pager label="Plan pages" next={nextCursor && pageHref(nextCursor, "next")} previous={previousCursor && pageHref(previousCursor, "prev")} />
 
       <p className="text-sm text-ink-soft">
         Once someone has a plan, its name, dates, price and unlocks can&apos;t change. For next year, create a new plan. Plans are archived, never deleted.

@@ -62,7 +62,8 @@ test("sold out, fewer left and sales closed each get their own screen", async ({
   await confirm.click();
   const soldOut = page.getByRole("alert").filter({ hasText: "No tickets remaining" });
   await expect(soldOut).toContainText("Someone else got the last Free entry ticket first. Nothing has been charged.");
-  await expect(soldOut.getByRole("link", { name: "Back to ticket options" })).toHaveAttribute("href", `/events/${event.id}`);
+  // Back to the event with the choice kept (DEBT-002); the ticket box drops it while it's sold out.
+  await expect(soldOut.getByRole("link", { name: "Back to ticket options" })).toHaveAttribute("href", `/events/${event.id}?ticketTypeId=${ticketType.id}&quantity=3`);
   await noSidewaysScroll(page, "sold-out");
 
   await prisma.ticketType.update({ where: { id: ticketType.id }, data: { quantity: 1 } });

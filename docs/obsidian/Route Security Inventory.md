@@ -38,6 +38,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | Link redemption (`auth/verification/confirm`, `auth/password/confirm`) | origin → body → `account_token_ip` → `account_token_digest` → service |
 | Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → one `email` field (else 400, SEC-007) → `login_ip_email` → Auth.js (its own CSRF) |
 | Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
+| Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
 | Guest redemption (`guest/email/confirm`) | origin → body → `guest_token_ip` → `guest_token_digest` → service |
 | Account security (`me/account/password`, `me/account/email/*`, `POST me/account/closure`) | origin → sign-in (live `authVersion`) → `account_security_change` → body → email confirm only: `account_token_ip`/`account_token_digest` → service (current password, enrolled MFA) |
 | Profile, notification preferences | origin → body → sign-in → service (no rate limit) |
@@ -78,7 +79,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 - An `Origin` header must be exactly a serialised origin in the trusted set: `NEXT_PUBLIC_APP_URL` plus `TRUSTED_APP_ORIGINS` (comma list). `Origin: null` is refused.
 - With no `Origin`, a `Referer` must have a trusted origin. With neither, the request is refused.
 - Then, if the request carries an Auth.js session cookie, header `x-thunderstrux-csrf-token` must match. The token is `v1.<hour>.<hmac>` over the session cookie (chunks joined in order, first duplicate wins, SEC-027) and is valid for the current UTC hour only.
-- Skipped for the eight token-authority paths, so a stale login cookie can't block them: `auth/signup`, `auth/verification/request`, `auth/verification/confirm`, `auth/password/request`, `auth/password/confirm`, `guest/email/request`, `guest/email/confirm`, `guest/recover`.
+- Skipped for the eight token-authority paths, so a stale login cookie can't block them: `auth/signup`, `auth/verification/request`, `auth/verification/confirm`, `auth/password/request`, `auth/password/confirm`, `guest/email/request`, `guest/email/confirm`, `guest/recover`. Also skipped for `orgs/[orgSlug]/enquiries`, which reads no session at all (anyone may write to a society), so a session token protects nothing there; the origin check still applies.
 - Refusals are 403 `Untrusted request origin` or `Invalid CSRF token`, logged as `trusted_origin.rejected` with the reason.
 - Guest writes (checkout, buyer cancel) check `verifyGuestCsrf` against the guest session id instead.
 - `trustedRequestOrigin` picks where Stripe returns the browser (Checkout success/cancel, Connect return/refresh): a trusted `Origin`, else the app URL, never the `Host` header. Emails and workers always use `NEXT_PUBLIC_APP_URL`.
@@ -112,6 +113,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `staff_invite_actor` | 20 / 1 h | closed | actor, society | invite create, resend, revoke |
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
+| `society_enquiry` | 5 / 1 h | closed | IP and slug; then sender email | Contact {society} (required) |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
 | `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm, verify and new recovery codes; every fresh-code action when a code is sent (not required) |
 | `asset_upload` | 20 / 1 h | closed | `actor`, user; and `tenant`, society (two buckets) | asset upload |
@@ -180,6 +182,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET` `/api/orgs/search` | member account |
 | `GET` `/api/orgs/[orgSlug]` | any live staff role in it, or a member join |
 | `POST` `/api/orgs/[orgSlug]/join`, `/api/orgs/[orgSlug]/leave` | origin, member account (join: verified), `organisation_join_leave` |
+| `POST` `/api/orgs/[orgSlug]/enquiries` | origin, no session, `society_enquiry` twice; sends only to the society's own addresses, never shown |
 | `GET`/`PATCH` `/api/orgs/[orgSlug]/profile` | `organisation:settings` +MFA; `PATCH`: origin, `organisation_profile` |
 | `POST` `/api/orgs/[orgSlug]/assets`; `GET`/`DELETE` `/api/orgs/[orgSlug]/assets/[assetId]` | the kind's permission +MFA; writes: origin, `asset_upload` / `asset_delete` |
 | `GET` `/api/orgs/[orgSlug]/calendar` | `events:read` +MFA (drafts follow `events:manage`, membership ends `members:read`) |

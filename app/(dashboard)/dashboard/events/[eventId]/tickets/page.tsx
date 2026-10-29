@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { DownloadCsv } from "@/components/orders/download-csv";
 import { CheckInConsole } from "@/components/tickets/check-in-console";
 import { Pager } from "@/components/ui/pager";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
+import { hasOrganisationPermission } from "@/lib/permissions";
 import { PaginationError, parsePaginationOptions } from "@/lib/pagination/cursor";
 import { OrganisationEventTicketsAccessError, getOrganisationEventTickets } from "@/lib/tickets/check-in";
 
@@ -47,9 +49,13 @@ export default async function OrganiserEventTicketsPage({
   return (
     <DashboardShell contexts={organisation.contexts} orgName={organisation.name} staffRole={organisation.staffRole}>
       <EventWorkspaceHeader active="attendees" event={event} staffRole={organisation.staffRole} />
-      <p className="text-lg font-semibold text-ink" role="status">
-        {payload.counts.checkedIn} of {payload.counts.total} checked in
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-lg font-semibold text-ink" role="status">
+          {payload.counts.checkedIn} of {payload.counts.total} checked in
+        </p>
+        {/* The list holds buyer emails, so it's for those who can read orders: owners and admins (UI-018). */}
+        {hasOrganisationPermission(organisation.staffRole, "orders:read") ? <DownloadCsv href={`/api/events/${eventId}/tickets/export`} label="Download attendee list" /> : null}
+      </div>
       <CheckInConsole
         eventId={eventId}
         footer={

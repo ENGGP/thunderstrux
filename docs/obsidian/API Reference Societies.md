@@ -83,6 +83,7 @@ Ticket types are created and edited only through these two event writes, which v
 
 | Route | Auth, bucket | Success | Errors |
 | --- | --- | --- | --- |
+| `GET /api/events/[eventId]/tickets/export` | ctx, `orders:read` and `tickets:check_in` +MFA (owners and admins); `data_export` | CSV of the tickets that admit (reference, name, email, type, "n of m", order, check-in), `attachment`, `private, no-store`; audit `order.attendees_exported` | 403, 404 another society's event, 413 over 10,000 |
 | `GET /api/events/[eventId]/tickets` | ctx, `tickets:check_in` +MFA | `{event, tickets, pageInfo, counts}`; query `limit`, `cursor`, `direction`, `q`. `no-store` | 400 bad paging, 404 foreign event (drafts are 404 to `check_in_staff`) |
 | `POST /api/tickets/[ticketId]/check-in` | same; `ticket_check_in_out` | `{ticket: {id, status: "checked-in", checkedInAt}}` | 404 foreign; 409 `reason` `already_checked_in`, `not_valid`, `under_review` |
 | `POST /api/tickets/[ticketId]/check-out` | same | `{ticket: {id, status: "unused", checkedInAt: null}}` | 409 `not_checked_in`, `not_valid`, `under_review` |

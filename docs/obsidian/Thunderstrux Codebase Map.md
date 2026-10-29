@@ -65,6 +65,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/memberships` | Plans, offers, grants, roster, revocation, reminders | `plans.ts`, `offers.ts`, `grants.ts`, `roster.ts`, `revocation.ts`, `reminders.ts`, `http.ts` |
 | `lib/merchandise` | Catalogue, shop, basket, sale family, pickups, after-sale | `catalogue.ts`, `shop.ts`, `basket.ts`, `sale.ts`, `pickups.ts`, `after-sale.ts`, `http.ts` |
 | `lib/ops` | Logging, metrics, alerts, readiness, worker contract, monitor, integrity audit | `logger.ts`, `alerts.ts`, `metrics.ts`, `worker.ts` (`runWorker`), `monitor.ts`, `readiness.ts`, `integrity-audit.ts` |
+| `lib/export` | Spreadsheet (CSV) downloads of orders and attendees | `csv.ts`, `order-exports.ts` |
 | `lib/orders` | Staff order reads and actions, member ticket orders, stale order expiry | `grouped-orders.ts`, `order-detail.ts`, `member-tickets.ts`, `stale-orders.ts`, `buyer-identity.ts` |
 | `lib/organisations` | Bootstrap, profiles, public reads, discovery, joins, overview | `profile.ts`, `public-organisations.ts`, `discovery.ts`, `join.ts`, `overview.ts`, `bootstrap.ts`, `authority.ts`, `http.ts` |
 | `lib/pagination` | Opaque timestamp cursors and page options | `cursor.ts` |

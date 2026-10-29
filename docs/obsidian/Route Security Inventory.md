@@ -111,6 +111,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `stripe_connect_status` | 30 / 10 min | open | society | Connect status read (each asks Stripe) |
 | `staff_invite_actor` | 20 / 1 h | closed | actor, society | invite create, resend, revoke |
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
+| `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
 | `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm, verify and new recovery codes; every fresh-code action when a code is sent (not required) |
 | `asset_upload` | 20 / 1 h | closed | `actor`, user; and `tenant`, society (two buckets) | asset upload |
@@ -169,11 +170,12 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `POST` `/api/events/[eventId]/cancel` | origin, ctx, `events:manage` and `orders:refund` +MFA, typed title, fresh code (`staff_mfa_verify` when sent) |
 | `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
 | `GET` `/api/orders`, `/api/orders/[orderId]` | ctx, `orders:read` +MFA |
+| `GET` `/api/orders/export`, `/api/events/[eventId]/tickets/export` | ctx, `orders:read` +MFA (attendees also `tickets:check_in`), `data_export`; audited |
 | `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds and cancel also code |
 | `PATCH` `/api/orders/[orderId]/refund-manual` | origin, ctx, `orders:refund_mark` +MFA, fresh code |
 | `POST` `/api/orders/[orderId]/resend`, `/api/orders/[orderId]/email-jobs/[jobId]/requeue` | origin, ctx, `orders:email_resend` +MFA, `order_resend` |
 | `POST` `/api/orders/[orderId]/compensation-refund/confirm` | origin, ctx, `orders:refund` +MFA, a fresh code unless MFA is `off`, Stripe refund evidence with the transfer reversed and the fee refunded |
-| `GET` `/api/notifications`; `POST` `/api/notifications/[jobId]/requeue` | ctx, `orders:email_resend` +MFA; requeue: origin, `order_resend` |
+| `GET` `/api/notifications`; `POST` `/api/notifications/[jobId]/requeue`, `/api/notifications/requeue` | ctx, `orders:email_resend` +MFA; requeue: origin, `order_resend` |
 | `GET` `/api/orgs`; `POST` `/api/orgs` | signed in; create: origin, verified organisation account, `organisation_create` |
 | `GET` `/api/orgs/search` | member account |
 | `GET` `/api/orgs/[orgSlug]` | any live staff role in it, or a member join |
@@ -185,7 +187,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/revoke` | origin, `memberships:manage` +MFA, code |
 | `POST` `/api/orgs/[orgSlug]/memberships/members/[grantId]/cancel`, `/api/orgs/[orgSlug]/memberships/members/[grantId]/refund` | origin, `orders:refund` +MFA, code |
 | `GET`/`POST` `/api/orgs/[orgSlug]/merchandise`; `GET`/`PATCH` `/api/orgs/[orgSlug]/merchandise/[productId]`; `POST` `/api/orgs/[orgSlug]/merchandise/[productId]/publish`, `/api/orgs/[orgSlug]/merchandise/[productId]/archive`, `/api/orgs/[orgSlug]/merchandise/[productId]/restore` | `merchandise:manage` +MFA; writes: origin |
-| `POST` `/api/orgs/[orgSlug]/merchandise/pickups/[orderId]`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/returns` | origin, `merchandise:fulfil` +MFA |
+| `POST` `/api/orgs/[orgSlug]/merchandise/pickups`, `/api/orgs/[orgSlug]/merchandise/pickups/[orderId]`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/returns` | origin, `merchandise:fulfil` +MFA |
 | `POST` `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/refund`, `/api/orgs/[orgSlug]/merchandise/orders/[orderId]/cancel` | origin, `orders:refund` +MFA, code |
 | `GET` `/api/orgs/[orgSlug]/staff`; `PATCH` `/api/orgs/[orgSlug]/staff/[staffId]` | `staff:manage` +MFA; `PATCH`: origin, owner rows need an owner |
 | `POST` `/api/orgs/[orgSlug]/staff/invites`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/resend`, `/api/orgs/[orgSlug]/staff/invites/[inviteId]/revoke` | origin, verified, `staff:manage` +MFA, invite limits |

@@ -139,6 +139,30 @@ export async function markPickup(actor: AccountActor, organisationId: string, or
   });
 }
 
+export const pickupBatchSchema = z.object({
+  orders: z.array(z.object({ orderId: z.string().trim().min(1).max(64), expectedVersion: z.number().int().min(1).max(2147483646) }).strict()).min(1).max(25)
+}).strict();
+
+// Mark several orders ready at once (UI-018): each through markPickup, in its own
+// transaction with the same checks and one email per buyer. An order someone else
+// moved, or that can't be handed over, is skipped with its reason; the rest go.
+export async function markPickupsReady(actor: AccountActor, organisationId: string, orders: z.infer<typeof pickupBatchSchema>["orders"]) {
+  const marked: Array<Awaited<ReturnType<typeof markPickup>>> = [];
+  const skipped: Array<{ orderId: string; reference: string; message: string }> = [];
+  const seen = new Set<string>();
+  for (const { orderId, expectedVersion } of orders) {
+    if (seen.has(orderId)) continue;
+    seen.add(orderId);
+    try {
+      marked.push(await markPickup(actor, organisationId, orderId, { step: "ready", expectedVersion }));
+    } catch (error) {
+      if (!(error instanceof MerchandiseCatalogueError)) throw error;
+      skipped.push({ orderId, reference: orderReference(orderId), message: error.message });
+    }
+  }
+  return { marked, skipped };
+}
+
 // The page's result after a step (?done=): read back from the order, never from the browser.
 export async function pickupResult(organisationId: string, orderId: string) {
   const order = await prisma.commerceOrder.findFirst({

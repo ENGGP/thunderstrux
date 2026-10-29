@@ -145,7 +145,8 @@ export async function getOrganisationOrderDetail(
 export async function markOrganisationOrderManuallyRefunded(
   organisationId: string,
   orderId: string,
-  actorUserId?: string
+  actorUserId: string | undefined,
+  reason: string
 ) {
   await prisma.$transaction(async (tx) => {
     const owned = await tx.order.findFirst({
@@ -207,6 +208,7 @@ export async function markOrganisationOrderManuallyRefunded(
       type: "manual_refund_marked",
       source: "staff_action",
       actorUserId,
+      reason,
       fromOrderStatus: order.status,
       toOrderStatus: order.status,
       baseline: {
@@ -217,7 +219,7 @@ export async function markOrganisationOrderManuallyRefunded(
     });
     await tx.auditLog.create({ data: {
       organisationId, actorUserId: actorUserId ?? null,
-      action: "order.manual_refund_marked", targetType: "Order", targetId: orderId
+      action: "order.manual_refund_marked", targetType: "Order", targetId: orderId, metadata: { reason }
     } });
     await queueManualRefundNotice(tx, orderId);
   });

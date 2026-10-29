@@ -326,6 +326,7 @@ test('organisers check attendees in and confirm before recording a refund', asyn
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText("can't be undone");
   await expect(dialog).toContainText('places go back on sale');
+  await dialog.getByLabel('Reason').fill('Refunded in cash at the stall');
   await dialog.getByRole('button', { name: 'Mark as refunded', exact: true }).click();
   await expect(page.getByText('This order is marked as refunded.')).toBeVisible();
   // Staff see where it was refunded, never a green Paid on an order whose tickets are void.

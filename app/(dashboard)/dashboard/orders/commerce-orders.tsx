@@ -3,6 +3,7 @@ import type { CommerceKind } from "@prisma/client";
 import { Pager } from "@/components/ui/pager";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
+import { DownloadCsv } from "@/components/orders/download-csv";
 import { pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
 import { DateField } from "@/components/ui/date-field";
 import { Select, TextInput } from "@/components/ui/input";
@@ -135,6 +136,8 @@ export async function CommerceOrders({
         <DateField defaultValue={params.startDate ?? ""} label="From" name="startDate" />
         <DateField defaultValue={params.endDate ?? ""} label="To" name="endDate" />
       </FilterBar>
+      {/* Every order these filters match, not just this page (UI-018). */}
+      <DownloadCsv href={href({ cursor: undefined, direction: undefined, limit: undefined }).replace("/dashboard/orders", "/api/orders/export")} />
       {pagination.invalid ? <Notice tone="warning">Invalid pagination parameters were ignored. Showing the first page.</Notice> : null}
       {orders.length === 0 ? (
         search || params.productId || params.startDate || params.endDate ? (

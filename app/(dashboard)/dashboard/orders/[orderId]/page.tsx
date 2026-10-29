@@ -190,7 +190,8 @@ export default async function OrganisationOrderDetailPage({
           details: [
             event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? `Order: ${event.fromOrderStatus ?? "unknown"} to ${event.toOrderStatus}` : null,
             event.fromReservationStatus !== event.toReservationStatus && event.toReservationStatus ? `Reservation: ${event.fromReservationStatus ?? "none"} to ${event.toReservationStatus}` : null,
-            event.reason ? `Reason: ${event.reason.replaceAll("_", " ")}` : null
+            // Codes from Stripe or the app read with spaces; a reason staff typed reads as typed.
+            event.reason ? `Reason: ${event.source === "staff_action" ? event.reason : event.reason.replaceAll("_", " ")}` : null
           ].filter((detail): detail is string => detail !== null)
         }))}
         footer={

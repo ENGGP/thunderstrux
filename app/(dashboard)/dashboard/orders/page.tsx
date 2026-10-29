@@ -6,6 +6,7 @@ import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { CommerceOrders } from "./commerce-orders";
+import { DownloadCsv } from "@/components/orders/download-csv";
 import { Pager } from "@/components/ui/pager";
 import { LinkTabs, pillBarClasses, pillClasses } from "@/components/ui/link-tabs";
 import { FilterBar } from "@/components/ui/filter-bar";
@@ -228,6 +229,8 @@ export default async function OrganisationOrdersPage({
         <DateField defaultValue={startDateParam ?? ""} label="From" name="startDate" />
         <DateField defaultValue={endDateParam ?? ""} label="To" name="endDate" />
       </FilterBar>
+      {/* Every order these filters match, not just this page (UI-018). */}
+      <DownloadCsv href={ordersHref({}).replace("/dashboard/orders", "/api/orders/export")} />
 
       <Suspense fallback={<ListSkeleton label="Loading orders" rows={6} />}>
         <OrderResults

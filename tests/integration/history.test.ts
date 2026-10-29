@@ -168,7 +168,7 @@ describe("History (T38)", () => {
     "order.manual_refund_marked", "order.dispute_resolved", "order.free_cancelled", "order.guest_claimed", "order.ticket_email_queued",
     "order.compensation_refund_review_required", "order.compensation_refund_started", "order.compensation_refund_confirmed",
     ...["refunded", "refund_failed", "refund_pending", "review_required"].map((state) => `order.compensation_${state}`),
-    "email_outbox.requeued", "notification.requeued",
+    "email_outbox.requeued", "notification.requeued", "order.list_exported", "order.attendees_exported",
     ...["created", "updated", "published", "archived"].map((step) => `membership_plan.${step}`),
     "membership.revoked", "membership.free_cancelled",
     ...["created", "updated", "published", "archived", "restored"].map((step) => `merchandise_product.${step}`),

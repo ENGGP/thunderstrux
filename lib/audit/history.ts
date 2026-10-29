@@ -276,8 +276,10 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   } else if (/^(order|commerce_order)\.refund_(succeeded|pending|failed|canceled)$/.test(a)) {
     const state = a.split("refund_")[1];
     sentence = [state === "succeeded" ? "confirmed the refund of " : state === "pending" ? "is still processing the refund of " : state === "canceled" ? "cancelled the refund of " : "couldn't complete the refund of ", ...anyOrder()];
-  } else if (a === "order.manual_refund_marked") sentence = ["marked ", ...order(), " as refunded outside Thunderstrux"];
-  else if (a === "order.external_refund_recorded" || a === "commerce_order.external_refund_recorded") {
+  } else if (a === "order.manual_refund_marked") {
+    sentence = ["marked ", ...order(), " as refunded outside Thunderstrux"];
+    facts = reason();
+  } else if (a === "order.external_refund_recorded" || a === "commerce_order.external_refund_recorded") {
     sentence = ["reported a refund made in the Stripe dashboard for ", ...anyOrder()];
     if (num(m.refundedOutside) !== null) facts = [{ label: "Refunded", value: formatMoney(m.refundedOutside as number), was: num(m.totalAmount) !== null ? `${formatMoney(m.totalAmount as number)} paid` : undefined }];
   } else if (a === "order.external_refund_reviewed" || a === "commerce_order.external_refund_reviewed") sentence = ["reviewed the refund made in Stripe for ", ...anyOrder()];
@@ -300,8 +302,17 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   else if (a === "email_outbox.requeued") {
     sentence = ["retried the tickets email for ", ...(typeof m.orderId === "string" ? [{ text: `order ${orderReference(m.orderId)}`, href: `/dashboard/orders/${m.orderId}` }] : ["an order"])];
     facts = reason();
-  } else if (a === "notification.requeued") sentence = ["retried an email notice"];
-  else if (a === "order.compensation_refund_queued" || a === "commerce_order.compensation_refund_queued") sentence = ["queued an automatic refund for ", ...anyOrder()];
+  } else if (a === "notification.requeued") {
+    sentence = ["retried an email notice"];
+    facts = reason();
+  } else if (a === "order.list_exported") {
+    const family = text(m.family) === "memberships" ? "membership" : text(m.family) === "merchandise" ? "merchandise" : "ticket";
+    sentence = [`downloaded the ${family} orders as a spreadsheet`];
+    facts = [{ label: "Rows", value: String(num(m.rows) ?? 0) }];
+  } else if (a === "order.attendees_exported") {
+    sentence = ["downloaded the attendee list for ", event(row.targetId)];
+    facts = [{ label: "Rows", value: String(num(m.rows) ?? 0) }];
+  } else if (a === "order.compensation_refund_queued" || a === "commerce_order.compensation_refund_queued") sentence = ["queued an automatic refund for ", ...anyOrder()];
   else if (a === "order.compensation_refund_review_required") {
     sentence = ["put ", ...order(), " in payment review"];
     facts = [{ label: "Why", value: `${reviewReasons[text(m.reason) ?? ""] ?? "Paid, but what they bought couldn't be issued."} Decide on it in Orders.` }];

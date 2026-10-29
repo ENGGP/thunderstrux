@@ -143,6 +143,6 @@ describe("free ticket registration", () => {
     expect(await societySales(fixture.owner.organisation.id, today, { financial: true })).toMatchObject({ tickets: 2000, total: 2000 });
 
     if (free.status !== "fulfilled") throw new Error("expected a free registration");
-    await expect(markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, free.orderId)).rejects.toThrow("no payment to refund");
+    await expect(markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, free.orderId, undefined, "Refunded by bank transfer")).rejects.toThrow("no payment to refund");
   });
 });

@@ -4,6 +4,7 @@ import { enqueueNotification, claimNotificationJobs, processNotificationClaim, p
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { renderNotification } from "@/lib/email/templates";
 import { POST as requeueRoute } from "@/app/api/notifications/[jobId]/requeue/route";
+import { POST as requeueBatchRoute } from "@/app/api/notifications/requeue/route";
 import { jsonRequest } from "@/tests/helpers/http";
 import { createMember, createOrganisationAccount } from "@/tests/helpers/test-data";
 import { setMockSession } from "@/tests/helpers/auth";
@@ -180,5 +181,35 @@ describe("general notification outbox", () => {
       expect((await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: jobId } })).status).toBe("failed");
     }
     expect(await prisma.auditLog.count({ where: { action: "notification.requeued" } })).toBe(1);
+  });
+
+  // UI-018: several at once with one reason; each still checked and audited on its own.
+  test("Send several again with one reason: each eligible email is queued and audited; the rest are named", async () => {
+    const owner = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
+    let notices = 0;
+    const failedNotice = async (organisationId: string, extra: Partial<Record<"acceptedAt", Date>> = {}) => {
+      const job = await prisma.$transaction(tx => enqueueNotification(tx, { ...input(), eventKey: `batch/${notices++}`, template: "business_notice", organisationId }));
+      await prisma.notificationOutbox.update({ where: { id: job.id! }, data: { status: "failed", lastError: "provider_unavailable", ...extra } });
+      return job.id!;
+    };
+    const first = await failedNotice(owner.organisation.id);
+    const second = await failedNotice(owner.organisation.id);
+    const sent = await failedNotice(owner.organisation.id, { acceptedAt: new Date() });
+    const theirs = await failedNotice(other.organisation.id);
+    const call = (body: unknown) => requeueBatchRoute(jsonRequest("http://localhost:3000/api/notifications/requeue", body));
+
+    expect((await call({ jobIds: [first], reason: "short" })).status).toBe(400);
+    expect((await call({ jobIds: [], reason: "Provider issue fixed" })).status).toBe(400);
+    const response = await call({ jobIds: [first, second, sent, theirs, first], reason: "Provider issue fixed" });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { queued: string[]; skipped: Array<{ id: string; message: string }> };
+    expect(body.queued.sort()).toEqual([first, second].sort());
+    expect(body.skipped.map((entry) => entry.id).sort()).toEqual([sent, theirs].sort());
+    expect(await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: theirs } })).toMatchObject({ status: "failed" });
+    const audit = await prisma.auditLog.findMany({ where: { organisationId: owner.organisation.id, action: "notification.requeued" } });
+    expect(audit.map((row) => row.targetId).sort()).toEqual([first, second].sort());
+    expect(audit.every((row) => (row.metadata as { reason: string }).reason === "Provider issue fixed")).toBe(true);
   });
 });

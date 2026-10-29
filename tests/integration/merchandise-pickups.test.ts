@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { POST as pickupRoute } from "@/app/api/orgs/[orgSlug]/merchandise/pickups/[orderId]/route";
+import { POST as pickupsRoute } from "@/app/api/orgs/[orgSlug]/merchandise/pickups/route";
 import { createCommerceCheckout } from "@/lib/commerce/checkout";
 import { prisma } from "@/lib/db";
 import { listPickups, pickupResult } from "@/lib/merchandise/pickups";
@@ -50,6 +51,26 @@ describe("merchandise pickups", () => {
     const back = await listPickups(organisation.id, { stage: "prepare", cursor: second.previousCursor!, direction: "prev" });
     expect(back.orders.map((row) => row.id)).toEqual(first.orders.map((row) => row.id));
   }, 90_000);
+
+  // UI-018: several marked ready at once, each on its own with one email per buyer.
+  test("marking several ready at once emails each buyer once and names an order someone else moved first", async () => {
+    const { organisation, user, order } = await society();
+    const [first, second, third] = [await order(), await order(), await order()];
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    expect((await step(organisation.slug, third.id, { step: "ready", expectedVersion: third.version })).status).toBe(200);
+    const batch = (orders: unknown) =>
+      pickupsRoute(jsonRequest(`http://localhost:3000/api/orgs/${organisation.slug}/merchandise/pickups`, { orders }), routeContext({ orgSlug: organisation.slug }));
+
+    expect((await batch([])).status).toBe(400);
+    expect((await batch(Array.from({ length: 26 }, () => ({ orderId: first.id, expectedVersion: 1 })))).status).toBe(400);
+    const response = await batch([first, second, third].map((row) => ({ orderId: row.id, expectedVersion: row.version })));
+    expect(response.status).toBe(200);
+    const { pickups } = await parseJsonResponse(response);
+    expect(pickups.marked.map((row: { id: string }) => row.id).sort()).toEqual([first.id, second.id].sort());
+    expect(pickups.skipped).toEqual([expect.objectContaining({ orderId: third.id, reference: orderReference(third.id), message: expect.stringContaining(" marked order ") })]);
+    for (const row of [first, second, third]) expect(await emails(row.id, "ready")).toBe(1);
+    expect(await prisma.commerceOrder.count({ where: { id: { in: [first.id, second.id, third.id] }, pickupStatus: "ready" } })).toBe(3);
+  });
 
   test("staff mark an order ready, then collected, once each: the buyer is emailed once per step and who did it is recorded", async () => {
     const { organisation, user, order } = await society();

@@ -48,6 +48,9 @@ const statuses = {
 
 export type Status = keyof typeof statuses;
 
+// The word alone, for text that isn't a badge (spreadsheet exports, UI-018).
+export const statusLabel = (status: Status) => statuses[status][0];
+
 export function StatusBadge({
   status,
   label

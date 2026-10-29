@@ -19,7 +19,7 @@ export default function PrivacyPage() {
           <li><strong>What you buy:</strong> each ticket, membership and merchandise order, its price, and the name and email you bought it with.</li>
           <li><strong>Buying as a guest:</strong> the email address you confirm at checkout.</li>
           <li><strong>At events:</strong> when a ticket was checked in.</li>
-          <li><strong>Messages to a society:</strong> when you use Contact, we email your name, address and message to that society so it can reply. The society&apos;s own addresses aren&apos;t shown to you.</li>
+          <li><strong>Messages to a society:</strong> when you use Contact, we email your name, address and message to that society so it can reply.</li>
           <li><strong>Society staff:</strong> your role and the changes you make, so the society can see who did what. Authenticator app secrets are stored encrypted.</li>
         </ul>
       </PolicySection>

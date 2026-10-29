@@ -67,7 +67,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 `NotificationOutbox` carries every other email. `enqueueNotification(tx, …)` runs inside the business transaction; the worker calls the provider after commit.
 
 - **Unique intent:** `(eventKey, recipient, templateVersion)`. A repeat insert does nothing, so each key below is sent at most once per recipient.
-- **Privacy:** `business_notice` and `event_cancelled` jobs (`businessTemplates`) are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
+- **Privacy:** `business_notice`, `event_cancelled` and `society_enquiry` jobs (`businessTemplates`) are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
 - **Frozen content:** subject, text, HTML and sender (`EMAIL_FROM`) are rendered once at enqueue and encrypted with AES-256-GCM (`encryptNotification`). The key is `NOTIFICATION_ENCRYPTION_KEY`, 32 bytes in base64; the job id is the authenticated data, and decryption requires the full 16-byte tag. Readiness (`lib/ops/readiness.ts`) and every token-issuing path refuse a missing or invalid key. Hosted services read it through `NOTIFICATION_ENCRYPTION_KEY_FILE`.
 - **Links** (`payload.link`) must be on the configured app origin, `https` (or `http` on localhost), without credentials.
 - **Statuses** (a string with a database check): `pending`, `processing`, `sent`, `failed`, `cancelled`.
@@ -84,7 +84,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 
 ## Templates
 
-`notificationTemplateSchema` in `lib/email/templates.ts`. A `business_notice` or `event_cancelled` may set its own `subject` (up to 200 characters, line breaks folded to a space so one organiser title can't fail a fan-out, SEC-003); the others have fixed subjects.
+`notificationTemplateSchema` in `lib/email/templates.ts`. A `business_notice`, `event_cancelled` or `society_enquiry` may set its own `subject` (up to 200 characters, line breaks folded to a space so one organiser title can't fail a fan-out, SEC-003); the others have fixed subjects.
 
 | Template | Sent for |
 | --- | --- |
@@ -99,6 +99,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | `guest_access` | Guest email confirmation (30-minute link) |
 | `guest_order_link` | Find your purchase, and a guest's merchandise receipt (24-hour link) |
 | `event_cancelled` | A society cancelled an event: one to each ticket holder, with the society's message and what happens to their money (EVT-004) |
+| `society_enquiry` | "Contact {society}" (DEBT-002): a buyer's message to the society, the only template with a `replyTo` (the sender; anything else refuses one), so the society answers by replying. Line breaks kept |
 
 ## Notification worker
 
@@ -142,6 +143,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | Free ticket registration cancelled | `cancellation/{orderId}` | `business_notice` | `tests/integration/free-cancellation.test.ts` |
 | Payment review (ticket or commerce) | `payment-review/{orderId}` | `business_notice` | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/commerce-checkout.test.ts` |
 | Event cancelled (one per holder; each refund then sends its own `refund/{requestId}`) | `event-cancelled/{eventId}/{orderId}` | `event_cancelled` | `tests/integration/event-cancellation.test.ts` |
+| Contact {society}, one per recipient | `enquiry/{uuid}` | `society_enquiry` | `tests/integration/society-enquiries.test.ts`, `tests/e2e/polish.spec.ts` |
 | Buyer released a free registration | `cancellation/{orderId}` | `business_notice` | `tests/integration/event-cancellation.test.ts` |
 | Material event change | `event-change/{eventId}/{version}/{orderId}` | `business_notice` | `tests/integration/notification-matrix.test.ts`, `tests/e2e/event-builder.spec.ts` |
 
@@ -150,7 +152,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 
 ## Providers
 
-- **Resend** over HTTP (`sendWithResend`): `POST https://api.resend.com/emails` with `RESEND_API_KEY`, `EMAIL_FROM` (frozen per notification), the `Idempotency-Key` header and a 15-second timeout. A missing key or sender throws `TicketEmailConfigurationError`. Non-2xx fails with the status and body; the stored error is cut to 500 characters.
+- **Resend** over HTTP (`sendWithResend`): `POST https://api.resend.com/emails` with `RESEND_API_KEY`, `EMAIL_FROM` (frozen per notification), the `Idempotency-Key` header, `reply_to` for an enquiry, and a 15-second timeout. A missing key or sender throws `TicketEmailConfigurationError`. Non-2xx fails with the status and body; the stored error is cut to 500 characters.
 - **Mail capture:** isolated Docker runs set `THUNDERSTRUX_MAIL_CAPTURE_URL` to `http://mail-capture:8025/emails` (`scripts/mail-capture.mjs`, no published port, no disk). Only **notifications** go there, and only when `E2E_RUN_ID` is a `baseline-`, `browser-` or `staging-` run id; any other combination throws. Ticket emails always call Resend.
 - **Capture-only key:** those runs use `RESEND_API_KEY=re_capture_only`, so ticket emails fail and retry there; staging sends ticket emails through Resend's test sink with a real test key ([[E2E and Staging Payments]]).
 - Captured mail proves the queued intent and its text, not provider acceptance or inbox delivery.

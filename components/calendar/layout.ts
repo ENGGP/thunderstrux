@@ -1,6 +1,6 @@
 import { addDays } from "@/lib/analytics/range";
 import type { CalendarEvent, MembershipEnd } from "@/lib/events/calendar";
-import { shortMonths } from "@/lib/format";
+import { formatCalendarDay, formatCalendarMonth, formatClock } from "@/lib/format";
 import { offsetAt, toZonedInput, zoneAbbreviation, zonedCandidates } from "@/lib/zoned-time";
 
 // Pure layout for the calendar views: local days, lanes and labels in the
@@ -19,17 +19,13 @@ export const daysFrom = (first: string, count: number) => Array.from({ length: c
 
 // "6:00 pm"; inside the hour that happens twice when clocks go back, "2:30 am AEDT".
 export function formatTime(date: Date, timeZone: string) {
-  const text = new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit", timeZone }).format(date);
+  const text = formatClock(date, timeZone);
   return zonedCandidates(toZonedInput(date, timeZone), timeZone).length > 1 ? `${text} ${zoneAbbreviation(timeZone, date).split(",")[0]}` : text;
 }
 // "Fri 30 Oct", or "Friday 30 October 2026" with `long`.
-export function formatDay(date: string, long = false) {
-  const options: Intl.DateTimeFormatOptions = long ? { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" } : { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" };
-  const text = new Intl.DateTimeFormat("en-AU", options).format(noonUtc(date)).replace(",", "");
-  return long ? text : shortMonths(text);
-}
+export const formatDay = formatCalendarDay;
 export const shortWeekday = (date: string) => formatDay(date).split(" ")[0];
-export const monthTitle = (date: string) => new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric", timeZone: "UTC" }).format(noonUtc(date));
+export const monthTitle = formatCalendarMonth;
 
 export type CalendarItem =
   | { kind: "event"; key: string; event: CalendarEvent; firstDay: string; lastDay: string; multiDay: boolean }
@@ -126,7 +122,7 @@ export function clockChanges(days: string[], timeZone: string) {
       else high = middle;
     }
     const wall = new Date(high.getTime() + before);
-    const at = new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: wall.getUTCMinutes() ? "2-digit" : undefined, timeZone: "UTC" }).format(wall);
+    const at = formatClock(wall, "UTC");
     changes.set(day, `Clocks go ${after > before ? "forward" : "back"} at ${at}`);
   }
   return changes;

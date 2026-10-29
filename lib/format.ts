@@ -113,3 +113,38 @@ export function formatDate(value: Date | string, timeZone = defaultTimeZone) {
     timeZone
   }).format(new Date(value)));
 }
+
+// The compact forms, for places that already name the day or the year. Every
+// date on a page goes through this file, so they read alike (UI-004).
+
+// "6:00 pm".
+export function formatClock(value: Date | string, timeZone = defaultTimeZone) {
+  return new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit", timeZone }).format(new Date(value));
+}
+
+// "23 Oct".
+export function formatDayMonth(value: Date | string, timeZone = defaultTimeZone) {
+  return shortMonths(new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", timeZone }).format(new Date(value)));
+}
+
+// "Oct 2026".
+export function formatMonthYear(value: Date | string, timeZone = defaultTimeZone) {
+  return shortMonths(new Intl.DateTimeFormat("en-AU", { month: "short", year: "numeric", timeZone }).format(new Date(value)));
+}
+
+// A calendar day ("2026-10-30") has no zone; noon UTC names the same day everywhere.
+const calendarNoon = (day: string) => new Date(`${day}T12:00:00Z`);
+
+// "Fri 30 Oct", or "Friday 30 October 2026" with `long`.
+export function formatCalendarDay(day: string, long = false) {
+  const options: Intl.DateTimeFormatOptions = long
+    ? { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }
+    : { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" };
+  const text = new Intl.DateTimeFormat("en-AU", options).format(calendarNoon(day)).replace(",", "");
+  return long ? text : shortMonths(text);
+}
+
+// "October 2026".
+export function formatCalendarMonth(day: string) {
+  return new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric", timeZone: "UTC" }).format(calendarNoon(day));
+}

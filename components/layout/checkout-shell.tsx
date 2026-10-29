@@ -1,6 +1,12 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+// A ticket purchase's steps, the same on every page it passes through (DEBT-002).
+export function ticketSteps({ guest, free }: { guest: boolean; free: boolean }) {
+  if (guest) return free ? ["Your email", "Confirm", "Tickets"] : ["Your email", "Review", "Pay with Stripe", "Tickets"];
+  return free ? ["Review", "Tickets"] : ["Review", "Pay with Stripe", "Tickets"];
+}
+
 // The narrow frame every purchase step shares: who the booking is with, the
 // way back, the step the buyer is on, then the step's content and its summary.
 export function CheckoutShell({

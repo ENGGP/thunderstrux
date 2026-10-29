@@ -18,15 +18,17 @@ const cursorSchema = z
 export function discoveryInput(params: URLSearchParams) {
   const q = params.get("q")?.trim() ?? "";
   const limit = params.get("limit") ?? "25";
+  const direction = params.get("direction") ?? "next";
   if (
     q.length > 120 ||
     q.includes("\0") ||
     !/^[1-9]\d?$/.test(limit) ||
-    Number(limit) > 50
+    Number(limit) > 50 ||
+    (direction !== "next" && direction !== "prev")
   )
     throw new AssetError(
       400,
-      "Search must be at most 120 characters and limit between 1 and 50",
+      "Search must be at most 120 characters, limit between 1 and 50 and direction next or prev",
     );
   const raw = params.get("cursor");
   let cursor: z.infer<typeof cursorSchema> | undefined;
@@ -44,12 +46,15 @@ export function discoveryInput(params: URLSearchParams) {
       );
     }
   }
-  return { q, limit: Number(limit), cursor };
+  // Back from a page needs the cursor of its first row; without one it is the first page.
+  return { q, limit: Number(limit), cursor, direction: cursor ? (direction as "next" | "prev") : ("next" as const) };
 }
 export async function discoverOrganisations(
   input: ReturnType<typeof discoveryInput>,
 ) {
-  const { q, limit, cursor } = input;
+  const { q, limit, cursor, direction } = input;
+  // Pages run both ways by name (UI-025): back reads names before the cursor, nearest first.
+  const back = direction === "prev";
   const literal = q.replace(/[\\%_]/g, "\\$&");
   const rows = await prisma.organisation.findMany({
     where: {
@@ -67,16 +72,21 @@ export async function discoverOrganisations(
         ...(cursor
           ? [
               {
-                OR: [
-                  { name: { gt: cursor.name } },
-                  { name: cursor.name, id: { gt: cursor.id } },
-                ],
+                OR: back
+                  ? [
+                      { name: { lt: cursor.name } },
+                      { name: cursor.name, id: { lt: cursor.id } },
+                    ]
+                  : [
+                      { name: { gt: cursor.name } },
+                      { name: cursor.name, id: { gt: cursor.id } },
+                    ],
               },
             ]
           : []),
       ],
     },
-    orderBy: [{ name: "asc" }, { id: "asc" }],
+    orderBy: back ? [{ name: "desc" }, { id: "desc" }] : [{ name: "asc" }, { id: "asc" }],
     take: limit + 1,
     select: {
       id: true,
@@ -94,7 +104,13 @@ export async function discoverOrganisations(
   });
   const hasMore = rows.length > limit;
   const visible = rows.slice(0, limit);
+  if (back) visible.reverse();
+  const first = visible[0];
   const last = visible.at(-1);
+  const hasNextPage = back ? true : hasMore;
+  const hasPreviousPage = back ? hasMore : !!cursor;
+  const encode = (row: { name: string; id: string }) =>
+    Buffer.from(JSON.stringify({ name: row.name, id: row.id, q })).toString("base64url");
   return {
     organisations: visible.map(({ description, events, ...row }) => ({
       ...row,
@@ -103,15 +119,10 @@ export async function discoverOrganisations(
     })),
     pageInfo: {
       limit,
-      hasNextPage: hasMore,
-      hasPreviousPage: !!cursor,
-      previousCursor: null,
-      nextCursor:
-        hasMore && last
-          ? Buffer.from(
-              JSON.stringify({ name: last.name, id: last.id, q }),
-            ).toString("base64url")
-          : null,
+      hasNextPage,
+      hasPreviousPage,
+      previousCursor: hasPreviousPage && first ? encode(first) : null,
+      nextCursor: hasNextPage && last ? encode(last) : null,
     },
   };
 }

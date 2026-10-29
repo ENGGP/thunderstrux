@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { buttonClasses } from "@/components/ui/button";
-import { shortMonths, ticketReference } from "@/lib/format";
+import { formatClock, formatDayMonth, ticketReference } from "@/lib/format";
 import { fetchWithCsrf } from "@/lib/client/api";
 import type { OrganisationEventTicket } from "@/lib/tickets/check-in";
 
@@ -47,7 +47,7 @@ async function conflictReason(response: Response) {
 
 // What the door should do with this ticket, in words and colour.
 function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
-  const day = (value: Date | string | null) => (value ? shortMonths(new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", timeZone }).format(new Date(value))) : null);
+  const day = (value: Date | string | null) => (value ? formatDayMonth(value, timeZone) : null);
   if (ticket.validity === "refund_review") {
     return { tone: "warning", label: "Under review", detail: "The payment is disputed. Ask an owner or finance manager before admitting." };
   }
@@ -63,7 +63,7 @@ function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
     return { tone: "danger", label: "Don't admit", detail };
   }
   if (ticket.checkedInAt) {
-    const time = new Intl.DateTimeFormat("en-AU", { timeStyle: "short", timeZone }).format(new Date(ticket.checkedInAt));
+    const time = formatClock(ticket.checkedInAt, timeZone);
     const by = ticket.checkedInBy ? ` by ${ticket.checkedInBy}` : "";
     // Admitted by this tap, or a second person on one ticket: the door must tell them apart.
     if (outcome === "checked-in") return { tone: "success", label: "Checked in", detail: "Checked in just now." };

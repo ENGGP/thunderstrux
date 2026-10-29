@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { TicketValidity } from "@prisma/client";
 import { StatusBadge, type Status } from "@/components/ui/status-badge";
-import { ticketReference } from "@/lib/format";
+import { formatClock, ticketReference } from "@/lib/format";
 
 
 // Whether a ticket admits, in words. Void tickets say why when the reason is known.
@@ -13,7 +13,7 @@ export function ticketState(ticket: { validity: TicketValidity; validityReason: 
     return { status: "void" };
   }
   if (ticket.checkedInAt) {
-    const time = new Intl.DateTimeFormat("en-AU", { timeStyle: "short", timeZone }).format(ticket.checkedInAt);
+    const time = formatClock(ticket.checkedInAt, timeZone);
     return { status: "checked-in", label: `Checked in ${time}` };
   }
   return { status: "valid" };

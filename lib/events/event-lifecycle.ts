@@ -252,19 +252,21 @@ export async function listDashboardEvents(
   ]);
   const page = pageInfoForPage({ items: found, limit: take, direction: from.direction, cursor: from.cursor, timestampField: "startTime" });
   const rows = page.items;
+  // Tickets that still admit someone, as the event page and analytics count them:
+  // refunded, cancelled and disputed tickets aren't sold (DEBT-002).
   const sold =
     includeSales && rows.length > 0
-      ? await prisma.order.groupBy({
+      ? await prisma.ticket.groupBy({
           by: ["eventId"],
           where: {
             eventId: { in: rows.map((row) => row.id) },
             event: { is: { organisationId } },
-            status: "paid"
+            validity: "active"
           },
-          _sum: { quantity: true }
+          _count: true
         })
       : [];
-  const soldByEvent = new Map(sold.map((group) => [group.eventId, group._sum.quantity ?? 0]));
+  const soldByEvent = new Map(sold.map((group) => [group.eventId, group._count]));
   const membersOnlyReady = await membersOnlyReadyFor(organisationId, rows);
 
   return {
@@ -282,14 +284,18 @@ export async function listDashboardEvents(
   };
 }
 
-// Titles for an event filter, newest first.
-export function listEventOptions(organisationId: string) {
-  return prisma.event.findMany({
+// Titles for an event filter, the 100 newest first, plus the selected event when
+// it's older, so a filter reached from an old event's "View orders" still shows it (UI-025).
+export async function listEventOptions(organisationId: string, selectedId?: string) {
+  const options = await prisma.event.findMany({
     where: { organisationId },
     orderBy: [{ startTime: "desc" }, { id: "asc" }],
     take: 100,
     select: { id: true, title: true }
   });
+  if (!selectedId || options.some((option) => option.id === selectedId)) return options;
+  const selected = await prisma.event.findFirst({ where: { id: selectedId, organisationId }, select: { id: true, title: true } });
+  return selected ? [...options, selected] : options;
 }
 
 export async function getDashboardEvent(organisationId: string, eventId: string) {

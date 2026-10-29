@@ -80,7 +80,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
 
 ## Where the numbers show
 
-- **Analytics page** (`/dashboard/analytics`, sidebar Insights, `analytics:read`). Range, grouping, tab and event live in the URL (`?tab=&from=&to=&bucket=&eventId=`). Quick ranges: Last 7 days, Last 30 days (default), This month, Last 12 months (by month). A bad range shows "Pick a shorter range" and falls back to the last 30 days. The header names the range, grouping, the society's zone and when it was read.
+- **Analytics page** (`/dashboard/analytics`, sidebar Insights, `analytics:read`). Range, grouping, tab and event live in the URL (`?tab=&from=&to=&bucket=&eventId=`); the event filter lists the 100 newest events plus the selected one (`listEventOptions`), and the range fields fold on phones. Quick ranges: Last 7 days, Last 30 days (default), This month, Last 12 months (by month). A bad range shows "Pick a shorter range" and falls back to the last 30 days. The header names the range, grouping, the society's zone and when it was read.
   - **Tickets** (default): money tiles, counts, a chart of gross with refunded, and a table for finance roles. Event managers see tickets issued, checked in and the attendance rate, with no money anywhere. The event filter lists only the society's events; any other id is ignored.
   - **Memberships** and **Merchandise** (finance roles only), and **Engagement** (`analytics:read`). A tab the role can't use isn't offered; asking by URL shows Tickets.
   - Each tab explains itself under "How these numbers are counted". An empty range shows an empty state instead of a chart.

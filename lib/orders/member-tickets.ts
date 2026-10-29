@@ -87,7 +87,7 @@ export function getGuestOrder(orderId: string) {
       event: {
         select: {
           id: true, title: true, startTime: true, endTime: true, location: true, cancelledAt: true,
-          organisation: { select: { name: true, timeZone: true, supportEmail: true, refundPolicy: true } }
+          organisation: { select: { name: true, slug: true, timeZone: true, supportEmail: true, refundPolicy: true } }
         }
       }
     }

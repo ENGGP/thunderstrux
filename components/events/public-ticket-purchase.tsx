@@ -59,7 +59,8 @@ export function PublicTicketPurchase({
   salesCloseLabel,
   memberPlan = null,
   societySlug,
-  preview = false
+  preview = false,
+  initial
 }: {
   eventId: string;
   memberPlan?: string | null;
@@ -73,12 +74,17 @@ export function PublicTicketPurchase({
   salesCloseLabel?: string;
   // The organiser's draft preview: the same box with buying turned off.
   preview?: boolean;
+  // The choice a buyer brought back from checkout's "Change tickets", kept while it can still be bought.
+  initial?: { ticketTypeId?: string; quantity?: number };
 }) {
   const router = useRouter();
+  const kept = ticketTypes.find((ticketType) => ticketType.id === initial?.ticketTypeId && !isUnavailable(ticketType));
   const [selectedId, setSelectedId] = useState(
-    ticketTypes.find((ticketType) => !isUnavailable(ticketType))?.id ?? ""
+    kept?.id ?? ticketTypes.find((ticketType) => !isUnavailable(ticketType))?.id ?? ""
   );
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(() =>
+    kept && Number.isInteger(initial?.quantity) ? Math.max(1, Math.min(initial?.quantity ?? 1, kept.availableQuantity, maxTicketsPerOrder)) : 1
+  );
   const [leaving, setLeaving] = useState(false);
   // The phone bar shows only while the box's own button is still below the screen.
   const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();

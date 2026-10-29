@@ -48,7 +48,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   }
   const regrouped = range.bucket === "day" && tooLongByDay(range.from, range.to);
   if (regrouped) range = { ...range, bucket: "week" };
-  const events = tab === "tickets" ? await listEventOptions(organisation.id) : [];
+  const events = tab === "tickets" ? await listEventOptions(organisation.id, params.eventId) : [];
   // Only this society's events can filter; anything else is ignored.
   const event = events.find((option) => option.id === params.eventId);
 
@@ -92,7 +92,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             );
           })}
         </nav>
-        <FilterBar action="/dashboard/analytics" key={href({})} className="sm:grid-cols-2 xl:grid-cols-[minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]" label="Choose a range">
+        <FilterBar action="/dashboard/analytics" active={[params.from, params.to, params.bucket, event?.id].filter(Boolean).length} key={href({})} className="sm:grid-cols-2 xl:grid-cols-[minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]" label="Choose a range">
           {tab !== "tickets" ? <input name="tab" type="hidden" value={tab} /> : null}
           <DateField defaultValue={range.from} label="From" name="from" />
           <DateField defaultValue={range.to} label="To" name="to" />

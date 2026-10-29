@@ -117,12 +117,16 @@ export function enforceTrustedMutationRequest(request: Request) {
   return forbidden(TRUSTED_ORIGIN_ERROR);
 }
 
+const societyEnquiryPath = /^\/api\/orgs\/[^/]+\/enquiries$/;
+
 function enforceCsrfToken(request: Request) {
   // These endpoints use email/token authority, never the session cookie. A
   // stale login cookie must not prevent anonymous verification or signup.
+  // A society enquiry reads no session either: anyone may send one (DEBT-002).
   // Auth.js routes have their own CSRF protection, and
   // signed Stripe webhook routes do not call this guard.
-  if (["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm", "/api/auth/password/request", "/api/auth/password/confirm", "/api/guest/email/request", "/api/guest/email/confirm", "/api/guest/recover"].includes(getRequestPath(request)) || !hasAuthSessionCookie(request)) {
+  const path = getRequestPath(request);
+  if (["/api/auth/signup", "/api/auth/verification/request", "/api/auth/verification/confirm", "/api/auth/password/request", "/api/auth/password/confirm", "/api/guest/email/request", "/api/guest/email/confirm", "/api/guest/recover"].includes(path) || societyEnquiryPath.test(path) || !hasAuthSessionCookie(request)) {
     return null;
   }
   if (verifyCsrfTokenForRequest(request)) return null;

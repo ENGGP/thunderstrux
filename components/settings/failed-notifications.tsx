@@ -8,7 +8,8 @@ import { fetchJson, getClientErrorMessage } from "@/lib/client/api";
 
 const templateLabels: Record<string, string> = {
   staff_invite: "Staff invitation",
-  business_notice: "Society notice"
+  business_notice: "Society notice",
+  society_enquiry: "Enquiry to the society"
 };
 const label = (template: string) => templateLabels[template] ?? template.replaceAll("_", " ");
 

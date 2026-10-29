@@ -1,3 +1,4 @@
+import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -157,9 +158,10 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
                   Show order <strong className="text-ink">{reference}</strong> when you collect. We&apos;ve emailed your receipt.
                 </span>
               </div>}
+              <ContactSocietyLink slug={order.organisation.slug} society={order.sellerName} />
               {order.sellerSupportEmail ? (
                 <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
-                  Questions?{" "}
+                  Or email{" "}
                   <a className="font-semibold text-brand underline" href={`mailto:${order.sellerSupportEmail}`}>
                     {order.sellerSupportEmail}
                   </a>

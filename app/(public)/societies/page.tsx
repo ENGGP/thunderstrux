@@ -16,11 +16,11 @@ export const dynamic = "force-dynamic";
 export default async function SocietiesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; cursor?: string; limit?: string }>;
+  searchParams: Promise<{ q?: string; cursor?: string; limit?: string; direction?: string }>;
 }) {
   const params = await searchParams;
   const query = new URLSearchParams();
-  for (const key of ["q", "cursor", "limit"] as const)
+  for (const key of ["q", "cursor", "limit", "direction"] as const)
     if (typeof params[key] === "string") query.set(key, params[key]);
   let input: ReturnType<typeof discoveryInput>;
   let warning = "";
@@ -32,11 +32,8 @@ export default async function SocietiesPage({
     input = discoveryInput(new URLSearchParams());
   }
   const page = await discoverOrganisations(input);
-  const next = new URLSearchParams({
-    q: input.q,
-    limit: String(input.limit),
-    cursor: page.pageInfo.nextCursor ?? "",
-  });
+  const pageHref = (cursor: string, direction: "next" | "prev") =>
+    `/societies?${new URLSearchParams({ q: input.q, limit: String(input.limit), cursor, direction })}`;
   return (
     <main id="main" tabIndex={-1} className="bg-paper">
       <div className="mx-auto grid max-w-page gap-8 px-4 py-10 md:px-8 md:py-14">
@@ -89,12 +86,10 @@ export default async function SocietiesPage({
             ))}
           </div>
         )}
-        {/* The name cursor only runs forward, so going back starts from the first page. */}
         <Pager
           label="Society result pages"
-          next={page.pageInfo.nextCursor && `/societies?${next}`}
-          previous={page.pageInfo.hasPreviousPage ? `/societies?${new URLSearchParams({ q: input.q, limit: String(input.limit) })}` : null}
-          previousLabel="First page"
+          next={page.pageInfo.nextCursor && pageHref(page.pageInfo.nextCursor, "next")}
+          previous={page.pageInfo.previousCursor && pageHref(page.pageInfo.previousCursor, "prev")}
         />
       </div>
     </main>

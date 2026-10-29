@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { CheckoutShell } from "@/components/layout/checkout-shell";
+import { CheckoutShell, ticketSteps } from "@/components/layout/checkout-shell";
 import { AuthShell } from "@/components/layout/auth-shell";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { GuestClaim } from "@/components/guest/guest-claim";
+import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import { PaymentStatusPoller } from "@/components/purchases/payment-status-poller";
 import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
 import { UnpaidOrderNotice } from "@/components/purchases/unpaid-order-notice";
@@ -62,8 +63,11 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
     projection === "expired" ? cancelledByBuyer({ kind: "ticket", id: order.id }) : false
   ]);
 
+  // The same steps as the checkout it came from: an unpaid order is still at Pay with Stripe.
+  const steps = ticketSteps({ guest: true, free: order.paymentKind === "free" });
+
   return (
-    <CheckoutShell current={unfinished ? 1 : 2} society={organisation.name} steps={["Your email", "Review", "Tickets"]} title={going ? `You're going to ${event.title}` : "Your order"}>
+    <CheckoutShell current={unfinished ? steps.length - 2 : steps.length - 1} society={organisation.name} steps={steps} title={going ? `You're going to ${event.title}` : "Your order"}>
       <Card>
         <div className="grid gap-4">
           {going ? <StatusBadge status={order.paymentKind === "free" ? "free" : "paid"} /> : null}
@@ -113,6 +117,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
           {projection === "free" && count > 0 && event.startTime > new Date() && !event.cancelledAt ? (
             <ReleaseRegistration event={event.title} guestCsrf={sessionId ? guestCsrfToken(sessionId) : undefined} orderId={order.id} ticketCount={count} />
           ) : null}
+          <ContactSocietyLink eventId={event.id} slug={organisation.slug} society={organisation.name} />
           {organisation.supportEmail || organisation.refundPolicy ? (
             <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-sm">
               {organisation.supportEmail ? <><dt className="text-ink-soft">Questions</dt><dd className="[overflow-wrap:anywhere]"><a className="text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>{organisation.supportEmail}</a></dd></> : null}

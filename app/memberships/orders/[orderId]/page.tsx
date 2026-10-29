@@ -1,3 +1,4 @@
+import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -116,6 +117,7 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
           ) : (
             <p className="text-ink">See My memberships for where this stands.</p>
           )}
+          <ContactSocietyLink slug={order.organisation.slug} society={order.sellerName} />
         </div>
       </Card>
     </CheckoutShell>

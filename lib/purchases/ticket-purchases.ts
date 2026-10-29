@@ -88,7 +88,7 @@ export async function getOwnTicketPurchase(userId: string, orderId: string) {
       event: {
         select: {
           id: true, title: true, startTime: true, endTime: true, location: true, cancelledAt: true,
-          organisation: { select: { name: true, timeZone: true, supportEmail: true, refundPolicy: true } }
+          organisation: { select: { name: true, slug: true, timeZone: true, supportEmail: true, refundPolicy: true } }
         }
       },
       tickets: { orderBy: { issueSequence: "asc" }, select: { id: true, issueSequence: true, validity: true, validityReason: true, checkedInAt: true } },

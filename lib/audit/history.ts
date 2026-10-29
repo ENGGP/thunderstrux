@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { formatMoney, formatPrice, membershipLabel, orderReference } from "@/lib/format";
+import { formatCalendarDay, formatClock, formatMoney, formatPrice, membershipLabel, orderReference } from "@/lib/format";
 import { decodeTimestampCursor, descendingCursorWhere, orderByForDirection, pageInfoForPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { nextDay, startOfZonedDay, toZonedInput } from "@/lib/zoned-time";
 
@@ -182,10 +182,7 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   const when = (iso: unknown) => {
     const value = text(iso);
     if (!value) return "";
-    const local = toZonedInput(new Date(value), timeZone);
-    const day = new Intl.DateTimeFormat("en-AU", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${local.slice(0, 10)}T12:00:00Z`)).replace(",", "");
-    const clock = new Intl.DateTimeFormat("en-AU", { hour: "numeric", minute: "2-digit", timeZone }).format(new Date(value));
-    return `${day}, ${clock}`;
+    return `${formatCalendarDay(toZonedInput(new Date(value), timeZone).slice(0, 10))}, ${formatClock(value, timeZone)}`;
   };
 
   // Who.

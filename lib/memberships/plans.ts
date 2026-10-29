@@ -4,6 +4,7 @@ import type { ApiErrorDetail } from "@/lib/api/errors";
 import type { AccountActor } from "@/lib/auth/account-lifecycle";
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
+import { cursorPage, defaultPageLimit, pageInfoForPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { lockOrganisationActor } from "@/lib/organisations/authority";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { priceAmountSchema } from "@/lib/validators/price";
@@ -326,15 +327,22 @@ function staffPlan(plan: MembershipProduct, timeZone: string, now: Date) {
 }
 export type StaffPlan = ReturnType<typeof staffPlan>;
 
-// Every plan of the society, newest term first, with how many hold each one.
-export async function listPlans(organisationId: string, now = new Date()) {
+// The society's plans, newest term first, 25 a page both ways (UI-025), with how many hold each one.
+export async function listPlans(organisationId: string, now = new Date(), page: { cursor?: string; direction?: PaginationDirection } = {}) {
   const { timeZone } = await prisma.organisation.findUniqueOrThrow({ where: { id: organisationId }, select: { timeZone: true } });
-  const [plans, holders] = await Promise.all([
-    prisma.membershipProduct.findMany({ where: { organisationId }, orderBy: [{ startsAt: "desc" }, { id: "desc" }], take: 200 }),
+  const query = cursorPage("startsAt", "desc", page);
+  const [rows, holders] = await Promise.all([
+    prisma.membershipProduct.findMany({ where: { AND: [{ organisationId }, ...query.after] }, orderBy: query.orderBy, take: defaultPageLimit + 1 }),
     prisma.membershipGrant.groupBy({ by: ["membershipProductId"], where: { organisationId, revokedAt: null }, _count: { _all: true } })
   ]);
+  const { items: plans, pageInfo } = pageInfoForPage({ items: rows, limit: defaultPageLimit, direction: query.from.direction, cursor: query.from.cursor, timestampField: "startsAt" });
   const counts = new Map(holders.map((row) => [row.membershipProductId, row._count._all]));
-  return { timeZone, plans: plans.map((plan) => ({ ...staffPlan(plan, timeZone, now), holders: counts.get(plan.id) ?? 0 })) };
+  return {
+    timeZone,
+    plans: plans.map((plan) => ({ ...staffPlan(plan, timeZone, now), holders: counts.get(plan.id) ?? 0 })),
+    nextCursor: pageInfo.nextCursor,
+    previousCursor: pageInfo.previousCursor
+  };
 }
 
 // What anyone may see: published plans that have not ended. No counts, no

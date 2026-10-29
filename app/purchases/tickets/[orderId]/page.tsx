@@ -1,3 +1,4 @@
+import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -121,11 +122,15 @@ export default async function PurchasePage({ params }: { params: Promise<{ order
           />
           <Card>
             <h2 className="text-lg font-semibold text-ink">Need help?</h2>
-            <p className="mt-2 text-sm text-ink-soft [overflow-wrap:anywhere]">
-              {organisation.name}
-              {organisation.supportEmail ? <>: <a className="font-semibold text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>{organisation.supportEmail}</a></> : null}
-              {organisation.refundPolicy ? `. ${organisation.refundPolicy}` : "."}
-            </p>
+            <div className="mt-1 grid gap-1 text-sm text-ink-soft [overflow-wrap:anywhere]">
+              <ContactSocietyLink eventId={event.id} slug={organisation.slug} society={organisation.name} />
+              {organisation.supportEmail ? (
+                <p>
+                  Or email <a className="font-semibold text-brand underline underline-offset-4" href={`mailto:${organisation.supportEmail}`}>{organisation.supportEmail}</a>
+                </p>
+              ) : null}
+              {organisation.refundPolicy ? <p className="mt-1">{organisation.refundPolicy}</p> : null}
+            </div>
           </Card>
         </div>
       </div>

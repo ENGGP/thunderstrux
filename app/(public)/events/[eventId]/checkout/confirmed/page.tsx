@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { CheckoutShell } from "@/components/layout/checkout-shell";
+import { CheckoutShell, ticketSteps } from "@/components/layout/checkout-shell";
 import { buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getLiveSession } from "@/lib/auth/live-session";
@@ -43,7 +43,7 @@ export default async function CheckoutConfirmedPage({
     <CheckoutShell
       current={free ? 1 : 2}
       society={organisation.name}
-      steps={free ? ["Review", "Tickets"] : ["Review", "Pay with Stripe", "Tickets"]}
+      steps={ticketSteps({ guest: false, free })}
       title={free ? "Free registration confirmed" : "Booking confirmed"}
     >
       <Card>

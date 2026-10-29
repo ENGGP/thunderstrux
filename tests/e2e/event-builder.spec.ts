@@ -51,6 +51,9 @@ test("organisers build an event in the society's time zone with a dollar price a
   for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // The save bar's status fits whole at every width: "Unsaved" on a phone, never "Unsaved ch…".
+    const saveStatus = page.getByRole("status").filter({ hasText: "Unsaved changes" }).locator("..");
+    expect(await saveStatus.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.screenshot({ path: `test-results/event-builder-${width}.png`, fullPage: true });
   }
 

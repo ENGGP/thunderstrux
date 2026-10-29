@@ -43,13 +43,15 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
       : null,
     can("orders:email_resend") ? prisma.notificationOutbox.count({ where: { organisationId, privacy: "business", status: "failed" } }) : null,
     can("events:manage")
-      ? prisma.event.findMany({
-          where: { organisationId, status: "draft", startTime: { gt: now, lte: new Date(now.getTime() + draftSoonWindowMs) } },
-          orderBy: [{ startTime: "asc" }, { id: "asc" }],
-          take: 3,
-          select: { id: true, title: true, startTime: true }
-        })
-      : [],
+      ? (() => {
+          const where = { organisationId, status: "draft" as const, startTime: { gt: now, lte: new Date(now.getTime() + draftSoonWindowMs) } };
+          // The three soonest, and how many there are, so the rest are a link away (UI-025).
+          return Promise.all([
+            prisma.event.findMany({ where, orderBy: [{ startTime: "asc" }, { id: "asc" }], take: 3, select: { id: true, title: true, startTime: true } }),
+            prisma.event.count({ where })
+          ]).then(([rows, count]) => ({ rows, count }));
+        })()
+      : { rows: [], count: 0 },
     can("orders:read")
       ? prisma.order.findMany({
           // Abandoned and failed checkouts stay on Orders, not in this summary.
@@ -99,7 +101,8 @@ export async function getOrganisationOverview(organisationId: string, staffRole:
     pickups,
     ending,
     failedEmails,
-    drafts,
+    drafts: drafts.rows,
+    draftsSoon: drafts.count,
     recentOrders,
     membersNow
   };

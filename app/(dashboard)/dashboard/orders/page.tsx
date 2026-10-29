@@ -131,12 +131,7 @@ export default async function OrganisationOrdersPage({
     }
   }
 
-  const eventOptions = await listEventOptions(organisation.id);
-
-  if (event) {
-    const { id, title } = event;
-    if (!eventOptions.some((option) => option.id === id)) eventOptions.unshift({ id, title });
-  }
+  const eventOptions = await listEventOptions(organisation.id, event?.id);
 
   // Every filter link keeps the other filters.
   function ordersHref(changes: Record<string, string | undefined>) {
@@ -199,6 +194,7 @@ export default async function OrganisationOrdersPage({
 
       <FilterBar
         action="/dashboard/orders"
+        active={[search, eventId, startDateParam, endDateParam].filter(Boolean).length}
         className="sm:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(11.5rem,1fr)_minmax(11.5rem,1fr)_auto]"
         label="Filter orders"
       >

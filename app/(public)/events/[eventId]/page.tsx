@@ -9,10 +9,14 @@ import { formatDateTime } from "@/lib/format";
 import { getEventForViewer, priceForViewer } from "@/lib/events/public-events";
 import { memberPricePlan } from "@/lib/memberships/offers";
 
+type Selection = { ticketTypeId?: string; quantity?: string };
+
 type PublicEventPageProps = {
   params: Promise<{
     eventId: string;
   }>;
+  // Checkout's "Change tickets" comes back with the buyer's choice; the ticket box checks it.
+  searchParams?: Promise<Selection>;
 };
 
 async function readPage(eventId: string) {
@@ -48,8 +52,8 @@ export async function generateMetadata({ params }: PublicEventPageProps): Promis
 // gate (T24b). Drafts and wrong ids are not found. The page reads the session,
 // so it renders per request and is never cached as public. Society accounts
 // see the page as buyers do.
-export default async function PublicEventPage({ params }: PublicEventPageProps) {
-  const { eventId } = await params;
+export default async function PublicEventPage({ params, searchParams }: PublicEventPageProps) {
+  const [{ eventId }, query] = await Promise.all([params, searchParams ?? Promise.resolve<Selection>({})]);
   const { session, access } = await readPage(eventId);
 
   if (!access) {
@@ -79,7 +83,7 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
 
   return (
     <main id="main" tabIndex={-1} className="bg-paper">
-      <PublicEventView event={{ ...event, ticketTypes: priceForViewer(event.ticketTypes, memberPlan !== null) }} memberPlan={memberPlan} viewer={viewer} />
+      <PublicEventView event={{ ...event, ticketTypes: priceForViewer(event.ticketTypes, memberPlan !== null) }} memberPlan={memberPlan} selection={{ ticketTypeId: query.ticketTypeId, quantity: Number(query.quantity) }} viewer={viewer} />
     </main>
   );
 }

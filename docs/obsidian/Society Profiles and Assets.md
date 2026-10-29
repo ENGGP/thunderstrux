@@ -24,15 +24,16 @@ sources: [lib/assets/service.ts, lib/assets/storage.ts, lib/assets/image.ts, lib
 | Profile read and save | `lib/organisations/profile.ts`: `profileSchema`, `readProfile`, `updateProfile`, `readChargeReadiness`, `readTimeZone` |
 | Public profile | `lib/organisations/public-organisations.ts`: `publicOrganisation`, `publicProfileSelect` |
 | Directory search | `lib/organisations/discovery.ts`: `discoveryInput`, `discoverOrganisations` |
+| Contact {society} | `lib/organisations/enquiries.ts`: `enquirySchema`, `enquiryEvent`, `sendSocietyEnquiry`; `app/api/orgs/[orgSlug]/enquiries/route.ts`; `components/organisations/enquiry-form.tsx`, `components/organisations/contact-society-link.tsx` |
 | Join and leave | `lib/organisations/join.ts`: `setSocietyJoin`, `joinedOrganisationIds` |
 | Create a society | `lib/organisations/bootstrap.ts`: `bootstrapOrganisation` |
 | Locks with live authority | `lib/organisations/authority.ts`: `lockOrganisationActor`, `organisationIdBySlug` |
 | Route helpers | `lib/organisations/http.ts`: `organisationActor`, `organisationError` |
 | Dashboard overview data | `lib/organisations/overview.ts`: `getOrganisationOverview`, `getDoorDay`, `upcomingEventCounts` |
 | Routes | `POST /api/orgs`, `GET`/`PATCH /api/orgs/[orgSlug]/profile`, `POST /api/orgs/[orgSlug]/join`, `POST /api/orgs/[orgSlug]/leave`, `GET /api/orgs/search`, `GET /api/public/organisations/search`, `POST /api/orgs/[orgSlug]/assets`, `GET`/`DELETE /api/orgs/[orgSlug]/assets/[assetId]`, `GET /api/public/assets/[assetId]` |
-| Pages | `/dashboard/settings/profile`, `/dashboard/organisations`, `/societies`, `/societies/[orgSlug]` |
+| Pages | `/dashboard/settings/profile`, `/dashboard/organisations`, `/societies`, `/societies/[orgSlug]`, `/societies/[orgSlug]/contact` |
 | UI | `components/settings/society-profile.tsx`, `components/organisations/society-header.tsx` |
-| Tests | `tests/integration/assets.test.ts`, `tests/integration/society-profiles.test.ts`, `tests/integration/society-discovery.test.ts`, `tests/integration/event-hero.test.ts` |
+| Tests | `tests/integration/assets.test.ts`, `tests/integration/society-profiles.test.ts`, `tests/integration/society-discovery.test.ts`, `tests/integration/event-hero.test.ts`, `tests/integration/society-enquiries.test.ts`, `tests/integration/list-caps.test.ts` |
 
 ## Creating a society
 
@@ -55,8 +56,9 @@ sources: [lib/assets/service.ts, lib/assets/storage.ts, lib/assets/image.ts, lib
 ## Public profile and directory
 
 - **Profile page** `/societies/[orgSlug]` uses `publicProfileSelect` (whitelisted fields) and lists at most 50 upcoming published `public` events. Text is escaped. `components/organisations/society-header.tsx` shows cover, logo and name, the viewer's Joined badge and, separately, Member until while a membership runs, then the tabs: Overview, Memberships (only while a plan is on sale) and Merchandise (only while a product is on sale) ([[Memberships and Merchandise]]). Overview shows About, the join card, upcoming events with each one's price or selling state, and previews of the soonest membership plan and the four newest products. No cover shows a neutral placeholder; no logo shows the society's initial. Society surfaces use namespaced tokens ([[UI Architecture Rules]]).
-- **Directory** `/societies` (anonymous): name, slug, description cut to 240 characters, logo and the next upcoming public published event. Search matches name or slug, case-insensitive, with `%`, `_` and `\` taken literally; queries up to 120 characters; `limit` 1 to 50 (default 25); ordered by name then id; opaque forward cursors bound to the query. Invalid input is 400.
+- **Directory** `/societies` (anonymous): name, slug, description cut to 240 characters, logo and the next upcoming public published event. Search matches name or slug, case-insensitive, with `%`, `_` and `\` taken literally; queries up to 120 characters; `limit` 1 to 50 (default 25); ordered by name then id; opaque cursors bound to the query, paging both ways (`direction=prev` reads the names before the cursor; UI-025). The dashboard search pages the same way, replacing the list. Invalid input is 400.
 - `GET /api/public/organisations/search` carries no join state, contact, staff, Stripe or roster fields and is cacheable (`public, max-age=60`). `GET /api/orgs/search` adds the caller's `joined` flags, answers `private, no-store`, and keeps its original envelope unless `limit` or `cursor` is sent.
+- **Contact {society}** (DEBT-002, as Humanitix's "Contact host"): the event page's Hosted by, the society page's join card, every buyer order page (tickets, guest, merchandise, membership) and the ticket email link to `/societies/[orgSlug]/contact` (`?event=` for a published event; a members-only one isn't named on the page). Anyone may write: name, email, an optional order reference and a message. It is emailed as `society_enquiry` to the sign-up account while it still owns the society, otherwise to its active owners, with a copy to the published contact email; the society replies to the sender. No address is ever shown, so contact still never defaults to an account's private email. Enquiries aren't kept in the dashboard; a failed one shows on Email delivery.
 
 ## Joining and leaving
 

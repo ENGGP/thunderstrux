@@ -16,7 +16,7 @@ export default function HelpPage() {
       title="Help"
     >
       <PolicySection highlight title="A question about an event or something you bought">
-        <p>Contact the society that runs it. Every event and shop page shows the society&apos;s contact email and its refund policy.</p>
+        <p>Contact the society that runs it: use Contact on its event or society page, or on your order. It emails the society, which replies to you. Its refund policy is on its page.</p>
       </PolicySection>
       <PolicySection title="Refunds">
         <p>Refunds are up to the society, under the policy on its page. A refund is always for the whole order and goes back to the card you paid with; refunded tickets stop working. To give up a free ticket, ask the society to cancel it.</p>

@@ -11,7 +11,7 @@ import { requireManagementPage } from "@/lib/auth/page-access";
 import { analyticsAccess, eventSalesDays, eventTicketTypeMetrics, ticketAttendance, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
 import { addDays, maxRangeDays, tooLongByDay } from "@/lib/analytics/range";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
-import { formatDateTime, formatMoney, formatPrice, shortMonths } from "@/lib/format";
+import { formatDateTime, formatDayMonth, formatMoney, formatPrice } from "@/lib/format";
 import { hasOrganisationPermission } from "@/lib/permissions";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -24,11 +24,7 @@ type OrganiserEventPageProps = {
 };
 
 function formatShortDate(value: string) {
-  return shortMonths(new Intl.DateTimeFormat("en-AU", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC"
-  }).format(new Date(`${value}T00:00:00.000Z`)));
+  return formatDayMonth(`${value}T12:00:00Z`, "UTC");
 }
 
 export default async function OrganiserEventPage({

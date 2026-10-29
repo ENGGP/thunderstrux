@@ -122,7 +122,8 @@ export function clockChanges(days: string[], timeZone: string) {
       else high = middle;
     }
     const wall = new Date(high.getTime() + before);
-    const at = formatClock(wall, "UTC");
+    // "2 am": a clock change on the hour drops its minutes.
+    const at = formatClock(wall, "UTC").replace(":00", "");
     changes.set(day, `Clocks go ${after > before ? "forward" : "back"} at ${at}`);
   }
   return changes;

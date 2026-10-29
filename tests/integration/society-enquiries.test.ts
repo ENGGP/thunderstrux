@@ -76,6 +76,7 @@ describe("society enquiries", () => {
     expect((await send(organisation.slug, { ...enquiry, cc: "someone@example.com" })).status).toBe(400);
     expect((await send(organisation.slug, enquiry, { headers: { origin: "https://evil.example" } })).status).toBe(403);
     // Signed-in or not, it carries no session CSRF token: it reads no session.
+    setRateLimitTestBackend(createTestRateLimitBackend());
     expect((await send(organisation.slug, { ...enquiry, eventId: draft.id }, { headers: { cookie: "authjs.session-token=synthetic" } })).status).toBe(404);
     expect(await prisma.notificationOutbox.count({ where: { organisationId: organisation.id } })).toBe(0);
   });

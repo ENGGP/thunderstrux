@@ -17,7 +17,9 @@ const eventFieldsSchema = z
     // Defaults to the start time when omitted.
     salesCloseAt: z.coerce.date().optional(),
     // A ready `event` image uploaded for this society; null removes it.
-    heroAssetId: z.string().trim().min(1).max(64).nullable().optional()
+    heroAssetId: z.string().trim().min(1).max(64).nullable().optional(),
+    // The image's description for screen readers; blank or null means decoration (UI-018).
+    heroAlt: z.string().trim().max(250).nullable().optional()
   })
   .refine((data) => data.endTime > data.startTime, {
     message: "endTime must be after startTime",

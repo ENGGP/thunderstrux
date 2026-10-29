@@ -37,9 +37,10 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - guest links, `/cancel`, `/confirmed` and check-in tell the truth;
   - copy follows UX spec 5.4.
 
-  UI-018 lists the critique's feature follow-ups; they ship as three PRs (MFA, staff tools, event image alt text).
+  UI-018 listed the critique's feature follow-ups; they shipped as #220, #221 and #222 and are resolved.
 - 2026-10-29: #220 adds a QR code to staff MFA set-up (`uqr`, no dependencies) and lets staff copy, download and replace their recovery codes from Account settings (password and a fresh authenticator code; audited, no email).
 - 2026-10-29: #221 adds staff batch tools: Mark several pickups ready, send several failed emails again with one reason, Download CSV on every Orders tab and the attendee list (owners and admins; rate-limited and audited), and a required reason on Mark as refunded.
+- 2026-10-29: #222 adds an optional image description to events (`Event.heroAlt`, additive migration `20261121010000_event_hero_alt`), read out as the event page hero's alt text, and resolves UI-018. Apply it with `prisma migrate deploy` on each database; the dev database has it.
 - 2026-10-28: #217 fixes the critique's layout-shift findings (UI-020 to UI-024): results ease in under their action, buttons keep their size while busy, loading stand-ins match their content, phones get a pay bar on every checkout and the door starts with search. UI Architecture Rules split off [[UI Page Patterns]].
 - 2026-10-29: #218 finishes the critique's fixes with its list work (UI-019): every paged list goes both ways through one `Pager`, Purchases hides checkouts that didn't complete behind a link, and long lists show a few with "See all" or say where they stop. UI-025 keeps the remaining caps.
 - 2026-10-29: #219 adds `pnpm seed:demo` (`prisma/demo-data.mjs`), which loads rich demo data on top of the seed: eight `demo-` societies in every Stripe, profile and staff condition, 60 members, 10 guests, about 660 ticket orders and 190 membership and merchandise orders in every state ([[Seeding and Data#Rich demo data]]). It refuses anything but the local dev database and rebuilds only its own rows. The dev database has it loaded; its accounts also use `password123`.

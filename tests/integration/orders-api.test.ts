@@ -13,6 +13,7 @@ import { PATCH as markManualRefund } from "@/app/api/orders/[orderId]/refund-man
 import { POST as resendTickets } from "@/app/api/orders/[orderId]/resend/route";
 import { routeContext } from "@/tests/helpers/http";
 import { prisma } from "@/lib/db";
+import { readHistory } from "@/lib/audit/history";
 
 describe("orders API", () => {
   function orderIds(body: { groups: Array<{ orders: Array<{ id: string }> }> }) {
@@ -299,13 +300,13 @@ describe("orders API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const missingResponse = await markManualRefund(
-      jsonRequest("http://localhost/api/orders/missing-order", {}, {
+      jsonRequest("http://localhost/api/orders/missing-order", { reason: "Refunded by bank transfer" }, {
         method: "PATCH"
       }),
       routeContext({ orderId: "missing-order" })
     );
     const crossTenantResponse = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${otherOrder.id}`, {}, {
+      jsonRequest(`http://localhost/api/orders/${otherOrder.id}`, { reason: "Refunded by bank transfer" }, {
         method: "PATCH"
       }),
       routeContext({ orderId: otherOrder.id })
@@ -534,7 +535,7 @@ describe("orders API", () => {
       ).resolves.toBe(1);
 
       const refundResponse = await markManualRefund(
-        jsonRequest(`http://localhost/api/orders/${order.id}`, {}, {
+        jsonRequest(`http://localhost/api/orders/${order.id}`, { reason: "Refunded by bank transfer" }, {
           method: "PATCH"
         }),
         routeContext({ orderId: order.id })
@@ -581,7 +582,7 @@ describe("orders API", () => {
     expect(detailResponse.status).toBe(404);
 
     const refundResponse = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${order.id}`, {}, {
+      jsonRequest(`http://localhost/api/orders/${order.id}`, { reason: "Refunded by bank transfer" }, {
         method: "PATCH"
       }),
       routeContext({ orderId: order.id })
@@ -666,14 +667,14 @@ describe("orders API", () => {
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "enroll");
     vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
     vi.stubEnv("RATE_LIMIT_ENABLED", "true");
-    const withoutCode = await markManualRefund(jsonRequest(`http://localhost/api/orders/${order.id}`, {}, { method: "PATCH" }), routeContext({ orderId: order.id }));
+    const withoutCode = await markManualRefund(jsonRequest(`http://localhost/api/orders/${order.id}`, { reason: "Refunded by bank transfer" }, { method: "PATCH" }), routeContext({ orderId: order.id }));
     expect(withoutCode.status).toBe(400);
     expect((await parseJsonResponse(withoutCode)).error.details[0].path).toEqual(["mfaCode"]);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(false);
     vi.stubEnv("MFA_ENFORCEMENT_MODE", "off");
 
     const response = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${order.id}`, {}, {
+      jsonRequest(`http://localhost/api/orders/${order.id}`, { reason: "Refunded by bank transfer" }, {
         method: "PATCH"
       }),
       routeContext({ orderId: order.id })
@@ -731,7 +732,7 @@ describe("orders API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await markManualRefund(
-      jsonRequest(`http://localhost/api/orders/${order.id}/refund-manual`, {}, {
+      jsonRequest(`http://localhost/api/orders/${order.id}/refund-manual`, { reason: "Refunded by bank transfer" }, {
         method: "PATCH"
       }),
       routeContext({ orderId: order.id })
@@ -742,6 +743,25 @@ describe("orders API", () => {
       where: { id: order.id },
       select: { isManuallyRefunded: true }
     })).resolves.toEqual({ isManuallyRefunded: false });
+  });
+
+  // UI-018: a reason, as for a refund, recorded in the order history and History.
+  test("Mark as refunded needs a reason, and the reason is recorded", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date() });
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const mark = (body: unknown) =>
+      markManualRefund(jsonRequest(`http://localhost/api/orders/${order.id}/refund-manual`, body, { method: "PATCH" }), routeContext({ orderId: order.id }));
+
+    expect((await mark({})).status).toBe(400);
+    expect((await mark({ reason: "short" })).status).toBe(400);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(false);
+    expect((await mark({ reason: "Refunded in cash at the stall" })).status).toBe(200);
+    expect(await prisma.orderLifecycleEvent.findFirst({ where: { orderId: order.id, type: "manual_refund_marked" }, select: { reason: true } })).toEqual({ reason: "Refunded in cash at the stall" });
+    expect((await prisma.auditLog.findFirstOrThrow({ where: { targetId: order.id, action: "order.manual_refund_marked" } })).metadata).toEqual({ reason: "Refunded in cash at the stall" });
+    const { entries } = await readHistory(organisation.id, { category: "orders" }, "Australia/Brisbane");
+    expect(JSON.stringify(entries)).toContain("Refunded in cash at the stall");
   });
 
   test("manual resend queues own paid order without provider I/O", async () => {

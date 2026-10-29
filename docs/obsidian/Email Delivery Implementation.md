@@ -174,7 +174,7 @@ One email per ticket order with every `active` ticket. Text and HTML, no attachm
 | `POST /api/notifications/[jobId]/requeue` | Trusted origin, `orders:email_resend`, rate limit `order_resend`, `reason` 8 to 500; 404 for another society's or a security job; 409 unless failed, not accepted, not expired and within 23 hours of its first attempt. Resets it to `pending`, audit `notification.requeued` |
 | `POST /api/orders/[orderId]/email-jobs/[jobId]/requeue` | Trusted origin, `orders:email_resend`, rate limit `order_resend`, `reason` 8 to 500; 409 unless the job is `failed` and never accepted, `ticketEmailRefusal` passes for the order, and an automatic job's order isn't already marked sent. Resets attempts, audit `email_outbox.requeued`, `email_enqueued` with reason `operator_requeue` |
 
-Both requeue routes take a strict `{reason}` of 8 to 500 characters through `validateJson` (else 400). `/dashboard/notifications` (Email delivery) shows the failed list.
+Both requeue routes take a strict `{reason}` of 8 to 500 characters through `validateJson` (else 400). `/dashboard/notifications` (Email delivery) shows the failed list as one form: tick emails (or Select all on this page), give one reason, "Send N again". `POST /api/notifications/requeue` sends each through `requeueBusinessNotification`, so each keeps its own check and audit row, and names any it couldn't send.
 
 ## Traps
 

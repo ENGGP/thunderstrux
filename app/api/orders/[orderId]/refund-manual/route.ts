@@ -20,7 +20,11 @@ type RouteContext = {
   }>;
 };
 
-const schema = z.object({ mfaCode: z.string().trim().max(20).optional() }).strict();
+// The same reason rule as a refund: it is recorded in the order history and History (UI-018).
+const schema = z.object({
+  reason: z.string().trim().min(8, "Give a reason of at least 8 characters").max(500),
+  mfaCode: z.string().trim().max(20).optional()
+}).strict();
 
 // The mark voids the tickets and emails the buyer (payouts still hold the sale
 // until its event is over, PAY-016), so unless staff MFA is off it needs a fresh
@@ -53,7 +57,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     const order = await markOrganisationOrderManuallyRefunded(
       organisation.id,
       orderId,
-      actor.id
+      actor.id,
+      body.data.reason
     );
 
     return NextResponse.json({ order });

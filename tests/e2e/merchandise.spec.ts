@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import sharp from "sharp";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { createCommerceOrder } from "@/lib/commerce/orders";
@@ -258,6 +259,43 @@ test("an owner marks an order ready and collected on the Pickups tab, and the bu
 
 // T28b: the owner opens an order from Pickups, records a return that restocks, cancels a free order, and the buyer sees it cancelled.
 // PAY-003: what Stripe reported that Thunderstrux didn't do, on the staff order page.
+// UI-018: several orders marked ready together, then the orders downloaded as a spreadsheet.
+test("an owner marks two orders ready together and downloads the merchandise orders", async ({ page, data }) => {
+  const { organisation } = data;
+  const now = new Date();
+  const product = await prisma.merchandiseProduct.create({ data: { organisationId: organisation.id, name: "Tote bag", status: "published", publishedAt: now, firstPublishedAt: now } });
+  const tote = await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, sku: `E2E-TOTE-${Date.now()}`, priceAmount: 1200, remaining: 10 } });
+  const orders = [];
+  for (const buyerName of ["Sam Lee", "Alex Kim"]) {
+    const order = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+      organisationId: organisation.id, kind: "merchandise", buyer: { userId: data.member.id }, buyerEmail: data.member.email, buyerName, paymentKind: "stripe", feeAmount: 120,
+      lines: [{ quantity: 1, unitAmount: 1200, name: "Tote bag", merchandiseVariantId: tote.id }], source: "checkout"
+    }));
+    await prisma.commerceOrder.update({ where: { id: order.id }, data: { status: "paid", paidAt: now, fulfilledAt: now, pickupStatus: "pending" } });
+    orders.push(order);
+  }
+  const references = orders.map((order) => order.id.slice(-6).toUpperCase());
+
+  await login(page, data.owner.email, "/dashboard/merchandise/pickups");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByLabel("Select all on this page").check();
+  await page.getByRole("button", { name: "Mark 2 orders ready" }).click();
+  const dialog = page.getByRole("dialog");
+  for (const reference of references) await expect(dialog).toContainText(reference);
+  await dialog.getByRole("button", { name: "Mark 2 orders ready" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "2 orders marked ready. Each buyer was emailed." })).toBeVisible();
+  expect(await prisma.commerceOrder.count({ where: { id: { in: orders.map((order) => order.id) }, pickupStatus: "ready" } })).toBe(2);
+
+  await page.goto("/dashboard/orders?family=merchandise");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download CSV" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/merchandise-orders-\d{4}-\d{2}-\d{2}\.csv$/);
+  const csv = readFileSync((await file.path())!, "utf8");
+  for (const reference of references) expect(csv).toContain(reference);
+  expect(csv).toContain("Ready to collect");
+});
+
 test("a disputed order can't be handed over, and a partial refund made in Stripe is marked reviewed", async ({ page, data }) => {
   const { organisation } = data;
   const now = new Date();

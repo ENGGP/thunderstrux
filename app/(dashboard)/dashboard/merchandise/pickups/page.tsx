@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { BatchReady, SelectPickup } from "@/components/merchandise/batch-ready";
 import { PickupAction } from "@/components/merchandise/pickup-action";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -153,15 +154,21 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, directio
           {query ? "Check the reference or spelling, or clear the search." : emptyText[stage][1]}
         </EmptyState>
       ) : (
+        <>
+        {/* To prepare marks several orders ready at once (UI-018); a handover stays one at a time. */}
+        {stage === "prepare" ? <BatchReady count={orders.length} orgSlug={orgSlug} /> : null}
         <ResponsiveTable
           card={(order) => (
             <div className="grid gap-2.5">
-              <h2 className="text-lg font-semibold text-ink [overflow-wrap:anywhere]">
-                <Link className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
-                  {order.reference}
-                </Link>{" "}
-                · {order.buyer}
-              </h2>
+              <div className="flex items-start gap-3">
+                {stage === "prepare" ? <span className="pt-1"><SelectPickup order={order} /></span> : null}
+                <h2 className="min-w-0 flex-1 text-lg font-semibold text-ink [overflow-wrap:anywhere]">
+                  <Link className="text-brand underline underline-offset-4" href={`/dashboard/merchandise/orders/${order.id}`}>
+                    {order.reference}
+                  </Link>{" "}
+                  · {order.buyer}
+                </h2>
+              </div>
               <div className="text-ui text-ink">{items(order)}</div>
               <p className={`text-sm ${stage === "review" ? "font-semibold text-warning" : "text-ink-soft"}`}>
                 {order.guest ? "Guest · " : ""}
@@ -171,6 +178,7 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, directio
             </div>
           )}
           columns={[
+            ...(stage === "prepare" ? [{ header: "Select", cell: (order: PickupRow) => <SelectPickup order={order} /> }] : []),
             {
               header: "Order",
               className: "font-semibold",
@@ -201,6 +209,7 @@ async function Pickups({ organisationId, orgSlug, stage, query, cursor, directio
           rowKey={(order) => order.id}
           rows={orders}
         />
+        </>
       )}
       <p className="text-sm text-ink-soft">
         {stage === "prepare" || stage === "ready" ? "Oldest first, in the order they came in. " : "Newest first. "}Only paid and free orders appear here; checkouts still waiting on Stripe don&apos;t.

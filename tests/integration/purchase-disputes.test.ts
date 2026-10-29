@@ -128,8 +128,8 @@ describe("disputes", () => {
   test("marking an order refunded outside Thunderstrux emails the buyer once", async () => {
     const fixture = await paidOrder();
     await prisma.order.update({ where: { id: fixture.order.id }, data: { buyerEmailSnapshot: "buyer@example.com", buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "purchase" } });
-    await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id);
-    await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id);
+    await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id, "Refunded by bank transfer");
+    await markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id, "Refunded by bank transfer");
     expect(await prisma.notificationOutbox.findMany({ where: { eventKey: `refund-marked/${fixture.order.id}` }, select: { recipient: true } })).toEqual([{ recipient: "buyer@example.com" }]);
     // Staff see where it was refunded; the buyer just sees Refunded, never Paid with void tickets.
     const marked = await orderState(fixture.order.id);
@@ -562,8 +562,8 @@ describe("places back on sale", () => {
 
     const marked = await paidOrder();
     const markedBefore = await stock(marked);
-    await markOrganisationOrderManuallyRefunded(marked.owner.organisation.id, marked.order.id, marked.owner.user.id);
-    await markOrganisationOrderManuallyRefunded(marked.owner.organisation.id, marked.order.id, marked.owner.user.id);
+    await markOrganisationOrderManuallyRefunded(marked.owner.organisation.id, marked.order.id, marked.owner.user.id, "Refunded by bank transfer");
+    await markOrganisationOrderManuallyRefunded(marked.owner.organisation.id, marked.order.id, marked.owner.user.id, "Refunded by bank transfer");
     expect(await stock(marked)).toBe(markedBefore + 2);
 
     // Under review a ticket keeps its place; lost, the place comes back, once.
@@ -591,7 +591,7 @@ describe("places back on sale", () => {
     const before = await stock(fixture);
     stripe.refunds.mockResolvedValue({ data: [dashboardRefund(fixture)] });
     await Promise.allSettled([
-      markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id),
+      markOrganisationOrderManuallyRefunded(fixture.owner.organisation.id, fixture.order.id, fixture.owner.user.id, "Refunded by bank transfer"),
       reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(fixture)))
     ]);
     expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "void")).toBe(true);

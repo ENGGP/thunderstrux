@@ -19,6 +19,7 @@ sources: [lib/tickets/check-in.ts, lib/tickets/http.ts, components/tickets/check
 | List and search an event's tickets | `lib/tickets/check-in.ts`: `getOrganisationEventTickets(organisationId, eventId, { limit, cursor, direction, query })` |
 | Check in, check out | `lib/tickets/check-in.ts`: `checkInOrganisationTicket(organisationId, ticketId, actorUserId)`, `checkOutOrganisationTicket(...)` |
 | Error to HTTP mapping | `lib/tickets/http.ts`: `ticketRouteRules` |
+| Attendee list download (owners and admins) | `GET /api/events/[eventId]/tickets/export`, `lib/export/order-exports.ts`: `exportAttendees` |
 | Routes | `GET /api/events/[eventId]/tickets`, `POST /api/tickets/[ticketId]/check-in`, `POST /api/tickets/[ticketId]/check-out` |
 | Console | `components/tickets/check-in-console.tsx` on the page `/dashboard/events/[eventId]/tickets` |
 | Cursors | `lib/pagination/cursor.ts` |

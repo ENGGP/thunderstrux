@@ -190,7 +190,8 @@ export default async function OrganisationOrderDetailPage({
           details: [
             event.fromOrderStatus !== event.toOrderStatus && event.toOrderStatus ? `Order: ${event.fromOrderStatus ?? "unknown"} to ${event.toOrderStatus}` : null,
             event.fromReservationStatus !== event.toReservationStatus && event.toReservationStatus ? `Reservation: ${event.fromReservationStatus ?? "none"} to ${event.toReservationStatus}` : null,
-            event.reason ? `Reason: ${event.reason.replaceAll("_", " ")}` : null
+            // A code (stripe_error, operator_requeue) reads with spaces; a reason staff typed reads as typed.
+            event.reason ? `Reason: ${/^[a-z0-9_]+$/.test(event.reason) ? event.reason.replaceAll("_", " ") : event.reason}` : null
           ].filter((detail): detail is string => detail !== null)
         }))}
         footer={

@@ -116,7 +116,7 @@ export function OrderDetailActions({
       await fetchJson(`/api/orders/${orderId}/refund-manual`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {})
+        body: JSON.stringify({ reason: refundForm.reason, ...(markNeedsCode ? { mfaCode: refundForm.mfaCode } : {}) })
       });
       setConfirmingRefund(false);
       setMessage({ ok: true, text: "Marked as refunded.", at: "mark" });
@@ -364,6 +364,7 @@ export function OrderDetailActions({
             places go back on sale unless the event is cancelled, and the buyer is emailed. This can&apos;t be
             undone. It doesn&apos;t send money or change the payment in Stripe.
           </p>
+          <TextArea hint="How and when you refunded the buyer. Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} rows={2} value={refundForm.reason} />
           {markNeedsCode ? (
             <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
           ) : null}

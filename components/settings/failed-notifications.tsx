@@ -56,7 +56,8 @@ export function FailedNotifications({ jobs }: { jobs: Job[] }) {
         skipped: response.skipped.map((entry) => ({ name: names.get(entry.id) ?? "Email", message: entry.message }))
       });
     } catch (failure) {
-      setResult({ ok: false, text: getClientErrorMessage(failure, "Couldn't send these again. Nothing changed.") });
+      // Each email is queued on its own, so some may have gone through before the error.
+      setResult({ ok: false, text: getClientErrorMessage(failure, "That didn't finish. Refresh the page to see which emails are still failed.") });
     } finally {
       setBusy(false);
     }

@@ -86,7 +86,9 @@ export function BatchReady({ orgSlug, count }: { orgSlug: string; count: number 
       selectAll(false);
       router.refresh();
     } catch (failure) {
-      setResult({ ok: false, text: getClientErrorMessage(failure, "Those orders weren't marked. Nothing changed.") });
+      // Each order is marked on its own, so some may have gone through: the refreshed list shows which.
+      setResult({ ok: false, text: getClientErrorMessage(failure, "That didn't finish. The list below shows where each order is now.") });
+      router.refresh();
     } finally {
       setOpen(false);
       setBusy(false);

@@ -44,7 +44,8 @@ export function PublicEventView({
     <div className="mx-auto grid max-w-page gap-8 px-4 py-10 md:px-8">
       {event.heroAssetId ? (
         <img
-          alt=""
+          // The society's description when it gave one; otherwise decoration, as the title names the event.
+          alt={event.heroAlt ?? ""}
           className="aspect-video max-h-[460px] w-full rounded-card border border-line object-cover"
           src={preview ? `/api/orgs/${organisation.slug}/assets/${event.heroAssetId}` : `/api/public/assets/${event.heroAssetId}`}
         />

@@ -94,6 +94,7 @@ export const eventSelect = {
   saleState: true,
   version: true,
   heroAssetId: true,
+  heroAlt: true,
   compensationRefundMode: true,
   createdAt: true,
   ticketTypes: {
@@ -401,6 +402,8 @@ export async function createOrganisationEvent(
       data: {
       organisationId,
       heroAssetId: input.heroAssetId ?? null,
+      // A description only means something with an image.
+      heroAlt: input.heroAssetId ? input.heroAlt || null : null,
       title: input.title,
       description: input.description,
       startTime: input.startTime,
@@ -440,7 +443,7 @@ export async function createOrganisationEvent(
 
 type EventFacts = {
   title: string; description: string; startTime: Date; endTime: Date; location: string; capacity: number | null;
-  salesCloseAt: Date; visibility: string; heroAssetId: string | null;
+  salesCloseAt: Date; visibility: string; heroAssetId: string | null; heroAlt: string | null;
 };
 
 // What an edit changed, for History (T38): before and after for each field,
@@ -456,6 +459,7 @@ function eventChanges(
     .map((field) => ({ field, before: value(before[field]), after: value(after[field]) }));
   if (before.description !== after.description) changes.push({ field: "description" });
   if (before.heroAssetId !== after.heroAssetId) changes.push({ field: "heroAssetId", after: Boolean(after.heroAssetId) });
+  if (before.heroAlt !== after.heroAlt) changes.push({ field: "heroAlt" });
   const existing = new Map(before.ticketTypes.map((ticketType) => [ticketType.id, ticketType]));
   const added = after.ticketTypes.filter((ticketType) => !ticketType.id).map((ticketType) => ticketType.name);
   const removed = after.removedTicketTypeIds.map((id) => existing.get(id)?.name ?? "A ticket type");
@@ -561,6 +565,7 @@ export async function updateOrganisationEvent(
         version: true,
         status: true,
         heroAssetId: true,
+        heroAlt: true,
         title: true,
         description: true,
         startTime: true,
@@ -637,6 +642,9 @@ export async function updateOrganisationEvent(
     if (input.heroAssetId && input.heroAssetId !== locked.heroAssetId) {
       await assertHeroAsset(transaction, organisationId, input.heroAssetId);
     }
+    // Removing the image clears its description; an omitted description keeps the saved one.
+    const heroAssetId = input.heroAssetId === undefined ? locked.heroAssetId : input.heroAssetId;
+    const heroAlt = heroAssetId ? (input.heroAlt === undefined ? locked.heroAlt : input.heroAlt || null) : null;
 
     const updated = await transaction.event.updateMany({
       where: { id: existingEvent.id, version: input.version },
@@ -652,6 +660,7 @@ export async function updateOrganisationEvent(
         salesCloseAt,
         ...(input.visibility ? { visibility: input.visibility } : {}),
         ...(input.heroAssetId !== undefined ? { heroAssetId: input.heroAssetId } : {}),
+        heroAlt,
         version: { increment: 1 },
         ...(input.compensationRefundMode
           ? { compensationRefundMode: input.compensationRefundMode }
@@ -725,7 +734,8 @@ export async function updateOrganisationEvent(
             capacity,
             salesCloseAt,
             visibility: input.visibility ?? locked.visibility,
-            heroAssetId: input.heroAssetId === undefined ? locked.heroAssetId : input.heroAssetId,
+            heroAssetId,
+            heroAlt,
             ticketTypes: input.ticketTypes.map((ticketType, index) => ({ id: ticketType.id, name: ticketType.name, price: ticketType.price, quantity: quantities[index] })),
             removedTicketTypeIds
           })

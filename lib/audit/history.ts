@@ -162,7 +162,7 @@ const roleLabels: Record<string, string> = { owner: "Owner", admin: "Admin", eve
 const statusLabels: Record<string, string> = { active: "Active", revoked: "Removed", invited: "Invited" };
 const fieldLabels: Record<string, string> = {
   title: "Title", description: "Description", startTime: "Starts", endTime: "Ends", location: "Location", capacity: "Capacity", salesCloseAt: "Ticket sales close",
-  visibility: "Visibility", heroAssetId: "Image", name: "Name", priceAmount: "Price", startsAt: "First day", endsAt: "Last day", entitlements: "Benefits",
+  visibility: "Visibility", heroAssetId: "Image", heroAlt: "Image description", name: "Name", priceAmount: "Price", startsAt: "First day", endsAt: "Last day", entitlements: "Benefits",
   supportEmail: "Contact email", refundPolicy: "Refund policy", pickupPolicy: "Pickup policy", logoAssetId: "Logo", coverAssetId: "Cover image", timeZone: "Time zone"
 };
 const visibilityLabels: Record<string, string> = { public: "Public", unlisted: "Link only", members_only: "Members only" };
@@ -391,6 +391,7 @@ function eventChangeFact(change: Record<string, unknown>, when: (iso: unknown) =
   }
   if (field === "description") return [{ label: "Description", value: "Changed" }];
   if (field === "heroAssetId") return [{ label: "Image", value: change.after ? "Changed" : "Removed" }];
+  if (field === "heroAlt") return [{ label: "Image description", value: "Changed" }];
   const show = (value: unknown) =>
     value === null || value === undefined ? "None" : field === "visibility" ? visibilityLabels[String(value)] ?? String(value) : ["startTime", "endTime", "salesCloseAt"].includes(field) ? when(value) : String(value);
   return [{ label: fieldLabels[field] ?? field, value: show(change.after), was: show(change.before) }];

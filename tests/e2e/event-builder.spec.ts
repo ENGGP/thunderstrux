@@ -44,6 +44,8 @@ test("organisers build an event in the society's time zone with a dollar price a
   const buffer = await sharp({ create: { width: 32, height: 18, channels: 3, background: "teal" } }).png().toBuffer();
   await page.locator('input[type="file"]').setInputFiles({ name: "hero.png", mimeType: "image/png", buffer });
   await expect(page.getByRole("img", { name: "Event image preview" })).toBeVisible();
+  // UI-018: the image gets a description for screen readers, used on the event page.
+  await page.getByLabel("Image description (optional)").fill("Teal banner with the society logo");
   await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible();
 
   for (const width of [390, 768, 1280]) {
@@ -61,12 +63,16 @@ test("organisers build an event in the society's time zone with a dollar price a
   const [start] = zonedCandidates(`${day}T18:00`, "Australia/Sydney");
   expect(event).toMatchObject({ visibility: "unlisted", startTime: start, salesCloseAt: start, status: "draft" });
   expect(event.heroAssetId).not.toBeNull();
+  expect(event.heroAlt).toBe("Teal banner with the society logo");
   expect(event.ticketTypes[0]).toMatchObject({ price: 1550, quantity: 40 });
   await expect(page.getByRole("heading", { name: "Ready to publish?" })).toBeVisible();
   await expect(page.getByText("Sydney time", { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: "test-results/event-summary-draft.png", fullPage: true });
 
+  await page.goto(`/dashboard/events/${event.id}/preview`);
+  await expect(page.getByRole("img", { name: "Teal banner with the society logo" })).toBeVisible();
   await page.goto(`/dashboard/events/${event.id}/edit`);
+  await expect(page.getByLabel("Image description (optional)")).toHaveValue("Teal banner with the society logo");
   await expect(page.getByLabel("Price", { exact: true })).toHaveValue("15.50");
   await expect(when("Starts").getByLabel("Date", { exact: true })).toHaveValue(formatDayInput(day));
   await expect(when("Starts").getByLabel("Time")).toHaveValue("18:00");

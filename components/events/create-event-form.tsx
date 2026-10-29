@@ -30,6 +30,7 @@ type FormState = {
   visibility: Visibility;
   compensationRefundMode: RefundMode;
   heroAssetId: string | null;
+  heroAlt: string;
 };
 
 type TicketTypeFormState = {
@@ -58,6 +59,7 @@ type EventFormData = {
   capacity: number | null;
   visibility: Visibility;
   heroAssetId: string | null;
+  heroAlt: string | null;
   status: "draft" | "published";
   version: number;
   compensationRefundMode: RefundMode;
@@ -97,7 +99,8 @@ function initialState(event: EventFormData | undefined, timeZone: string, startD
         capacity: event.capacity === null ? "" : String(event.capacity),
         visibility: event.visibility,
         compensationRefundMode: event.compensationRefundMode,
-        heroAssetId: event.heroAssetId
+        heroAssetId: event.heroAssetId,
+        heroAlt: event.heroAlt ?? ""
       }
     : {
         title: "",
@@ -110,7 +113,8 @@ function initialState(event: EventFormData | undefined, timeZone: string, startD
         capacity: "",
         visibility: "public",
         compensationRefundMode: "automatic_full",
-        heroAssetId: null
+        heroAssetId: null,
+        heroAlt: ""
       };
   // In a daylight-saving overlap, keep whichever of the two instants was saved.
   const choices = Object.fromEntries(
@@ -341,6 +345,7 @@ export function CreateEventForm({
         capacity: form.capacity.trim() ? Number(form.capacity) : null,
         visibility: form.visibility,
         heroAssetId: form.heroAssetId,
+        heroAlt: form.heroAssetId ? form.heroAlt.trim() || null : null,
         compensationRefundMode: form.compensationRefundMode,
         // The version this form loaded; the server refuses the save if the event changed since.
         ...(mode === "edit" && initialEvent ? { version: initialEvent.version } : {}),
@@ -506,6 +511,18 @@ export function CreateEventForm({
                   ) : null}
                 </div>
               </div>
+              {/* What the image shows, read out by screen readers on the event page (UI-018). */}
+              {form.heroAssetId ? (
+                <TextInput
+                  error={errorFor(errors, "heroAlt")}
+                  hint={`Say what the image shows, for people using screen readers. Leave blank if it's just decoration. ${form.heroAlt.length}/250`}
+                  id="heroAlt"
+                  label="Image description (optional)"
+                  maxLength={250}
+                  onChange={(event) => setField("heroAlt", event.target.value)}
+                  value={form.heroAlt}
+                />
+              ) : null}
             </div>
           </div>
         </Card>

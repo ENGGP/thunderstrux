@@ -65,6 +65,8 @@ export type PublicEventDetail = {
   endTime: Date;
   location: string;
   heroAssetId: string | null;
+  // The image's description for the hero's alt text; empty means decoration (UI-018).
+  heroAlt: string | null;
   organisation: {
     name: string;
     slug: string;
@@ -203,6 +205,7 @@ const detailSelect = {
   endTime: true,
   location: true,
   heroAssetId: true,
+  heroAlt: true,
   status: true,
   visibility: true,
   saleState: true,
@@ -246,6 +249,7 @@ async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEve
     endTime: event.endTime,
     location: event.location,
     heroAssetId: event.heroAssetId,
+    heroAlt: event.heroAlt,
     status: event.status,
     membersOnly: event.visibility === "members_only",
     salesOpen: salesOpen(event, now),

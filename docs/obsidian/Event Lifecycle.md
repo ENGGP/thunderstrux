@@ -150,6 +150,8 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 `Event.heroAssetId` references `(Asset.id, organisationId)`, so an event can only use its own society's image. Create and edit lock the Asset after the Event and accept only a ready, undeleted `event` asset (400 on `heroAssetId`: "That image is no longer available. Upload it again, then save."). Every change, and deleting the event, refreshes `unreferencedAt` on old and new images. Delivery and cleanup: [[Society Profiles and Assets]].
 
+`Event.heroAlt` (up to 250 characters, optional) describes the image for screen readers: the form's "Image description" shows once an image is set. It is the event page hero's `alt`; blank (or null) means decoration, `alt=""`, as on cards and checkout, where the title beside the image already names the event. It is kept only with an image: create without one stores null, removing the image clears it, and an edit that leaves it out keeps the saved one. An edit that changes it is noted in History ("Image description: Changed").
+
 ### Deleting
 
 `DELETE /api/events/[eventId]` is refused (400 on `eventId`) once the event has any order or ticket, rechecked under the event lock. Otherwise it deletes the event and its ticket types, releases its image and audits `event.deleted`.

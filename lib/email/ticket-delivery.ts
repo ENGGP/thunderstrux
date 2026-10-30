@@ -58,6 +58,27 @@ export class TicketEmailProviderError extends TicketEmailError {
   }
 }
 
+// A 429: the provider took nothing, so the job keeps its attempt and the run
+// stops, and one limit can't use up a whole batch's tries (DEF-068).
+export class EmailRateLimitError extends TicketEmailProviderError {
+  constructor(readonly retryAfterMs: number) {
+    super("Email provider rate limited the request");
+    this.name = "EmailRateLimitError";
+  }
+}
+
+// `Retry-After` is seconds or an HTTP date. Without one, a minute: the next run.
+// At most an hour, so a daily-quota answer can't park a job for the day.
+function retryAfterMs(header: string | null) {
+  const seconds = Number(header);
+  const wait = header && !Number.isNaN(seconds) ? seconds * 1000 : Date.parse(header ?? "") - Date.now();
+  return Number.isNaN(wait) ? 60_000 : Math.min(Math.max(wait, 1000), 3_600_000);
+}
+
+// Both email jobs claim batches for this long per run, so a backlog is worked
+// through, not 25 a minute (DEF-067).
+export const emailRunBudgetMs = 45_000;
+
 export function truncateTicketEmailError(message: string) {
   return message.slice(0, 500);
 }
@@ -304,6 +325,7 @@ export async function sendWithResend({
     })
   });
 
+  if (response.status === 429) throw new EmailRateLimitError(retryAfterMs(response.headers.get("retry-after")));
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new TicketEmailProviderError(

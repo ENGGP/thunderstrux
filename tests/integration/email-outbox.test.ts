@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest } from "@/tests/helpers/http";
 import { POST as requeueEmailRoute } from "@/app/api/orders/[orderId]/email-jobs/[jobId]/requeue/route";
+import { emailRunBudgetMs } from "@/lib/email/ticket-delivery";
 import {
   enqueueTicketEmail,
   processTicketEmailOutboxBatch,
@@ -570,5 +571,77 @@ describe("ticket email outbox", () => {
     } finally {
       restoreEnv();
     }
+  });
+
+  describe("a rush (DEF-067, DEF-068)", () => {
+    const dueOrders = async (count: number) => {
+      const orders = [];
+      for (let index = 0; index < count; index += 1) {
+        const order = await createPaidTicketOrder(`rush-${index}@example.com`);
+        await enqueueTicketEmail({ orderId: order.id, mode: "automatic" });
+        await makeOutboxJobsDue(order.id, new Date(Date.now() - 1000));
+        orders.push(order);
+      }
+      return orders;
+    };
+    const sent = (id = "em_rush") => new Response(JSON.stringify({ id }), { status: 200 });
+
+    test("a backlog larger than one batch drains in one run", async () => {
+      const restoreEnv = configureEmailEnv();
+      const fetchMock = vi.fn(async () => sent());
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        await dueOrders(5);
+        expect(await processTicketEmailOutboxBatch({ limit: 2 })).toMatchObject({ claimed: 5, sent: 5, rateLimited: 0 });
+        expect(fetchMock).toHaveBeenCalledTimes(5);
+        await expect(prisma.emailOutbox.count({ where: { status: "sent" } })).resolves.toBe(5);
+      } finally {
+        restoreEnv();
+      }
+    });
+
+    test("a run stops claiming once its budget is spent; what it didn't claim stays pending for the next run", async () => {
+      const restoreEnv = configureEmailEnv();
+      const realNow = Date.now.bind(Date);
+      let elapsed = 0;
+      vi.spyOn(Date, "now").mockImplementation(() => realNow() + elapsed);
+      const fetchMock = vi.fn(async () => { elapsed = emailRunBudgetMs; return sent(); });
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        await dueOrders(3);
+        expect(await processTicketEmailOutboxBatch({ limit: 2 })).toMatchObject({ claimed: 2, sent: 2 });
+        await expect(prisma.emailOutbox.count({ where: { status: "pending", processingToken: null } })).resolves.toBe(1);
+      } finally {
+        restoreEnv();
+      }
+    });
+
+    test("a 429 uses no attempt, ends the run, respects Retry-After and hands the rest of the batch back unsent", async () => {
+      const restoreEnv = configureEmailEnv();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const fetchMock = vi.fn(async () => new Response("slow down", { status: 429, headers: { "retry-after": "120" } }));
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const orders = await dueOrders(3);
+        const before = Date.now();
+        // With one attempt allowed, a 429 that counted as a failure would end the job here.
+        expect(await processTicketEmailOutboxBatch({ limit: 2, maxAttempts: 1 })).toMatchObject({ claimed: 2, sent: 0, retried: 0, failed: 0, skipped: 0, rateLimited: 2 });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        const jobs = await prisma.emailOutbox.findMany({ orderBy: { nextAttemptAt: "desc" } });
+        expect(jobs.map((job) => job.status)).toEqual(["pending", "pending", "pending"]);
+        expect(jobs.every((job) => job.attempts === 0 && job.processingToken === null && job.processingStartedAt === null)).toBe(true);
+        for (const job of jobs.slice(0, 2)) expect(job.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before + 120_000);
+        await expect(prisma.order.count({ where: { id: { in: orders.map((order) => order.id) }, ticketEmailLastError: { not: null } } })).resolves.toBe(0);
+        await expect(prisma.orderLifecycleEvent.count({ where: { type: { in: ["email_retry_scheduled", "email_delivery_exhausted"] } } })).resolves.toBe(0);
+        expect(parseConsoleEntries(warn)).toEqual([expect.objectContaining({ event: "email_outbox.rate_limited", released: 2, retryAfterMs: 120_000 })]);
+
+        // Nothing is stuck: once the wait is over, every job sends.
+        fetchMock.mockImplementation(async () => sent());
+        expect(await processTicketEmailOutboxBatch({ now: new Date(Date.now() + 121_000), maxAttempts: 1 })).toMatchObject({ sent: 3, rateLimited: 0 });
+      } finally {
+        restoreEnv();
+      }
+    });
   });
 });

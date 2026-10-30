@@ -5,8 +5,8 @@ import { prisma } from "@/lib/db";
 import { decodeTimestampCursor, descendingCursorWhere, orderByForDirection, pageInfoForPage, type PaginationDirection } from "@/lib/pagination/cursor";
 import { encryptNotification, decryptNotification } from "./notification-crypto";
 import { businessTemplates, notificationTemplateSchema, renderNotification, renderedNotificationSchema, type NotificationTemplate } from "./templates";
-import { sendWithResend } from "./ticket-delivery";
-import { logInfo } from "@/lib/ops/logger";
+import { EmailRateLimitError, emailRunBudgetMs, sendWithResend } from "./ticket-delivery";
+import { logInfo, logWarn } from "@/lib/ops/logger";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { liveStaffRoleForUser, roleHasPermission } from "@/lib/staff/live-authority";
 import { invitationIssuerRole } from "@/lib/staff/invite-authority";
@@ -64,6 +64,8 @@ export async function enqueueNotification(tx: Prisma.TransactionClient, input: {
   return { enqueued: rows.length === 1, id: rows[0]?.id ?? null };
 }
 
+// Sign-in and guest links come first: someone is waiting on them to get in or
+// buy, and a link can expire behind a bulk event-change email (DEF-067).
 export async function claimNotificationJobs(now = new Date(), limit = 25): Promise<Claim[]> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("Invalid notification batch size");
   const stale = new Date(now.getTime() - 600000);
@@ -73,7 +75,7 @@ export async function claimNotificationJobs(now = new Date(), limit = 25): Promi
     WHERE "id" IN (SELECT "id" FROM "NotificationOutbox"
       WHERE ("status" = 'pending' AND "nextAttemptAt" <= ${now})
          OR ("status" = 'processing' AND "processingStartedAt" < ${stale})
-      ORDER BY "nextAttemptAt", "createdAt", "id" FOR UPDATE SKIP LOCKED LIMIT ${limit})
+      ORDER BY ("authTokenId" IS NULL AND "guestAccessGrantId" IS NULL), "nextAttemptAt", "createdAt", "id" FOR UPDATE SKIP LOCKED LIMIT ${limit})
     RETURNING "id", "processingToken"
   `;
 }
@@ -151,7 +153,16 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
   let delivery;
   try {
     delivery = await sendWithResend({ to: job.recipient, ...email, idempotencyKey: `notification/${job.id}`, notification: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof EmailRateLimitError) {
+      // Nothing was sent, so the attempt goes back. `firstAttemptAt` stays, so the
+      // retry window still ends a job the provider keeps refusing (DEF-068).
+      await prisma.notificationOutbox.updateMany({ where: fence, data: {
+        status: "pending", attempts: job.attempts, lastError: "provider_rate_limited",
+        nextAttemptAt: new Date(now.getTime() + error.retryAfterMs), processingToken: null, processingStartedAt: null
+      } });
+      throw error;
+    }
     const exhausted = job.attempts + 1 >= 5;
     const updated = await prisma.notificationOutbox.updateMany({ where: fence, data: {
       status: exhausted ? "failed" : "pending", lastError: "provider_unavailable",
@@ -170,13 +181,31 @@ export async function processNotificationClaim(claim: Claim, now = new Date()): 
   return updated.count ? "sent" : "skipped";
 }
 
+// A 429 ends the run: the claims not yet tried go back unsent, attempts untouched.
+async function releaseRateLimitedClaims(claims: Claim[], retryAfterMs: number) {
+  await prisma.notificationOutbox.updateMany({
+    where: { id: { in: claims.map(claim => claim.id) }, status: "processing", processingToken: { in: claims.map(claim => claim.processingToken) } },
+    data: { status: "pending", nextAttemptAt: new Date(Date.now() + retryAfterMs), processingToken: null, processingStartedAt: null }
+  });
+  logWarn("notification_outbox.rate_limited", { released: claims.length, retryAfterMs });
+}
+
 export async function processNotificationBatch() {
-  const result = { claimed: 0, sent: 0, retried: 0, failed: 0, skipped: 0, cancelled: 0 };
-  const claims = await claimNotificationJobs();
-  result.claimed = claims.length;
-  for (const claim of claims) {
-    try { result[await processNotificationClaim(claim)]++; }
-    catch { result.skipped++; }
+  const result = { claimed: 0, sent: 0, retried: 0, failed: 0, skipped: 0, cancelled: 0, rateLimited: 0 };
+  const started = Date.now();
+  while (result.rateLimited === 0 && Date.now() - started < emailRunBudgetMs) {
+    const claims = await claimNotificationJobs();
+    if (claims.length === 0) break;
+    result.claimed += claims.length;
+    for (const [index, claim] of claims.entries()) {
+      try { result[await processNotificationClaim(claim)]++; }
+      catch (error) {
+        if (!(error instanceof EmailRateLimitError)) { result.skipped++; continue; }
+        await releaseRateLimitedClaims(claims.slice(index), error.retryAfterMs);
+        result.rateLimited = claims.length - index;
+        break;
+      }
+    }
   }
   logInfo("notification_outbox.batch.processed", result);
   return result;

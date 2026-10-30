@@ -29,6 +29,7 @@ type WorkerOptions = {
   // Tests replace these; a real run exits the process on timeout and disconnects at the end.
   exit?: (code: number) => void;
   disconnect?: boolean;
+  leaseGraceMs?: number;
 };
 
 export type WorkerOutcome = "succeeded" | "failed" | "skipped_paused" | "skipped_running" | "timed_out";
@@ -53,13 +54,15 @@ async function acquireLease(name: string, holder: string, leaseMs: number) {
   return rows.length ? { acquired: true as const, reclaimedFrom: rows[0].previousHolder } : { acquired: false as const };
 }
 
-function finish(name: string, holder: string, outcome: "succeeded" | "failed", durationMs: number, error?: unknown) {
+function finish(name: string, holder: string, outcome: "succeeded" | "failed" | "timed_out", durationMs: number, error?: unknown) {
   const now = new Date();
+  // A timed-out job may still be running, so its lease stays until it lapses (DEF-070).
+  const release = outcome === "timed_out" ? {} : { holder: null, leasedUntil: null };
   return prisma.workerLease.updateMany({
     where: { name, holder },
     data: outcome === "succeeded"
-      ? { holder: null, leasedUntil: null, lastSucceededAt: now, lastDurationMs: durationMs, lastError: null }
-      : { holder: null, leasedUntil: null, lastFailedAt: now, lastDurationMs: durationMs, lastError: errorSummary(error) }
+      ? { ...release, lastSucceededAt: now, lastDurationMs: durationMs, lastError: null }
+      : { ...release, lastFailedAt: now, lastDurationMs: durationMs, lastError: errorSummary(error) }
   });
 }
 
@@ -76,7 +79,7 @@ export async function runWorker(name: WorkerName, job: () => Promise<Record<stri
       logInfo("worker.paused", { worker: name, pausedBy: pause.name, reason: pause.pauseReason });
       return (outcome = "skipped_paused");
     }
-    const lease = await acquireLease(name, holder, timeoutMs + LEASE_GRACE_MS);
+    const lease = await acquireLease(name, holder, timeoutMs + (options.leaseGraceMs ?? LEASE_GRACE_MS));
     if (!lease.acquired) {
       logInfo("worker.skipped_running", { worker: name });
       return (outcome = "skipped_running");
@@ -95,7 +98,7 @@ export async function runWorker(name: WorkerName, job: () => Promise<Record<stri
     outcome = timedOut ? "timed_out" : "failed";
     logError(timedOut ? "worker.timed_out" : "worker.failed", { worker: name, durationMs: Date.now() - started, error });
     emitOperationalAlert(timedOut ? "worker_timed_out" : "worker_failed", { worker: name, dedupeKey: `${timedOut ? "worker_timed_out" : "worker_failed"}:${name}`, error });
-    await finish(name, holder, "failed", Date.now() - started, error).catch(() => undefined);
+    await finish(name, holder, outcome, Date.now() - started, error).catch(() => undefined);
     process.exitCode = 1;
     return outcome;
   } finally {

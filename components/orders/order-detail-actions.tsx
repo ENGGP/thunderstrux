@@ -68,6 +68,18 @@ export function OrderDetailActions({
   const cap = byTicket ? capFor(picked.length) : refund?.left ?? 0;
   const cents = byTicket ? parseMoneyInput(amount) : refund?.left ?? 0;
 
+  // Each opening starts from the tickets valid now: a refund or cancellation since changed them.
+  function openRefund() {
+    const all = refund?.tickets.map((ticket) => ticket.id) ?? [];
+    setPicked(all);
+    setAmount(formatMoneyInput(all.length ? capFor(all.length) : refund?.left ?? 0));
+    setCancelTickets(true);
+    setNotifyBuyer(true);
+    setBuyerMessage("");
+    setRefundError("");
+    setRefunding(true);
+  }
+
   // Picking tickets resets the amount to their value, as Humanitix does; staff may lower it.
   function pick(id: string, on: boolean) {
     const next = refund ? refund.tickets.map((ticket) => ticket.id).filter((ticketId) => (ticketId === id ? on : picked.includes(ticketId))) : [];
@@ -282,7 +294,7 @@ export function OrderDetailActions({
               {byTicket ? "Pick tickets, then refund all or part of their price, or cancel them without a refund." : "No ticket is still valid."} Owners and finance managers can do this.
             </p>
             <div>
-              <Button disabled={isBusy} onClick={() => setRefunding(true)} type="button" variant="danger">
+              <Button disabled={isBusy} onClick={openRefund} type="button" variant="danger">
                 {byTicket ? "Refund or cancel tickets" : "Refund the rest"}
               </Button>
             </div>

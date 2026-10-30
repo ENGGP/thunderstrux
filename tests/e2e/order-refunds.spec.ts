@@ -49,6 +49,13 @@ test("finance staff pick tickets to refund or cancel, a wrong reference changes 
   await expect(page.getByText("Tickets cancelled without a refund")).toBeVisible();
   expect(await prisma.refundRequest.count({ where: { orderId: order.id } })).toBe(0);
   await page.screenshot({ path: "test-results/order-ticket-cancelled-1280.png", fullPage: true });
+  // Reopened, the dialog starts from the tickets valid now, not the earlier choice.
+  await page.getByRole("button", { name: "Refund or cancel tickets" }).click();
+  await expect(dialog.getByRole("checkbox", { name: new RegExp(reference(second.id)) })).toHaveCount(0);
+  await expect(dialog.getByRole("checkbox", { name: new RegExp(reference(first.id)) })).toBeChecked();
+  await expect(dialog.getByLabel("Refund amount")).toHaveValue("15.00");
+  await dialog.getByRole("button", { name: "Go back" }).click();
+  await expect(dialog).toBeHidden();
 
   // A refund Stripe confirmed (recorded here directly: the browser campaign has no Stripe).
   await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });

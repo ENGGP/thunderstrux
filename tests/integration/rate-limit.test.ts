@@ -483,6 +483,7 @@ describe("rate-limited routes", () => {
     expect((await post("application/x-www-form-urlencoded; charset=application/json", bothReadings)).status).toBe(400);
     expect((await post("application/x-www-form-urlencoded, application/json", bothReadings)).status).toBe(400);
     expect((await post("application/x-www-form-urlencoded", "password=wrong")).status).toBe(400);
+    expect((await post("application/x-www-form-urlencoded", `email=member%40example.com&password=${"x".repeat(10_000)}`)).status).toBe(400);
     expect(nextAuthPost).not.toHaveBeenCalled();
 
     expect((await post("application/x-www-form-urlencoded", "email=member%40example.com&password=wrong")).status).toBe(401);

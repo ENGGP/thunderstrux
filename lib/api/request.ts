@@ -11,7 +11,6 @@ export type ValidationResult<T> =
 
 // Bounds what one request can make the server buffer and echo back.
 const maxJsonBodyBytes = 100_000;
-const maxWebhookBodyBytes = 1_000_000;
 const maxErrorDetails = 20;
 
 export class RequestBodyTooLargeError extends Error {}
@@ -53,10 +52,9 @@ export async function readJsonBody(request: Request, maxBytes: number): Promise<
   return JSON.parse(await readBody(request, maxBytes));
 }
 
-// A webhook has to read its body before it can check the signature, so anyone can
-// send one. Stripe's events are far smaller than this (SEC-041). Null when larger.
-export function readWebhookBody(request: Request): Promise<string | null> {
-  return readBody(request, maxWebhookBodyBytes).catch((error) => {
+// For routes that need the body as text. Null when it's larger than maxBytes.
+export function readBodyUpTo(request: Request, maxBytes: number): Promise<string | null> {
+  return readBody(request, maxBytes).catch((error) => {
     if (error instanceof RequestBodyTooLargeError) return null;
     throw error;
   });

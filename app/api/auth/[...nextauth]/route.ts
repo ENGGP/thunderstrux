@@ -2,6 +2,7 @@ import { handlers } from "@/auth";
 import type { NextRequest } from "next/server";
 import { enforceRateLimit, getRateLimitClientIp } from "@/lib/security/rate-limit";
 import { badRequest } from "@/lib/api/errors";
+import { readBodyUpTo } from "@/lib/api/request";
 
 export const { GET } = handlers;
 
@@ -11,6 +12,8 @@ const nextAuthPost = handlers.POST;
 // the header merely contains `application/json`, so anything else here would reach
 // Auth.js with an address the limits below never saw (SEC-040).
 const formContentType = /^application\/x-www-form-urlencoded(\s*;\s*charset=utf-8)?$/i;
+// An address, a password, a CSRF token and a callback URL, encoded (SEC-041).
+const maxSignInBodyBytes = 10_000;
 
 export async function POST(request: NextRequest) {
   const pathname = new URL(request.url).pathname;
@@ -29,10 +32,9 @@ export async function POST(request: NextRequest) {
 
     if (!formContentType.test(request.headers.get("content-type") ?? "")) return badRequest("Sign in through the sign-in form");
 
-    const formData = await request
-      .clone()
-      .formData()
-      .catch(() => new FormData());
+    const body = await readBodyUpTo(request.clone(), maxSignInBodyBytes);
+    if (body === null) return badRequest("Request body is too large");
+    const formData = new URLSearchParams(body);
     // Auth.js signs in with the last "email" field while this throttle reads the first, so
     // duplicates could move each attempt into a fresh bucket (SEC-007). A form sends one.
     if (formData.getAll("email").length > 1) return badRequest("Send one email address");

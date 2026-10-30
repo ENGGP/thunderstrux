@@ -48,20 +48,19 @@ test("hosted contract requires external services, file secrets, and runtime hard
     EMAIL_FROM: "Thunderstrux <tickets@thunderstrux.example>",
     NEXT_PUBLIC_APP_URL: "https://thunderstrux.example"
   };
-  const moneyWorkerEnvironment = {
-    ...workerEnvironment,
-    STRIPE_SECRET_KEY_FILE: "/run/secrets/stripe_secret_key",
-    NOTIFICATION_ENCRYPTION_KEY_FILE: "/run/secrets/notification_encryption_key"
-  };
+  const stripeKey = { STRIPE_SECRET_KEY_FILE: "/run/secrets/stripe_secret_key" };
+  const resendKey = { RESEND_API_KEY_FILE: "/run/secrets/resend_api_key" };
+  const notificationKey = { NOTIFICATION_ENCRYPTION_KEY_FILE: "/run/secrets/notification_encryption_key" };
+  const moneyWorkerEnvironment = { ...workerEnvironment, ...stripeKey, ...notificationKey };
   const config = {
     services: {
       app: hardenedService({ environment: { ...environment, RATE_LIMIT_ENABLED: "true", MFA_ENFORCEMENT_MODE: "enforce", LEGACY_ORGANISATION_ACCESS_MODE: "deny" }, healthcheck: { test: ["CMD", "node"] } }),
       migration: hardenedService({ image: opsImage, profiles: ["tools"] }),
-      "notification-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
-      "email-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "notification-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: { ...workerEnvironment, ...resendKey, ...notificationKey } }),
+      "email-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: { ...workerEnvironment, ...resendKey } }),
       "stale-order-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: moneyWorkerEnvironment }),
       "compensation-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: moneyWorkerEnvironment }),
-      "checkout-recovery-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment }),
+      "checkout-recovery-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: { ...workerEnvironment, ...stripeKey } }),
       "monitor-worker": hardenedService({ image: opsImage, profiles: ["workers"], environment: workerEnvironment })
     }
   };
@@ -105,7 +104,11 @@ test("hosted contract requires external services, file secrets, and runtime hard
     ["stale-order-worker", "EMAIL_FROM"],
     ["compensation-worker", "EMAIL_FROM"],
     ["compensation-worker", "NEXT_PUBLIC_APP_URL"],
-    ["monitor-worker", "EMAIL_FROM"]
+    ["monitor-worker", "EMAIL_FROM"],
+    ["notification-worker", "NOTIFICATION_ENCRYPTION_KEY_FILE"],
+    ["notification-worker", "RESEND_API_KEY_FILE"],
+    ["email-worker", "RESEND_API_KEY_FILE"],
+    ["checkout-recovery-worker", "STRIPE_SECRET_KEY_FILE"]
   ]) {
     assert.throws(() => validateHostedConfig(without(worker, variable)), new RegExp(`${worker} is missing ${variable}`));
   }

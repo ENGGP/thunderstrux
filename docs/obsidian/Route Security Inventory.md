@@ -21,7 +21,7 @@ sources: [lib/security/request-guard.ts, lib/security/csrf.ts, lib/security/rate
 | Guest CSRF | `lib/guest/guest-csrf.ts`: `verifyGuestCsrf`, header `x-thunderstrux-guest-csrf` |
 | Rate limits | `lib/security/rate-limit.ts`: `enforceRateLimit`, `getRateLimitClientIp`, `clientKey`, `policies` |
 | Account-link limits | `lib/auth/lifecycle-http.ts`: `lifecycleIpLimit`, `lifecycleEmailLimit`, `lifecycleRedemptionLimit` |
-| Body reading | `lib/api/request.ts`: `readJsonBody`, `parseJsonBody`, `validateJson`; `readWebhookBody` for the Stripe webhooks |
+| Body reading | `lib/api/request.ts`: `readJsonBody`, `parseJsonBody`, `validateJson`; `readBodyUpTo` for sign-in (10 KB) and, through `lib/stripe/webhook-body.ts`, the Stripe webhooks (1 MB) |
 | Error envelope | `lib/api/errors.ts`: `mapRouteError`, `apiError`; shared rules `lib/api/route-rules.ts` |
 | Headers, default caching | `next.config.ts`: `securityHeaders`, `contentSecurityPolicy`, `headers()` |
 | Expired token cleanup | `lib/security/token-cleanup.ts`: `cleanUpExpiredTokens` |
@@ -36,7 +36,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | --- | --- |
 | Sign-up and link requests (`auth/signup`, `auth/verification/request`, `auth/password/request`) | origin → `signup_ip` → body → `signup_email` (per purpose) → service |
 | Link redemption (`auth/verification/confirm`, `auth/password/confirm`) | origin → body → `account_token_ip` → `account_token_digest` → service |
-| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → a plain form with an address (else 400, SEC-040) → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_email` (per account across addresses, DEBT-002) → Auth.js (its own CSRF) |
+| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → a plain form of at most 10 KB with an address (else 400, SEC-040, SEC-041) → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_email` (per account across addresses, DEBT-002) → Auth.js (its own CSRF) |
 | Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
 | Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
 | Guest redemption (`guest/email/confirm`) | origin → body → `guest_token_ip` → `guest_token_digest` → service |

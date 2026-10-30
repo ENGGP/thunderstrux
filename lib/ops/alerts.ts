@@ -7,6 +7,7 @@ export type OperationalAlertName =
   | "checkout_session_creation_failure"
   | "payment_reconciliation_ambiguous_order"
   | "stripe_webhook_signature_failure"
+  | "stripe_webhook_body_too_large"
   | "stripe_webhook_mode_mismatch"
   | "stripe_webhook_version_mismatch"
   // PAY-024: the sweep found a payment Stripe completed that no webhook delivered,
@@ -66,7 +67,7 @@ const pendingDeliveries = new Set<Promise<void>>();
 // every five minutes per process, carrying how many were held back; the log still
 // records each one (SEC-020).
 const ALERT_COOLDOWN_MS = 5 * 60_000;
-const cooledAlerts = new Set<OperationalAlertName>(["stripe_webhook_signature_failure"]);
+const cooledAlerts = new Set<OperationalAlertName>(["stripe_webhook_signature_failure", "stripe_webhook_body_too_large"]);
 const cooldowns = new Map<OperationalAlertName, { until: number; suppressed: number }>();
 
 // T42: with ALERT_WEBHOOK_URL set, each alert is also POSTed there as JSON

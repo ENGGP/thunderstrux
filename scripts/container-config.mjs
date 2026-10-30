@@ -81,12 +81,19 @@ export function validateHostedConfig(config) {
       if (!service.environment?.[variable]) throw new Error(`${worker} is missing ${variable}`);
     }
   }
-  // PAY-024, DEF-065: these two settle payments and refunds with Stripe and queue
-  // the buyer's notice in the same transaction, so a notice that can't be queued
-  // rolls the money step back. The sweep then leaves a paid order pending, and a
-  // refund made at Stripe reads as failed.
-  for (const worker of ["stale-order-worker", "compensation-worker"]) {
-    for (const variable of ["STRIPE_SECRET_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE"]) {
+  // PAY-024, DEF-065: the stale-order and refunds jobs settle payments and refunds
+  // with Stripe and queue the buyer's notice in the same transaction, so a notice
+  // that can't be queued rolls the money step back: the sweep leaves a paid order
+  // pending, and a refund made at Stripe reads as failed.
+  const workerSecrets = {
+    "email-worker": ["RESEND_API_KEY_FILE"],
+    "notification-worker": ["RESEND_API_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE"],
+    "stale-order-worker": ["STRIPE_SECRET_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE"],
+    "compensation-worker": ["STRIPE_SECRET_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE"],
+    "checkout-recovery-worker": ["STRIPE_SECRET_KEY_FILE"]
+  };
+  for (const [worker, variables] of Object.entries(workerSecrets)) {
+    for (const variable of variables) {
       if (!requireService(config, worker).environment?.[variable]) throw new Error(`${worker} is missing ${variable}`);
     }
   }

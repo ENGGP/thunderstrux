@@ -430,7 +430,7 @@ Never present a raw invitation token in management UI. Prevent removal of the la
 
 ### 4.15 J15 - OpenClaw assists without bypassing normal controls
 
-> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. `lib/permissions` has no OpenClaw permission; add one when it is scheduled.
 
 `Authorised staff -> OpenClaw -> guided prompt/action -> citations/preview of proposed changes -> Confirm or Cancel -> reauthorise -> service action -> durable receipt.`
 
@@ -973,7 +973,7 @@ Preview uses an authorised read path plus **DRAFT PREVIEW** watermark and disabl
 
 ### ORG-18 - OpenClaw workspace
 
-> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. `lib/permissions` has no OpenClaw permission; add one when it is scheduled.
 
 - **Layout:** scoped society banner; short examples, e.g. "List events next month", "Explain why our event cannot publish", "Summarise attendance", "Create an event draft". Conversation view + source/action panel.
 - **Answer state:** loading, cited scoped information with data as-of, insufficient permission, provider unavailable, unsupported action.
@@ -1149,7 +1149,7 @@ Each receipt/detail page shows safe order reference, society seller, contact inf
 | Connect/disconnect Stripe | - | - | - | C with `stripe:manage` | - | C only if explicit | - | - |
 | OpenClaw controlled proposals | - | - | - | C | C | C | C only actions permitted | C only actions permitted |
 
-**Interpretation:** Columns describe **typical** role configuration, not a hard-coded permission table. Canonical decisions use live `rolePermissions`, MFA enforcement, scoped organisation, and explicit capabilities (T05): `organisation:settings`, `members:read/manage`, `memberships:manage`, `merchandise:manage/fulfil`, `analytics:read`, `orders:refund`, `audit:read`, `openclaw:use`, etc. Do not assume every owner or finance actor can take every action without the required live grant.
+**Interpretation:** Columns describe **typical** role configuration, not a hard-coded permission table. Canonical decisions use live `rolePermissions`, MFA enforcement, scoped organisation, and explicit capabilities (T05): `organisation:settings`, `members:read/manage`, `memberships:manage`, `merchandise:manage/fulfil`, `analytics:read`, `orders:refund`, `audit:read`, etc. Do not assume every owner or finance actor can take every action without the required live grant.
 
 ### 11.1 Route and data defence
 

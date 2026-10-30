@@ -377,7 +377,7 @@ The task blocks below keep their original wave headings; the table above decides
 
 ### Wave 7: OpenClaw (Package 11)
 
-> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. `lib/permissions` has no OpenClaw permission; add one when it is scheduled.
 
 - **T35: action registry.** `lib/actions` holds the nine actions with strict schemas, permissions, tenant resolution, preview and execution through the same services as the UI; reads minimise personal data and respect finance permission. Validate (High): baseline.
 - **T36: proposals and receipts.** Migration `action_proposals`: `ActionProposal` and `ActionExecution`; preview, confirm and cancel APIs with origin, CSRF, MFA and limits; ten-minute expiry; mutation, audit and receipt commit together; a replay returns the stored receipt. Validate (High): baseline, `pnpm ops:test`.

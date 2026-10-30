@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { eventChangeDelayMs, fanOutEventChanges } from "@/lib/events/event-changes";
 import { queueMembershipNotices } from "@/lib/memberships/reminders";
+import { cleanUpExpiredTokens, tokenRetentionMs } from "@/lib/security/token-cleanup";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { renderPage } from "@/tests/helpers/render";
@@ -175,6 +176,26 @@ describe("notification matrix (T30)", () => {
     expect(reminder.text).toContain("turn off renewal reminders in Account settings");
     expect(reminder.text).toContain("http://localhost:3000/memberships");
     expect(read(jobs[0]).text).toContain("its member benefits have stopped");
+  });
+
+  // The reminder query dedupes on the row itself, so the row must outlive the week it could send in (SEC-043).
+  test("a membership notice isn't sent again once retention deletes its row: each window closes well before that", async () => {
+    const { organisation } = await createOrganisationAccount();
+    const now = new Date();
+    const grant = async (endsIn: number) => {
+      const holder = await createMember();
+      return createMembershipGrant(organisation.id, holder.id, holder.email, { startsAt: new Date(now.getTime() - 60 * day), endsAt: new Date(now.getTime() + endsIn * day), grantedAt: new Date(now.getTime() - 60 * day) });
+    };
+    // The longest each key can stay due: a reminder written on its first day, an expiry notice on its first.
+    await grant(7);
+    await grant(-1 / 24);
+    expect(await queueMembershipNotices(now)).toBe(2);
+    await prisma.notificationOutbox.updateMany({ data: { status: "sent", acceptedAt: now } });
+
+    const after = new Date(Date.now() + tokenRetentionMs + 60_000);
+    expect(await cleanUpExpiredTokens(after)).toMatchObject({ notifications: 2 });
+    expect(await queueMembershipNotices(after)).toBe(0);
+    expect(await prisma.notificationOutbox.count()).toBe(0);
   });
 
   test("Account settings turns renewal reminders off and on; the route refuses other fields, foreign origins and signed-out callers", async () => {

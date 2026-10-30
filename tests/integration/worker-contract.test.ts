@@ -119,14 +119,26 @@ describe("worker contract (T42)", () => {
     expect(events(warn)).toContain("ops.alert.delivery_failed");
   });
 
-  test("a run past its timeout is stopped, alerted and the process told to exit", async () => {
-    const { error } = quiet();
+  test("a run past its timeout is stopped, alerted and the process told to exit; its lease holds until it lapses, so no run overlaps it (DEF-070)", async () => {
+    const { error, warn } = quiet();
     const exit = vi.fn();
-    expect(await run("stale-orders", () => new Promise(() => {}), { timeoutMs: 50, exit })).toBe("timed_out");
+    expect(await run("stale-orders", () => new Promise(() => {}), { timeoutMs: 50, leaseGraceMs: 2000, exit })).toBe("timed_out");
     expect(exit).toHaveBeenCalledWith(1);
     expect(events(error)).toEqual(expect.arrayContaining(["worker.timed_out", "worker_timed_out"]));
-    // Its lease is released, so the next scheduled run isn't blocked.
-    expect((await prisma.workerLease.findUniqueOrThrow({ where: { name: "stale-orders" } })).holder).toBeNull();
+    // The failure is recorded, and the lease stays: the job may still be running.
+    expect(await prisma.workerLease.findUniqueOrThrow({ where: { name: "stale-orders" } })).toMatchObject({
+      holder: expect.any(String), leasedUntil: expect.any(Date), lastFailedAt: expect.any(Date), lastError: expect.stringContaining("ran past 50 ms")
+    });
+
+    const next = vi.fn(async () => {});
+    expect(await run("stale-orders", next)).toBe("skipped_running");
+    expect(next).not.toHaveBeenCalled();
+
+    // It lapses by itself: the next run then starts and takes it over.
+    await vi.waitFor(async () => expect(await run("stale-orders", next)).toBe("succeeded"), { timeout: 5000, interval: 200 });
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(events(warn)).toContain("worker.lease_reclaimed");
+    expect(await prisma.workerLease.findUniqueOrThrow({ where: { name: "stale-orders" } })).toMatchObject({ holder: null, leasedUntil: null, lastError: null });
   });
   test("a run's timeout is five minutes unless set, and a setting outside 10 seconds to an hour is refused", () => {
     expect(workerTimeoutMs()).toBe(DEFAULT_WORKER_TIMEOUT_MS);

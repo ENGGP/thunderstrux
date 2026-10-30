@@ -338,7 +338,7 @@ Analytics should be practical rather than overwhelming. The goal is to help soci
 
 ## 6.12 AI Agent Assistance: OpenClaw
 
-> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. `lib/permissions` has no OpenClaw permission; add one when it is scheduled.
 
 Thunderstrux should include an AI assistant concept, OpenClaw, that helps users navigate and operate the platform.
 

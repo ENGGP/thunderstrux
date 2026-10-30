@@ -2,13 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { EmailOutboxMode, EmailOutboxStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
+  EmailRateLimitError,
+  emailRunBudgetMs,
   sendTicketDeliveryEmailToProvider,
   ticketEmailRefusal,
   ticketEmailRefusalSelect,
   truncateTicketEmailError
 } from "@/lib/email/ticket-delivery";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
-import { logError, logInfo } from "@/lib/ops/logger";
+import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
 import {
   appendOrderLifecycleEvent,
@@ -484,6 +486,19 @@ async function markJobAlreadySent(job: ClaimedEmailJob, now: Date) {
   });
 }
 
+// A 429: the job and whatever else was claimed go back unsent, attempts untouched.
+async function releaseRateLimitedJobs(jobs: ClaimedEmailJob[], retryAfterMs: number) {
+  await prisma.emailOutbox.updateMany({
+    where: {
+      id: { in: jobs.map((job) => job.id) },
+      status: "processing",
+      processingToken: { in: jobs.map((job) => job.processingToken) }
+    },
+    data: { status: "pending", nextAttemptAt: new Date(Date.now() + retryAfterMs), processingStartedAt: null, processingToken: null }
+  });
+  logWarn("email_outbox.rate_limited", { released: jobs.length, retryAfterMs });
+}
+
 export async function processTicketEmailOutboxBatch({
   limit = getEmailOutboxBatchSize(),
   now = new Date(),
@@ -495,20 +510,38 @@ export async function processTicketEmailOutboxBatch({
   maxAttempts?: number;
   processingTimeoutSeconds?: number;
 } = {}) {
-  const jobs = await claimTicketEmailOutboxJobs({
-    limit,
-    now,
-    processingTimeoutSeconds
-  });
   const result = {
-    claimed: jobs.length,
+    claimed: 0,
     sent: 0,
     retried: 0,
     failed: 0,
-    skipped: 0
+    skipped: 0,
+    rateLimited: 0
   };
+  const started = Date.now();
 
-  for (const job of jobs) {
+  while (result.rateLimited === 0 && Date.now() - started < emailRunBudgetMs) {
+    const jobs = await claimTicketEmailOutboxJobs({
+      limit,
+      now,
+      processingTimeoutSeconds
+    });
+    if (jobs.length === 0) break;
+    result.claimed += jobs.length;
+    await sendClaimedJobs(jobs, result, { now, maxAttempts });
+  }
+
+  logInfo("email_outbox.batch.processed", result);
+
+  return result;
+}
+
+async function sendClaimedJobs(
+  jobs: ClaimedEmailJob[],
+  result: Record<"sent" | "retried" | "failed" | "skipped" | "rateLimited", number>,
+  { now, maxAttempts }: { now: Date; maxAttempts: number }
+) {
+  for (const [index, job] of jobs.entries()) {
     try {
       const order = await prisma.order.findUnique({
         where: { id: job.orderId },
@@ -540,6 +573,11 @@ export async function processTicketEmailOutboxBatch({
           attempt: job.attempts
         });
       } catch (error) {
+        if (error instanceof EmailRateLimitError) {
+          await releaseRateLimitedJobs(jobs.slice(index), error.retryAfterMs);
+          result.rateLimited += jobs.length - index;
+          return;
+        }
         const failure = await markJobFailed({ job, error, now, maxAttempts });
         if (!failure.applied) result.skipped += 1;
         else if (failure.exhausted) result.failed += 1;
@@ -578,10 +616,6 @@ export async function processTicketEmailOutboxBatch({
       result.skipped += 1;
     }
   }
-
-  logInfo("email_outbox.batch.processed", result);
-
-  return result;
 }
 
 export async function ticketEmailJobExists(jobId: string, orderId: string) {

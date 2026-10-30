@@ -62,6 +62,8 @@ export function ProductForm({
   const [conflict, setConflict] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // State updates too late to stop a fast double click.
+  const submitting = useRef(false);
   const [upload, setUpload] = useState<{ busy: boolean; error?: string }>({ busy: false });
   const dirty = JSON.stringify(form) !== saved;
 
@@ -98,6 +100,7 @@ export function ProductForm({
 
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (submitting.current) return;
     const found: Record<string, string> = {};
     if (!form.name.trim()) found.name = "Give the product a name.";
     const variants = form.options.map((option, index) => {
@@ -113,6 +116,7 @@ export function ProductForm({
       setError("Fix the highlighted fields, then save.");
       return;
     }
+    submitting.current = true;
     setBusy(true);
     setErrors({});
     setError("");
@@ -129,16 +133,18 @@ export function ProductForm({
         setMessage("Product saved.");
         router.refresh();
       } else {
+        // Stays busy until the new page opens: a late click must not create it again.
         router.push(`/dashboard/merchandise/${response.product.id}`);
+        return;
       }
     } catch (failure) {
       const details = failure instanceof ClientApiError ? (failure.payload?.error?.details ?? []) : [];
       setErrors(Object.fromEntries(details.filter((detail) => detail.path?.length).map((detail) => [detail.path!.join("."), detail.message])));
       setConflict(failure instanceof ClientApiError && failure.status === 409 && /changed since you opened/.test(failure.payload?.error?.message ?? ""));
       setError(getClientErrorMessage(failure, "Unable to save the product."));
-    } finally {
-      setBusy(false);
     }
+    submitting.current = false;
+    setBusy(false);
   }
 
   const removeLabel = product?.everPublished ? "Stop selling" : "Remove";

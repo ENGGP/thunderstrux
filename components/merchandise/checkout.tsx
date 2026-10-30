@@ -3,7 +3,7 @@
 import { commerceHoldMinutes } from "@/lib/checkout-hold";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { GuestEmailForm } from "@/components/guest/guest-email-form";
 import { CheckoutShell } from "@/components/layout/checkout-shell";
 import { useBasket } from "@/components/merchandise/shop";
@@ -11,10 +11,10 @@ import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
-import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
+import { PhoneActionBar, useActionBelow } from "@/components/purchases/phone-action-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
-import { newKey, waitForAttempt, type CommerceCheckoutResponse } from "@/lib/client/checkout";
+import { useCheckout, type CheckoutResponse } from "@/lib/client/checkout";
 import { formatMoney, formatPrice, payLabel } from "@/lib/format";
 import { readBasket, writeBasket } from "@/lib/merchandise/basket";
 import type { Quote } from "@/lib/merchandise/shop";
@@ -49,11 +49,13 @@ export function MerchandiseCheckout({
   const { basket, ready } = useBasket();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState("");
-  const [state, setState] = useState<"idle" | "busy" | "confirming">("idle");
   const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
-  useResetOnRestore(() => setState("idle"));
   const [refusal, setRefusal] = useState<Refusal | null>(null);
-  const key = useRef<string | null>(null);
+  const { state, start } = useCheckout({
+    finished: (orderId) => router.push(`/merchandise/orders/${encodeURIComponent(orderId)}`),
+    slow: () => setRefusal({ title: "Still confirming", body: "Stripe hasn't answered yet. You won't be charged twice; try again in a minute." }),
+    refused: (failure) => setRefusal(refusalFor(failure))
+  });
   const lines = basket && basket.society === society.slug ? basket.lines : null;
   const linesKey = JSON.stringify(lines);
   const basketHref = `/societies/${society.slug}/merchandise/basket`;
@@ -78,41 +80,18 @@ export function MerchandiseCheckout({
     if (ready) void requote();
   }, [ready, requote]);
 
-  const finished = (orderId: string) => router.push(`/merchandise/orders/${encodeURIComponent(orderId)}`);
-
-  async function pay(current: Quote) {
+  function pay(current: Quote) {
     setRefusal(null);
-    setState("busy");
-    key.current ??= newKey();
-    try {
-      const data = await fetchJson<CommerceCheckoutResponse>("/api/payments/checkout/merchandise", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...(guestCsrf ? { "x-thunderstrux-guest-csrf": guestCsrf } : {}) },
-        body: JSON.stringify({
-          organisationId,
-          selection: { items: current.lines.map((line) => ({ variantId: line.variantId, quantity: line.quantity })), quoteVersion: current.version },
-          expectedTotal: current.total,
-          idempotencyKey: key.current
-        })
-      });
-      if ("kind" in data && data.kind === "fulfilled") return finished(data.commerceOrderId);
-      if ("kind" in data && data.kind === "stripe") {
-        window.location.href = data.url;
-        return;
-      }
-      setState("confirming");
-      const outcome = await waitForAttempt(data.attemptId);
-      if (outcome === "slow") {
-        setState("idle");
-        setRefusal({ title: "Still confirming", body: "Stripe hasn't answered yet. You won't be charged twice; try again in a minute." });
-      } else if ("url" in outcome) window.location.href = outcome.url;
-      else finished(outcome.orderId);
-    } catch (failure) {
-      setState("idle");
-      // A server answer settles this intent; a lost response keeps the key so a retry finds the same checkout.
-      if (failure instanceof ClientApiError) key.current = null;
-      setRefusal(refusalFor(failure));
-    }
+    return start((idempotencyKey) => fetchJson<CheckoutResponse>("/api/payments/checkout/merchandise", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(guestCsrf ? { "x-thunderstrux-guest-csrf": guestCsrf } : {}) },
+      body: JSON.stringify({
+        organisationId,
+        selection: { items: current.lines.map((line) => ({ variantId: line.variantId, quantity: line.quantity })), quoteVersion: current.version },
+        expectedTotal: current.total,
+        idempotencyKey
+      })
+    }));
   }
 
   function refusalFor(failure: unknown): Refusal {

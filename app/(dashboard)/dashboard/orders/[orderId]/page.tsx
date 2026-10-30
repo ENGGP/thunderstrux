@@ -256,6 +256,7 @@ export default async function OrganisationOrderDetailPage({
         }
         heading="Order history"
         note={lifecycle.historyIncomplete ? "This order predates lifecycle history. Earlier activity may not be shown." : undefined}
+        timeZone={timeZone}
       />
     </DashboardShell>
   );

@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Locator, type Page, type Request } from '@playwright/test';
 import { createClient } from '@redis/client';
 import { prisma } from '@/lib/db';
 import { createEvent, createMember, createOrganisationAccount, createOrganisationStaff } from '@/tests/helpers/test-data';
@@ -51,6 +51,21 @@ export async function login(page: Page, email: string, callback = '/dashboard') 
 }
 
 export { expect, prisma, createEvent, createMember, createOrganisationAccount, createOrganisationStaff };
+
+// A fast double click can submit twice before React disables the button. Two
+// submits in one tick must send one request.
+export async function submitTwice(page: Page, form: Locator, path: string) {
+  const posted = (request: Request) => request.method() === 'POST' && new URL(request.url()).pathname === path;
+  let sent = 0;
+  const count = (request: Request) => { if (posted(request)) sent += 1; };
+  page.on('request', count);
+  await Promise.all([
+    page.waitForResponse((response) => posted(response.request())),
+    form.evaluate((element: HTMLFormElement) => { element.requestSubmit(); element.requestSubmit(); })
+  ]);
+  page.off('request', count);
+  expect(sent).toBe(1);
+}
 
 export async function selectStaffContext(page: Page, organisationId: string) {
   const { token } = await (await page.request.get('/api/security/csrf')).json();

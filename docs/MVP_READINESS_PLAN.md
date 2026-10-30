@@ -276,7 +276,7 @@ Each substep is High risk; select local regression, migration and operations cov
 Implementation acceptance (2026-10-09): explicit signed login-bound personal/staff selection, live tenant/role/MFA checks, role-filtered responsive navigation, financial analytics separation and owner-only owner changes. High risk: Docker baseline (build/typecheck/full integration/audit) and full browser campaign required. No schema change; rollout requires independent security review; rollback reverts app only. Future capability names reserve policy for later packages; they do not implement those products.
 
 - [x] Complete. **Dependencies:** T04.
-- **Code:** Extend lib/permissions/index.ts and auth/access/page-access. Add organisation:settings, members:read/manage, memberships:manage, merchandise:manage/fulfil, analytics:read, orders:refund, audit:read, openclaw:use.
+- **Code:** Extend lib/permissions/index.ts and auth/access/page-access. Add organisation:settings, members:read/manage, memberships:manage, merchandise:manage/fulfil, analytics:read, orders:refund, audit:read.
 - **Policy/UI:** Owner/admin management; event manager events/attendance/nonfinancial event analytics; finance financial reads/refunds/analytics; check-in staff attendance only. Personal/staff mode and selector use live authorized societies; no member bootstrap tenant. Separate profile settings from stripe:manage; nav capability-filtered but APIs independently checked.
 - **Tests/done:** Every role/action, fake headers/join roles, multi-society selection, same-session revoke/downgrade, MFA and foreign concealment pass. Named member staff can return to personal tickets.
 
@@ -587,7 +587,7 @@ The specification-alignment refactor (2026-10-12) moved the directory and profil
 
 ### OpenClaw controlled product actions
 
-> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. `lib/permissions` has no OpenClaw permission; add one when it is scheduled.
 
 #### T35 — Typed action registry shared with normal services
 - [ ] Complete. **Dependencies:** T05, T11, T24, T28, T31, T34.

@@ -148,7 +148,7 @@ Not rate limited: public reads (abusive read volume belongs to the hosting edge)
 
 ## Tokens at rest
 
-Sign-in, reset, verification and email-change tokens, guest access grants and staff MFA grants are stored as digests and expire. The stale-orders worker deletes MFA grants at expiry (`deleteExpiredMfaGrants`, 500 a run); the notification worker deletes auth tokens, guest grants and MFA grants 30 days past expiry, 500 of each a run, and logs `security.tokens.cleaned` ([[Production Operations]]).
+Sign-in, reset, verification and email-change tokens, guest access grants and staff MFA grants are stored as digests and expire. The stale-orders worker deletes MFA grants at expiry (`deleteExpiredMfaGrants`, 500 a run); the notification worker deletes auth tokens, guest grants and MFA grants 30 days past expiry, and finished notifications 30 days after they finished ([[Email Delivery Implementation#Retention]]), 500 of each a run, and logs `security.tokens.cleaned` ([[Production Operations]]).
 
 ## Per-route checks
 

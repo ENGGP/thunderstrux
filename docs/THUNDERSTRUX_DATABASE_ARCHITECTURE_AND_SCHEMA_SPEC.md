@@ -246,7 +246,7 @@ This diagram deliberately omits helper tables, state ledgers, payment-related as
 **Preserve** existing staff/invite/MFA model names and permission tables after inspection. Target relational facts:
 
 - Staff: `organisationId`, `userId`, role / status, invited/accepted/deactivated times, actor, version; unique active association under current policy; cannot remove the last active owner.
-- Permission mapping: role-to-capability **canonical server policy**, not arbitrary user-provided capability lists. Capability groups include `organisation:settings`, `members:read/manage`, `memberships:manage`, `merchandise:manage/fulfil`, `analytics:read`, `orders:refund`, `audit:read`, `openclaw:use`, and existing event/ticket/stripe permissions. Check actual role-capability implementation before any permission migration.
+- Permission mapping: role-to-capability **canonical server policy**, not arbitrary user-provided capability lists. Capability groups include `organisation:settings`, `members:read/manage`, `memberships:manage`, `merchandise:manage/fulfil`, `analytics:read`, `orders:refund`, `audit:read`, and existing event/ticket/stripe permissions. Check actual role-capability implementation before any permission migration.
 - Invitation: tenant, target normalised email, invited role, digest-only versioned token, expiry, revoked/accepted state, inviter and acceptance user. Resend invalidates older version. Accept only matching *verified* user; concurrency must not create two roles or bypass owner rules.
 - MFA: enrolment/key/recovery state encrypted as existing implementation requires; separate MFA grant from staff role. Revocation/ownership transfer enforce live MFA and owner-count checks.
 - Committee handover: immutable history recording outgoing/incoming owner, reason, authorised actor, state versions and audit; **no transfer of shared passwords** or historical ownership of external payments by editing buyer data.
@@ -795,7 +795,7 @@ Persist unresolved provider/compensation/refund status across restarts. Recover 
 
 # 13. OpenClaw typed actions, authorisation and durable confirmations [PLAN T35-T37]
 
-> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. `lib/permissions` has no OpenClaw permission; add one when it is scheduled.
 
 ## 13.1 AI is never direct database authority
 

@@ -16,7 +16,7 @@ sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, 
 
 | Concern | Where |
 | --- | --- |
-| Client, live-key fence, webhook secrets | `lib/stripe/index.ts`: `getStripe`, `isLiveStripeKey`, `getStripeWebhookSecret`, `getStripeConnectWebhookSecret`, `StripeConfigurationError` |
+| Client, live-key fence, webhook secrets | `lib/stripe/index.ts`: `getStripe`, `isLiveStripeKey`, `getStripeWebhookSecret`, `getStripeConnectWebhookSecret`, `getStripeAccountsWebhookSecret`, `StripeConfigurationError` |
 | API version pin and mismatch alert | `lib/stripe/version.ts`: `stripeApiVersion`, `warnOnVersionMismatch` |
 | Connect accounts, status, dashboard link, disconnect | `lib/stripe/connect.ts` |
 | Connect error to HTTP mapping | `lib/stripe/http.ts`: `connectRouteRules` |

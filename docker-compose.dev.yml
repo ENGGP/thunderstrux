@@ -65,8 +65,8 @@ services:
     command: ["node", "scripts/every-minute.mjs", "scripts/process-stale-orders.mjs"]
 
   # Opt-in Stripe webhooks for dev: `docker compose -f docker-compose.yml
-  # -f docker-compose.dev.yml --profile stripe up -d stripe-listener`. Put the
-  # whsec_ it logs in both webhook secrets in .env, then `pnpm docker:restart`.
+  # -f docker-compose.dev.yml --profile stripe up -d`. Put the whsec_ it logs in
+  # all three webhook secrets in .env, then `pnpm docker:restart`.
   # --latest: events on the app's pinned API version.
   stripe-listener:
     image: stripe/stripe-cli:v1.53.1@sha256:11c46caeead82e329f14823dd622d494b4cc8c1b9766f724d122d2af42c97540
@@ -74,7 +74,17 @@ services:
     restart: unless-stopped
     environment:
       STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-}
-    command: [listen, --latest, --events, 'checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated', --forward-to, 'http://app:3000/api/payments/webhook', --forward-connect-to, 'http://app:3000/api/stripe/connect/webhook']
+    command: [listen, --latest, --events, 'checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated', --forward-to, 'http://app:3000/api/payments/webhook', --forward-connect-to, 'http://app:3000/api/stripe/connect/webhook']
+
+  # PAY-023: Accounts v2 thin events, to their own route. Same profile and
+  # signing secret as stripe-listener; put it in STRIPE_ACCOUNTS_WEBHOOK_SECRET too.
+  stripe-accounts-listener:
+    image: stripe/stripe-cli:v1.53.1@sha256:11c46caeead82e329f14823dd622d494b4cc8c1b9766f724d122d2af42c97540
+    profiles: ["stripe"]
+    restart: unless-stopped
+    environment:
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-}
+    command: [listen, --events, 'v2.core.account.closed,v2.core.account[identity].updated,v2.core.account[requirements].updated,v2.core.account[configuration.merchant].updated,v2.core.account[configuration.merchant].capability_status_updated,v2.core.account[configuration.recipient].updated,v2.core.account[configuration.recipient].capability_status_updated', --forward-to, 'http://app:3000/api/stripe/accounts/webhook']
 
 volumes:
   node_modules:

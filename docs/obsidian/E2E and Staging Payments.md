@@ -106,7 +106,7 @@ Events fetched back from Stripe's API carry the account's default version, so on
 | `commerce-outside-refund` | $15.00 of a merchandise order refunded outside Thunderstrux; recorded, marked reviewed, the app refunds only the remaining $40.00 |
 | `commerce-compensation` | merchandise order expired locally (the same way), paid anyway: nothing fulfilled, stock unchanged, refunded in full by the worker |
 
-Unpaid Sessions are explicitly expired through Stripe; natural timeout is never observed. Connect webhooks (`account.updated`, `payout.*`) are not forwarded by the listener.
+Unpaid Sessions are explicitly expired through Stripe; natural timeout is never observed. Connect webhooks (`payout.*`) and Accounts v2 events are not forwarded by the listener; the run's connected account is onboarded beforehand, and preflight checks it through Accounts v2 (merchant `card_payments` and recipient `stripe_transfers` active, terms accepted).
 
 **Email and storage evidence:** run-owned users get `delivered+<run-id>-<scenario>-<role>@resend.dev`, which Resend accepts without a verified domain and no inbox receives. Ticket receipts go to Resend; account and guest notifications stay in mail capture (the guest scenario reads its link there). Captured mail proves what the app would send; Resend acceptance proves the provider took it; inbox delivery needs a verified sending domain and is not observed here (H03).
 

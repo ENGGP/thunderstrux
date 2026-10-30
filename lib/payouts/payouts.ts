@@ -22,12 +22,13 @@ export const smallPayoutAfterMs = 7 * 24 * 60 * 60 * 1000;
 
 // Manual payouts keep the money in Stripe until we send it; a negative balance
 // (a refund after a payout) is taken from the society's bank, not left to us.
-export const manualPayoutSettings = { payouts: { schedule: { interval: "manual" as const }, debit_negative_balances: true } };
+// Set through Balance Settings, the payout settings of Accounts v2 (PAY-023).
+export const manualPayoutSettings = { payments: { payouts: { schedule: { interval: "manual" as const } }, debit_negative_balances: true } };
 
 async function ensureManualPayouts(stripe: Stripe, accountId: string) {
-  const account = await stripe.accounts.retrieve(accountId);
-  if (account.settings?.payouts?.schedule?.interval === "manual" && account.settings.payouts.debit_negative_balances) return;
-  await stripe.accounts.update(accountId, { settings: manualPayoutSettings });
+  const settings = await stripe.balanceSettings.retrieve({}, { stripeAccount: accountId });
+  if (settings.payments?.payouts?.schedule?.interval === "manual" && settings.payments.debit_negative_balances) return;
+  await stripe.balanceSettings.update(manualPayoutSettings, { stripeAccount: accountId });
   logInfo("payouts.switched_to_manual", { stripeAccountId: accountId });
 }
 
@@ -40,7 +41,7 @@ export async function keepStripePayoutsManual(accountId: string) {
 // On disconnect: Stripe pays out what's left on its usual schedule, so no money
 // waits for a worker that no longer looks at this account.
 export async function restoreStripePayoutSchedule(accountId: string) {
-  await getStripe().accounts.update(accountId, { settings: { payouts: { schedule: { interval: "daily" } } } });
+  await getStripe().balanceSettings.update({ payments: { payouts: { schedule: { interval: "daily" } } } }, { stripeAccount: accountId });
   logInfo("payouts.switched_to_stripe_schedule", { stripeAccountId: accountId });
 }
 

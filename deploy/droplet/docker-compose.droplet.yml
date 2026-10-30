@@ -125,6 +125,9 @@ secrets:
   stripe_connect_webhook_secret:
     <<: *secret-file
     file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/stripe_connect_webhook_secret
+  stripe_accounts_webhook_secret:
+    <<: *secret-file
+    file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/stripe_accounts_webhook_secret
   resend_api_key:
     <<: *secret-file
     file: ${THUNDERSTRUX_SECRETS_DIR:-/etc/thunderstrux/secrets}/resend_api_key

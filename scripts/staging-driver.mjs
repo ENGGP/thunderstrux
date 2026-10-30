@@ -54,8 +54,9 @@ async function preflight() {
   if (savedIdentity) assertStripeIdentity(savedIdentity, identity);
   else await writeFile('/app/test-results/private-identity.json', JSON.stringify(identity), {mode: 0o600});
   if (action === 'cleanup') return true;
-  const connected = await stripe.accounts.retrieve(account);
-  assert(connected.charges_enabled && connected.details_submitted && connected.capabilities?.card_payments === 'active' && connected.capabilities?.transfers === 'active', 'Connected account is not ready');
+  // PAY-023: ready as the app reads it, capability by capability through Accounts v2.
+  const connected = await stripe.v2.core.accounts.retrieve(account, {include: ['configuration.merchant', 'configuration.recipient', 'identity']});
+  assert(connected.identity?.attestations?.terms_of_service?.account?.date && connected.configuration?.merchant?.capabilities?.card_payments?.status === 'active' && connected.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers?.status === 'active', 'Connected account is not ready');
   return true;
 }
 

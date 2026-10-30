@@ -11,7 +11,7 @@ import {
   StripeConfigurationError
 } from "@/lib/stripe";
 import { reconcilePayoutEvent } from "@/lib/payouts/payouts";
-import { notifyPayoutAccountChanged, refreshConnectedAccount } from "@/lib/stripe/connect";
+import { notifyPayoutAccountChanged } from "@/lib/stripe/connect";
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -85,23 +85,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, ignored: "mode_mismatch" });
   }
 
-  if (event.type === "account.updated") {
-    const accountId = (event.data.object as Stripe.Account).id;
-    // If Stripe can't answer, the 500 makes it retry.
-    const update = await refreshConnectedAccount(accountId);
-
-    if (update.count === 0) {
-      logError("stripe_connect.webhook.ignored", {
-        reason: "stripe_account_not_found",
-        stripeAccountId: accountId
-      });
-    } else {
-      logInfo("stripe_connect.webhook.received", {
-        stripeAccountId: accountId,
-        updatedOrganisations: update.count
-      });
-    }
-  }
+  // PAY-023: account changes arrive as v2 thin events at /api/stripe/accounts/webhook.
 
   // PAY-005: payouts from a society's balance to its bank. payout.created records a
   // payout Stripe made despite an error the worker saw, so its one-a-day check sees it.

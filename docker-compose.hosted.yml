@@ -52,6 +52,7 @@ services:
       STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
       STRIPE_WEBHOOK_SECRET_FILE: /run/secrets/stripe_webhook_secret
       STRIPE_CONNECT_WEBHOOK_SECRET_FILE: /run/secrets/stripe_connect_webhook_secret
+      STRIPE_ACCOUNTS_WEBHOOK_SECRET_FILE: /run/secrets/stripe_accounts_webhook_secret
       RESEND_API_KEY_FILE: /run/secrets/resend_api_key
       EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
       # Optional: the Help and Privacy pages name it once set (T46).
@@ -68,6 +69,7 @@ services:
       - stripe_secret_key
       - stripe_webhook_secret
       - stripe_connect_webhook_secret
+      - stripe_accounts_webhook_secret
       - resend_api_key
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
@@ -256,6 +258,9 @@ secrets:
   stripe_connect_webhook_secret:
     external: true
     name: ${STRIPE_CONNECT_WEBHOOK_SECRET_NAME:-thunderstrux_stripe_connect_webhook_secret}
+  stripe_accounts_webhook_secret:
+    external: true
+    name: ${STRIPE_ACCOUNTS_WEBHOOK_SECRET_NAME:-thunderstrux_stripe_accounts_webhook_secret}
   resend_api_key:
     external: true
     name: ${RESEND_API_KEY_SECRET_NAME:-thunderstrux_resend_api_key}

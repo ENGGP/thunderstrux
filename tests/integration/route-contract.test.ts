@@ -13,12 +13,14 @@ const ownErrorContract: Record<string, string> = {
   "health/ready": "readiness reports dependency status itself",
   "security/csrf": "issues a token and cannot fail on input",
   "payments/webhook": "Stripe expects its own status codes",
-  "stripe/connect/webhook": "Stripe expects its own status codes"
+  "stripe/connect/webhook": "Stripe expects its own status codes",
+  "stripe/accounts/webhook": "Stripe expects its own status codes"
 };
 const noOriginCheck: Record<string, string> = {
   "auth/[...nextauth]": "Auth.js checks its own CSRF token",
   "payments/webhook": "signed by Stripe",
   "stripe/connect/webhook": "signed by Stripe",
+  "stripe/accounts/webhook": "signed by Stripe",
   "merchandise/quote": "a read: prices a basket and changes nothing"
 };
 

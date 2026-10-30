@@ -82,8 +82,8 @@ for (const mismatch of ['amount', 'currency', 'metadata']) {
 }
 
 // A known account is re-read from Stripe, which this synthetic key can't reach;
-// connect-safety.test.ts covers that update with Stripe mocked.
-test('Connect verifies its own secret and ignores an account it does not know', async ({request, data}) => {
+// stripe-connect-service.test.ts covers that with Stripe mocked.
+test('Connect and Accounts v2 webhooks verify their own secrets and ignore an account they do not know', async ({request, data}) => {
   const accountId = `acct_${data.organisation.id}`;
   await prisma.organisation.update({where: {id: data.organisation.id}, data: {stripeAccountId: accountId}});
   const account = {id: accountId, object: 'account', details_submitted: true, charges_enabled: true, payouts_enabled: true, requirements: {currently_due: [], eventually_due: []}};
@@ -94,6 +94,13 @@ test('Connect verifies its own secret and ignores an account it does not know', 
   expect(before.stripeChargesEnabled).toBe(false);
   const unknown = payload({...account, id: 'acct_unknown'}, 'account.updated');
   expect((await send(unknown, stripe.webhooks.generateTestHeaderString({payload: unknown, secret: 'whsec_e2e_connect'}))).status()).toBe(200);
+  // PAY-023: account changes are Accounts v2 thin events, on their own route and secret.
+  const thin = (id: string) => JSON.stringify({id: `evt_${id}_${Date.now()}`, object: 'v2.core.event', type: 'v2.core.account[requirements].updated', livemode: false, created: new Date().toISOString(), related_object: {id, type: 'v2.core.account', url: `/v2/core/accounts/${id}`}});
+  const sendThin = (text: string, signature: string) => request.post('/api/stripe/accounts/webhook', {data: text, headers: {'stripe-signature': signature}});
+  const known = thin(accountId);
+  for (const other of [secret, 'whsec_e2e_connect']) expect((await sendThin(known, stripe.webhooks.generateTestHeaderString({payload: known, secret: other}))).status()).toBe(400);
+  const stranger = thin('acct_unknown');
+  expect((await sendThin(stranger, stripe.webhooks.generateTestHeaderString({payload: stranger, secret: 'whsec_e2e_accounts'}))).status()).toBe(200);
   expect(await prisma.organisation.findUniqueOrThrow({where: {id: data.organisation.id}})).toEqual(before);
 });
 

@@ -62,7 +62,7 @@ sources: [prisma/schema.prisma, lib/permissions/index.ts, lib/tickets/reservatio
 | Outside refund | A refund made in Stripe's dashboard, recorded as `externalRefundedAmount` and `external_refund_recorded` | [[Payment Lifecycle Refunds and Disputes]] |
 | Dispute, chargeback | `PurchaseDispute` (`OrderDisputeStatus` on the order); a lost one queues a transfer reversal (`DisputeReversalStatus`) | [[Payment Lifecycle Refunds and Disputes]] |
 | Payout | `SocietyPayout`: Thunderstrux pays a society's Stripe balance out after the event, at most once a society per UTC day; `heldMoney` in `lib/payouts/release.ts` | [[Stripe Payments and Connect]] |
-| Connect account | The society's Stripe Express account; destination charges with `on_behalf_of` | [[Stripe Payments and Connect#Connect account states]] |
+| Connect account | The society's Stripe account: Accounts v2 with the Express Dashboard and the merchant and recipient configurations (PAY-023); destination charges with `on_behalf_of` | [[Stripe Payments and Connect#Connect account states]] |
 | Purchases | The buyer's view of their orders (`lib/purchases/`, `/purchases`) | [[Frontend and Backend Flow]] |
 
 ## Memberships and merchandise

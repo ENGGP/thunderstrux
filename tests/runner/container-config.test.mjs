@@ -39,6 +39,7 @@ test("hosted contract requires external services, file secrets, and runtime hard
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "STRIPE_CONNECT_WEBHOOK_SECRET",
+    "STRIPE_ACCOUNTS_WEBHOOK_SECRET",
     "RESEND_API_KEY",
     "ALERT_WEBHOOK_URL"
   ].map((name) => [`${name}_FILE`, `/run/secrets/${name.toLowerCase()}`]));

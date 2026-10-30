@@ -53,6 +53,17 @@ export function getStripeConnectWebhookSecret() {
   return webhookSecret;
 }
 
+// PAY-023: the Accounts v2 event destination's signing secret.
+export function getStripeAccountsWebhookSecret() {
+  const webhookSecret = process.env.STRIPE_ACCOUNTS_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    throw new StripeConfigurationError("STRIPE_ACCOUNTS_WEBHOOK_SECRET is not configured");
+  }
+
+  return webhookSecret;
+}
+
 export function getAppUrl() {
   return appUrl() ?? "http://localhost:3000";
 }

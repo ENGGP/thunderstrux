@@ -201,7 +201,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET` `/api/payments/checkout/attempts/[attemptId]` | the attempt's own member or guest session |
 | `POST` `/api/purchases/tickets/[orderId]/cancel`, `/api/purchases/tickets/[orderId]/cancel-registration`, `/api/commerce/orders/[orderId]/cancel` | origin, buyer or guest session + guest CSRF, `checkout_create` |
 | `GET` `/api/purchases/tickets/[orderId]/status`, `/api/commerce/orders/[orderId]` | buyer or guest session; commerce also staff `orders:read` |
-| `POST` `/api/payments/webhook`, `/api/stripe/connect/webhook` | Stripe signature |
+| `POST` `/api/payments/webhook`, `/api/stripe/connect/webhook`, `/api/stripe/accounts/webhook` | Stripe signature |
 | `GET` `/api/public/events`, `/api/public/events/[eventId]`, `/api/public/organisations/search` | public |
 | `GET` `/api/public/assets/[assetId]` | public image, or a members-only event image to a member it is open to |
 | `POST` `/api/merchandise/quote` | public, no origin check (changes nothing) |

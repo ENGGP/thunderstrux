@@ -59,6 +59,7 @@ export function validateHostedConfig(config) {
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "STRIPE_CONNECT_WEBHOOK_SECRET",
+    "STRIPE_ACCOUNTS_WEBHOOK_SECRET",
     "RESEND_API_KEY",
     "ALERT_WEBHOOK_URL"
   ];

@@ -19,7 +19,8 @@ vi.mock("@/lib/stripe", async () => {
     isLiveStripeKey: () => false,
     getStripeConnectWebhookSecret: () => "whsec_payouts_test",
     getStripe: () => ({
-      accounts: { retrieve: stripe.account, update: stripe.update },
+      // PAY-023: payout settings are Balance Settings, as the connected account.
+      balanceSettings: { retrieve: stripe.account, update: stripe.update },
       balance: { retrieve: stripe.balance },
       payouts: { create: stripe.create, retrieve: stripe.payout },
       paymentIntents: { retrieve: stripe.intent },
@@ -29,7 +30,7 @@ vi.mock("@/lib/stripe", async () => {
   };
 });
 
-beforeEach(() => { stripe.account.mockResolvedValue({ settings: { payouts: { schedule: { interval: "manual" }, debit_negative_balances: true } } }); });
+beforeEach(() => { stripe.account.mockResolvedValue({ payments: { payouts: { schedule: { interval: "manual" } }, debit_negative_balances: true } }); });
 afterEach(() => { for (const mock of Object.values(stripe)) mock.mockReset(); });
 
 const day = 86_400_000;
@@ -230,10 +231,10 @@ describe("payouts worker", () => {
   test("a society still on Stripe's schedule is moved to manual payouts; less than $1.00 free waits", async () => {
     const fixture = await society();
     await ticketSale(fixture, 10 * day);
-    stripe.account.mockResolvedValue({ settings: { payouts: { schedule: { interval: "daily" }, debit_negative_balances: false } } });
+    stripe.account.mockResolvedValue({ payments: { payouts: { schedule: { interval: "daily" } }, debit_negative_balances: false } });
     stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 1836 + 99 }] });
     await processPayoutBatch(100, now);
-    expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: manualPayoutSettings });
+    expect(stripe.update).toHaveBeenCalledWith(manualPayoutSettings, { stripeAccount: fixture.accountId });
     expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
   });
 
@@ -332,7 +333,7 @@ describe("payouts worker", () => {
   test("on disconnect, Stripe goes back to paying the account out daily", async () => {
     const fixture = await society();
     await restoreStripePayoutSchedule(fixture.accountId);
-    expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: { payouts: { schedule: { interval: "daily" } } } });
+    expect(stripe.update).toHaveBeenCalledWith({ payments: { payouts: { schedule: { interval: "daily" } } } }, { stripeAccount: fixture.accountId });
   });
 });
 
@@ -384,13 +385,13 @@ describe("payout events", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const instant = { id: unique("po"), object: "payout", amount: 9000, currency: "aud", status: "pending", method: "instant", automatic: false, arrival_date: null, metadata: {} };
     stripe.payout.mockResolvedValue(instant);
-    stripe.account.mockResolvedValue({ settings: { payouts: { schedule: { interval: "daily" }, debit_negative_balances: true } } });
+    stripe.account.mockResolvedValue({ payments: { payouts: { schedule: { interval: "daily" } }, debit_negative_balances: true } });
     expect((await payoutEvent(fixture.accountId, instant, "payout.created")).status).toBe(200);
     await payoutEvent(fixture.accountId, instant, "payout.updated");
 
     const alerts = error.mock.calls.map(([line]) => JSON.parse(String(line))).filter((entry) => entry.event === "society_payout_unexpected");
     expect(alerts).toEqual([expect.objectContaining({ organisationId: fixture.organisationId, stripePayoutId: instant.id, amount: 9000, method: "instant", automatic: false })]);
-    expect(stripe.update).toHaveBeenCalledWith(fixture.accountId, { settings: manualPayoutSettings });
+    expect(stripe.update).toHaveBeenCalledWith(manualPayoutSettings, { stripeAccount: fixture.accountId });
     // Still recorded, so Payments lists it.
     expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: instant.id } })).toMatchObject({ organisationId: fixture.organisationId, amount: 9000 });
   });

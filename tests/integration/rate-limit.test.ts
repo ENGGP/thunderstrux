@@ -465,6 +465,28 @@ describe("rate-limited routes", () => {
     expect(nextAuthPost).not.toHaveBeenCalled();
   });
 
+  test("one account's sign-ins are capped across addresses (DEBT-002)", async () => {
+    vi.resetModules();
+    const nextAuthPost = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.doMock("@/auth", () => ({ handlers: { GET: vi.fn(), POST: nextAuthPost } }));
+    const rateLimit = await import("@/lib/security/rate-limit");
+    rateLimit.setRateLimitTestBackend(rateLimit.createTestRateLimitBackend());
+    rateLimit.setRateLimitTestBackendFailure(null);
+    rateLimit.setRateLimitTestEnabled(true);
+    const { POST } = await import("@/app/api/auth/[...nextauth]/route");
+    // Thirty attempts from other addresses already spent this account's hour.
+    const elsewhere = new Request("http://localhost/api/auth/callback/credentials", { method: "POST" });
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await expect(rateLimit.enforceRateLimit({ policy: "login_email", request: elsewhere, keyParts: ["target@example.com"] })).resolves.toBeNull();
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const signIn = (email: string) => POST(new NextRequest("http://localhost/api/auth/callback/credentials", { method: "POST", body: new URLSearchParams({ email, password: "wrong" }) }));
+    expect((await signIn(" Target@Example.com ")).status).toBe(429);
+    expect(nextAuthPost).not.toHaveBeenCalled();
+    expect((await signIn("someone-else@example.com")).status).toBe(401);
+  });
+
   test("an unknown reset token costs no password hash (SEC-019)", async () => {
     vi.resetModules();
     const hashMock = vi.fn(async () => "hashed-password");

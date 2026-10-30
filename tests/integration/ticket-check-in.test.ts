@@ -364,7 +364,7 @@ describe("ticket visibility and check-in API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await checkInTicket(
-      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in?eventId=${ticket.eventId}`, undefined, {
         method: "POST"
       }),
       routeContext({ ticketId: ticket.id })
@@ -429,7 +429,7 @@ describe("ticket visibility and check-in API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await checkInTicket(
-      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in?eventId=${ticket.eventId}`, undefined, {
         method: "POST"
       }),
       routeContext({ ticketId: ticket.id })
@@ -459,14 +459,14 @@ describe("ticket visibility and check-in API", () => {
 
       setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
       const missingResponse = await checkInTicket(
-        jsonRequest("http://localhost/api/tickets/missing-ticket/check-in", undefined, {
+        jsonRequest("http://localhost/api/tickets/missing-ticket/check-in?eventId=missing-event", undefined, {
           method: "POST",
           headers: firstPartyHeaders
         }),
         routeContext({ ticketId: "missing-ticket" })
       );
       const crossTenantResponse = await checkInTicket(
-        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in?eventId=${ticket.eventId}`, undefined, {
           method: "POST",
           headers: firstPartyHeaders
         }),
@@ -497,7 +497,7 @@ describe("ticket visibility and check-in API", () => {
 
       setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
       const memberResponse = await checkInTicket(
-        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in?eventId=${ticket.eventId}`, undefined, {
           method: "POST",
           headers: firstPartyHeaders
         }),
@@ -507,7 +507,7 @@ describe("ticket visibility and check-in API", () => {
 
       clearMockSession();
       const unauthenticatedResponse = await checkInTicket(
-        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in?eventId=${ticket.eventId}`, undefined, {
           method: "POST",
           headers: firstPartyHeaders
         }),
@@ -532,7 +532,7 @@ describe("ticket visibility and check-in API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await checkInTicket(
-      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, {
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in?eventId=${ticket.eventId}`, undefined, {
         method: "POST"
       }),
       routeContext({ ticketId: ticket.id })
@@ -578,7 +578,7 @@ describe("ticket visibility and check-in API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await checkOutTicket(
-      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out?eventId=${ticket.eventId}`, undefined, {
         method: "POST"
       }),
       routeContext({ ticketId: ticket.id })
@@ -645,7 +645,7 @@ describe("ticket visibility and check-in API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await checkOutTicket(
-      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out?eventId=${ticket.eventId}`, undefined, {
         method: "POST"
       }),
       routeContext({ ticketId: ticket.id })
@@ -676,14 +676,14 @@ describe("ticket visibility and check-in API", () => {
 
       setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
       const missingResponse = await checkOutTicket(
-        jsonRequest("http://localhost/api/tickets/missing-ticket/check-out", undefined, {
+        jsonRequest("http://localhost/api/tickets/missing-ticket/check-out?eventId=missing-event", undefined, {
           method: "POST",
           headers: firstPartyHeaders
         }),
         routeContext({ ticketId: "missing-ticket" })
       );
       const crossTenantResponse = await checkOutTicket(
-        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out?eventId=${ticket.eventId}`, undefined, {
           method: "POST",
           headers: firstPartyHeaders
         }),
@@ -715,7 +715,7 @@ describe("ticket visibility and check-in API", () => {
 
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const response = await checkOutTicket(
-      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+      jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out?eventId=${ticket.eventId}`, undefined, {
         method: "POST"
       }),
       routeContext({ ticketId: ticket.id })
@@ -759,7 +759,7 @@ describe("ticket visibility and check-in API", () => {
         checkedInAt
       });
       const checkOut = () => checkOutTicket(
-        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out`, undefined, {
+        jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-out?eventId=${ticket.eventId}`, undefined, {
           method: "POST",
           headers: firstPartyHeaders
         }),
@@ -784,15 +784,15 @@ describe("ticket visibility and check-in API", () => {
     setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
     return { owner, event, buyer, order, ticket };
   }
-  const post = (route: typeof checkInTicket, ticketId: string) =>
-    route(jsonRequest(`http://localhost/api/tickets/${ticketId}/check-in`, undefined, { method: "POST" }), routeContext({ ticketId }));
+  const post = (route: typeof checkInTicket, ticket: { id: string; eventId: string }, eventId = ticket.eventId) =>
+    route(jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in?eventId=${eventId}`, undefined, { method: "POST" }), routeContext({ ticketId: ticket.id }));
   const search = async (eventId: string, q: string) =>
     parseJsonResponse(await getEventTickets(jsonRequest(`http://localhost/api/events/${eventId}/tickets?q=${encodeURIComponent(q)}`), routeContext({ eventId })));
   const conflictReason = async (response: Response) => (await parseJsonResponse(response)).error.details[0].reason;
 
   test("two check-ins at once admit the ticket once; the loser is told it is already checked in, and by whom", async () => {
     const { owner, event, ticket } = await doorFixture();
-    const responses = await Promise.all([post(checkInTicket, ticket.id), post(checkInTicket, ticket.id)]);
+    const responses = await Promise.all([post(checkInTicket, ticket), post(checkInTicket, ticket)]);
     expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
     expect(await conflictReason(responses.find((response) => response.status === 409)!)).toBe("already_checked_in");
     expect(await prisma.auditLog.count({ where: { targetId: ticket.id, action: "ticket.checked_in" } })).toBe(1);
@@ -805,14 +805,14 @@ describe("ticket visibility and check-in API", () => {
     const { event, ticket } = await doorFixture();
     const checkedInAt = new Date("2026-05-02T12:00:00.000Z");
     await prisma.ticket.update({ where: { id: ticket.id }, data: { validity: "void", validityReason: "refunded", validityChangedAt: new Date(), checkedInAt } });
-    const refused = await post(checkInTicket, ticket.id);
+    const refused = await post(checkInTicket, ticket);
     expect(refused.status).toBe(409);
     expect(await conflictReason(refused)).toBe("not_valid");
-    const undo = await post(checkOutTicket, ticket.id);
+    const undo = await post(checkOutTicket, ticket);
     expect(await conflictReason(undo)).toBe("not_valid");
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).checkedInAt).toEqual(checkedInAt);
     await prisma.ticket.update({ where: { id: ticket.id }, data: { validity: "refund_review", validityReason: "disputed", checkedInAt: null } });
-    expect(await conflictReason(await post(checkInTicket, ticket.id))).toBe("under_review");
+    expect(await conflictReason(await post(checkInTicket, ticket))).toBe("under_review");
     // The door list leaves it out; a search finds it so staff can say why.
     expect((await search(event.id, "")).tickets).toEqual([]);
     expect((await search(event.id, "Sam Lee")).tickets).toEqual([expect.objectContaining({ id: ticket.id, validity: "refund_review" })]);
@@ -828,6 +828,18 @@ describe("ticket visibility and check-in API", () => {
     expect((await search(event.id, "nobody here")).tickets).toEqual([]);
   });
 
+  // DEBT-002: the door checks one event, so a ticket of the society's other events isn't found there.
+  test("check-in is scoped to the event the door is checking", async () => {
+    const { owner, event, buyer, ticket } = await doorFixture();
+    const otherEvent = await createEvent({ organisationId: owner.organisation.id, status: "published" });
+    const { ticket: other } = await createPaidTicket({ organisationId: owner.organisation.id, eventId: otherEvent.id, ticketTypeId: otherEvent.ticketTypes[0].id, userId: buyer.id });
+    expect((await post(checkInTicket, other, event.id)).status).toBe(404);
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: other.id } })).checkedInAt).toBeNull();
+    const unnamed = await checkInTicket(jsonRequest(`http://localhost/api/tickets/${ticket.id}/check-in`, undefined, { method: "POST" }), routeContext({ ticketId: ticket.id }));
+    expect(unnamed.status).toBe(400);
+    expect((await post(checkInTicket, ticket, event.id)).status).toBe(200);
+  });
+
   test("check-in-only staff work published events only", async () => {
     const { owner, event, ticket } = await doorFixture();
     const draft = await createEvent({ organisationId: owner.organisation.id, status: "draft" });
@@ -836,8 +848,8 @@ describe("ticket visibility and check-in API", () => {
     await createOrganisationStaff({ organisationId: owner.organisation.id, userId: staff.id, role: "check_in_staff" });
     setMockSession({ userId: staff.id, email: staff.email, accountRole: "member" });
     selectMockContext({ mode: "staff", organisationId: owner.organisation.id });
-    expect((await post(checkInTicket, ticket.id)).status).toBe(200);
-    expect((await post(checkInTicket, draftTicket.id)).status).toBe(404);
+    expect((await post(checkInTicket, ticket)).status).toBe(200);
+    expect((await post(checkInTicket, draftTicket)).status).toBe(404);
     expect((await getEventTickets(jsonRequest(`http://localhost/api/events/${draft.id}/tickets`), routeContext({ eventId: draft.id }))).status).toBe(404);
   });
 });

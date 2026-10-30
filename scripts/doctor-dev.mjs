@@ -14,14 +14,6 @@ function pathExists(...parts) {
   return existsSync(join(projectRoot, ...parts));
 }
 
-function readJson(path) {
-  try {
-    return JSON.parse(readFileSync(join(projectRoot, path), "utf8"));
-  } catch {
-    return null;
-  }
-}
-
 function checkPort(host, port, timeoutMs = 1000) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host, port });
@@ -53,11 +45,6 @@ const devRoutesTypesExist = pathExists(".next", "dev", "types", "routes.d.ts");
 const buildCacheExists = pathExists(".next-build");
 const proxyExists = pathExists("proxy.ts");
 const middlewareExists = pathExists("middleware.ts");
-const tsconfig = readJson("tsconfig.json");
-const tsIncludes = Array.isArray(tsconfig?.include) ? tsconfig.include : [];
-const hasVolatileNextTypes =
-  tsIncludes.includes(".next/types/**/*.ts") ||
-  tsIncludes.includes(".next/dev/types/**/*.ts");
 
 checks.push(`.next/dev cache: ${devCacheExists ? "present" : "not present"}`);
 checks.push(`dev app manifest: ${appManifestExists ? "present" : "missing"}`);
@@ -65,15 +52,10 @@ checks.push(`dev route types: ${devRoutesTypesExist ? "present" : "missing"}`);
 checks.push(`.next-build output: ${buildCacheExists ? "present" : "not present"}`);
 checks.push(`proxy.ts route guard: ${proxyExists ? "present" : "missing"}`);
 checks.push(`middleware.ts legacy file: ${middlewareExists ? "present" : "not present"}`);
-checks.push(`tsconfig volatile .next type includes: ${hasVolatileNextTypes ? "present" : "not present"}`);
 
 if (devCacheExists && (!appManifestExists || !devRoutesTypesExist)) {
   suggestions.push(`Dev cache looks incomplete. Run: ${recreateCommand}`);
   suggestions.push("If the route manifest remains stale, run inside the app container: pnpm dev");
-}
-
-if (hasVolatileNextTypes) {
-  suggestions.push("Volatile .next type include found. Remove .next type includes from tsconfig and rely on .next-build route types.");
 }
 
 if (middlewareExists) {

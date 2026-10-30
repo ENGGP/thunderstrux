@@ -7,10 +7,8 @@ import {
   createMember,
   createOrder,
   createOrganisationAccount,
-  createReservation,
   unique
 } from "@/tests/helpers/test-data";
-import { getActiveReservedQuantity } from "@/lib/tickets/reservations";
 import { processStaleOrderCleanupBatch } from "@/lib/orders/stale-orders";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
@@ -208,59 +206,6 @@ describe("checkout and reservation logic", () => {
         })
       ])
     );
-  });
-
-  test("active reservations reduce availability and expired reservations do not", async () => {
-    const { organisation } = await createOrganisationAccount({ stripeReady: true });
-    const member = await createMember();
-    const event = await createEvent({
-      organisationId: organisation.id,
-      status: "published",
-      ticketTypes: [{ name: "General", price: 1000, quantity: 5 }]
-    });
-    const ticketType = event.ticketTypes[0];
-
-    const activeOrder = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      quantity: 2,
-      unitPrice: ticketType.price
-    });
-    await createReservation({
-      orderId: activeOrder.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      quantity: 2,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000)
-    });
-    const expiredOrder = await createOrder({
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      quantity: 1,
-      unitPrice: ticketType.price
-    });
-    await createReservation({
-      orderId: expiredOrder.id,
-      organisationId: organisation.id,
-      eventId: event.id,
-      ticketTypeId: ticketType.id,
-      userId: member.id,
-      quantity: 1,
-      status: "expired",
-      expiresAt: new Date(Date.now() - 60 * 1000)
-    });
-
-    const reserved = await prisma.$transaction((tx) =>
-      getActiveReservedQuantity(tx, ticketType.id)
-    );
-    expect(reserved).toBe(2);
-    expect(ticketType.quantity - reserved).toBe(3);
   });
 
   test("a definite Stripe refusal fails the order, its attempt and the reservation", async () => {

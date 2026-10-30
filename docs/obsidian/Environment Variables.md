@@ -126,7 +126,6 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | --- | --- | --- | --- | --- |
 | `INTEGRATION_DATABASE_URL`, `TEST_DATABASE_URL` | `scripts/run-integration-tests.mjs` | Test database, in that order; default `postgresql://thunderstrux:thunderstrux@db:5432/thunderstrux_test?schema=public`. Must name a `_test` database. | no | no |
 | `INTEGRATION_REDIS_URL` | `tests/integration/redis-runtime.test.ts`, `tests/e2e/fixtures.ts` | Run-owned Redis; that test throws without it. Never dev or production Redis. | baseline | no |
-| `THUNDERSTRUX_INTEGRATION_TEST` | nothing | Set to `1` by the integration runner; unused. | no | no |
 | `THUNDERSTRUX_FAST_TEST_RESET` | `tests/helpers/db-reset.ts`, `tests/helpers/test-data.ts` | `1` uses the fast reset ([[Development Workflow#Integration test speed]]). Nothing sets it. | no | no |
 | `E2E_RUN_ID` | `lib/email/ticket-delivery.ts`, `scripts/seed-notification-e2e.mjs`, `scripts/staging-driver.mjs` | Run ID (`baseline-`, `browser-` or `staging-` + 24 hex), written to the run's `runtime.env`. Gates mail capture and the notification seed. | E2E | no |
 | `E2E_RUNTIME_FILE`, `E2E_OUTPUT_DIR` | `docker-compose.e2e.yml` | Set by `scripts/run-e2e.mjs`; Compose refuses to start without them ("Run through pnpm test:e2e"). | E2E: compose | no |

@@ -120,7 +120,7 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
     setBusy(true);
     let response: Response;
     try {
-      response = await fetchWithCsrf(`/api/tickets/${ticket.id}/${action}`, { method: "POST", signal: AbortSignal.timeout(requestTimeoutMs) });
+      response = await fetchWithCsrf(`/api/tickets/${ticket.id}/${action}?eventId=${encodeURIComponent(eventId)}`, { method: "POST", signal: AbortSignal.timeout(requestTimeoutMs) });
     } catch {
       setRefusal(null);
       setUnknown(true);

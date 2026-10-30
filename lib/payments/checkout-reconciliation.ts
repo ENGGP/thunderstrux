@@ -349,6 +349,8 @@ export async function reconcileCompletedCheckoutSession(
       disputeStatus: true,
       compensationRefundModeSnapshot: true,
       membershipGrantId: true,
+      userId: true,
+      createdAt: true,
       compensationRefundJob: {
         select: { id: true, state: true }
       },
@@ -360,7 +362,8 @@ export async function reconcileCompletedCheckoutSession(
           organisationId: true,
           cancelledAt: true,
           saleState: true,
-          endTime: true
+          endTime: true,
+          visibility: true
         }
       },
       tickets: {
@@ -770,7 +773,8 @@ export async function reconcileCompletedCheckoutSession(
       return;
     }
 
-    if (!hasRequiredMetadata) {
+    // Spelled out, not hasRequiredMetadata, so TypeScript knows each is set below.
+    if (!orderId || !eventId || !organisationId || !ticketTypeId || !metadataQuantity) {
       await markCompensationRequired("missing_required_metadata_after_payment", {
         mismatchReason: "Stripe session missing required metadata",
         metadataOrderId: orderId,
@@ -778,29 +782,6 @@ export async function reconcileCompletedCheckoutSession(
         hasOrganisationId: Boolean(organisationId),
         hasTicketTypeId: Boolean(ticketTypeId),
         hasValidQuantity: Boolean(metadataQuantity)
-      }, {
-        releaseActiveReservation: true
-      });
-      return;
-    }
-
-    const requiredMetadata = {
-      orderId: orderId,
-      eventId: eventId,
-      organisationId: organisationId,
-      ticketTypeId: ticketTypeId,
-      quantity: metadataQuantity
-    };
-
-    if (
-      !requiredMetadata.orderId ||
-      !requiredMetadata.eventId ||
-      !requiredMetadata.organisationId ||
-      !requiredMetadata.ticketTypeId ||
-      !requiredMetadata.quantity
-    ) {
-      await markCompensationRequired("missing_required_metadata_after_payment", {
-        mismatchReason: "Stripe session missing required metadata after narrowing"
       }, {
         releaseActiveReservation: true
       });
@@ -840,25 +821,25 @@ export async function reconcileCompletedCheckoutSession(
     }
 
     if (
-      localOrder.id !== requiredMetadata.orderId ||
-      localOrder.eventId !== requiredMetadata.eventId ||
-      localOrder.ticketTypeId !== requiredMetadata.ticketTypeId ||
-      localOrder.event.organisationId !== requiredMetadata.organisationId ||
-      localOrder.quantity !== requiredMetadata.quantity
+      localOrder.id !== orderId ||
+      localOrder.eventId !== eventId ||
+      localOrder.ticketTypeId !== ticketTypeId ||
+      localOrder.event.organisationId !== organisationId ||
+      localOrder.quantity !== metadataQuantity
     ) {
       await markCompensationRequired("webhook_mismatch", {
         mismatchReason: "Stripe metadata does not match local order",
         orderId: localOrder.id,
-        metadataOrderId: requiredMetadata.orderId,
+        metadataOrderId: orderId,
         orderEventId: localOrder.eventId,
-        metadataEventId: requiredMetadata.eventId,
+        metadataEventId: eventId,
         orderTicketTypeId: localOrder.ticketTypeId,
-        metadataTicketTypeId: requiredMetadata.ticketTypeId,
+        metadataTicketTypeId: ticketTypeId,
         orderOrganisationId: localOrder.organisationId,
         eventOrganisationId: localOrder.event.organisationId,
-        metadataOrganisationId: requiredMetadata.organisationId,
+        metadataOrganisationId: organisationId,
         orderQuantity: localOrder.quantity,
-        metadataQuantity: requiredMetadata.quantity
+        metadataQuantity: metadataQuantity
       }, {
         releaseActiveReservation: true
       });
@@ -979,12 +960,6 @@ export async function reconcileCompletedCheckoutSession(
         }, {
           expireActiveReservation: true
         });
-        await expireReservationForOrder(
-          tx,
-          localOrder.id,
-          "Reservation expired before checkout completed",
-          now
-        );
         return;
       }
 
@@ -1018,6 +993,29 @@ export async function reconcileCompletedCheckoutSession(
       if (!grant || grant.revokedAt) {
         await markCompensationRequired("member_price_membership_revoked", {
           mismatchReason: "The membership that gave this order its member price ended before payment was confirmed"
+        }, {
+          releaseActiveReservation: true
+        });
+        return;
+      }
+    }
+
+    // A members-only event admits only while the membership that let the buyer in
+    // stands (DEBT-002), as a member price does above: read as at checkout, so a term
+    // that simply ended during the hold still counts, and FOR SHARE as revocation waits.
+    if (localOrder.event.visibility === "members_only") {
+      const [access] = localOrder.userId
+        ? await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "MembershipGrant"
+            WHERE "userId" = ${localOrder.userId} AND "organisationId" = ${localOrder.event.organisationId} AND "revokedAt" IS NULL
+              AND "startsAt" <= ${localOrder.createdAt} AND "endsAt" > ${localOrder.createdAt}
+              AND 'members_only_events'::"MembershipEntitlement" = ANY("entitlements")
+            LIMIT 1 FOR SHARE
+          `
+        : [];
+      if (!access) {
+        await markCompensationRequired("members_only_access_revoked", {
+          mismatchReason: "The membership that let the buyer into this members-only event ended before payment was confirmed"
         }, {
           releaseActiveReservation: true
         });

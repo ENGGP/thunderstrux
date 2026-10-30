@@ -41,6 +41,15 @@ export async function POST(request: NextRequest) {
     if (emailLimitResponse) {
       return emailLimitResponse;
     }
+
+    // Per account across addresses, so guesses spread over many IPs still stop (DEBT-002).
+    const accountLimitResponse = email
+      ? await enforceRateLimit({ policy: "login_email", request, keyParts: [email] })
+      : null;
+
+    if (accountLimitResponse) {
+      return accountLimitResponse;
+    }
   }
 
   return nextAuthPost(request);

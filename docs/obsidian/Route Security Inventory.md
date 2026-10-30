@@ -36,7 +36,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | --- | --- |
 | Sign-up and link requests (`auth/signup`, `auth/verification/request`, `auth/password/request`) | origin → `signup_ip` → body → `signup_email` (per purpose) → service |
 | Link redemption (`auth/verification/confirm`, `auth/password/confirm`) | origin → body → `account_token_ip` → `account_token_digest` → service |
-| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → one `email` field (else 400, SEC-007) → `login_ip_email` → Auth.js (its own CSRF) |
+| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_email` (per account across addresses, DEBT-002) → Auth.js (its own CSRF) |
 | Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
 | Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
 | Guest redemption (`guest/email/confirm`) | origin → body → `guest_token_ip` → `guest_token_digest` → service |
@@ -98,6 +98,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | --- | --- | --- | --- | --- |
 | `login_ip_global` | 50 / 10 min | closed | IP | credentials sign-in (not required) |
 | `login_ip_email` | 10 / 10 min | closed | IP, email | credentials sign-in (not required) |
+| `login_email` | 30 / 1 h | closed | email | credentials sign-in (not required); at worst someone else's guesses lock the account for an hour |
 | `signup_ip` | 25 / 1 h | closed | IP (one bucket for all three) | signup, verification request, password request |
 | `signup_email` | 3 / 1 h | closed | purpose (`signup`, `verification`, `password_reset`), email | same three; one bucket per purpose (SEC-026) |
 | `account_token_ip` | 50 / 10 min | closed | IP; invites `staff_invite`, IP | verification confirm, password confirm, email-change confirm, invite accept |
@@ -170,7 +171,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET` `/api/me/mfa/status`; `POST` `/api/me/mfa/setup`, `/api/me/mfa/confirm`, `/api/me/mfa/verify`, `/api/me/mfa/recovery-codes` | signed in, staff-eligible; writes: origin, MFA config, MFA limits |
 | `GET`/`POST` `/api/events`; `GET`/`PATCH`/`DELETE` `/api/events/[eventId]`; `PATCH` `/api/events/[eventId]/publish`, `/api/events/[eventId]/sales` | `events:manage` +MFA; writes: origin, ctx |
 | `POST` `/api/events/[eventId]/cancel` | origin, ctx, `events:manage` and `orders:refund` +MFA, typed title, fresh code (`staff_mfa_verify` when sent) |
-| `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
+| `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` (with `?eventId=`, DEBT-002) | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
 | `GET` `/api/orders`, `/api/orders/[orderId]` | ctx, `orders:read` +MFA |
 | `GET` `/api/orders/export`, `/api/events/[eventId]/tickets/export` | ctx, `orders:read` +MFA (attendees also `tickets:check_in`), `data_export`; audited |
 | `POST` `/api/orders/[orderId]/refunds`, `/api/orders/[orderId]/cancel`, `/api/orders/[orderId]/review` | origin, ctx, `orders:refund` +MFA; refunds and cancel also code |

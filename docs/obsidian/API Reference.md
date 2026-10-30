@@ -66,7 +66,7 @@ All answers are `no-store`. Account-security writes run through `accountSecurity
 
 | Route | Auth, bucket | Body | Success | Errors and effects |
 | --- | --- | --- | --- | --- |
-| `GET`/`POST /api/auth/[...nextauth]` | Auth.js; credentials callback: `login_ip_global`, `login_ip_email` | form | Auth.js | 400 "Send one email address" when the form repeats `email` (SEC-007). `GET /api/auth/session` answers `null` for a dead session |
+| `GET`/`POST /api/auth/[...nextauth]` | Auth.js; credentials callback: `login_ip_global`, `login_ip_email`, `login_email` | form | Auth.js | 400 "Send one email address" when the form repeats `email` (SEC-007). `GET /api/auth/session` answers `null` for a dead session |
 | `POST /api/auth/signup` | public; `signup_ip`, `signup_email` (`signup`) | `lib/validators/auth.ts:signupSchema` (`accountRole` defaults `member`) | 202 `{accepted: true}` for new and existing addresses | creates an unverified account, token and encrypted email atomically; never signs in |
 | `POST /api/auth/verification/request` | public; `signup_ip`, `signup_email` (`verification`) | strict `{email, callbackUrl?}` | 202 `{accepted: true}` | sends only to an existing, unverified, enabled account |
 | `POST /api/auth/verification/confirm` | public; `account_token_ip`, `account_token_digest` | strict `{token, password}` | `{verified: true, callbackUrl, email}` (the form signs in with it) | 400 one generic message for a wrong password or a bad, used, expired or superseded link (the link stays usable after a wrong password) |

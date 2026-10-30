@@ -10,6 +10,8 @@ import { getEventForViewer, getPublishedEvents } from "@/lib/events/public-event
 import { readGuestSession, redeemGuestAccess, requestGuestAccess } from "@/lib/guest/guest-access";
 import { publicOrganisation } from "@/lib/organisations/public-organisations";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
+import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { createEvent, createMember, createMembershipGrant, createOrganisationAccount, joinOrganisation, unique } from "@/tests/helpers/test-data";
 
@@ -120,6 +122,31 @@ describe("members-only events", () => {
     // Revoked: the next checkout is refused like a missing event.
     await prisma.membershipGrant.update({ where: { id: grant.id }, data: { revokedAt: new Date(), revocationReason: "Synthetic test revocation" } });
     await expect(buy({ userId: member.id })).rejects.toMatchObject({ kind: "event_not_found" });
+  });
+
+  // DEBT-002: as a member price, access stands only while the membership does, even with no member price.
+  test("a membership revoked before payment lands sends a members-only order to review; one still standing gets its tickets", async () => {
+    const fixture = await membersOnlyEvent();
+    const checkout = async (userId: string) => {
+      await createEventCheckout({ userId, eventId: fixture.event.id, ticketTypeId: fixture.ticketType.id, quantity: 1, expectedUnitPrice: 1500, idempotencyKey: unique("members-only-key") });
+      return prisma.order.findFirstOrThrow({ where: { userId, eventId: fixture.event.id } });
+    };
+    const paid = (order: { id: string; stripeSessionId: string | null }) =>
+      reconcileCompletedCheckoutSession(checkoutSession({ id: order.stripeSessionId as string, orderId: order.id, eventId: fixture.event.id, organisationId: fixture.organisation.id, ticketTypeId: fixture.ticketType.id, quantity: 1, amountTotal: 1500 }));
+
+    const revokedMember = await createMember();
+    const revoked = await createMembershipGrant(fixture.organisation.id, revokedMember.id, revokedMember.email, open);
+    const revokedOrder = await checkout(revokedMember.id);
+    await prisma.membershipGrant.update({ where: { id: revoked.id }, data: { revokedAt: new Date(), revocationReason: "Synthetic test revocation" } });
+    await paid(revokedOrder);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: revokedOrder.id } })).toMatchObject({ requiresCompensationReview: true, fulfilmentFailureReason: "members_only_access_revoked" });
+    expect(await prisma.ticket.count({ where: { orderId: revokedOrder.id } })).toBe(0);
+
+    const member = await createMember();
+    await createMembershipGrant(fixture.organisation.id, member.id, member.email, open);
+    const order = await checkout(member.id);
+    await paid(order);
+    expect(await prisma.ticket.count({ where: { orderId: order.id } })).toBe(1);
   });
 
   test("publishing needs a published plan still to end that unlocks members-only events", async () => {

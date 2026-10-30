@@ -86,8 +86,7 @@ Polling is on because bind-mount file events don't cross into the container on W
 - `next.config.ts`: `distDir` is `.next` in dev and `.next-build` when `NODE_ENV=production`, so a build never clobbers the running dev server's manifests. Production builds use `output: "standalone"`; the `web` image copies `.next-build/standalone` and `.next-build/static` and runs `node server.js` with no pnpm.
 - `pnpm build` = `scripts/prepare-next-build.mjs`, `pnpm prisma:generate`, `next build`. The pre-step:
   - throws when `NODE_ENV=production` and `THUNDERSTRUX_RUNTIME_CONTAINER=true` (a runtime container must be rebuilt, not built in);
-  - **rewrites the tracked `tsconfig.json`**: removes `.next/types/**/*.ts` and `.next/dev/types/**/*.ts` from `include` and adds `next-env.d.ts`, `**/*.ts`, `**/*.tsx`, `.next-build/types/**/*.ts`. It leaves `.next-build/dev/types/**/*.ts`.
-- `next dev` and `next typegen` (first half of `pnpm typecheck`) add the `.next` includes back, so the committed `tsconfig.json` currently carries all of `.next-build/types`, `.next/types`, `.next/dev/types` and `.next-build/dev/types`, and a host-side build shows a `tsconfig.json` diff. Don't commit that churn with unrelated work. `pnpm dev:doctor` reports the volatile includes as present.
+- `next dev`, `next typegen` (first half of `pnpm typecheck`) and `next build` write their own type includes into `tsconfig.json`, so the committed file carries `.next-build/types`, `.next/types`, `.next/dev/types` and `.next-build/dev/types`; nothing rewrites it (DEBT-001).
 - `next-env.d.ts` is gitignored and rewritten by whichever of dev or build ran last.
 
 ## Proxy guard
@@ -96,7 +95,7 @@ Polling is on because bind-mount file events don't cross into the container on W
 
 ## Tailwind
 
-- Tailwind v4 through PostCSS (`postcss.config.mjs`: `@tailwindcss/postcss`, `autoprefixer`).
+- Tailwind v4 through PostCSS (`postcss.config.mjs`: `@tailwindcss/postcss`, which also adds vendor prefixes).
 - Entry `app/globals.css` starts with `@config "../tailwind.config.js";` then `@import "tailwindcss";`. Don't go back to v3 `@tailwind` directives.
 - `tailwind.config.js` content globs cover `app/` and `components/`. Semantic tokens (`--ts-*`, `bg-paper`, `text-ink`) live in `app/globals.css` ([[UI Architecture Rules]]).
 - The global `a` rule only removes the underline; a colour there would beat `text-*` utilities on links.
@@ -158,8 +157,8 @@ Run app-side commands in the dev container: `docker compose -f docker-compose.ym
 | --- | --- | --- |
 | `pnpm dev` | `scripts/assert-docker-runtime.mjs --block-next-dev`, `scripts/clean-next-dev.mjs`, `next dev --turbopack` | Dev container command. Not on the host. |
 | `pnpm dev:webpack` | Same guards, `next dev --webpack` | Fallback dev server. |
-| `pnpm dev:doctor` | `scripts/doctor-dev.mjs` | Read-only report, in the container: `.next` caches, `proxy.ts`, tsconfig includes, port 3000, whether startup migrates, `prisma migrate status`, MFA key and rate limiting. |
-| `pnpm build` | `scripts/prepare-next-build.mjs`, `prisma:generate`, `next build` | Production build; rewrites `tsconfig.json`. Refused in a runtime container. |
+| `pnpm dev:doctor` | `scripts/doctor-dev.mjs` | Read-only report, in the container: `.next` caches, `proxy.ts`, port 3000, whether startup migrates, `prisma migrate status`, MFA key and rate limiting. |
+| `pnpm build` | `scripts/prepare-next-build.mjs`, `prisma:generate`, `next build` | Production build. Refused in a runtime container. |
 | `pnpm start` | `next start --hostname 0.0.0.0` | Not used by any image (the web image runs `node server.js`). |
 | `pnpm typecheck` | `next typegen && tsc --noEmit` | Type check. |
 | `pnpm docs:check` | `scripts/check-docs.mjs` | Docs links, note size, frontmatter sources, coverage. Host or container. |

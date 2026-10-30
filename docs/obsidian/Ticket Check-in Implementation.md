@@ -17,7 +17,7 @@ sources: [lib/tickets/check-in.ts, lib/tickets/http.ts, components/tickets/check
 | Concern | Where |
 | --- | --- |
 | List and search an event's tickets | `lib/tickets/check-in.ts`: `getOrganisationEventTickets(organisationId, eventId, { limit, cursor, direction, query })` |
-| Check in, check out | `lib/tickets/check-in.ts`: `checkInOrganisationTicket(organisationId, ticketId, actorUserId)`, `checkOutOrganisationTicket(...)` |
+| Check in, check out | `lib/tickets/check-in.ts`: `checkInOrganisationTicket(organisationId, eventId, ticketId, actorUserId)`, `checkOutOrganisationTicket(...)` |
 | Error to HTTP mapping | `lib/tickets/http.ts`: `ticketRouteRules` |
 | Attendee list download (owners and admins) | `GET /api/events/[eventId]/tickets/export`, `lib/export/order-exports.ts`: `exportAttendees` |
 | Routes | `GET /api/events/[eventId]/tickets`, `POST /api/tickets/[ticketId]/check-in`, `POST /api/tickets/[ticketId]/check-out` |
@@ -42,6 +42,7 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 - **Authority:** `tickets:check_in` on the selected dashboard context, for all three routes. Missing permission or staff authority is 403 (`organisationAccessRule`).
 - **Tenant:** every read and write is scoped by `Ticket.event.organisationId`. `Ticket.organisationId` is stored (issuance copies `Event.organisationId`) but is never used for access. Another society's ticket is 404, the same as a missing one, so ids can't be probed.
 - **Drafts:** a `check_in_staff` member sees and acts on published events only; a draft event's tickets are 404 to them. Owners, admins and event managers see drafts.
+- **One event (DEBT-002):** the console sends the event it is checking as `?eventId=`; the routes refuse a request without it (400), and a ticket of the society's other events is not found (404), like another society's.
 - **Guard order on check-in and check-out:** trusted origin, dashboard context, permission, rate limit `ticket_check_in_out` (300 a minute per society and action; fails open so a Redis fault never stops the door), then the session user. The list GET has no origin check or rate limit and answers `Cache-Control: no-store`.
 - **Concurrency:** one conditional update inside a transaction, on `checkedInAt` (null for check-in, set for check-out) and `validity = active`. If it touches no row, the ticket is re-read: voided meanwhile gives `not_valid`, otherwise the transition conflict. Two staff admitting one ticket at once get one 200 and one 409 `already_checked_in`.
 - **Audit:** each change writes `ticket.checked_in` or `ticket.checked_out` in the same transaction. "Checked in by" comes from the latest `ticket.checked_in` row, not a column. No order, Stripe or ownership state changes. Society History shows these rows under its check-ins filter ([[Audit Coverage]]).

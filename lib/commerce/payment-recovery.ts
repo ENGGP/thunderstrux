@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
@@ -12,11 +11,10 @@ import { alertOutsideRefundNotReversed, isInquiry, journal, journalled, outcomeO
 import { getStripe } from "@/lib/stripe";
 
 // PAY-003: what Stripe reports about a membership or merchandise payment that
-// Thunderstrux didn't do, and the refund of one it couldn't honour. Disputes
-// and refunds made in the Stripe dashboard are projected from Stripe's state
-// as re-read here (T18b's rules for tickets), so duplicate and out-of-order
-// deliveries converge. Each handler answers false when the payment isn't a
-// commerce order's, and the ticket handler takes it instead.
+// Thunderstrux didn't do. Disputes and refunds made in the Stripe dashboard are
+// projected from Stripe's state as re-read here (T18b's rules for tickets), so
+// duplicate and out-of-order deliveries converge. Each handler answers false when
+// the payment isn't a commerce order's, and the ticket handler takes it instead.
 
 const idOf = (value: string | { id: string } | null | undefined) => (typeof value === "string" ? value : value?.id ?? null);
 
@@ -176,61 +174,4 @@ export async function markCommerceExternalRefundReviewed(tx: Prisma.TransactionC
     metadata: { refundedOutside: order.externalRefundedAmount }
   } });
   return "reviewed";
-}
-
-// A payment Stripe took that the order couldn't honour is refunded in full,
-// on the ordinary refund request, fence and worker (T23c). The worker checks
-// the payment against the order before anything is sent; a mismatch fails the
-// request and the order stays under review for staff.
-export async function queueCommerceCompensationRefund(tx: Prisma.TransactionClient, commerceOrderId: string, reason: string) {
-  const order = await tx.commerceOrder.findUniqueOrThrow({
-    where: { id: commerceOrderId },
-    select: { organisationId: true, totalAmount: true, currency: true, sellerStripeAccountId: true, paymentKind: true, refundStatus: true, externalRefundedAmount: true }
-  });
-  // PAY-038: only what isn't already back with the buyer, as the fraud refund below.
-  const amount = order.totalAmount - order.externalRefundedAmount;
-  if (order.paymentKind !== "stripe" || amount <= 0 || order.refundStatus) return;
-  await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { refundStatus: "processing" } });
-  await tx.refundRequest.create({
-    data: {
-      commerceOrderId, organisationId: order.organisationId, amount, currency: order.currency,
-      reason: `Paid but couldn't be filled (${reason})`.slice(0, 500), actorUserId: null,
-      operationKey: `commerce-compensation:${commerceOrderId}:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId
-    }
-  });
-  await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "refund_requested", source: "stripe_webhook", reason: "compensation", facts: { amount } });
-  await tx.auditLog.create({ data: {
-    organisationId: order.organisationId, actorUserId: null, action: "commerce_order.compensation_refund_queued", targetType: "CommerceOrder", targetId: commerceOrderId,
-    metadata: { amount, reason }
-  } });
-}
-
-// An early fraud warning on a commerce order nobody has used yet (merchandise not
-// collected): refunded in full on the ordinary request, fence and worker, as
-// compensation is. The caller holds the family lock. Answers why not otherwise.
-export async function queueCommerceFraudRefund(tx: Prisma.TransactionClient, commerceOrderId: string, reason: string) {
-  const order = await tx.commerceOrder.findUniqueOrThrow({ where: { id: commerceOrderId } });
-  if (order.disputeStatus) return "disputed";
-  if (order.refundStatus) return order.refundStatus === "refunded" ? "already_refunded" : "in_progress";
-  if (order.pickupStatus === "collected") return "used";
-  const amount = order.totalAmount - order.externalRefundedAmount;
-  if (
-    order.paymentKind !== "stripe" || order.status !== "paid" || !order.fulfilledAt || order.requiresCompensationReview ||
-    !order.stripeSessionId || !order.sellerStripeAccountId || amount <= 0
-  ) {
-    return "not_refundable";
-  }
-  await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { refundStatus: "processing" } });
-  const created = await tx.refundRequest.create({
-    data: {
-      commerceOrderId, organisationId: order.organisationId, amount, currency: order.currency, reason, actorUserId: null,
-      operationKey: `commerce-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId
-    }
-  });
-  await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "refund_requested", source: "stripe_webhook", reason, facts: { amount } });
-  await tx.auditLog.create({ data: {
-    organisationId: order.organisationId, actorUserId: null, action: "commerce_order.refund_requested", targetType: "CommerceOrder", targetId: commerceOrderId,
-    metadata: { refundRequestId: created.id, amount, reason }
-  } });
-  return "refund_queued";
 }

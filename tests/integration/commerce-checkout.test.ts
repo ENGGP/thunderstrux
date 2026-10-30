@@ -15,7 +15,7 @@ import { createEvent, createMember, createOrder, createOrganisationAccount, uniq
 const webhookSecret = "whsec_commerce_test";
 const stripe = vi.hoisted(() => ({ create: vi.fn(), intent: vi.fn(), retrieve: vi.fn(), expire: vi.fn() }));
 // A merchandise family for the tests; production registers none until T27.
-const family = vi.hoisted(() => ({ price: 1500, fulfil: true, fulfilled: [] as string[], released: [] as string[] }));
+const family = vi.hoisted(() => ({ price: 1500, fulfil: true, fulfilled: [] as string[] }));
 
 vi.mock("@/lib/stripe", async () => {
   const { default: RealStripe } = await vi.importActual<typeof import("stripe")>("stripe");
@@ -40,8 +40,7 @@ vi.mock("@/lib/commerce/families", async () => {
           if (!family.fulfil) return { fulfilled: false, reason: "out_of_stock" };
           family.fulfilled.push(order.id);
           return { fulfilled: true };
-        },
-        release: async (_tx: unknown, order: { id: string }) => { family.released.push(order.id); }
+        }
       }
     }
   };
@@ -51,7 +50,7 @@ beforeEach(() => {
   stripe.create.mockImplementation(async () => ({ id: unique("cs_commerce"), url: "https://checkout.stripe.test/pay" }));
   // Unless a test says otherwise, Stripe has no record of the Session: nothing was paid on it.
   stripe.retrieve.mockRejectedValue(Object.assign(new Error("No such checkout.session"), { code: "resource_missing" }));
-  Object.assign(family, { price: 1500, fulfil: true, fulfilled: [], released: [] });
+  Object.assign(family, { price: 1500, fulfil: true, fulfilled: [] });
 });
 afterEach(() => { stripe.create.mockReset(); stripe.intent.mockReset(); stripe.retrieve.mockReset(); stripe.expire.mockReset(); });
 
@@ -193,7 +192,6 @@ describe("commerce checkout", () => {
     await deliver("checkout.session.completed", await sessionFor(outOfStock.id));
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: outOfStock.id } })).toMatchObject({ requiresCompensationReview: true, reviewReason: "out_of_stock" });
     expect(family.fulfilled).toEqual([]);
-    expect(family.released).toHaveLength(4);
     expect(alerts(error, "paid_but_unfulfilled_compensation_required")).toBe(4);
     // Each buyer hears once that the payment is in review (T30).
     expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: "payment-review/" } } })).toBe(4);
@@ -239,7 +237,6 @@ describe("commerce checkout", () => {
     expect(await expireStaleCommerceOrders({ now: new Date(Date.now() + 2 * 60 * 60 * 1000) })).toMatchObject({ expired: 1 });
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: stale.id } })).toMatchObject({ status: "expired" });
     expect(await prisma.checkoutAttempt.findFirstOrThrow({ where: { commerceOrderId: stale.id } })).toMatchObject({ state: "failed" });
-    expect(family.released).toEqual([unpaid.id, stale.id]);
   });
 
   test("PAY-024: the sweep confirms a paid checkout whose webhook was lost, alerts once, and a paid order is never expired", async () => {
@@ -319,7 +316,6 @@ describe("commerce checkout", () => {
     const order = await prisma.commerceOrder.findFirstOrThrow({ include: { checkoutAttempt: true } });
     expect(order).toMatchObject({ status: "failed", failureReason: "provider_refused", stripeSessionId: null });
     expect(order.checkoutAttempt).toMatchObject({ state: "failed", reconcileDueAt: null, lastOutcome: "provider_refused" });
-    expect(family.released).toEqual([order.id]);
     expect(stripe.create).toHaveBeenCalledTimes(1);
   });
 
@@ -330,6 +326,5 @@ describe("commerce checkout", () => {
     const order = await prisma.commerceOrder.findFirstOrThrow({ include: { checkoutAttempt: true } });
     expect(order).toMatchObject({ status: "failed", failureReason: "missing_redirect_url" });
     expect(order.checkoutAttempt).toMatchObject({ state: "failed", lastOutcome: "missing_redirect_url" });
-    expect(family.released).toEqual([order.id]);
   });
 });

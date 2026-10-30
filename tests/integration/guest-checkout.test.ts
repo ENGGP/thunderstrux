@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { loadTicketDeliveryOrder, renderTicketEmail } from "@/lib/email/ticket-delivery";
 import { processTicketEmailOutboxBatch } from "@/lib/email/ticket-email-outbox";
-import { GuestAccessError, guestCookieName, purchaseLinkForEmail, readGuestSession, redeemGuestAccess, requestGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
+import { GuestAccessError, guestCookieName, purchaseLinkForEmail, redeemGuestAccess, requestGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";

@@ -151,8 +151,5 @@ export const membershipFamily: CommerceFamilyAdapter<z.infer<typeof selection>> 
       }
     });
     return { fulfilled: true };
-  },
-
-  // Memberships hold no stock, so a failed or expired order has nothing to release.
-  async release() {}
+  }
 };

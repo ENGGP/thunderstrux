@@ -75,6 +75,10 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-31: #239 applies the audit's sales rules (PAY-050 to PAY-053, EVT-010, EVT-011): one ticket at the member price per member per event, with later tickets at the standard price; a cap on one buyer's free merchandise; plans keep their term when a society changes zone; checkout reads its clock after the event lock and no longer blames a code nobody used; a direct PATCH without `ticketTypes` leaves them alone. No migration.
 - 2026-10-31: #243 applies #239's review follow-ups (PAY-055, UI-027): membership and merchandise checkout and fulfilment read the clock after their locks, as ticket checkout now does, and merchandise checkout explains the free cap and links back to the basket. No migration.
 - 2026-10-31: #243 also adds `pnpm docker:cleanup` to the delivery workflow (DEF-076): after testing it removes only what finished runs and rehearsals left in Docker, and caps the build cache at 12 GB. Never prune this Docker: it also holds the dev stack, the preview and another project's database. Release images are left to the deploy; an old pair frees about 0.7 GB, because pairs share layers.
+- 2026-10-31: the lean PR, the last fix of the 2026-10-30 audit, removes code. No migration.
+  - The three commerce refund openers are one `openCommerceRefund`, and every refund follows PAY-036: only an open or lost dispute blocks. Compensation no longer opens a refund during a dispute (the order stays under review), and a fraud refund no longer stops at a won one.
+  - A paid replay never fulfils a ticket order under review: every way into review ends the hold, so the recovery path and `failOrder` are gone. `recovered` and `compensation_recovered` stay in the schema for old rows; nothing writes them.
+  - The four MFA copies use `requireFreshStaffMfa`, the empty commerce `release` hook is gone, and so are `publicPlans`, `getUpcomingTicketOrders` and other dead code. DEF-075 is closed; DEBT-003 and PAY-056 are registered.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -155,9 +159,9 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 
 ## Next safe actions
 
-1. **The rest of the 2026-10-30 audit:** lean (18, 20, dead code).
+1. **After the 2026-10-30 audit's fixes:** an end-to-end check on main, then a preview deploy that sets `MFA_ENFORCEMENT_MODE` back to `enforce`.
 
-   The compensation engine merge is debt, due before PAY-002's campaign. Product changes follow: no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions, then the O-Week flow.
+   The compensation engine merge (DEBT-003) is due before PAY-002's campaign. Product changes follow: no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions, then the O-Week flow.
 2. **Preview (owner).**
    - Send a test event from the two snapshot webhook destinations and confirm a 200. The Accounts v2 destination has passed.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.

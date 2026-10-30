@@ -4,7 +4,7 @@ import { GET as readiness } from "@/app/api/health/ready/route";
 import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { emitMetric } from "@/lib/ops/metrics";
-import { logError, logInfo, redactLogContext } from "@/lib/ops/logger";
+import { logInfo, redactLogContext } from "@/lib/ops/logger";
 import { parseJsonResponse } from "@/tests/helpers/http";
 import schemaContract from "@/config/schema-contract.json";
 

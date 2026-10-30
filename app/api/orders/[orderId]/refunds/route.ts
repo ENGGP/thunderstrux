@@ -4,10 +4,10 @@ import { apiError, badRequest, forbidden, mapRouteError, notFound, routeErrorRul
 import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import { OrderRefundError, cancelOrderTickets, requestOrderRefund } from "@/lib/payments/order-refunds";
+import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { mfaGrantDigest } from "@/lib/security/csrf";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { validateJson } from "@/lib/validators";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
@@ -50,12 +50,7 @@ export async function POST(request: Request, context: RouteContext) {
       if (codeLimit) return codeLimit;
     }
     // Verified here, not in the refund service, which workers load without the auth secret.
-    if (mfaEnforcementMode() !== "off") {
-      if (!body.data.mfaCode) throw new MfaInputError("Enter your authenticator code to refund this order");
-      const digest = mfaGrantDigest(actor.mfaSessionId);
-      if (!digest) throw new MfaRequiredError();
-      await verifyStaffMfa(actor.id, body.data.mfaCode, digest);
-    }
+    await requireFreshStaffMfa(actor, body.data.mfaCode, "Enter your authenticator code to refund this order");
     const { orderId } = await context.params;
     const { ticketIds, amount, cancelTickets, notifyBuyer, buyerMessage } = body.data;
     const selection = ticketIds && amount !== undefined && cancelTickets !== undefined && notifyBuyer !== undefined

@@ -17,7 +17,8 @@ export async function lockCommerceOrderForFamily(tx: Prisma.TransactionClient, c
   return (await lockCommerceOrder(tx, commerceOrderId)) ? order : null;
 }
 
-// A pending order that will not be paid: failed, its hold released, its attempt closed.
+// A pending order that will not be paid: failed, which ends its hold (the hold is
+// the pending order itself), and its attempt closed.
 export async function failPendingCommerceOrder(
   commerceOrderId: string,
   reason: string,
@@ -32,7 +33,6 @@ export async function failPendingCommerceOrder(
       data: { status, failedAt: new Date(), failureReason: reason }
     });
     if (updated.count === 0) return false;
-    await commerceFamilies[order.kind]?.release(tx, order, reason);
     await tx.checkoutAttempt.updateMany({ where: { commerceOrderId }, data: { state: "failed", reconcileDueAt: null, lastOutcome: reason } });
     await appendCommerceLifecycleEvent(tx, {
       commerceOrderId, type: status === "expired" ? "order_expired" : "order_failed", source, stripeEventId, reason, fromStatus: "pending", toStatus: status

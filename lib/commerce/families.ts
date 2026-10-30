@@ -29,8 +29,6 @@ export type CommerceFamilyAdapter<Selection = unknown> = {
   // or commit the stock. `false` when it can no longer be honoured (the term
   // overlaps, the hold is gone): the paid order goes to compensation review.
   fulfil(tx: Prisma.TransactionClient, order: CommerceOrderForHooks, now: Date): Promise<{ fulfilled: true } | { fulfilled: false; reason: string }>;
-  // Under the order lock: the order failed or expired, so release any hold.
-  release(tx: Prisma.TransactionClient, order: CommerceOrderForHooks, reason: string): Promise<void>;
 };
 
 // Filled by the family tasks (memberships T23, merchandise T27). Until a

@@ -112,13 +112,13 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 
 ## Fulfilment
 
-`reconcileCompletedCheckoutSession` runs from the signed webhook or the development success fallback, always through `reconcileCompletedCheckoutSessionWithSideEffects`, which passes the payment's destination ([[Stripe Payments and Connect#Webhooks]]). In order:
+`reconcileCompletedCheckoutSession` runs from the signed webhook or the reconciliation sweep, always through `reconcileCompletedCheckoutSessionWithSideEffects`, which passes the payment's destination ([[Stripe Payments and Connect#Webhooks]]). In order:
 
 1. Find the order by `metadata.orderId` and by `stripeSessionId`. Two different orders: ignored, alert `payment_reconciliation_ambiguous_order`. None: ignored.
 2. Order bound to a different Session: ignored (`session_mismatch`); if that Session is paid, alert `ticket_webhook_identity_mismatch` and a person refunds it in Stripe (PAY-010).
 3. Lock the event and ticket type, then the order.
 4. Already `paid`: no change (a ticket count that differs from `quantity` is logged for review).
-5. Under compensation review: stays in review if manually refunded, if its compensation job has left `review_required`, or if no live hold remains; otherwise fulfilment is retried as a recovery.
+5. Under compensation review: stays in review. Every way in ends the hold, so a replay never fulfils it.
 6. Session complete but not paid yet: a delayed payment method still processing (checkout is card-only, so not today). The order and hold wait for `checkout.session.async_payment_succeeded` (applied as completed) or `_failed` (applied as expired) (PAY-030).
 7. Paid, then each failure goes to compensation with its reason:
 
@@ -138,9 +138,9 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | Event capacity below occupancy | `capacity_exceeded_after_payment` |
 | Hold can't be confirmed / stock can't be decremented | `reservation_confirm_failed_after_payment` / `inventory_unavailable_after_payment` |
 
-8. Success, in one transaction: order `paid` with `paidAt` and `fulfilledAt`, review cleared, hold `confirmed`, `TicketType.quantity` decremented, tickets `1..quantity` created with `organisationId` from the event, `payment_fulfilled` (or `compensation_recovered`, which also moves the compensation job `review_required` → `recovered`), and the automatic ticket email queued. A failed email insert rolls the whole fulfilment back.
+8. Success, in one transaction: order `paid` with `paidAt` and `fulfilledAt`, hold `confirmed`, `TicketType.quantity` decremented, tickets `1..quantity` created with `organisationId` from the event, `payment_fulfilled`, and the automatic ticket email queued. A failed email insert rolls the whole fulfilment back.
 
-**Compensation** (`markCompensationRequired`): the order becomes `failed` with `requiresCompensationReview`, keeps or sets `paidAt`, clears `fulfilledAt`, and writes `fulfilmentFailedAt` and `fulfilmentFailureReason` once. The first time it also creates the `CompensationRefundJob` from `compensationRefundModeSnapshot`, writes the audit row, queues the buyer's `payment-review/{orderId}` notice, appends `compensation_required` (and `compensation_refund_queued` when automatic), and after commit alerts `paid_but_unfulfilled_compensation_required`. A replay changes nothing. What happens next: [[Payment Lifecycle Refunds and Disputes]].
+**Compensation** (`markCompensationRequired`): the order becomes `failed` with `requiresCompensationReview`, keeps or sets `paidAt`, clears `fulfilledAt`, and writes `fulfilmentFailedAt` and `fulfilmentFailureReason` once. It also creates the `CompensationRefundJob` from `compensationRefundModeSnapshot`, writes the audit row, queues the buyer's `payment-review/{orderId}` notice, appends `compensation_required` (and `compensation_refund_queued` when automatic), and after commit alerts `paid_but_unfulfilled_compensation_required`. A replay changes nothing. What happens next: [[Payment Lifecycle Refunds and Disputes]].
 
 ## Expiry and buyer cancel
 
@@ -190,7 +190,7 @@ The `checkout-recovery` worker (`processCheckoutAttemptRecoveryBatch`, tickets a
 
 ## Memberships and merchandise orders
 
-`CommerceOrder` (`CommerceKind` `membership` or `merchandise`) with `CommerceOrderLine`s. Families plug in through `commerceFamilies` in `lib/commerce/families.ts` (both are registered): a selection schema, whether guests may buy (merchandise only), and `quote`, `lock`, `fulfil`, `release` hooks that run inside the caller's transaction. Lock order: buyer, then the family's resources (membership: member then society; merchandise: variants by ascending id), then the order.
+`CommerceOrder` (`CommerceKind` `membership` or `merchandise`) with `CommerceOrderLine`s. Families plug in through `commerceFamilies` in `lib/commerce/families.ts` (both are registered): a selection schema, whether guests may buy (merchandise only), and `quote`, `lock`, `fulfil` hooks that run inside the caller's transaction. Lock order: buyer, then the family's resources (membership: member then society; merchandise: variants by ascending id), then the order.
 
 - **Checkout** (`POST /api/payments/checkout/membership`, `/merchandise`): same replay and 409 rules as tickets (`commerceRequestHash`). The family quotes under its locks; a total other than `expectedTotal` is 409 `quote_changed`. A free total is created, fulfilled and `free_fulfilled` in one transaction. A paid total needs a ready society, commits the order (`expiresAt` 30 min, fee snapshot) and its attempt, then creates the Session outside and binds it (`attachCommerceSession`). A definite refusal fails the order; an unknown answer leaves the attempt `provider_uncertain` and answers processing.
 - **Webhook** (`reconcileCommerceCheckoutSession`): the order is found by its Session or by `commerceOrderId`. An unknown family, two different matches, a family or society that disagrees, or another bound Session is ignored with `commerce_webhook_identity_mismatch`; a ticket order's Session carrying `family` alerts too. Under the locks, a paid Session is checked for amount, currency and destination, then the family fulfils it (`payment_fulfilled`). A mismatch (`amount_mismatch`, `currency_mismatch`, `destination_mismatch`, `paid_after_order_closed`, `refunded_or_disputed_before_fulfilment`) or a family that can't honour it becomes compensation: `failed` with `requiresCompensationReview` and `reviewReason`, holds released, `compensation_required`, the buyer's `payment-review/{id}` notice, an automatic full refund ([[Payment Lifecycle Refunds and Disputes]]) and alert `paid_but_unfulfilled_compensation_required`. A completed unpaid Session fails the order (`session_not_paid`).
@@ -203,7 +203,7 @@ The `checkout-recovery` worker (`processCheckoutAttemptRecoveryBatch`, tickets a
 | Group | `OrderLifecycleEventType` values |
 | --- | --- |
 | Checkout and fulfilment | `order_created`, `stripe_session_attached`, `order_failed`, `order_expired`, `payment_fulfilled`, `free_fulfilled` |
-| Compensation | `compensation_required`, `compensation_recovered`, `compensation_refund_queued`, `compensation_refund_started`, `compensation_refund_pending`, `compensation_refunded`, `compensation_refund_failed`, `manual_refund_marked` |
+| Compensation | `compensation_required`, `compensation_recovered` (history only), `compensation_refund_queued`, `compensation_refund_started`, `compensation_refund_pending`, `compensation_refunded`, `compensation_refund_failed`, `manual_refund_marked` |
 | Refunds | `refund_requested`, `refund_pending`, `refunded`, `refund_failed`, `external_refund_recorded`, `external_refund_reviewed` |
 | Disputes | `dispute_opened`, `dispute_closed`, `dispute_resolved`, `dispute_funds_recovered` |
 | Free cancellation | `free_cancelled` |

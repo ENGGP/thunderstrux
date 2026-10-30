@@ -6,10 +6,9 @@ import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { reconcileCommerceCheckoutSession } from "@/lib/commerce/reconciliation";
 import { prisma } from "@/lib/db";
-import { queueCommerceCompensationRefund } from "@/lib/commerce/payment-recovery";
 import { listPickups } from "@/lib/merchandise/pickups";
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
-import { orderReference, processOrderRefundBatch, requestCommerceRefund } from "@/lib/payments/order-refunds";
+import { openCommerceRefund, orderReference, processOrderRefundBatch, requestCommerceRefund } from "@/lib/payments/order-refunds";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, routeContext } from "@/tests/helpers/http";
@@ -259,17 +258,70 @@ describe("commerce refunds made in Stripe", () => {
 });
 
 describe("commerce compensation", () => {
+  const compensation = (fixture: Fixture) => ({
+    organisationId: fixture.society.organisation.id, commerceOrderId: fixture.order.id, actor: null, reason: "Paid but couldn't be filled (sold_out)", compensation: "sold_out"
+  });
+  // A paid Session for an order still pending, as a late webhook finds it.
+  const pendingWith = async (fixture: Fixture, data: { disputeStatus: "open" | "lost" | "won" }) => {
+    await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { status: "pending", paidAt: null, fulfilledAt: null, pickupStatus: null, ...data } });
+    return {
+      id: fixture.order.stripeSessionId, payment_status: "paid", amount_total: fixture.order.totalAmount, currency: "aud",
+      metadata: { family: fixture.order.kind, commerceOrderId: fixture.order.id, organisationId: fixture.society.organisation.id },
+      payment_intent: { id: fixture.intentId, transfer_data: { destination: fixture.society.organisation.stripeAccountId } }
+    } as unknown as Stripe.Checkout.Session;
+  };
+
   // PAY-038: part already refunded in Stripe; compensation refunds only the rest.
   test("compensation after a partial refund in Stripe refunds only what is left, and nothing once it is all back", async () => {
     const fixture = await paid("merchandise");
     await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { externalRefundedAmount: 1000 } });
-    await prisma.$transaction((tx) => queueCommerceCompensationRefund(tx, fixture.order.id, "test"));
+    await prisma.$transaction((tx) => openCommerceRefund(tx, compensation(fixture)));
     expect(await prisma.refundRequest.findFirstOrThrow({ where: { commerceOrderId: fixture.order.id } })).toMatchObject({ amount: fixture.order.totalAmount - 1000 });
 
     const all = await paid("membership");
     await prisma.commerceOrder.update({ where: { id: all.order.id }, data: { externalRefundedAmount: all.order.totalAmount } });
-    await prisma.$transaction((tx) => queueCommerceCompensationRefund(tx, all.order.id, "test"));
+    await expect(prisma.$transaction((tx) => openCommerceRefund(tx, compensation(all)))).rejects.toMatchObject({ kind: "not_refundable" });
     expect(await prisma.refundRequest.count({ where: { commerceOrderId: all.order.id } })).toBe(0);
+  });
+
+  // A buyer who paid for an order that couldn't be filled gets the money back, though it
+  // is none of what a refund of a sale needs: paid, fulfilled, clear of review, bound to a Session.
+  test("the checks on a sale never reach a compensation refund", async () => {
+    const fixture = await paid("merchandise");
+    await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { status: "failed", fulfilledAt: null, pickupStatus: null, requiresCompensationReview: true, reviewReason: "sold_out", stripeSessionId: null } });
+    await prisma.$transaction((tx) => openCommerceRefund(tx, compensation(fixture)));
+    expect(await prisma.refundRequest.findMany({ where: { commerceOrderId: fixture.order.id } })).toEqual([expect.objectContaining({ amount: 3000, status: "pending", attempts: 0, processingToken: null, actorUserId: null, operationKey: expect.stringMatching(new RegExp(`^commerce-compensation:${fixture.order.id}:`)) })]);
+    expect(await order(fixture.order.id)).toMatchObject({ refundStatus: "processing" });
+    expect(await prisma.commerceLifecycleEvent.findFirstOrThrow({ where: { commerceOrderId: fixture.order.id, type: "refund_requested" } })).toMatchObject({ source: "stripe_webhook", actorUserId: null, reason: "compensation", facts: { amount: 3000 } });
+    expect(await prisma.auditLog.findMany({ where: { targetId: fixture.order.id }, select: { action: true, actorUserId: true, targetType: true, metadata: true } })).toEqual([
+      { action: "commerce_order.compensation_refund_queued", actorUserId: null, targetType: "CommerceOrder", metadata: { amount: 3000, reason: "sold_out" } }
+    ]);
+  });
+
+  // PAY-036: Stripe refuses a refund of a disputed charge, and a lost one is already back with the buyer.
+  test("an open or lost dispute holds the compensation refund and the order stays under review; a won one doesn't", async () => {
+    for (const disputeStatus of ["open", "lost"] as const) {
+      const fixture = await paid("merchandise");
+      expect(await reconcileCommerceCheckoutSession(await pendingWith(fixture, { disputeStatus }), { stripeEventId: unique("evt") })).toMatchObject({ status: "compensation_required" });
+      expect(await prisma.refundRequest.count({ where: { commerceOrderId: fixture.order.id } })).toBe(0);
+      expect(await order(fixture.order.id)).toMatchObject({ status: "failed", requiresCompensationReview: true, reviewReason: "refunded_or_disputed_before_fulfilment", refundStatus: null, disputeStatus });
+      expect(await historyOf(fixture.order.id)).toEqual(["order_created", "compensation_required"]);
+    }
+    const won = await paid("merchandise");
+    await reconcileCommerceCheckoutSession(await pendingWith(won, { disputeStatus: "won" }), { stripeEventId: unique("evt") });
+    expect(await prisma.refundRequest.count({ where: { commerceOrderId: won.order.id } })).toBe(1);
+    expect(await order(won.order.id)).toMatchObject({ requiresCompensationReview: true, refundStatus: "processing" });
+  });
+
+  test("a staff refund keeps its lease, actor, history and audit row", async () => {
+    const fixture = await paid("membership");
+    stripe.create.mockImplementation(async (params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("re"), status: "succeeded", amount: params.amount, currency: "aud", payment_intent: fixture.intentId, metadata: params.metadata }));
+    const { reason } = refundInput(fixture);
+    await requestCommerceRefund(refundInput(fixture));
+    const request = await prisma.refundRequest.findFirstOrThrow({ where: { commerceOrderId: fixture.order.id } });
+    expect(request).toMatchObject({ amount: 1500, attempts: 1, actorUserId: fixture.society.user.id, reason, operationKey: expect.stringMatching(/^commerce-refund:/) });
+    expect(await prisma.commerceLifecycleEvent.findFirstOrThrow({ where: { commerceOrderId: fixture.order.id, type: "refund_requested" } })).toMatchObject({ source: "staff_action", actorUserId: fixture.society.user.id, reason, facts: { amount: 1500 } });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { targetId: fixture.order.id, action: "commerce_order.refund_requested" } })).toMatchObject({ actorUserId: fixture.society.user.id, targetType: "CommerceOrder", metadata: { refundRequestId: request.id, amount: 1500, reason } });
   });
 
   test("a payment for an order that had already expired is refunded in full automatically, through the refund worker", async () => {

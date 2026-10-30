@@ -26,7 +26,6 @@ export default async function MemberPage({ params }: { params: Promise<{ grantId
   const membership = await readMembership(organisation.id, grantId);
   if (!membership) notFound();
   const timeZone = await readTimeZone(organisation.id);
-  const lastDay = (endsAt: Date) => formatDate(new Date(endsAt.getTime() - 1), timeZone);
   const row = "grid gap-x-6 gap-y-2.5 text-ui sm:grid-cols-[max-content_1fr]";
   // Only a running or upcoming membership can be ended early.
   const live = membership.state === "active" || membership.state === "upcoming";

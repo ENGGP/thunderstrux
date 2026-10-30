@@ -4,10 +4,10 @@ import { prisma } from "@/lib/db";
 import { failPendingCommerceOrder, lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { commerceFamilies, type CommerceOrderForHooks } from "@/lib/commerce/families";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
-import { queueCommerceCompensationRefund } from "@/lib/commerce/payment-recovery";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { queueCommerceReviewNotice } from "@/lib/payments/compensation-notices";
 import { logInfo, logWarn } from "@/lib/ops/logger";
+import { OrderRefundError, openCommerceRefund } from "@/lib/payments/order-refunds";
 import { getStripe } from "@/lib/stripe";
 
 // Who applied a Session: the signed webhook, or the reconciliation sweep (PAY-024).
@@ -69,9 +69,8 @@ async function requireCompensation(
   tx: Prisma.TransactionClient,
   order: CommerceOrderForHooks,
   reason: string,
-  facts: { stripeSessionId: string; stripePaymentIntentId: string | null; stripeEventId?: string; fromStatus: "pending" | "failed" | "expired"; holdOpen: boolean; source: CommerceSettlementSource }
+  facts: { stripeSessionId: string; stripePaymentIntentId: string | null; stripeEventId?: string; fromStatus: "pending" | "failed" | "expired"; source: CommerceSettlementSource }
 ) {
-  if (facts.holdOpen) await commerceFamilies[order.kind]?.release(tx, order, reason);
   const now = new Date();
   await tx.commerceOrder.update({
     where: { id: order.id },
@@ -86,7 +85,15 @@ async function requireCompensation(
   });
   await queueCommerceReviewNotice(tx, order.id);
   // PAY-003: refunded in full automatically, as a ticketing platform does with an order it can't complete.
-  await queueCommerceCompensationRefund(tx, order.id, reason);
+  try {
+    await openCommerceRefund(tx, {
+      organisationId: order.organisationId, commerceOrderId: order.id, actor: null,
+      reason: `Paid but couldn't be filled (${reason})`.slice(0, 500), compensation: reason
+    });
+  } catch (error) {
+    // Nothing left to refund, or a dispute (PAY-036): the order stays under review for a person.
+    if (!(error instanceof OrderRefundError)) throw error;
+  }
 }
 
 export async function reconcileCommerceCheckoutSession(
@@ -113,7 +120,7 @@ export async function reconcileCommerceCheckoutSession(
     if (!paid) {
       return current.status === "pending" ? { status: "unpaid" as const } : { status: "ignored" as const, reason: "order_closed_unpaid" };
     }
-    const facts = { stripeSessionId: session.id, stripePaymentIntentId: intentId, stripeEventId, fromStatus: current.status as "pending" | "failed" | "expired", holdOpen: current.status === "pending", source };
+    const facts = { stripeSessionId: session.id, stripePaymentIntentId: intentId, stripeEventId, fromStatus: current.status as "pending" | "failed" | "expired", source };
     const mismatch =
       session.amount_total !== current.totalAmount ? "amount_mismatch"
         : session.currency?.toLowerCase() !== current.currency ? "currency_mismatch"

@@ -1,5 +1,24 @@
 name: thunderstrux
 
+# What every job shares. A setting goes here unless only one job reads it, so a new
+# one can't be missed on a job: a notice queued with a money step rolls that step
+# back when its settings are missing (DEF-065).
+x-worker-env: &worker-env
+  NODE_ENV: production
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+  ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+  WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+
+x-worker: &worker
+  image: ${OPS_IMAGE:-thunderstrux-ops:local}
+  restart: "no"
+  profiles: ["workers"]
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   app:
     image: ${APP_IMAGE:-thunderstrux-app:local}
@@ -69,105 +88,52 @@ services:
     command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
   email-worker:
-    image: ${OPS_IMAGE:-thunderstrux-ops:local}
-    restart: "no"
-    profiles: ["workers"]
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      <<: *worker-env
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-}
       EMAIL_OUTBOX_BATCH_SIZE: ${EMAIL_OUTBOX_BATCH_SIZE:-25}
       EMAIL_OUTBOX_MAX_ATTEMPTS: ${EMAIL_OUTBOX_MAX_ATTEMPTS:-5}
       EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS: ${EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS:-600}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
-    depends_on:
-      db:
-        condition: service_healthy
     command: ["node", "scripts/process-email-outbox.mjs"]
 
   notification-worker:
-    image: ${OPS_IMAGE:-thunderstrux-ops:local}
-    restart: "no"
-    profiles: ["workers"]
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      <<: *worker-env
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-}
       NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
-    depends_on:
-      db:
-        condition: service_healthy
     command: ["node", "scripts/process-notifications.mjs"]
 
   # PAY-024: also confirms pending checkouts with Stripe before expiring them,
   # so it needs what the payments webhook needs to fulfil an order.
   stale-order-worker:
-    image: ${OPS_IMAGE:-thunderstrux-ops:local}
-    restart: "no"
-    profiles: ["workers"]
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      <<: *worker-env
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
-    depends_on:
-      db:
-        condition: service_healthy
     command: ["node", "scripts/process-stale-orders.mjs"]
 
   compensation-worker:
-    image: ${OPS_IMAGE:-thunderstrux-ops:local}
-    restart: "no"
-    profiles: ["workers"]
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      <<: *worker-env
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
-    depends_on:
-      db:
-        condition: service_healthy
+      NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
     command: ["node", "scripts/process-compensation-refunds.mjs"]
 
   checkout-recovery-worker:
-    image: ${OPS_IMAGE:-thunderstrux-ops:local}
-    restart: "no"
-    profiles: ["workers"]
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      <<: *worker-env
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
-    depends_on:
-      db:
-        condition: service_healthy
     command: ["node", "scripts/process-checkout-attempts.mjs"]
 
   # T42: queue backlog, oldest-age and stale-job alerts. Database only.
   monitor-worker:
-    image: ${OPS_IMAGE:-thunderstrux-ops:local}
-    restart: "no"
-    profiles: ["workers"]
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
-      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
-    depends_on:
-      db:
-        condition: service_healthy
+    <<: *worker
+    environment: *worker-env
     command: ["node", "scripts/process-operations-monitor.mjs"]
 
   db:

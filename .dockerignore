@@ -4,6 +4,7 @@ node_modules
 .agents
 .codex
 .worktrees
+.claude/worktrees
 .next
 .next-build
 next-env.d.ts

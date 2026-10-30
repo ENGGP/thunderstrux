@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
+import { readWebhookBody } from "@/lib/api/request";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
@@ -30,7 +31,11 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
   if (!signature) return signatureFailure("missing_signature");
 
-  const rawBody = await request.text();
+  const rawBody = await readWebhookBody(request);
+  if (rawBody === null) {
+    emitOperationalAlert("stripe_webhook_signature_failure", { reason: "body_too_large", webhook: "stripe_accounts" });
+    return NextResponse.json({ error: "Request body is too large" }, { status: 413 });
+  }
   let stripe: Stripe;
   let webhookSecret: string;
   try {

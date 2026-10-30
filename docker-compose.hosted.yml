@@ -22,6 +22,26 @@ x-database-secret: &database-secret
   gid: "1000"
   mode: 0400
 
+# What every job shares; each keeps its own secrets list, so it holds only the
+# secrets it uses. A setting goes here unless only one job reads it (DEF-065).
+x-worker-env: &worker-env
+  NODE_ENV: production
+  DATABASE_URL_FILE: /run/secrets/database_url
+  ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
+  WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+  EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
+
+x-worker: &worker
+  <<: *runtime-security
+  image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
+  restart: "no"
+  user: "1000:1000"
+  profiles: ["workers"]
+  pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
+  cpus: ${OPS_CPUS:?OPS_CPUS is required}
+  mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+
 services:
   app:
     <<: *runtime-security
@@ -102,22 +122,10 @@ services:
     command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
   email-worker:
-    <<: *runtime-security
-    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
-    restart: "no"
-    user: "1000:1000"
-    profiles: ["workers"]
-    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
-    cpus: ${OPS_CPUS:?OPS_CPUS is required}
-    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL_FILE: /run/secrets/database_url
-      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+      <<: *worker-env
       RESEND_API_KEY_FILE: /run/secrets/resend_api_key
-      EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     secrets:
       - *database-secret
       - *alert-secret
@@ -125,23 +133,11 @@ services:
     command: ["node", "scripts/process-email-outbox.mjs"]
 
   notification-worker:
-    <<: *runtime-security
-    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
-    restart: "no"
-    user: "1000:1000"
-    profiles: ["workers"]
-    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
-    cpus: ${OPS_CPUS:?OPS_CPUS is required}
-    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL_FILE: /run/secrets/database_url
-      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+      <<: *worker-env
       RESEND_API_KEY_FILE: /run/secrets/resend_api_key
       NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
-      EMAIL_FROM: ${EMAIL_FROM:?EMAIL_FROM is required}
     secrets:
       - *database-secret
       - *alert-secret
@@ -150,23 +146,12 @@ services:
     command: ["node", "scripts/process-notifications.mjs"]
 
   stale-order-worker:
-    <<: *runtime-security
-    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
-    restart: "no"
-    user: "1000:1000"
-    profiles: ["workers"]
-    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
-    cpus: ${OPS_CPUS:?OPS_CPUS is required}
-    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    <<: *worker
     # PAY-024: confirms pending checkouts with Stripe before expiring them.
     environment:
-      NODE_ENV: production
-      DATABASE_URL_FILE: /run/secrets/database_url
-      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+      <<: *worker-env
       STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
       NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
     secrets:
       - *database-secret
       - *alert-secret
@@ -175,40 +160,22 @@ services:
     command: ["node", "scripts/process-stale-orders.mjs"]
 
   compensation-worker:
-    <<: *runtime-security
-    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
-    restart: "no"
-    user: "1000:1000"
-    profiles: ["workers"]
-    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
-    cpus: ${OPS_CPUS:?OPS_CPUS is required}
-    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL_FILE: /run/secrets/database_url
-      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+      <<: *worker-env
       STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+      NOTIFICATION_ENCRYPTION_KEY_FILE: /run/secrets/notification_encryption_key
     secrets:
       - *database-secret
       - *alert-secret
       - stripe_secret_key
+      - notification_encryption_key
     command: ["node", "scripts/process-compensation-refunds.mjs"]
 
   checkout-recovery-worker:
-    <<: *runtime-security
-    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
-    restart: "no"
-    user: "1000:1000"
-    profiles: ["workers"]
-    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
-    cpus: ${OPS_CPUS:?OPS_CPUS is required}
-    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
+    <<: *worker
     environment:
-      NODE_ENV: production
-      DATABASE_URL_FILE: /run/secrets/database_url
-      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+      <<: *worker-env
       STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
     secrets:
       - *database-secret
@@ -218,19 +185,8 @@ services:
 
   # T42: queue backlog, oldest-age and stale-job alerts. Database only.
   monitor-worker:
-    <<: *runtime-security
-    image: ${OPS_IMAGE:?OPS_IMAGE must be an immutable release image}
-    restart: "no"
-    user: "1000:1000"
-    profiles: ["workers"]
-    pids_limit: ${OPS_PIDS_LIMIT:?OPS_PIDS_LIMIT is required}
-    cpus: ${OPS_CPUS:?OPS_CPUS is required}
-    mem_limit: ${OPS_MEMORY_LIMIT:?OPS_MEMORY_LIMIT is required}
-    environment:
-      NODE_ENV: production
-      DATABASE_URL_FILE: /run/secrets/database_url
-      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
-      WORKER_TIMEOUT_SECONDS: ${WORKER_TIMEOUT_SECONDS:-300}
+    <<: *worker
+    environment: *worker-env
     secrets:
       - *database-secret
       - *alert-secret

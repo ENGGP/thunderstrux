@@ -11,6 +11,7 @@ export type ValidationResult<T> =
 
 // Bounds what one request can make the server buffer and echo back.
 const maxJsonBodyBytes = 100_000;
+const maxWebhookBodyBytes = 1_000_000;
 const maxErrorDetails = 20;
 
 export class RequestBodyTooLargeError extends Error {}
@@ -22,8 +23,8 @@ function zodErrorDetails(error: ZodError): ApiErrorDetail[] {
   }));
 }
 
-// Reads at most maxBytes, stopping before buffering the rest; bad JSON throws SyntaxError.
-export async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
+// Reads at most maxBytes, stopping before buffering the rest.
+async function readBody(request: Request, maxBytes: number) {
   if (Number(request.headers.get("content-length") ?? 0) > maxBytes) throw new RequestBodyTooLargeError();
   let length = 0;
   const chunks: Uint8Array[] = [];
@@ -44,7 +45,21 @@ export async function readJsonBody(request: Request, maxBytes: number): Promise<
       reader.releaseLock();
     }
   }
-  return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+// Bad JSON throws SyntaxError.
+export async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
+  return JSON.parse(await readBody(request, maxBytes));
+}
+
+// A webhook has to read its body before it can check the signature, so anyone can
+// send one. Stripe's events are far smaller than this (SEC-041). Null when larger.
+export function readWebhookBody(request: Request): Promise<string | null> {
+  return readBody(request, maxWebhookBodyBytes).catch((error) => {
+    if (error instanceof RequestBodyTooLargeError) return null;
+    throw error;
+  });
 }
 
 export async function parseJsonBody(request: Request): Promise<ParseJsonResult> {

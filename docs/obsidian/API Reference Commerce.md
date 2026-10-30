@@ -107,7 +107,7 @@ State meanings, payouts and disconnect safety: [[Stripe Payments and Connect]].
 
 ## Webhooks
 
-All three read the raw body (`request.text()`), verify `stripe-signature`, use Stripe's response contract and have no origin check or rate limit. Processing: [[Stripe Payments and Connect#Webhooks]].
+All three read the raw body (`readWebhookBody`, 413 over 1 MB), verify `stripe-signature`, use Stripe's response contract and have no origin check or rate limit. Processing: [[Stripe Payments and Connect#Webhooks]].
 
 | Route | Answers | Events |
 | --- | --- | --- |

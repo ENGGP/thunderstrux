@@ -131,6 +131,6 @@ test("door staff scan QR codes: a valid ticket is admitted once, and used, refun
   // Door staff don't read orders, so the card names the buyer without their email.
   await expect(scanned).not.toContainText(buyer.email);
 
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByLabel("Find a ticket")).toBeFocused();
 });

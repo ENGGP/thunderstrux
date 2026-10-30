@@ -646,7 +646,7 @@ Same definitions as ORG-13; event manager sees attendance/inventory only; financ
 
 ## ORG-18 - OpenClaw `/dashboard/openclaw`
 
-> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. The existing `openclaw:use` permission string in `lib/permissions` is an unused placeholder and grants nothing.
+> **Deferred (19 October 2026, maintainer decision).** OpenClaw is out of scope until the maintainer schedules it. Build no part of it: no code, schema, migrations, routes, navigation, design artboards or copy, and no other task waits for it. Plans, design rounds, journeys and PRD audits treat it as absent; the requirements below are kept for when it is scheduled. `lib/permissions` has no OpenClaw permission; add one when it is scheduled.
 
 **Visual goal:** a contained first-party **operations assistant**, not a full-screen AI gradient toy. Desktop split: left 64% conversation/history, right 36% `What I can do`, `Sources and scope`, and **Action preview**. Header states `Working in [Society]` and current authorised staff role. Default starters are supported tasks only: `Explain publication blockers`, `Summarise ticket sales` (finance only), `List next month’s events`, `Create a draft event` and `Mark merchandise ready` when permitted. No fake “AI working in background” badge or computer-control affordance.
 

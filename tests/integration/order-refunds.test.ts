@@ -223,6 +223,17 @@ describe("whole-order refunds", () => {
     await refundInStripe(1000);
     await expect(requestOrderRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "verification_failed" });
     expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: fixture.order.id } })).toMatchObject({ status: "failed", amount: 3000, lastErrorCode: "existing_refund_requires_review" });
+
+    // Even when the webhook records it in the moment between their confirming and the send.
+    const raced = await paidOrder();
+    await refundInStripe(1000);
+    const session = await stripe.retrieve();
+    stripe.retrieve.mockImplementationOnce(async () => {
+      await prisma.order.update({ where: { id: raced.order.id }, data: { externalRefundedAmount: 1000 } });
+      return session;
+    });
+    await expect(requestOrderRefund(refundInput(raced))).rejects.toMatchObject({ kind: "verification_failed" });
+    expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: raced.order.id } })).toMatchObject({ status: "failed", amount: 3000 });
     expect(stripe.create).not.toHaveBeenCalled();
   });
 

@@ -49,7 +49,7 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
     return order.requiresCompensationReview ? (
       <Notice title="Payment received, tickets not issued" tone="warning"><p>We couldn&apos;t issue your tickets after your payment went through. {society} will sort it out; contact them if you haven&apos;t heard back.</p></Notice>
     ) : (
-      <Notice title="Partly refunded"><p>{formatMoney(order.externalRefundedAmount ?? 0)} of {formatMoney(order.totalAmount)} was refunded to your card. Your tickets are still valid.</p></Notice>
+      <Notice title="Partly refunded"><p>{formatMoney(refunded)} of {formatMoney(order.totalAmount)} was refunded to your card. Your tickets are still valid.</p></Notice>
     );
   }
   return null;

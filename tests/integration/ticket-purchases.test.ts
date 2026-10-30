@@ -60,6 +60,11 @@ describe("purchases and order status", () => {
     const order = await getOwnTicketPurchase(fixture.buyer.id, fixture.order.id);
     const notice = await renderPage(TicketOrderNotice({ order: order!, processing: null }));
     expect(notice).toContain("$45.00 was refunded to your card on 30 Oct 2026.");
+
+    // Partly refunded, in Stripe and here: the buyer's total, not only Stripe's part.
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { refundStatus: null } });
+    const partly = await renderPage(TicketOrderNotice({ order: (await getOwnTicketPurchase(fixture.buyer.id, fixture.order.id))!, processing: null }));
+    expect(partly).toContain("$45.00 of");
   });
 
   test("only the buyer or the guest session that bought it can read an order; everyone else gets the same 404", async () => {

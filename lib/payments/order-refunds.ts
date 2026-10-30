@@ -308,7 +308,7 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
     // was promised this one and nobody is watching, so it sends what is left, or closes if that
     // is nothing. Staff on screen confirmed their amount, so they review what Stripe has instead.
     const short = !own && !mayExist && left < request.amount;
-    if (!own && unrecorded && (source === "staff_action" || !short)) throw new RefundVerificationError("existing_refund_requires_review");
+    if (short ? source === "staff_action" : !own && unrecorded) throw new RefundVerificationError("existing_refund_requires_review");
     if (short && left === 0) {
       await fail(request.id, token, refundedElsewhere, source);
       return { refundRequestId: request.id, status: "failed" as const };
@@ -317,6 +317,7 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
     const send = short ? { amount: left, operationKey: `${request.commerceOrderId ? "commerce" : "order"}-refund:${randomUUID()}` } : { amount: request.amount, operationKey: request.operationKey };
     const held = await prisma.refundRequest.updateMany({ where: { id: request.id, processingToken: token }, data: { stripePaymentIntentId: intent.id, ...send } });
     if (held.count !== 1) return { refundRequestId: request.id, status: "pending" as const };
+    if (short) logInfo("order_refund.amount_lowered", { refundRequestId: request.id, orderId: request.orderId, commerceOrderId: request.commerceOrderId, requested: request.amount, sending: left });
     if (request.commerceOrderId) await prisma.commerceOrder.update({ where: { id: request.commerceOrderId }, data: { stripePaymentIntentId: intent.id } });
     else await prisma.order.update({ where: { id: request.orderId as string }, data: { stripePaymentIntentId: intent.id } });
     const refund = own ?? await stripe.refunds.create({

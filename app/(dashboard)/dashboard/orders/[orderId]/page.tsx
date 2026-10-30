@@ -195,6 +195,7 @@ export default async function OrganisationOrderDetailPage({
             isManuallyRefunded={order.isManuallyRefunded}
             markNeedsCode={mfaEnforcementMode() !== "off"}
             orderId={order.id}
+            paid={order.status === "paid"}
             requiresCompensationReview={order.requiresCompensationReview}
             stripeDashboardUrl={order.stripeDashboardUrl}
             stripeSessionId={order.stripeSessionId}
@@ -255,6 +256,7 @@ export default async function OrganisationOrderDetailPage({
         }
         heading="Order history"
         note={lifecycle.historyIncomplete ? "This order predates lifecycle history. Earlier activity may not be shown." : undefined}
+        timeZone={timeZone}
       />
     </DashboardShell>
   );
@@ -296,6 +298,9 @@ function RefundNotice({ order, timeZone }: { order: Awaited<ReturnType<typeof ge
         <p>Stripe has the refund for {formatMoney(refund.amount)}. Banks usually take 5 to 10 business days to return the money.</p>
       </Notice>
     );
+  }
+  if (refund.lastErrorCode === "refunded_elsewhere") {
+    return <Notice role="status" title="Already refunded in Stripe"><p>A refund made in Stripe covered what this one was for, so nothing more was sent.</p></Notice>;
   }
   return refund.status === "failed" ? (
     <Notice title="The last refund didn't go through" tone="danger">

@@ -92,7 +92,7 @@ describe("society calendar (T33)", () => {
     expect(formatTime(new Date("2027-04-03T16:30:00Z"), sydney)).toBe("2:30 am AEST");
     expect(formatTime(new Date("2026-10-04T07:00:00Z"), sydney)).toBe("6:00 pm");
     // 11:30 pm UTC on Saturday is Sunday morning in Sydney.
-    const event = (id: string, start: string, end: string): CalendarEvent => ({ id, title: id, location: "Room", status: "published", startTime: new Date(start), endTime: new Date(end) });
+    const event = (id: string, start: string, end: string): CalendarEvent => ({ id, title: id, location: "Room", status: "published", startTime: new Date(start), endTime: new Date(end), cancelledAt: null });
     const items = calendarItems([
       event("camp", "2026-10-30T05:00:00Z", "2026-11-02T03:00:00Z"),
       event("late", "2026-10-24T23:30:00Z", "2026-10-25T03:00:00Z"),
@@ -127,6 +127,30 @@ describe("society calendar (T33)", () => {
       event("c", "2026-10-23T11:00:00Z", "2026-10-23T12:00:00Z")
     ], sydney);
     expect(placed.map((entry) => [entry.event.id, entry.column, entry.columns])).toEqual([["a", 0, 2], ["b", 1, 2], ["c", 0, 2]]);
+  });
+
+  // EVT-009: a cancelled event stays in the record, marked in words in every view.
+  test("a cancelled event shows as Cancelled in Month, Week and Agenda, and the API says so", async () => {
+    const { organisation, lateNight, camp, staff } = await society();
+    await prisma.event.update({ where: { id: lateNight.id }, data: { cancelledAt: new Date("2026-10-20T00:00:00Z") } });
+    const month = await page({ date: "2026-10-15" });
+    expect(month).toContain("Halloween Social, cancelled");
+    expect(month).toMatch(/<b class="font-semibold">Cancelled <\/b><b class="font-semibold">8:00 pm<\/b> Halloween Social/);
+    expect(month).toContain(">Cancelled</span>"); // the legend, and the Agenda's badge
+    expect(month).not.toContain("Engineering Camp, cancelled");
+    expect(await page({ view: "week", date: "2026-10-31" })).toContain("Cancelled · Halloween Social");
+    expect(await page({ view: "agenda", date: "2026-10-31" })).toContain("Cancelled");
+    // No cancelled event this month: the legend has nothing to explain.
+    expect(await page({ date: "2026-09-15" })).not.toContain(">Cancelled</span>");
+
+    const { events } = await parseJsonResponse(await read(organisation.slug, "from=2026-10-01&to=2026-10-31"));
+    const cancelledAt = (id: string) => events.find((event: { id: string }) => event.id === id).cancelledAt;
+    expect(cancelledAt(lateNight.id)).toBe("2026-10-20T00:00:00.000Z");
+    expect(cancelledAt(camp.id)).toBeNull();
+
+    // Check-in staff keep the record too.
+    await staff("check_in_staff");
+    expect(await page({ date: "2026-10-15" })).toContain("Halloween Social, cancelled");
   });
 
   test("the page shows a manager drafts and New event, and check-in staff published events that open Attendees", async () => {

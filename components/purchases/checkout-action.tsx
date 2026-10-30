@@ -5,21 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
-import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
+import { PhoneActionBar, useActionBelow } from "@/components/purchases/phone-action-bar";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
+import { useCheckout, type CheckoutResponse } from "@/lib/client/checkout";
 import { formatMoney } from "@/lib/format";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
-
-type CheckoutResponse =
-  | { kind: "stripe"; url: string }
-  | { kind: "fulfilled"; orderId: string }
-  | { attemptId: string; status: "processing" };
-
-type AttemptStatus =
-  | { status: "ready"; url: string }
-  | { status: "processing" }
-  | { status: "completed"; orderId: string }
-  | { status: "failed" };
 
 type Selection = { quantity: number; unitPrice: number };
 
@@ -34,15 +24,8 @@ type Screen =
   | { kind: "code_unavailable"; message: string; left: number }
   | { kind: "error"; message: string };
 
-const pollIntervalMs = 2000;
-const pollAttempts = 15;
 const failedMessage = "Checkout could not start. Nothing has been charged. Please try again.";
 const linkClass = "inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4";
-
-// Random bytes work outside secure contexts too, unlike crypto.randomUUID.
-function newCheckoutKey() {
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
 function screenFor(failure: unknown): Screen {
   const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
@@ -58,9 +41,8 @@ function screenFor(failure: unknown): Screen {
 }
 
 // The one button on the checkout page, and the screen that replaces it when
-// checkout refuses or is slow. Any server answer ends a purchase intent, so a
-// new price or quantity goes out under a new key; a double click or a retry
-// after a lost response reuses the key and gets the same result.
+// checkout refuses or is slow. A refusal ends a purchase intent, so a new price
+// or quantity goes out under a new key (`useCheckout`).
 export function CheckoutAction({
   eventId,
   eventTitle,
@@ -91,62 +73,29 @@ export function CheckoutAction({
   code?: string;
 }) {
   const router = useRouter();
-  const key = useRef<string | null>(null);
   const [selection, setSelection] = useState<Selection>({ quantity, unitPrice });
-  const [state, setState] = useState<"idle" | "busy" | "confirming">("idle");
   const [screen, setScreen] = useState<Screen | null>(null);
   const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
-  useResetOnRestore(() => setState("idle"));
-
-  function finished(orderId: string) {
-    router.push(guestCsrf ? `/guest/orders/${encodeURIComponent(orderId)}` : `/events/${eventId}/checkout/confirmed?orderId=${encodeURIComponent(orderId)}`);
-  }
-
-  async function submit(next: Selection = selection) {
-    setSelection(next);
-    setScreen(null);
-    setState("busy");
-    key.current ??= newCheckoutKey();
-
-    try {
-      const data = await fetchJson<CheckoutResponse>("/api/payments/checkout/event", {
-        method: "POST",
-        headers: { "content-type": "application/json", ...(guestCsrf ? { "x-thunderstrux-guest-csrf": guestCsrf } : {}) },
-        body: JSON.stringify({ eventId, ticketTypeId, quantity: next.quantity, expectedUnitPrice: next.unitPrice, ...(code ? { code } : {}), idempotencyKey: key.current })
-      });
-      if ("kind" in data && data.kind === "fulfilled") return finished(data.orderId);
-      if ("kind" in data && data.kind === "stripe") {
-        window.location.href = data.url;
-        return;
-      }
-      if ("attemptId" in data) await waitForCheckout(data.attemptId);
-    } catch (failure) {
-      setState("idle");
-      // A server answer settles this intent; a lost response keeps the key so a retry finds the same checkout.
-      if (failure instanceof ClientApiError || (failure instanceof Error && failure.message === failedMessage)) key.current = null;
+  const { state, start } = useCheckout({
+    failedMessage,
+    finished: (orderId) => router.push(guestCsrf ? `/guest/orders/${encodeURIComponent(orderId)}` : `/events/${eventId}/checkout/confirmed?orderId=${encodeURIComponent(orderId)}`),
+    slow: () => setScreen({ kind: "still_confirming" }),
+    refused(failure) {
       const refused = screenFor(failure);
       // Reload so the summary shows the new price beside the screen that offers it.
       if (refused.kind === "quote_changed") router.refresh();
       setScreen(refused);
     }
-  }
+  });
 
-  // Stripe's answer was not known when checkout returned: poll the attempt until
-  // its Session is ready, the order completes, or it fails.
-  async function waitForCheckout(attemptId: string) {
-    setState("confirming");
-    for (let poll = 0; poll < pollAttempts; poll += 1) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      const attempt = await fetchJson<AttemptStatus>(`/api/payments/checkout/attempts/${attemptId}`);
-      if (attempt.status === "ready") {
-        window.location.href = attempt.url;
-        return;
-      }
-      if (attempt.status === "completed") return finished(attempt.orderId);
-      if (attempt.status === "failed") throw new Error(failedMessage);
-    }
-    setState("idle");
-    setScreen({ kind: "still_confirming" });
+  function submit(next: Selection = selection) {
+    setSelection(next);
+    setScreen(null);
+    return start((idempotencyKey) => fetchJson<CheckoutResponse>("/api/payments/checkout/event", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(guestCsrf ? { "x-thunderstrux-guest-csrf": guestCsrf } : {}) },
+      body: JSON.stringify({ eventId, ticketTypeId, quantity: next.quantity, expectedUnitPrice: next.unitPrice, ...(code ? { code } : {}), idempotencyKey })
+    }));
   }
 
   // A smaller quantity is a new selection: the address follows it, so the summary does too.

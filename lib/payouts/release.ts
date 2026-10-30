@@ -60,7 +60,9 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
       where: { ...paidTo, event: { organisationId }, AND: [
         // An end moved earlier still holds until its latest end has passed, so an
         // edit can't release the money before the event runs (SEC-004, SEC-032).
-        { OR: [{ event: { endTime: { gt: ended } } }, { event: { latestEndTime: { gt: ended } } }, ...stillOpen] },
+        // PAY-045: a cancelled event's buyer may still be owed a refund, so it holds to
+        // the cap; a staff mark says they were repaid, so that sale waits only for the event.
+        { OR: [{ event: { endTime: { gt: ended } } }, { event: { latestEndTime: { gt: ended } } }, { event: { cancelledAt: { not: null } }, isManuallyRefunded: false }, ...stillOpen] },
         notRecovered,
         // A compensation refund returned the money (PAY-012). A staff mark proves
         // nothing at Stripe, so that sale waits for its event like any other.

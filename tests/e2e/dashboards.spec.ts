@@ -52,7 +52,7 @@ test("a member's overview leads with their next valid ticket", async ({ page, da
   await expect(page.getByText("Your next plans")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Halloween Social" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recent purchases" })).toBeVisible();
-  for (const width of [1280, 390]) {
+  for (const width of [1280, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await fits(page);
     await page.screenshot({ path: `test-results/overview-personal-${width}.png`, fullPage: true });

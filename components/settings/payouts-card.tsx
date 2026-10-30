@@ -21,11 +21,11 @@ const badge: Record<PayoutSummaryView["recent"][number]["status"], [Status, stri
 };
 
 // A payout the bank refused: shown at the top of Payments.
-export function PayoutFailedNotice({ failed, action }: { failed: NonNullable<PayoutSummaryView["failed"]>; action: ReactNode }) {
+export function PayoutFailedNotice({ failed, action, timeZone }: { failed: NonNullable<PayoutSummaryView["failed"]>; action: ReactNode; timeZone: string }) {
   return (
     <Notice title="Your bank didn't accept a payout" tone="warning">
       <p>
-        Stripe couldn&apos;t pay {formatMoney(failed.amount)} into your bank account on {formatDate(failed.createdAt)}. The money is safe in
+        Stripe couldn&apos;t pay {formatMoney(failed.amount)} into your bank account on {formatDate(failed.createdAt, timeZone)}. The money is safe in
         your Stripe balance and goes with your next payout once your bank details are fixed.
       </p>
       <div className="mt-3">{action}</div>
@@ -44,7 +44,7 @@ function Figure({ label, amount, note }: { label: string; amount: number; note: 
 }
 
 // Without a bank account, the Stripe account card above already offers to add one.
-export function PayoutsCard({ payouts, payoutsEnabled, payoutsPaused = false, seeAll }: { payouts: PayoutSummaryView; payoutsEnabled: boolean; payoutsPaused?: boolean; seeAll: ReactNode }) {
+export function PayoutsCard({ payouts, payoutsEnabled, payoutsPaused = false, seeAll, timeZone }: { payouts: PayoutSummaryView; payoutsEnabled: boolean; payoutsPaused?: boolean; seeAll: ReactNode; timeZone: string }) {
   const { events, commerce } = payouts.held;
   if (!payoutsEnabled) {
     return (
@@ -63,7 +63,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, payoutsPaused = false, se
   }
   const eventNote = events.eventCount === 0
     ? "No events waiting"
-    : `${events.eventCount} ${events.eventCount === 1 ? "event" : "events"}${events.nextEndsAt ? `, the next ends ${formatDate(events.nextEndsAt)}` : ""}`;
+    : `${events.eventCount} ${events.eventCount === 1 ? "event" : "events"}${events.nextEndsAt ? `, the next ends ${formatDate(events.nextEndsAt, timeZone)}` : ""}`;
   return (
     <Card>
       <div className="grid gap-5">
@@ -81,7 +81,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, payoutsPaused = false, se
           <Figure
             amount={payouts.onTheWay.amount}
             label="On its way to your bank"
-            note={payouts.onTheWay.sentAt ? `Sent ${formatDate(payouts.onTheWay.sentAt)}, usually arrives in 2 business days` : "Nothing on its way"}
+            note={payouts.onTheWay.sentAt ? `Sent ${formatDate(payouts.onTheWay.sentAt, timeZone)}, usually arrives in 2 business days` : "Nothing on its way"}
           />
         </dl>
 
@@ -102,7 +102,7 @@ export function PayoutsCard({ payouts, payoutsEnabled, payoutsPaused = false, se
               <tbody>
                 {payouts.recent.map((payout) => (
                   <tr key={payout.id}>
-                    <td className="border-b border-line py-3">{formatDate(payout.createdAt)}</td>
+                    <td className="border-b border-line py-3">{formatDate(payout.createdAt, timeZone)}</td>
                     <td className="border-b border-line py-3 text-right">{formatMoney(payout.amount)}</td>
                     <td className="border-b border-line py-3 pl-4"><StatusBadge label={badge[payout.status][1]} status={badge[payout.status][0]} /></td>
                   </tr>

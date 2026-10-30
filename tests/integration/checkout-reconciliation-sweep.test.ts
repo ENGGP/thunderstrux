@@ -150,6 +150,20 @@ describe("checkout reconciliation sweep: tickets", () => {
   });
 
   // PAY-029: a failed look is stamped, so a few broken orders can't take every run.
+  // PAY-046: with the oldest hold always first, orders Stripe keeps failing on held the front of every run.
+  test("an order that keeps failing goes behind one never asked about, so the queue moves", async () => {
+    const stuck = await pendingCheckout();
+    const next = await pendingCheckout();
+    stripe.retrieve.mockImplementation(async (id: string) => {
+      if (id === stuck.sessionId) throw Object.assign(new Error("socket hang up"), { type: "StripeConnectionError" });
+      return next.session({ status: "expired", payment_status: "unpaid" });
+    });
+    await expect(processStaleOrderCleanupBatch({ now: afterHold(), limit: 1 })).resolves.toMatchObject({ ordersExpired: 0, stripeDeferred: 1 });
+    await expect(processStaleOrderCleanupBatch({ now: afterHold(), limit: 1 })).resolves.toMatchObject({ stripeDeferred: 0 });
+    expect(await state(stuck.orderId)).toMatchObject({ status: "pending", reservation: { status: "active" } });
+    expect(await state(next.orderId)).toMatchObject({ status: "expired", reservation: { status: "expired" } });
+  });
+
   test("a failed look is stamped and alerts; a local error is told apart from Stripe being unreachable", async () => {
     const first = await pendingCheckout();
     const second = await pendingCheckout();

@@ -40,9 +40,10 @@ export default function PrivacyPage() {
       </PolicySection>
       <PolicySection title="Emails we send">
         <p>Receipts, tickets, refund and order updates, changes to events you&apos;re going to, and security notices. Optional reminders, such as a membership about to end, can be turned off in Account settings.</p>
+        <p>We keep a record of each email, including the address it went to, for 30 days after it&apos;s sent, then delete it. A notice to society staff about a Stripe deadline stays until 30 days after that deadline.</p>
       </PolicySection>
       <PolicySection title="Closing your account">
-        <p>You can close your account in Account settings. Your login and profile are removed for good and can&apos;t be restored. Records of what you bought and attended stay, because societies need them for their accounts and refunds.</p>
+        <p>You can close your account in Account settings. Your login and profile are removed for good and can&apos;t be restored. Records of what you bought and attended stay, because societies need them for their accounts and refunds. Records of emails we already sent you are deleted on the usual 30-day timetable above.</p>
       </PolicySection>
       <PolicySection title="Questions">
         <p>

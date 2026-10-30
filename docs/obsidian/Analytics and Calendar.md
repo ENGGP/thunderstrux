@@ -87,7 +87,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
   - Each tab explains itself under "How these numbers are counted". An empty range shows an empty state instead of a chart.
 - **Event Summary:** tickets sold (issued, split paid and free, and how many are no longer valid), tickets left, capacity, checked in, and for money roles net sales with gross and refunded. The ticket table uses `eventTicketTypeMetrics`; a Codes table (`eventCodeMetrics`) follows when the event has codes. **Sales over time** is gross by local day from `eventSalesDays`' first to last day, by week once that spans more than 62 days, over at most the last 366 days.
 - **Overview tile** (`society-overview.tsx`): money roles see **Sales this month**, `societySales` gross since the 1st in the society's zone. Others with `analytics:read` see **Tickets issued this month** (`ticketMetrics`).
-- **Events list:** `N sold` is a database sum of `quantity` over the event's `paid` orders (`lib/events/event-lifecycle.ts`), which counts refunded orders and free registrations too.
+- **Events list:** `N sold` counts the event's tickets whose `validity` is `active` (`lib/events/event-lifecycle.ts`), so free registrations count and refunded, cancelled and disputed tickets don't. Only roles with `analytics:read` see it.
 - `BarChart` draws vertical bars from 768 px and a horizontal list on phones; its accessible name lists every value, and the analytics tabs repeat the numbers in a table.
 
 **Indexes:** `Order(eventId, fulfilledAt)` and `CommerceOrder(organisationId, kind, fulfilledAt)` serve sales by fulfilment time (`prisma/migrations/20261109010000_analytics_indexes/migration.sql` records the measurements). Year-long reads still scan. See [[Database and Multi Tenancy#Indexes]].
@@ -101,6 +101,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
 - Returns every event that overlaps the range (`startTime` before its end and `endTime` after its start), so a camp from Friday to Monday shows in both months. Bounds come from SQL `AT TIME ZONE`.
 - At most `calendarEventCap` (500) events; more sets `truncated` and the page says so.
 - Drafts need `events:manage`; others see published events only.
+- A cancelled event stays on the calendar for everyone who can see it: the word Cancelled on its chip, row and label, plain colours, and a legend entry when one is showing (EVT-009). `readCalendar` returns `cancelledAt`. The door view (`getDoorDay`) leaves it out.
 - Membership end dates need `members:read`: per plan and last day, the number of members whose unrevoked term ends then. The last day is the day before `endsAt`, which is exclusive.
 
 **API:** `GET /api/orgs/[orgSlug]/calendar?from=&to=` serves the same read to a live staff role with `events:read`. Another society's slug is 404, a bad range 400, and responses are `private, no-store`.

@@ -43,7 +43,7 @@ sources: [app/api/orgs, app/api/events, app/api/tickets, app/api/public, app/api
 | `POST /api/orgs/[orgSlug]/assets?kind=` | `logo`/`cover`: `organisation:settings`; `event`: `events:manage`; `product`: `merchandise:manage` (+MFA); `asset_upload` (actor and tenant buckets) | one multipart image | 201 `{asset}` | 400 bad kind or image, 413 over 5 MiB, 429 storage quota, 503 storage unverifiable. Audit `asset.uploaded` |
 | `GET /api/orgs/[orgSlug]/assets/[assetId]` | the asset kind's permission +MFA | — | the stored bytes (private preview) | 404 unknown image (after authentication). `private, no-store` |
 | `DELETE /api/orgs/[orgSlug]/assets/[assetId]` | same; `asset_delete` | none | `{deleted: true}` | 409 still referenced or still uploading; 404. Audit `asset.deleted` |
-| `GET /api/orgs/[orgSlug]/calendar?from=&to=` | `events:read` +MFA | `from`, `to`: real `YYYY-MM-DD` days in the society's zone, at most 93 days (`maxCalendarDays`) | `{from, to, timeZone, events, truncated, membershipEnds}` (events capped at 500) | 400 bad range (`path: ["from"]`); drafts only with `events:manage`; `membershipEnds` only with `members:read`. `private, no-store` |
+| `GET /api/orgs/[orgSlug]/calendar?from=&to=` | `events:read` +MFA | `from`, `to`: real `YYYY-MM-DD` days in the society's zone, at most 93 days (`maxCalendarDays`) | `{from, to, timeZone, events, truncated, membershipEnds}` (events capped at 500; each has `cancelledAt`) | 400 bad range (`path: ["from"]`); drafts only with `events:manage`; `membershipEnds` only with `members:read`. `private, no-store` |
 
 Profile errors and asset errors use the envelope with their own status. Formats, quotas and recovery: [[Society Profiles and Assets]].
 

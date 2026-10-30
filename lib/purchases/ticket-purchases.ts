@@ -41,7 +41,7 @@ const listSelect = {
   purchasedTicketTypeName: true,
   createdAt: true,
   ticketType: { select: { name: true } },
-  event: { select: { id: true, title: true, organisation: { select: { name: true } } } }
+  event: { select: { id: true, title: true, organisation: { select: { name: true, timeZone: true } } } }
 } satisfies Prisma.OrderSelect;
 
 // The member's ticket orders, newest first; checkouts that didn't complete only when asked.
@@ -93,7 +93,7 @@ export async function getOwnTicketPurchase(userId: string, orderId: string) {
         }
       },
       tickets: { orderBy: { issueSequence: "asc" }, select: { id: true, issueSequence: true, validity: true, validityReason: true, checkedInAt: true } },
-      refundRequests: { where: { status: "succeeded" }, orderBy: { createdAt: "desc" }, take: 1, select: { amount: true, resolvedAt: true } }
+      refundRequests: { where: { status: "succeeded" }, orderBy: { createdAt: "desc" }, select: { amount: true, resolvedAt: true } }
     }
   });
   if (!order) return null;

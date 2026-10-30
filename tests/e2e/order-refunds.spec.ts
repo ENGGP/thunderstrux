@@ -54,6 +54,7 @@ test("finance staff pick tickets to refund or cancel, a wrong reference changes 
   await expect(dialog.getByRole("checkbox", { name: new RegExp(reference(second.id)) })).toHaveCount(0);
   await expect(dialog.getByRole("checkbox", { name: new RegExp(reference(first.id)) })).toBeChecked();
   await expect(dialog.getByLabel("Refund amount")).toHaveValue("15.00");
+  await expect(dialog.getByLabel(/^Type .+ to confirm$/)).toHaveValue("");
   await dialog.getByRole("button", { name: "Go back" }).click();
   await expect(dialog).toBeHidden();
 

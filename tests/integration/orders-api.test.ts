@@ -745,6 +745,20 @@ describe("orders API", () => {
     })).resolves.toEqual({ isManuallyRefunded: false });
   });
 
+  // PAY-047: nothing was taken, and the mark emails the buyer a refund.
+  test.each(["failed", "expired"] as const)("a %s checkout can't be marked as refunded, and the buyer hears nothing", async (status) => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id, status: "published" });
+    const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status, failedAt: status === "failed" ? new Date() : null });
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+
+    const response = await markManualRefund(jsonRequest(`http://localhost/api/orders/${order.id}/refund-manual`, { reason: "Refunded by bank transfer" }, { method: "PATCH" }), routeContext({ orderId: order.id }));
+    expect(response.status).toBe(409);
+    expect(JSON.stringify(await parseJsonResponse(response))).toContain("no payment to mark as refunded");
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).isManuallyRefunded).toBe(false);
+    expect(await prisma.notificationOutbox.count({ where: { organisationId: organisation.id } })).toBe(0);
+  });
+
   // UI-018: a reason, as for a refund, recorded in the order history and History.
   test("Mark as refunded needs a reason, and the reason is recorded", async () => {
     const { user, organisation } = await createOrganisationAccount();

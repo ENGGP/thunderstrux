@@ -11,7 +11,6 @@ import {
   descendingCursorWhere,
   orderByForDirection,
   pageInfoForPage,
-  type PageInfo,
   type PaginationDirection
 } from "@/lib/pagination/cursor";
 
@@ -100,8 +99,8 @@ export async function getGroupedOrganisationOrdersWithContext(
     direction = "next"
   }: OrganisationOrderQueryFilters = {}
 ) {
-  const scopedEvents = eventId
-    ? await prisma.event.findMany({
+  const eventContext = eventId
+    ? await prisma.event.findFirst({
         where: {
           id: eventId,
           organisationId
@@ -111,16 +110,7 @@ export async function getGroupedOrganisationOrdersWithContext(
           title: true
         }
       })
-    : await prisma.event.findMany({
-        where: {
-          organisationId
-        },
-        select: {
-          id: true,
-          title: true
-        }
-      });
-  const eventContext = eventId ? scopedEvents[0] ?? null : null;
+    : null;
 
   if (eventId && !eventContext) {
     throw new OrganisationOrderEventAccessError();
@@ -133,19 +123,10 @@ export async function getGroupedOrganisationOrdersWithContext(
     ? descendingCursorWhere("createdAt", decodedCursor, direction)
     : {};
 
-  if (scopedEvents.length === 0) {
-    return {
-      event: eventContext,
-      groups: [] as GroupedOrganisationOrderGroup[],
-      pageInfo: emptyPageInfo(limit)
-    };
-  }
-
   const orders = await prisma.order.findMany({
     where: {
-      eventId: {
-        in: scopedEvents.map((event) => event.id)
-      },
+      event: { organisationId },
+      ...(eventId ? { eventId } : {}),
       ...(search
         ? {
             AND: [{ OR: [
@@ -220,15 +201,13 @@ export async function getGroupedOrganisationOrdersWithContext(
     cursor,
     timestampField: "createdAt"
   });
-  const eventTitles = new Map(scopedEvents.map((event) => [event.id, event.title]));
 
   const groups = new Map<string, GroupedOrganisationOrderGroup>();
 
   for (const order of pageOrders) {
-    const eventTitle = eventTitles.get(order.eventId) ?? order.event.title;
     const group = groups.get(order.eventId) ?? {
       eventId: order.eventId,
-      eventTitle,
+      eventTitle: order.event.title,
       orders: []
     };
 
@@ -259,15 +238,5 @@ export async function getGroupedOrganisationOrdersWithContext(
     event: eventContext,
     groups: [...groups.values()],
     pageInfo
-  };
-}
-
-function emptyPageInfo(limit: number): PageInfo {
-  return {
-    limit,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    nextCursor: null,
-    previousCursor: null
   };
 }

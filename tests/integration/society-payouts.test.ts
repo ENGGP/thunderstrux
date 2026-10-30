@@ -35,6 +35,7 @@ afterEach(() => { for (const mock of Object.values(stripe)) mock.mockReset(); })
 
 const day = 86_400_000;
 const now = new Date();
+const balance = (available: number, pending = 0) => ({ available: [{ currency: "aud", amount: available }], pending: [{ currency: "aud", amount: pending }] });
 
 // A ready society and a paid $20.00 ticket ($1.64 fee, $18.36 to the society) for an event ending `endsIn` from now.
 async function society() {
@@ -133,6 +134,21 @@ describe("what is held", () => {
     // Once the latest end has passed too, the money goes.
     expect((await heldMoney(fixture.organisationId, fixture.accountId, new Date(now.getTime() + 33 * day))).total).toBe(0);
   });
+
+  test("a cancelled event holds a buyer's failed refund to the cap, but not a sale staff marked as refunded (PAY-045)", async () => {
+    const fixture = await society();
+    const cancelled = await ticketSale(fixture, -3 * day); // past its end plus 2 days, refund failed: held
+    await prisma.event.update({ where: { id: cancelled.eventId }, data: { cancelledAt: new Date(now.getTime() - 4 * day) } });
+    await prisma.refundRequest.create({ data: { orderId: cancelled.id, organisationId: fixture.organisationId, amount: 2000, reason: "Event cancelled: storm.", operationKey: unique("refund"), status: "failed", resolvedAt: now } });
+    const marked = await ticketSale(fixture, -3 * day, { isManuallyRefunded: true }); // repaid another way: released
+    await prisma.event.update({ where: { id: marked.eventId }, data: { cancelledAt: new Date(now.getTime() - 4 * day) } });
+    const upcoming = await ticketSale(fixture, 5 * day, { isManuallyRefunded: true }); // still waits for its end, like any other mark
+    await prisma.event.update({ where: { id: upcoming.eventId }, data: { cancelledAt: now } });
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).events).toMatchObject({ amount: 1836 * 2, eventCount: 2 });
+    // The 80-day cap sends it, as for every other hold.
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, new Date(now.getTime() + 80 * day))).total).toBe(0);
+  });
+
   // PAY-027: a refund made in Stripe's Dashboard without reversing the transfer.
   test("a refund made in Stripe that didn't take the money back from the society stays held until Stripe shows the reversal", async () => {
     const fixture = await society();
@@ -146,7 +162,7 @@ describe("what is held", () => {
     // Reversed by hand in Stripe: the next payout run sees it and releases the share.
     stripe.intent.mockImplementation(async (id: string) => ({ id, latest_charge: { amount_refunded: id === intentId ? 2000 : 1000, transfer: id === intentId ? "tr_full" : "tr_half" } }));
     stripe.transfer.mockImplementation(async (id: string) => ({ id, amount_reversed: id === "tr_full" ? 2000 : 500 }));
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 10_000 }] });
+    stripe.balance.mockResolvedValue(balance(10_000));
     stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
     await processPayoutBatch(100, now);
     expect(stripe.intent).toHaveBeenCalledWith(intentId, { expand: ["latest_charge"] });
@@ -176,10 +192,31 @@ describe("what is held while money may still move", () => {
 });
 
 describe("payouts worker", () => {
+  // Two $18.36 sales on an upcoming event are held: $36.72.
+  async function societyHolding3672(available: number, pending: number) {
+    const fixture = await society();
+    await ticketSale(fixture, 10 * day);
+    await ticketSale(fixture, 10 * day);
+    stripe.balance.mockResolvedValue(balance(available, pending));
+    stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
+    await processPayoutBatch(100, now);
+    return stripe.create.mock.calls.at(-1)?.[0].amount;
+  }
+
+  // PAY-044: recent sales are still in Stripe's pending balance, so subtracting every held sale from `available` held them twice.
+  test("held money still pending at Stripe doesn't keep back money that is available, and a negative pending balance does", async () => {
+    expect(await societyHolding3672(5000, 1000)).toBe(6000 - 3672);
+    // Everything held is still pending: all that is available goes, and never more.
+    expect(await societyHolding3672(3000, 9000)).toBe(3000);
+    // Pending refunds or fees: -$10.00 is owed back out of what is available.
+    expect(await societyHolding3672(8000, -1000)).toBe(7000 - 3672);
+    expect(stripe.create).toHaveBeenCalledTimes(3);
+  });
+
   test("pays out what is available less what is held, once a day per society, and checks each society at most hourly", async () => {
     const fixture = await society();
     await ticketSale(fixture, 10 * day); // $18.36 held
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.balance.mockResolvedValue(balance(5000));
     stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: Math.floor(now.getTime() / 1000) + 2 * 86400 }));
 
     const result = await processPayoutBatch(100, now);
@@ -212,10 +249,10 @@ describe("payouts worker", () => {
     const tomorrow = new Date(morning.getTime() + day);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.balance.mockResolvedValue(balance(5000));
     await processPayoutBatch(100, morning);
     // More money became free an hour later: no second payout today, and nothing refused.
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 7000 }] });
+    stripe.balance.mockResolvedValue(balance(7000));
     await processPayoutBatch(100, later);
     expect(stripe.create).toHaveBeenCalledTimes(1);
     expect(error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("payouts.failed_to_send"))).toEqual([]);
@@ -232,7 +269,7 @@ describe("payouts worker", () => {
     const fixture = await society();
     await ticketSale(fixture, 10 * day);
     stripe.account.mockResolvedValue({ payments: { payouts: { schedule: { interval: "daily" } }, debit_negative_balances: false } });
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 1836 + 99 }] });
+    stripe.balance.mockResolvedValue(balance(1836 + 99));
     await processPayoutBatch(100, now);
     expect(stripe.update).toHaveBeenCalledWith(manualPayoutSettings, { stripeAccount: fixture.accountId });
     expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
@@ -250,7 +287,7 @@ describe("payouts worker", () => {
     await earlier(lapsed, 8 * day);
     // A refused payout doesn't count as being paid.
     await earlier(lapsed, 3 * day, "failed");
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 1500 }] });
+    stripe.balance.mockResolvedValue(balance(1500));
     stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
 
     const result = await processPayoutBatch(100, now);
@@ -266,14 +303,14 @@ describe("payouts worker", () => {
     const fixture = await society();
     const morning = new Date(`${now.toISOString().slice(0, 10)}T01:00:00.000Z`);
     const later = new Date(morning.getTime() + 61 * 60_000);
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.balance.mockResolvedValue(balance(5000));
     stripe.create
       .mockRejectedValueOnce(Object.assign(new Error("Insufficient funds in Stripe account"), { type: "StripeInvalidRequestError" }))
       .mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     await processPayoutBatch(100, morning);
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 4000 }] });
+    stripe.balance.mockResolvedValue(balance(4000));
     await processPayoutBatch(100, later);
     const keys = stripe.create.mock.calls.filter(([, options]) => options.stripeAccount === fixture.accountId).map(([, options]) => options.idempotencyKey);
     expect(keys).toEqual([`payout:${fixture.accountId}:${morning.toISOString()}`, `payout:${fixture.accountId}:${later.toISOString()}`]);
@@ -293,7 +330,7 @@ describe("payouts worker", () => {
     const restricted = await society();
     await prisma.organisation.update({ where: { id: stale.organisationId }, data: { stripeAccountStatus: "ERROR" } });
     await prisma.organisation.update({ where: { id: restricted.organisationId }, data: { stripeAccountStatus: "RESTRICTED", stripeChargesEnabled: false } });
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.balance.mockResolvedValue(balance(5000));
     stripe.create.mockImplementation(async (params: { amount: number }) => ({ id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null }));
 
     const result = await processPayoutBatch(100, now);
@@ -306,7 +343,7 @@ describe("payouts worker", () => {
   test("a payout Stripe won't send is logged and tried next hour; the other societies are still paid", async () => {
     const failing = await society();
     const other = await society();
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.balance.mockResolvedValue(balance(5000));
     stripe.create.mockImplementation(async (params: { amount: number }, options: { stripeAccount: string }) => {
       if (options.stripeAccount === failing.accountId) throw Object.assign(new Error("Your account cannot currently make payouts"), { type: "StripeInvalidRequestError" });
       return { id: unique("po"), amount: params.amount, currency: "aud", status: "pending", arrival_date: null };
@@ -351,7 +388,7 @@ describe("payout events", () => {
     stripe.payout.mockResolvedValue(created);
     expect((await payoutEvent(fixture.accountId, created, "payout.created")).status).toBe(200);
     expect(await prisma.societyPayout.findUniqueOrThrow({ where: { stripePayoutId: created.id } })).toMatchObject({ organisationId: fixture.organisationId, status: "pending", amount: 3000 });
-    stripe.balance.mockResolvedValue({ available: [{ currency: "aud", amount: 5000 }] });
+    stripe.balance.mockResolvedValue(balance(5000));
     await processPayoutBatch(100, new Date());
     expect(stripe.create).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ stripeAccount: fixture.accountId }));
   });

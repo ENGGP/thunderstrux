@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import sharp from "sharp";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { createCommerceOrder } from "@/lib/commerce/orders";
-import { test, expect, login, prisma, selectStaffContext } from "./fixtures";
+import { test, expect, login, prisma, selectStaffContext, submitTwice } from "./fixtures";
 
 async function shoot(page: Page, name: string) {
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/merchandise-${name}-${width}.png`, fullPage: true });
@@ -36,7 +36,7 @@ test("an owner drafts a product with a photo and options, publishes it and archi
   await options.nth(1).getByLabel("Colour").fill("Sticker pack");
   await options.nth(1).getByLabel("Price").fill("0");
   await options.nth(1).getByLabel("Stock left").fill("20");
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await submitTwice(page, page.locator("form").filter({ has: page.getByRole("button", { name: "Save draft" }) }), `/api/orgs/${data.organisation.slug}/merchandise`);
 
   await expect(page.getByRole("heading", { name: "EngSoc hoodie", level: 1 })).toBeVisible();
   await expect(options.nth(0).getByLabel("SKU")).toHaveValue("ENGSOC-HOODIE-NAVY-L");

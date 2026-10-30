@@ -7,6 +7,7 @@ import {
   createOrder,
   createOrganisationAccount
 } from "@/tests/helpers/test-data";
+import OrganisationOrderDetailPage from "@/app/(dashboard)/dashboard/orders/[orderId]/page";
 import OrganisationOrdersPage from "@/app/(dashboard)/dashboard/orders/page";
 import { prisma } from "@/lib/db";
 
@@ -37,6 +38,26 @@ async function renderOrdersPage(
 }
 
 describe("dashboard orders page", () => {
+  // PAY-047: a checkout that didn't complete took no money.
+  test("the order page offers Mark as refunded on a paid order, not on an expired one", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+    const order = (status: "paid" | "expired") => createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status, paidAt: status === "paid" ? new Date() : null });
+    const detail = async (orderId: string) => renderPage(await OrganisationOrderDetailPage({ params: Promise.resolve({ orderId }), searchParams: Promise.resolve({}) }));
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    expect(await detail((await order("paid")).id)).toContain("Mark as refunded");
+    const expired = await detail((await order("expired")).id);
+    expect(expired).toContain("Manage this order");
+    expect(expired).not.toContain("Mark as refunded");
+
+    // PAY-049: a queued refund that closed because Stripe had already refunded it isn't a failure, and the tickets may be void by now.
+    const closed = await order("paid");
+    await prisma.refundRequest.create({ data: { orderId: closed.id, organisationId: organisation.id, amount: closed.totalAmount, reason: "Event cancelled: storm", operationKey: closed.id, status: "failed", lastErrorCode: "refunded_elsewhere", resolvedAt: new Date() } });
+    const closedPage = await detail(closed.id);
+    expect(closedPage).toContain("Already refunded in Stripe");
+    expect(closedPage).not.toContain("The tickets are still valid");
+  });
+
   test("ticket order times show in the society's zone, the zone its date filters use", async () => {
     const { user, organisation } = await createOrganisationAccount();
     await prisma.organisation.update({ where: { id: organisation.id }, data: { timeZone: "Australia/Perth" } });

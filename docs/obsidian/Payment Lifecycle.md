@@ -134,7 +134,7 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | Hold expired or lapsed without room / missing | `reservation_expired_after_payment` / `reservation_missing_after_payment` |
 | Hold quantity differs | `reservation_quantity_mismatch_after_payment` |
 | Member-price membership revoked (read `FOR SHARE`) | `member_price_membership_revoked` |
-| Members-only event, and no unrevoked membership unlocking it as at checkout (read `FOR SHARE`, DEBT-002) | `members_only_access_revoked` |
+| Members-only event, and no unrevoked membership unlocking it as at checkout (read `FOR SHARE`, DEBT-002; this includes an event made members-only during the hold, as a cancellation then would be) | `members_only_access_revoked` |
 | Event capacity below occupancy | `capacity_exceeded_after_payment` |
 | Hold can't be confirmed / stock can't be decremented | `reservation_confirm_failed_after_payment` / `inventory_unavailable_after_payment` |
 

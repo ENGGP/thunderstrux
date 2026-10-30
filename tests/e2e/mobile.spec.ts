@@ -5,7 +5,8 @@ test('mobile member can sign in and inspect an event', async ({ page, data }) =>
   await prisma.organisation.update({ where: { id: data.organisation.id }, data: { stripeAccountId: `acct_e2e_mobile_${data.organisation.id}`, stripeChargesEnabled: true } });
   await login(page, data.member.email, `/events/${data.event.id}`);
   await expect(page.getByRole('heading', {name: data.event.title, exact: true})).toBeVisible();
-  await expect(page.getByRole('button', {name: 'Get tickets', exact: true})).toBeVisible();
+  // The box's own button; while it is below the screen the phone bar repeats it (next test).
+  await expect(page.getByRole('button', {name: 'Get tickets', exact: true}).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

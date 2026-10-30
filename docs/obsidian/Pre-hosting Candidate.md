@@ -78,8 +78,8 @@ What a society pays per ticket on a one-ticket order when it absorbs the fee, wi
 
 - Thunderstrux is cheaper than Eventbrite, Humanitix Standard and Rubric Standard at every price.
 - On $5 to $50 tickets it costs about 1.6 to 1.7 times TryBooking's 2.5% + $0.50, which anyone can use and which Humanitix also charges nonprofits that qualify. Ticketebo is cheaper above about $8 a ticket, Ticket Tailor above about $24, and Eventfinda at most prices.
-- Matching TryBooking would stay above Stripe's cost (break-even about $0.55 on a $12 ticket, assuming 10% international cards and 3% refunds), but the platform would keep about $0.24 of each $12 ticket instead of $0.77, needing about three times the volume for the same contribution. The candidate keeps its fee and competes with the low-cost plans on fit: member and non-member prices, presale caps, union rules and a final listed price.
-- Humanitix (by default) and TryBooking keep their own fee when a ticket is refunded; Thunderstrux returns it (PAY-008).
+- Matching TryBooking would stay above Stripe's cost (break-even about $0.55 on a $12 ticket, assuming 10% international cards and 3% refunds), but the platform would keep about $0.24 of each $12 ticket instead of $0.77, needing about three times the volume for the same contribution. The candidate keeps its fee and competes with the low-cost plans on fit: member and non-member prices and a final listed price.
+- On a refund, TryBooking keeps its ticket fee even when the society absorbs it, while Humanitix keeps only the booking fee passed to the buyer and returns one the society absorbs. Thunderstrux's fee is always absorbed and always returned (PAY-008).
 - Music and stadium ticketers (Oztix, Moshtix, Ticketek, Ticketmaster) publish no organiser price; their fees fall on buyers.
 - Unconfirmed: whether a university society qualifies for Humanitix's nonprofit rate, Ticket Tailor's AUD fee and GST, and Eventfinda's GST basis. H06 tests whether societies find the fee fair.
 

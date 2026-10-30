@@ -16,6 +16,7 @@ import {
   getStripeWebhookSecret,
   StripeConfigurationError
 } from "@/lib/stripe";
+import { readWebhookBody } from "@/lib/stripe/webhook-body";
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   const body = await readWebhookBody(request, "payments");
-  if ("refused" in body) return body.refused;
+  if (body.refused) return body.refused;
   const { rawBody } = body;
   let stripe: Stripe;
   let webhookSecret: string;

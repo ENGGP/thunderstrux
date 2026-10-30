@@ -349,6 +349,7 @@ export async function getOrganisationEventForEditing(
           price: true,
           memberPrice: true,
           quantity: true,
+          hidden: true,
           _count: { select: { orders: true, tickets: true } }
         },
         orderBy: { createdAt: "asc" }
@@ -379,6 +380,7 @@ export async function getOrganisationEventForEditing(
       price: ticketType.price,
       memberPrice: ticketType.memberPrice,
       quantity: ticketType.quantity,
+      hidden: ticketType.hidden,
       ordersCount: ticketType._count.orders,
       ticketsCount: ticketType._count.tickets,
       sold: issuedByType.get(ticketType.id) ?? 0,
@@ -428,7 +430,8 @@ export async function createOrganisationEvent(
           name: ticketType.name,
           price: ticketType.price,
           memberPrice: ticketType.memberPrice ?? null,
-          quantity: ticketType.quantity
+          quantity: ticketType.quantity,
+          hidden: ticketType.hidden ?? false
         }))
       }
     },
@@ -457,8 +460,8 @@ type EventFacts = {
 // What an edit changed, for History (T38): before and after for each field,
 // "changed" for the description, and ticket types added, removed or edited.
 function eventChanges(
-  before: EventFacts & { ticketTypes: Array<{ id: string; name: string; price: number; quantity: number }> },
-  after: EventFacts & { ticketTypes: Array<{ id?: string; name: string; price: number; quantity: number }>; removedTicketTypeIds: string[] }
+  before: EventFacts & { ticketTypes: Array<{ id: string; name: string; price: number; quantity: number; hidden: boolean }> },
+  after: EventFacts & { ticketTypes: Array<{ id?: string; name: string; price: number; quantity: number; hidden?: boolean }>; removedTicketTypeIds: string[] }
 ): Prisma.InputJsonArray {
   const value = (fact: unknown) => (fact instanceof Date ? fact.toISOString() : (fact as string | number | null));
   const fields = ["title", "startTime", "endTime", "location", "capacity", "salesCloseAt", "visibility", "checkoutHoldMinutes"] as const;
@@ -474,10 +477,11 @@ function eventChanges(
   const changed = after.ticketTypes.flatMap((ticketType) => {
     const was = ticketType.id ? existing.get(ticketType.id) : undefined;
     if (!was) return [];
-    const edit: Record<string, string | number[]> = { name: ticketType.name };
+    const edit: Record<string, string | number[] | boolean> = { name: ticketType.name };
     if (was.name !== ticketType.name) edit.renamedFrom = was.name;
     if (was.price !== ticketType.price) edit.price = [was.price, ticketType.price];
     if (was.quantity !== ticketType.quantity) edit.quantity = [was.quantity, ticketType.quantity];
+    if (ticketType.hidden !== undefined && was.hidden !== ticketType.hidden) edit.hidden = ticketType.hidden;
     return Object.keys(edit).length > 1 ? [edit] : [];
   });
   if (added.length || removed.length || changed.length) changes.push({ field: "ticketTypes", added, removed, changed });
@@ -585,7 +589,7 @@ export async function updateOrganisationEvent(
         visibility: true,
         checkoutHoldMinutes: true,
         ticketTypes: {
-          select: { id: true, name: true, price: true, quantity: true, _count: { select: { orders: true, tickets: true } } }
+          select: { id: true, name: true, price: true, quantity: true, hidden: true, _count: { select: { orders: true, tickets: true } } }
         }
       }
     });
@@ -697,7 +701,8 @@ export async function updateOrganisationEvent(
                 name: ticketType.name,
                 price: ticketType.price,
                 memberPrice: ticketType.memberPrice ?? null,
-                quantity: quantities[index]
+                quantity: quantities[index],
+                ...(ticketType.hidden !== undefined ? { hidden: ticketType.hidden } : {})
               }
             })
           : transaction.ticketType.create({
@@ -706,7 +711,8 @@ export async function updateOrganisationEvent(
                 name: ticketType.name,
                 price: ticketType.price,
                 memberPrice: ticketType.memberPrice ?? null,
-                quantity: quantities[index]
+                quantity: quantities[index],
+                hidden: ticketType.hidden ?? false
               }
             })
       )
@@ -747,7 +753,7 @@ export async function updateOrganisationEvent(
             heroAssetId,
             heroAlt,
             checkoutHoldMinutes: input.checkoutHoldMinutes ?? locked.checkoutHoldMinutes,
-            ticketTypes: input.ticketTypes.map((ticketType, index) => ({ id: ticketType.id, name: ticketType.name, price: ticketType.price, quantity: quantities[index] })),
+            ticketTypes: input.ticketTypes.map((ticketType, index) => ({ id: ticketType.id, name: ticketType.name, price: ticketType.price, quantity: quantities[index], hidden: ticketType.hidden })),
             removedTicketTypeIds
           })
         }

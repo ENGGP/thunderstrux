@@ -144,6 +144,12 @@ export default async function OrganisationOrderDetailPage({
             <dd className="text-ink">
               {order.quantity} × {order.purchasedTicketType} at {formatPrice(order.unitPrice)}
             </dd>
+            {order.codeSnapshot ? (
+              <>
+                <dt className="text-ink-soft">Code</dt>
+                <dd className="text-ink"><span className="font-mono">{order.codeSnapshot}</span>, {formatMoney(order.discountAmount)} off</dd>
+              </>
+            ) : null}
             <dt className="text-ink-soft">Total</dt>
             <dd className="font-semibold tabular-nums text-ink">{formatPrice(order.totalAmount)}</dd>
             {order.refundedAmount > 0 ? (

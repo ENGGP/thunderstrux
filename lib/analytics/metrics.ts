@@ -193,6 +193,38 @@ export async function eventTicketTypeMetrics(organisationId: string, eventId: st
   }));
 }
 
+// One event's ticket codes over all time: tickets issued and still valid on
+// completed orders, and for finance staff what each took off and brought in.
+export async function eventCodeMetrics(organisationId: string, eventId: string, access: AnalyticsAccess) {
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT c."id", c."code", c."maxUses", coalesce(s.issued, 0) AS issued, coalesce(s.valid, 0) AS valid,
+      coalesce(m.discount, 0) AS discount, coalesce(m.gross, 0) AS gross
+    FROM "TicketCode" c JOIN "Event" e ON e."id" = c."eventId"
+    LEFT JOIN (
+      SELECT o."ticketCodeId", count(*) AS issued, count(*) FILTER (WHERE t."validity" = 'active') AS valid
+      FROM "Ticket" t JOIN "Order" o ON o."id" = t."orderId"
+      WHERE o."eventId" = ${eventId} AND o."status" = 'paid' AND o."fulfilledAt" IS NOT NULL
+      GROUP BY 1
+    ) s ON s."ticketCodeId" = c."id"
+    LEFT JOIN (
+      SELECT o."ticketCodeId", sum(o."discountAmount") AS discount, sum(o."totalAmount") FILTER (WHERE ${paidMoney("o")}) AS gross
+      FROM "Order" o
+      WHERE o."eventId" = ${eventId} AND o."status" = 'paid' AND o."fulfilledAt" IS NOT NULL
+      GROUP BY 1
+    ) m ON m."ticketCodeId" = c."id"
+    WHERE c."eventId" = ${eventId} AND e."organisationId" = ${organisationId}
+    ORDER BY c."createdAt", c."id"`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    code: String(row.code),
+    maxUses: row.maxUses === null ? null : n(row.maxUses),
+    issued: n(row.issued),
+    valid: n(row.valid),
+    discount: money(access, row.discount),
+    gross: money(access, row.gross)
+  }));
+}
+
 // The first and last day an event sold, in the society's zone, for its sales chart.
 export async function eventSalesDays(organisationId: string, eventId: string, timeZone: string) {
   const [row] = await prisma.$queryRaw<Array<{ first: string | null; last: string | null }>>`

@@ -10,7 +10,8 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
-import { getEventForViewer, priceForViewer } from "@/lib/events/public-events";
+import { getEventForViewer, priceForViewer, priceWithTicketCode } from "@/lib/events/public-events";
+import { codeAppliesTo, codeForBuyer, describeCode } from "@/lib/events/ticket-codes";
 import { memberPricePlan } from "@/lib/memberships/offers";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
@@ -28,7 +29,7 @@ export default async function CheckoutPage({
   searchParams
 }: {
   params: Promise<{ eventId: string }>;
-  searchParams: Promise<{ ticketTypeId?: string; quantity?: string; guest?: string }>;
+  searchParams: Promise<{ ticketTypeId?: string; quantity?: string; guest?: string; code?: string }>;
 }) {
   const [{ eventId }, query, session, cookieStore] = await Promise.all([params, searchParams, getLiveSession(), cookies()]);
   const eventHref = `/events/${eventId}`;
@@ -37,7 +38,7 @@ export default async function CheckoutPage({
   const guestSessionId = session ? undefined : cookieStore.get(guestCookieName)?.value;
   const guest = guestSessionId ? await readGuestSession(guestSessionId) : null;
   const guestCheckout = guest?.purpose === "checkout" ? guest : null;
-  const back = new URLSearchParams({ ticketTypeId: query.ticketTypeId ?? "", quantity: query.quantity ?? "" });
+  const back = new URLSearchParams({ ticketTypeId: query.ticketTypeId ?? "", quantity: query.quantity ?? "", ...(query.code ? { code: query.code } : {}) });
   if (!session && !guestCheckout && query.guest !== "1") {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/events/${eventId}/checkout?${back}`)}`);
   }
@@ -45,24 +46,30 @@ export default async function CheckoutPage({
 
   // A members-only event checks out only for members it is open to; anyone
   // else goes back to the page, which shows the gate (T24b).
-  const access = await getEventForViewer(eventId, session?.user.id ?? null);
+  const buyerCode = await codeForBuyer(eventId, query.code);
+  const code = buyerCode?.code ?? null;
+  const access = await getEventForViewer(eventId, session?.user.id ?? null, code?.ticketTypeId ?? null);
   if (!access) notFound();
   if (access.kind === "gated") redirect(eventHref);
   const { event } = access;
+  const codeQuery = code ? `&code=${encodeURIComponent(code.code)}` : "";
 
   const listed = event.ticketTypes.find((type) => type.id === query.ticketTypeId);
   // A member account with the right membership is quoted the member price; guests never are (T24b).
   const memberPlan = listed && listed.memberPrice !== null && session?.user.emailVerifiedAt ? await memberPricePlan(event.organisation.slug, session.user.id) : null;
-  const ticketType = listed ? priceForViewer([listed], memberPlan !== null)[0] : undefined;
+  const ticketType = listed ? priceWithTicketCode(priceForViewer([listed], memberPlan !== null), code)[0] : undefined;
   const quantity = Number(query.quantity);
-  if (!ticketType || !Number.isInteger(quantity) || quantity < 1 || quantity > maxTicketsPerOrder) redirect(eventHref);
+  // Back to the event, with the code, so its page says why a hidden type isn't there.
+  if (!ticketType || !Number.isInteger(quantity) || quantity < 1 || quantity > maxTicketsPerOrder) redirect(query.code ? `${eventHref}?${new URLSearchParams({ code: query.code })}` : eventHref);
+  // Only a code for this ticket goes to checkout, which decides it again under the event lock.
+  const usedCode = code && codeAppliesTo(code, ticketType) ? code : null;
 
   const free = ticketType.price === 0;
   const total = ticketType.price * quantity;
   const { organisation } = event;
-  const callback = `/events/${eventId}/checkout?ticketTypeId=${ticketType.id}&quantity=${quantity}`;
-  // "Change tickets" goes back to the event with this choice still picked.
-  const changeHref = `${eventHref}?ticketTypeId=${encodeURIComponent(ticketType.id)}&quantity=${quantity}`;
+  const callback = `/events/${eventId}/checkout?ticketTypeId=${ticketType.id}&quantity=${quantity}${codeQuery}`;
+  // "Change tickets" goes back to the event with this choice (and code) still picked.
+  const changeHref = `${eventHref}?ticketTypeId=${encodeURIComponent(ticketType.id)}&quantity=${quantity}${codeQuery}`;
   if (!session && !guestCheckout) {
     return (
       <CheckoutShell backHref={changeHref} current={0} society={organisation.name} steps={ticketSteps({ guest: true, free })} title="Where should we send your tickets?">
@@ -122,6 +129,7 @@ export default async function CheckoutPage({
                 ticketTypeId={ticketType.id}
                 ticketTypeName={ticketType.name}
                 unitPrice={ticketType.price}
+                code={usedCode?.code}
               />
             ) : (
               <Notice title="Verify your email to continue">
@@ -147,15 +155,23 @@ export default async function CheckoutPage({
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink">Your tickets</h2>
         <MoneySummary
-          lines={[{ label: memberPlan && ticketType.standardPrice != null ? `${ticketType.name} (member price)` : ticketType.name, quantity, unitPrice: ticketType.price }]}
-          note={
-            memberPlan && ticketType.standardPrice != null
+          lines={[{ label: usedCode ? `${ticketType.name} (code ${usedCode.code})` : memberPlan && ticketType.standardPrice != null ? `${ticketType.name} (member price)` : ticketType.name, quantity, unitPrice: ticketType.price }]}
+          note={[
+            usedCode ? `Code ${usedCode.code}: ${describeCode(usedCode, ticketType.name)}${ticketType.standardPrice != null && ticketType.codePrice ? `, down from ${formatMoney(memberPlan && ticketType.memberPrice !== null ? ticketType.memberPrice : ticketType.standardPrice)} each` : ""}.` : null,
+            memberPlan && ticketType.memberPrice !== null && ticketType.standardPrice != null
               ? `Member price through your ${membershipLabel(memberPlan)}. If it ends while we hold your tickets, you keep this price.`
               : free
                 ? "No payment needed."
                 : "No booking fee. You pay the ticket price shown."
-          }
+          ].filter(Boolean).join(" ")}
         />
+        {buyerCode?.message ? (
+          <div className="mt-4">
+            <Notice title={`Code ${buyerCode.text} isn't applied`} tone="warning">
+              <p>{buyerCode.message}</p>
+            </Notice>
+          </div>
+        ) : null}
       </Card>
       <Card>
         <h2 className="text-lg font-semibold text-ink">Tickets go to</h2>

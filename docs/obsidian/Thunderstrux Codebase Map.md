@@ -48,7 +48,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 
 | Entry | What | Key files |
 | --- | --- | --- |
-| `lib/analytics` | Society metrics and ranges in the society zone | `metrics.ts` (`ticketMetrics`, `eventTicketTypeMetrics`, `societySales`, `analyticsAccess`), `range.ts` |
+| `lib/analytics` | Society metrics and ranges in the society zone | `metrics.ts` (`ticketMetrics`, `eventTicketTypeMetrics`, `eventCodeMetrics`, `societySales`, `analyticsAccess`), `range.ts` |
 | `lib/api` | Route plumbing: error envelope and mapper, bounded body reads, shared guard rules | `errors.ts` (`mapRouteError`), `request.ts`, `route-rules.ts` |
 | `lib/app-url.ts` | Public origin read at run time (`appUrl`) | |
 | `lib/assets` | Image upload, sanitising, S3 storage, references, maintenance | `service.ts`, `image.ts`, `storage.ts`, `references.ts`, `maintenance.ts` |
@@ -59,7 +59,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/date-input.ts` | Parsing and formatting for the house date picker | |
 | `lib/db` | Prisma client and organisation scope helpers | `index.ts` (`prisma`), `organisation-scope.ts`, `organisation-drift.ts` |
 | `lib/email` | Ticket email, notification outbox, templates, encryption | `ticket-delivery.ts`, `ticket-email-outbox.ts`, `notification-outbox.ts`, `templates.ts`, `notification-crypto.ts` |
-| `lib/events` | Event lifecycle, inventory locks, readiness, public reads, calendar | `event-lifecycle.ts`, `event-cancellation.ts`, `inventory.ts`, `event-readiness.ts`, `public-events.ts`, `explore-filters.ts`, `calendar.ts`, `event-changes.ts`, `http.ts` |
+| `lib/events` | Event lifecycle, inventory locks, readiness, public reads, calendar | `event-lifecycle.ts`, `event-cancellation.ts`, `ticket-codes.ts`, `inventory.ts`, `event-readiness.ts`, `public-events.ts`, `explore-filters.ts`, `calendar.ts`, `event-changes.ts`, `http.ts` |
 | `lib/checkout-hold.ts` | Checkout hold lengths (20 by default, 5 to 59 per event; PAY-009) and `holdEndsAt`; no server imports | |
 | `lib/format.ts` | Money, dates in a zone (default `Australia/Brisbane`), order references | |
 | `lib/guest` | Verified guest sessions, guest CSRF, claim into an account | `guest-access.ts`, `guest-csrf.ts`, `guest-claim.ts` |
@@ -91,7 +91,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `components/auth` | Sign-in, signup, verification, recovery, email change, staff invite and MFA forms | `credentials-login-form.tsx`, `signup-form.tsx`, `staff-mfa-form.tsx`, `recovery-codes.tsx`, `account-link-token.ts` |
 | `components/calendar` | Society calendar grids and date helpers | `calendar-views.tsx`, `layout.ts` |
 | `components/commerce` | Shared commerce notices | `stripe-review-notice.tsx` |
-| `components/events` | Event builder, workspace header and actions, public event view and buy box, cards | `create-event-form.tsx`, `event-tabs.tsx`, `event-actions.tsx`, `public-event-view.tsx`, `public-ticket-purchase.tsx`, `event-card.tsx`, `date-rail.tsx`, `readiness-checklist.tsx`, `members-only-gate.tsx`, `explore-filter-fields.tsx` |
+| `components/events` | Event builder, workspace header and actions, public event view and buy box, cards | `create-event-form.tsx`, `ticket-codes-editor.tsx`, `event-tabs.tsx`, `event-actions.tsx`, `public-event-view.tsx`, `public-ticket-purchase.tsx`, `event-card.tsx`, `date-rail.tsx`, `readiness-checklist.tsx`, `members-only-gate.tsx`, `explore-filter-fields.tsx` |
 | `components/guest` | Guest email, access and claim | `guest-email-form.tsx`, `guest-access-form.tsx`, `guest-claim.tsx` |
 | `components/layout` | Header, footer, shells, page header, switcher, verify banner | `navbar.tsx`, `site-footer.tsx`, `dashboard-shell.tsx`, `personal-shell.tsx`, `auth-shell.tsx`, `checkout-shell.tsx`, `page-header.tsx`, `context-selector.tsx`, `verify-email-banner.tsx`, `auth-session-provider.tsx` |
 | `components/memberships` | Plan form, checklist and actions; member actions; checkout action | `plan-form.tsx`, `plan-actions.tsx`, `plan-checklist.tsx`, `membership-actions.tsx`, `membership-checkout-action.tsx` |

@@ -72,7 +72,7 @@ Voiding keeps `checkedInAt` and never restores stock. Only `active` tickets appe
 | `provider_attached` | Session bound (`stripeSessionId`, `stripeSessionUrl`) |
 | `failed` | Order failed, or the order had closed when its Session arrived (the Session is still recorded) |
 
-The buyer sees `checkoutAttemptStatus`: `completed` when the order is paid, `failed` when the attempt or order failed or expired, `ready` with the URL when attached, otherwise `processing`. `lastOutcome` records why (for example `session_create_unknown`, `order_not_pending_at_attach`, `replay_window_passed`). Free attempts have no `reconcileDueAt`, so recovery never picks them up.
+The buyer sees `checkoutAttemptStatus`: `completed` when the order is paid, `failed` when the attempt or order failed or expired, `ready` with the URL when attached, otherwise `processing`. `lastOutcome` records why (for example `session_create_unknown`, `order_not_pending_at_attach`, `replay_window_passed`). Free attempts have no `reconcileDueAt`.
 
 ## Purchase snapshots
 
@@ -88,7 +88,7 @@ Checkout writes what was bought, and later edits never change it: `paymentKind` 
 `createEventCheckout` takes one buyer: a verified member, or a guest's live checkout session (actor kind `guest`, actor id the session's grant). Its conditions and refusal codes: [[Stripe Payments and Connect#Required conditions for checkout]].
 
 1. A known `(actor, idempotencyKey)` replays its attempt; the same key with another selection (`checkoutRequestHash` of event, ticket type, quantity, expected price) is 409 `idempotency_conflict`. A same-key request that won the race is found again after the buyer lock or a unique violation.
-2. In one transaction (`runReservationTransaction`): lock the buyer, then `lockEventInventory`, then decide visibility, status, sale state, price (member price via an active `member_prices` grant), stock and Stripe readiness under those locks.
+2. In one transaction (`runReservationTransaction`): lock the buyer, then `lockEventInventory`, then decide visibility, status, sale state, price (member price via an active `member_prices` grant, then any code: [[Event Lifecycle#Codes]]), stock and Stripe readiness under those locks.
 3. **Free price:** the buyer's `active` free tickets on the event plus this order stay within `maxTicketsPerOrder`, else 409 `free_limit_reached` with the number left as `value` (SEC-030), so one account can't claim a free event. Then `issueFreeOrder` writes a `paid` free order (`paidAt = fulfilledAt`, unit price, total and fee 0, no seller account), decrements stock once, numbers the tickets, appends `order_created` and `free_fulfilled`, creates the attempt and queues the automatic ticket email. No hold, no fee, no Stripe call; the answer is `fulfilled`.
 4. **Paid price:** the SEC-005 hold cap is checked (its 409 `purchase_in_progress` names the buyer's own open order as the detail `id`, so the page links to it), then a `pending` order with its snapshots, an `active` hold, `order_created` and a `created` attempt are committed.
 5. Outside the transaction: store the Session request on the attempt, then create the Session. Bind it with `attachStripeSession` (`stripe_session_attached`) and answer `redirect`.

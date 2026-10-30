@@ -72,6 +72,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
 | `ticketMetrics(org, range, access, eventId?)` | Totals and a series of gross, refunded, net, fees, orders, tickets issued and orders started; with attendance |
 | `ticketAttendance(org, { eventId } or { range })` | Attendance as above |
 | `eventTicketTypeMetrics(org, eventId, access)` | Per ticket type, all time: remaining (`TicketType.quantity`), issued, valid, free and checked-in units, gross, refunded, net |
+| `eventCodeMetrics(org, eventId, access)` | Per ticket code, all time: tickets issued and still valid on completed orders; discount given and gross for money roles |
 | `eventSalesDays(org, eventId, timeZone)` | The first and last local day the event had a paid Stripe sale, or `null` |
 | `membershipMetrics(org, range, access)` | Sales, refunds, grants, renewals, members now |
 | `merchandiseMetrics(org, range, access)` | Sales, refunds, items; pickups and stock as now |
@@ -84,7 +85,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
   - **Tickets** (default): money tiles, counts, a chart of gross with refunded, and a table for finance roles. Event managers see tickets issued, checked in and the attendance rate, with no money anywhere. The event filter lists only the society's events; any other id is ignored.
   - **Memberships** and **Merchandise** (finance roles only), and **Engagement** (`analytics:read`). A tab the role can't use isn't offered; asking by URL shows Tickets.
   - Each tab explains itself under "How these numbers are counted". An empty range shows an empty state instead of a chart.
-- **Event Summary:** tickets sold (issued, split paid and free, and how many are no longer valid), tickets left, capacity, checked in, and for money roles net sales with gross and refunded. The ticket table uses `eventTicketTypeMetrics`. **Sales over time** is gross by local day from `eventSalesDays`' first to last day, by week once that spans more than 62 days, over at most the last 366 days.
+- **Event Summary:** tickets sold (issued, split paid and free, and how many are no longer valid), tickets left, capacity, checked in, and for money roles net sales with gross and refunded. The ticket table uses `eventTicketTypeMetrics`; a Codes table (`eventCodeMetrics`) follows when the event has codes. **Sales over time** is gross by local day from `eventSalesDays`' first to last day, by week once that spans more than 62 days, over at most the last 366 days.
 - **Overview tile** (`society-overview.tsx`): money roles see **Sales this month**, `societySales` gross since the 1st in the society's zone. Others with `analytics:read` see **Tickets issued this month** (`ticketMetrics`).
 - **Events list:** `N sold` is a database sum of `quantity` over the event's `paid` orders (`lib/events/event-lifecycle.ts`), which counts refunded orders and free registrations too.
 - `BarChart` draws vertical bars from 768 px and a horizontal list on phones; its accessible name lists every value, and the analytics tabs repeat the numbers in a table.

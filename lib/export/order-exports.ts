@@ -48,8 +48,8 @@ export async function exportTicketOrders(organisationId: string, timeZone: strin
   return {
     rows: orders.length,
     csv: toCsv(
-      ["Order", "Ordered", "Event", "Ticket type", "Quantity", "Total", "Currency", "Status", "Paid", "Buyer email"],
-      orders.map((order) => [orderReference(order.id), when(order.createdAt, timeZone), order.eventTitle, order.ticketType, order.quantity, dollars(order.totalAmount), "AUD", statusLabel(order.projection), when(order.paidAt, timeZone), order.buyerEmail])
+      ["Order", "Ordered", "Event", "Ticket type", "Quantity", "Total", "Currency", "Code", "Discount", "Status", "Paid", "Buyer email"],
+      orders.map((order) => [orderReference(order.id), when(order.createdAt, timeZone), order.eventTitle, order.ticketType, order.quantity, dollars(order.totalAmount), "AUD", order.code ?? "", order.code ? dollars(order.discountAmount) : "", statusLabel(order.projection), when(order.paidAt, timeZone), order.buyerEmail])
     )
   };
 }

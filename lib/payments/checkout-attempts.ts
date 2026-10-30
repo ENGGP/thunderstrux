@@ -37,8 +37,10 @@ export function checkoutRequestHash(request: {
   ticketTypeId: string;
   quantity: number;
   expectedUnitPrice: number;
+  code?: string;
 }) {
-  const canonical = JSON.stringify([request.eventId, request.ticketTypeId, request.quantity, request.expectedUnitPrice]);
+  // A code is appended only when sent, so attempts made before codes keep their hash.
+  const canonical = JSON.stringify([request.eventId, request.ticketTypeId, request.quantity, request.expectedUnitPrice, ...(request.code ? [request.code] : [])]);
   return createHash("sha256").update(canonical).digest("hex");
 }
 

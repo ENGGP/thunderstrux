@@ -8,7 +8,7 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireManagementPage } from "@/lib/auth/page-access";
-import { analyticsAccess, eventSalesDays, eventTicketTypeMetrics, ticketAttendance, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
+import { analyticsAccess, eventCodeMetrics, eventSalesDays, eventTicketTypeMetrics, ticketAttendance, ticketMetrics, type AnalyticsAccess } from "@/lib/analytics/metrics";
 import { addDays, maxRangeDays, tooLongByDay } from "@/lib/analytics/range";
 import { EventLifecycleNotFoundError, getDashboardEvent } from "@/lib/events/event-lifecycle";
 import { formatDateTime, formatDayMonth, formatMoney, formatPrice } from "@/lib/format";
@@ -45,9 +45,10 @@ export default async function OrganiserEventPage({
     if (error instanceof EventLifecycleNotFoundError) notFound();
     throw error;
   }
-  const [ticketTypes, attendance] = await Promise.all([
+  const [ticketTypes, attendance, codes] = await Promise.all([
     eventTicketTypeMetrics(organisation.id, event.id, access),
-    ticketAttendance(organisation.id, { eventId: event.id })
+    ticketAttendance(organisation.id, { eventId: event.id }),
+    eventCodeMetrics(organisation.id, event.id, access)
   ]);
   const total = (key: "issued" | "valid" | "free" | "remaining") => ticketTypes.reduce((sum, type) => sum + type[key], 0);
   const money = (key: "gross" | "refunded" | "net") => ticketTypes.reduce((sum, type) => sum + (type[key] ?? 0), 0);
@@ -160,6 +161,45 @@ export default async function OrganiserEventPage({
             </div>
           )}
         </Card>
+
+        {codes.length ? (
+          <Card>
+            <h2 className="text-lg font-semibold text-ink">Codes</h2>
+            <div aria-label="Codes" className="mt-3 overflow-x-auto" role="region" tabIndex={0}>
+              <table className="w-full min-w-[360px] border-collapse text-ui">
+                <thead>
+                  <tr className="text-left text-caption text-ink-soft">
+                    <th className="py-2.5 font-semibold" scope="col">Code</th>
+                    <th className="px-2 py-2.5 text-right font-semibold" scope="col">Tickets</th>
+                    <th className="px-2 py-2.5 text-right font-semibold" scope="col">Still valid</th>
+                    {financial ? (
+                      <>
+                        <th className="px-2 py-2.5 text-right font-semibold" scope="col">Discount given</th>
+                        <th className="py-2.5 pl-2 text-right font-semibold" scope="col">Revenue</th>
+                      </>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {codes.map((code) => (
+                    <tr className="border-t border-line" key={code.id}>
+                      <th className="py-3.5 text-left font-mono font-semibold text-ink [overflow-wrap:anywhere]" scope="row">{code.code}</th>
+                      <td className="px-2 py-3.5 text-right">{code.maxUses === null ? code.issued : `${code.issued} of ${code.maxUses}`}</td>
+                      <td className="px-2 py-3.5 text-right">{code.valid}</td>
+                      {financial ? (
+                        <>
+                          <td className="px-2 py-3.5 text-right">{formatMoney(code.discount ?? 0)}</td>
+                          <td className="py-3.5 pl-2 text-right">{formatMoney(code.gross ?? 0)}</td>
+                        </>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-sm text-ink-muted">Completed orders. {canManage ? "Add or turn off codes on the Edit tab." : ""}</p>
+          </Card>
+        ) : null}
 
         {financial ? (
           <Card>

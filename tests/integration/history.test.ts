@@ -155,7 +155,7 @@ describe("History (T38)", () => {
 
   // Every action the app writes, with the dynamic families spelled out.
   const recordedActions = [
-    "event.created", "event.updated", "event.published", "event.unpublished", "event.sales_closed", "event.sales_reopened", "event.deleted", "event.cancelled",
+    "event.created", "event.updated", "event.published", "event.unpublished", "event.sales_closed", "event.sales_reopened", "event.deleted", "event.cancelled", "event.code_created", "event.code_updated",
     // Written before the standalone ticket-type route was removed; old rows still show.
     "ticket_type.created",
     "ticket.checked_in", "ticket.checked_out",

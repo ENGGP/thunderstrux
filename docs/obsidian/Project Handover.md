@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-29
+last-reviewed: 2026-10-30
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Issue and Defect Register]]", "[[Pre-hosting Candidate]]", "[[Evidence Ledger]]", "[[Project Handover 2026-10-25]]"]
@@ -54,6 +54,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-30: the preview was deployed at `d133734` (#226; backup `ops-preview-2026-10-30T03-27-51-803Z.dump` first; 72 migrations, adding those of #222, #225 and #226); readiness answers 200 locally and on `thunderstrux.mistayu.com`, and the six workers run the release's ops image. `MFA_ENFORCEMENT_MODE` is still `off`.
 - 2026-10-30: #228 moves societies' Stripe accounts to Accounts v2 (PAY-023): created and read through v2, readiness capability by capability, manual payouts through Balance Settings, account changes as v2 thin events at `/api/stripe/accounts/webhook` (`STRIPE_ACCOUNTS_WEBHOOK_SECRET`). Existing accounts keep working unchanged. No migration. Before deploying it anywhere, the owner creates that event destination (step 5).
 - 2026-10-30: #229 closes DEBT-001 and DEBT-002: dead code removed (including `autoprefixer` and the `tsconfig.json` rewrite), check-in scoped to the event (`?eventId=`), a per-account sign-in limit, safer staff-invite wording, compensation checked against the seller snapshot, and members-only access checked again at fulfilment. No migration.
+- 2026-10-30: ticket codes (`codex/ticket-codes`), as Eventbrite, Humanitix and Luma offer: discount codes (percent or dollars), access codes that unlock a hidden ticket type, and comps (100% off, through the free path), per event, with a ticket limit, a last day and on/off, managed on the Edit tab and shown in the Summary, the order page and the orders CSV ([[Event Lifecycle#Codes]]; the decision and its reasoning are in the PR). Registers EVT-007 (a code's limit isn't rechecked at fulfilment). Additive migration `20261124010000_ticket_codes`; take a verified dump first, then apply it with `prisma migrate deploy` on each database.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.

@@ -38,6 +38,7 @@ sources: [prisma/schema.prisma, lib/permissions/index.ts, lib/tickets/reservatio
 | Draft, published | `EventStatus` | [[Event Lifecycle]] |
 | Visibility | `EventVisibility`: `public`, `unlisted`, `members_only` | [[Event Lifecycle]] |
 | Sales open or closed | `EventSaleState` plus the sales close time | [[Event Lifecycle]] |
+| Code: discount, promo, access, unlock, comp | `TicketCode`: percent or dollars off, or access to a hidden type (`TicketType.hidden`); 100% off is a comp | [[Event Lifecycle#Codes]] |
 | Readiness (event) | `lib/events/event-readiness.ts`: whether an event can publish and which ticket types can be bought | [[Event Lifecycle]] |
 | Ticket type, tier | `TicketType` | [[Event Lifecycle]] |
 | Ticket | `Ticket`; whether it admits is `Ticket.validity` (`TicketValidity`: `active`, `void`, `refund_review`) | [[Payment Lifecycle]] |

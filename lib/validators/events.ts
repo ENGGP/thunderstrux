@@ -94,7 +94,8 @@ const versionSchema = z.number().int().positive();
 export const updateEventSchema = eventFieldsSchema.extend({
   version: versionSchema,
   compensationRefundMode: z.enum(["manual_review", "automatic_full"]).optional(),
-  ticketTypes: z.array(updateTicketTypeSchema).max(MAX_TICKET_TYPES, ticketTypeCountError).optional().default([])
+  // Omitted leaves the ticket types alone; a list replaces them.
+  ticketTypes: z.array(updateTicketTypeSchema).max(MAX_TICKET_TYPES, ticketTypeCountError).optional()
 });
 
 export const eventPublicationSchema = z.object({

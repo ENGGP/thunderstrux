@@ -68,7 +68,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - At most 50 ticket types (`MAX_TICKET_TYPES`, SEC-025): the API refuses more; the builder disables "Add ticket type" at the limit.
 - Ticket type name 1 to 120 characters. `price` and `memberPrice` follow `priceAmountSchema`: 0 (free) or $2.00 to $999,999.99 in cents. `memberPrice` at most `price` (validator and `TicketType_member_price_chk`).
 - `quantity`: 1 to 1,000,000 on create; 0 to 1,000,000 on edit, including types added in an edit (the edit schema allows sold-out `0`).
-- Checkout caps an order at 10 tickets (`maxTicketsPerOrder` in `lib/validators/payments.ts`).
+- Checkout caps an order at 10 tickets (`maxTicketsPerOrder` in `lib/validators/payments.ts`), and at one at the member price ([[Memberships and Merchandise#Member prices]]).
 
 ### Builder
 
@@ -123,7 +123,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 `PATCH /api/events/[eventId]` (`updateEventSchema`) updates fields and synchronises ticket types under the event lock. It never changes `status` or `saleState`.
 
 - Ticket types match by `id`, never by name; submitted ids must belong to the event and appear once (400).
-- A type without `id` is created. An omitted type is deleted only if it has no orders and no tickets; otherwise it is kept.
+- Leaving `ticketTypes` out skips this sync (EVT-011); the list defaulted to empty once, so a direct PATCH deleted every unsold type. In a submitted list, a type without `id` is created, and an omitted type is deleted only if it has no orders and no tickets; otherwise it is kept.
 - Types with orders or tickets stay editable (name, price, member price, quantity) for future purchases. Orders keep their `unitPrice`, `totalAmount` and purchase snapshots; tickets keep their `ticketTypeId`.
 - **Stock fence:** each existing type sends `expectedQuantity` (what the editor loaded). If sales moved stock and the field is untouched, the current stock is kept; if both changed, 409 "Ticket stock changed while you were editing".
 - A type's remaining quantity can't go below its active holds; `capacity` can't go below occupancy (issued tickets that aren't void, which includes tickets under dispute review, plus active holds). Both are 400 on the field.
@@ -152,9 +152,9 @@ A `TicketCode` belongs to one event (product decision 2026-10-30, after Eventbri
 
 Rules:
 - **Case-blind**, 3 to 30 letters, digits or dashes, unique per event (`TicketCode_code_chk`). One code per order; codes never stack with each other.
-- **On the member price:** the discount comes off what this buyer otherwise pays, so a member with a code pays the member price less the code.
+- **On the member price:** the discount comes off what this buyer otherwise pays, so a member with a code pays the member price less the code, on their one ticket at that price ([[Memberships and Merchandise#Member prices]]), and the standard price less the code after it.
 - **Terms are fixed once made** (Luma): staff change only the limit, the last day and on/off, never delete. Orders keep `codeSnapshot` and `discountAmount`.
-- **Paid minimum:** a code that would leave a paid price from $0.01 to $1.99 is refused when staff add it (400 on `percentOff` or `amountOff`, checked against every price and member price it reaches) and, after a later price edit, at checkout (`code_unavailable`), never rounded to free: rounding would give away tickets staff priced.
+- **Paid minimum:** a code that would leave a paid price from $0.01 to $1.99 is refused when staff add it (400 on `percentOff` or `amountOff`, checked against every price and member price it reaches) and, after a later price edit, at checkout (`code_unavailable`), never rounded to free: rounding would give away tickets staff priced. A price saved under the minimum, with no code used, is `price_below_minimum` (PAY-052).
 - **Checkout** reads the code under the event lock every checkout of the event takes, so a limit holds under a rush; a code that applies but is off, ended or used up is 409 `code_unavailable` (`value` = tickets left on the code when that is the reason). A code for another type is ignored. A hidden type without its code is 404 `ticket_type_not_found`. A $0 result takes the free path (`issueFreeOrder`). The fee and Stripe's charge use the discounted total, and refunds pay back at most `unitPrice` per ticket, the price actually paid ([[Payment Lifecycle Refunds and Disputes#Order refunds]]).
 - **Buyers** enter a code under "Have a code?" in the ticket box or open a link with `?code=`; the event and checkout pages read it with `codeForBuyer`, rate-limited by `ticket_code_check` (per address and event) so codes can't be found by trying. Public reads, cards and the public API leave hidden types out (`readEventDetail`, `listingAvailability`); the organiser's preview shows them.
 - **Staff** manage codes on the Edit tab's Codes card (`events:manage`), with Copy link, a suggested hard-to-guess code, and uses so far; the Summary's Codes table and the orders CSV show what each code sold ([[Analytics and Calendar]]). Audits `event.code_created` and `event.code_updated`.

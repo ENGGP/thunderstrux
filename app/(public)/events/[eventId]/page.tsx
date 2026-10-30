@@ -8,7 +8,7 @@ import { getLiveSession } from "@/lib/auth/live-session";
 import { formatDateTime } from "@/lib/format";
 import { getEventForViewer, priceForViewer, priceWithTicketCode } from "@/lib/events/public-events";
 import { codeForBuyer, describeCode } from "@/lib/events/ticket-codes";
-import { memberPricePlan } from "@/lib/memberships/offers";
+import { memberPricePlan, memberPriceUnused } from "@/lib/memberships/offers";
 
 type Selection = { ticketTypeId?: string; quantity?: string; code?: string };
 
@@ -83,6 +83,7 @@ export default async function PublicEventPage({ params, searchParams }: PublicEv
   const memberPlan = viewer === "member" && session && event.ticketTypes.some((type) => type.memberPrice !== null)
     ? await memberPricePlan(event.organisation.slug, session.user.id)
     : null;
+  const memberPriced = Boolean(memberPlan && session && (await memberPriceUnused(event.id, session.user.id)));
 
   const code = buyerCode?.code ?? null;
   const unlocked = code?.ticketTypeId ? event.ticketTypes.find((type) => type.id === code.ticketTypeId) : undefined;
@@ -90,7 +91,7 @@ export default async function PublicEventPage({ params, searchParams }: PublicEv
     <main id="main" tabIndex={-1} className="bg-paper">
       <PublicEventView
         code={buyerCode && { text: buyerCode.text, gives: code ? describeCode(code, unlocked?.name) : null, message: buyerCode.message }}
-        event={{ ...event, ticketTypes: priceWithTicketCode(priceForViewer(event.ticketTypes, memberPlan !== null), code) }}
+        event={{ ...event, ticketTypes: priceWithTicketCode(priceForViewer(event.ticketTypes, memberPriced), code) }}
         memberPlan={memberPlan}
         selection={{ ticketTypeId: query.ticketTypeId ?? unlocked?.id, quantity: Number(query.quantity) }}
         viewer={viewer}

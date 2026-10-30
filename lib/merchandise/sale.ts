@@ -22,7 +22,7 @@ import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
 // `lateWebhookGraceMs` hold their stock. Paying, failing or expiring the order ends its hold, so the
 // two can never disagree.
 
-export type MerchandiseUnavailableReason = "unavailable" | "sold_out" | "not_enough" | "quote_changed" | "purchase_in_progress";
+export type MerchandiseUnavailableReason = "unavailable" | "sold_out" | "not_enough" | "quote_changed" | "purchase_in_progress" | "free_limit_reached";
 
 export class MerchandiseUnavailableError extends Error {
   constructor(readonly reason: MerchandiseUnavailableReason, message: string, readonly variantId?: string, readonly available?: number, readonly orderId?: string) {
@@ -89,13 +89,21 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
     if (open) throw new MerchandiseUnavailableError("purchase_in_progress", "You already have a checkout in progress. Finish or cancel it first.", undefined, undefined, open.id);
     const ids = items.map((item) => item.variantId);
     await lockVariants(tx, ids);
-    const [options, held] = await Promise.all([
+    const [options, held, ownFree] = await Promise.all([
       tx.merchandiseVariant.findMany({
         where: { id: { in: ids }, organisationId, archivedAt: null, product: { status: "published" } },
         select: { id: true, colour: true, size: true, priceAmount: true, remaining: true, product: { select: { name: true } } }
       }),
-      heldByVariant(tx, ids, now)
+      heldByVariant(tx, ids, now),
+      // A free basket completes at once, so the rule above never stops a repeat. Refunded,
+      // cancelled and closed orders give their units back, as voided free tickets do.
+      tx.commerceOrderLine.groupBy({
+        by: ["merchandiseVariantId"],
+        where: { merchandiseVariantId: { in: ids }, unitAmount: 0, order: { status: { in: ["pending", "paid"] }, cancelledAt: null, refundStatus: null, ...buyer } },
+        _sum: { quantity: true }
+      })
     ]);
+    const freeByVariant = new Map(ownFree.map((row) => [row.merchandiseVariantId as string, row._sum.quantity ?? 0]));
     const byId = new Map(options.map((option) => [option.id, option]));
     const lines = items.map((item) => {
       const option = byId.get(item.variantId);
@@ -103,6 +111,11 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
       const left = Math.max(0, option.remaining - (held.get(option.id) ?? 0));
       if (left < item.quantity) {
         throw new MerchandiseUnavailableError(left ? "not_enough" : "sold_out", left ? `Only ${left} left of ${option.product.name}` : `${option.product.name} has sold out`, option.id, left);
+      }
+      // One buyer's free units of an option stay within one line's worth, so nobody can empty a giveaway.
+      const earlierFree = option.priceAmount === 0 ? (freeByVariant.get(option.id) ?? 0) : 0;
+      if (earlierFree + item.quantity > MAX_LINE_QUANTITY) {
+        throw new MerchandiseUnavailableError("free_limit_reached", `You can have up to ${MAX_LINE_QUANTITY} free of ${option.product.name}, and you already have ${earlierFree}.`, option.id, Math.max(0, MAX_LINE_QUANTITY - earlierFree));
       }
       return { quantity: item.quantity, unitAmount: option.priceAmount, name: option.product.name, variant: optionLabel(option) || null, merchandiseVariantId: option.id };
     });

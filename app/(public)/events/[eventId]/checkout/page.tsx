@@ -12,7 +12,7 @@ import { Notice } from "@/components/ui/notice";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { getEventForViewer, priceForViewer, priceWithTicketCode } from "@/lib/events/public-events";
 import { codeAppliesTo, codeForBuyer, describeCode } from "@/lib/events/ticket-codes";
-import { memberPricePlan } from "@/lib/memberships/offers";
+import { memberPricePlan, memberPriceUnused } from "@/lib/memberships/offers";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { formatDateTime, formatMoney, membershipLabel, payLabel } from "@/lib/format";
@@ -55,12 +55,14 @@ export default async function CheckoutPage({
   const codeQuery = code ? `&code=${encodeURIComponent(code.code)}` : "";
 
   const listed = event.ticketTypes.find((type) => type.id === query.ticketTypeId);
-  // A member account with the right membership is quoted the member price; guests never are (T24b).
-  const memberPlan = listed && listed.memberPrice !== null && session?.user.emailVerifiedAt ? await memberPricePlan(event.organisation.slug, session.user.id) : null;
+  // A member account with the right membership is quoted the member price, one ticket per event; guests never are (T24b).
+  const memberPlan = listed && listed.memberPrice !== null && session?.user.emailVerifiedAt && (await memberPriceUnused(event.id, session.user.id)) ? await memberPricePlan(event.organisation.slug, session.user.id) : null;
   const ticketType = listed ? priceWithTicketCode(priceForViewer([listed], memberPlan !== null), code)[0] : undefined;
   const quantity = Number(query.quantity);
   // Back to the event, with the code, so its page says why a hidden type isn't there.
   if (!ticketType || !Number.isInteger(quantity) || quantity < 1 || quantity > maxTicketsPerOrder) redirect(query.code ? `${eventHref}?${new URLSearchParams({ code: query.code })}` : eventHref);
+  // Someone who chose several before signing in: the box keeps this ticket at 1 and explains.
+  if (ticketType.memberPriced && quantity > 1) redirect(`${eventHref}?${back}`);
   // Only a code for this ticket goes to checkout, which decides it again under the event lock.
   const usedCode = code && codeAppliesTo(code, ticketType) ? code : null;
 

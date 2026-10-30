@@ -173,17 +173,21 @@ describe("ticket codes", () => {
     const member = await createMember();
     const grant = await createMembershipGrant(fixture.owner.organisation.id, member.id, member.email);
 
-    expect(await buy(member.id, fixture, fixture.general.id, 2, 1200, "SPONSOR")).toMatchObject({ status: "redirect" });
+    expect(await buy(member.id, fixture, fixture.general.id, 1, 1200, "SPONSOR")).toMatchObject({ status: "redirect" });
     const order = await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id, userId: member.id } });
-    expect(order).toMatchObject({ unitPrice: 1200, totalAmount: 2400, membershipGrantId: grant.id, discountAmount: 800 });
+    expect(order).toMatchObject({ unitPrice: 1200, totalAmount: 1200, membershipGrantId: grant.id, discountAmount: 400 });
     expect(await fulfil(fixture, order.id)).toMatchObject({ status: "fulfilled" });
+
+    // Their one ticket at the member price is used, so the code now comes off the standard price.
+    expect(await buy(member.id, fixture, fixture.general.id, 2, 1500, "SPONSOR")).toMatchObject({ status: "redirect" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id, userId: member.id, id: { not: order.id } } })).toMatchObject({ unitPrice: 1500, membershipGrantId: null, discountAmount: 1000 });
 
     const [ticket] = await prisma.ticket.findMany({ where: { orderId: order.id }, orderBy: { issueSequence: "asc" } });
     const refund = (selection?: Parameters<typeof openOrderRefund>[1]["selection"]) =>
       prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: fixture.owner.organisation.id, orderId: order.id, actor: { id: fixture.owner.user.id }, reason: "Buyer can no longer attend.", selection }));
     // One ticket was $12.00 with the code, whatever its list price.
     await expect(refund({ ticketIds: [ticket.id], amount: 1201, cancelTickets: true, notifyBuyer: false })).rejects.toMatchObject({ kind: "invalid_selection" });
-    expect(await refund()).toMatchObject({ amount: 2400 });
+    expect(await refund()).toMatchObject({ amount: 1200 });
   });
 
   test("a code that would leave a paid price under $2.00 after a price edit is refused at checkout, not made free", async () => {
@@ -191,6 +195,15 @@ describe("ticket codes", () => {
     await addCode(fixture, { code: "HALF", percentOff: 50 });
     await prisma.ticketType.update({ where: { id: fixture.general.id }, data: { price: 300 } });
     await expect(buy((await createMember()).id, fixture, fixture.general.id, 1, 150, "HALF")).rejects.toMatchObject({ kind: "code_unavailable" });
+    expect(await prisma.order.count({ where: { eventId: fixture.event.id } })).toBe(0);
+  });
+
+  test("an old price under $2.00 is refused without blaming a code nobody used", async () => {
+    const fixture = await codedEvent();
+    await prisma.ticketType.update({ where: { id: fixture.general.id }, data: { price: 150 } });
+    const refused = await buy((await createMember()).id, fixture, fixture.general.id, 1, 150).catch((error) => error);
+    expect(refused).toMatchObject({ kind: "price_below_minimum" });
+    expect(refused.message).not.toContain("code");
     expect(await prisma.order.count({ where: { eventId: fixture.event.id } })).toBe(0);
   });
 });

@@ -39,6 +39,18 @@ export function activeEntitlementGrant(
   });
 }
 
+// A member's tickets at the member price on an event, across its ticket types:
+// tickets not voided, plus live holds. A member gets one per event (owner's
+// decision, 2026-10-30), so a refund, a release or a lapsed hold gives it back.
+export async function memberPriceTicketCount(db: Pick<Prisma.TransactionClient, "ticket" | "ticketReservation">, userId: string, eventId: string, now: Date) {
+  const order = { userId, membershipGrantId: { not: null } };
+  const [tickets, holds] = await Promise.all([
+    db.ticket.count({ where: { eventId, validity: { not: "void" }, order } }),
+    db.ticketReservation.aggregate({ _sum: { quantity: true }, where: { eventId, status: "active", expiresAt: { gt: now }, order } })
+  ]);
+  return tickets + (holds._sum.quantity ?? 0);
+}
+
 export class MembershipUnavailableError extends Error {
   constructor(readonly reason: "plan_unavailable" | "term_overlap" | "purchase_in_progress", message: string, readonly orderId?: string) {
     super(message);

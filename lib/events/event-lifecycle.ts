@@ -531,7 +531,9 @@ export async function updateOrganisationEvent(
 
   const capacity = input.capacity === undefined ? existingEvent.capacity : input.capacity;
 
-  const submittedIds = input.ticketTypes
+  // No list means no ticket type sync; only a submitted list can remove one.
+  const ticketTypes = input.ticketTypes ?? [];
+  const submittedIds = ticketTypes
     .map((ticketType) => ticketType.id)
     .filter((id): id is string => Boolean(id));
   const uniqueSubmittedIds = new Set(submittedIds);
@@ -623,7 +625,7 @@ export async function updateOrganisationEvent(
     }
 
     const lockedTicketTypes = new Map(locked.ticketTypes.map((ticketType) => [ticketType.id, ticketType]));
-    const quantities = input.ticketTypes.map((ticketType) => {
+    const quantities = ticketTypes.map((ticketType) => {
       const current = ticketType.id ? lockedTicketTypes.get(ticketType.id)?.quantity : undefined;
       if (current === undefined || current === ticketType.expectedQuantity) return ticketType.quantity;
       // Sales moved the stock since the editor loaded it: an untouched quantity
@@ -631,7 +633,7 @@ export async function updateOrganisationEvent(
       if (ticketType.quantity === ticketType.expectedQuantity) return current;
       throw new EventLifecycleConflictError("Ticket stock changed while you were editing. Reload to see the latest numbers.");
     });
-    const heldDetails = input.ticketTypes.flatMap((ticketType, index) => {
+    const heldDetails = ticketTypes.flatMap((ticketType, index) => {
       const held = ticketType.id ? inventory.holdsByType.get(ticketType.id) ?? 0 : 0;
       return quantities[index] < held
         ? [{ path: ["ticketTypes", String(index), "quantity"], message: `Keep at least ${held} remaining: they are held in checkouts now` }]
@@ -646,6 +648,7 @@ export async function updateOrganisationEvent(
     const removedTicketTypeIds = locked.ticketTypes
       .filter(
         (ticketType) =>
+          input.ticketTypes &&
           ticketType._count.orders === 0 &&
           ticketType._count.tickets === 0 &&
           !uniqueSubmittedIds.has(ticketType.id)
@@ -693,7 +696,7 @@ export async function updateOrganisationEvent(
     }
 
     await Promise.all(
-      input.ticketTypes.map((ticketType, index) =>
+      ticketTypes.map((ticketType, index) =>
         ticketType.id
           ? transaction.ticketType.update({
               where: { id: ticketType.id },
@@ -753,7 +756,7 @@ export async function updateOrganisationEvent(
             heroAssetId,
             heroAlt,
             checkoutHoldMinutes: input.checkoutHoldMinutes ?? locked.checkoutHoldMinutes,
-            ticketTypes: input.ticketTypes.map((ticketType, index) => ({ id: ticketType.id, name: ticketType.name, price: ticketType.price, quantity: quantities[index], hidden: ticketType.hidden })),
+            ticketTypes: ticketTypes.map((ticketType, index) => ({ id: ticketType.id, name: ticketType.name, price: ticketType.price, quantity: quantities[index], hidden: ticketType.hidden })),
             removedTicketTypeIds
           })
         }

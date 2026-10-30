@@ -53,7 +53,7 @@ sources: [docs/MVP_READINESS_PLAN.md, docs/THUNDERSTRUX_PRD.md, tests/e2e/journe
 | | Safe callbacks | e2e `browser` (external callback stays on the app origin) |
 | Member attendance | Free tickets | e2e `free-tickets` |
 | | Paid tickets | e2e `webhooks` (signed fulfilment exactly once under concurrent replay), `purchases` (success page confirms until the webhook lands) |
-| | Member price | **e2e `journeys`**: standard price until a paid membership, member price after; integration `member-prices` |
+| | Member price | **e2e `journeys`**: standard price until a paid membership, member price after; e2e `memberships` (one ticket in the box and at checkout); integration `member-prices` (one ticket per event, a second checkout at the standard price, races, refunds, free tickets) |
 | | Stock and quote races | e2e `checkout-states` (price changed, sold out, fewer left, sales closed); integration `inventory-locks` (buyers racing for the last seat, a price changed before any hold, sales closing mid-checkout, a 30-buyer rush), `checkout-reservations` (live holds reduce availability) |
 | | Decline, cancel, expiry | Card payments are declined inside Stripe's page; the buyer retries or leaves. e2e `webhooks` (expiry releases the hold), integration `ticket-purchases` (the cancel page names the order only to its buyer) |
 | | Wallet, email, replay | e2e `purchases` (wallet of ticket faces), `webhooks` (replay fulfils once, one email job); integration `email-outbox` |

@@ -158,6 +158,19 @@ describe("public-safe pages and APIs", () => {
     expect(html).not.toContain("5 remaining");
   });
 
+  test("the ticket box offers one ticket at the member price and says where the rest go; a used member price says why it's gone", async () => {
+    const ticketType = { id: "ticket_type_member", name: "General", price: 1000, memberPrice: 1000, standardPrice: 1500, memberPriced: true, quantity: 20, availableQuantity: 20 };
+    // Back from checkout with four chosen before signing in: the box keeps the ticket at 1.
+    const html = await renderPage(createElement(PublicTicketPurchase, { eventId: "event_member", memberPlan: "Full year", initial: { ticketTypeId: ticketType.id, quantity: 4 }, ticketTypes: [ticketType] }));
+    expect(html).toContain("1 at the member price");
+    expect(html).toContain("extra tickets are the standard price in a second checkout");
+    expect(html).toMatch(/max="1"[^>]*value="1"|value="1"[^>]*max="1"/);
+
+    const used = await renderPage(createElement(PublicTicketPurchase, { eventId: "event_member", memberPlan: "Full year", ticketTypes: [{ ...ticketType, price: 1500, standardPrice: undefined, memberPriced: undefined }] }));
+    expect(used).toContain("Yours is used or in an open checkout");
+    expect(used).toContain("Up to 10 per order");
+  });
+
   test("public events API paginates same-startTime rows with stable cursors", async () => {
     const { organisation } = await createOrganisationAccount();
     const first = await createEvent({

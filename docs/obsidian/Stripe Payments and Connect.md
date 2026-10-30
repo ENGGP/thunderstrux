@@ -155,6 +155,7 @@ Ticket checkout checks, under the buyer, event and ticket type locks ([[Payment 
 | Ticket type belongs to the event | 404 `ticket_type_not_found` |
 | Sellable stock (`sellableQuantity`) | 400 `sold_out`, 400 `insufficient_availability` |
 | A paid price needs `isOrganisationStripeReady` | 400 `stripe_not_ready` ("Stripe not connected"; the detail says whether there is no account or charges are disabled) |
+| Member price limit, paid minimum | 400 `member_price_limit`, `price_below_minimum` |
 | `expectedUnitPrice` equals the locked price | 409 `quote_changed` |
 | Paid only: the buyer's live holds on the event plus this quantity stay within `maxTicketsPerOrder` (10), a member by account and a guest by identity (SEC-005) | 409 `purchase_in_progress` |
 | Same idempotency key, different selection | 409 `idempotency_conflict` |

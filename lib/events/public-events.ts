@@ -52,6 +52,8 @@ export type PublicEventTicketType = {
   memberPrice: number | null;
   // Set when `price` is a member or code price: the standard price, for display.
   standardPrice?: number | null;
+  // Set when `price` starts from the member price: one ticket, in one checkout.
+  memberPriced?: boolean;
   // Shown only to a buyer whose access code names it.
   hidden: boolean;
   // Set when a ticket code lowered `price`.
@@ -287,16 +289,19 @@ async function readEventDetail(where: Prisma.EventWhereInput, unlock: string | n
 }
 
 // What one viewer pays (T24b): a member whose running membership in the
-// society carries member prices gets each member price as the price, with the
-// standard price kept for display; a member price of zero needs no payments.
-// Everyone else keeps the standard price. Checkout decides again under locks.
+// society carries member prices, and who hasn't had their one ticket at that
+// price on this event (memberPriceUnused), gets each member price that saves
+// them something as the price, with the standard price kept for display; a
+// member price of zero needs no payments. Everyone else keeps the standard
+// price. Checkout decides again under locks.
 export function priceForViewer(ticketTypes: PublicEventTicketType[], member: boolean): PublicEventTicketType[] {
   return ticketTypes.map((ticketType) =>
-    member && ticketType.memberPrice !== null
+    member && ticketType.memberPrice !== null && ticketType.memberPrice < ticketType.price
       ? {
           ...ticketType,
           price: ticketType.memberPrice,
           standardPrice: ticketType.price,
+          memberPriced: true,
           unavailable: ticketType.memberPrice === 0 && ticketType.unavailable === "payments_unavailable" ? null : ticketType.unavailable
         }
       : ticketType

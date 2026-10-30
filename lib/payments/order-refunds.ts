@@ -169,6 +169,8 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
   // What the buyer can still get back: the total less refunds made here or in Stripe.
   const left = order.totalAmount - (await refundedSoFar(tx, { orderId: order.id, commerceOrderId: null })) - order.externalRefundedAmount;
+  // Refunded in full with tickets kept valid: refundStatus stays clear so they can still be cancelled.
+  if (order.paymentKind === "stripe" && order.totalAmount > 0 && left <= 0) throw new OrderRefundError("already_refunded", "Everything paid for this order has been refunded");
   const { selection } = input;
   const tickets = selection
     ? await pickedTickets(tx, order.id, selection.ticketIds)

@@ -485,5 +485,11 @@ describe("ticket-by-ticket refunds", () => {
     const request = await prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, actor: null, reason: "The event was cancelled." }));
     expect(request).toMatchObject({ amount: 1800, cancelsTickets: true, notifyBuyer: true });
     expect(request.ticketIds).toHaveLength(2);
+
+    // Refunded in full with its tickets kept valid: nothing is left, and it says so rather than "can't be refunded".
+    const kept = await paidOrder();
+    await prisma.refundRequest.create({ data: { orderId: kept.order.id, organisationId: kept.owner.organisation.id, amount: kept.order.totalAmount, reason: "Refunded, tickets kept.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
+    await expect(prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: kept.owner.organisation.id, orderId: kept.order.id, actor: null, reason: "The event was cancelled." })))
+      .rejects.toMatchObject({ kind: "already_refunded" });
   });
 });

@@ -138,7 +138,9 @@ async function cancelInTransaction(
           skipped.push({ orderId: order.id, reason: error.kind });
           outcome = error.kind === "disputed"
             ? "Your bank is handling a dispute about this payment, so your money is settled through that dispute."
-            : `${seller(order.sellerName)} will contact you about your payment.`;
+            : error.kind === "already_refunded"
+              ? "Your payment has already been refunded in full."
+              : `${seller(order.sellerName)} will contact you about your payment.`;
         }
       }
       const recipient = retainedBuyerIdentity(order)?.email;

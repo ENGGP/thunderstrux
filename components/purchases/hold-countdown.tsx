@@ -31,8 +31,9 @@ export function HoldCountdown({ endsAt }: { endsAt: string }) {
   const minutes = Math.ceil(seconds / 60);
   return (
     <span className="font-semibold text-ink">
-      <span aria-hidden="true" className="inline-block min-w-[5ch] tabular-nums" suppressHydrationWarning>
-        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+      {/* Always mm:ss in tabular digits, so the text never changes width as it ticks. */}
+      <span aria-hidden="true" className="tabular-nums" suppressHydrationWarning>
+        {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
       </span>
       <span aria-hidden="true"> left.</span>
       <span aria-live="polite" className="sr-only" suppressHydrationWarning>{minutes === 1 ? "About a minute left." : `About ${minutes} minutes left.`}</span>

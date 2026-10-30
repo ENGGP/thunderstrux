@@ -66,6 +66,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - `.claude/worktrees` is out of the Docker build context and the type check.
   - A failed sign-in took the same time for a real and an unknown address on dev (7 to 17 ms apart, inside the spread between runs), so that audit item needed no fix.
 - 2026-10-30: #235 lets two full test runs go at once. Each run tags its images with its run id, so it can't test another run's code, and Docker picks its host port. Staging stays one at a time, with its own check, because the old port check was what kept those runs apart. No app code changes.
+- 2026-10-31: the stale-docs PR of the 2026-10-30 audit corrects claims that no longer matched the code (no `openclaw:use` permission, the merchandise hold is 20 minutes, fulfilment rechecks members-only access, the Events list counts active tickets, PAY-008's refund cost and what Humanitix returns) and the `/fees` refund wording now covers per-ticket refunds. No migration.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.

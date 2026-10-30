@@ -219,16 +219,20 @@ async function qrReader(): Promise<(video: HTMLVideoElement) => Promise<string |
   return async (video) => {
     // 640 pixels across reads a ticket at arm's length and keeps each pass quick on a phone.
     const scale = Math.min(1, 640 / video.videoWidth);
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
-    try {
-      // RGBA pixels as 32-bit words; ZXing's luminance weighs red and blue alike, so byte order doesn't matter.
-      return reader.decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Int32Array(data.buffer), canvas.width, canvas.height)))).getText();
-    } catch {
-      return null;
+    // Then half that: ZXing can pick a shape in the code's data as a corner, and a smaller frame shows that shape on fewer rows (DEF-064).
+    for (const size of [scale, scale / 2]) {
+      canvas.width = Math.round(video.videoWidth * size);
+      canvas.height = Math.round(video.videoHeight * size);
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      try {
+        // RGBA pixels as 32-bit words; ZXing's luminance weighs red and blue alike, so byte order doesn't matter.
+        return reader.decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Int32Array(data.buffer), canvas.width, canvas.height)))).getText();
+      } catch {
+        // Nothing read at this size.
+      }
     }
+    return null;
   };
 }
 

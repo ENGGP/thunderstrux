@@ -1,4 +1,4 @@
-import { BinaryBitmap, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from "@zxing/library";
+import { BinaryBitmap, DecodeHintType, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from "@zxing/library";
 import sharp from "sharp";
 import { describe, expect, test, vi } from "vitest";
 import { GET as getEventTickets } from "@/app/api/events/[eventId]/tickets/route";
@@ -57,11 +57,13 @@ async function createPaidTicket({
   return { order, ticket };
 }
 
-// What the door's scanner reads off a ticket's QR code (the email's image; the ticket face draws the same code).
+// What a ticket's QR code holds (the email's image; the ticket face draws the same code). A clean
+// render reads as one: searching it for corners, as a camera frame needs, fails about 1 id in 25 (DEF-064).
 async function scanQr(ticketId: string) {
   const [qr] = await ticketQrAttachments([{ id: ticketId }]);
   const { data, info } = await sharp(Buffer.from(qr.content, "base64")).flatten({ background: "#ffffff" }).greyscale().raw().toBuffer({ resolveWithObject: true });
-  return new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Uint8ClampedArray(data), info.width, info.height)))).getText();
+  const image = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Uint8ClampedArray(data), info.width, info.height)));
+  return new QRCodeReader().decode(image, new Map([[DecodeHintType.PURE_BARCODE, true]])).getText();
 }
 
 describe("ticket visibility and check-in API", () => {
@@ -884,6 +886,11 @@ describe("ticket visibility and check-in API", () => {
     expect((await scan(other)).status).toBe(404);
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: other.id } })).checkedInAt).toBeNull();
     expect(await prisma.auditLog.count({ where: { action: "ticket.checked_in" } })).toBe(1);
+  });
+
+  // Each of these threw from a search for corners, one for each way it can fail (DEF-064).
+  test.each(["cmwoer3rqstgt6vdxk0wtf8o4", "cmwq678pp4ahbp9kideih239u", "cmw14yw36aguyvj61vv78ji2l"])("the QR code of %s reads back", async (id) => {
+    expect(await scanQr(id)).toBe(id);
   });
 
   // The attendee list as a CSV needs orders:read; the door list mustn't hand out the same emails.

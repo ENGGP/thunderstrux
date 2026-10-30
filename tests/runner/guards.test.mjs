@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
+import { readFileSync } from 'node:fs';
+import { assertOnlyStagingRun, assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
 
 test('cleanup accepts only generated project identifiers', () => {
   for (const value of ['main', '../thunderstrux', 'thunderstrux', 'browser-', 'run-aaaaaaaaaaaaaaaaaaaaaaaa', '']) {
@@ -9,6 +10,18 @@ test('cleanup accepts only generated project identifiers', () => {
   const id = `browser-${'a'.repeat(24)}`;
   assert.equal(assertRunId(id), id);
   assert.throws(() => assertOwnedManifest({version: 1, runId: id, project: 'thunderstrux'}, id));
+});
+test('each run has its own images and a host port Docker picks, so two runs cannot meet', () => {
+  const compose = readFileSync('docker-compose.e2e.yml', 'utf8');
+  assert.doesNotMatch(compose, /thunderstrux-e2e-\w+:local/);
+  assert.equal(compose.match(/thunderstrux-e2e-\w+:\$\{E2E_RUN_ID:\?/g).length, 4);
+  assert.match(compose, /- '127\.0\.0\.1::3100'/);
+});
+test('a staging run refuses to share Stripe test mode with another; other runs may run beside it', () => {
+  const run = `staging-${'a'.repeat(24)}`;
+  const other = `staging-${'b'.repeat(24)}`;
+  assertOnlyStagingRun(['', 'thunderstrux', `baseline-${'c'.repeat(24)}`, run], run);
+  assert.throws(() => assertOnlyStagingRun([run, other], run), new RegExp(other));
 });
 test('database guard refuses host, shared, and non-test targets', () => {
   const safe = 'postgresql://e2e:password@db:5432/thunderstrux_e2e_test';

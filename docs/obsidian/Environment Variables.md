@@ -128,7 +128,7 @@ sources: [docker-compose.yml, docker-compose.dev.yml, docker-compose.hosted.yml,
 | `INTEGRATION_REDIS_URL` | `tests/integration/redis-runtime.test.ts`, `tests/e2e/fixtures.ts` | Run-owned Redis; that test throws without it. Never dev or production Redis. | baseline | no |
 | `THUNDERSTRUX_FAST_TEST_RESET` | `tests/helpers/db-reset.ts`, `tests/helpers/test-data.ts` | `1` uses the fast reset ([[Development Workflow#Integration test speed]]). Nothing sets it. | no | no |
 | `E2E_RUN_ID` | `lib/email/ticket-delivery.ts`, `scripts/seed-notification-e2e.mjs`, `scripts/staging-driver.mjs` | Run ID (`baseline-`, `browser-` or `staging-` + 24 hex), written to the run's `runtime.env`. Gates mail capture and the notification seed. | E2E | no |
-| `E2E_RUNTIME_FILE`, `E2E_OUTPUT_DIR` | `docker-compose.e2e.yml` | Set by `scripts/run-e2e.mjs`; Compose refuses to start without them ("Run through pnpm test:e2e"). | E2E: compose | no |
+| `E2E_RUN_ID`, `E2E_RUNTIME_FILE`, `E2E_OUTPUT_DIR` | `docker-compose.e2e.yml` | Set by `scripts/run-e2e.mjs`; Compose refuses to start without them ("Run through pnpm test:e2e"). | E2E: compose | no |
 | `E2E_BASE_URL` | nothing | Set to `http://localhost:3100` in the `tests` container; Playwright's `baseURL` is hard-coded in `playwright.config.ts`. | no | no |
 | `E2E_RESEND_API_KEY`, `E2E_EMAIL_FROM` | `docker-compose.e2e.yml` | Staging Resend credentials from `.env.staging.local`; defaults `re_capture_only`, `synthetic@example.com`. | no | no |
 | `STRIPE_TEST_CONNECTED_ACCOUNT` | `scripts/staging-payments.mjs`, `scripts/staging-driver.mjs` | Ready test `acct_…`. From `.env.staging.local`, or the shell with `--use-local-test-key`. | staging | no |

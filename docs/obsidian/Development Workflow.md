@@ -117,7 +117,7 @@ Polling is on because bind-mount file events don't cross into the container on W
 ## Tests locally
 
 - **Evidence of record:** `node scripts/run-e2e.mjs baseline`. It builds its own app, database, Redis, object store and mail capture under a run-owned project (`baseline-<24 hex>`), then in the `tests` container runs `pnpm test:e2e:guards && pnpm typecheck && pnpm test && pnpm security:audit`, stopping at the first failure. A migration added without updating `config/schema-contract.json` fails the guards. It never touches dev data or the dev dependency volume.
-- **Browser and staging:** `pnpm test:e2e` and `pnpm test:payments:staging`. Port 3100 must be free. Clean up with `pnpm test:e2e:cleanup -- <run-id>`. Run IDs, manifests and recovery: [[E2E and Staging Payments]].
+- **Browser and staging:** `pnpm test:e2e` and `pnpm test:payments:staging`. Clean up with `pnpm test:e2e:cleanup -- <run-id>`. Run IDs, manifests and recovery: [[E2E and Staging Payments]].
 - **Operations rehearsal:** `pnpm ops:test` (`ops-` run IDs; [[Production Operations]]).
 - **Focused integration run in the dev app container:** needs only `DATABASE_URL` on a `_test` database and `NODE_ENV=test`; `tests/setup/integration.setup.ts` pins every other switch (DEF-042). Migrate the test database first:
 

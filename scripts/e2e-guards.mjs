@@ -11,6 +11,12 @@ export function assertRunId(value) {
   return value;
 }
 
+// Staging uses real Stripe test mode, so a listener could hand one run another's events.
+export function assertOnlyStagingRun(projects, runId) {
+  const other = projects.find(project => project.startsWith('staging-') && project !== runId);
+  if (other) throw new Error(`Staging run ${other} is still running; staging runs one at a time`);
+}
+
 export function assertTestDatabase(value) {
   const url = new URL(value);
   if (url.protocol !== 'postgresql:' || url.hostname !== 'db' ||

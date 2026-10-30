@@ -49,6 +49,13 @@ describe("dashboard orders page", () => {
     const expired = await detail((await order("expired")).id);
     expect(expired).toContain("Manage this order");
     expect(expired).not.toContain("Mark as refunded");
+
+    // PAY-049: a queued refund that closed because Stripe had already refunded it isn't a failure, and the tickets may be void by now.
+    const closed = await order("paid");
+    await prisma.refundRequest.create({ data: { orderId: closed.id, organisationId: organisation.id, amount: closed.totalAmount, reason: "Event cancelled: storm", operationKey: closed.id, status: "failed", lastErrorCode: "refunded_elsewhere", resolvedAt: new Date() } });
+    const closedPage = await detail(closed.id);
+    expect(closedPage).toContain("Already refunded in Stripe");
+    expect(closedPage).not.toContain("The tickets are still valid");
   });
 
   test("ticket order times show in the society's zone, the zone its date filters use", async () => {

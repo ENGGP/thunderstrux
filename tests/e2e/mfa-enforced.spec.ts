@@ -147,3 +147,13 @@ test('committee handover with enforced MFA retires legacy ownership and removes 
     expect((await prisma.event.findUniqueOrThrow({ where: { id: data.event.id } })).organisationId).toBe(data.organisation.id);
   } finally { await context.close(); }
 });
+
+// Door volunteers are exempt, as at Humanitix and Luma: the role sees names and admits tickets, nothing more.
+test('check-in-only staff open the door without an authenticator, and still reach nothing else', async ({ page, data }) => {
+  await prisma.organisationStaff.update({ where: { id: data.staff.id }, data: { role: 'check_in_staff' } });
+  await login(page, data.manager.email);
+  await selectStaffContext(page, data.organisation.id);
+  await page.goto(`/dashboard/events/${data.event.id}/tickets`);
+  await expect(page.getByRole('button', { name: 'Scan QR codes' })).toBeVisible();
+  expect((await page.request.get('/api/orders')).status()).toBe(403);
+});

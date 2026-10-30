@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-27
+last-reviewed: 2026-10-30
 owner: engineering
 related: ["[[Project Handover]]", "[[Engineering Delivery Workflow]]", "[[Resolved Defects]]", "[[Pre-hosting Candidate]]"]
 ---
@@ -28,6 +28,7 @@ Statuses: `open`, `accepted-risk`, `external-gate`, `blocked`. Severity: Critica
 | PAY-023 | Low | Stripe audit leftover | open | 2026-10-27 | One item from the 2026-10-27 Stripe audit, not unsafe (the code items and Accounts v2 were fixed; [[Resolved Defects]]): webhooks accept any IP; Stripe recommends allowing only its addresses at the edge. Signatures stay the real protection. | `app/api/payments/webhook/route.ts`, `app/api/stripe/connect/webhook/route.ts`, `app/api/stripe/accounts/webhook/route.ts`. | Hosting owner: an edge rule for Stripe's webhook IPs once hosting is chosen. |
 | EVT-007 | Low | Ticket codes | accepted-risk | 2026-10-30 | A code's limit is checked at checkout under the event lock, not again at fulfilment (as a member price isn't): a payment that arrives after its hold lapsed, when the code's last uses went to others meanwhile, still gets its tickets, so the code passes its limit by that order. | Rare (a late payer and a code used up in the same minutes); capacity and stock are still rechecked. `lib/payments/checkout-reconciliation.ts`, [[Event Lifecycle#Codes]]. | Engineering: recheck at fulfilment only if a society relies on exact sponsor counts. |
 | SEC-019 | Lead | Sign-in cost | external-gate | 2026-10-26 | Anonymous sign-in and signup requests each cost about 0.25 s of password hashing on the single event loop, limited only per client IP. | `lib/auth:bcryptjs-cost-12-preauth-main-thread-uncapped`. T49 removed the source part: an unknown reset token is refused before any hash (`rate-limit.test.ts`). | Owner: edge rate limits on `/api/auth/*` before `thunderstrux.com`, per the go-live checklist in [[Pre-hosting Candidate]]. |
+| SEC-039 | Low | Door staff MFA | accepted-risk | 2026-10-30 | Check-in-only staff (`check_in_staff`) skip staff MFA under `enforce` (#230), as Humanitix and Luma treat door staff, because an authenticator per volunteer pushes societies to share an owner's login. A stolen password for that role can read attendee names and ticket types of the society's published events and check tickets in or out (300 a minute per society), confusing the door. | Each change is audited with its actor, the door card names who checked a ticket in, Undo exists, and an owner removes the role at once (live staff authority). The role sees no emails, orders or money (SEC-038). | Owner: revisit if a society asks for door MFA or misuse is seen; the next step would be a society switch that requires an authenticator for door staff. |
 
 ## External production gates
 

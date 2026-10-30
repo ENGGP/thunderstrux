@@ -93,7 +93,7 @@ export default async function MyTicketsPage({ searchParams }: { searchParams: Pr
           {view === "upcoming" ? "Showing the soonest 100 tickets. Later ones show here as these events pass." : "Showing the latest 100 tickets. Every order is in Purchases."}
         </p>
       ) : null}
-      <p className="text-sm text-ink-soft">Show the ticket reference and your name at the door.</p>
+      <p className="text-sm text-ink-soft">At the door, show the QR code, or give your name and the ticket reference.</p>
     </PersonalShell>
   );
 }

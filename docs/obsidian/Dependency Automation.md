@@ -96,6 +96,7 @@ Never build inside the running app container; use the isolated runner or rebuild
 
 - A Renovate Docker digest PR can change a base image under every image at once: build and scan the pair, not just one Dockerfile.
 - `pnpm.overrides` keyed by a parent version (`@prisma/config@<version>>`) silently stops applying after that parent updates; check the audit after any Prisma bump.
+- `@zxing/library` (the check-in scanner's fallback decoder) is imported by its QR module paths under `esm/core/`, not its index, which carries every format at four times the size; a bump must keep those paths (`tests/e2e/check-in.spec.ts` runs that decoder). From 0.22 it declares Node 24 or later for its build tools only, so it stays on 0.21.x while the project runs Node 22.
 - `integration-tests` and `redis-runtime.test.ts` need a disposable Redis; never point `INTEGRATION_REDIS_URL` at a development or production Redis.
 
 ## Related

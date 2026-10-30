@@ -66,7 +66,7 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 
 ## Scanning
 
-- **Scan QR codes** opens the rear camera and reads a frame every 150 ms with the browser's `BarcodeDetector` where it reads QR codes (Chrome on Android, macOS). Elsewhere, iOS included, it loads ZXing's QR reader (`@zxing/library`'s QR modules only, about 26 KB gzipped) and reads a frame scaled to 640 pixels across. The camera needs `Permissions-Policy: camera=(self)` ([[Route Security Inventory#Headers and caching]]).
+- **Scan QR codes** opens the rear camera and reads a frame every 150 ms with the browser's `BarcodeDetector` where it reads QR codes (Chrome on Android, macOS). Elsewhere, iOS included, it loads ZXing's QR reader (`@zxing/library`'s QR modules only, about 26 KB gzipped) and reads a frame scaled to 640 pixels across, then at half that size if nothing read. The camera needs `Permissions-Policy: camera=(self)` ([[Route Security Inventory#Headers and caching]]).
 - A read checks the ticket in at once, as door apps do, then shows its card from a fresh read: Checked in just now, Already used (with time and who), Don't admit (void, with why), or Under review. A 404 reads "Not for this event": another event's or society's ticket, or a code that isn't a ticket. Text that isn't an id shape gets the same answer without a request. 401, 403 and 429 read "Not saved" with the reason; no answer reads Status unknown with Reload ticket.
 - One code at a time, the newest result on screen. A code held in view counts once and again only after 3 seconds out of view, so the camera re-reading a ticket never turns "Checked in just now" into "Already used", while a copy shown later does.
 - A blocked or missing camera, or a scanner that didn't load, says so and points to search. Leaving Scan stops the camera.
@@ -78,6 +78,7 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 - A new 409 reason needs a rule in `ticketRouteRules` and a verdict in the console, or staff see a generic error at the door.
 - Keep the QR payload the bare ticket id: the scanner posts what it reads straight to `POST /api/tickets/[ticketId]/check-in`. Codes already on issued tickets and emails can't change.
 - Turning the camera off in `Permissions-Policy` again silently breaks scanning: the console only shows "No camera is available here".
+- ZXing's corner search can pick a shape in a code's data over a true corner, so about 1 id in 25 fails at any one exact size and position, however clean the image (DEF-064). The half-size pass and a moving camera cover that; `TRY_HARDER` doesn't. A still image stays failed, so tests read a clean render with `PURE_BARCODE`, and `tests/e2e/check-in.spec.ts` uses fixed ids.
 
 ## Related
 

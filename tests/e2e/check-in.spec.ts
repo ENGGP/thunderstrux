@@ -82,14 +82,16 @@ test("door staff scan QR codes: a valid ticket is admitted once, and used, refun
   await prisma.organisationStaff.update({ where: { id: data.staff.id }, data: { role: "check_in_staff" } });
   const buyer = await prisma.user.update({ where: { id: data.member.id }, data: { firstName: "Sam", lastName: "Lee" } });
   const sale = (eventId: string, ticketTypeId: string) => createOrder({ organisationId: data.organisation.id, eventId, ticketTypeId, userId: buyer.id, status: "paid", paidAt: new Date(), quantity: 1, unitPrice: 1500 });
-  const issue = async (eventId: string, ticketTypeId: string, voided = false) => prisma.ticket.create({ data: {
-    issueSequence: 1, orderId: (await sale(eventId, ticketTypeId)).id, eventId, ticketTypeId, organisationId: data.organisation.id,
+  const issue = async (id: string, eventId: string, ticketTypeId: string, voided = false) => prisma.ticket.create({ data: {
+    id, issueSequence: 1, orderId: (await sale(eventId, ticketTypeId)).id, eventId, ticketTypeId, organisationId: data.organisation.id,
     ...(voided ? { validity: "void" as const, validityReason: "refunded", validityChangedAt: new Date() } : {})
   } });
-  const valid = await issue(data.event.id, data.ticket.id);
-  const refunded = await issue(data.event.id, data.ticket.id, true);
+  // This camera never moves, so a code either always reads or never does, and about 1 random id in 25 never would (DEF-064).
+  // The valid ticket's code reads only on the half-size pass; the other two read at full size.
+  const valid = await issue("cmx5x8lrs4uyqu5aafuzpqr13", data.event.id, data.ticket.id);
+  const refunded = await issue("cmwzq0t4kn4rvm0ck2raylpnp", data.event.id, data.ticket.id, true);
   const otherEvent = await createEvent({ organisationId: data.organisation.id, status: "published" });
-  const elsewhere = await issue(otherEvent.id, otherEvent.ticketTypes[0].id);
+  const elsewhere = await issue("cmwzq0t4k60wsu8e0n4p0mnmn", otherEvent.id, otherEvent.ticketTypes[0].id);
 
   await page.addInitScript(() => {
     const canvas = document.createElement("canvas");

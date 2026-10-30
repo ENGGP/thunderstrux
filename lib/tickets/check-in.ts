@@ -9,6 +9,7 @@ import {
   pageInfoForPage,
   type ParsedPaginationOptions
 } from "@/lib/pagination/cursor";
+import { hasOrganisationPermission } from "@/lib/permissions";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
 import { prisma } from "@/lib/db";
 
@@ -86,6 +87,8 @@ function searchWhere(query: string): Prisma.TicketWhereInput {
 // The event's tickets for the check-in console. Without a search it lists the
 // tickets that admit (oldest first, paged); a search of 2 or more characters
 // also finds void and under-review tickets so staff can see why they don't.
+// Buyer emails go only to roles that can read orders: the same list as a CSV
+// needs `orders:read`, a rate limit and an audit row. A search still matches emails.
 export async function getOrganisationEventTickets(
   organisationId: string,
   eventId: string,
@@ -93,6 +96,7 @@ export async function getOrganisationEventTickets(
 ) {
   const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
   const publishedOnly = authority.staffRole === "check_in_staff" ? { status: "published" as const } : {};
+  const showEmail = hasOrganisationPermission(authority.staffRole, "orders:read");
   const event = await prisma.event.findFirst({
     where: { id: eventId, organisationId, ...publishedOnly },
     select: { id: true, title: true }
@@ -162,7 +166,7 @@ export async function getOrganisationEventTickets(
         ticketTypeName: purchasedTicketTypeLabel(ticket.order.purchasedTicketTypeName, ticket.ticketType.name),
         orderId: ticket.order.id,
         guest: ticket.order.guestIdentityId !== null,
-        buyerEmail: buyer?.email ?? null,
+        buyerEmail: showEmail ? buyer?.email ?? null : null,
         buyerName: buyer ? buyerName(buyer) : null
       };
     }),

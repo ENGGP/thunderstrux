@@ -1,8 +1,13 @@
 import Link from "next/link";
 import type { TicketValidity } from "@prisma/client";
+import { renderSVG } from "uqr";
 import { StatusBadge, type Status } from "@/components/ui/status-badge";
 import { formatClock, ticketReference } from "@/lib/format";
 
+// The QR code holds only the ticket id, which the door's scanner sends to the
+// staff-only check-in route. Dark on white, with a full quiet zone, so it scans in dark mode too.
+const qrSource = (ticketId: string) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(renderSVG(ticketId, { ecc: "M", border: 4, whiteColor: "#ffffff", blackColor: "#000000" }))}`;
 
 // Whether a ticket admits, in words. Void tickets say why when the reason is known.
 export function ticketState(ticket: { validity: TicketValidity; validityReason: string | null; checkedInAt: Date | null }, timeZone: string): { status: Status; label?: string } {
@@ -20,7 +25,7 @@ export function ticketState(ticket: { validity: TicketValidity; validityReason: 
 }
 
 // One ticket as the buyer shows it at the door: society, ticket type, which of
-// the order's tickets it is, the short reference and whether it admits. No QR.
+// the order's tickets it is, a QR code while it admits, the short reference and whether it admits.
 export function TicketFace({
   ticket,
   society,
@@ -54,6 +59,7 @@ export function TicketFace({
           {orderHref ? <> · <Link className="font-semibold text-brand underline underline-offset-4" href={orderHref}>Purchase</Link></> : null}
         </span>
       </div>
+      {admits ? <img alt={`QR code for ticket ${reference}`} className="mb-4 size-44 self-center rounded-control" height={176} src={qrSource(ticket.id)} width={176} /> : null}
       <div className="flex items-center justify-between gap-3 border-t-2 border-dashed border-line px-4 py-3">
         <span className={`font-mono text-xl font-bold tracking-[0.08em] ${admits ? "text-ink" : "text-ink-muted line-through"}`} title={ticket.id}>
           {reference}

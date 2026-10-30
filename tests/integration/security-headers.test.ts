@@ -7,6 +7,8 @@ describe("security headers (T39)", () => {
     const all = rules.find((rule) => rule.source === "/:path*")!;
     expect(all.headers.map((header) => header.key)).toEqual(expect.arrayContaining(["Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "Permissions-Policy"]));
     for (const directive of ["default-src 'self'", "frame-ancestors 'none'", "object-src 'none'", "form-action 'self'", "img-src 'self' data: blob:"]) expect(contentSecurityPolicy).toContain(directive);
+    // The check-in scanner may use the camera, on this site only; the rest stay off.
+    expect(all.headers.find((header) => header.key === "Permissions-Policy")?.value).toBe("camera=(self), microphone=(), geolocation=(), payment=(), usb=()");
 
     const api = rules.find((rule) => rule.source.startsWith("/api/"))!;
     expect(api.headers).toEqual([{ key: "Cache-Control", value: "private, no-store" }]);

@@ -1,8 +1,12 @@
-import { describe, expect, test } from "vitest";
+import { BinaryBitmap, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from "@zxing/library";
+import sharp from "sharp";
+import { describe, expect, test, vi } from "vitest";
 import { GET as getEventTickets } from "@/app/api/events/[eventId]/tickets/route";
 import { POST as checkInTicket } from "@/app/api/tickets/[ticketId]/check-in/route";
 import { POST as checkOutTicket } from "@/app/api/tickets/[ticketId]/check-out/route";
 import { prisma } from "@/lib/db";
+import { ticketQrAttachments } from "@/lib/email/ticket-delivery";
+import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { clearMockSession, selectMockContext, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import {
@@ -50,6 +54,13 @@ async function createPaidTicket({
   });
 
   return { order, ticket };
+}
+
+// What the door's scanner reads off a ticket's QR code (the email's image; the ticket face draws the same code).
+async function scanQr(ticketId: string) {
+  const [qr] = await ticketQrAttachments([{ id: ticketId }]);
+  const { data, info } = await sharp(Buffer.from(qr.content, "base64")).flatten({ background: "#ffffff" }).greyscale().raw().toBuffer({ resolveWithObject: true });
+  return new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Uint8ClampedArray(data), info.width, info.height)))).getText();
 }
 
 describe("ticket visibility and check-in API", () => {
@@ -851,5 +862,65 @@ describe("ticket visibility and check-in API", () => {
     expect((await post(checkInTicket, ticket)).status).toBe(200);
     expect((await post(checkInTicket, draftTicket)).status).toBe(404);
     expect((await getEventTickets(jsonRequest(`http://localhost/api/events/${draft.id}/tickets`), routeContext({ eventId: draft.id }))).status).toBe(404);
+  });
+
+  // The scanner posts the id a ticket's QR code holds to the same check-in route.
+  test("a scanned QR code admits a valid ticket once, and says why a used, void or other event's ticket can't come in", async () => {
+    const { owner, event, buyer, ticket } = await doorFixture();
+    const scan = async (scanned: { id: string }) => post(checkInTicket, { id: await scanQr(scanned.id), eventId: event.id });
+    expect(await scanQr(ticket.id)).toBe(ticket.id);
+    expect((await scan(ticket)).status).toBe(200);
+    const used = await scan(ticket);
+    expect([used.status, await conflictReason(used)]).toEqual([409, "already_checked_in"]);
+
+    const { ticket: refunded } = await createPaidTicket({ organisationId: owner.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id });
+    await prisma.ticket.update({ where: { id: refunded.id }, data: { validity: "void", validityReason: "refunded", validityChangedAt: new Date() } });
+    const voided = await scan(refunded);
+    expect([voided.status, await conflictReason(voided)]).toEqual([409, "not_valid"]);
+
+    const otherEvent = await createEvent({ organisationId: owner.organisation.id, status: "published" });
+    const { ticket: other } = await createPaidTicket({ organisationId: owner.organisation.id, eventId: otherEvent.id, ticketTypeId: otherEvent.ticketTypes[0].id, userId: buyer.id });
+    expect((await scan(other)).status).toBe(404);
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: other.id } })).checkedInAt).toBeNull();
+    expect(await prisma.auditLog.count({ where: { action: "ticket.checked_in" } })).toBe(1);
+  });
+
+  // The attendee list as a CSV needs orders:read; the door list mustn't hand out the same emails.
+  test("roles without orders:read see buyer names but not emails, and can still find a buyer by email", async () => {
+    const { owner, event, buyer, ticket } = await doorFixture();
+    expect((await search(event.id, "Sam")).tickets[0].buyerEmail).toBe(buyer.email);
+    for (const role of ["check_in_staff", "event_manager"] as const) {
+      const staff = await createMember();
+      await createOrganisationStaff({ organisationId: owner.organisation.id, userId: staff.id, role });
+      setMockSession({ userId: staff.id, email: staff.email, accountRole: "member" });
+      selectMockContext({ mode: "staff", organisationId: owner.organisation.id });
+      expect((await search(event.id, buyer.email.slice(0, 8))).tickets, role).toEqual([expect.objectContaining({ id: ticket.id, buyerName: "Sam Lee", buyerEmail: null })]);
+      expect((await search(event.id, "")).tickets, role).toEqual([expect.objectContaining({ id: ticket.id, buyerEmail: null })]);
+    }
+  });
+
+  // Door volunteers are exempt from staff MFA, as at Humanitix and Luma; every other role still needs it.
+  test("under MFA enforcement, check-in-only staff work the door without an authenticator and event managers can't", async () => {
+    const { owner, event, ticket } = await doorFixture();
+    vi.stubEnv("MFA_ENFORCEMENT_MODE", "enforce");
+    vi.stubEnv("RATE_LIMIT_ENABLED", "true");
+    vi.stubEnv("MFA_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+    setRateLimitTestEnabled(true);
+    setRateLimitTestBackend(createTestRateLimitBackend());
+    try {
+      const door = async (role: "check_in_staff" | "event_manager") => {
+        const staff = await createMember();
+        await createOrganisationStaff({ organisationId: owner.organisation.id, userId: staff.id, role });
+        setMockSession({ userId: staff.id, email: staff.email, accountRole: "member" });
+        selectMockContext({ mode: "staff", organisationId: owner.organisation.id });
+        const list = await getEventTickets(jsonRequest(`http://localhost/api/events/${event.id}/tickets`), routeContext({ eventId: event.id }));
+        return [list.status, (await post(checkInTicket, ticket)).status];
+      };
+      expect(await door("event_manager")).toEqual([403, 403]);
+      expect(await door("check_in_staff")).toEqual([200, 200]);
+    } finally {
+      setRateLimitTestEnabled(null);
+      setRateLimitTestBackend(null);
+    }
   });
 });

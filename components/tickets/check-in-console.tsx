@@ -85,15 +85,15 @@ const tones: Record<string, { card: string; label: string }> = {
 // One ticket at the door. After any answer from the server the card re-reads
 // the ticket, so it always shows what was saved; with no answer it says the
 // status is unknown and offers a reload instead of guessing.
-function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone: string; initial: ConsoleTicket }) {
+function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { eventId: string; timeZone: string; initial: ConsoleTicket; initialOutcome?: Outcome }) {
   const router = useRouter();
   const [ticket, setTicket] = useState(initial);
   const [unknown, setUnknown] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome>(null);
+  const [outcome, setOutcome] = useState<Outcome>(initialOutcome);
   const [refusal, setRefusal] = useState<string | null>(null);
   // Briefly after admitting someone the action can't be pressed, so a second tap never lands on Undo.
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useState(initialOutcome === "checked-in");
   useEffect(() => setTicket(initial), [initial]);
   useEffect(() => {
     if (!locked) return;
@@ -152,6 +152,8 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   const tone = tones[state.tone];
   const big = "min-h-14 w-full text-lg md:w-auto md:min-h-11 md:text-ui";
   const detail = refusal ?? state.detail;
+  // Emails reach only roles that can read orders; "guest" shows either way.
+  const contact = [ticket.guest ? "guest" : null, ticket.buyerName ? ticket.buyerEmail : null].filter(Boolean).join(" · ");
 
   return (
     <li aria-label={`${name}, ${state.label}`} className={`grid gap-2 rounded-card border-2 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-4 ${tone.card}`}>
@@ -163,7 +165,7 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
         <p className="text-sm text-ink">
           {ticket.ticketTypeName} · <span className="font-mono font-bold tracking-[0.06em]" title={ticket.id}>{ticketReference(ticket.id)}</span> · {ticket.issueSequence} of {ticket.orderQuantity}
         </p>
-        {ticket.buyerName && ticket.buyerEmail ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{ticket.guest ? "guest · " : ""}{ticket.buyerEmail}</p> : null}
+        {contact ? <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">{contact}</p> : null}
       </div>
       <div className="grid gap-0.5">
         <strong className={`hidden md:block ${tone.label}`}>{state.label}</strong>
@@ -191,6 +193,186 @@ function CheckInCard({ eventId, timeZone, initial }: { eventId: string; timeZone
   );
 }
 
+type BarcodeDetectorClass = {
+  new (options: { formats: string[] }): { detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string }>> };
+  getSupportedFormats(): Promise<string[]>;
+};
+
+// Reads a QR code from the camera's current frame: the browser's BarcodeDetector
+// where it reads QR codes, else ZXing's QR reader (iOS has none), loaded only then.
+async function qrReader(): Promise<(video: HTMLVideoElement) => Promise<string | null>> {
+  const Native = (globalThis as { BarcodeDetector?: BarcodeDetectorClass }).BarcodeDetector;
+  if (Native && (await Native.getSupportedFormats().catch((): string[] => [])).includes("qr_code")) {
+    const detector = new Native({ formats: ["qr_code"] });
+    return async (video) => (await detector.detect(video))[0]?.rawValue ?? null;
+  }
+  // The QR modules alone, not the package index (every format, four times the size).
+  const [{ default: QRCodeReader }, { default: RGBLuminanceSource }, { default: BinaryBitmap }, { default: HybridBinarizer }] = await Promise.all([
+    import("@zxing/library/esm/core/qrcode/QRCodeReader"),
+    import("@zxing/library/esm/core/RGBLuminanceSource"),
+    import("@zxing/library/esm/core/BinaryBitmap"),
+    import("@zxing/library/esm/core/common/HybridBinarizer")
+  ]);
+  const reader = new QRCodeReader();
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+  return async (video) => {
+    // 640 pixels across reads a ticket at arm's length and keeps each pass quick on a phone.
+    const scale = Math.min(1, 640 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    try {
+      // RGBA pixels as 32-bit words; ZXing's luminance weighs red and blue alike, so byte order doesn't matter.
+      return reader.decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Int32Array(data.buffer), canvas.width, canvas.height)))).getText();
+    } catch {
+      return null;
+    }
+  };
+}
+
+// The rear camera, read every 150 ms while open. A code held in view counts
+// once; after 3 seconds out of view it counts again, so a copy shown later
+// reads as already used. `onCode` says whether it took the code.
+function Camera({ onCode }: { onCode: (text: string) => boolean }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const handler = useRef(onCode);
+  const [failure, setFailure] = useState<string | null>(null);
+  useEffect(() => {
+    handler.current = onCode;
+  });
+  useEffect(() => {
+    let stopped = false;
+    let stream: MediaStream | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let last = { text: "", at: 0 };
+    const stop = () => stream?.getTracks().forEach((track) => track.stop());
+    (async () => {
+      let read: Awaited<ReturnType<typeof qrReader>>;
+      try {
+        read = await qrReader();
+      } catch {
+        if (!stopped) setFailure("The scanner didn't load. Check the connection and open Scan again, or search instead.");
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      } catch (error) {
+        if (!stopped) setFailure(error instanceof DOMException && error.name === "NotAllowedError"
+          ? "The camera is blocked. Allow it for this site in the browser's settings, or search instead."
+          : "No camera is available here. Search by name or reference instead.");
+        return;
+      }
+      if (stopped || !video.current) return stop();
+      const element = video.current;
+      element.srcObject = stream;
+      await element.play().catch(() => undefined);
+      const tick = async () => {
+        if (stopped) return;
+        const text = element.readyState >= 2 ? await read(element).catch(() => null) : null;
+        const now = Date.now();
+        if (text && text === last.text && now - last.at < 3000) last.at = now;
+        else if (text && handler.current(text)) last = { text, at: now };
+        timer = setTimeout(tick, 150);
+      };
+      void tick();
+    })();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      stop();
+    };
+  }, []);
+
+  return failure ? (
+    <p className="max-w-2xl rounded-card border-2 border-danger-border bg-danger-bg p-4 font-semibold text-danger" role="alert">{failure}</p>
+  ) : (
+    <video aria-label="Camera view" className="aspect-[4/3] w-full max-w-md rounded-card bg-ink object-cover" muted playsInline ref={video} />
+  );
+}
+
+type ScanOutcome =
+  | { ticket: ConsoleTicket; outcome: Outcome }
+  | { tone: "warning" | "danger" | "unknown"; label: string; detail: string; ticketId?: string };
+
+const notThisEvent = { tone: "danger", label: "Not for this event", detail: "This code isn't a ticket for this event. Don't admit: check the event on their ticket." } as const;
+const noAnswer = { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved. Reload the ticket before admitting." } as const;
+
+// Scanning checks the ticket in straight away, as door apps do, then shows it
+// as the server has it: admitted, already used, refunded, under review, or
+// not a ticket for this event. One code at a time; the newest result shows.
+function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string }) {
+  const router = useRouter();
+  const [result, setResult] = useState<(ScanOutcome & { id: number }) | null>(null);
+  const [checking, setChecking] = useState(false);
+  const busy = useRef(false);
+  const count = useRef(0);
+
+  async function scanned(text: string): Promise<ScanOutcome> {
+    // A ticket's QR code holds its id; anything else is some other code.
+    if (!/^[\w-]{1,64}$/.test(text)) return notThisEvent;
+    let response: Response;
+    try {
+      response = await fetchWithCsrf(`/api/tickets/${text}/check-in?eventId=${encodeURIComponent(eventId)}`, { method: "POST", signal: AbortSignal.timeout(requestTimeoutMs) });
+    } catch {
+      return { ...noAnswer, ticketId: text };
+    }
+    const refused = refusals[response.status];
+    if (refused) return { tone: "warning", label: "Not saved", detail: refused };
+    // Another event's ticket, another society's, or no ticket at all: the same 404.
+    if (response.status === 404) return notThisEvent;
+    const outcome: Outcome = response.ok ? "checked-in" : response.status === 409 && (await conflictReason(response)) === "already_checked_in" ? "already-used" : null;
+    const ticket = await readTicket(eventId, text).catch(() => null);
+    return ticket ? { ticket, outcome } : { ...noAnswer, ticketId: text };
+  }
+
+  function onCode(text: string) {
+    if (busy.current) return false;
+    busy.current = true;
+    setChecking(true);
+    void scanned(text).then((next) => {
+      setResult({ ...next, id: ++count.current });
+      router.refresh();
+    }).finally(() => {
+      busy.current = false;
+      setChecking(false);
+    });
+    return true;
+  }
+
+  async function reload(ticketId: string) {
+    const ticket = await readTicket(eventId, ticketId).catch(() => null);
+    if (ticket) setResult({ id: ++count.current, ticket, outcome: null });
+  }
+
+  return (
+    <div className="grid gap-3">
+      <Camera onCode={onCode} />
+      <div aria-live="polite" className="grid gap-3">
+        {checking ? <p className="text-sm font-semibold text-ink">Checking ticket…</p> : null}
+        {result && "ticket" in result ? (
+          <ul aria-label="Scanned ticket" className="grid gap-3">
+            <CheckInCard eventId={eventId} initial={result.ticket} initialOutcome={result.outcome} key={result.id} timeZone={timeZone} />
+          </ul>
+        ) : result ? (
+          <div className={`grid max-w-2xl gap-2 rounded-card border-2 p-4 ${tones[result.tone].card}`} key={result.id}>
+            <strong className={`font-display text-[22px] font-semibold leading-tight ${tones[result.tone].label}`}>{result.label}</strong>
+            <p className="text-sm font-semibold text-ink">{result.detail}</p>
+            {result.ticketId ? (
+              <div>
+                <button className={buttonClasses()} onClick={() => reload(result.ticketId!)} type="button">Reload ticket</button>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-ink-soft">Point the camera at a ticket&apos;s QR code. A valid ticket is checked in as soon as it&apos;s read.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const searchLimit = 25;
 
 // Search the event's tickets as staff type (from 2 characters); with no
@@ -198,6 +380,7 @@ const searchLimit = 25;
 // first 25 matches and says so when there are more, and the list on screen
 // stays until the answer arrives.
 export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { eventId: string; timeZone: string; initialTickets: ConsoleTicket[]; footer?: ReactNode }) {
+  const [mode, setMode] = useState<"search" | "scan">("search");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{ tickets: ConsoleTicket[]; more: boolean } | null>(null);
   const [failed, setFailed] = useState(false);
@@ -230,8 +413,24 @@ export function CheckInConsole({ eventId, timeZone, initialTickets, footer }: { 
   // Until the first answer, the list on screen stays rather than emptying.
   const shown = searching && results ? results.tickets : initialTickets;
   const pending = searching && !results;
+  const modes = (
+    <div aria-label="Find tickets by" className="flex max-w-2xl gap-2" role="group">
+      {(["search", "scan"] as const).map((value) => (
+        <button aria-pressed={mode === value} className={buttonClasses({ variant: mode === value ? "primary" : "secondary", className: "flex-1 md:flex-none" })} key={value} onClick={() => setMode(value)} type="button">
+          {value === "search" ? "Search" : "Scan QR codes"}
+        </button>
+      ))}
+    </div>
+  );
+  if (mode === "scan") return (
+    <div className="grid gap-4">
+      {modes}
+      <ScanPanel eventId={eventId} timeZone={timeZone} />
+    </div>
+  );
   return (
     <div className="grid gap-4">
+      {modes}
       <label className="grid max-w-2xl gap-1.5 text-sm font-semibold text-ink">
         Find a ticket
         <input

@@ -1,3 +1,5 @@
+import sharp from "sharp";
+import { renderSVG } from "uqr";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { purchaseLinkForEmail } from "@/lib/guest/guest-access";
 import { purchasedTicketTypeLabel } from "@/lib/purchases/projection";
@@ -153,16 +155,27 @@ function buyerName(order: TicketDeliveryOrder) {
   return order.user.displayName ?? (fullName || null);
 }
 
+// Each ticket's QR code, as the ticket face draws it, for the email's inline images.
+// PNG by content id: Gmail and Outlook for Windows drop data: images, and older Outlook drops SVG.
+const ticketQrContentId = (ticketId: string) => `ticket-${ticketId}`;
+export async function ticketQrAttachments(tickets: Array<{ id: string }>) {
+  return Promise.all(tickets.map(async (ticket) => ({
+    filename: `ticket-${ticketReference(ticket.id)}.png`,
+    content: (await sharp(Buffer.from(renderSVG(ticket.id, { ecc: "M", border: 4, pixelSize: 8, whiteColor: "#ffffff", blackColor: "#000000" }))).png().toBuffer()).toString("base64"),
+    content_id: ticketQrContentId(ticket.id)
+  })));
+}
+
 // A guest's email carries a link that opens this order (T16b); a member's links
-// to the order in their account. Tickets show the short reference the wallet and
+// to the order in their account. Tickets show a QR code and the short reference the wallet and
 // the door console use, so a buyer reads out the same six characters everywhere.
 export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: string) {
   const name = buyerName(order);
   const greeting = name ? `Hi ${name},` : "Hi,";
   const ticketLabels = order.tickets.map((ticket) => `${ticketReference(ticket.id)} (ticket ${ticket.issueSequence} of ${order.quantity})`);
   const ticketIdLines = ticketLabels.map((label) => `- ${label}`).join("\n");
-  const ticketIdHtml = ticketLabels
-    .map((label) => `<li><code>${escapeHtml(label)}</code></li>`)
+  const ticketIdHtml = order.tickets
+    .map((ticket, index) => `<li><code>${escapeHtml(ticketLabels[index])}</code><br><img src="cid:${ticketQrContentId(ticket.id)}" alt="QR code for ticket ${ticketReference(ticket.id)}" width="176" height="176"></li>`)
     .join("");
   const origin = appUrl();
   const memberLink = order.userId && origin ? new URL(`/purchases/tickets/${order.id}`, origin).toString() : undefined;
@@ -194,7 +207,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
     "Your tickets:",
     ticketIdLines || "- Not available",
     "",
-    "At the door, give your name or show this email with your ticket reference.",
+    "At the door, show your ticket's QR code (in this email or on your tickets page), or give your name or ticket reference.",
     ...(contactLink ? ["", `Questions? Contact ${seller}: ${contactLink}`] : []),
     ...(memberLink ? ["", `View your tickets: ${memberLink}`] : []),
     ...(guestOrderLink ? ["", `Open your order (works once, for 24 hours; after that use Find your purchase): ${guestOrderLink}`] : [])
@@ -219,7 +232,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
       </dl>
       <p><strong>Your tickets</strong></p>
       <ul>${ticketIdHtml || "<li>Not available</li>"}</ul>
-      <p>At the door, give your name or show this email with your ticket reference.</p>
+      <p>At the door, show your ticket's QR code, or give your name or ticket reference.</p>
       ${contactLink ? `<p>Questions? <a href="${escapeHtml(contactLink)}">Contact ${escapeHtml(seller)}</a></p>` : ""}
       ${memberLink ? `<p><a href="${escapeHtml(memberLink)}">View your tickets</a></p>` : ""}
       ${guestOrderLink ? `<p><a href="${escapeHtml(guestOrderLink)}">Open your order</a> (works once, for 24 hours; after that use Find your purchase).</p>` : ""}
@@ -234,6 +247,7 @@ export async function sendWithResend({
   subject,
   text,
   html,
+  attachments,
   idempotencyKey,
   from: frozenFrom,
   replyTo,
@@ -243,6 +257,8 @@ export async function sendWithResend({
   subject: string;
   text: string;
   html: string;
+  // Inline images only: Resend's base64 `content` and the `content_id` the html cites.
+  attachments?: Array<{ filename: string; content: string; content_id: string }>;
   idempotencyKey?: string;
   from?: string;
   // A validated address (renderedNotificationSchema): only enquiries carry one.
@@ -283,6 +299,7 @@ export async function sendWithResend({
       subject,
       text,
       html,
+      ...(attachments?.length ? { attachments } : {}),
       ...(replyTo ? { reply_to: replyTo } : {})
     })
   });
@@ -334,6 +351,7 @@ export async function sendTicketDeliveryEmailToProvider(
   const email = renderTicketEmail(order, guestOrderLink);
   const delivery = await sendWithResend({
     to: recipient,
+    attachments: await ticketQrAttachments(order.tickets),
     idempotencyKey: guestOrderLink && idempotencyKey ? `${idempotencyKey}/${attempt}` : idempotencyKey,
     ...email
   });

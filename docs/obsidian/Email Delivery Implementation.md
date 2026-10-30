@@ -30,10 +30,11 @@ sources: [lib/email/ticket-delivery.ts, lib/email/ticket-email-outbox.ts, lib/em
 
 ## Ticket email
 
-One email per ticket order with every `active` ticket. Text and HTML, no attachments, no QR codes.
+One email per ticket order with every `active` ticket. Text and HTML, with each ticket's QR code as an inline PNG.
 
 - **Sent:** queued in the fulfilment transaction of a paid order, or with a free registration ([[Payment Lifecycle#Fulfilment]]). A failed insert rolls the fulfilment back, so a paid order never commits without its job. Provider I/O happens only in the worker.
-- **Content:** subject `Your tickets for <event>` (line breaks folded to a space). Body: greeting by the buyer's display or full name, event title, organiser (`sellerName` snapshot), date, location, ticket type (purchased name, or today's name plus "(historical label unavailable)"), quantity, unit price ("Free" at 0), total, the order reference (`orderReference`), each active ticket by its short reference with "ticket n of m" (`ticketReference`, the same six characters the wallet and the door console show), and "At the door, give your name or show this email with your ticket reference." Event date and place are read live.
+- **Content:** subject `Your tickets for <event>` (line breaks folded to a space). Body: greeting by the buyer's display or full name, event title, organiser (`sellerName` snapshot), date, location, ticket type (purchased name, or today's name plus "(historical label unavailable)"), quantity, unit price ("Free" at 0), total, the order reference (`orderReference`), each active ticket by its short reference with "ticket n of m" (`ticketReference`, the same six characters the wallet and the door console show) and its QR code, and "At the door, show your ticket's QR code, or give your name or ticket reference." Event date and place are read live.
+- **QR codes:** `ticketQrAttachments` renders each code as the ticket face draws it ([[Ticket Check-in Implementation#Rules]]) and `sharp` turns it into a PNG, sent as a Resend attachment with `content_id` `ticket-{id}` that the HTML cites as `cid:`. Not a `data:` image, which Gmail and Outlook for Windows drop, and not SVG, which older Outlook drops. The text part points to the tickets page instead.
 - **Dates** are formatted in the society's zone (`Organisation.timeZone`, `formatDateTime` in `lib/format.ts`), as event-change notices are.
 - **Wording:** "Your payment is confirmed", or "Your registration is confirmed" for a free order (`paymentKind = free`).
 - **Member orders** add "View your tickets", a link to `/purchases/tickets/{orderId}` (needs `NEXT_PUBLIC_APP_URL`).

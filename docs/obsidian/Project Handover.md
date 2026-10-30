@@ -51,6 +51,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-29: #224 resolves UI-004 and UI-025 and four DEBT-002 items: phone filters fold, one date formatter, every capped list pages both ways, Change tickets keeps the choice, one set of ticket steps, sold counts valid tickets, and "Contact {society}" emails the society (a new public route, `society_enquiry` limit and template; no migration). Checkout holds (PAY-009) and per-ticket refunds follow as their own PRs.
 - 2026-10-30: #225 resolves PAY-009: per-event checkout holds (`Event.checkoutHoldMinutes`, additive migration `20261122010000_event_checkout_hold`; apply it with `prisma migrate deploy` on each database), closed by the stale-order job when they end, with the end on Stripe's page and a countdown on order pages.
 - 2026-10-30: #226 adds per-ticket refunds, as Humanitix: pick tickets, refund all or part of their price or $0 to cancel them, keep them valid or not, email the buyer or not (additive migration `20261123010000_refund_tickets`, which also adds the `tickets_cancelled` lifecycle step; apply it with `prisma migrate deploy` on each database). Reviewing a refund made in Stripe picks the tickets it covered.
+- 2026-10-30: the preview was deployed at `d133734` (#226; backup `ops-preview-2026-10-30T03-27-51-803Z.dump` first; 72 migrations, adding those of #222, #225 and #226); readiness answers 200 locally and on `thunderstrux.mistayu.com`, and the six workers run the release's ops image. `MFA_ENFORCEMENT_MODE` is still `off`.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -64,7 +65,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - The dev database now has all 70 migrations and the `pnpm seed:demo` data; the dev folder serves main.
 
 **Public preview**
-- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `e44b330` (#215; 69 migrations, so not yet #216 to #222), Stripe test mode, and no image bucket yet.
+- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `d133734` (#226; 72 migrations), Stripe test mode, and no image bucket yet.
 - It listens on loopback port 3090 behind the Cloudflare Tunnel, uses `cf-connecting-ip` for client addresses and denies legacy access. MFA enforcement is `off` for now at the owner's request; set it back to `enforce` and redeploy before anyone else uses it.
 - The dev stack (port 3080) is loopback-only and is never tunnelled.
 - Preview reachability satisfies no release gate. See [[Production Operations]].
@@ -134,7 +135,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 1. **Preview (owner).**
    - Send a test event from each Stripe test-mode webhook destination and confirm a 200.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
-   - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy main (it needs the migrations of #222, #225 and #226).
+   - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy.
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
 2. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.

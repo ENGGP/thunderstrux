@@ -227,11 +227,13 @@ describe("whole-order refunds", () => {
     // Even when the webhook records it in the moment between their confirming and the send.
     const raced = await paidOrder();
     await refundInStripe(1000);
-    const session = await stripe.retrieve();
-    stripe.retrieve.mockImplementationOnce(async () => {
+    const transaction = prisma.$transaction.bind(prisma) as (run: unknown) => Promise<unknown>;
+    const opened = vi.spyOn(prisma, "$transaction").mockImplementationOnce((async (run: unknown) => {
+      const request = await transaction(run);
       await prisma.order.update({ where: { id: raced.order.id }, data: { externalRefundedAmount: 1000 } });
-      return session;
-    });
+      return request;
+    }) as never);
+    onTestFinished(() => opened.mockRestore());
     await expect(requestOrderRefund(refundInput(raced))).rejects.toMatchObject({ kind: "verification_failed" });
     expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: raced.order.id } })).toMatchObject({ status: "failed", amount: 3000 });
     expect(stripe.create).not.toHaveBeenCalled();

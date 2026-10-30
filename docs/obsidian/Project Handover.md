@@ -67,6 +67,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - A failed sign-in took the same time for a real and an unknown address on dev (7 to 17 ms apart, inside the spread between runs), so that audit item needed no fix.
 - 2026-10-30: #235 lets two full test runs go at once. Each run tags its images with its run id, so it can't test another run's code, and Docker picks its host port. Staging stays one at a time, with its own check, because the old port check was what kept those runs apart. No app code changes.
 - 2026-10-31: the preview was deployed at `961dbaf` (#235; backup `ops-preview-2026-10-30T14-42-34-273Z.dump` first; 73 migrations, adding #231's `20261124010000_ticket_codes`). Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers run the release's ops image with no failures, and the stale-order and refunds jobs have `EMAIL_FROM`, the notification key and the app URL (DEF-065). The Accounts v2 event destination is enabled with the right URL and all seven events, and Stripe's test ping passed its signature check, which proves `STRIPE_ACCOUNTS_WEBHOOK_SECRET`. `MFA_ENFORCEMENT_MODE` is still `off`.
+- 2026-10-31: DEF-064 is resolved: the owner scanned three tickets with the camera in Safari on an iPhone against the preview, so the fallback reader has now worked on a real phone.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -160,7 +161,6 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
    - Send a test event from the two snapshot webhook destinations and confirm a 200. The Accounts v2 destination has passed.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy.
-   - Scan a batch of tickets in Safari on an iPhone, which has no `BarcodeDetector`, from a second phone's screen and from the ticket email (DEF-064).
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
 3. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.

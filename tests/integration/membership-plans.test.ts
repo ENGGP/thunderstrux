@@ -49,6 +49,31 @@ async function sell(organisationId: string, plan: { id: string; name: string; st
 }
 
 describe("membership plans", () => {
+  test("after a society changes zone, saving a plan keeps its term, sold or not; new days use the new zone", async () => {
+    const { user, organisation } = await society({ timeZone: "Australia/Sydney" });
+    signIn(user);
+    const sold = (await create(organisation.slug, semester1)).body.plan;
+    const unsold = (await create(organisation.slug, semester2)).body.plan;
+    await sell(organisation.id, sold);
+    await prisma.organisation.update({ where: { id: organisation.id }, data: { timeZone: "Australia/Perth" } });
+
+    // What the form submits: the days it shows, read in the new zone.
+    const save = async (planId: string, change: Record<string, unknown>) => {
+      const { plan } = (await readPlan(organisation.id, planId))!;
+      return update(organisation.slug, planId, { name: plan.name, description: plan.description, priceAmount: plan.priceAmount, firstDay: plan.firstDay, lastDay: plan.lastDay, entitlements: plan.entitlements, expectedVersion: plan.version, ...change });
+    };
+    const edited = await save(sold.id, { description: "New words." });
+    expect(edited.status).toBe(200);
+    expect(edited.body.plan).toMatchObject({ description: "New words.", startsAt: sold.startsAt, endsAt: sold.endsAt });
+    expect((await save(unsold.id, { description: "New words." })).body.plan).toMatchObject({ startsAt: unsold.startsAt, endsAt: unsold.endsAt });
+
+    // Real date changes still act: a sold plan refuses them, an unsold one takes them in the new zone.
+    expect((await save(sold.id, { lastDay: `${year}-06-29` })).status).toBe(409);
+    const moved = await save(unsold.id, { lastDay: `${year}-12-30` });
+    expect(moved.status).toBe(200);
+    expect(moved.body.plan.endsAt).toBe(new Date(`${year}-12-30T16:00:00.000Z`).toISOString());
+  });
+
   test("a new plan opens on the soonest term that hasn't started, never one that is mostly over", () => {
     expect(defaultTerm(["2026", "2027", "2028"], "2026-10-25")).toEqual({ preset: "year", year: "2027" });
     expect(defaultTerm(["2026", "2027", "2028"], "2026-02-10")).toEqual({ preset: "semester2", year: "2026" });

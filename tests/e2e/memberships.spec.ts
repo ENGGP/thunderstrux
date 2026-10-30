@@ -219,9 +219,14 @@ test("an event's member price shows to a member with member prices, and everyone
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/member-price-event-${width}.png`, fullPage: true });
   }
+  // One ticket at the member price: more goes back to the box, which keeps the choice at 1 and says why.
   await page.goto(`/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=2`);
+  await expect(page).toHaveURL(new RegExp(`/events/${data.event.id}\\?`));
+  await expect(page.getByLabel("Quantity")).toHaveValue("1");
+  await expect(page.getByText("1 at the member price")).toBeVisible();
+  await page.goto(`/events/${data.event.id}/checkout?ticketTypeId=${data.ticket.id}&quantity=1`);
   await expect(page.getByText("(member price)")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pay A$20.00" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pay A$10.00" })).toBeVisible();
 });
 
 // T24b2: the members-only gate's safety contract, checked on the full response.

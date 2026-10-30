@@ -12,6 +12,7 @@ import { decryptNotification } from "@/lib/email/notification-crypto";
 import { processNotificationClaim } from "@/lib/email/notification-outbox";
 import { GuestAccessError, guestCookieName, readGuestSession, redeemGuestAccess, requestGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
+import { cancelFreeMerchandiseOrder } from "@/lib/merchandise/after-sale";
 import { updateProduct } from "@/lib/merchandise/catalogue";
 import { quoteVersion } from "@/lib/merchandise/sale";
 import { quoteBasket, shopProduct } from "@/lib/merchandise/shop";
@@ -180,6 +181,64 @@ describe("merchandise sale", () => {
     // More than is left is refused with what is left, and takes nothing.
     await expect(buy(organisation.id, await member(), [{ variantId: variants[0].id, quantity: 2, unitPrice: 0 }])).rejects.toMatchObject({ reason: "not_enough", available: 1 });
     expect(await stock(variants[0].id)).toEqual({ remaining: 1, version: 2 });
+  });
+
+  test("one buyer's free units of an option stop at the line cap: members, guests across sessions, and a free option in a paid basket", async () => {
+    const { organisation, user, variants } = await shop([{ priceAmount: 0, remaining: 60 }, { priceAmount: 1000, remaining: 60 }]);
+    const [free, paid] = variants.map((variant) => variant.id);
+    const freeLine = (quantity: number) => ({ variantId: free, quantity, unitPrice: 0 });
+    const paidLine = { variantId: paid, quantity: 1, unitPrice: 1000 };
+
+    const account = await member();
+    const first = await buy(organisation.id, account, [freeLine(6)]);
+    if (first.status !== "fulfilled") throw new Error("not fulfilled");
+    await expect(buy(organisation.id, account, [freeLine(5)])).rejects.toMatchObject({ name: "MerchandiseUnavailableError", reason: "free_limit_reached", variantId: free, available: 4 });
+    // Nobody else is affected, and a refused basket takes nothing.
+    expect((await buy(organisation.id, await member(), [freeLine(10)])).status).toBe("fulfilled");
+    expect(await stock(free)).toMatchObject({ remaining: 44 });
+
+    // A guest is one person across checkout sessions of the same email.
+    const email = `${unique("guest")}@example.com`;
+    expect((await buy(organisation.id, { guest: await verifiedGuest(email) }, [freeLine(7)])).status).toBe("fulfilled");
+    await expect(buy(organisation.id, { guest: await verifiedGuest(email) }, [freeLine(4)])).rejects.toMatchObject({ reason: "free_limit_reached", available: 3 });
+
+    // A free option in a paid basket counts too, even before the payment lands.
+    await expect(buy(organisation.id, account, [paidLine, freeLine(5)])).rejects.toMatchObject({ reason: "free_limit_reached", available: 4 });
+    const basket = await buy(organisation.id, account, [paidLine, freeLine(4)]);
+    expect(basket.status).toBe("redirect");
+    await deliverPaid(await orderOf(basket.attemptId));
+    await expect(buy(organisation.id, account, [freeLine(1)])).rejects.toMatchObject({ reason: "free_limit_reached", available: 0 });
+    // Paid units have no such cap.
+    expect((await buy(organisation.id, account, [{ ...paidLine, quantity: 10 }])).status).toBe("redirect");
+    await prisma.commerceOrder.updateMany({ where: { userId: account.userId, status: "pending" }, data: { status: "failed", failedAt: new Date() } });
+
+    // A cancelled free order gives its units back.
+    await cancelFreeMerchandiseOrder({ organisationId: organisation.id, orderId: first.commerceOrderId, actor: { id: user.id }, reason: "Giveaway ran out." });
+    expect((await buy(organisation.id, account, [freeLine(6)])).status).toBe("fulfilled");
+
+    // So do a basket that closed unpaid and a refunded one.
+    const other = await member();
+    const closed = await orderOf((await buy(organisation.id, other, [paidLine, freeLine(10)])).attemptId);
+    await prisma.commerceOrder.update({ where: { id: closed }, data: { status: "expired" } });
+    const refunded = await orderOf((await buy(organisation.id, other, [paidLine, freeLine(10)])).attemptId);
+    await prisma.commerceOrder.update({ where: { id: refunded }, data: { status: "paid", paidAt: new Date(), refundStatus: "processing" } });
+    await expect(buy(organisation.id, other, [freeLine(1)])).rejects.toMatchObject({ reason: "free_limit_reached", available: 0 });
+    await prisma.commerceOrder.update({ where: { id: refunded }, data: { refundStatus: "refunded" } });
+    expect((await buy(organisation.id, other, [freeLine(10)])).status).toBe("fulfilled");
+
+    // Units bought at a price don't count once the option turns free.
+    await prisma.merchandiseVariant.update({ where: { id: paid }, data: { priceAmount: 0 } });
+    expect((await buy(organisation.id, account, [{ variantId: paid, quantity: 10, unitPrice: 0 }])).status).toBe("fulfilled");
+  });
+
+  test("racing free baskets from one buyer can't pass the cap together", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 0, remaining: 40 }]);
+    const account = await member();
+    const items = [{ variantId: variants[0].id, quantity: 6, unitPrice: 0 }];
+    const results = await Promise.allSettled([buy(organisation.id, account, items), buy(organisation.id, account, items)]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect((results.find((result) => result.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ reason: "free_limit_reached", available: 4 });
+    expect(await stock(variants[0].id)).toMatchObject({ remaining: 34 });
   });
 
   test("a tampered amount, an expired hold paid late and a hold that lapsed before its payment landed all go to review without taking stock", async () => {

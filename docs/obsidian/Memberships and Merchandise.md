@@ -18,8 +18,8 @@ sources: [lib/memberships/plans.ts, lib/memberships/grants.ts, lib/memberships/o
 | --- | --- |
 | Family registry (quote, lock, fulfil, release hooks) | `lib/commerce/families.ts`: `commerceFamilies` |
 | Plans | `lib/memberships/plans.ts`: `planFieldsSchema`, `planReadiness`, `termFromDays`, `daysFromTerm`, `publicPlans` |
-| Grants and the membership family | `lib/memberships/grants.ts`: `membershipFamily`, `grantState`, `activeEntitlementGrant` |
-| What members see | `lib/memberships/offers.ts`: `membershipOffers`, `myMemberships`, `entitlementOnSale` |
+| Grants and the membership family | `lib/memberships/grants.ts`: `membershipFamily`, `grantState`, `activeEntitlementGrant`, `memberPriceTicketCount` |
+| What members see | `lib/memberships/offers.ts`: `membershipOffers`, `myMemberships`, `entitlementOnSale`, `memberPriceUnused` |
 | Roster | `lib/memberships/roster.ts` |
 | Revoke, cancel, refund | `lib/memberships/revocation.ts`: `revokeMembership`, `cancelFreeMembership`, `refundMembership`; route helper `staffEndRoute` in `lib/memberships/http.ts` |
 | Renewal and expiry notices | `lib/memberships/reminders.ts`: `queueMembershipNotices` |
@@ -30,8 +30,6 @@ sources: [lib/memberships/plans.ts, lib/memberships/grants.ts, lib/memberships/o
 | Staff order page, refund, free cancel, returns | `lib/merchandise/after-sale.ts`: `staffMerchandiseOrder`, `refundMerchandiseOrder`, `cancelFreeMerchandiseOrder`, `recordReturn`, `returnSchema` |
 | Commerce order lists | `lib/commerce/orders.ts`: `getOwnCommerceOrders`, `listOrganisationCommerceOrders`, `commerceProductOptions` |
 | Members-only gate, prices per viewer | `lib/events/public-events.ts`: `getEventForViewer`, `priceForViewer` |
-| Checkout routes | `POST /api/payments/checkout/membership`, `POST /api/payments/checkout/merchandise`, `POST /api/merchandise/quote` |
-| Staff routes | `/api/orgs/[orgSlug]/memberships` (plans, publish, archive, members revoke/cancel/refund); `/api/orgs/[orgSlug]/merchandise` (products, publish, archive, restore, pickups, orders cancel/refund/returns) |
 | Tests | `tests/integration/`: `membership-*.test.ts`, `member-prices.test.ts`, `members-only-events.test.ts`, `merchandise-*.test.ts` |
 
 ## Membership plans
@@ -39,7 +37,7 @@ sources: [lib/memberships/plans.ts, lib/memberships/grants.ts, lib/memberships/o
 A plan (`MembershipProduct`) is one fixed term a society sells: name (1 to 120), description (up to 2000), price, a half-open term `[startsAt, endsAt)` and rights from `MembershipEntitlement` (`member_prices`, `members_only_events`) with an `entitlementVersion`. It is a one-off purchase; it never renews and is never a subscription.
 
 - **Prices** (plans and merchandise options): `priceAmountSchema`, 0 (free) or $2.00 (so the society keeps more than half after the fee) to $999,999.99, in cents.
-- **Dates:** staff enter a first and last day. The term runs from midnight starting the first day to midnight after the last, in the society's zone (`termFromDays`; `daysFromTerm` reverses it). A day with no midnight in the zone is a field error. Presets Semester 1 (1 Jan to 30 Jun), Semester 2 (1 Jul to 31 Dec) and Full year fill both days; all stay editable.
+- **Dates:** staff enter a first and last day. The term runs from midnight starting the first day to midnight after the last, in the society's zone (`termFromDays`; `daysFromTerm` reverses it). A day with no midnight in the zone is a field error. Saving the days the form shows keeps the stored term, so changing the society's zone moves no plan (EVT-010). Presets Semester 1 (1 Jan to 30 Jun), Semester 2 (1 Jul to 31 Dec) and Full year fill both days; all stay editable.
 - **States:** `draft`, `published`, `archived`; shown as Draft, Published, Ended (published but past its last day) and Archived. Only published plans not yet ended are on sale (`publicPlans`). Archive is one way: the plan stops selling and can't be republished; holders keep their terms. Plans are never deleted.
 - **Publish check** (`planReadiness`, one rule for button and API; 409 with `reason`): `term_past` (must end in the future); `overlap` (no other published plan of the society overlaps; back-to-back terms are fine because terms are half-open); `payments_unavailable` (a paid plan needs payments; a free one doesn't). Saving a published plan reruns it for anything but a description edit.
 - **Sold plans:** once any order line names the plan (pending or paid), name, term, price and rights are locked; only the description changes. `MembershipProduct_preserve_sold` enforces this and never lets a plan change society. Next year is a new plan.
@@ -72,11 +70,12 @@ A `MembershipGrant` is one member's membership from one purchased line: unique p
 
 ## Member prices
 
-- `TicketType.memberPrice` is optional, at most `price`. The builder warns while no published plan still to end unlocks `member_prices`.
+- `TicketType.memberPrice` is optional, at most `price`.
 - **Who pays it:** a member account with a running membership of the event's society carrying `member_prices`. Free joins, upcoming, expired or revoked memberships, memberships without the right, other societies' memberships and all guests pay `price`.
 - **Checkout:** under the buyer, event and ticket-type locks the quote uses the member price, so a buyer sending the other price gets the 409 quote change with the price that applies. The order records `membershipGrantId` and `membershipEntitlementVersion` (both or neither; frozen by `Order_preserve_member_price`). A member price of 0 is a free registration with the grant recorded, even when the society can't take payments.
+- **One ticket per event (PAY-050, owner's decision),** so one member can't buy for nine others. `memberPriceTicketCount` counts their tickets that aren't void plus live holds, across the event's types, on orders with `membershipGrantId`, under the buyer lock. At 0 they get one ticket at this price (more is 400 `member_price_limit`, before the quote check); above 0 they pay `price`, so a second checkout can buy for friends. A refund, release or lapsed hold gives it back. Free member prices and codes follow the rule; members-only access doesn't depend on it. A member price equal to `price` neither limits nor uses it. Not rechecked at fulfilment, as EVT-007.
 - **Fulfilment** reads the grant `FOR SHARE`: revoked or refunded before payment landed sends the order to compensation review (`member_price_membership_revoked`) with no tickets. A members-only event's order does the same, member price or not (`members_only_access_revoked`, DEBT-002); a membership that simply ended during the hold keeps the price. Issued tickets are never repriced or voided by a later revocation.
-- **Display** (`priceForViewer`): a member sees the member price, the standard one struck through and "Member price through your {plan} membership"; others see "Members pay $X", that joining doesn't include it, and a link to the memberships page.
+- **Display** (`priceForViewer`): a member sees the member price, the standard one struck through, "Member price through your {plan} membership" and `Quantity` limited to 1; once it's used or in an open checkout, the standard price and why. Others see "Members pay $X", that joining doesn't include it, and a link to the memberships page.
 
 ## Members-only events
 
@@ -98,7 +97,6 @@ A `MembershipGrant` is one member's membership from one purchased line: unique p
 | Cancel a free membership | `POST .../members/[grantId]/cancel` | `orders:refund` | The free order gets `cancelledAt`, who and why, keeps its status and fulfilment, gains `free_cancelled` history; the grant is revoked with the same reason. Never a refund row. Paid ones refuse (`not_cancellable`). Same email key; audit `membership.free_cancelled`. |
 | Refund a paid membership | `POST .../members/[grantId]/refund` | `orders:refund` | Also needs the order's short reference typed back (`confirmation`). A whole-order Stripe refund through `requestCommerceRefund` (audit `commerce_order.refund_requested`). The membership stays active while Stripe processes (Refund processing) and is revoked ("Refunded: {reason}") only when Stripe confirms; the buyer gets one `refund/{refundRequestId}` email. A failed refund leaves it active. 200 when confirmed, 202 while processing. |
 
-- Tickets already bought at a member price keep their price after any of these.
 - **Stripe-side events:** the member page and the merchandise order page show disputes and refunds made in the Stripe dashboard. An open dispute pauses refunds (and hand-over); a lost one ends the membership or leaves nothing to collect; a won one says the society kept the payment. A full outside refund ends the membership or cancels the pickup; a partial one is flagged with Mark reviewed, and Refund then takes only the rest. A paid commerce order that couldn't be fulfilled is refunded in full automatically. Rules: [[Payment Lifecycle]].
 
 ## Merchandise catalogue
@@ -129,6 +127,7 @@ A `MembershipGrant` is one member's membership from one purchased line: unique p
 - **Buyers:** a verified member account or a verified guest's checkout session. Body `selection: {items: [{variantId, quantity}], quoteVersion}`: 1 to 10 different options of one society, 1 to 10 of each, each once.
 - **Checkout** (`POST /api/payments/checkout/merchandise`): under the buyer lock, then the options in ascending id, the quote refuses (409, nothing charged): `unavailable` (stopped or another society's), `sold_out`, `not_enough` (with the number left), `quote_changed` (prices or quantities moved since the reviewed version); the total must match too. Nothing is lowered at checkout. Each line records its option (`merchandiseVariantId`), name, option label and price.
 - **Holds:** a paid basket holds its stock until its order's `expiresAt`, 20 minutes (`commerceHoldMinutes`), when the stale-orders job closes the Stripe page and expires the order ([[Payment Lifecycle#Holds]]). A hold is not a row: the lines of a pending Stripe order before `expiresAt` hold their units (`heldByVariant`), so paying, failing or expiring the order ends the hold. Shop, quote, checkout and fulfilment all subtract holds. A buyer (member or guest email) has one unpaid basket per society; a second checkout is 409 `purchase_in_progress` until the first is paid, cancelled or lapses (SEC-010).
+- **Free cap (PAY-051):** `quote` adds the buyer's earlier free units of each option (paid baskets too; not cancelled, refunded or closed orders) and refuses past `MAX_LINE_QUANTITY` with 409 `free_limit_reached`. Members count by account, guests by email.
 - **Fulfilment:** a free total completes in checkout; a paid one only from the verified webhook. Under option and order locks every line takes stock once (`remaining` down, option `version` up) or none does, with one receipt `merchandise-receipt/{orderId}` (items, total, short reference, pickup details). An option that stopped selling during a valid hold is honoured. A payment whose hold lapsed when stock has gone goes to compensation review (`sold_out`).
 - **Stock edits:** saving an option with less stock than checkouts hold is refused on the field ("3 are held in checkouts right now, so stock can't go below 3.").
 - A basket mixing free and paid options goes through Stripe with the free ones on the order but not on Stripe's line items.
@@ -174,9 +173,7 @@ Neither goes for a revoked grant (it got `membership-ended/{grantId}`), for a cl
 
 - Don't store a grant's state; compute it with `grantState`.
 - Don't lock a product in checkout; lock options in ascending id only.
-- Don't add a hold table for merchandise; holds are pending order lines before `expiresAt`.
 - Free cancellation is never a refund: no `RefundRequest`, no Stripe call, order status stays `paid`.
-- Revoking a membership doesn't reprice or void tickets bought at a member price.
 - A new gate field must not be read before access is granted on members-only events.
 
 ## Related

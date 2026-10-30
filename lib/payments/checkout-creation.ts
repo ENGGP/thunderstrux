@@ -33,7 +33,7 @@ import {
   type CheckoutAttemptWithOrder
 } from "@/lib/payments/checkout-attempts";
 import { issueFreeOrder } from "@/lib/payments/free-ticket-issuance";
-import { activeEntitlementGrant } from "@/lib/memberships/grants";
+import { activeEntitlementGrant, memberPriceTicketCount } from "@/lib/memberships/grants";
 import { appendOrderLifecycleEvent } from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
@@ -51,6 +51,8 @@ export type CheckoutCreationErrorKind =
   | "insufficient_availability"
   | "purchase_in_progress"
   | "free_limit_reached"
+  | "member_price_limit"
+  | "price_below_minimum"
   | "stripe_not_ready"
   | "quote_changed"
   | "code_unavailable"
@@ -172,21 +174,22 @@ export async function createEventCheckout({
     const earlier = await findCheckoutAttempt(prisma, actor, idempotencyKey);
     if (earlier) return replayAttempt(earlier, requestHash);
 
-    const reservationNow = new Date();
-
     // Every check reads state under the buyer (User or GuestIdentity), Event and
     // TicketType locks, so an edit, close or reprice cannot land between the
     // quote and the hold.
     let created;
     try {
       created = await runReservationTransaction(async (tx) => {
-        const buyer = guest ? await lockGuestBuyer(tx, guest.grantId, reservationNow) : await lockVerifiedAccount(tx, actor.id);
+        // The buyer lock is the buyer's own, so its wait is short; the session check needs only this clock.
+        const buyer = guest ? await lockGuestBuyer(tx, guest.grantId, new Date()) : await lockVerifiedAccount(tx, actor.id);
         // A same-key request that committed while this one waited for the buyer lock.
         const raced = await findCheckoutAttempt(tx, actor, idempotencyKey);
         if (raced) return { kind: "replay" as const, attempt: raced };
         const event = (await lockEventInventory(tx, eventId, [ticketTypeId]))
           ? await tx.event.findUnique({ where: { id: eventId }, select: lockedEventSelect(ticketTypeId) })
           : null;
+        // Read after the event lock: in a rush the queue for it can outlast a sales close or part of a hold.
+        const reservationNow = new Date();
 
         // A members-only event sells only to a member account whose running
         // membership of the society unlocks it, read under the buyer lock that
@@ -250,17 +253,27 @@ export async function createEventCheckout({
         // grant and its rights version are recorded on the order, so a normal
         // expiry during the hold keeps the quote and a revocation sends the
         // payment to review at fulfilment. Guests always pay the standard price.
-        const grant = userId && ticketType.memberPrice !== null
+        // A member gets one ticket per event at this price; the count runs under
+        // the buyer lock, so racing checkouts can't both get it, and later
+        // tickets pay the standard price. A member price that saves nothing
+        // neither limits a member nor uses that ticket up.
+        const memberGrant = userId && ticketType.memberPrice !== null && ticketType.memberPrice < ticketType.price
           ? await activeEntitlementGrant(tx, userId, event.organisationId, "member_prices", reservationNow)
           : null;
+        const grant = memberGrant && (await memberPriceTicketCount(tx, actor.id, event.id, reservationNow)) === 0 ? memberGrant : null;
         // A code takes its discount off the price this buyer pays otherwise, the member price included.
         const basePrice = grant ? (ticketType.memberPrice as number) : ticketType.price;
         const unitPrice = usedCode ? priceWithCode(basePrice, usedCode) : basePrice;
         // Decided 2026-10-30: refused rather than rounded to free, so a code never gives away
         // more than staff chose; the code form refuses codes that would do this up front.
-        if (isBelowPaidMinimum(unitPrice)) {
+        if (isBelowPaidMinimum(unitPrice) && usedCode) {
           const message = `That code can't be used on ${ticketType.name}: it leaves less than the ${formatMoney(minPaidPrice)} paid minimum. Ask ${organisation.name} about it.`;
           throw new CheckoutCreationError("code_unavailable", message, [{ path: ["code"], message, value: 0 }]);
+        }
+        // A price saved before the paid minimum existed; the page has no code to blame.
+        if (isBelowPaidMinimum(unitPrice)) {
+          const message = `${ticketType.name} can't be sold at ${formatMoney(unitPrice)}: paid tickets start at ${formatMoney(minPaidPrice)}. Ask the society about it.`;
+          throw new CheckoutCreationError("price_below_minimum", message, [{ path: ["ticketTypeId"], message }]);
         }
         const codeFacts = usedCode
           ? { ticketCodeId: usedCode.id, codeSnapshot: usedCode.code, discountAmount: (basePrice - unitPrice) * quantity }
@@ -288,6 +301,12 @@ export async function createEventCheckout({
                 : "Event organiser must complete Stripe onboarding before accepting payments"
             }
           ]);
+        }
+
+        // Before the quote check: offering a new price for this quantity would only lead back here.
+        if (grant && quantity > 1) {
+          const message = "The member price is one ticket per member for this event. Choose 1 ticket, then buy any others at the standard price in a second checkout.";
+          throw new CheckoutCreationError("member_price_limit", message, [{ path: ["quantity"], message, value: 1 }]);
         }
 
         if (unitPrice !== expectedUnitPrice) {

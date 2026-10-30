@@ -1,6 +1,6 @@
 import type { MembershipEntitlement } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { activeEntitlementGrant, grantState, type GrantState } from "@/lib/memberships/grants";
+import { activeEntitlementGrant, grantState, memberPriceTicketCount, type GrantState } from "@/lib/memberships/grants";
 import { grantViewWhere } from "@/lib/memberships/roster";
 
 // What members see of memberships (T24a): a society's offers with the
@@ -182,4 +182,10 @@ export async function memberPricePlan(organisationSlug: string, userId: string, 
   const organisation = await prisma.organisation.findUnique({ where: { slug: organisationSlug }, select: { id: true } });
   if (!organisation) return null;
   return (await activeEntitlementGrant(prisma, userId, organisation.id, "member_prices", now))?.product.name ?? null;
+}
+
+// Whether this member's one member-price ticket on an event is still to be had.
+// Advisory for the pages; checkout counts again under the buyer lock.
+export async function memberPriceUnused(eventId: string, userId: string, now = new Date()) {
+  return (await memberPriceTicketCount(prisma, userId, eventId, now)) === 0;
 }

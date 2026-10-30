@@ -19,6 +19,8 @@ type TicketType = {
   // What members pay; `standardPrice` is set when `price` already is it (T24b).
   memberPrice?: number | null;
   standardPrice?: number | null;
+  // `price` starts from the member price, so this checkout can take one ticket.
+  memberPriced?: boolean;
   // Unlocked by the buyer's access code; `codePrice` when their code lowered `price`.
   hidden?: boolean;
   codePrice?: boolean;
@@ -40,6 +42,8 @@ function isSoldOut(ticketType: TicketType) {
 function isUnavailable(ticketType: TicketType) {
   return isSoldOut(ticketType) || ticketType.unavailable === "payments_unavailable";
 }
+
+const orderLimit = (ticketType?: TicketType) => (ticketType?.memberPriced ? 1 : maxTicketsPerOrder);
 
 function Box({ badge, children }: { badge?: ReactNode; children: ReactNode }) {
   return (
@@ -95,7 +99,7 @@ export function PublicTicketPurchase({
     kept?.id ?? ticketTypes.find((ticketType) => !isUnavailable(ticketType))?.id ?? ""
   );
   const [quantity, setQuantity] = useState(() =>
-    kept && Number.isInteger(initial?.quantity) ? Math.max(1, Math.min(initial?.quantity ?? 1, kept.availableQuantity, maxTicketsPerOrder)) : 1
+    kept && Number.isInteger(initial?.quantity) ? Math.max(1, Math.min(initial?.quantity ?? 1, kept.availableQuantity, orderLimit(kept))) : 1
   );
   const [leaving, setLeaving] = useState(false);
   const [codeOpen, setCodeOpen] = useState(Boolean(code?.message));
@@ -106,7 +110,7 @@ export function PublicTicketPurchase({
   const selected = ticketTypes.find((ticketType) => ticketType.id === selectedId && !isUnavailable(ticketType));
   const allSoldOut = ticketTypes.length > 0 && ticketTypes.every(isSoldOut);
   const paymentsUnavailable = ticketTypes.some((ticketType) => ticketType.unavailable === "payments_unavailable");
-  const maxQuantity = Math.min(selected?.availableQuantity ?? 0, maxTicketsPerOrder);
+  const maxQuantity = Math.min(selected?.availableQuantity ?? 0, orderLimit(selected));
   const free = selected?.price === 0;
   const codeQuery = code?.gives ? `&code=${encodeURIComponent(code.text)}` : "";
   const checkoutHref = selected ? `/events/${eventId}/checkout?ticketTypeId=${encodeURIComponent(selected.id)}&quantity=${quantity}${codeQuery}` : "";
@@ -361,8 +365,17 @@ export function PublicTicketPurchase({
 
       {codeEntry}
 
-      {memberPlan && ticketTypes.some((ticketType) => ticketType.memberPrice != null && ticketType.standardPrice != null) ? (
-        <p className="text-sm text-ink-soft">Member price through your {membershipLabel(memberPlan)}.</p>
+      {memberPlan && ticketTypes.some((ticketType) => ticketType.memberPriced) ? (
+        <p className="text-sm text-ink-soft">
+          Member price through your {membershipLabel(memberPlan)}. It covers one ticket for this event; extra tickets are the standard price in a second checkout.
+        </p>
+      ) : memberPlan && ticketTypes.some((ticketType) => ticketType.memberPrice != null && ticketType.memberPrice < (ticketType.standardPrice ?? ticketType.price)) ? (
+        <p className="text-sm text-ink-soft">
+          Your member price covers one ticket for this event. Yours is used or in an open checkout, so these are the standard price.{" "}
+          <Link className="font-semibold text-brand underline underline-offset-4" href="/purchases">
+            See your purchases
+          </Link>
+        </p>
       ) : !memberPlan && societySlug && ticketTypes.some((ticketType) => ticketType.memberPrice != null) ? (
         <p className="text-sm text-ink-soft">
           {society} members pay less. Joining for free doesn&apos;t include member prices.{" "}
@@ -383,8 +396,8 @@ export function PublicTicketPurchase({
           <div className="w-40">
             <TextInput
               disabled={leaving}
-              error={validQuantity ? undefined : `Choose 1 to ${Math.max(maxQuantity, 1)}.`}
-              hint={`Up to ${Math.max(Math.min(maxQuantity, maxTicketsPerOrder), 1)} per order`}
+              error={validQuantity ? undefined : selected.memberPriced ? "Choose 1 at the member price." : `Choose 1 to ${Math.max(maxQuantity, 1)}.`}
+              hint={selected.memberPriced ? "1 at the member price" : `Up to ${Math.max(Math.min(maxQuantity, maxTicketsPerOrder), 1)} per order`}
               inputMode="numeric"
               label="Quantity"
               max={Math.max(maxQuantity, 1)}

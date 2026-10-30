@@ -1,23 +1,37 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import CheckoutPage from "@/app/(public)/events/[eventId]/checkout/page";
+import PublicEventPage from "@/app/(public)/events/[eventId]/page";
 import { POST as createEventRoute } from "@/app/api/events/route";
 import { prisma } from "@/lib/db";
 import { getPublishedEventDetail, priceForViewer } from "@/lib/events/public-events";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { readGuestSession, redeemGuestAccess, requestGuestAccess } from "@/lib/guest/guest-access";
-import { memberPricePlan } from "@/lib/memberships/offers";
+import { memberPricePlan, memberPriceUnused } from "@/lib/memberships/offers";
 import { CheckoutCreationError, createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { releaseFreeRegistration } from "@/lib/payments/free-cancellation";
+import { orderReference, requestOrderRefund } from "@/lib/payments/order-refunds";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse } from "@/tests/helpers/http";
+import { renderPage } from "@/tests/helpers/render";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 import { createEvent, createMember, createMembershipGrant as membership, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
-const stripe = vi.hoisted(() => ({ create: vi.fn() }));
+const stripe = vi.hoisted(() => ({ create: vi.fn(), retrieve: vi.fn(), refundList: vi.fn(), refundCreate: vi.fn() }));
 vi.mock("@/lib/stripe", () => ({
   StripeConfigurationError: class StripeConfigurationError extends Error {},
   getAppUrl: () => "http://localhost:3000",
-  getStripe: () => ({ checkout: { sessions: { create: stripe.create } } })
+  getStripe: () => ({ checkout: { sessions: { create: stripe.create, retrieve: stripe.retrieve } }, refunds: { list: stripe.refundList, create: stripe.refundCreate } })
+}));
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NOT_FOUND");
+  },
+  redirect: (path: string) => {
+    throw new Error(`REDIRECT:${path}`);
+  },
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() })
 }));
 beforeEach(() => {
   stripe.create.mockImplementation(async () => ({ id: unique("cs_member"), url: "https://checkout.stripe.test/pay" }));
@@ -25,7 +39,7 @@ beforeEach(() => {
   setRateLimitTestBackend(createTestRateLimitBackend());
 });
 afterEach(() => {
-  stripe.create.mockReset();
+  for (const mock of Object.values(stripe)) mock.mockReset();
   setRateLimitTestEnabled(null);
   setRateLimitTestBackend(null);
 });
@@ -49,14 +63,14 @@ describe("member prices", () => {
     const member = await createMember();
     const grant = await membership(fixture.organisation.id, member.id, member.email);
 
-    const refused = await buy(fixture, member.id, 1500).catch((error) => error);
+    const refused = await buy(fixture, member.id, 1500, 1).catch((error) => error);
     expect(refused).toBeInstanceOf(CheckoutCreationError);
     expect(refused).toMatchObject({ kind: "quote_changed", details: [{ value: 1000 }] });
 
-    await buy(fixture, member.id, 1000);
+    await buy(fixture, member.id, 1000, 1);
     const order = await prisma.order.findFirstOrThrow({ where: { userId: member.id } });
-    expect(order).toMatchObject({ unitPrice: 1000, totalAmount: 2000, membershipGrantId: grant.id, membershipEntitlementVersion: 3, paymentKind: "stripe" });
-    expect(stripe.create.mock.calls[0][0]).toMatchObject({ line_items: [{ quantity: 2, price_data: { unit_amount: 1000 } }] });
+    expect(order).toMatchObject({ unitPrice: 1000, totalAmount: 1000, membershipGrantId: grant.id, membershipEntitlementVersion: 3, paymentKind: "stripe" });
+    expect(stripe.create.mock.calls[0][0]).toMatchObject({ line_items: [{ quantity: 1, price_data: { unit_amount: 1000 } }] });
     // The price basis is a purchase fact.
     await expect(prisma.order.update({ where: { id: order.id }, data: { membershipGrantId: null, membershipEntitlementVersion: null } })).rejects.toThrow();
   });
@@ -98,10 +112,134 @@ describe("member prices", () => {
     const fixture = await society({ memberPrice: 0, stripeReady: false });
     const member = await createMember();
     const grant = await membership(fixture.organisation.id, member.id, member.email);
-    const result = await buy(fixture, member.id, 0);
+    const result = await buy(fixture, member.id, 0, 1);
     expect(result).toMatchObject({ status: "fulfilled" });
     expect(await prisma.order.findFirstOrThrow({ where: { userId: member.id } })).toMatchObject({ paymentKind: "free", unitPrice: 0, membershipGrantId: grant.id, membershipEntitlementVersion: 3 });
     expect(stripe.create).not.toHaveBeenCalled();
+  });
+
+  test("one ticket per member per event: more in one checkout is refused, and a second checkout pays the standard price on any ticket type", async () => {
+    const account = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: account.organisation.id, status: "published", ticketTypes: [{ name: "General", price: 1500, memberPrice: 1000, quantity: 20 }, { name: "VIP", price: 3000, memberPrice: 2000, quantity: 20 }] });
+    const [general, vip] = event.ticketTypes;
+    const member = await createMember();
+    const grant = await membership(account.organisation.id, member.id, member.email);
+    const checkout = (ticketTypeId: string, quantity: number, expectedUnitPrice: number) =>
+      createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId, quantity, expectedUnitPrice, idempotencyKey: unique("member-price-key") });
+
+    // Refused with the reason, even from a stale page that still shows the standard price.
+    await expect(checkout(general.id, 2, 1000)).rejects.toMatchObject({ kind: "member_price_limit", details: [{ path: ["quantity"], value: 1 }] });
+    await expect(checkout(general.id, 3, 1500)).rejects.toMatchObject({ kind: "member_price_limit" });
+    expect(await prisma.order.count({ where: { userId: member.id } })).toBe(0);
+    expect(await memberPriceUnused(event.id, member.id)).toBe(true);
+
+    // A live hold uses it up, across ticket types, and the page says the same as checkout.
+    await checkout(general.id, 1, 1000);
+    expect(await memberPriceUnused(event.id, member.id)).toBe(false);
+    await expect(checkout(vip.id, 1, 2000)).rejects.toMatchObject({ kind: "quote_changed", details: [{ value: 3000 }] });
+    // So a member can buy for friends at the standard price, however many fit one order.
+    expect(await checkout(vip.id, 3, 3000)).toMatchObject({ status: "redirect" });
+    expect(await prisma.order.findMany({ where: { userId: member.id }, orderBy: { createdAt: "asc" }, select: { unitPrice: true, quantity: true, membershipGrantId: true } })).toEqual([
+      { unitPrice: 1000, quantity: 1, membershipGrantId: grant.id },
+      { unitPrice: 3000, quantity: 3, membershipGrantId: null }
+    ]);
+
+    // A hold that lapsed gives it back.
+    await prisma.ticketReservation.updateMany({ where: { userId: member.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect(await memberPriceUnused(event.id, member.id)).toBe(true);
+    expect(await checkout(vip.id, 1, 2000)).toMatchObject({ status: "redirect" });
+  });
+
+  test("the event and checkout pages give the same answer as checkout: one at the member price, then the standard price and why", async () => {
+    const fixture = await society();
+    const member = await createMember();
+    await membership(fixture.organisation.id, member.id, member.email);
+    setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
+    const eventId = fixture.event.id;
+    const ticketTypeId = fixture.ticketType.id;
+    const eventPage = async () => renderPage(await PublicEventPage({ params: Promise.resolve({ eventId }) }));
+    const checkoutPage = async (quantity: number) => renderPage(await CheckoutPage({ params: Promise.resolve({ eventId }), searchParams: Promise.resolve({ ticketTypeId, quantity: String(quantity) }) }));
+
+    expect(await eventPage()).toContain("1 at the member price");
+    expect(await checkoutPage(1)).toContain("(member price)");
+    // Several chosen before signing in: back to the box, which keeps the ticket chosen.
+    await expect(checkoutPage(2)).rejects.toThrow(`REDIRECT:/events/${eventId}?ticketTypeId=${ticketTypeId}`);
+
+    await buy(fixture, member.id, 1000, 1);
+    const page = await eventPage();
+    expect(page).toContain("Yours is used or in an open checkout");
+    expect(page).toContain("Up to 10 per order");
+    const review = await checkoutPage(2);
+    expect(review).not.toContain("(member price)");
+    expect(review).toContain("Pay A$30.00");
+  });
+
+  test("racing checkouts can't both get the member price, paid or free", async () => {
+    for (const memberPrice of [1000, 0]) {
+      const fixture = await society({ memberPrice });
+      const member = await createMember();
+      await membership(fixture.organisation.id, member.id, member.email);
+      const results = await Promise.allSettled([buy(fixture, member.id, memberPrice, 1), buy(fixture, member.id, memberPrice, 1)]);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect((results.find((result) => result.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ kind: "quote_changed", details: [{ value: 1500 }] });
+      expect(await prisma.order.count({ where: { userId: member.id, membershipGrantId: { not: null } } })).toBe(1);
+    }
+  });
+
+  test("a refund gives the member price back", async () => {
+    const fixture = await society();
+    const member = await createMember();
+    await membership(fixture.organisation.id, member.id, member.email);
+    await buy(fixture, member.id, 1000, 1);
+    const order = await prisma.order.findFirstOrThrow({ where: { userId: member.id } });
+    await reconcileCompletedCheckoutSession(checkoutSession({ id: order.stripeSessionId as string, orderId: order.id, eventId: fixture.event.id, organisationId: fixture.organisation.id, ticketTypeId: fixture.ticketType.id, quantity: 1, amountTotal: 1000 }));
+    expect(await memberPriceUnused(fixture.event.id, member.id)).toBe(false);
+    await expect(buy(fixture, member.id, 1000, 1)).rejects.toMatchObject({ kind: "quote_changed", details: [{ value: 1500 }] });
+
+    const destination = fixture.organisation.stripeAccountId;
+    const intent = unique("pi");
+    stripe.retrieve.mockResolvedValue({ payment_status: "paid", amount_total: 1000, currency: "aud", metadata: { orderId: order.id }, payment_intent: { id: intent, amount_received: 1000, transfer_data: { destination }, latest_charge: { disputed: false } } });
+    stripe.refundList.mockResolvedValue({ data: [] });
+    stripe.refundCreate.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => ({ id: unique("re"), status: "succeeded", amount: 1000, currency: "aud", payment_intent: intent, metadata: { refundRequestId: params.metadata.refundRequestId, orderId: order.id } }));
+    await requestOrderRefund({ organisationId: fixture.organisation.id, orderId: order.id, actor: { id: fixture.user.id }, reason: "Buyer can no longer attend.", confirmation: orderReference(order.id) });
+
+    expect(await prisma.ticket.findFirstOrThrow({ where: { orderId: order.id } })).toMatchObject({ validity: "void" });
+    expect(await memberPriceUnused(fixture.event.id, member.id)).toBe(true);
+    expect(await buy(fixture, member.id, 1000, 1)).toMatchObject({ status: "redirect" });
+  });
+
+  test("a free member ticket follows the same rule, and releasing it gives it back", async () => {
+    const fixture = await society({ memberPrice: 0 });
+    const member = await createMember();
+    await membership(fixture.organisation.id, member.id, member.email);
+    await expect(buy(fixture, member.id, 0, 2)).rejects.toMatchObject({ kind: "member_price_limit" });
+    const free = await buy(fixture, member.id, 0, 1);
+    if (free.status !== "fulfilled") throw new Error("not fulfilled");
+    await expect(buy(fixture, member.id, 0, 1)).rejects.toMatchObject({ kind: "quote_changed", details: [{ value: 1500 }] });
+    expect(await buy(fixture, member.id, 1500, 2)).toMatchObject({ status: "redirect" });
+
+    await releaseFreeRegistration({ orderId: free.orderId, buyerUserId: member.id });
+    expect(await buy(fixture, member.id, 0, 1)).toMatchObject({ status: "fulfilled" });
+  });
+
+  test("a member price that saves nothing neither limits a member nor uses up their ticket", async () => {
+    const fixture = await society({ memberPrice: 1500 });
+    const member = await createMember();
+    await membership(fixture.organisation.id, member.id, member.email);
+    expect(await buy(fixture, member.id, 1500, 3)).toMatchObject({ status: "redirect" });
+    expect(await prisma.order.findFirstOrThrow({ where: { userId: member.id } })).toMatchObject({ quantity: 3, membershipGrantId: null });
+    expect(await memberPriceUnused(fixture.event.id, member.id)).toBe(true);
+    const detail = (await getPublishedEventDetail(fixture.event.id))!;
+    expect(priceForViewer(detail.ticketTypes, true)[0]).not.toHaveProperty("memberPriced");
+  });
+
+  test("members-only access doesn't depend on the member price: a second checkout gets in at the standard price", async () => {
+    const fixture = await society();
+    await prisma.event.update({ where: { id: fixture.event.id }, data: { visibility: "members_only" } });
+    const member = await createMember();
+    await membership(fixture.organisation.id, member.id, member.email, { entitlements: ["member_prices", "members_only_events"] });
+    expect(await buy(fixture, member.id, 1000, 1)).toMatchObject({ status: "redirect" });
+    expect(await buy(fixture, member.id, 1500, 2)).toMatchObject({ status: "redirect" });
   });
 
   test("a membership revoked before payment lands sends the payment to review; one that simply ended during the hold keeps the price", async () => {
@@ -137,7 +275,7 @@ describe("member prices", () => {
     const fixture = await society();
     const detail = (await getPublishedEventDetail(fixture.event.id))!;
     expect(detail.ticketTypes[0]).toMatchObject({ price: 1500, memberPrice: 1000 });
-    expect(priceForViewer(detail.ticketTypes, true)[0]).toMatchObject({ price: 1000, standardPrice: 1500 });
+    expect(priceForViewer(detail.ticketTypes, true)[0]).toMatchObject({ price: 1000, standardPrice: 1500, memberPriced: true });
     expect(priceForViewer(detail.ticketTypes, false)[0]).toMatchObject({ price: 1500 });
     const free = await society({ memberPrice: 0, stripeReady: false });
     const freeDetail = (await getPublishedEventDetail(free.event.id))!;

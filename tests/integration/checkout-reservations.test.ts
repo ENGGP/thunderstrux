@@ -12,6 +12,7 @@ import {
 import { processStaleOrderCleanupBatch } from "@/lib/orders/stale-orders";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { reconcileCompletedCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { getReservationExpiry } from "@/lib/tickets/reservations";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
 
 const stripeMocks = vi.hoisted(() => ({
@@ -320,6 +321,26 @@ describe("checkout and reservation logic", () => {
     // With no seat left, a late payment goes to review.
     await prisma.ticketType.update({ where: { id: ticketTypeId }, data: { quantity: 0 } });
     expect(await paid("cs_paid_late_full")).toMatchObject({ status: "compensation_required" });
+  });
+
+  test("a checkout that queued for the event lock starts its hold when it got through, not when it joined the queue", async () => {
+    stripeMocks.createSession.mockImplementation(async () => ({ id: unique("cs_queue"), url: "https://checkout.stripe.test/session" }));
+    const { organisation } = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: organisation.id, status: "published", ticketTypes: [{ name: "General", price: 1000, quantity: 5 }] });
+    const member = await createMember();
+    let lockReleasedAt = 0;
+    // Not awaited inside: the checkout can only finish once this transaction commits.
+    const queued = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${event.id} FOR UPDATE`;
+      const checkout = createEventCheckout({ userId: member.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, quantity: 1, expectedUnitPrice: 1000, idempotencyKey: unique("checkout") });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      lockReleasedAt = Date.now();
+      return { checkout };
+    });
+    await queued.checkout;
+    const hold = await prisma.ticketReservation.findFirstOrThrow({ where: { userId: member.id } });
+    expect(hold.expiresAt.getTime()).toBeGreaterThanOrEqual(getReservationExpiry(new Date(lockReleasedAt), event.checkoutHoldMinutes).getTime());
+    stripeMocks.createSession.mockReset();
   });
 
   test("one buyer's unpaid holds on an event stay within one order's worth (SEC-005)", async () => {

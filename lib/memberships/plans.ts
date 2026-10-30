@@ -225,7 +225,12 @@ export async function updatePlan(actor: AccountActor, organisationId: string, pl
     checkVersion(plan, version);
     if (plan.status === "archived") throw new MembershipPlanError(409, "Archived plans can't be changed.");
 
-    const term = termFromDays(fields.firstDay, fields.lastDay, organisation.timeZone);
+    // The form shows the stored term in the society's current zone. Those same days mean
+    // "unchanged", so a society that moved zones can't shift a term just by saving.
+    const stored = daysFromTerm(plan.startsAt, plan.endsAt, organisation.timeZone);
+    const term = fields.firstDay === stored.firstDay && fields.lastDay === stored.lastDay
+      ? { startsAt: plan.startsAt, endsAt: plan.endsAt }
+      : termFromDays(fields.firstDay, fields.lastDay, organisation.timeZone);
     const next = { name: fields.name, description: fields.description, priceAmount: fields.priceAmount, entitlements: sorted(fields.entitlements), ...term };
     const changed = (Object.keys(next) as Array<keyof typeof next>).filter((key) =>
       key === "startsAt" || key === "endsAt"

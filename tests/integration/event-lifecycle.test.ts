@@ -107,6 +107,25 @@ describe("event lifecycle", () => {
     });
   });
 
+  test("an edit without a ticket type list leaves them alone; a submitted list still replaces them", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const { event } = await parseJsonResponse(await createEventRoute(jsonRequest("http://localhost/api/events", eventPayload(organisation.id))));
+    const { ticketTypes: _list, ...fields } = eventPayload(organisation.id);
+    const edit = async (extra: Record<string, unknown>) => {
+      const response = await updateEventRoute(jsonRequest(`http://localhost/api/events/${event.id}`, { ...fields, ...extra }, { method: "PATCH" }), routeContext({ eventId: event.id }));
+      expect(response.status).toBe(200);
+      return (await parseJsonResponse(response)).event;
+    };
+
+    const kept = await edit({ title: "New title", version: 1 });
+    expect(kept.ticketTypes).toMatchObject([{ id: event.ticketTypes[0].id, name: "General", quantity: 10 }]);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "event.updated", targetId: event.id } });
+    expect(JSON.stringify(audit.metadata)).not.toContain("ticketTypes");
+
+    expect((await edit({ title: "New title", version: 2, ticketTypes: [] })).ticketTypes).toEqual([]);
+  });
+
   // PAY-009: an event chooses its checkout hold, 5 to 59 minutes, as Humanitix hosts do.
   test("an event's checkout hold is 20 minutes by default, 5 to 59, kept when an edit leaves it out, and named in History", async () => {
     const { user, organisation } = await createOrganisationAccount();

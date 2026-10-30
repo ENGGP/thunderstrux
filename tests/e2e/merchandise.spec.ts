@@ -205,6 +205,29 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   await expect(page.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
 });
 
+// PAY-051: past the free cap, checkout says why and sends the buyer back to the basket.
+test("a member past the free merchandise cap is told why and sent back to their basket", async ({ page, data }) => {
+  const { organisation } = data;
+  const now = new Date();
+  const product = await prisma.merchandiseProduct.create({ data: { organisationId: organisation.id, name: "Giveaway tote", status: "published", publishedAt: now, firstPublishedAt: now } });
+  const free = await prisma.merchandiseVariant.create({ data: { productId: product.id, organisationId: organisation.id, sku: `E2E-CAP-${Date.now()}`, priceAmount: 0, remaining: 30 } });
+  const earlier = await prisma.$transaction((tx) => createCommerceOrder(tx, {
+    organisationId: organisation.id, kind: "merchandise", buyer: { userId: data.member.id }, buyerEmail: data.member.email, paymentKind: "free",
+    lines: [{ quantity: 10, unitAmount: 0, name: product.name, merchandiseVariantId: free.id }], source: "checkout"
+  }));
+  await prisma.commerceOrder.update({ where: { id: earlier.id }, data: { status: "paid", paidAt: now, fulfilledAt: now } });
+
+  await login(page, data.member.email, `/societies/${organisation.slug}/merchandise/checkout`);
+  await page.evaluate(([society, id]) => localStorage.setItem("thunderstrux:merchandise-basket", JSON.stringify({ society, lines: [{ variantId: id, quantity: 1 }] })), [organisation.slug, free.id] as const);
+  await page.reload();
+  await page.getByRole("button", { name: "Confirm free order" }).click();
+  const refusal = page.getByRole("alert").filter({ hasText: "That's more than one person can get free" });
+  await expect(refusal).toContainText("You can have up to 10 free of Giveaway tote, and you already have 10.");
+  await expect(refusal).toContainText("Nothing has been charged.");
+  await expect(refusal.getByRole("link", { name: "Review basket" })).toBeVisible();
+  await shoot(page, "free-limit");
+});
+
 // T28a: the owner marks a paid order ready, then collected, and the buyer's order page follows.
 test("an owner marks an order ready and collected on the Pickups tab, and the buyer sees each step", async ({ page, data }) => {
   const { organisation } = data;

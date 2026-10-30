@@ -17,6 +17,7 @@ sources: [scripts/run-e2e.mjs, scripts/e2e-guards.mjs, scripts/staging-payments.
 | Concern | Where |
 | --- | --- |
 | Runner, modes, cleanup | `scripts/run-e2e.mjs` |
+| What runs leave behind | `scripts/docker-cleanup.mjs` (`planCleanup`, `removeUntaggedRunImages`), tested in `tests/runner/docker-cleanup.test.mjs` |
 | Run-id, database, key, manifest and scenario guards; pinned Stripe version | `scripts/e2e-guards.mjs` (`runIdPattern`, `assertTestDatabase`, `assertTestKey`, `assertOwnedManifest`, `allStagingScenarios`, `stripeApiVersion`) |
 | Stack | `docker-compose.e2e.yml`; test image `docker/Dockerfile.e2e`; object store `docker/Dockerfile.assets` |
 | Staging orchestration | `scripts/staging-payments.mjs` (`runStaging`) |
@@ -37,6 +38,7 @@ sources: [scripts/run-e2e.mjs, scripts/e2e-guards.mjs, scripts/staging-payments.
 | `pnpm test:e2e` | browser campaign | `browser-<24 hex>` |
 | `pnpm test:payments:staging [-- --scenario=<name>] [-- --use-local-test-key]` | real Stripe test mode | `staging-<24 hex>` |
 | `pnpm test:e2e:cleanup -- <run-id>` | finish an interrupted run's cleanup | the run's id |
+| `pnpm docker:cleanup [--apply]` | after testing: see or remove what runs left behind, and cap the build cache | none |
 
 The run id is also the Compose project and the evidence folder `tmp/e2e/<run-id>/`. Needs Docker; no host Playwright or browser download.
 
@@ -121,15 +123,33 @@ Unpaid Sessions are explicitly expired through Stripe; natural timeout is never 
 ## Traps
 
 - Two baseline or browser runs can go at once: every run has its own project, images and host port. Side by side on Docker's 15.6 GB they ran about 3 to 5% slower and left about 10.5 GB free. More than two hasn't been tried, and runs compete for CPU, so a timing failure beside another run needs a look before it counts. Staging stays one at a time.
-- A crashed run keeps its image tags until `pnpm test:e2e:cleanup -- <run-id>` removes them.
+- A crashed run keeps its image tags until `pnpm test:e2e:cleanup -- <run-id>` removes them, or `pnpm docker:cleanup --apply` once the run is 2 hours old.
 - A paused or killed staging run keeps its database volume and manifest until Stripe cleanup succeeds; don't delete either by hand.
 - Evidence from `tmp/e2e/` is private: only allowlisted counts reach the GitHub job summary. Traces, cookies, Checkout URLs, raw provider payloads and private state are never uploaded; don't attach private staging files to a PR.
 
 ## Failure and recovery
 
-- Every run ends with cleanup: verify each container's project label is the run id, `compose down --volumes --remove-orphans` for all profiles, set `cleanupComplete`, delete `runtime.env`. Images and Docker's build cache stay.
+- Every run ends with cleanup: verify each container's project label is the run id, `compose down --volumes --remove-orphans` for all profiles, remove its image tags and any untagged images earlier runs left, set `cleanupComplete`, delete `runtime.env`. Tagging `thunderstrux-e2e-tests:local` leaves the last run's tests image with no tag, which is why a run sweeps those. Docker's build cache stays.
 - A staging run whose Stripe cleanup didn't finish removes its containers and `runtime.env` but keeps the database volume and manifest (`passed: false`). Run `pnpm test:e2e:cleanup -- <run-id>` with the same credentials (with `--use-local-test-key` and the account variable if used): it restarts the app, re-verifies the saved Stripe identity, expires owned Sessions, then removes the stack. It never deletes connected accounts, the dev stack, unrelated volumes or global caches.
 - Driver errors hide `sk_test_`, `whsec_` and `re_` values and show only a Stripe error's type; the runner's captured Docker output also hides Checkout URLs.
+
+## Docker cleanup
+
+`pnpm docker:cleanup` is a dry run that lists what would go and what stays, with the reason. `--apply` acts. It is the only sweep, because this Docker also holds the dev stack, the preview and other projects' data. It reads `docker inspect` and removes by exact name, never forced, so Docker itself refuses anything in use.
+
+**Removes:**
+- A run's or rehearsal's containers, network, volumes and image tags, when its project id matches exactly (`baseline-`, `browser-`, `ops-`, `droplet-`), nothing in it is running, and nothing in it is under 2 hours old. A run in its build phase has tags but no containers, so an idle project can be a live one; the age is why that's safe. Image age is the tag's `LastTagTime`: a cached build keeps an old creation date.
+- Untagged images labelled as a run's, unless a container uses them.
+- The retired `thunderstrux-e2e-app:local` and `thunderstrux-e2e-ops:local` tags.
+- With `--apply`, build cache over 12 GB, oldest first (`buildCacheCap`). What's left keeps later builds quick.
+
+**Keeps:**
+- Staging runs, whatever their age: a volume can hold Stripe recovery state, so `pnpm test:e2e:cleanup -- <run-id>` decides.
+- Anything whose age Docker can't report.
+- `thunderstrux-e2e-tests:local`, which `scripts/rehearse-upgrade.mjs` uses.
+- The dev stack, the preview, release images (a rollback needs them) and everything else that isn't named above.
+
+The two `docker run` containers of a killed `scripts/rehearse-droplet.mjs` have no project label, so this can't see them: remove `droplet-<id>-postgres` and `droplet-<id>-valkey` by hand.
 
 ## Related
 

@@ -237,7 +237,7 @@ Sources (`OrderLifecycleSource`): `checkout`, `stripe_webhook`, `reconciliation_
 
 ## Transaction rules
 
-- Checkout, free registration, commerce checkout and ticket fulfilment run at READ COMMITTED with `maxWait` 10 s (`lockedPurchaseTransactionOptions`, DEF-032), retrying write conflicts up to `maxReservationTransactionAttempts` (3). Every decision is made after the row locks, so each statement sees what the buyer before committed. SERIALIZABLE took its snapshot before the lock wait and refused everyone queued behind another buyer. `tests/integration/inventory-locks.test.ts` sends 30 buyers at 20 tickets.
+- Checkout, free registration, commerce checkout and ticket fulfilment run at READ COMMITTED with `maxWait` 10 s (`lockedPurchaseTransactionOptions`, DEF-032), retrying write conflicts up to `maxReservationTransactionAttempts` (3). Every decision and its clock come after the row locks, so each statement sees what the buyer before committed. SERIALIZABLE took its snapshot before the lock wait and refused everyone queued behind another buyer. `tests/integration/inventory-locks.test.ts` sends 30 buyers at 20 tickets.
 - Lock order: buyer (`User` or `GuestIdentity`), then `Event`, then its `TicketType`s (`lockEventInventory`), then `Order`. Commerce: buyer, family resources, then `CommerceOrder`.
 - Staff paths lock with `lockOrder(tx, orderId, organisationId)`, which joins the event, so a client id never locks another society's order. The event's `organisationId` is the owner, never `Order.organisationId` ([[Database and Multi Tenancy#Tenant boundary]]).
 - Workers find candidates outside the transaction and re-check each under its lock.

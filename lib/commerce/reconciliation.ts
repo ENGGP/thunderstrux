@@ -97,11 +97,12 @@ export async function reconcileCommerceCheckoutSession(
   if ("error" in resolved) return resolved.error as CommerceReconciliationResult;
   const paid = session.payment_status === "paid";
   const { intentId, destination } = paid ? await paymentDestination(session) : { intentId: null, destination: null };
-  const now = new Date();
 
   const outcome = await prisma.$transaction(async (tx) => {
     const order = await lockCommerceOrderForFamily(tx, resolved.order.id);
     if (!order) return { status: "ignored" as const, reason: "order_not_found" };
+    // Read after the locks: a hold that lapsed during the wait must not count against this payment.
+    const now = new Date();
     const current = await tx.commerceOrder.findUniqueOrThrow({
       where: { id: order.id },
       select: { status: true, requiresCompensationReview: true, totalAmount: true, currency: true, sellerStripeAccountId: true, stripeSessionId: true, externalRefundedAmount: true, disputeStatus: true }

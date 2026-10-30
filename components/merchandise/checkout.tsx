@@ -98,6 +98,7 @@ export function MerchandiseCheckout({
     const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
     // A member opens the open order to pay or cancel it; a guest's may belong to an earlier email link.
     if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: `Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after ${commerceHoldMinutes} minutes. Nothing has been charged.`, openOrder: guestCsrf ? undefined : detail.id };
+    if (detail?.reason === "free_limit_reached") return { title: "That's more than one person can get free", body: `${getClientErrorMessage(failure, "You've reached the limit on a free item.")} Nothing has been charged.`, toBasket: true };
     if (detail?.reason === "unavailable") return { title: "An item is no longer sold", body: "Remove it from your basket to continue. Nothing has been charged.", toBasket: true };
     if (detail?.reason === "sold_out" || detail?.reason === "not_enough" || detail?.reason === "quote_changed" || detail?.path?.[0] === "expectedTotal") {
       return { title: "Some items changed", body: "A price or stock level changed while you were checking out. Nothing has been charged.", toBasket: true };

@@ -80,10 +80,10 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
   // Under the buyer and option locks: every option still on sale in this
   // society, enough left after other checkouts' holds, and the prices the
   // buyer reviewed. Nothing is lowered here; the basket re-quotes instead.
-  async quote(tx, { organisationId, buyer, selection: { items, quoteVersion: version }, now }) {
+  async quote(tx, { organisationId, buyer, selection: { items, quoteVersion: version } }) {
     // One unpaid basket per buyer per society holds stock at a time (SEC-010). Checkout has already locked the buyer.
     const open = await tx.commerceOrder.findFirst({
-      where: { organisationId, kind: "merchandise", status: "pending", paymentKind: "stripe", expiresAt: { gt: now }, ...buyer },
+      where: { organisationId, kind: "merchandise", status: "pending", paymentKind: "stripe", expiresAt: { gt: new Date() }, ...buyer },
       select: { id: true }
     });
     if (open) throw new MerchandiseUnavailableError("purchase_in_progress", "You already have a checkout in progress. Finish or cancel it first.", undefined, undefined, open.id);
@@ -94,7 +94,7 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
         where: { id: { in: ids }, organisationId, archivedAt: null, product: { status: "published" } },
         select: { id: true, colour: true, size: true, priceAmount: true, remaining: true, product: { select: { name: true } } }
       }),
-      heldByVariant(tx, ids, now),
+      heldByVariant(tx, ids, new Date()),
       // A free basket completes at once, so the rule above never stops a repeat. Refunded,
       // cancelled and closed orders give their units back, as voided free tickets do; a refund
       // still processing doesn't yet, as its tickets stay valid until it succeeds.
@@ -116,7 +116,7 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
       // One buyer's free units of an option stay within one line's worth, so nobody can empty a giveaway.
       const earlierFree = option.priceAmount === 0 ? (freeByVariant.get(option.id) ?? 0) : 0;
       if (earlierFree + item.quantity > MAX_LINE_QUANTITY) {
-        throw new MerchandiseUnavailableError("free_limit_reached", `You can have up to ${MAX_LINE_QUANTITY} free of ${option.product.name}, and you already have ${earlierFree}.`, option.id, Math.max(0, MAX_LINE_QUANTITY - earlierFree));
+        throw new MerchandiseUnavailableError("free_limit_reached", `You can have up to ${MAX_LINE_QUANTITY} free of ${option.product.name}${optionLabel(option) ? ` (${optionLabel(option)})` : ""}, and you already have ${earlierFree}.`, option.id, Math.max(0, MAX_LINE_QUANTITY - earlierFree));
       }
       return { quantity: item.quantity, unitAmount: option.priceAmount, name: option.product.name, variant: optionLabel(option) || null, merchandiseVariantId: option.id };
     });

@@ -113,15 +113,17 @@ export async function createCommerceCheckout(input: {
   const earlier = await findCommerceAttempt(prisma, actor, input.family, input.idempotencyKey);
   if (earlier) return replay(earlier, requestHash);
 
-  const now = new Date();
   let created;
   try {
     created = await runReservationTransaction(async (tx) => {
       // Buyer, then the family's resources (inside quote), then the new order.
-      const account = guest ? await lockGuestBuyer(tx, guest.grantId, now) : await lockVerifiedAccount(tx, actor.id);
+      // The buyer lock is the buyer's own, so its wait is short; the session check needs only this clock.
+      const account = guest ? await lockGuestBuyer(tx, guest.grantId, new Date()) : await lockVerifiedAccount(tx, actor.id);
       const raced = await findCommerceAttempt(tx, actor, input.family, input.idempotencyKey);
       if (raced) return { kind: "replay" as const, attempt: raced };
-      const { lines } = await adapter.quote(tx, { organisationId: input.organisationId, buyer, selection, now });
+      const { lines } = await adapter.quote(tx, { organisationId: input.organisationId, buyer, selection });
+      // Read after quote took the family's locks: in a rush the queue for them can outlast part of a hold.
+      const now = new Date();
       const { totalAmount } = commerceTotals(input.family, "stripe", lines, 0);
       if (totalAmount !== input.expectedTotal) {
         throw new CommerceCheckoutError("quote_changed", "The price has changed", [

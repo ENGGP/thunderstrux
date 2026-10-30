@@ -173,6 +173,8 @@ WHERE slug = 'engineering-society';
 
 **Interrupted E2E or staging run.** Repeat `pnpm test:e2e:cleanup -- <run-id>` until it confirms cleanup; keep a payment recovery manifest and its volumes until recovery succeeds ([[E2E and Staging Payments]]).
 
+**Docker is short of disk.** Run `pnpm docker:cleanup`, read the list, then add `--apply` ([[E2E and Staging Payments#Docker cleanup]]). Never `docker system prune` or `docker volume prune`: they can't tell a test run from the dev stack or another project.
+
 **`pnpm security:audit` fails.** Capture the advisory, version and every dependency path; update the parent or a reviewed override, then revalidate. Never suppress advisories ([[Dependency Automation]]).
 
 ## Related

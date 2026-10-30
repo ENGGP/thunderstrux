@@ -440,7 +440,7 @@ try {
   }
   if (passed) {
     for (const suffix of ["one", "bad", "migration-fail"]) {
-      await docker(["image", "rm", `thunderstrux-app:${project}-${suffix}`], { capture: true }).catch(() => {});
+      await docker(["image", "rm", `thunderstrux-app:${project}-${suffix}`, `thunderstrux-ops:${project}-${suffix}`], { capture: true }).catch(() => {});
     }
     await rm(stateDir, { recursive: true, force: true });
   } else {

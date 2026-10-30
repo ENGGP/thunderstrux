@@ -273,6 +273,18 @@ describe("commerce checkout", () => {
     stripe.retrieve.mockRejectedValue(Object.assign(new Error("socket hang up"), { type: "StripeConnectionError" }));
     await expect(expireStaleCommerceOrders({ now: afterHold })).resolves.toMatchObject({ expired: 0, stripeDeferred: 1 });
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: unreachable.id } })).toMatchObject({ status: "pending" });
+
+    // PAY-046: an order that keeps failing goes behind one never asked about, so the queue moves.
+    await checkout({ idempotencyKey: unique("commerce-key-0003") });
+    const next = await prisma.commerceOrder.findFirstOrThrow({ where: { status: "pending", id: { not: unreachable.id } } });
+    const nextExpired = await sessionFor(next.id, { status: "expired" });
+    stripe.retrieve.mockImplementation(async (id: string) => {
+      if (id === nextExpired.id) return nextExpired;
+      throw Object.assign(new Error("socket hang up"), { type: "StripeConnectionError" });
+    });
+    await expect(expireStaleCommerceOrders({ now: afterHold, limit: 1 })).resolves.toMatchObject({ stripeDeferred: 0 });
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: next.id } })).toMatchObject({ status: "expired" });
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: unreachable.id } })).toMatchObject({ status: "pending" });
   });
 
   test("a family that isn't on sale yet is a 404, and only members may buy", async () => {

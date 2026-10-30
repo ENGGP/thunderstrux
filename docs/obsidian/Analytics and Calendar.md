@@ -101,6 +101,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
 - Returns every event that overlaps the range (`startTime` before its end and `endTime` after its start), so a camp from Friday to Monday shows in both months. Bounds come from SQL `AT TIME ZONE`.
 - At most `calendarEventCap` (500) events; more sets `truncated` and the page says so.
 - Drafts need `events:manage`; others see published events only.
+- A cancelled event stays on the calendar for everyone who can see it: the word Cancelled on its chip, row and label, plain colours, and a legend entry when one is showing (EVT-009). `readCalendar` returns `cancelledAt`. The door view (`getDoorDay`) leaves it out.
 - Membership end dates need `members:read`: per plan and last day, the number of members whose unrevoked term ends then. The last day is the day before `endsAt`, which is exclusive.
 
 **API:** `GET /api/orgs/[orgSlug]/calendar?from=&to=` serves the same read to a live staff role with `events:read`. Another society's slug is 404, a bad range 400, and responses are `private, no-store`.

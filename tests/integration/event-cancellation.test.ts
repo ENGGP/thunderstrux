@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } fro
 import { POST as cancelRoute } from "@/app/api/events/[eventId]/cancel/route";
 import { POST as releaseRoute } from "@/app/api/purchases/tickets/[orderId]/cancel-registration/route";
 import { prisma } from "@/lib/db";
+import { eventChangeDelayMs, fanOutEventChanges } from "@/lib/events/event-changes";
 import { setOrganisationEventSaleState } from "@/lib/events/event-lifecycle";
 import { getPublishedEvents } from "@/lib/events/public-events";
 import { guestCookieName } from "@/lib/guest/guest-access";
@@ -186,6 +187,31 @@ describe("cancelling an event (EVT-004)", () => {
     stripe.expire.mockResolvedValue({ ...unreachable.session, status: "expired" });
     expect(await parseJsonResponse(await cancel(society, event.id, { reason, confirmation: event.title }))).toMatchObject({ status: "already_cancelled", checkoutsClosed: 1 });
     expect(await prisma.order.findUniqueOrThrow({ where: { id: unreachable.order.id } })).toMatchObject({ status: "expired" });
+  });
+
+  // EVT-008: the event moved at 10:00 and was cancelled at 10:02; at 10:05 holders would read "Your tickets are still valid".
+  test("a time change waiting or part sent never reaches holders once the event is cancelled", async () => {
+    const { society, event } = await societyEvent();
+    const holder = await heldOrder(society, event, { paymentKind: "stripe" });
+    const change = (eventVersion: number, cursor: string | null) => prisma.eventChange.create({ data: {
+      eventId: event.id, organisationId: society.organisation.id, eventVersion, cursor,
+      previousStartTime: event.startTime, previousEndTime: event.endTime, previousLocation: event.location, startTime: event.startTime, endTime: event.endTime, location: "A new room"
+    } });
+    const [waiting, partSent] = [await change(90, null), await change(91, "")];
+    const other = await societyEvent();
+    const untouched = await prisma.eventChange.create({ data: {
+      eventId: other.event.id, organisationId: other.society.organisation.id, eventVersion: 90, previousStartTime: event.startTime, previousEndTime: event.endTime,
+      previousLocation: "Old", startTime: event.startTime, endTime: event.endTime, location: "New"
+    } });
+
+    expect((await cancel(society, event.id, { reason, confirmation: event.title })).status).toBe(200);
+    for (const row of [waiting, partSent]) {
+      expect(await prisma.eventChange.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ completedAt: expect.any(Date), outcome: "superseded" });
+    }
+    expect(await prisma.eventChange.findUniqueOrThrow({ where: { id: untouched.id } })).toMatchObject({ completedAt: null, outcome: null });
+    expect(await fanOutEventChanges(new Date(Date.now() + eventChangeDelayMs + 1000))).toBe(0);
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: `event-change/${event.id}/` } } })).toBe(0);
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: `event-cancelled/${event.id}/${holder.id}` } })).toBe(1);
   });
 
   test("the longest message still fits each order's own reason", async () => {

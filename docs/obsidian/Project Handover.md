@@ -71,6 +71,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-31: DEF-064 is resolved: the owner scanned three tickets with the camera in Safari on an iPhone against the preview, so the fallback reader has now worked on a real phone.
 - 2026-10-31: #237 fixes the audit's email and job findings (16, 17; DEF-067 to DEF-070, SEC-043). Both email jobs send for up to 45 seconds a run, sign-in and guest links go first, and a 429 uses no attempt and ends the run. Finished notifications are deleted after 30 days, except a Stripe deadline notice, which stays until 30 days after its deadline. A failed step in the notification job alerts `notification_step_failed`, and a timed-out run keeps its lease until it lapses. The tests prove the queues drain, not how fast real email goes. No migration.
 - 2026-10-31: #240 fixes the audit's checkout and forms items (finding 14, DEF-071 to DEF-074, UI-026). A failed attempt no longer sticks to Pay, and all three buttons share `useCheckout`; the create forms send one request; the door's 10-second timeout covers the token fetch; the orders list stops loading every event; society dates missing their zone now pass it. Registers DEF-075 (a doubled sentence in two refusals). No migration.
+- 2026-10-31: #241 fixes the audit's money and cancellation findings (PAY-044 to PAY-049, EVT-008, EVT-009): payouts count Stripe's pending balance, a cancelled event holds a failed refund's money, the stale-order job expires before its sweep and failing orders go to the back of its queue, Mark as refunded needs a paid order, cancelling stops a waiting "still valid" email, the calendar marks cancelled events and the door leaves them out, buyers see every refund added up, and a queued refund adjusts to one made in Stripe (tried once against Stripe test mode). No migration.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -152,7 +153,6 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 ## Next safe actions
 
 1. **The rest of the 2026-10-30 audit,** one PR each, with at most two full test runs going at once:
-   - money and cancellation (findings 4 to 8 and 13);
    - sales rules (9, 10, 12);
    - emails and jobs (16, 17);
    - stale docs;

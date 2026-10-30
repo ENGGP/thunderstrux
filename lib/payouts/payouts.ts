@@ -79,9 +79,11 @@ async function refreshUnreversedRefunds(stripe: Stripe, organisationId: string) 
   }
 }
 
-// One society: what Stripe has available, less what the rules still hold. At
-// most one payout a UTC day, like Eventbrite's batched payouts (DEF-034): money
-// released later in the day goes out the next day.
+// One society: all it has at Stripe less what the rules still hold, and never
+// more than is available now. Held money may still be in Stripe's pending balance,
+// and a negative pending balance is money already owed back (PAY-044). At most one
+// payout a UTC day, like Eventbrite's batched payouts (DEF-034): money released
+// later in the day goes out the next day.
 async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountId: string }, now: Date) {
   await ensureManualPayouts(stripe, organisation.stripeAccountId);
   const day = now.toISOString().slice(0, 10);
@@ -93,9 +95,10 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
   if (paidToday) return { sent: 0 };
   const balance = await stripe.balance.retrieve({}, { stripeAccount: organisation.stripeAccountId });
   const available = balance.available.find((entry) => entry.currency === "aud")?.amount ?? 0;
+  const pending = balance.pending.find((entry) => entry.currency === "aud")?.amount ?? 0;
   await refreshUnreversedRefunds(stripe, organisation.id);
   const held = await heldMoney(organisation.id, organisation.stripeAccountId, now);
-  const amount = available - held.total;
+  const amount = Math.min(available, available + pending - held.total);
   const lastPaid = await prisma.societyPayout.findFirst({
     where: { stripeAccountId: organisation.stripeAccountId, status: { not: "failed" } },
     orderBy: { createdAt: "desc" },
@@ -113,7 +116,7 @@ async function payOut(stripe: Stripe, organisation: { id: string; stripeAccountI
     { stripeAccount: organisation.stripeAccountId, idempotencyKey: `payout:${organisation.stripeAccountId}:${now.toISOString()}` }
   );
   await record(organisation.id, organisation.stripeAccountId, payout, now);
-  logInfo("payouts.sent", { organisationId: organisation.id, amount, available, held: held.total });
+  logInfo("payouts.sent", { organisationId: organisation.id, amount, available, pending, held: held.total });
   return { sent: amount };
 }
 

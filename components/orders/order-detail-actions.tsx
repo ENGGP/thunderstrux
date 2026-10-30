@@ -18,6 +18,7 @@ export function OrderDetailActions({
   buyerEmail,
   stripeSessionId,
   stripeDashboardUrl,
+  paid,
   isManuallyRefunded,
   canResendTickets,
   requiresCompensationReview,
@@ -30,6 +31,8 @@ export function OrderDetailActions({
   buyerEmail: string | null;
   stripeSessionId: string | null;
   stripeDashboardUrl: string | null;
+  // A checkout that didn't complete took no money, so there is no refund to record.
+  paid: boolean;
   isManuallyRefunded: boolean;
   canResendTickets: boolean;
   requiresCompensationReview: boolean;
@@ -76,6 +79,7 @@ export function OrderDetailActions({
     setCancelTickets(true);
     setNotifyBuyer(true);
     setBuyerMessage("");
+    setRefundForm({ ...refundForm, confirmation: "" });
     setRefundError("");
     setRefunding(true);
   }
@@ -300,26 +304,28 @@ export function OrderDetailActions({
             </div>
           </div>
         ) : null}
-        <div className={block}>
-          <p className="font-semibold text-ink">Refund recorded outside Thunderstrux</p>
-          {isManuallyRefunded ? (
-            <p className="text-sm text-ink-soft">This order is marked as refunded.</p>
-          ) : (
-            <>
-              <p className="text-sm text-ink-soft">
-                Use only after you have refunded the buyer yourself. This records it, stops the
-                tickets working, puts their places back on sale and emails the buyer. It cannot be
-                undone and does not send money.
-              </p>
-              <div>
-                <Button disabled={isBusy} onClick={() => setConfirmingRefund(true)} type="button" variant="danger">
-                  Mark as refunded
-                </Button>
-              </div>
-              {result("mark")}
-            </>
-          )}
-        </div>
+        {paid || isManuallyRefunded ? (
+          <div className={block}>
+            <p className="font-semibold text-ink">Refund recorded outside Thunderstrux</p>
+            {isManuallyRefunded ? (
+              <p className="text-sm text-ink-soft">This order is marked as refunded.</p>
+            ) : (
+              <>
+                <p className="text-sm text-ink-soft">
+                  Use only after you have refunded the buyer yourself. This records it, stops the
+                  tickets working, puts their places back on sale and emails the buyer. It cannot be
+                  undone and does not send money.
+                </p>
+                <div>
+                  <Button disabled={isBusy} onClick={() => setConfirmingRefund(true)} type="button" variant="danger">
+                    Mark as refunded
+                  </Button>
+                </div>
+                {result("mark")}
+              </>
+            )}
+          </div>
+        ) : null}
         </>
       )}
 

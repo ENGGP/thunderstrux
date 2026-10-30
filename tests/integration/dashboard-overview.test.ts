@@ -99,10 +99,16 @@ describe("dashboards (T34)", () => {
   test("check-in staff land on today's door: published events today, no drafts or money", async () => {
     const { organisation, staff } = await busySociety();
     const today = await eventAt(organisation.id, "Movie night", at(60_000));
+    // EVT-009: a cancelled event has no door, today or later in the week.
+    for (const [title, start] of [["Rained out", at(60_000)], ["Called off", at(2 * day)]] as const) {
+      const event = await eventAt(organisation.id, title, start);
+      await prisma.event.update({ where: { id: event.id }, data: { cancelledAt: new Date() } });
+    }
     await staff("check_in_staff");
     const html = await page();
     expect(html).toContain("Today at the door");
     expect(html).toContain("Movie night");
+    for (const cancelled of ["Rained out", "Called off"]) expect(html).not.toContain(cancelled);
     expect(html).toContain(`/dashboard/events/${today.id}/tickets`);
     for (const hidden of ["CAD workshop", "Recent orders", "Sales this month", "New event"]) expect(html).not.toContain(hidden);
   });

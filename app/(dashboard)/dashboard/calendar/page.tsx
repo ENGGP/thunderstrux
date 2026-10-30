@@ -167,6 +167,7 @@ async function CalendarBody(props: {
           <div className="flex flex-wrap gap-4 text-sm text-ink-soft">
             <span className="inline-flex items-center gap-2"><i className="inline-block h-3.5 w-[22px] rounded border border-brand-200 bg-brand-tint" />Published</span>
             {props.canManage ? <span className="inline-flex items-center gap-2"><i className="inline-block h-3.5 w-[22px] rounded border border-dashed border-ink-muted bg-surface" />Draft</span> : null}
+            {items.some((item) => item.kind === "event" && item.event.cancelledAt) ? <span className="inline-flex items-center gap-2"><i className="inline-block h-3.5 w-[22px] rounded border border-line bg-surface" />Cancelled</span> : null}
             {showMembership ? <span className="inline-flex items-center gap-2"><i className="inline-block h-3.5 w-[22px] rounded border border-line bg-surface-subtle" />Membership ends</span> : null}
           </div>
         </div>

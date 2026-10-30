@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge, statusLabel } from "@/components/ui/status-badge";
 import { formatDateRange, membershipLabel } from "@/lib/format";
 import { addDays } from "@/lib/analytics/range";
+import type { CalendarEvent } from "@/lib/events/calendar";
 import {
   formatDay,
   formatTime,
@@ -30,6 +31,8 @@ export type ViewProps = {
 
 const termHref = "/dashboard/memberships/members";
 const chipBase = "relative my-px block h-6 min-w-0 truncate border-y px-2 text-caption leading-[22px] no-underline";
+// The word a chip leads with, so colour never carries it alone (EVT-009). Only a published event can be cancelled.
+const mark = (event: CalendarEvent) => (event.cancelledAt ? ("cancelled" as const) : event.status === "draft" ? ("draft" as const) : null);
 // Colours only; each caller sets which borders and corners it draws. Chips and
 // day numbers are positioned so they paint above the (positioned) day cells.
 const tone = (item: CalendarItem) =>
@@ -37,14 +40,17 @@ const tone = (item: CalendarItem) =>
     ? "border-warning-border bg-warning-bg text-xs font-semibold text-warning"
     : item.kind === "term"
       ? "border-line bg-surface-subtle text-ink-soft"
-      : item.event.status === "draft"
-        ? "border-dashed border-ink-muted bg-surface text-ink"
-        : "border-brand-200 bg-brand-tint text-brand-ink hover:border-brand";
+      : item.event.cancelledAt
+        ? "border-line bg-surface text-ink-soft hover:border-brand"
+        : item.event.status === "draft"
+          ? "border-dashed border-ink-muted bg-surface text-ink"
+          : "border-brand-200 bg-brand-tint text-brand-ink hover:border-brand";
 
 function itemLabel(item: CalendarItem, timeZone: string) {
   if (item.kind === "clock") return item.label;
   if (item.kind === "term") return `${membershipLabel(item.end.name)} ends: last day for ${members(item.end.members)}, ${formatDay(item.end.lastDay, true)}`;
-  return `${item.event.title}${item.event.status === "draft" ? ", draft" : ""}, ${formatDateRange(item.event.startTime, item.event.endTime, timeZone)}`;
+  const status = mark(item.event);
+  return `${item.event.title}${status ? `, ${status}` : ""}, ${formatDateRange(item.event.startTime, item.event.endTime, timeZone)}`;
 }
 const members = (count: number) => `${count} ${count === 1 ? "member" : "members"}`;
 
@@ -53,14 +59,15 @@ function chipText(segment: Segment, timeZone: string): ReactNode {
   if (item.kind === "clock") return item.label;
   if (item.kind === "term") return `${membershipLabel(item.end.name)} ends`;
   const { event } = item;
-  const draft = event.status === "draft" ? <b className="font-semibold">Draft </b> : null;
+  const status = mark(event);
+  const word = status ? <b className="font-semibold">{statusLabel(status)} </b> : null;
   const start = formatTime(event.startTime, timeZone);
-  if (!item.multiDay) return <>{draft}<b className="font-semibold">{start}</b> {event.title}</>;
+  if (!item.multiDay) return <>{word}<b className="font-semibold">{start}</b> {event.title}</>;
   const end = `${shortWeekday(item.lastDay)} ${formatTime(event.endTime, timeZone)}`;
-  if (before) return <>{draft}{event.title}, {after ? "continues" : <>until <b className="font-semibold">{end}</b></>}</>;
+  if (before) return <>{word}{event.title}, {after ? "continues" : <>until <b className="font-semibold">{end}</b></>}</>;
   return after
-    ? <>{draft}<b className="font-semibold">{shortWeekday(item.firstDay)} {start}</b> {event.title}, continues</>
-    : <>{draft}<b className="font-semibold">{shortWeekday(item.firstDay)} {start} to {end}</b> {event.title}</>;
+    ? <>{word}<b className="font-semibold">{shortWeekday(item.firstDay)} {start}</b> {event.title}, continues</>
+    : <>{word}<b className="font-semibold">{shortWeekday(item.firstDay)} {start} to {end}</b> {event.title}</>;
 }
 
 function Chip({ segment, timeZone, eventHref, style }: { segment: Segment; timeZone: string; eventHref: ViewProps["eventHref"]; style: CSSProperties }) {
@@ -178,6 +185,7 @@ export function WeekGrid({ days, now, ...props }: ViewProps & { days: string[]; 
             ) : null}
             {timed[index].map((entry) => {
               const event = entry.event;
+              const status = mark(event);
               const end = formatTime(event.endTime, props.timeZone);
               const endDay = localDay(event.endTime, props.timeZone);
               return (
@@ -193,7 +201,7 @@ export function WeekGrid({ days, now, ...props }: ViewProps & { days: string[]; 
                     width: `calc(${100 / entry.columns}% - 8px)`
                   }}
                 >
-                  <b className="block font-semibold">{event.status === "draft" ? `Draft · ${event.title}` : event.title}</b>
+                  <b className="block font-semibold">{status ? `${statusLabel(status)} · ${event.title}` : event.title}</b>
                   {formatTime(event.startTime, props.timeZone)} to {end}{endDay !== day ? ` ${shortWeekday(endDay)}` : ""}
                 </Link>
               );
@@ -253,6 +261,7 @@ function AgendaRow({ day, item, timeZone, eventHref }: ViewProps & { day: string
     );
   }
   const { event } = item;
+  const status = mark(event);
   const endDay = localDay(event.endTime, timeZone);
   const end = formatTime(event.endTime, timeZone);
   const until = endDay === day ? end : endDay === addDays(day, 1) ? `${end} ${shortWeekday(endDay)}` : `${formatDay(endDay)}, ${end}`;
@@ -260,9 +269,9 @@ function AgendaRow({ day, item, timeZone, eventHref }: ViewProps & { day: string
     <Link aria-label={itemLabel(item, timeZone)} className={`${row} bg-surface ${event.status === "draft" ? "border-dashed border-ink-muted" : "border-line"}`} href={eventHref(event.id)}>
       <span className="text-sm font-semibold tabular-nums">{item.firstDay === day ? formatTime(event.startTime, timeZone) : "Ongoing"}</span>
       <span className="grid min-w-0 gap-0.5">
-        <strong className="text-ui font-semibold text-brand-ink [overflow-wrap:anywhere]">{event.title}</strong>
+        <strong className={`text-ui font-semibold [overflow-wrap:anywhere] ${event.cancelledAt ? "text-ink-soft" : "text-brand-ink"}`}>{event.title}</strong>
         <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{event.location} · until {until}</span>
-        {event.status === "draft" ? <StatusBadge status="draft" /> : null}
+        {status ? <StatusBadge status={status} /> : null}
       </span>
     </Link>
   );

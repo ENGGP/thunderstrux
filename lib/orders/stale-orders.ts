@@ -57,6 +57,9 @@ type LegacyOrderCandidate = {
 
 type QueryClient = Pick<typeof prisma, "$queryRaw">;
 
+// Every pick below takes the orders Stripe was asked about longest ago first (never
+// asked comes first), as the sweep does. Each look stamps the order, even a failed
+// one, so orders that keep failing can't hold the front of every run (PAY-046).
 async function selectExpiredReservationCandidates({
   db,
   limit,
@@ -70,11 +73,13 @@ async function selectExpiredReservationCandidates({
   // the hold ends, so the Stripe check closes the page then (PAY-009). Without a
   // Session, the order itself still waits for expiresAt (expirePendingOrder).
   return db.$queryRaw<ReservationCandidate[]>`
-    SELECT "id", "orderId"
+    SELECT "TicketReservation"."id", "TicketReservation"."orderId"
     FROM "TicketReservation"
-    WHERE "status" = 'active'
-      AND "expiresAt" <= ${new Date(now.getTime() + lateWebhookGraceMs)}
-    ORDER BY "expiresAt" ASC, "id" ASC
+    INNER JOIN "Order"
+      ON "Order"."id" = "TicketReservation"."orderId"
+    WHERE "TicketReservation"."status" = 'active'
+      AND "TicketReservation"."expiresAt" <= ${new Date(now.getTime() + lateWebhookGraceMs)}
+    ORDER BY "Order"."stripeCheckedAt" ASC NULLS FIRST, "TicketReservation"."expiresAt" ASC, "TicketReservation"."id" ASC
     LIMIT ${limit}
   `;
 }
@@ -98,7 +103,7 @@ async function selectLegacyPendingOrderCandidates({
         FROM "TicketReservation"
         WHERE "TicketReservation"."orderId" = "Order"."id"
       )
-    ORDER BY "createdAt" ASC, "id" ASC
+    ORDER BY "stripeCheckedAt" ASC NULLS FIRST, "createdAt" ASC, "id" ASC
     LIMIT ${limit}
   `;
 }
@@ -117,7 +122,7 @@ async function selectAlreadyExpiredReservationBackedOrderCandidates({
       ON "TicketReservation"."orderId" = "Order"."id"
     WHERE "Order"."status" = 'pending'
       AND "TicketReservation"."status" = 'expired'
-    ORDER BY "Order"."createdAt" ASC, "Order"."id" ASC
+    ORDER BY "Order"."stripeCheckedAt" ASC NULLS FIRST, "Order"."createdAt" ASC, "Order"."id" ASC
     LIMIT ${limit}
   `;
 }
@@ -299,7 +304,7 @@ async function processStaleOrderCleanupBatchInternal({
 export async function expireStaleCommerceOrders({ now = new Date(), limit = 100 } = {}) {
   const stale = await prisma.commerceOrder.findMany({
     where: { status: "pending", paymentKind: "stripe", expiresAt: { lt: now } },
-    orderBy: { expiresAt: "asc" },
+    orderBy: [{ stripeCheckedAt: { sort: "asc", nulls: "first" } }, { expiresAt: "asc" }],
     take: Math.max(1, Math.min(limit, 500)),
     select: { id: true }
   });

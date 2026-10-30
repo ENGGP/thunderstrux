@@ -99,6 +99,17 @@ async function deliverPaid(commerceOrderId: string, overrides: Record<string, un
   expect(response.status).toBe(200);
 }
 
+// Starts work behind a lock on this option, which it can only pass once this transaction commits, so it isn't awaited inside.
+async function behindOptionLock<T>(variantId: string, start: () => Promise<T>) {
+  const queued = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "MerchandiseVariant" WHERE "id" = ${variantId} FOR UPDATE`;
+    const running = start();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    return { running, releasedAt: Date.now() };
+  });
+  return { result: await queued.running, releasedAt: queued.releasedAt };
+}
+
 const orderOf = async (attemptId: string) => (await prisma.checkoutAttempt.findUniqueOrThrow({ where: { id: attemptId } })).commerceOrderId as string;
 const stock = async (variantId: string) => prisma.merchandiseVariant.findUniqueOrThrow({ where: { id: variantId }, select: { remaining: true, version: true } });
 const receipts = (commerceOrderId: string) => prisma.notificationOutbox.count({ where: { eventKey: `merchandise-receipt/${commerceOrderId}` } });
@@ -194,7 +205,7 @@ describe("merchandise sale", () => {
     const account = await member();
     const first = await buy(organisation.id, account, [freeLine(6)]);
     if (first.status !== "fulfilled") throw new Error("not fulfilled");
-    await expect(buy(organisation.id, account, [freeLine(5)])).rejects.toMatchObject({ name: "MerchandiseUnavailableError", reason: "free_limit_reached", variantId: free, available: 4 });
+    await expect(buy(organisation.id, account, [freeLine(5)])).rejects.toMatchObject({ name: "MerchandiseUnavailableError", reason: "free_limit_reached", variantId: free, available: 4, message: expect.stringContaining("(S0), and you already have 6.") });
     // Nobody else is affected, and a refused basket takes nothing.
     expect((await buy(organisation.id, await member(), [freeLine(10)])).status).toBe("fulfilled");
     expect(await stock(free)).toMatchObject({ remaining: 44 });
@@ -250,18 +261,22 @@ describe("merchandise sale", () => {
     const buyer = await member();
     // That hold still counts when the next checkout joins the queue, and has lapsed by the time it gets through.
     await prisma.commerceOrder.update({ where: { id: lapsing }, data: { expiresAt: new Date(Date.now() - lateWebhookGraceMs + 600) } });
-    let lockReleasedAt = 0;
-    // Not awaited inside: the checkout can only finish once this transaction commits.
-    const queued = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "MerchandiseVariant" WHERE "id" = ${variants[0].id} FOR UPDATE`;
-      const checkout = buy(organisation.id, buyer, items);
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      lockReleasedAt = Date.now();
-      return { checkout };
-    });
-    const { attemptId } = await queued.checkout;
-    const order = await prisma.commerceOrder.findUniqueOrThrow({ where: { id: await orderOf(attemptId) } });
-    expect((order.expiresAt as Date).getTime()).toBeGreaterThanOrEqual(holdEndsAt(new Date(lockReleasedAt), commerceHoldMinutes).getTime());
+    const { result, releasedAt } = await behindOptionLock(variants[0].id, () => buy(organisation.id, buyer, items));
+    const order = await prisma.commerceOrder.findUniqueOrThrow({ where: { id: await orderOf(result.attemptId) } });
+    expect((order.expiresAt as Date).getTime()).toBeGreaterThanOrEqual(holdEndsAt(new Date(releasedAt), commerceHoldMinutes).getTime());
+  });
+
+  test("a payment that queued for an option's lock checks other holds as of when it got through", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 3000, remaining: 1 }]);
+    const items = [{ variantId: variants[0].id, quantity: 1, unitPrice: 3000 }];
+    const late = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
+    await prisma.commerceOrder.update({ where: { id: late }, data: { expiresAt: new Date(Date.now() - 6 * 60_000) } });
+    const other = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
+    // That hold still counts when the payment joins the queue, and has lapsed by the time it gets through.
+    await prisma.commerceOrder.update({ where: { id: other }, data: { expiresAt: new Date(Date.now() - lateWebhookGraceMs + 600) } });
+    await behindOptionLock(variants[0].id, () => deliverPaid(late));
+    expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: late } })).toMatchObject({ status: "paid", requiresCompensationReview: false });
+    expect(await stock(variants[0].id)).toMatchObject({ remaining: 0 });
   });
 
   test("a tampered amount, an expired hold paid late and a hold that lapsed before its payment landed all go to review without taking stock", async () => {

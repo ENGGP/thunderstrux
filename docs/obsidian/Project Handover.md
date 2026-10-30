@@ -66,7 +66,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - `.claude/worktrees` is out of the Docker build context and the type check.
   - A failed sign-in took the same time for a real and an unknown address on dev (7 to 17 ms apart, inside the spread between runs), so that audit item needed no fix.
 - 2026-10-30: #235 lets two full test runs go at once. Each run tags its images with its run id, so it can't test another run's code, and Docker picks its host port. Staging stays one at a time, with its own check, because the old port check was what kept those runs apart. No app code changes.
-- 2026-10-31: the preview was deployed at `961dbaf` (#235; backup `ops-preview-2026-10-30T14-42-34-273Z.dump` first; 73 migrations, adding #231's `20261124010000_ticket_codes`). Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers run the release's ops image with no failures, and the stale-order and refunds jobs have `EMAIL_FROM`, the notification key and the app URL (DEF-065). The Accounts v2 event destination is enabled with the right URL and all seven events; only a test event's 200 can prove its secret. `MFA_ENFORCEMENT_MODE` is still `off`.
+- 2026-10-31: the preview was deployed at `961dbaf` (#235; backup `ops-preview-2026-10-30T14-42-34-273Z.dump` first; 73 migrations, adding #231's `20261124010000_ticket_codes`). Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers run the release's ops image with no failures, and the stale-order and refunds jobs have `EMAIL_FROM`, the notification key and the app URL (DEF-065). The Accounts v2 event destination is enabled with the right URL and all seven events, and Stripe's test ping passed its signature check, which proves `STRIPE_ACCOUNTS_WEBHOOK_SECRET`. `MFA_ENFORCEMENT_MODE` is still `off`.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -157,7 +157,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 
    The compensation engine merge is debt, due before PAY-002's campaign. Product changes follow: no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions, then the O-Week flow.
 2. **Preview (owner).**
-   - Send a test event from each Stripe test-mode webhook destination and confirm a 200. For the Accounts v2 destination this also proves `STRIPE_ACCOUNTS_WEBHOOK_SECRET`.
+   - Send a test event from the two snapshot webhook destinations and confirm a 200. The Accounts v2 destination has passed.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy.
    - Scan a batch of tickets in Safari on an iPhone, which has no `BarcodeDetector`, from a second phone's screen and from the ticket email (DEF-064).

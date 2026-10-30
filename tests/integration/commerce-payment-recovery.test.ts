@@ -300,6 +300,7 @@ describe("commerce compensation", () => {
 
   // PAY-036: Stripe refuses a refund of a disputed charge, and a lost one is already back with the buyer.
   test("an open or lost dispute holds the compensation refund and the order stays under review; a won one doesn't", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (const disputeStatus of ["open", "lost"] as const) {
       const fixture = await paid("merchandise");
       expect(await reconcileCommerceCheckoutSession(await pendingWith(fixture, { disputeStatus }), { stripeEventId: unique("evt") })).toMatchObject({ status: "compensation_required" });
@@ -307,6 +308,7 @@ describe("commerce compensation", () => {
       expect(await order(fixture.order.id)).toMatchObject({ status: "failed", requiresCompensationReview: true, reviewReason: "refunded_or_disputed_before_fulfilment", refundStatus: null, disputeStatus });
       expect(await historyOf(fixture.order.id)).toEqual(["order_created", "compensation_required"]);
     }
+    expect(warn.mock.calls.filter(([line]) => String(line).includes("commerce.compensation_refund.not_opened"))).toHaveLength(2);
     const won = await paid("merchandise");
     await reconcileCommerceCheckoutSession(await pendingWith(won, { disputeStatus: "won" }), { stripeEventId: unique("evt") });
     expect(await prisma.refundRequest.count({ where: { commerceOrderId: won.order.id } })).toBe(1);

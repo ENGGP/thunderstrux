@@ -93,6 +93,7 @@ async function requireCompensation(
   } catch (error) {
     // Nothing left to refund, or a dispute (PAY-036): the order stays under review for a person.
     if (!(error instanceof OrderRefundError)) throw error;
+    logWarn("commerce.compensation_refund.not_opened", { commerceOrderId: order.id, reason: error.kind });
   }
 }
 

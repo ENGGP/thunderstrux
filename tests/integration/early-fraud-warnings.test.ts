@@ -143,6 +143,12 @@ describe("early fraud warnings", () => {
     await warn(collected);
     expect(await prisma.refundRequest.count({ where: { commerceOrderId: collected.order.id } })).toBe(0);
     expect(alerts(error).at(-1)).toMatchObject({ commerceOrderId: collected.order.id, outcome: "used" });
+
+    // Used comes first, as it does for a scanned ticket.
+    const contested = await commerceOrder("merchandise", { pickupStatus: "collected" });
+    await prisma.commerceOrder.update({ where: { id: contested.order.id }, data: { disputeStatus: "open" } });
+    await warn(contested);
+    expect(alerts(error).at(-1)).toMatchObject({ commerceOrderId: contested.order.id, outcome: "used" });
   });
 
   test("a commerce fraud refund is left to the worker, with its own history and audit row", async () => {

@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileCompletedCheckoutSession, reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { decryptNotification } from "@/lib/email/notification-crypto";
 import { setAutomaticOutboxEnqueueTestFailure } from "@/lib/email/ticket-email-outbox";
 import {
   createEvent,
@@ -813,6 +814,8 @@ describe("webhook reconciliation", () => {
     // The buyer hears once that the payment is in review, with no ticket promise (T30).
     await expect(prisma.notificationOutbox.findMany({ where: { eventKey: `payment-review/${order.id}` } }))
       .resolves.toEqual([expect.objectContaining({ recipient: member.email, organisationId: organisation.id })]);
+    const notice = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `payment-review/${order.id}` } });
+    expect(JSON.stringify(decryptNotification(notice.encryptedPayload, notice.id))).not.toMatch(/either issue/);
     expect(fetchMock).not.toHaveBeenCalled();
     const alertCalls = operationalAlertCalls(error);
     expect(alertCalls).toHaveLength(1);

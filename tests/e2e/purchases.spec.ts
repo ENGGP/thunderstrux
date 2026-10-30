@@ -23,7 +23,7 @@ test("a member sees every purchase in their own words and a wallet of ticket fac
   await expect(page.getByRole("article").filter({ hasText: "Checked in" })).toHaveCount(1);
   // Every ticket that admits carries its QR code for the door.
   await expect(page.getByRole("img", { name: /^QR code for ticket / })).toHaveCount(2);
-  for (const width of [1280, 390]) {
+  for (const width of [1280, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/wallet-${width}.png`, fullPage: true });
@@ -40,7 +40,7 @@ test("a member sees every purchase in their own words and a wallet of ticket fac
   await page.getByRole("link", { name: "Show 1 checkout that didn't complete" }).click();
   await expect(list.getByText("Didn't complete").filter({ visible: true })).toHaveCount(1);
   await expect(page.getByText("Checkouts that didn't complete took no money.")).toBeVisible();
-  for (const width of [1280, 390]) {
+  for (const width of [1280, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/purchases-${width}.png`, fullPage: true });

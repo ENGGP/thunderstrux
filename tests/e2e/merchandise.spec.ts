@@ -6,7 +6,7 @@ import { createCommerceOrder } from "@/lib/commerce/orders";
 import { test, expect, login, prisma, selectStaffContext, submitTwice } from "./fixtures";
 
 async function shoot(page: Page, name: string) {
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/merchandise-${name}-${width}.png`, fullPage: true });

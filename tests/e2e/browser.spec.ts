@@ -27,7 +27,7 @@ test('finance staff can page order history while another tenant cannot read it',
   await expect(history.getByRole('listitem')).toHaveCount(25);
   await expect(history.getByText('Reason: history entry 27', { exact: true })).toBeVisible();
   await expect(history.getByText('This order predates lifecycle history.', { exact: false })).toBeVisible();
-  for (const width of [1280, 390]) {
+  for (const width of [1280, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(history.getByRole('heading', { name: 'Order history', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -255,6 +255,11 @@ test('private staff invitation email supports explicit acceptance, resend and re
   const response = await responsePromise; expect(response.status()).toBe(201);
   const metadata = await response.json(); expect(Object.keys(metadata)).toEqual(['invite']);
   await expect(page.getByText('Invitation email queued.', { exact: false })).toBeVisible();
+  for (const width of [390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/staff-${width}.png`, fullPage: true });
+  }
   execFileSync('node', ['scripts/process-notifications.mjs'], { stdio: 'pipe' });
   const messages = await (await page.request.get('http://mail-capture:8025/messages')).json();
   const message = messages.find((item: { data: { to: string; subject: string } }) => item.data.to === data.member.email && item.data.subject.includes('staff invitation'));

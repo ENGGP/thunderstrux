@@ -77,11 +77,25 @@ export function validateHostedConfig(config) {
     if (!(service.profiles ?? []).includes("workers")) throw new Error(`${worker} must remain an explicitly scheduled one-shot service`);
     // T42: a worker that fails must be able to page someone.
     if (!service.environment?.ALERT_WEBHOOK_URL_FILE) throw new Error(`${worker} is missing ALERT_WEBHOOK_URL_FILE`);
+    for (const variable of ["EMAIL_FROM", "NEXT_PUBLIC_APP_URL"]) {
+      if (!service.environment?.[variable]) throw new Error(`${worker} is missing ${variable}`);
+    }
   }
-  // PAY-024: the stale-order worker confirms payments with Stripe before it
-  // expires an order; without these it would defer every Stripe order.
-  for (const variable of ["STRIPE_SECRET_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE", "NEXT_PUBLIC_APP_URL"]) {
-    if (!requireService(config, "stale-order-worker").environment?.[variable]) throw new Error(`stale-order-worker is missing ${variable}`);
+  // PAY-024, DEF-065: the stale-order and refunds jobs settle payments and refunds
+  // with Stripe and queue the buyer's notice in the same transaction, so a notice
+  // that can't be queued rolls the money step back: the sweep leaves a paid order
+  // pending, and a refund made at Stripe reads as failed.
+  const workerSecrets = {
+    "email-worker": ["RESEND_API_KEY_FILE"],
+    "notification-worker": ["RESEND_API_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE"],
+    "stale-order-worker": ["STRIPE_SECRET_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE"],
+    "compensation-worker": ["STRIPE_SECRET_KEY_FILE", "NOTIFICATION_ENCRYPTION_KEY_FILE"],
+    "checkout-recovery-worker": ["STRIPE_SECRET_KEY_FILE"]
+  };
+  for (const [worker, variables] of Object.entries(workerSecrets)) {
+    for (const variable of variables) {
+      if (!requireService(config, worker).environment?.[variable]) throw new Error(`${worker} is missing ${variable}`);
+    }
   }
   // T43: migration and every worker run the release's one ops image; the app runs its web image.
   const opsImages = new Set(["migration", "email-worker", "notification-worker", "stale-order-worker", "compensation-worker", "checkout-recovery-worker", "monitor-worker"].map((name) => requireService(config, name).image));

@@ -173,7 +173,7 @@ A free price completes without reading any Stripe configuration. Commerce checko
 All three run the same checks, in order (the accounts route logs `stripe_accounts.*`, verifies with `parseEventNotification` and skips step 5: thin events carry no API version):
 
 1. No `stripe-signature` header: 400, log `stripe.webhook.signature_failed` (`stripe_connect.webhook.signature_failed` on Connect), metric `stripe_webhook_signature_failures_total`, alert `stripe_webhook_signature_failure`.
-2. Read the raw body with `request.text()`. A missing key or secret is 503, log `stripe.webhook.configuration_error` (`stripe_connect.webhook.configuration_error`).
+2. Read the raw body with `readWebhookBody`: over 1 MB is 413, log `stripe.webhook.body_too_large`, alert `stripe_webhook_body_too_large` (`lib/stripe/webhook-body.ts`). A missing key or secret is 503, log `stripe.webhook.configuration_error` (`stripe_connect.webhook.configuration_error`).
 3. `webhooks.constructEvent` fails: 400 with the same log, metric and alert.
 4. Log `stripe.webhook.received` (`stripe_connect.webhook.received`) with event id, type and `api_version`.
 5. `warnOnVersionMismatch`: an event on another API version logs `stripe.webhook.version_mismatch` and alerts `stripe_webhook_version_mismatch` (deduplicated per endpoint), then is still handled. Replace that endpoint.

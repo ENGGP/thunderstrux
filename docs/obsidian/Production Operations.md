@@ -137,6 +137,7 @@ Logs, metrics, alert delivery, the monitor's queue thresholds and every alert wi
 - `pnpm ops:restore` restores into a new database and doesn't stop the live stack's workers; stop writes first ([[#Failure and recovery]]).
 - `pnpm ops:backup` doesn't cover object storage or the encryption keys. A restore without `NOTIFICATION_ENCRYPTION_KEY` and `MFA_ENCRYPTION_KEY` can't decrypt pending notices or staff MFA secrets.
 - An alert path must never throw into payment code: `emitOperationalAlert` swallows its own errors. Keep it that way.
+- A worker setting goes in the `x-worker-env` block of `docker-compose.yml` and `docker-compose.hosted.yml` unless only one job reads it; secrets stay listed per service, so a job holds only what it uses. A job that queues a notice with a money step needs `EMAIL_FROM`, the notification key and `NEXT_PUBLIC_APP_URL`, or the step rolls back (DEF-065).
 - A new worker needs a `scheduledWorkers` entry, a hosted service, a schedule service, `workerServices` in `scripts/droplet.mjs`, `validateHostedConfig`'s list and a monitor query if it owns a queue.
 
 ## Failure and recovery

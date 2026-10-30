@@ -21,7 +21,7 @@ sources: [lib/security/request-guard.ts, lib/security/csrf.ts, lib/security/rate
 | Guest CSRF | `lib/guest/guest-csrf.ts`: `verifyGuestCsrf`, header `x-thunderstrux-guest-csrf` |
 | Rate limits | `lib/security/rate-limit.ts`: `enforceRateLimit`, `getRateLimitClientIp`, `clientKey`, `policies` |
 | Account-link limits | `lib/auth/lifecycle-http.ts`: `lifecycleIpLimit`, `lifecycleEmailLimit`, `lifecycleRedemptionLimit` |
-| Body reading | `lib/api/request.ts`: `readJsonBody`, `parseJsonBody`, `validateJson` |
+| Body reading | `lib/api/request.ts`: `readJsonBody`, `parseJsonBody`, `validateJson`; `readBodyUpTo` for sign-in (10 KB) and, through `lib/stripe/webhook-body.ts`, the Stripe webhooks (1 MB) |
 | Error envelope | `lib/api/errors.ts`: `mapRouteError`, `apiError`; shared rules `lib/api/route-rules.ts` |
 | Headers, default caching | `next.config.ts`: `securityHeaders`, `contentSecurityPolicy`, `headers()` |
 | Expired token cleanup | `lib/security/token-cleanup.ts`: `cleanUpExpiredTokens` |
@@ -36,7 +36,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | --- | --- |
 | Sign-up and link requests (`auth/signup`, `auth/verification/request`, `auth/password/request`) | origin → `signup_ip` → body → `signup_email` (per purpose) → service |
 | Link redemption (`auth/verification/confirm`, `auth/password/confirm`) | origin → body → `account_token_ip` → `account_token_digest` → service |
-| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_email` (per account across addresses, DEBT-002) → Auth.js (its own CSRF) |
+| Sign-in (`auth/[...nextauth]`, credentials callback only) | `login_ip_global` → a plain form of at most 10 KB with an address (else 400, SEC-040, SEC-041) → one `email` field (else 400, SEC-007) → `login_ip_email` → `login_email` (per account across addresses, DEBT-002) → Auth.js (its own CSRF) |
 | Guest links (`guest/email/request`, `guest/recover`) | origin → `guest_email_ip` → body → `guest_email_address` → service |
 | Society enquiry (`orgs/[orgSlug]/enquiries`) | origin → `society_enquiry` (IP, slug) → body → `society_enquiry` (sender) → service |
 | Guest redemption (`guest/email/confirm`) | origin → body → `guest_token_ip` → `guest_token_digest` → service |
@@ -93,15 +93,16 @@ There is no one universal order. Each family runs its checks in this order; a re
 - **Over the limit:** 429 `RATE_LIMITED` with `Retry-After`; logged `rate_limit.rejected` with policy, method and the path with ids replaced by `:id`.
 - **Keys** are `policy:keyParts` hashed with SHA-256 under `RATE_LIMIT_KEY_PREFIX` (default `thunderstrux`). No raw email, user, order or IP reaches Redis or logs.
 - **Redis client:** 1.5 s connect and command timeouts, three reconnects, offline queue off.
+- **Per-address limits** only stop floods, because a campus shares one public address (DEF-066). The per-email, per-token and per-account limits stop abuse of one target.
 
 | Policy | Limit / window | Fail | Key parts | Routes |
 | --- | --- | --- | --- | --- |
-| `login_ip_global` | 50 / 10 min | closed | IP | credentials sign-in (not required) |
+| `login_ip_global` | 500 / 10 min | closed | IP | credentials sign-in (not required) |
 | `login_ip_email` | 10 / 10 min | closed | IP, email | credentials sign-in (not required) |
 | `login_email` | 30 / 1 h | closed | email | credentials sign-in (not required); at worst someone else's guesses lock the account for an hour |
-| `signup_ip` | 25 / 1 h | closed | IP (one bucket for all three) | signup, verification request, password request |
+| `signup_ip` | 250 / 1 h | closed | IP (one bucket for all three) | signup, verification request, password request |
 | `signup_email` | 3 / 1 h | closed | purpose (`signup`, `verification`, `password_reset`), email | same three; one bucket per purpose (SEC-026) |
-| `account_token_ip` | 50 / 10 min | closed | IP; invites `staff_invite`, IP | verification confirm, password confirm, email-change confirm, invite accept |
+| `account_token_ip` | 500 / 10 min | closed | IP; invites `staff_invite`, IP | verification confirm, password confirm, email-change confirm, invite accept |
 | `account_token_digest` | 10 / 10 min | closed | token digest; invites `staff_invite`, digest | same |
 | `account_security_change` | 5 / 1 h | closed | user | password change, email request/confirm/cancel, closure, owner handover |
 | `organisation_create` | 5 / 1 h | closed | user, IP | `POST /api/orgs` (not required) |
@@ -115,15 +116,15 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
 | `society_enquiry` | 5 / 1 h | closed | IP and slug; then sender email | Contact {society} (required) |
-| `ticket_code_check` | 30 / 10 min | open | IP, event | a `?code=` read on the event and checkout pages (`codeForBuyer`), so codes can't be found by trying them; when limited the page says to wait |
+| `ticket_code_check` | 600 / 10 min | open | IP, event | a `?code=` read on the event and checkout pages (`codeForBuyer`), so codes can't be found by trying them; when limited the page says to wait |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
 | `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm, verify and new recovery codes; every fresh-code action when a code is sent (not required) |
 | `asset_upload` | 20 / 1 h | closed | `actor`, user; and `tenant`, society (two buckets) | asset upload |
 | `asset_delete` | 30 / 10 min | closed | user, society | asset delete |
 | `organisation_profile` | 30 / 10 min | closed | user, society | profile `PATCH` (not required) |
-| `guest_email_ip` | 20 / 1 h | closed | IP; recovery adds `recover` | guest link request, Find your purchase |
+| `guest_email_ip` | 200 / 1 h | closed | IP; recovery adds `recover` | guest link request, Find your purchase |
 | `guest_email_address` | 3 / 1 h | closed | email; recovery adds `recover` | same |
-| `guest_token_ip` | 50 / 10 min | closed | IP | guest link redemption |
+| `guest_token_ip` | 500 / 10 min | closed | IP | guest link redemption |
 | `guest_token_digest` | 10 / 10 min | closed | token digest | guest link redemption |
 
 Not rate limited: public reads (abusive read volume belongs to the hosting edge), `merchandise/quote`, `payments/checkout/attempts/[attemptId]`, buyer status reads, event and staff writes not listed above, the webhooks.

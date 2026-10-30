@@ -465,6 +465,32 @@ describe("rate-limited routes", () => {
     expect(nextAuthPost).not.toHaveBeenCalled();
   });
 
+  test("only a plain form with an address reaches the NextAuth handler (SEC-040)", async () => {
+    vi.resetModules();
+    const nextAuthPost = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.doMock("@/auth", () => ({ handlers: { GET: vi.fn(), POST: nextAuthPost } }));
+    const rateLimit = await import("@/lib/security/rate-limit");
+    rateLimit.setRateLimitTestBackend(rateLimit.createTestRateLimitBackend());
+    rateLimit.setRateLimitTestBackendFailure(null);
+    rateLimit.setRateLimitTestEnabled(true);
+    const { POST } = await import("@/app/api/auth/[...nextauth]/route");
+    const post = (contentType: string, body: string) =>
+      POST(new NextRequest("http://localhost/api/auth/callback/credentials", { method: "POST", headers: { "content-type": contentType }, body }));
+
+    // Auth.js reads the JSON here, while a form parser sees the decoy.
+    const bothReadings = '{"email":"victim@example.com","password":"wrong","z":"&email=decoy@example.com&"}';
+    expect((await post("application/json", '{"email":"victim@example.com","password":"wrong"}')).status).toBe(400);
+    expect((await post("application/x-www-form-urlencoded; charset=application/json", bothReadings)).status).toBe(400);
+    expect((await post("application/x-www-form-urlencoded, application/json", bothReadings)).status).toBe(400);
+    expect((await post("application/x-www-form-urlencoded", "password=wrong")).status).toBe(400);
+    expect((await post("application/x-www-form-urlencoded", `email=member%40example.com&password=${"x".repeat(10_000)}`)).status).toBe(400);
+    expect(nextAuthPost).not.toHaveBeenCalled();
+
+    expect((await post("application/x-www-form-urlencoded", "email=member%40example.com&password=wrong")).status).toBe(401);
+    expect((await post("application/x-www-form-urlencoded;charset=UTF-8", "email=member%40example.com&password=wrong")).status).toBe(401);
+    expect(nextAuthPost).toHaveBeenCalledTimes(2);
+  });
+
   test("one account's sign-ins are capped across addresses (DEBT-002)", async () => {
     vi.resetModules();
     const nextAuthPost = vi.fn(async () => new Response(null, { status: 401 }));

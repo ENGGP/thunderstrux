@@ -51,6 +51,7 @@ export function CredentialsLoginForm({
         autoComplete="username"
         label="Email"
         onChange={(event) => setEmail(event.target.value)}
+        required
         type="email"
         value={email}
       />
@@ -58,6 +59,7 @@ export function CredentialsLoginForm({
         autoComplete="current-password"
         label="Password"
         onChange={(event) => setPassword(event.target.value)}
+        required
         type="password"
         value={password}
       />

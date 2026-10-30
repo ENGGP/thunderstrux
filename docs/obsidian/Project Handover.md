@@ -58,6 +58,13 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-30: #231 adds ticket codes, as Eventbrite, Humanitix and Luma offer: discount codes (percent or dollars), access codes that unlock a hidden ticket type, and comps (100% off, through the free path), per event, with a ticket limit, a last day and on/off, managed on the Edit tab and shown in the Summary, the order page and the orders CSV ([[Event Lifecycle#Codes]]; the decision and its reasoning are in the PR). Registers EVT-007 (a code's limit isn't rechecked at fulfilment). Additive migration `20261124010000_ticket_codes`; take a verified dump first, then apply it with `prisma migrate deploy` on each database.
 - 2026-10-30: #232 ends the flaky scan tests and strengthens the door's fallback reader (DEF-064). ZXing can pick a shape in a code's data as a corner, so the integration test reads its clean render with `PURE_BARCODE`, the e2e spec uses fixed ids, and the console retries each frame at half size. No phone has tried the fallback yet, so DEF-064 stays open for that check. No migration.
 - 2026-10-30: dev moved to main at `a1852db`. The dev database was dumped first to `tmp/dev-before-evt-007-20261030.dump` (SHA-256 `d3e0af013e3f1f0ded0caab4a4450a9105e8805fb1b694b37c8f65518714f637`, 40 tables, owner-only, 72 migrations; 94 users, 711 orders, 998 tickets, 76 events, 193 commerce orders; a disposable restore matched every table's row count). `pnpm docker:restart` then installed #230's `@zxing/library` and applied `20261124010000_ticket_codes` (73), with every existing table's rows unchanged.
+- 2026-10-30: #234 starts the fixes from the 2026-10-30 audit, the first of seven PRs (the rest are in Next safe actions). No migration.
+  - The stale-order and refunds jobs get `EMAIL_FROM`, the notification key and the app URL from one shared settings block in each compose file, and the config check refuses them without these (DEF-065). The preview needs a deploy for this to take effect.
+  - Sign-in takes only a plain form with an address (SEC-040).
+  - Per-address limits rose for campus Wi-Fi (DEF-066).
+  - The three webhooks refuse bodies over 1 MB (SEC-041).
+  - `.claude/worktrees` is out of the Docker build context and the type check.
+  - A failed sign-in took the same time for a real and an unknown address on dev (7 to 17 ms apart, inside the spread between runs), so that audit item needed no fix.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -138,20 +145,29 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 
 ## Next safe actions
 
-1. **Preview (owner).**
+1. **The rest of the 2026-10-30 audit,** after #234 merges, one PR each:
+   - money and cancellation (findings 4 to 8 and 13);
+   - sales rules (9, 10, 12);
+   - emails and jobs (16, 17);
+   - checkout and forms (14);
+   - stale docs;
+   - lean (18, 20, dead code), which waits for the first two.
+
+   The compensation engine merge is debt, due before PAY-002's campaign. Product changes follow: no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions, then the O-Week flow.
+2. **Preview (owner).**
    - Send a test event from each Stripe test-mode webhook destination and confirm a 200.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy.
    - Once the preview runs #232 or later (it runs `d133734`, from before scanning), scan a batch of tickets in Safari on an iPhone, which has no `BarcodeDetector`, from a second phone's screen and from the ticket email (DEF-064).
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
-2. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.
-3. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].
+3. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.
+4. **Before `thunderstrux.com` serves anyone,** work through the go-live checklist in [[Pre-hosting Candidate]].
    - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]]. The key needs Disputes **write**, so each dispute gets its staged draft answer, and Radar early fraud warnings **read**; the payments endpoint also subscribes to `radar.early_fraud_warning.created` and the Connect endpoint to `payout.created`.
    - Pass PAY-002 on the hosted endpoint.
-4. **When hosting is chosen,** give `stale-order-worker` the `stripe_secret_key` and `notification_encryption_key` secrets and `NEXT_PUBLIC_APP_URL` (PAY-024; `pnpm docker:hosted:check` refuses it without them), and run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
-5. **Stripe settings (owner, each sandbox and later live):** before deploying #228, create the Accounts v2 event destination and set `STRIPE_ACCOUNTS_WEBHOOK_SECRET` (dev: the `stripe-accounts-listener` secret; [[Production Operations#Stripe webhook endpoints and keys]]), then drop `account.updated` from each Connect endpoint (PAY-023). In Connect's Express settings, stop accounts editing their payout schedule and using Instant Payouts (PAY-028); add `account.external_account.created` and `account.external_account.updated` to each Connect webhook endpoint (SEC-033; done on the preview), and `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` to each payments endpoint (PAY-030; done on the preview).
-6. **Before activating account lifecycle:**
+5. **When hosting is chosen,** give `stale-order-worker` and `compensation-worker` the `stripe_secret_key` and `notification_encryption_key` secrets, and every worker `EMAIL_FROM` and `NEXT_PUBLIC_APP_URL` (PAY-024, DEF-065; `pnpm docker:hosted:check` refuses them without these), and run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
+6. **Stripe settings (owner, each sandbox and later live):** before deploying #228, create the Accounts v2 event destination and set `STRIPE_ACCOUNTS_WEBHOOK_SECRET` (dev: the `stripe-accounts-listener` secret; [[Production Operations#Stripe webhook endpoints and keys]]), then drop `account.updated` from each Connect endpoint (PAY-023). In Connect's Express settings, stop accounts editing their payout schedule and using Instant Payouts (PAY-028); add `account.external_account.created` and `account.external_account.updated` to each Connect webhook endpoint (SEC-033; done on the preview), and `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` to each payments endpoint (PAY-030; done on the preview).
+7. **Before activating account lifecycle:**
    - get an independent security and migration review, which also covers #167's payment and sign-in changes and #197's payout-hold, refund and staff-security changes, and #198's bulk refunds on event cancellation;
    - provision the notification key and back it up separately;
    - verify reliable Redis and real email acceptance.

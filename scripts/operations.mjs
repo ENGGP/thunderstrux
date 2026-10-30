@@ -266,6 +266,8 @@ async function acquireLock(ctx) {
 }
 
 async function deploy(ctx) {
+  // DEF-065: compose lets this be empty, and a job that queues a notice with a money step then rolls it back.
+  if (!ctx.rehearsal && !parseEnv(await readFile(ctx.envFile, "utf8")).EMAIL_FROM) throw new Error("Set EMAIL_FROM in the env file");
   const url = assertHttpLoopbackUrl(required("--url"));
   const release = option("--release", `local-${Date.now()}`);
   if (!/^[a-zA-Z0-9._-]{3,80}$/.test(release)) throw new Error("Invalid release identifier");

@@ -22,8 +22,8 @@ function zodErrorDetails(error: ZodError): ApiErrorDetail[] {
   }));
 }
 
-// Reads at most maxBytes, stopping before buffering the rest; bad JSON throws SyntaxError.
-export async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
+// Reads at most maxBytes, stopping before buffering the rest.
+async function readBody(request: Request, maxBytes: number) {
   if (Number(request.headers.get("content-length") ?? 0) > maxBytes) throw new RequestBodyTooLargeError();
   let length = 0;
   const chunks: Uint8Array[] = [];
@@ -35,7 +35,8 @@ export async function readJsonBody(request: Request, maxBytes: number): Promise<
         if (next.done) break;
         length += next.value.length;
         if (length > maxBytes) {
-          await reader.cancel();
+          // Not awaited: on a clone, cancel only settles once the other branch is cancelled too.
+          void reader.cancel().catch(() => undefined);
           throw new RequestBodyTooLargeError();
         }
         chunks.push(next.value);
@@ -44,7 +45,20 @@ export async function readJsonBody(request: Request, maxBytes: number): Promise<
       reader.releaseLock();
     }
   }
-  return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+// Bad JSON throws SyntaxError.
+export async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
+  return JSON.parse(await readBody(request, maxBytes));
+}
+
+// For routes that need the body as text. Null when it's larger than maxBytes.
+export function readBodyUpTo(request: Request, maxBytes: number): Promise<string | null> {
+  return readBody(request, maxBytes).catch((error) => {
+    if (error instanceof RequestBodyTooLargeError) return null;
+    throw error;
+  });
 }
 
 export async function parseJsonBody(request: Request): Promise<ParseJsonResult> {

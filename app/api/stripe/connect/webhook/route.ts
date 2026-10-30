@@ -12,6 +12,7 @@ import {
 } from "@/lib/stripe";
 import { reconcilePayoutEvent } from "@/lib/payouts/payouts";
 import { notifyPayoutAccountChanged } from "@/lib/stripe/connect";
+import { readWebhookBody } from "@/lib/stripe/webhook-body";
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -30,7 +31,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
   }
 
-  const rawBody = await request.text();
+  const body = await readWebhookBody(request, "stripe_connect");
+  if (body.refused) return body.refused;
+  const { rawBody } = body;
   let stripe: Stripe;
   let webhookSecret: string;
 

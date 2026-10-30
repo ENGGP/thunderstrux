@@ -5,6 +5,7 @@ import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
 import { getStripe, getStripeAccountsWebhookSecret, isLiveStripeKey, StripeConfigurationError } from "@/lib/stripe";
 import { refreshConnectedAccount } from "@/lib/stripe/connect";
+import { readWebhookBody } from "@/lib/stripe/webhook-body";
 
 // PAY-023: the Accounts v2 event destination ("Your account" scope). Its events
 // are thin: each names an account that changed, which is re-read. Payouts and
@@ -30,7 +31,9 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
   if (!signature) return signatureFailure("missing_signature");
 
-  const rawBody = await request.text();
+  const body = await readWebhookBody(request, "stripe_accounts");
+  if (body.refused) return body.refused;
+  const { rawBody } = body;
   let stripe: Stripe;
   let webhookSecret: string;
   try {

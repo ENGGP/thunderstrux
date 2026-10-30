@@ -63,6 +63,9 @@ type EnforceRateLimitInput = {
   required?: boolean;
 };
 
+// A campus shares one public address, so a rush looks like one client. Per-address
+// limits here only stop floods (DEF-066); the per-email, per-token and per-account
+// limits stop abuse of one target.
 const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   asset_upload: { limit: 20, windowSeconds: 3600, failureMode: "closed" },
   asset_delete: { limit: 30, windowSeconds: 600, failureMode: "closed" },
@@ -71,10 +74,10 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   // DEBT-002: one account from many addresses. High enough that a member never meets it;
   // at worst someone else's guesses lock the account for an hour.
   login_email: { limit: 30, windowSeconds: 60 * 60, failureMode: "closed" },
-  login_ip_global: { limit: 50, windowSeconds: 10 * 60, failureMode: "closed" },
-  signup_ip: { limit: 25, windowSeconds: 60 * 60, failureMode: "closed" },
+  login_ip_global: { limit: 500, windowSeconds: 10 * 60, failureMode: "closed" },
+  signup_ip: { limit: 250, windowSeconds: 60 * 60, failureMode: "closed" },
   signup_email: { limit: 3, windowSeconds: 60 * 60, failureMode: "closed" },
-  account_token_ip: { limit: 50, windowSeconds: 600, failureMode: "closed" },
+  account_token_ip: { limit: 500, windowSeconds: 600, failureMode: "closed" },
   account_token_digest: { limit: 10, windowSeconds: 600, failureMode: "closed" },
   account_security_change: { limit: 5, windowSeconds: 3600, failureMode: "closed" },
   organisation_create: {
@@ -101,16 +104,17 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   staff_invite_email: { limit: 3, windowSeconds: 3600, failureMode: "closed" },
   staff_mfa_setup: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
   staff_mfa_verify: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" },
-  guest_email_ip: { limit: 20, windowSeconds: 60 * 60, failureMode: "closed" },
+  guest_email_ip: { limit: 200, windowSeconds: 60 * 60, failureMode: "closed" },
   guest_email_address: { limit: 3, windowSeconds: 60 * 60, failureMode: "closed" },
-  guest_token_ip: { limit: 50, windowSeconds: 600, failureMode: "closed" },
+  guest_token_ip: { limit: 500, windowSeconds: 600, failureMode: "closed" },
   guest_token_digest: { limit: 10, windowSeconds: 600, failureMode: "closed" },
   // Spreadsheet downloads of orders and attendees carry buyer emails (UI-018).
   data_export: { limit: 20, windowSeconds: 60 * 60, failureMode: "closed" },
   // "Contact {society}" takes no session: per address and society, and per sender (DEBT-002).
   society_enquiry: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
-  // A ticket code read on the event or checkout page, per address and event, so codes can't be guessed by trying them.
-  ticket_code_check: { limit: 30, windowSeconds: 10 * 60, failureMode: "open" }
+  // A ticket code read on the event or checkout page, per address and event, so codes can't be guessed by
+  // trying them. Each buyer on a shared code link spends two or more reads, so a campus needs this many.
+  ticket_code_check: { limit: 600, windowSeconds: 10 * 60, failureMode: "open" }
 };
 
 const REDIS_CONNECT_TIMEOUT_MS = 1_500;

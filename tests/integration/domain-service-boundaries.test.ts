@@ -122,7 +122,7 @@ describe("domain service boundaries", () => {
   test("webhooks verify their raw signed body before reconciliation", async () => {
     expectInOrder(await source("app/api/payments/webhook/route.ts"), [
       'request.headers.get("stripe-signature")',
-      "request.text()",
+      'readWebhookBody(request, "payments")',
       "getStripe()",
       "stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)",
       "settleCheckoutSession(session"

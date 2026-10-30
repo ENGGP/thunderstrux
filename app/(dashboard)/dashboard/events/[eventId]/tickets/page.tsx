@@ -68,7 +68,7 @@ export default async function OrganiserEventTicketsPage({
         initialTickets={payload.tickets}
         timeZone={event.timeZone}
       />
-      <p className="text-sm text-ink-soft">Guests show with &ldquo;guest&rdquo; before their email. Each check-in or undo records who did it and when.</p>
+      <p className="text-sm text-ink-soft">Guests are marked &ldquo;guest&rdquo;. Each check-in or undo records who did it and when.</p>
     </DashboardShell>
   );
 }

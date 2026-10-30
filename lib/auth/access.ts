@@ -37,8 +37,10 @@ export class StaffMfaRequiredError extends OrganisationAccessError {
   }
 }
 
-async function requireCurrentStaffMfa(user: { id: string; mfaSessionId?: string }) {
-  if (mfaEnforcementMode() === "off") return;
+// Door volunteers (`check_in_staff`) are exempt, as at Humanitix and Luma: the
+// role sees attendee names and admits tickets, no emails, orders or money.
+async function requireCurrentStaffMfa(user: { id: string; mfaSessionId?: string }, staffRole?: OrganisationStaffRole | null) {
+  if (mfaEnforcementMode() === "off" || staffRole === "check_in_staff") return;
   try {
     await requireStaffMfa(user.id, mfaGrantDigest(user.mfaSessionId));
   } catch (error) {
@@ -132,7 +134,7 @@ export async function requireCurrentOrganisationAccount() {
   }
 
   const user = await requireAuthenticatedUser();
-  await requireCurrentStaffMfa(user);
+  await requireCurrentStaffMfa(user, organisation.staffRole);
 
   return organisation;
 }
@@ -380,7 +382,7 @@ export async function requireOrganisationPermission(
     throw new OrganisationAccessError("Insufficient staff permissions");
   }
 
-  await requireCurrentStaffMfa(user);
+  await requireCurrentStaffMfa(user, staffRole);
 
   const organisation = await prisma.organisation.findUniqueOrThrow({
     where: { id: organisationId },

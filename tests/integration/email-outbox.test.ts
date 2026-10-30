@@ -230,6 +230,11 @@ describe("ticket email outbox", () => {
           body: expect.stringContaining("automatic-outbox@example.com")
         })
       );
+      // Each ticket's QR code goes as an inline PNG its html cites: Gmail drops data: images.
+      const sent = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      const ticket = await prisma.ticket.findFirstOrThrow({ where: { orderId: order.id } });
+      expect(sent.attachments).toEqual([{ filename: `ticket-${ticket.id.slice(-6).toUpperCase()}.png`, content: expect.any(String), content_id: `ticket-${ticket.id}` }]);
+      expect(sent.html).toContain(`<img src="cid:ticket-${ticket.id}"`);
       await expect(
         prisma.order.findUniqueOrThrow({
           where: { id: order.id },

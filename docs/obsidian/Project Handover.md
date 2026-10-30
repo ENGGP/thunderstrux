@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-29
+last-reviewed: 2026-10-30
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Issue and Defect Register]]", "[[Pre-hosting Candidate]]", "[[Evidence Ledger]]", "[[Project Handover 2026-10-25]]"]
@@ -54,6 +54,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-30: the preview was deployed at `d133734` (#226; backup `ops-preview-2026-10-30T03-27-51-803Z.dump` first; 72 migrations, adding those of #222, #225 and #226); readiness answers 200 locally and on `thunderstrux.mistayu.com`, and the six workers run the release's ops image. `MFA_ENFORCEMENT_MODE` is still `off`.
 - 2026-10-30: #228 moves societies' Stripe accounts to Accounts v2 (PAY-023): created and read through v2, readiness capability by capability, manual payouts through Balance Settings, account changes as v2 thin events at `/api/stripe/accounts/webhook` (`STRIPE_ACCOUNTS_WEBHOOK_SECRET`). Existing accounts keep working unchanged. No migration. Before deploying it anywhere, the owner creates that event destination (step 5).
 - 2026-10-30: #229 closes DEBT-001 and DEBT-002: dead code removed (including `autoprefixer` and the `tsconfig.json` rewrite), check-in scoped to the event (`?eventId=`), a per-account sign-in limit, safer staff-invite wording, compensation checked against the seller snapshot, and members-only access checked again at fulfilment. No migration.
+- 2026-10-30: #230 adds QR tickets and door scanning, after a comparison with Humanitix, Eventbrite and Luma, which all scan at the door. Each active ticket shows a QR code of its id on the ticket face and in the ticket email (an inline PNG: Gmail and Outlook for Windows drop `data:` images). The check-in console gains Scan QR codes (`BarcodeDetector`, else `@zxing/library`'s QR reader for iOS), which checks a ticket in as it reads it; `Permissions-Policy` now allows the camera for the site. The check-in list shows buyer emails only to roles with `orders:read` (SEC-038), and `check_in_staff` needs no staff authenticator under `enforce` (accepted risk SEC-039; [[Authentication and Dashboard Access#Staff MFA]]). No migration.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.

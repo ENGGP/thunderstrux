@@ -112,7 +112,7 @@ export default async function GuestOrderPage({ params }: { params: Promise<{ ord
               <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">Sent to {order.buyerEmailSnapshot}</p>
             </section>
           ) : null}
-          {going ? <p className="text-sm text-ink-soft">At the door, give your name or show the ticket reference from your email.</p> : null}
+          {going ? <p className="text-sm text-ink-soft">At the door, show the QR code from your ticket email, or give your name or the ticket reference.</p> : null}
           {/* A free registration can be released until the event starts (EVT-005). */}
           {projection === "free" && count > 0 && event.startTime > new Date() && !event.cancelledAt ? (
             <ReleaseRegistration event={event.title} guestCsrf={sessionId ? guestCsrfToken(sessionId) : undefined} orderId={order.id} ticketCount={count} />

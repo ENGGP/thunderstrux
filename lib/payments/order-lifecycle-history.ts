@@ -49,6 +49,7 @@ export function orderLifecycleLabel(type: OrderLifecycleEventType) {
     external_refund_recorded: "Refund made in Stripe recorded",
     external_refund_reviewed: "Refund made in Stripe reviewed",
     free_cancelled: "Free registration cancelled",
+    tickets_cancelled: "Tickets cancelled without a refund",
     email_enqueued: "Ticket email queued",
     email_retry_scheduled: "Ticket email retry scheduled",
     email_provider_accepted: "Email provider accepted message",

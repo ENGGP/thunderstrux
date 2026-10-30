@@ -81,6 +81,15 @@ describe("what is held", () => {
     expect((await heldMoney(fixture.organisationId, "acct_someone_else", now)).total).toBe(0);
   });
 
+  // DEBT-002: Stripe takes a refund's share back from the society pro rata, so that part leaves the hold.
+  test("a refund made here, ticket by ticket, leaves the society's part of the rest held", async () => {
+    const fixture = await society();
+    const order = await ticketSale(fixture, 5 * day); // $20.00 less the $1.64 fee: $18.36 held
+    await prisma.refundRequest.create({ data: { orderId: order.id, organisationId: fixture.organisationId, amount: 1000, reason: "One of two tickets refunded.", operationKey: unique("refund"), status: "succeeded", resolvedAt: now } });
+    // floor(1000 × 1836 / 2000) = 918 was taken back from the society.
+    expect((await heldMoney(fixture.organisationId, fixture.accountId, now)).total).toBe(1836 - 918);
+  });
+
   test("a lost dispute's money stays held until its transfer reversal settles (T53)", async () => {
     const fixture = await society();
     const order = await ticketSale(fixture, -10 * day, { disputeStatus: "lost" });

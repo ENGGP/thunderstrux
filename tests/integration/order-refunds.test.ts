@@ -2,6 +2,8 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import { POST as refundRoute } from "@/app/api/orders/[orderId]/refunds/route";
 import { prisma } from "@/lib/db";
+import { decryptNotification } from "@/lib/email/notification-crypto";
+import { ticketReference } from "@/lib/format";
 import { lockOrder } from "@/lib/payments/order-lifecycle";
 import { processCompensationRefundBatch } from "@/lib/payments/compensation-refunds";
 import { OrderRefundError, openOrderRefund, orderReference, processOrderRefundBatch, reconcileOrderRefundEvent, requestOrderRefund } from "@/lib/payments/order-refunds";
@@ -381,5 +383,107 @@ describe("refunds that fail or come back", () => {
     expect(await prisma.ticket.count({ where: { orderId: fixture.order.id, validity: "active" } })).toBe(2);
     expect(alerts(error)).toEqual([expect.objectContaining({ refundRequestId: pending.refundRequestId, reason: "provider_refund_failed", code: "declined" })]);
     expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: "refund-" } } })).toBe(0);
+  });
+});
+
+// DEBT-002, as Humanitix: pick tickets, refund all or part of their price, and
+// choose whether they stop working and whether the buyer is emailed.
+describe("ticket-by-ticket refunds", () => {
+  const emailed = async (eventKey: string) => {
+    const job = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: { startsWith: eventKey } } });
+    return (decryptNotification(job.encryptedPayload, job.id) as { text: string; subject: string });
+  };
+  const tickets = (orderId: string) => prisma.ticket.findMany({ where: { orderId }, orderBy: { issueSequence: "asc" }, select: { id: true, validity: true, validityReason: true } });
+  const stock = (fixture: Awaited<ReturnType<typeof paidOrder>>) => prisma.ticketType.findUniqueOrThrow({ where: { id: fixture.event.ticketTypes[0].id } }).then((type) => type.quantity);
+  // Stripe answers with the amount it was asked for.
+  const stripeRefunds = (fixture: Awaited<ReturnType<typeof paidOrder>>) =>
+    stripe.create.mockImplementation(async (params: { amount: number; metadata: { refundRequestId: string } }) => ({ ...providerRefund(fixture, params.metadata.refundRequestId), amount: params.amount }));
+
+  test("one ticket of two: Stripe gets its price, it stops working and goes back on sale, the other stays, and the buyer is told; the last one makes the order Refunded", async () => {
+    const fixture = await paidOrder();
+    stripeRefunds(fixture);
+    const before = await stock(fixture);
+    const [first, second] = await tickets(fixture.order.id);
+    await requestOrderRefund({ ...refundInput(fixture), selection: { ticketIds: [first.id], amount: 1500, cancelTickets: true, notifyBuyer: true, buyerMessage: "Sorry you can't make it." } });
+
+    expect(stripe.create.mock.calls[0][0]).toMatchObject({ amount: 1500, reverse_transfer: true, refund_application_fee: true });
+    expect(await tickets(fixture.order.id)).toEqual([{ ...first, validity: "void", validityReason: "refunded" }, second]);
+    expect(await stock(fixture)).toBe(before + 1);
+    const request = await prisma.refundRequest.findFirstOrThrow({ where: { orderId: fixture.order.id } });
+    expect(request).toMatchObject({ amount: 1500, ticketIds: [first.id], cancelsTickets: true, notifyBuyer: true, buyerMessage: "Sorry you can't make it." });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: null });
+    const email = await emailed(`refund/${request.id}`);
+    expect(email.text).toContain(`We've refunded $15.00 of your order`);
+    expect(email.text).toContain(`Ticket ${ticketReference(first.id)} no longer works; your other ticket still works.`);
+    expect(email.text).toContain(`"Sorry you can't make it."`);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.refund_requested", targetId: fixture.order.id } }))
+      .toMatchObject({ metadata: expect.objectContaining({ amount: 1500, tickets: [ticketReference(first.id)], cancelsTickets: true }) });
+
+    // The rest: Stripe already holds the first refund, which is exactly what was recorded.
+    stripe.list.mockResolvedValue({ data: [{ id: request.stripeRefundId, status: "succeeded", amount: 1500, metadata: { refundRequestId: request.id } }] });
+    expect(await requestOrderRefund(refundInput(fixture))).toMatchObject({ status: "succeeded" });
+    expect(stripe.create.mock.calls[1][0]).toMatchObject({ amount: 1500 });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
+    expect((await tickets(fixture.order.id)).every((ticket) => ticket.validity === "void")).toBe(true);
+  });
+
+  test("a lowered amount that keeps the tickets valid emails no one when asked; amounts past the tickets' value and tickets not this order's are refused before Stripe", async () => {
+    const fixture = await paidOrder();
+    stripeRefunds(fixture);
+    const [first, second] = await tickets(fixture.order.id);
+    await requestOrderRefund({ ...refundInput(fixture), selection: { ticketIds: [first.id], amount: 500, cancelTickets: false, notifyBuyer: false } });
+    expect(stripe.create.mock.calls[0][0]).toMatchObject({ amount: 500 });
+    expect((await tickets(fixture.order.id)).map((ticket) => ticket.validity)).toEqual(["active", "active"]);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: null });
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: "refund/" }, recipient: "buyer@example.com" } })).toBe(0);
+
+    stripe.retrieve.mockClear();
+    const refused = (selection: Parameters<typeof requestOrderRefund>[0]["selection"]) => requestOrderRefund({ ...refundInput(fixture), selection });
+    // One ticket is worth $15.00, and $25.00 of the order is left.
+    await expect(refused({ ticketIds: [second.id], amount: 1501, cancelTickets: true, notifyBuyer: true })).rejects.toMatchObject({ kind: "invalid_selection" });
+    await expect(refused({ ticketIds: [first.id, second.id], amount: 2501, cancelTickets: true, notifyBuyer: true })).rejects.toMatchObject({ kind: "invalid_selection" });
+    await expect(refused({ ticketIds: [second.id, second.id], amount: 100, cancelTickets: true, notifyBuyer: true })).rejects.toMatchObject({ kind: "invalid_selection" });
+    const other = await paidOrder();
+    const [foreign] = await tickets(other.order.id);
+    await expect(refused({ ticketIds: [foreign.id], amount: 100, cancelTickets: true, notifyBuyer: true })).rejects.toMatchObject({ kind: "invalid_selection" });
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("$0 cancels the picked tickets without a refund or a Stripe call; the route checks its fields", async () => {
+    const fixture = await paidOrder();
+    const before = await stock(fixture);
+    const [first, second] = await tickets(fixture.order.id);
+    setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
+    const post = (body: Record<string, unknown>) => refundRoute(
+      jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/refunds`, { reason: "The buyer asked to give one ticket back.", confirmation: orderReference(fixture.order.id), ...body }),
+      routeContext({ orderId: fixture.order.id })
+    );
+    expect((await post({ ticketIds: [second.id], amount: 0, cancelTickets: false, notifyBuyer: true })).status).toBe(400);
+    expect((await post({ ticketIds: [second.id] })).status).toBe(400);
+    expect((await post({ amount: 500 })).status).toBe(400);
+
+    const response = await post({ ticketIds: [second.id], amount: 0, cancelTickets: true, notifyBuyer: true, buyerMessage: "See you next term." });
+    expect(response.status).toBe(200);
+    expect(await parseJsonResponse(response)).toEqual({ status: "cancelled" });
+    expect(stripe.retrieve).not.toHaveBeenCalled();
+    expect(await prisma.refundRequest.count({ where: { orderId: fixture.order.id } })).toBe(0);
+    expect(await tickets(fixture.order.id)).toEqual([first, { ...second, validity: "void", validityReason: "cancelled" }]);
+    expect(await stock(fixture)).toBe(before + 1);
+    expect(await prisma.orderLifecycleEvent.findFirstOrThrow({ where: { orderId: fixture.order.id, type: "tickets_cancelled" } })).toMatchObject({ source: "staff_action", actorUserId: fixture.owner.user.id });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.tickets_cancelled", targetId: fixture.order.id } }))
+      .toMatchObject({ metadata: expect.objectContaining({ tickets: [ticketReference(second.id)] }) });
+    const email = await emailed(`tickets-cancelled/${fixture.order.id}/`);
+    expect(email.text).toContain("No refund was made. Your other ticket still works.");
+    expect(email.text).toContain(`"See you next term."`);
+    // A ticket already cancelled can't be picked again.
+    expect((await post({ ticketIds: [second.id], amount: 0, cancelTickets: true, notifyBuyer: false })).status).toBe(400);
+  });
+
+  test("without tickets, a refund takes what is left after refunds made here, as event cancellation does", async () => {
+    const fixture = await paidOrder();
+    await prisma.refundRequest.create({ data: { orderId: fixture.order.id, organisationId: fixture.owner.organisation.id, amount: 1200, reason: "Refunded one ticket earlier.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
+    const request = await prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, actor: null, reason: "The event was cancelled." }));
+    expect(request).toMatchObject({ amount: 1800, cancelsTickets: true, notifyBuyer: true });
+    expect(request.ticketIds).toHaveLength(2);
   });
 });

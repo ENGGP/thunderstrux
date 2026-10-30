@@ -10,7 +10,7 @@ import { logWarn } from "@/lib/ops/logger";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { cancelFreeOrder } from "@/lib/payments/free-cancellation";
 import { OrderRefundError, openOrderRefund, type RefundFailureKind } from "@/lib/payments/order-refunds";
-import { releasedEarlyShare } from "@/lib/payouts/release";
+import { releasedEarlyShare, shareRefundsSelect } from "@/lib/payouts/release";
 import { getStripe } from "@/lib/stripe";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -101,7 +101,7 @@ async function cancelInTransaction(
       where: { eventId: owned.id, status: "paid" },
       orderBy: { id: "asc" },
       select: {
-        id: true, paymentKind: true, cancelledAt: true, totalAmount: true, externalRefundedAmount: true, feeAmount: true, paidAt: true, sellerName: true, ...buyerIdentitySelect,
+        id: true, paymentKind: true, cancelledAt: true, totalAmount: true, externalRefundedAmount: true, feeAmount: true, paidAt: true, sellerName: true, ...buyerIdentitySelect, ...shareRefundsSelect,
         user: { select: { email: true, firstName: true, lastName: true, displayName: true } },
         _count: { select: { tickets: { where: { validity: { not: "void" } } } } }
       }
@@ -127,11 +127,12 @@ async function cancelInTransaction(
         outcome = "Nothing was charged, so there is nothing to refund, and your registration is cancelled.";
       } else {
         try {
-          await openOrderRefund(tx, { organisationId, orderId: order.id, actor, reason: orderReason });
+          // Whatever is left: an order partly refunded already gets the rest (DEBT-002).
+          const request = await openOrderRefund(tx, { organisationId, orderId: order.id, actor, reason: orderReason });
           refundsQueued += 1;
           const released = releasedEarlyShare(order, now);
           if (released > 0) { early.amount += released; early.orders += 1; }
-          outcome = `Your ${formatMoney(order.totalAmount - order.externalRefundedAmount)} refund has started. We'll email you again when it goes through; banks usually take 5 to 10 business days after that.`;
+          outcome = `Your ${formatMoney(request.amount)} refund has started. We'll email you again when it goes through; banks usually take 5 to 10 business days after that.`;
         } catch (error) {
           if (!(error instanceof OrderRefundError)) throw error;
           skipped.push({ orderId: order.id, reason: error.kind });

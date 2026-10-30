@@ -80,7 +80,7 @@ The original supplied-plan baseline was assessed on 4 October 2026 with T01-T04 
 | Merchandise | Society-scoped product catalogue, variations, bounded cart, stock, pickup-only, status/returns/refund review | Shipping rates/carriers, dropshipping, mixed carts with tickets or memberships |
 | Calendar | **Organisation** month/week/agenda view of real events, drafts for authorised staff, timezone-safe schedule | Recurrence engine, Google Calendar synchronisation, consumer personal calendar API, public-calendar feed |
 | Checkout | Stripe Checkout for payable orders; entirely server-side free fulfilment for zero-total orders; pre-payment email verification for guests | Client-side payment success, forced registration for eligible guest tickets, manual bank-transfer settlement |
-| Refunds | Provider-verified whole-order refunds in initial increment, dispute/uncertainty review, historical attendance retained | Self-service instant partial refunds, auto-restocking refunded tickets or merchandise |
+| Refunds | Provider-verified staff refunds, by order or (since DEBT-002) ticket by ticket, dispute/uncertainty review, historical attendance retained | Self-service instant partial refunds, auto-restocking refunded tickets or merchandise |
 | AI | OpenClaw controlled, permission-filtered read/action proposals with human confirmation | Unrestricted SQL, autonomous refunds, live account transfers or unsupervised destructive writes |
 
 The member-facing **"My upcoming events" list** is [P/I] and is a sensible companion to the organiser calendar. An interactive personal calendar and downloadable `.ics` files are [E] unless separately approved; design their placement but do not present them as delivered.
@@ -418,7 +418,7 @@ A checked-in ticket can be checked out only with the permitted existing action. 
 
 ### 4.13 J13 - Finance officer refunds or reviews compensation
 
-`Finance capability -> Orders -> purchase detail -> verify status/charge -> Refund whole order -> read consequences -> reason + MFA/confirmation -> processing -> provider-verified full refund -> ticket void/membership revoke or merch financial state update + notice.`
+`Finance capability -> Orders -> purchase detail -> verify status/charge -> Refund or cancel tickets -> pick tickets and amount -> read consequences -> reason + MFA/confirmation -> processing -> provider-verified full refund -> ticket void/membership revoke or merch financial state update + notice.`
 
 A provider-uncertain result displays **Refund processing - verifying result**, not "Refunded". A **manual refund flag** is not proof a refund happened. For disputes, partial external refunds and paid-but-unfulfilled cases, show review/support workflow and suspend conflicting actions. Preserve historical check-in facts and provider transaction references. Buyer support page states current real status and applicable policy; a "Request refund" customer contact route is [D] unless the corresponding service is added.
 

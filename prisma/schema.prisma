@@ -587,6 +587,12 @@ model RefundRequest {
   lastErrorCode         String?
   lastProviderEventAt   DateTime?
   resolvedAt            DateTime?
+  // DEBT-002, as Humanitix: the tickets this refund is for (empty: every ticket, as
+  // whole-order refunds were), whether it cancels them, and whether the buyer is emailed.
+  ticketIds             String[]            @default([])
+  cancelsTickets        Boolean             @default(true)
+  notifyBuyer           Boolean             @default(true)
+  buyerMessage          String?
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
   order                 Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
@@ -935,6 +941,7 @@ enum OrderLifecycleEventType {
   external_refund_recorded
   external_refund_reviewed
   free_cancelled
+  tickets_cancelled
   email_enqueued
   email_retry_scheduled
   email_provider_accepted

@@ -1,7 +1,7 @@
 import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
 import { buyerIdentitySelect, retainedBuyerIdentity } from "@/lib/orders/buyer-identity";
 import { queueManualRefundNotice } from "@/lib/payments/compensation-notices";
-import { latestRefundRequest } from "@/lib/payments/order-refunds";
+import { latestRefundRequest, refundedSoFar } from "@/lib/payments/order-refunds";
 import { latestPurchaseDispute } from "@/lib/payments/purchase-disputes";
 import { purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import type { OrderStatus } from "@prisma/client";
@@ -116,13 +116,17 @@ export async function getOrganisationOrderDetail(
       tickets: {
         select: {
           id: true,
+          issueSequence: true,
+          validity: true,
+          validityReason: true,
+          checkedInAt: true,
           ticketType: {
             select: {
               name: true
             }
           }
         },
-        orderBy: { createdAt: "asc" }
+        orderBy: { issueSequence: "asc" }
       }
     }
   });
@@ -136,6 +140,8 @@ export async function getOrganisationOrderDetail(
     user: retainedBuyerIdentity(order),
     projection: ticketOrderProjection(order),
     latestRefund: await latestRefundRequest(prisma, order.id),
+    // DEBT-002: refunds made here so far, for "Partly refunded" and what is left.
+    refundedAmount: await refundedSoFar(prisma, { orderId: order.id, commerceOrderId: null }),
     latestDispute: await latestPurchaseDispute(order.id),
     purchasedTicketType: purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name),
     stripeDashboardUrl: getStripeSessionDashboardUrl(order.stripeSessionId)

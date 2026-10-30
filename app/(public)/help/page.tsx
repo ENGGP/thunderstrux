@@ -19,7 +19,7 @@ export default function HelpPage() {
         <p>Contact the society that runs it: use Contact on its event or society page, or on your order. It emails the society, which replies to you. Its refund policy is on its page.</p>
       </PolicySection>
       <PolicySection title="Refunds">
-        <p>Refunds are up to the society, under the policy on its page. A refund is always for the whole order and goes back to the card you paid with; refunded tickets stop working. To give up a free ticket, ask the society to cancel it.</p>
+        <p>Refunds are up to the society, under the policy on its page. A refund can be for the whole order or for some tickets, and goes back to the card you paid with; refunded tickets stop working unless the society keeps them valid. To give up a free ticket, ask the society to cancel it.</p>
       </PolicySection>
       <PolicySection title="Bought without an account?">
         <p><Link className={link} href="/guest/recover">Find your purchase</Link> with the email you used at checkout, and we&apos;ll send a link to each order.</p>

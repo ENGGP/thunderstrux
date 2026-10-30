@@ -165,7 +165,7 @@ describe("History (T38)", () => {
       ...["opened", "open", "won", "lost"].map((outcome) => `${family}.dispute_${outcome}`),
       `${family}.dispute_funds_recovered`, `${family}.compensation_refund_queued`
     ]),
-    "order.manual_refund_marked", "order.dispute_resolved", "order.free_cancelled", "order.guest_claimed", "order.ticket_email_queued",
+    "order.manual_refund_marked", "order.dispute_resolved", "order.free_cancelled", "order.tickets_cancelled", "order.guest_claimed", "order.ticket_email_queued",
     "order.compensation_refund_review_required", "order.compensation_refund_started", "order.compensation_refund_confirmed",
     ...["refunded", "refund_failed", "refund_pending", "review_required"].map((state) => `order.compensation_${state}`),
     "email_outbox.requeued", "notification.requeued", "order.list_exported", "order.attendees_exported",
@@ -255,6 +255,12 @@ describe("History (T38)", () => {
     expect(facts("merchandise_order.return_recorded", { quantity: 2, restocked: false })).toEqual([{ label: "Items", value: "2" }, { label: "Back in stock", value: "No" }]);
     expect(facts("order.dispute_resolved", { reason: "Bank sided with us", ticketCount: 2 })).toEqual([{ label: "Reason", value: "“Bank sided with us”" }, { label: "Tickets", value: "2 valid again" }]);
     expect(facts("order.free_cancelled", { ticketCount: 1 })).toEqual([{ label: "Tickets", value: "1 no longer valid" }]);
+    // DEBT-002: refunds and cancellations name their tickets.
+    expect(facts("order.refund_requested", { amount: 1000, reason: "Can't attend.", tickets: ["ABC123"], cancelsTickets: false }))
+      .toEqual([{ label: "Amount", value: "$10.00" }, { label: "Reason", value: "“Can't attend.”" }, { label: "Tickets", value: "ABC123 (kept valid)" }]);
+    expect(facts("order.tickets_cancelled", { reason: "Gave one back.", tickets: ["ABC123", "DEF456"] }))
+      .toEqual([{ label: "Reason", value: "“Gave one back.”" }, { label: "Tickets", value: "ABC123, DEF456" }]);
+    expect(facts("order.external_refund_reviewed", { refundedOutside: 1500, tickets: ["ABC123"] })).toEqual([{ label: "Tickets", value: "ABC123 (cancelled)" }]);
     expect(facts("order.external_refund_recorded", { refundedOutside: 500, totalAmount: 3000 })).toEqual([{ label: "Refunded", value: "$5.00", was: "$30.00 paid" }]);
   });
 

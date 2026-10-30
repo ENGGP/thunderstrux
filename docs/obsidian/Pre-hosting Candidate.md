@@ -99,7 +99,7 @@ What a society pays per ticket on a one-ticket order when it absorbs the fee, wi
 ## Exclusions
 
 - **The assistant (T35–T37):** deferred by the founder.
-- **Product limits:** Australian dollars only, fixed-term memberships, pickup only, whole-order refunds only (no partial or buyer self-service refunds), and the other exclusions in section 11 of `docs/MVP_DELIVERY_PLAN_T10_T46.md`.
+- **Product limits:** Australian dollars only, fixed-term memberships, pickup only, staff refunds by order or, for tickets, ticket by ticket (no buyer self-service refunds), and the other exclusions in section 11 of `docs/MVP_DELIVERY_PLAN_T10_T46.md`.
 - **Not claimed:** live payouts, hosted operation, inbox delivery, certified accessibility. Screen-reader and real-zoom passes come before the pilot ([[Accessibility Review]]).
 - **Legal:** no Terms of Service; the Privacy page is a plain-language summary, not a reviewed policy (LEGAL-001).
 

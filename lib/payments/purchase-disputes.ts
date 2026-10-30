@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { markCommerceExternalRefundReviewed } from "@/lib/commerce/payment-recovery";
 import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
+import { ticketReference } from "@/lib/format";
+import { refundedSoFar } from "@/lib/payments/order-refunds";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
@@ -179,8 +181,9 @@ export async function restoreDisputedTickets(input: { organisationId: string; or
 
 // refund.* events that name neither a Thunderstrux refund nor a compensation
 // job: a refund made in the Stripe dashboard. The order records the total
-// Stripe has refunded outside Thunderstrux. A full refund voids the tickets;
-// a partial one is flagged for staff, never treated as full.
+// Stripe has refunded outside Thunderstrux. Once that and the refunds made here
+// cover the whole order, the tickets are voided; short of that it is flagged for
+// staff, who pick the tickets it covered (DEBT-002), never treated as full.
 export async function reconcileExternalRefundEvent(event: Stripe.Event) {
   const refund = event.data.object as Stripe.Refund;
   if (await journalled(event.id)) return;
@@ -210,7 +213,8 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
     });
     if (outside === order.externalRefundedAmount && unreversed === order.externalUnreversedAmount) return false;
     // shortcut: a later drop (a refund that failed after succeeding) is recorded but voided tickets stay void; staff review it in Stripe.
-    const full = outside >= order.totalAmount && order.status === "paid";
+    const refundedHere = await refundedSoFar(tx, { orderId, commerceOrderId: null });
+    const full = outside + refundedHere >= order.totalAmount && order.status === "paid";
     await tx.order.update({
       where: { id: orderId },
       data: { externalRefundedAmount: outside, externalUnreversedAmount: unreversed, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded" } : {}) }
@@ -240,7 +244,9 @@ export function alertOutsideRefundNotReversed(purchase: { orderId: string } | { 
 
 // Staff confirm they have looked at a partial refund made outside
 // Thunderstrux, on a ticket order or (PAY-003) a membership or merchandise order.
-export async function markExternalRefundReviewed(input: { organisationId: string; orderId: string; actor: { id: string } }) {
+// On a ticket order they may name the tickets it covered (DEBT-002): those stop
+// working and go back on sale; none picked keeps every ticket valid.
+export async function markExternalRefundReviewed(input: { organisationId: string; orderId: string; actor: { id: string }; ticketIds?: string[] }) {
   const commerce = await prisma.commerceOrder.findFirst({ where: { id: input.orderId, organisationId: input.organisationId }, select: { id: true } });
   if (commerce) {
     const outcome = await prisma.$transaction(async (tx) => {
@@ -250,7 +256,10 @@ export async function markExternalRefundReviewed(input: { organisationId: string
     if (outcome === "nothing") throw new PurchaseReviewError("not_allowed", "There is no partial refund to review on this order");
     return;
   }
+  const picked = [...new Set(input.ticketIds ?? [])];
   await prisma.$transaction(async (tx) => {
+    // Tickets going back on sale lock the event and ticket type before the order.
+    if (picked.length) await lockOrderInventory(tx, input.orderId);
     if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new PurchaseReviewError("not_found", "Order was not found");
     const order = await tx.order.findFirst({
       where: { id: input.orderId, event: { organisationId: input.organisationId } },
@@ -261,11 +270,18 @@ export async function markExternalRefundReviewed(input: { organisationId: string
     if (order.externalRefundedAmount === 0 || order.refundStatus === "refunded") {
       throw new PurchaseReviewError("not_allowed", "There is no partial refund to review on this order");
     }
-    await tx.order.update({ where: { id: input.orderId }, data: { externalRefundReviewedAt: new Date() } });
-    await appendOrderLifecycleEvent(tx, { orderId: input.orderId, type: "external_refund_reviewed", source: "staff_action", actorUserId: input.actor.id, facts: { amount: order.externalRefundedAmount } });
+    const now = new Date();
+    if (picked.length) {
+      const valid = await tx.ticket.findMany({ where: { orderId: input.orderId, id: { in: picked }, validity: "active" }, select: { id: true } });
+      if (valid.length !== picked.length || picked.length !== (input.ticketIds ?? []).length) throw new PurchaseReviewError("not_allowed", "Pick tickets of this order that are still valid");
+      await tx.ticket.updateMany({ where: { id: { in: picked } }, data: { validity: "void", validityReason: "refunded_outside", validityChangedAt: now } });
+      await returnTicketsToSale(tx, input.orderId, picked.length);
+    }
+    await tx.order.update({ where: { id: input.orderId }, data: { externalRefundReviewedAt: now } });
+    await appendOrderLifecycleEvent(tx, { orderId: input.orderId, type: "external_refund_reviewed", source: "staff_action", actorUserId: input.actor.id, facts: { amount: order.externalRefundedAmount, ticketCount: picked.length } });
     await tx.auditLog.create({ data: {
       organisationId: input.organisationId, actorUserId: input.actor.id, action: "order.external_refund_reviewed", targetType: "Order", targetId: input.orderId,
-      metadata: { refundedOutside: order.externalRefundedAmount }
+      metadata: { refundedOutside: order.externalRefundedAmount, tickets: picked.map(ticketReference) }
     } });
   });
 }

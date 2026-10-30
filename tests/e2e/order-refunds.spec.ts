@@ -1,19 +1,31 @@
 import { test, expect, prisma, login, selectStaffContext } from "./fixtures";
 import { createOrder } from "@/tests/helpers/test-data";
 
-test("finance staff see the refund confirmation, a wrong reference refunds nothing, and a refunded order says so", async ({ page, data }) => {
+test("finance staff pick tickets to refund or cancel, a wrong reference changes nothing, a ticket cancelled without a refund stops working, and a refunded order says so", async ({ page, data }) => {
   await prisma.organisationStaff.update({ where: { id: data.staff.id }, data: { role: "finance_manager" } });
   const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, status: "paid", paidAt: new Date(), quantity: 2, unitPrice: 1500 });
-  await prisma.order.update({ where: { id: order.id }, data: { sellerStripeAccountId: "acct_e2e_refunds" } });
+  await prisma.order.update({ where: { id: order.id }, data: { sellerStripeAccountId: "acct_e2e_refunds", buyerEmailSnapshot: data.member.email, buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "purchase" } });
+  await prisma.ticket.createMany({ data: [1, 2].map((issueSequence) => ({ issueSequence, orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id })) });
+  const [first, second] = await prisma.ticket.findMany({ where: { orderId: order.id }, orderBy: { issueSequence: "asc" } });
+  const reference = (id: string) => id.slice(-6).toUpperCase();
 
   await login(page, data.manager.email);
   await selectStaffContext(page, data.organisation.id);
   await page.goto(`/dashboard/orders/${order.id}`);
-  await page.getByRole("button", { name: "Refund whole order" }).click();
-  const dialog = page.getByRole("dialog", { name: /Refund \$30\.00 to/ });
+  // DEBT-002, as Humanitix: every valid ticket picked, for their full price, cancelled and emailed.
+  await page.getByRole("button", { name: "Refund or cancel tickets" }).click();
+  const dialog = page.getByRole("dialog", { name: /Refund or cancel .+ tickets\?/ });
+  await expect(dialog.getByRole("checkbox", { name: new RegExp(reference(first.id)) })).toBeChecked();
+  await expect(dialog.getByLabel("Refund amount")).toHaveValue("30.00");
   await expect(dialog).toContainText("Anyone already checked in stays in the attendance record.");
+  // Picking fewer tickets resets the amount to their value; staff may lower it.
+  await dialog.getByRole("checkbox", { name: new RegExp(reference(first.id)) }).uncheck();
+  await expect(dialog.getByLabel("Refund amount")).toHaveValue("15.00");
+  await dialog.getByLabel("Refund amount").fill("10");
+  await expect(dialog).toContainText(`Refund $10.00 and cancel ${reference(second.id)}.`);
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/order-refund-dialog-${width}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -21,9 +33,22 @@ test("finance staff see the refund confirmation, a wrong reference refunds nothi
   // Refused before Stripe: nothing is recorded and the tickets stay valid.
   await dialog.getByLabel("Reason").fill("Buyer asked for a refund.");
   await dialog.getByLabel(/^Type .+ to confirm$/).fill("WRONG1");
-  await dialog.getByRole("button", { name: "Refund $30.00" }).click();
+  await dialog.getByRole("button", { name: "Confirm" }).click();
   await expect(dialog.getByRole("alert")).toContainText("to confirm");
   expect(await prisma.refundRequest.count({ where: { orderId: order.id } })).toBe(0);
+
+  // $0 cancels without a refund, so it needs no Stripe: the ticket stops working at once.
+  await dialog.getByLabel("Refund amount").fill("0");
+  await expect(dialog).toContainText(`No refund and cancel ${reference(second.id)}.`);
+  await dialog.getByLabel(/^Type .+ to confirm$/).fill(reference(order.id));
+  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await expect(dialog).toBeHidden();
+  const tickets = page.getByRole("heading", { name: "Tickets", exact: true }).locator("..");
+  await expect(tickets.getByRole("listitem").filter({ hasText: reference(second.id) })).toContainText("Cancelled");
+  await expect(tickets.getByRole("listitem").filter({ hasText: reference(first.id) })).toContainText("Valid");
+  await expect(page.getByText("Tickets cancelled without a refund")).toBeVisible();
+  expect(await prisma.refundRequest.count({ where: { orderId: order.id } })).toBe(0);
+  await page.screenshot({ path: "test-results/order-ticket-cancelled-1280.png", fullPage: true });
 
   // A refund Stripe confirmed (recorded here directly: the browser campaign has no Stripe).
   await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });
@@ -33,7 +58,7 @@ test("finance staff see the refund confirmation, a wrong reference refunds nothi
   } });
   await page.goto(`/dashboard/orders/${order.id}`);
   await expect(page.getByText("Refunded $30.00")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Refund whole order" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Refund or cancel tickets" })).toHaveCount(0);
   await page.goto("/dashboard/orders");
   // The list renders a phone copy too; check the one on screen.
   await expect(page.getByText("Refunded", { exact: true }).filter({ visible: true }).first()).toBeVisible();
@@ -58,7 +83,7 @@ test("a disputed order pauses refunds until staff restore it, and a partial refu
   await page.goto(`/dashboard/orders/${disputed.id}`);
   await expect(page.getByText("The buyer has disputed this payment")).toBeVisible();
   await expect(page.getByRole("link", { name: "Open the dispute in Stripe" })).toHaveAttribute("href", `https://dashboard.stripe.com/test/disputes/dp_e2e_${disputed.id}`);
-  await expect(page.getByRole("button", { name: "Refund whole order" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Refund or cancel tickets" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Resend tickets" })).toBeDisabled();
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -75,7 +100,7 @@ test("a disputed order pauses refunds until staff restore it, and a partial refu
   await dialog.getByRole("button", { name: "Restore tickets" }).click();
   await expect(page.getByText("Stripe closed the dispute in the society's favour")).toHaveCount(0);
   expect(await prisma.ticket.count({ where: { orderId: disputed.id, validity: "active" } })).toBe(2);
-  await expect(page.getByRole("button", { name: "Refund whole order" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refund or cancel tickets" })).toBeVisible();
 
   const partial = await paidOrder();
   await prisma.order.update({ where: { id: partial.id }, data: { externalRefundedAmount: 1500 } });

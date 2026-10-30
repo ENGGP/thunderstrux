@@ -4,9 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { TextArea, TextInput } from "@/components/ui/input";
+import { MoneyInput, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { fetchJson, fetchWithCsrf, getClientErrorMessage } from "@/lib/client/api";
+import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
+
+// A ticket that can still be refunded or cancelled, as the staff order page lists it.
+type RefundableTicket = { id: string; reference: string; type: string; checkedIn: boolean };
 
 export function OrderDetailActions({
   refund = null,
@@ -35,9 +39,9 @@ export function OrderDetailActions({
   disputed?: boolean;
   // Set when this staff member may cancel this free registration; cancelled once it has been.
   cancelFree?: { buyer: string; ticketCount: number; needsCode: boolean; cancelled: boolean } | null;
-  // Set when this staff member may refund this order through Stripe.
-  // rest: part of the order was already refunded in Stripe; this refunds what is left.
-  refund?: { amount: string; rest?: boolean; buyer: string; reference: string; ticketCount: number; needsCode: boolean } | null;
+  // Set when this staff member may refund or cancel this order's tickets (DEBT-002, as
+  // Humanitix): `left` is what can still be refunded, in cents, and `tickets` the valid ones.
+  refund?: { left: number; unitPrice: number; buyer: string; reference: string; needsCode: boolean; tickets: RefundableTicket[] } | null;
   // Marking a refund made outside Thunderstrux, or confirming one made in Stripe (SEC-036), asks for a
   // fresh authenticator code unless staff MFA is off.
   markNeedsCode?: boolean;
@@ -52,6 +56,24 @@ export function OrderDetailActions({
   const [refundForm, setRefundForm] = useState({ reason: "", confirmation: "", mfaCode: "" });
   const [refundError, setRefundError] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  // The refund dialog: every valid ticket picked, for all it can refund, cancelled and emailed.
+  const [picked, setPicked] = useState<string[]>(() => refund?.tickets.map((ticket) => ticket.id) ?? []);
+  const capFor = (count: number) => (refund ? Math.min(count * refund.unitPrice, refund.left) : 0);
+  const [amount, setAmount] = useState(() => formatMoneyInput(refund?.tickets.length ? capFor(refund.tickets.length) : refund?.left ?? 0));
+  const [cancelTickets, setCancelTickets] = useState(true);
+  const [notifyBuyer, setNotifyBuyer] = useState(true);
+  const [buyerMessage, setBuyerMessage] = useState("");
+  // With no valid ticket left, the dialog refunds what is left (the whole-order path).
+  const byTicket = Boolean(refund?.tickets.length);
+  const cap = byTicket ? capFor(picked.length) : refund?.left ?? 0;
+  const cents = byTicket ? parseMoneyInput(amount) : refund?.left ?? 0;
+
+  // Picking tickets resets the amount to their value, as Humanitix does; staff may lower it.
+  function pick(id: string, on: boolean) {
+    const next = refund ? refund.tickets.map((ticket) => ticket.id).filter((ticketId) => (ticketId === id ? on : picked.includes(ticketId))) : [];
+    setPicked(next);
+    setAmount(formatMoneyInput(capFor(next.length)));
+  }
 
   // One form and error for both dialogs: only one is ever open.
   async function cancelRegistration() {
@@ -73,18 +95,34 @@ export function OrderDetailActions({
   }
 
   async function refundOrder() {
+    if (byTicket) {
+      const problem = picked.length === 0 ? "Pick at least one ticket."
+        : cents === null ? "Enter the refund as dollars and cents, like 12.50."
+        : cents > cap ? `Refund at most ${formatMoney(cap)} for the tickets picked.`
+        : cents === 0 && !cancelTickets ? "Refund an amount, or cancel the tickets."
+        : "";
+      if (problem) {
+        setRefundError(problem);
+        return;
+      }
+    }
     setIsBusy(true);
     setRefundError("");
     try {
       await fetchJson(`/api/orders/${orderId}/refunds`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reason: refundForm.reason, confirmation: refundForm.confirmation, ...(refund?.needsCode ? { mfaCode: refundForm.mfaCode } : {}) })
+        body: JSON.stringify({
+          reason: refundForm.reason,
+          confirmation: refundForm.confirmation,
+          ...(refund?.needsCode ? { mfaCode: refundForm.mfaCode } : {}),
+          ...(byTicket ? { ticketIds: picked, amount: cents, cancelTickets, notifyBuyer, ...(notifyBuyer && buyerMessage.trim() ? { buyerMessage } : {}) } : {})
+        })
       });
       setRefunding(false);
       router.refresh();
     } catch (failure) {
-      setRefundError(getClientErrorMessage(failure, "The refund couldn't start. Nothing was refunded."));
+      setRefundError(getClientErrorMessage(failure, "That didn't go through. Nothing was refunded or cancelled."));
     } finally {
       setIsBusy(false);
     }
@@ -238,13 +276,14 @@ export function OrderDetailActions({
         <>
         {refund ? (
           <div className={block}>
-            <p className="font-semibold text-ink">Refund through Stripe</p>
+            <p className="font-semibold text-ink">Refund or cancel tickets</p>
             <p className="text-sm text-ink-soft">
-              {refund.rest ? `Refunds the ${refund.amount} not yet refunded in Stripe.` : "Refunds the whole order to the buyer’s card."} Owners and finance managers can refund.
+              {refund.left > 0 ? `${formatMoney(refund.left)} can still be refunded to the buyer’s card.` : "Everything paid has been refunded."}{" "}
+              {byTicket ? "Pick tickets, then refund all or part of their price, or cancel them without a refund." : "No ticket is still valid."} Owners and finance managers can do this.
             </p>
             <div>
               <Button disabled={isBusy} onClick={() => setRefunding(true)} type="button" variant="danger">
-                {refund.rest ? "Refund the rest" : "Refund whole order"}
+                {byTicket ? "Refund or cancel tickets" : "Refund the rest"}
               </Button>
             </div>
           </div>
@@ -298,25 +337,65 @@ export function OrderDetailActions({
       {refund ? (
         <ConfirmDialog
           busy={isBusy}
-          confirmLabel={`Refund ${refund.amount}`}
+          cancelLabel="Go back"
+          // A fixed label, so the button keeps its size as staff change the amount; the summary says what happens.
+          confirmLabel={byTicket ? "Confirm" : `Refund ${formatMoney(refund.left)}`}
           destructive
           onCancel={() => setRefunding(false)}
           onConfirm={refundOrder}
           open={refunding}
-          title={`Refund ${refund.amount} to ${refund.buyer}?`}
+          title={byTicket ? `Refund or cancel ${refund.buyer}’s tickets?` : `Refund ${formatMoney(refund.left)} to ${refund.buyer}?`}
         >
-          <div className="grid gap-3">
+          <div className="grid gap-4">
             {refundError ? <Notice role="alert" tone="danger">{refundError}</Notice> : null}
-            <ul className="grid list-disc gap-1 pl-5">
-              <li>{refund.ticketCount === 1 ? "The ticket stops" : `All ${refund.ticketCount} tickets stop`} working straight away.</li>
-              <li>Anyone already checked in stays in the attendance record.</li>
-              <li>Their places go back on sale, unless the event is cancelled.</li>
-              <li>The refund comes out of the society&apos;s Stripe balance, and the Thunderstrux fee is returned too.</li>
-            </ul>
+            {byTicket ? (
+              <>
+                <fieldset className="grid gap-1">
+                  <legend className="mb-1 text-sm font-semibold text-ink">Tickets</legend>
+                  {refund.tickets.map((ticket) => (
+                    <label className="flex min-h-11 items-center gap-3" key={ticket.id}>
+                      <input checked={picked.includes(ticket.id)} className="size-5 shrink-0 accent-brand" onChange={(event) => pick(ticket.id, event.target.checked)} type="checkbox" />
+                      <span className="text-ink [overflow-wrap:anywhere]">
+                        <span className="font-mono">{ticket.reference}</span> · {ticket.type}
+                        {ticket.checkedIn ? <span className="text-ink-soft"> · Checked in</span> : null}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+                <MoneyInput hint={`Up to ${formatMoney(cap)} for the tickets picked. $0 cancels them without a refund.`} label="Refund amount" onChange={setAmount} value={amount} />
+                <label className="flex items-start gap-3">
+                  <input checked={cancelTickets} className="mt-1 size-5 shrink-0 accent-brand" onChange={(event) => setCancelTickets(event.target.checked)} type="checkbox" />
+                  <span className="grid">
+                    <span className="font-semibold text-ink">Cancel these tickets</span>
+                    <span className="text-sm text-ink-soft">They stop working and their places go back on sale, unless the event is cancelled. Anyone already checked in stays in the attendance record.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3">
+                  <input checked={notifyBuyer} className="mt-1 size-5 shrink-0 accent-brand" onChange={(event) => setNotifyBuyer(event.target.checked)} type="checkbox" />
+                  <span className="grid">
+                    <span className="font-semibold text-ink">Email the buyer</span>
+                    <span className="text-sm text-ink-soft">Says what was refunded and which tickets stop working.</span>
+                  </span>
+                </label>
+                {notifyBuyer ? (
+                  <TextArea hint="Optional. Added to the email. Up to 500 characters." label="Note to the buyer" maxLength={500} onChange={(event) => setBuyerMessage(event.target.value)} rows={2} value={buyerMessage} />
+                ) : null}
+              </>
+            ) : (
+              <p>No ticket is still valid, so this refunds the {formatMoney(refund.left)} left and the buyer is emailed.</p>
+            )}
+            <p className="text-sm text-ink-soft">A refund comes out of the society&apos;s Stripe balance, and the Thunderstrux fee on it is returned too.</p>
             <TextInput hint="Recorded in the order history. 8 to 500 characters." label="Reason" maxLength={500} onChange={(event) => setRefundForm({ ...refundForm, reason: event.target.value })} value={refundForm.reason} />
             <TextInput autoComplete="off" label={`Type ${refund.reference} to confirm`} onChange={(event) => setRefundForm({ ...refundForm, confirmation: event.target.value })} value={refundForm.confirmation} />
             {refund.needsCode ? (
               <TextInput autoComplete="one-time-code" inputMode="numeric" label="Authenticator code" onChange={(event) => setRefundForm({ ...refundForm, mfaCode: event.target.value })} value={refundForm.mfaCode} />
+            ) : null}
+            {byTicket && picked.length && cents !== null ? (
+              <p className="font-semibold text-ink" aria-live="polite">
+                {cents > 0 ? `Refund ${formatMoney(cents)}` : "No refund"}
+                {cancelTickets ? ` and cancel ${refund.tickets.filter((ticket) => picked.includes(ticket.id)).map((ticket) => ticket.reference).join(", ")}` : "; the tickets stay valid"}.
+                {notifyBuyer ? ` ${refund.buyer} gets an email.` : " No email to the buyer."}
+              </p>
             ) : null}
           </div>
         </ConfirmDialog>

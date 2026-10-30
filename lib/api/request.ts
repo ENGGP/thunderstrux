@@ -35,7 +35,8 @@ async function readBody(request: Request, maxBytes: number) {
         if (next.done) break;
         length += next.value.length;
         if (length > maxBytes) {
-          await reader.cancel();
+          // Not awaited: on a clone, cancel only settles once the other branch is cancelled too.
+          void reader.cancel().catch(() => undefined);
           throw new RequestBodyTooLargeError();
         }
         chunks.push(next.value);

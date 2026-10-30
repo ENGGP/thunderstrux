@@ -166,6 +166,7 @@ Run app-side commands in the dev container: `docker compose -f docker-compose.ym
 | `pnpm test:integration` | `scripts/run-integration-tests.mjs` | Inside the baseline runner, or a container with a `_test` database. |
 | `pnpm test:e2e` | `scripts/run-e2e.mjs` (mode `test`, run ID `browser-…`) | Isolated browser campaign. |
 | `pnpm test:e2e:cleanup` | `scripts/run-e2e.mjs cleanup <run-id>` | Remove a finished or interrupted run's resources. |
+| `pnpm docker:cleanup` | `scripts/docker-cleanup.mjs` (`--apply`) | Show what runs left in Docker; `--apply` removes it and caps the build cache ([[E2E and Staging Payments#Docker cleanup]]). |
 | `pnpm test:payments:staging` | `scripts/run-e2e.mjs staging` | Stripe test-mode staging run, interactive terminal. |
 | `pnpm test:e2e:guards` | `node --test tests/runner/*.test.mjs` | Runner and readiness-contract guards. |
 | `pnpm security:audit` | `pnpm audit --audit-level high` | Dependency audit (includes dev dependencies; must exit 0). |

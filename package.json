@@ -50,6 +50,7 @@
     "docker:restart": "node scripts/recreate-dev-app.mjs",
     "docker:build": "docker compose build app",
     "docker:hosted:check": "node scripts/check-hosted-compose.mjs",
+    "docker:cleanup": "node scripts/docker-cleanup.mjs",
     "docker:rebuild": "node scripts/recreate-dev-app.mjs",
     "docker:migrate": "docker compose exec app pnpm prisma:migrate",
     "docker:seed": "docker compose exec app pnpm seed",

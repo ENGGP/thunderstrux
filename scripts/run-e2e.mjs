@@ -5,6 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 import { assertRunId, assertOnlyStagingRun, assertOwnedManifest } from './e2e-guards.mjs';
+import { removeUntaggedRunImages } from './docker-cleanup.mjs';
 import { describeReleasePair, gitRevision } from './release-pair.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -84,6 +85,7 @@ async function cleanup() {
   if (remaining) throw new Error('Run containers remain after cleanup');
   // Only the tags go; Docker's build cache keeps later builds fast. A run that never built has none.
   await command(['image', 'rm', ...Object.values(images)], true).catch(() => undefined);
+  await removeUntaggedRunImages(args => command(args, true)).catch(() => undefined);
   manifest.cleanupComplete = true;
   await save();
   await unlink(runtimeFile).catch(error => { if (error.code !== 'ENOENT') throw error; });

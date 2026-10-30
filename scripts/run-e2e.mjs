@@ -134,8 +134,9 @@ try {
     await createRuntime();
     console.log(`E2E run: ${runId}`);
     await compose('build', 'app', 'migration', 'tests');
-    // Tools use this as their default image, and any recent build serves them, so runs can share it.
-    await command(['tag', images.tests, 'thunderstrux-e2e-tests:local']);
+    // Tools default to this image and any recent build serves them, so the run doesn't need it:
+    // two runs tagging at the same moment collide, and that mustn't fail either run.
+    await command(['tag', images.tests, 'thunderstrux-e2e-tests:local'], true).catch(() => undefined);
     // T44d: the evidence names exactly what ran: the revision, whether the tree
     // matched it, both release images within budget, and the migration chain.
     const treeMatchesRevision = await new Promise((done) => spawn('git', ['diff', '--quiet', 'HEAD'], { cwd: root, stdio: 'ignore' }).on('close', (code) => done(code === 0)));

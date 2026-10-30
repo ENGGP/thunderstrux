@@ -40,4 +40,33 @@ describe("security limits (T39)", () => {
     expect(await prisma.mfaGrant.count({ where: { userId: user.id } })).toBe(1);
     expect((await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: outbox.id } })).authTokenId).toBeNull();
   });
+
+  test("a finished notification, with its plain-text recipient, goes 30 days after it finished, in bounded batches; unfinished ones stay (SEC-043)", async () => {
+    const now = new Date();
+    const long = new Date(now.getTime() - tokenRetentionMs - 60_000);
+    const recent = new Date(now.getTime() - 60_000);
+    const notice = (status: string, updatedAt: Date, eventKey = unique("notice")) =>
+      prisma.notificationOutbox.create({ data: { eventKey, recipient: "closed@example.com", template: "business_notice", privacy: "security", encryptedPayload: "x", status, updatedAt } });
+    const kept = await Promise.all([notice("sent", recent), notice("failed", recent), notice("cancelled", recent), notice("pending", long), notice("processing", long)]);
+    await Promise.all(["sent", "cancelled", "failed"].map((status) => notice(status, long)));
+
+    expect(await cleanUpExpiredTokens(now, 2)).toMatchObject({ notifications: 2 });
+    expect(await cleanUpExpiredTokens(now, 2)).toMatchObject({ notifications: 1 });
+    expect(await cleanUpExpiredTokens(now, 2)).toMatchObject({ notifications: 0 });
+    expect((await prisma.notificationOutbox.findMany({ select: { id: true } })).map((row) => row.id).sort()).toEqual(kept.map((row) => row.id).sort());
+  });
+
+  test("a Stripe deadline notice stays until 30 days after the deadline, because its row is all that stops it being announced again (SEC-043)", async () => {
+    const now = new Date();
+    const long = new Date(now.getTime() - tokenRetentionMs - 60_000);
+    const key = (deadline: Date) => `stripe-deadline/org_synthetic/${deadline.toISOString()}`;
+    const notice = (eventKey: string) =>
+      prisma.notificationOutbox.create({ data: { eventKey, recipient: "manager@example.com", template: "business_notice", privacy: "security", encryptedPayload: "x", status: "sent", updatedAt: long } });
+    const standing = await notice(key(new Date(now.getTime() + 60 * 86_400_000)));
+    const justPassed = await notice(key(new Date(now.getTime() - 86_400_000)));
+    await notice(key(new Date(now.getTime() - tokenRetentionMs - 86_400_000)));
+
+    expect(await cleanUpExpiredTokens(now)).toMatchObject({ notifications: 1 });
+    expect((await prisma.notificationOutbox.findMany({ select: { id: true } })).map((row) => row.id).sort()).toEqual([standing.id, justPassed.id].sort());
+  });
 });

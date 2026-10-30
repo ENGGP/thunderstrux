@@ -26,7 +26,7 @@ sources: [lib/email/ticket-delivery.ts, lib/email/ticket-email-outbox.ts, lib/em
 | Notification producers | `lib/events/event-changes.ts`, `lib/memberships/reminders.ts`, `lib/payments/compensation-notices.ts`, and the services in the matrix below |
 | Failed notifications UI | `components/settings/failed-notifications.tsx` on `/dashboard/notifications` |
 | Mail capture for isolated runs | `scripts/mail-capture.mjs` |
-| Tests | `tests/integration/email-outbox.test.ts`, `tests/integration/notification-outbox.test.ts`, `tests/integration/notification-matrix.test.ts`, `tests/e2e/notifications.spec.ts` |
+| Tests | `tests/integration/email-outbox.test.ts`, `tests/integration/notification-outbox.test.ts`, `tests/integration/notification-matrix.test.ts`, `tests/integration/notification-worker-steps.test.ts`, `tests/e2e/notifications.spec.ts` |
 
 ## Ticket email
 
@@ -54,25 +54,26 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 | `failed` | Attempts exhausted; never claimed again without a requeue |
 
 - **One automatic job per order:** the insert is `ON CONFLICT DO NOTHING` on the partial unique index `EmailOutbox_automatic_order_unique`, so a replayed webhook queues nothing.
-- **Worker** (`processTicketEmailOutboxBatch`, `pnpm email:outbox:process`, worker `email-outbox`): claims due `pending` jobs and `processing` jobs older than the processing timeout, `FOR UPDATE SKIP LOCKED`, in `nextAttemptAt` order. An automatic job for an order already marked sent is closed as sent without sending. A job whose order `ticketEmailRefusal` refuses (refunded, cancelled or disputed while the email waited) is closed `failed` with the reason as `lastError`, without sending, retrying or alerting; it logs `email_outbox.job.refused` (DEF-058).
+- **Worker** (`processTicketEmailOutboxBatch`, `pnpm email:outbox:process`, worker `email-outbox`): claims due `pending` jobs and `processing` jobs older than the processing timeout, `FOR UPDATE SKIP LOCKED`, in `nextAttemptAt` order. A run takes batches until nothing is due or `emailRunBudgetMs` (45 seconds) has passed, so a rush is worked through, not 25 a minute (DEF-067). An automatic job for an order already marked sent is closed as sent without sending. A job whose order `ticketEmailRefusal` refuses (refunded, cancelled or disputed while the email waited) is closed `failed` with the reason as `lastError`, without sending, retrying or alerting; it logs `email_outbox.job.refused` (DEF-058).
 - **Send:** provider key `ticket-email/{EmailOutbox.id}` (plus `/attempt` for guest orders).
 - **Success:** job `sent`, then `Order.ticketEmailSentAt` (automatic) or `ticketEmailResentAt` (manual), clears `ticketEmailLastError`, appends `email_provider_accepted`, metric `email_outbox_jobs_sent_total`.
 - **Failure:** `attempts + 1`. Below the maximum the job goes back to `pending` after an escalating delay: 1 min, 5 min, 15 min, 1 h, then 6 h (`backoffSeconds`). It records `lastError` and `Order.ticketEmailLastError`, appends `email_retry_scheduled` (or `email_delivery_exhausted` at the maximum, status `failed`), logs `email_outbox.job.failed` and emits metric `email_outbox_jobs_failed_total`. Exhaustion also alerts `email_outbox_retry_exhausted`.
+- **Rate limit (DEF-068):** a 429 is not a failure, because the provider took nothing. The job and the rest of its batch go back to `pending` unsent, no attempt used, due again after the `Retry-After` wait ([[#Providers]]), and the run ends (`email_outbox.rate_limited`). No lifecycle event or `Order.ticketEmailLastError`. A ticket job has no retry window, so under a lasting 429 (a spent quota) it keeps waiting and `queue_backlog_high` fires. A retry past 24 hours that follows an unanswered attempt could send a second email, which beats no tickets.
 - **Fencing:** every finalising write requires the claim's `processingToken`, so a timed-out worker can't overwrite a newer claim. A failed local finalisation leaves the lease to be reclaimed and resent with the same key; it never proves the provider didn't send.
 - Email failure never rolls back payment, stock, the hold or tickets.
 - **Tuning** (positive integers, else the default): `EMAIL_OUTBOX_BATCH_SIZE` (25), `EMAIL_OUTBOX_MAX_ATTEMPTS` (5), `EMAIL_OUTBOX_PROCESSING_TIMEOUT_SECONDS` (600).
-- Each batch logs `email_outbox.batch.processed` with `claimed`, `sent`, `retried`, `failed`, `skipped`.
+- Each run logs `email_outbox.batch.processed` with `claimed`, `sent`, `retried`, `failed`, `skipped`, `rateLimited`.
 
 ## Notifications
 
 `NotificationOutbox` carries every other email. `enqueueNotification(tx, …)` runs inside the business transaction; the worker calls the provider after commit.
 
-- **Unique intent:** `(eventKey, recipient, templateVersion)`. A repeat insert does nothing, so each key below is sent at most once per recipient.
+- **Unique intent:** `(eventKey, recipient, templateVersion)`. A repeat insert does nothing, so each key below is sent at most once per recipient. A key holds only while its row exists ([[#Retention]]).
 - **Privacy:** `business_notice`, `event_cancelled` and `society_enquiry` jobs (`businessTemplates`) are `business` and must name a society; every other template is `security` and must not. Security jobs never show to societies and have no tenant requeue.
 - **Frozen content:** subject, text, HTML and sender (`EMAIL_FROM`) are rendered once at enqueue and encrypted with AES-256-GCM (`encryptNotification`). The key is `NOTIFICATION_ENCRYPTION_KEY`, 32 bytes in base64; the job id is the authenticated data, and decryption requires the full 16-byte tag. Readiness (`lib/ops/readiness.ts`) and every token-issuing path refuse a missing or invalid key. Hosted services read it through `NOTIFICATION_ENCRYPTION_KEY_FILE`.
 - **Links** (`payload.link`) must be on the configured app origin, `https` (or `http` on localhost), without credentials.
 - **Statuses** (a string with a database check): `pending`, `processing`, `sent`, `failed`, `cancelled`.
-- **Claim:** due `pending` and `processing` older than 10 minutes, `FOR UPDATE SKIP LOCKED`, 25 a batch, with a rotating `processingToken`.
+- **Claim:** due `pending` and `processing` older than 10 minutes, `FOR UPDATE SKIP LOCKED`, 25 a batch, with a rotating `processingToken`. Jobs with an `authTokenId` or `guestAccessGrantId` come first, then `nextAttemptAt` order: someone is waiting on a sign-in or guest link, and it can expire behind a bulk event-change email (DEF-067). A run takes batches until nothing is due or `emailRunBudgetMs` has passed.
 - **Before sending** the worker cancels a job (`lastError` in brackets) when:
   - a staff invite is no longer current: version, recipient, expiry, accepted or revoked, issuer authority, or an owner invite from a non-owner (`obsolete_invite`);
   - an `auth/` job has lost its token, or the token is consumed, invalidated, expired, for a disabled user, on an old `authVersion` or email, for another recipient or template, or a verification of an already verified email (`obsolete_token`);
@@ -81,6 +82,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 
   Producers also cancel superseded or consumed intents themselves (`superseded`, `consumed`). A provider call already in flight can't be recalled; its token still fails to redeem.
 - **Send:** provider key `notification/{id}`. Failure retries after 1 min, 5 min, 15 min, 1 h or 6 h. It becomes `failed` at 5 attempts (`provider_unavailable`), or 23 hours after the first attempt (`provider_review_required`), because Resend keys last 24 hours and a later resend could duplicate. An unreadable payload fails at once (`invalid_payload`). Every move to `failed` alerts `notification_outbox_retry_exhausted` with the job id, template, privacy and reason, never the recipient or message.
+- **Rate limit (DEF-068):** a 429 hands the attempt back, keeps `firstAttemptAt` and sets `lastError` to `provider_rate_limited`. The job and the rest of its batch go back to `pending` unsent, due again after the `Retry-After` wait ([[#Providers]]), and the run ends (`notification_outbox.rate_limited`). Because `firstAttemptAt` stays, a job the provider keeps refusing still fails for review at 23 hours and is never sent past that window. Only the job that reached the provider starts that clock; the rest of the batch doesn't.
 - Provider acceptance (`acceptedAt`) is not inbox delivery.
 
 ## Templates
@@ -104,12 +106,12 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 
 ## Notification worker
 
-`pnpm notifications:process` (worker `notifications`), every run in order. A failed queueing step logs and sets a failing exit code, but sending still runs.
+`pnpm notifications:process` (worker `notifications`), every run in order. A failed step before sending logs, alerts `notification_step_failed` (`step`: `event_changes`, `membership_notices` or `token_cleanup`, never its error, which can hold notice text) and sets a failing exit code, but sending still runs.
 
 1. **Event changes** (`fanOutEventChanges`): at most 5 pages of 100 holders. An edit to an event's start, end or location while it has active tickets records an `EventChange` in the edit's transaction. After `eventChangeDelayMs` (5 minutes), the worker emails every paid, fulfilled order with an active ticket, page by page after the change's cursor; each page's emails and cursor commit together, so a stopped run resumes. A newer edit replaces a change nobody has been emailed about and keeps its original "was"; changing it back sends nothing; a started change always finishes. Times use the society's zone. Members' copies link to My tickets, guests' have no link. Failure log: `notification_outbox.event_changes.failed`.
 2. **Membership notices** (`queueMembershipNotices`, at most 100): the renewal reminder 7 days before a membership ends (`renewalLeadMs`), if the member held it then, still wants reminders and has no later membership there; it names the society's next plan on sale. The expiry notice goes within a week after it ends, unless revoked or followed by a later membership; it states the last day in the society's zone. Neither extends a term. Failure log: `notification_outbox.membership_notices.failed`.
-3. **Token cleanup** (`cleanUpExpiredTokens`, `lib/security/token-cleanup.ts`): deletes auth tokens, guest grants and staff MFA grants 30 days after they expire, 500 of each per run (log `security.tokens.cleaned`, failure `security.tokens.cleanup_failed`).
-4. **Send** one batch (`notification_outbox.batch.processed` with `claimed`, `sent`, `retried`, `failed`, `skipped`, `cancelled`).
+3. **Token cleanup** (`cleanUpExpiredTokens`, `lib/security/token-cleanup.ts`): deletes auth tokens, guest grants and staff MFA grants 30 days after they expire, and finished notifications 30 days after they finished ([[#Retention]]), 500 of each per run (log `security.tokens.cleaned`, failure `security.tokens.cleanup_failed`).
+4. **Send** batches until nothing is due or the budget is spent (`notification_outbox.batch.processed` with `claimed`, `sent`, `retried`, `failed`, `skipped`, `cancelled`, `rateLimited`).
 
 **Preferences:** one switch, Membership renewal reminders, on by default (`User.renewalReminders`, `PATCH /api/me/notification-preferences`). Receipts, refunds, cancellations, pickups, event changes, expiry and security mail have no switch, and there is no marketing mail.
 
@@ -151,9 +153,26 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 - **Payment review** tells the buyer they have no tickets or items yet and what happens next: an automatic full refund, or the society's review. It carries no provider detail.
 - The ticket email, event changes and refunds go to the order's buyer capture, so a later account email change doesn't redirect them.
 
+## Retention
+
+`cleanUpExpiredTokens` deletes a `NotificationOutbox` row 30 days (`tokenRetentionMs`) after it reached `sent`, `cancelled` or `failed` (its `updatedAt`), 500 a run, because each row holds the recipient in plain text and closing an account doesn't touch it (SEC-043). `pending` and `processing` rows stay. `EmailOutbox` holds no address and isn't trimmed. A failed job also leaves Email delivery then; only `invalid_payload` jobs, which have no `firstAttemptAt`, could still be requeued that late, and they can't be read.
+
+A key stops a repeat only while its row exists, so each one needs something else behind it by then:
+
+| Keys | What stops a repeat once the row is gone |
+| --- | --- |
+| `auth/`, `guest/`, `account-security/`, `enquiry/`, `tickets-cancelled/`, `membership-receipt/`, `staff-invite/` | A new id (or invite version) per send; nothing issues an old one again |
+| `refund/`, `refund-returned/`, `refund-failed/`, `compensation-refund/`, `compensation-refund-returned/`, `refund-marked/`, `cancellation/`, `merchandise-cancelled/`, `merchandise-receipt/`, `merchandise-ready/`, `merchandise-collected/`, `membership-ended/`, `event-cancelled/` | One state change that can't happen twice on the request, job, order, grant or event |
+| `event-change/` | `EventChange.cursor` and `completedAt` |
+| `stripe-charges-paused/`, `stripe-payouts-paused/` | The flag going from on to off; the key holds the time, so it never deduped |
+| `stripe-payout-account/` | An audit row per Stripe event |
+| `payment-review/` | `requiresCompensationReview`, then Stripe's own limit: it keeps events for 30 days, so it can't redeliver one once this row is gone |
+| `membership-renewal/`, `membership-expired/` | `queueMembershipNotices` does look for the row, but each can be due for 7 days at most and a grant's `endsAt` never changes |
+| `stripe-deadline/` | Nothing but the row, and Stripe can set a deadline more than 30 days off. So these rows stay until 30 days after the deadline in their key |
+
 ## Providers
 
-- **Resend** over HTTP (`sendWithResend`): `POST https://api.resend.com/emails` with `RESEND_API_KEY`, `EMAIL_FROM` (frozen per notification), the `Idempotency-Key` header, `reply_to` for an enquiry, and a 15-second timeout. A missing key or sender throws `TicketEmailConfigurationError`. Non-2xx fails with the status and body; the stored error is cut to 500 characters.
+- **Resend** over HTTP (`sendWithResend`): `POST https://api.resend.com/emails` with `RESEND_API_KEY`, `EMAIL_FROM` (frozen per notification), the `Idempotency-Key` header, `reply_to` for an enquiry, and a 15-second timeout. A missing key or sender throws `TicketEmailConfigurationError`. A 429 (the per-second limit, or a daily or monthly quota) throws `EmailRateLimitError` with the wait from `Retry-After`, in seconds or as a date: a minute without one, at least 1 second, at most an hour. Any other non-2xx fails with the status and body; the stored error is cut to 500 characters.
 - **Mail capture:** isolated Docker runs set `THUNDERSTRUX_MAIL_CAPTURE_URL` to `http://mail-capture:8025/emails` (`scripts/mail-capture.mjs`, no published port, no disk). Only **notifications** go there, and only when `E2E_RUN_ID` is a `baseline-`, `browser-` or `staging-` run id; any other combination throws. Ticket emails always call Resend.
 - **Capture-only key:** those runs use `RESEND_API_KEY=re_capture_only`, so ticket emails fail and retry there; staging sends ticket emails through Resend's test sink with a real test key ([[E2E and Staging Payments]]).
 - Captured mail proves the queued intent and its text, not provider acceptance or inbox delivery.
@@ -162,7 +181,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 
 - Emails about an order go to its buyer capture (`buyerEmailSnapshot` and names), else the live account (`retainedBuyerIdentity`). Orders since purchase snapshots are captured at purchase.
 - Closure captures the current email and name onto orders that have none (`buyerIdentityProvenance = current_account_at_capture`), then anonymises the account to a `closed.invalid` address, which is never a delivery address.
-- Closure notices go to the former inbox. The account's auth tokens are deleted, so their queued emails cancel at send time (`obsolete_token`); old security intents stay as private records.
+- Closure notices go to the former inbox. The account's auth tokens are deleted, so their queued emails cancel at send time (`obsolete_token`). Closure doesn't touch `NotificationOutbox`: rows sent to the old address go after 30 days like every other ([[#Retention]]).
 - Rolling back to workers that read only `User.email` needs ticket delivery and contact flows paused first, or they would send to anonymised addresses.
 
 ## Staff invitations
@@ -182,7 +201,7 @@ Both requeue routes take a strict `{reason}` of 8 to 500 characters through `val
 ## Traps
 
 - Queue emails inside the business transaction; never call the provider inside one.
-- A new notification needs a stable, unique `eventKey` per recipient, or retries and replays send twice.
+- A new notification needs a stable, unique `eventKey` per recipient, or retries and replays send twice. If it can come due again more than 30 days later, the key isn't enough: give it its own guard and add it to [[#Retention]].
 - Don't put secrets or provider responses in `lastError`, logs or alerts; notification errors are generic so notice text never leaves the process.
 - A `business_notice` needs a society; anything else must not have one.
 

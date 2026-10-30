@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { enqueueNotification, claimNotificationJobs, processNotificationClaim, processNotificationBatch, requeueBusinessNotification } from "@/lib/email/notification-outbox";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { renderNotification } from "@/lib/email/templates";
+import { emailRunBudgetMs, sendWithResend } from "@/lib/email/ticket-delivery";
 import { POST as requeueRoute } from "@/app/api/notifications/[jobId]/requeue/route";
 import { POST as requeueBatchRoute } from "@/app/api/notifications/requeue/route";
 import { jsonRequest } from "@/tests/helpers/http";
@@ -146,6 +147,89 @@ describe("general notification outbox", () => {
     const owner = await createOrganisationAccount();
     setMockSession({ userId: owner.user.id, email: owner.user.email, accountRole: "organisation" });
     expect((await GET(new Request("http://localhost:3000/api/notifications?cursor=invalid"))).status).toBe(400);
+  });
+  describe("a rush (DEF-067, DEF-068)", () => {
+    const queueMany = async (count: number) => {
+      for (let index = 0; index < count; index += 1) await prisma.$transaction(tx => enqueueNotification(tx, { ...input(), eventKey: `rush/${index}` }));
+    };
+
+    test("a backlog larger than one batch drains in one run", async () => {
+      await queueMany(30); const fetch = provider();
+      expect(await processNotificationBatch()).toMatchObject({ claimed: 30, sent: 30, rateLimited: 0 });
+      expect(fetch).toHaveBeenCalledTimes(30);
+    });
+
+    test("a run stops claiming once its budget is spent; what it didn't claim stays pending for the next run", async () => {
+      await queueMany(27);
+      const realNow = Date.now.bind(Date);
+      let elapsed = 0;
+      vi.spyOn(Date, "now").mockImplementation(() => realNow() + elapsed);
+      vi.stubGlobal("fetch", vi.fn(async () => { elapsed = emailRunBudgetMs; return new Response('{"id":"synthetic-message"}', { status: 200 }); }));
+      expect(await processNotificationBatch()).toMatchObject({ claimed: 25, sent: 25 });
+      expect(await prisma.notificationOutbox.count({ where: { status: "pending", processingToken: null } })).toBe(2);
+    });
+
+    test("sign-in and guest links are claimed ahead of an older bulk email", async () => {
+      const user = await createMember();
+      const now = new Date();
+      const job = { recipient: user.email, template: "reset_password", privacy: "security", encryptedPayload: "x" };
+      const bulk = await prisma.notificationOutbox.create({ data: { ...job, eventKey: "bulk", nextAttemptAt: new Date(now.getTime() - 3600_000), createdAt: new Date(now.getTime() - 3600_000) } });
+      const expiresAt = new Date(now.getTime() + 3600_000);
+      const token = await prisma.authToken.create({ data: { tokenHash: "synthetic-hash", purpose: "reset_password", userId: user.id, email: user.email, authVersion: 0, expiresAt } });
+      const identity = await prisma.guestIdentity.create({ data: { email: "guest@example.com" } });
+      const grant = await prisma.guestAccessGrant.create({ data: { guestIdentityId: identity.id, purpose: "checkout", tokenDigest: "synthetic-digest", expiresAt } });
+      const signIn = await prisma.notificationOutbox.create({ data: { ...job, eventKey: "auth/synthetic", authTokenId: token.id } });
+      const guest = await prisma.notificationOutbox.create({ data: { ...job, eventKey: "guest/synthetic", guestAccessGrantId: grant.id } });
+      const links = await claimNotificationJobs(new Date(now.getTime() + 1000), 2);
+      expect(links.map(claim => claim.id).sort()).toEqual([signIn.id, guest.id].sort());
+      expect((await claimNotificationJobs(new Date(now.getTime() + 1000), 2)).map(claim => claim.id)).toEqual([bulk.id]);
+    });
+
+    test("a 429 uses no attempt, ends the run and hands the rest back unsent; the retry window still ends a job it keeps refusing", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      await queueMany(3);
+      const fetch = vi.fn(async () => new Response(JSON.stringify({ email: "private@example.com" }), { status: 429, headers: { "retry-after": "120" } }));
+      vi.stubGlobal("fetch", fetch);
+      const before = Date.now();
+      expect(await processNotificationBatch()).toMatchObject({ claimed: 3, sent: 0, retried: 0, failed: 0, skipped: 0, rateLimited: 3 });
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      const jobs = await prisma.notificationOutbox.findMany();
+      expect(jobs.every(job => job.status === "pending" && job.attempts === 0 && job.processingToken === null && job.processingStartedAt === null)).toBe(true);
+      expect(jobs.every(job => job.nextAttemptAt.getTime() >= before + 120_000)).toBe(true);
+      const tried = jobs.filter(job => job.firstAttemptAt);
+      expect(tried).toMatchObject([{ lastError: "provider_rate_limited" }]);
+      expect(JSON.stringify(jobs)).not.toContain("private@example.com");
+
+      // Still refused 23 hours on: it fails for review and alerts, never sends past the window.
+      await prisma.notificationOutbox.update({ where: { id: tried[0].id }, data: { nextAttemptAt: new Date(0), firstAttemptAt: new Date(Date.now() - 23 * 3600_000) } });
+      expect(await processNotificationBatch()).toMatchObject({ claimed: 1, failed: 1, rateLimited: 0 });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: tried[0].id } })).toMatchObject({ status: "failed", lastError: "provider_review_required" });
+      expect(exhausted(error, "provider_review_required")).toBe(1);
+
+      // The others aren't stuck: each is sent once the wait is over.
+      const sent = provider();
+      await prisma.notificationOutbox.updateMany({ where: { status: "pending" }, data: { nextAttemptAt: new Date(0) } });
+      expect(await processNotificationBatch()).toMatchObject({ sent: 2 });
+      expect(sent).toHaveBeenCalledTimes(2);
+    });
+
+    test("Retry-After is read as seconds or a date; without one the job waits a minute, and never over an hour", async () => {
+      const send = () => sendWithResend({ to: "buyer@example.com", subject: "s", text: "t", html: "h" });
+      const waits: Array<[string | null, number, number]> = [
+        ["30", 30_000, 30_000], ["0", 1000, 1000], ["86400", 3_600_000, 3_600_000], [null, 60_000, 60_000], ["soon", 60_000, 60_000],
+        [new Date(Date.now() + 120_000).toUTCString(), 110_000, 120_000]
+      ];
+      for (const [header, least, most] of waits) {
+        vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 429, headers: header ? { "retry-after": header } : {} })));
+        const failure = await send().catch((error: unknown) => error as { name: string; retryAfterMs: number });
+        expect(failure).toMatchObject({ name: "EmailRateLimitError" });
+        expect((failure as { retryAfterMs: number }).retryAfterMs).toBeGreaterThanOrEqual(least);
+        expect((failure as { retryAfterMs: number }).retryAfterMs).toBeLessThanOrEqual(most);
+      }
+    });
   });
   test("payload tampering fails before provider I/O", async () => {
     await queue(); const fetch = provider();

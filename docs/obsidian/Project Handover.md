@@ -159,13 +159,13 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 
 ## Next safe actions
 
-1. **After the 2026-10-30 audit's fixes:** an end-to-end check on main, then a preview deploy that sets `MFA_ENFORCEMENT_MODE` back to `enforce`.
+1. **After the 2026-10-30 audit's fixes:** an end-to-end check on main, then a preview deploy.
 
    The compensation engine merge (DEBT-003) is due before PAY-002's campaign. Product changes follow: no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions, then the O-Week flow.
 2. **Preview (owner).**
    - Send a test event from the two snapshot webhook destinations and confirm a 200. The Accounts v2 destination has passed.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
-   - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy.
+   - Keep `MFA_ENFORCEMENT_MODE=off` in `.env.preview`: a deploy doesn't change it, and only the owner decides when it does.
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
 3. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.

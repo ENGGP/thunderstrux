@@ -71,6 +71,7 @@ const buyerTimelineLabels: Partial<Record<OrderLifecycleEventType, string>> = {
   dispute_closed: "Dispute closed",
   dispute_resolved: "Tickets restored",
   free_cancelled: "Cancelled by the society",
+  tickets_cancelled: "Tickets cancelled by the society",
   order_expired: "Checkout didn't complete"
 };
 

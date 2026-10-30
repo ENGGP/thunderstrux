@@ -50,6 +50,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-29: #222 adds an optional image description to events (`Event.heroAlt`, additive migration `20261121010000_event_hero_alt`), read out as the event page hero's alt text, and resolves UI-018. Apply it with `prisma migrate deploy` on each database; the dev database has it.
 - 2026-10-29: #224 resolves UI-004 and UI-025 and four DEBT-002 items: phone filters fold, one date formatter, every capped list pages both ways, Change tickets keeps the choice, one set of ticket steps, sold counts valid tickets, and "Contact {society}" emails the society (a new public route, `society_enquiry` limit and template; no migration). Checkout holds (PAY-009) and per-ticket refunds follow as their own PRs.
 - 2026-10-30: #225 resolves PAY-009: per-event checkout holds (`Event.checkoutHoldMinutes`, additive migration `20261122010000_event_checkout_hold`; apply it with `prisma migrate deploy` on each database), closed by the stale-order job when they end, with the end on Stripe's page and a countdown on order pages.
+- 2026-10-30: #226 adds per-ticket refunds, as Humanitix: pick tickets, refund all or part of their price or $0 to cancel them, keep them valid or not, email the buyer or not (additive migration `20261123010000_refund_tickets`, which also adds the `tickets_cancelled` lifecycle step; apply it with `prisma migrate deploy` on each database). Reviewing a refund made in Stripe picks the tickets it covered.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -133,7 +134,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 1. **Preview (owner).**
    - Send a test event from each Stripe test-mode webhook destination and confirm a 200.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
-   - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy main (it needs #222's migration).
+   - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy main (it needs the migrations of #222, #225 and #226).
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
 2. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.
@@ -143,8 +144,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
    - Pass PAY-002 on the hosted endpoint.
 5. **When hosting is chosen,** give `stale-order-worker` the `stripe_secret_key` and `notification_encryption_key` secrets and `NEXT_PUBLIC_APP_URL` (PAY-024; `pnpm docker:hosted:check` refuses it without them), and run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
 6. **Stripe settings (owner, each sandbox and later live):** in Connect's Express settings, stop accounts editing their payout schedule and using Instant Payouts (PAY-028); add `account.external_account.created` and `account.external_account.updated` to each Connect webhook endpoint (SEC-033; done on the preview), and `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` to each payments endpoint (PAY-030; done on the preview).
-7. **Per-ticket refunds next** (DEBT-002's last planned item), as Humanitix: pick tickets, a lowerable amount, cancel and email as separate choices.
-8. **Before activating account lifecycle:**
+7. **Before activating account lifecycle:**
    - get an independent security and migration review, which also covers #167's payment and sign-in changes and #197's payout-hold, refund and staff-security changes, and #198's bulk refunds on event cancellation;
    - provision the notification key and back it up separately;
    - verify reliable Redis and real email acceptance.

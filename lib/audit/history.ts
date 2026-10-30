@@ -232,6 +232,8 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   };
   const reason = () => (text(m.reason) ? [{ label: "Reason", value: `“${m.reason}”` }] : []);
   const amount = (key = "amount") => (num(m[key]) !== null ? [{ label: "Amount", value: formatMoney(m[key] as number) }] : []);
+  // The ticket references a refund or cancellation named (DEBT-002).
+  const tickets = (suffix: string) => (Array.isArray(m.tickets) && m.tickets.length ? [{ label: "Tickets", value: `${(m.tickets as string[]).join(", ")}${suffix}` }] : []);
 
   let sentence: Part[] = [];
   let facts: Fact[] = [];
@@ -269,7 +271,8 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
     facts = [{ label: "Ticket", value: orderReference(row.targetId ?? "") }];
   } else if (a === "order.refund_requested" || a === "commerce_order.refund_requested") {
     sentence = ["refunded ", ...anyOrder()];
-    facts = [...amount(), ...reason()];
+    // DEBT-002: a refund ticket by ticket names its tickets, and says when they stay valid.
+    facts = [...amount(), ...reason(), ...tickets(m.cancelsTickets === false ? " (kept valid)" : "")];
   } else if (/^(order|commerce_order)\.refund_(succeeded|pending|failed|canceled)$/.test(a)) {
     const state = a.split("refund_")[1];
     sentence = [state === "succeeded" ? "confirmed the refund of " : state === "pending" ? "is still processing the refund of " : state === "canceled" ? "cancelled the refund of " : "couldn't complete the refund of ", ...anyOrder()];
@@ -279,7 +282,10 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   } else if (a === "order.external_refund_recorded" || a === "commerce_order.external_refund_recorded") {
     sentence = ["reported a refund made in the Stripe dashboard for ", ...anyOrder()];
     if (num(m.refundedOutside) !== null) facts = [{ label: "Refunded", value: formatMoney(m.refundedOutside as number), was: num(m.totalAmount) !== null ? `${formatMoney(m.totalAmount as number)} paid` : undefined }];
-  } else if (a === "order.external_refund_reviewed" || a === "commerce_order.external_refund_reviewed") sentence = ["reviewed the refund made in Stripe for ", ...anyOrder()];
+  } else if (a === "order.external_refund_reviewed" || a === "commerce_order.external_refund_reviewed") {
+    sentence = ["reviewed the refund made in Stripe for ", ...anyOrder()];
+    facts = tickets(" (cancelled)");
+  }
   else if (a === "order.dispute_opened" || a === "commerce_order.dispute_opened") {
     sentence = ["opened a dispute on ", ...anyOrder()];
     facts = amount();
@@ -291,7 +297,10 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
     sentence = ["took back the lost dispute's money for ", ...anyOrder(), " from the society's Stripe balance"];
     facts = amount();
   } else if (/^(order|commerce_order)\.dispute_/.test(a)) sentence = [`closed the dispute on `, ...anyOrder(), `: ${a.split(".dispute_")[1].replaceAll("_", " ")}`];
-  else if (a === "order.free_cancelled" || a === "merchandise_order.free_cancelled") {
+  else if (a === "order.tickets_cancelled") {
+    sentence = ["cancelled tickets on ", ...order(), " without a refund"];
+    facts = [...reason(), ...tickets("")];
+  } else if (a === "order.free_cancelled" || a === "merchandise_order.free_cancelled") {
     sentence = ["cancelled the free ", ...anyOrder()];
     facts = [...reason(), ...(num(m.ticketCount) !== null ? [{ label: "Tickets", value: `${m.ticketCount} no longer valid` }] : [])];
   } else if (a === "order.guest_claimed") sentence = ["moved their guest ", ...order(), " into their account"];

@@ -12,11 +12,20 @@ export const commerceHoldMs = 7 * day;
 // Stripe holds money for at most 90 days in Australia; anything older is sent.
 export const maxHoldMs = 80 * day;
 
-// What one sale leaves the society: the price less Thunderstrux's fee and
-// anything refunded outside Thunderstrux that Stripe shows taken back from its
-// transfer (PAY-027: a refund not yet reversed is still the society's to return).
-const share = (order: { totalAmount: number; feeAmount: number | null; externalRefundedAmount: number; externalUnreversedAmount?: number }) =>
-  Math.max(0, order.totalAmount - (order.feeAmount ?? 0) - (order.externalRefundedAmount - (order.externalUnreversedAmount ?? 0)));
+// What one sale leaves the society: the price less Thunderstrux's fee, anything
+// refunded outside Thunderstrux that Stripe shows taken back from its transfer
+// (PAY-027: a refund not yet reversed is still the society's to return), and the
+// society's part of refunds made here (DEBT-002). Stripe reverses a refund's
+// transfer pro rata, so that part is rounded down: the hold errs towards keeping more.
+type Sale = { totalAmount: number; feeAmount: number | null; externalRefundedAmount: number; externalUnreversedAmount?: number; refundRequests?: Array<{ amount: number }> };
+const share = (order: Sale) => {
+  const kept = order.totalAmount - (order.feeAmount ?? 0);
+  const refunded = (order.refundRequests ?? []).reduce((sum, request) => sum + request.amount, 0);
+  const reversed = order.totalAmount > 0 ? Math.floor((refunded * kept) / order.totalAmount) : 0;
+  return Math.max(0, kept - (order.externalRefundedAmount - (order.externalUnreversedAmount ?? 0)) - reversed);
+};
+// The succeeded refunds made here, for share().
+export const shareRefundsSelect = { refundRequests: { where: { status: "succeeded" as const }, select: { amount: true } } };
 
 export type HeldMoney = {
   // Ticket money waiting for events to end.
@@ -57,11 +66,11 @@ export async function heldMoney(organisationId: string, stripeAccountId: string,
         // nothing at Stripe, so that sale waits for its event like any other.
         { OR: [{ isManuallyRefunded: false }, { compensationRefundJob: { is: null } }] }
       ] },
-      select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, eventId: true, event: { select: { endTime: true, latestEndTime: true } } }
+      select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, ...shareRefundsSelect, eventId: true, event: { select: { endTime: true, latestEndTime: true } } }
     }),
     prisma.commerceOrder.findMany({
       where: { ...paidTo, organisationId, AND: [{ OR: [{ paidAt: { gt: new Date(now.getTime() - commerceHoldMs) } }, ...stillOpen] }, notRecovered] },
-      select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true }
+      select: { totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, ...shareRefundsSelect }
     })
   ]);
   const eventAmount = tickets.reduce((sum, order) => sum + share(order), 0);

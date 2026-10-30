@@ -8,9 +8,10 @@ import { Notice } from "@/components/ui/notice";
 import { OrderDetailActions } from "@/components/orders/order-detail-actions";
 import { OrderReviewActions } from "@/components/orders/order-review-actions";
 import { AuditTimeline } from "@/components/ui/audit-timeline";
+import { ticketState } from "@/components/tickets/ticket-face";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatDate, formatDateTime, formatMoney, formatPrice } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatPrice, ticketReference } from "@/lib/format";
 import { readTimeZone } from "@/lib/organisations/profile";
 import { orderReference } from "@/lib/payments/order-refunds";
 import { mfaEnforcementMode } from "@/lib/security/staff-mfa";
@@ -75,9 +76,11 @@ export default async function OrganisationOrderDetailPage({
   }
 
   const canRefund = roleHasPermission(organisation.staffRole, "orders:refund");
-  // A partial refund made in Stripe leaves the rest to refund here.
+  // What is still the buyer's to get back, after refunds here and in Stripe, and the tickets still valid (DEBT-002).
+  const left = order.totalAmount - order.refundedAmount - order.externalRefundedAmount;
+  const valid = order.tickets.filter((ticket) => ticket.validity === "active");
   const refundable = order.paymentKind === "stripe" && order.status === "paid" && !order.requiresCompensationReview &&
-    !order.refundStatus && !order.disputeStatus && !order.isManuallyRefunded;
+    !order.refundStatus && !order.disputeStatus && !order.isManuallyRefunded && (left > 0 || valid.length > 0);
   const buyer = order.user
     ? {
         email: order.user.email,
@@ -114,7 +117,8 @@ export default async function OrganisationOrderDetailPage({
         </Notice>
       ) : null}
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+      {/* Manage spans both rows and its extra height goes to the 1fr row, so Tickets sits right under Summary. */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 lg:grid-rows-[auto_1fr]">
         <Card>
           <h2 className="text-lg font-semibold text-ink">Summary</h2>
           <dl className="mt-3 grid gap-x-6 gap-y-3 text-ui sm:grid-cols-[max-content_minmax(0,1fr)]">
@@ -142,6 +146,12 @@ export default async function OrganisationOrderDetailPage({
             </dd>
             <dt className="text-ink-soft">Total</dt>
             <dd className="font-semibold tabular-nums text-ink">{formatPrice(order.totalAmount)}</dd>
+            {order.refundedAmount > 0 ? (
+              <>
+                <dt className="text-ink-soft">Refunded</dt>
+                <dd className="tabular-nums text-ink">{formatMoney(order.refundedAmount)}{order.refundedAmount < order.totalAmount ? ` of ${formatMoney(order.totalAmount)}` : ""}</dd>
+              </>
+            ) : null}
             <dt className="text-ink-soft">Ordered</dt>
             <dd className="text-ink">{formatDateTime(order.createdAt, { timeZone })}</dd>
             <dt className="text-ink-soft">Paid</dt>
@@ -151,13 +161,20 @@ export default async function OrganisationOrderDetailPage({
           </dl>
         </Card>
 
-        <Card>
+        <Card className="lg:row-span-2">
           <h2 className="text-lg font-semibold text-ink">Manage this order</h2>
           <p className="mt-1 text-sm text-ink-soft">Only a refund through Stripe moves money; the other actions here don&apos;t.</p>
           <OrderDetailActions
             refund={
               canRefund && refundable
-                ? { amount: formatMoney(order.totalAmount - order.externalRefundedAmount), rest: order.externalRefundedAmount > 0, buyer: buyer?.name ?? buyer?.email ?? "the buyer", reference: orderReference(order.id), ticketCount: order.quantity, needsCode: mfaEnforcementMode() !== "off" }
+                ? {
+                    left,
+                    unitPrice: order.unitPrice,
+                    buyer: buyer?.name ?? buyer?.email ?? "the buyer",
+                    reference: orderReference(order.id),
+                    needsCode: mfaEnforcementMode() !== "off",
+                    tickets: valid.map((ticket) => ({ id: ticket.id, reference: ticketReference(ticket.id), type: ticket.ticketType.name, checkedIn: Boolean(ticket.checkedInAt) }))
+                  }
                 : null
             }
             buyerEmail={buyer?.email ?? null}
@@ -177,6 +194,22 @@ export default async function OrganisationOrderDetailPage({
             stripeSessionId={order.stripeSessionId}
           />
         </Card>
+        {/* Each ticket and whether it still admits someone (DEBT-002): refunds can be ticket by ticket. */}
+        {order.tickets.length ? (
+          <Card>
+            <h2 className="text-lg font-semibold text-ink">Tickets</h2>
+            <ul className="mt-3 grid gap-2">
+              {order.tickets.map((ticket) => (
+                <li className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line pt-2 first:border-0 first:pt-0" key={ticket.id}>
+                  <span className="text-ink [overflow-wrap:anywhere]">
+                    <span className="font-mono">{ticketReference(ticket.id)}</span> · {ticket.ticketType.name}
+                  </span>
+                  <StatusBadge {...ticketState(ticket, timeZone)} />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
       </div>
 
       {/* Exactly one section holds the history, which the browser tests rely on. */}
@@ -234,8 +267,16 @@ function RefundNotice({ order, timeZone }: { order: Awaited<ReturnType<typeof ge
   const by = refund.actor ? [refund.actor.firstName, refund.actor.lastName].filter(Boolean).join(" ") || refund.actor.email : "a staff member";
   if (order.refundStatus === "refunded" && refund.status === "succeeded") {
     return (
-      <Notice role="status" title={`Refunded ${formatMoney(refund.amount)}`} tone="success">
-        <p>Refunded {formatDateTime(refund.resolvedAt, { timeZone })} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid and the buyer was emailed.</p>
+      <Notice role="status" title={`Refunded ${formatMoney(order.refundedAmount)}`} tone="success">
+        <p>Refunded {formatDateTime(refund.resolvedAt, { timeZone })} at the request of {by}: &ldquo;{refund.reason}&rdquo;. The tickets are no longer valid.</p>
+      </Notice>
+    );
+  }
+  // DEBT-002: some tickets refunded, others still valid.
+  if (!order.refundStatus && refund.status === "succeeded") {
+    return (
+      <Notice role="status" title={`Partly refunded: ${formatMoney(order.refundedAmount)} of ${formatMoney(order.totalAmount)}`} tone="success">
+        <p>The last refund, {formatMoney(refund.amount)}, went through {formatDateTime(refund.resolvedAt, { timeZone })} at the request of {by}: &ldquo;{refund.reason}&rdquo;. Each ticket&apos;s state is listed under Tickets.</p>
       </Notice>
     );
   }
@@ -309,8 +350,22 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
       <p>{part} Reviewed on {formatDate(order.externalRefundReviewedAt, timeZone)}; the tickets stay valid.</p>
     </Notice>
   ) : (
-    <Notice action={canAct ? <OrderReviewActions action="mark_reviewed" orderId={order.id} /> : undefined} title="Partly refunded in Stripe: needs review" tone="warning">
-      <p>{part} Thunderstrux can&apos;t tell which ticket that covers, so the tickets stay valid until you decide. Refund the rest below, or mark it as reviewed.</p>
+    <Notice
+      action={
+        canAct ? (
+          <OrderReviewActions
+            action="mark_reviewed"
+            orderId={order.id}
+            // The tickets the amount covers whole are picked first; staff change it, or pick none for a goodwill refund.
+            preselect={Math.floor(order.externalRefundedAmount / order.unitPrice)}
+            tickets={order.tickets.filter((ticket) => ticket.validity === "active").map((ticket) => ({ id: ticket.id, reference: ticketReference(ticket.id), type: ticket.ticketType.name }))}
+          />
+        ) : undefined
+      }
+      title="Partly refunded in Stripe: needs review"
+      tone="warning"
+    >
+      <p>{part} Pick the tickets it covered: they stop working and go back on sale. Pick none to keep every ticket valid.</p>
     </Notice>
   );
 }

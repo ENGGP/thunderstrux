@@ -15,6 +15,8 @@ export type OrderLifecycleFacts = {
   legacyHistoryIncomplete?: boolean;
   ticketCount?: number;
   amount?: number;
+  // DEBT-002: whether a refund cancels the tickets it is for.
+  cancelsTickets?: boolean;
 };
 
 export type AppendOrderLifecycleEventInput = {

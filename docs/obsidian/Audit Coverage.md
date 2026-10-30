@@ -45,7 +45,7 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 | `DELETE /api/events/[eventId]` | same | `event.deleted` (title) | — |
 | `POST /api/events/[eventId]/cancel` | `lib/events/event-cancellation.ts` | `event.cancelled`, plus per order `order.refund_requested` or `order.free_cancelled` (`by: "event"`) | reason, refunds queued, free registrations cancelled, holders notified, skipped orders with why |
 | `POST /api/tickets/[ticketId]/check-in`, `check-out` | `lib/tickets/check-in.ts` | `ticket.checked_in`, `ticket.checked_out` | ticket reference |
-| `POST /api/orders/[orderId]/refunds` | `lib/payments/order-refunds.ts` | `order.refund_requested`; outcome below | amount, reason |
+| `POST /api/orders/[orderId]/refunds` | `lib/payments/order-refunds.ts` | `order.refund_requested`; outcome below. $0 (DEBT-002): `order.tickets_cancelled` | amount, reason; ticket by ticket also `tickets` (references), `cancelsTickets`, `notifyBuyer` |
 | `PATCH /api/orders/[orderId]/refund-manual` | `lib/orders/order-detail.ts` | `order.manual_refund_marked` | reason |
 | `GET /api/orders/export`, `/api/events/[eventId]/tickets/export` | `lib/export/order-exports.ts`: `recordExport` | `order.list_exported` (family, rows, filters), `order.attendees_exported` (event, rows) | — |
 | `POST /api/orders/[orderId]/review` | `lib/payments/purchase-disputes.ts`, `lib/commerce/payment-recovery.ts` | `order.dispute_resolved` (restore tickets); `order.external_refund_reviewed` or, for a commerce order id, `commerce_order.external_refund_reviewed` | reason, tickets valid again |

@@ -1,3 +1,4 @@
+import { ticketReference } from "@/lib/format";
 import Stripe from "stripe";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { POST as reviewRoute } from "@/app/api/orders/[orderId]/review/route";
@@ -79,7 +80,7 @@ async function postSigned(event: Stripe.Event) {
 const orderState = (id: string) => prisma.order.findUniqueOrThrow({ where: { id }, include: { tickets: { orderBy: { issueSequence: "asc" }, select: { validity: true, validityReason: true } } } });
 const historyOf = async (orderId: string) => (await prisma.orderLifecycleEvent.findMany({ where: { orderId }, orderBy: { sequence: "asc" } })).map((event) => event.type);
 
-const reviewAs = (fixture: Fixture, body: Record<string, string>) => {
+const reviewAs = (fixture: Fixture, body: Record<string, unknown>) => {
   setMockSession({ userId: fixture.owner.user.id, email: fixture.owner.user.email, accountRole: "organisation" });
   return reviewRoute(jsonRequest(`http://localhost:3000/api/orders/${fixture.order.id}/review`, body), routeContext({ orderId: fixture.order.id }));
 };
@@ -325,6 +326,34 @@ describe("refunds made outside Thunderstrux", () => {
     expect(rest.refundStatus).toBe("refunded");
     expect(rest.tickets.every((ticket) => ticket.validity === "void")).toBe(true);
     expect(await historyOf(fixture.order.id)).toEqual(["external_refund_recorded", "external_refund_reviewed", "refund_requested", "refunded"]);
+  });
+
+  // DEBT-002: staff say which tickets a refund made in Stripe covered.
+  test("reviewing a partial refund made in Stripe cancels the tickets staff pick, and only valid ones of this order", async () => {
+    const fixture = await paidOrder();
+    stripe.refunds.mockResolvedValue({ data: [dashboardRefund(fixture, 1500)] });
+    await reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(fixture, 1500)));
+    const [first] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id }, orderBy: { issueSequence: "asc" }, select: { id: true } });
+    const stock = async () => (await prisma.ticketType.findUniqueOrThrow({ where: { id: fixture.event.ticketTypes[0].id } })).quantity;
+    const before = await stock();
+    expect((await reviewAs(fixture, { action: "mark_reviewed", ticketIds: ["not-a-ticket"] })).status).toBe(409);
+    expect((await reviewAs(fixture, { action: "mark_reviewed", ticketIds: [first.id] })).status).toBe(200);
+    const state = await orderState(fixture.order.id);
+    expect(state.tickets).toEqual([{ validity: "void", validityReason: "refunded_outside" }, { validity: "active", validityReason: null }]);
+    expect(state.externalRefundReviewedAt).not.toBeNull();
+    expect(await stock()).toBe(before + 1);
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { action: "order.external_refund_reviewed", targetId: fixture.order.id } }))
+      .toMatchObject({ metadata: { refundedOutside: 1500, tickets: [ticketReference(first.id)] } });
+  });
+
+  test("a refund made in Stripe that, with refunds made here, covers the whole order makes it Refunded", async () => {
+    const fixture = await paidOrder();
+    await prisma.refundRequest.create({ data: { orderId: fixture.order.id, organisationId: fixture.owner.organisation.id, amount: 1500, reason: "Refunded one ticket here.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
+    stripe.refunds.mockResolvedValue({ data: [dashboardRefund(fixture, 1500)] });
+    await reconcileExternalRefundEvent(signedEvent("refund.updated", dashboardRefund(fixture, 1500)));
+    const state = await orderState(fixture.order.id);
+    expect(state.refundStatus).toBe("refunded");
+    expect(state.tickets.every((ticket) => ticket.validity === "void")).toBe(true);
   });
 
   test("a pending refund counts for nothing; a full one voids the tickets and fences further refunds", async () => {

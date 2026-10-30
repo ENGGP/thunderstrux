@@ -6,14 +6,16 @@ import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
 import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
-import { formatMoney, orderReference } from "@/lib/format";
+import { formatMoney, orderReference, ticketReference } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { isDefiniteProviderFailure } from "@/lib/payments/checkout-attempts";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
-// Staff-initiated whole-order refunds (T18a; commerce orders since T23c). The
+// Staff-initiated refunds (T18a; commerce orders since T23c; ticket by ticket
+// since DEBT-002, as Humanitix: pick tickets, an amount up to their value,
+// and whether they are cancelled and the buyer emailed). The
 // purchase's refundStatus is the financial fence: it is set under the
 // purchase's lock before Stripe is called, and compensation refunds never
 // start while it is set. Stripe is called outside the transaction with the
@@ -33,6 +35,7 @@ export type RefundFailureKind =
   | "already_refunded"
   | "disputed"
   | "confirmation_mismatch"
+  | "invalid_selection"
   | "verification_failed"
   | "provider_refused";
 
@@ -50,6 +53,11 @@ class RefundVerificationError extends Error {
 export { orderReference };
 
 type Actor = { id: string };
+
+// DEBT-002, as Humanitix: the tickets, the amount (at most their value and what is
+// left to refund; 0 cancels them without a refund), whether they stop working,
+// and whether the buyer is emailed, with an optional note from the society.
+export type TicketSelection = { ticketIds: string[]; amount: number; cancelTickets: boolean; notifyBuyer: boolean; buyerMessage?: string | null };
 type RefundSource = "staff_action" | "refund_worker" | "stripe_webhook";
 type Purchase = { orderId: string | null; commerceOrderId: string | null };
 type HistoryEntry = {
@@ -96,14 +104,35 @@ function providerStatus(refund: Stripe.Refund): RefundRequestStatus {
 const paymentIntentOf = (refund: Stripe.Refund) =>
   typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id ?? null;
 
+// What Thunderstrux has refunded on a purchase so far: its succeeded requests.
+export async function refundedSoFar(db: Prisma.TransactionClient | typeof prisma, purchase: Purchase, except?: string) {
+  const sum = await db.refundRequest.aggregate({
+    where: { ...(purchase.commerceOrderId ? { commerceOrderId: purchase.commerceOrderId } : { orderId: purchase.orderId as string }), status: "succeeded", ...(except ? { id: { not: except } } : {}) },
+    _sum: { amount: true }
+  });
+  return sum._sum.amount ?? 0;
+}
+
+// The tickets staff picked: this order's, still valid, each once.
+async function pickedTickets(tx: Prisma.TransactionClient, orderId: string, ticketIds: string[]) {
+  const unique = [...new Set(ticketIds)];
+  const found = await tx.ticket.findMany({ where: { orderId, id: { in: unique }, validity: "active" }, orderBy: { issueSequence: "asc" }, select: { id: true } });
+  if (unique.length === 0 || unique.length !== ticketIds.length || found.length !== unique.length) {
+    throw new OrderRefundError("invalid_selection", "Pick tickets of this order that are still valid");
+  }
+  return found.map((ticket) => ticket.id);
+}
+
 export async function requestOrderRefund(input: {
   organisationId: string;
   orderId: string;
   actor: Actor;
   reason: string;
   confirmation: string;
+  selection?: TicketSelection;
 }) {
-  // The caller has verified the staff member's authenticator code (see the route).
+  // The caller has verified the staff member's authenticator code (see the route);
+  // amount 0 goes to cancelOrderTickets, as nothing is refunded.
   const token = randomUUID();
   const request = await prisma.$transaction((tx) => openOrderRefund(tx, { ...input, processing: { token, now: new Date() } }));
   return sendRefund(request.id, token, "staff_action");
@@ -121,6 +150,8 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   reason: string;
   confirmation?: string;
   processing?: { token: string; now: Date };
+  // Without one: every ticket still standing and all that is left (the whole order, or the rest).
+  selection?: TicketSelection;
 }) {
   const reason = input.reason.trim();
   if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new OrderRefundError("not_found", "Order was not found");
@@ -136,8 +167,19 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
   // PAY-036: only an open or lost dispute fences a refund; the society kept a won one.
   if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
-  // After a partial refund made in Stripe, this refunds the rest.
-  const amount = order.totalAmount - order.externalRefundedAmount;
+  // What the buyer can still get back: the total less refunds made here or in Stripe.
+  const left = order.totalAmount - (await refundedSoFar(tx, { orderId: order.id, commerceOrderId: null })) - order.externalRefundedAmount;
+  // Refunded in full with tickets kept valid: refundStatus stays clear so they can still be cancelled.
+  if (order.paymentKind === "stripe" && order.totalAmount > 0 && left <= 0) throw new OrderRefundError("already_refunded", "Everything paid for this order has been refunded");
+  const { selection } = input;
+  const tickets = selection
+    ? await pickedTickets(tx, order.id, selection.ticketIds)
+    : (await tx.ticket.findMany({ where: { orderId: order.id, validity: { not: "void" } }, orderBy: { issueSequence: "asc" }, select: { id: true } })).map((ticket) => ticket.id);
+  const amount = selection ? selection.amount : left;
+  const cap = Math.min(tickets.length * order.unitPrice, left);
+  if (selection && (!Number.isInteger(amount) || amount < 1 || amount > cap)) {
+    throw new OrderRefundError("invalid_selection", cap > 0 ? `Refund between $0.01 and ${formatMoney(cap)} for those tickets, or $0 to cancel them` : "Nothing is left to refund on this order");
+  }
   if (
     order.paymentKind !== "stripe" || order.status !== "paid" || order.requiresCompensationReview || order.isManuallyRefunded ||
     !order.stripeSessionId || !order.sellerStripeAccountId || (order.compensationRefundJob && order.compensationRefundJob.state !== "recovered") || amount <= 0
@@ -149,15 +191,17 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
     data: {
       orderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
       actorUserId: input.actor?.id ?? null, operationKey: `order-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
+      ticketIds: tickets, cancelsTickets: selection?.cancelTickets ?? true, notifyBuyer: selection?.notifyBuyer ?? true, buyerMessage: selection?.buyerMessage?.trim() || null,
       ...(input.processing ? { attempts: 1, processingToken: input.processing.token, processingStartedAt: input.processing.now } : {})
     }
   });
   await appendOrderLifecycleEvent(tx, {
-    orderId: order.id, type: "refund_requested", source: input.actor ? "staff_action" : "stripe_webhook", actorUserId: input.actor?.id ?? null, reason, facts: { amount }
+    orderId: order.id, type: "refund_requested", source: input.actor ? "staff_action" : "stripe_webhook", actorUserId: input.actor?.id ?? null, reason,
+    facts: selection ? { amount, ticketCount: tickets.length, cancelsTickets: selection.cancelTickets } : { amount }
   });
   await tx.auditLog.create({ data: {
     organisationId: input.organisationId, actorUserId: input.actor?.id ?? null, action: "order.refund_requested", targetType: "Order", targetId: order.id,
-    metadata: { refundRequestId: created.id, amount, reason }
+    metadata: { refundRequestId: created.id, amount, reason, ...(selection ? { tickets: tickets.map(ticketReference), cancelsTickets: selection.cancelTickets, notifyBuyer: selection.notifyBuyer } : {}) }
   } });
   return created;
 }
@@ -218,11 +262,13 @@ export async function requestCommerceRefund(input: {
 
 // The charge this request refunds, checked against the purchase and the
 // snapshot of who was paid; and the request's own refund at Stripe, if one
-// exists. Refunds made elsewhere must be exactly the part this one leaves out.
+// exists. The payment's other refunds must be exactly those already recorded:
+// earlier ones made here (DEBT-002) and those made in Stripe.
 async function verifiedPayment(request: Purchase & { id: string; amount: number; currency: string; destinationAccountId: string | null }) {
+  const select = { id: true, stripeSessionId: true, totalAmount: true, externalRefundedAmount: true } as const;
   const order = request.commerceOrderId
-    ? await prisma.commerceOrder.findUniqueOrThrow({ where: { id: request.commerceOrderId }, select: { id: true, stripeSessionId: true, totalAmount: true } })
-    : await prisma.order.findUniqueOrThrow({ where: { id: request.orderId as string }, select: { id: true, stripeSessionId: true, totalAmount: true } });
+    ? await prisma.commerceOrder.findUniqueOrThrow({ where: { id: request.commerceOrderId }, select })
+    : await prisma.order.findUniqueOrThrow({ where: { id: request.orderId as string }, select });
   const named = request.commerceOrderId ? "commerceOrderId" : "orderId";
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId as string, { expand: ["payment_intent", "payment_intent.latest_charge"] });
@@ -243,7 +289,8 @@ async function verifiedPayment(request: Purchase & { id: string; amount: number;
   const elsewhere = refunds.data
     .filter((refund) => refund !== own && refund.status !== "failed" && refund.status !== "canceled")
     .reduce((sum, refund) => sum + refund.amount, 0);
-  if (!own && elsewhere !== order.totalAmount - request.amount) {
+  const recorded = (await refundedSoFar(prisma, request, request.id)) + order.externalRefundedAmount;
+  if (!own && elsewhere !== recorded) {
     throw new RefundVerificationError("existing_refund_requires_review");
   }
   return { stripe, intent, own: own ?? null };
@@ -345,25 +392,87 @@ async function queueRefundTroubleNotice(
   });
 }
 
-// A confirmed ticket refund voids the tickets (attendance is kept), puts their
-// places back on sale and emails the buyer.
-async function refundTickets(tx: Prisma.TransactionClient, request: { id: string; orderId: string; organisationId: string; amount: number }, now: Date) {
+type TicketRefund = { id: string; orderId: string; organisationId: string; amount: number; ticketIds: string[]; cancelsTickets: boolean; notifyBuyer: boolean; buyerMessage: string | null };
+
+// A confirmed ticket refund voids the tickets it is for (attendance is kept)
+// unless staff kept them valid, puts their places back on sale and, if asked,
+// emails the buyer. An empty list is every ticket, as whole-order refunds were.
+// The order reads Refunded once none of its tickets is left (DEBT-002).
+async function refundTickets(tx: Prisma.TransactionClient, request: TicketRefund, now: Date) {
+  const cancelled = request.cancelsTickets
+    ? await tx.ticket.findMany({
+        where: { orderId: request.orderId, validity: { not: "void" }, ...(request.ticketIds.length ? { id: { in: request.ticketIds } } : {}) },
+        orderBy: { issueSequence: "asc" },
+        select: { id: true }
+      })
+    : [];
+  if (cancelled.length) {
+    await tx.ticket.updateMany({ where: { id: { in: cancelled.map((ticket) => ticket.id) } }, data: { validity: "void", validityReason: "refunded", validityChangedAt: now } });
+    await returnTicketsToSale(tx, request.orderId, cancelled.length);
+  }
+  const standing = await tx.ticket.count({ where: { orderId: request.orderId, validity: { not: "void" } } });
   const order = await tx.order.update({
     where: { id: request.orderId },
-    data: { refundStatus: "refunded" },
-    select: { buyerEmailSnapshot: true, event: { select: { title: true } } }
+    data: { refundStatus: standing === 0 ? "refunded" : null },
+    select: { buyerEmailSnapshot: true, sellerName: true, event: { select: { title: true, organisation: { select: { name: true } } } } }
   });
-  const voided = await tx.ticket.updateMany({
-    where: { orderId: request.orderId, validity: { not: "void" } },
-    data: { validity: "void", validityReason: "refunded", validityChangedAt: now }
+  if (!order.buyerEmailSnapshot || !request.notifyBuyer) return;
+  const money = formatMoney(request.amount);
+  const references = cancelled.map((ticket) => ticketReference(ticket.id)).join(", ");
+  const note = request.buyerMessage ? ` A note from ${order.sellerName ?? order.event.organisation.name}: "${request.buyerMessage}"` : "";
+  const message = standing === 0
+    ? `Your order for ${order.event.title} has been refunded: ${money} is on its way back to your card. Banks usually take 5 to 10 business days. Your tickets are no longer valid.${note}`
+    : `We've refunded ${money} of your order for ${order.event.title}; it's on its way back to your card. Banks usually take 5 to 10 business days.${
+        cancelled.length
+          ? ` ${cancelled.length === 1 ? `Ticket ${references} no longer works` : `Tickets ${references} no longer work`}; your other ${standing === 1 ? "ticket still works" : `${standing} tickets still work`}.`
+          : " Your tickets still work."
+      }${note}`;
+  await enqueueNotification(tx, {
+    eventKey: `refund/${request.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: request.organisationId,
+    payload: { message }
   });
-  await returnTicketsToSale(tx, request.orderId, voided.count);
-  if (order.buyerEmailSnapshot) {
-    await enqueueNotification(tx, {
-      eventKey: `refund/${request.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: request.organisationId,
-      payload: { message: `Your order for ${order.event.title} has been refunded: ${formatMoney(request.amount)} is on its way back to your card. Banks usually take 5 to 10 business days. Your tickets are no longer valid.` }
+}
+
+// Amount 0 (as Humanitix): the picked tickets of a paid order stop working and go
+// back on sale with no refund and nothing sent to Stripe; the buyer is emailed if asked.
+export async function cancelOrderTickets(input: { organisationId: string; orderId: string; actor: Actor; reason: string; confirmation: string; selection: TicketSelection }) {
+  const reason = input.reason.trim();
+  if (!input.selection.cancelTickets) throw new OrderRefundError("invalid_selection", "Refund an amount, or cancel the tickets");
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    // The places go back on sale: event and ticket type before the order, as a refund's outcome takes them.
+    await lockOrderInventory(tx, input.orderId);
+    if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new OrderRefundError("not_found", "Order was not found");
+    const order = await tx.order.findFirst({
+      where: { id: input.orderId, event: { organisationId: input.organisationId } },
+      select: { id: true, status: true, paymentKind: true, refundStatus: true, disputeStatus: true, buyerEmailSnapshot: true, sellerName: true, event: { select: { title: true, organisation: { select: { name: true } } } } }
     });
-  }
+    if (!order) throw new OrderRefundError("not_found", "Order was not found");
+    if (input.confirmation.trim().toUpperCase() !== orderReference(order.id)) throw new OrderRefundError("confirmation_mismatch", `Type ${orderReference(order.id)} to confirm`);
+    if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
+    if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
+    if (order.paymentKind !== "stripe" || order.status !== "paid") throw new OrderRefundError("not_refundable", "This order's tickets can't be cancelled here");
+    const tickets = await pickedTickets(tx, order.id, input.selection.ticketIds);
+    await tx.ticket.updateMany({ where: { id: { in: tickets } }, data: { validity: "void", validityReason: "cancelled", validityChangedAt: now } });
+    await returnTicketsToSale(tx, order.id, tickets.length);
+    const references = tickets.map(ticketReference);
+    await appendOrderLifecycleEvent(tx, { orderId: order.id, type: "tickets_cancelled", source: "staff_action", actorUserId: input.actor.id, reason, facts: { ticketCount: tickets.length } });
+    await tx.auditLog.create({ data: {
+      organisationId: input.organisationId, actorUserId: input.actor.id, action: "order.tickets_cancelled", targetType: "Order", targetId: order.id,
+      metadata: { reason, tickets: references, notifyBuyer: input.selection.notifyBuyer }
+    } });
+    if (!order.buyerEmailSnapshot || !input.selection.notifyBuyer) return;
+    const seller = order.sellerName ?? order.event.organisation.name;
+    const standing = await tx.ticket.count({ where: { orderId: order.id, validity: { not: "void" } } });
+    const note = input.selection.buyerMessage?.trim() ? ` Their note: "${input.selection.buyerMessage.trim()}"` : "";
+    await enqueueNotification(tx, {
+      eventKey: `tickets-cancelled/${order.id}/${randomUUID()}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: input.organisationId,
+      payload: {
+        subject: `Tickets cancelled: ${order.event.title}`,
+        message: `${seller} cancelled ${tickets.length === 1 ? `ticket ${references[0]}` : `tickets ${references.join(", ")}`} for ${order.event.title}, so ${tickets.length === 1 ? "it no longer works" : "they no longer work"}. No refund was made.${standing ? ` Your other ${standing === 1 ? "ticket still works" : `${standing} tickets still work`}.` : ""}${note}`
+      }
+    });
+  });
 }
 
 // A confirmed commerce refund ends the memberships it bought (T23c), takes a
@@ -532,6 +641,7 @@ export async function reconcileOrderRefundEvent(event: Stripe.Event) {
 }
 
 // For order detail: the latest request, to show processing, refunded or failed.
+// Refunds made earlier on the same order are summed by refundedSoFar.
 export function latestRefundRequest(db: Prisma.TransactionClient | typeof prisma, orderId: string) {
   return db.refundRequest.findFirst({
     where: { orderId },

@@ -50,7 +50,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-29: #222 adds an optional image description to events (`Event.heroAlt`, additive migration `20261121010000_event_hero_alt`), read out as the event page hero's alt text, and resolves UI-018. Apply it with `prisma migrate deploy` on each database; the dev database has it.
 - 2026-10-29: #224 resolves UI-004 and UI-025 and four DEBT-002 items: phone filters fold, one date formatter, every capped list pages both ways, Change tickets keeps the choice, one set of ticket steps, sold counts valid tickets, and "Contact {society}" emails the society (a new public route, `society_enquiry` limit and template; no migration). Checkout holds (PAY-009) and per-ticket refunds follow as their own PRs.
 - 2026-10-30: #225 resolves PAY-009: per-event checkout holds (`Event.checkoutHoldMinutes`, additive migration `20261122010000_event_checkout_hold`; apply it with `prisma migrate deploy` on each database), closed by the stale-order job when they end, with the end on Stripe's page and a countdown on order pages.
-- 2026-10-30: #PR3NUM adds per-ticket refunds, as Humanitix: pick tickets, refund all or part of their price or $0 to cancel them, keep them valid or not, email the buyer or not (additive migration `20261123010000_refund_tickets`, which also adds the `tickets_cancelled` lifecycle step; apply it with `prisma migrate deploy` on each database). Reviewing a refund made in Stripe picks the tickets it covered.
+- 2026-10-30: #226 adds per-ticket refunds, as Humanitix: pick tickets, refund all or part of their price or $0 to cancel them, keep them valid or not, email the buyer or not (additive migration `20261123010000_refund_tickets`, which also adds the `tickets_cancelled` lifecycle step; apply it with `prisma migrate deploy` on each database). Reviewing a refund made in Stripe picks the tickets it covered.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -134,7 +134,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 1. **Preview (owner).**
    - Send a test event from each Stripe test-mode webhook destination and confirm a 200.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
-   - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy main (it needs the migrations of #222, #225 and #PR3NUM).
+   - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy main (it needs the migrations of #222, #225 and #226).
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
 2. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.

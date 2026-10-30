@@ -12,6 +12,7 @@ type FailureMode = "closed" | "open";
 
 export type RateLimitPolicy =
   | "login_ip_email"
+  | "login_email"
   | "login_ip_global"
   | "signup_ip"
   | "signup_email"
@@ -66,6 +67,9 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   asset_delete: { limit: 30, windowSeconds: 600, failureMode: "closed" },
   organisation_profile: { limit: 30, windowSeconds: 600, failureMode: "closed" },
   login_ip_email: { limit: 10, windowSeconds: 10 * 60, failureMode: "closed" },
+  // DEBT-002: one account from many addresses. High enough that a member never meets it;
+  // at worst someone else's guesses lock the account for an hour.
+  login_email: { limit: 30, windowSeconds: 60 * 60, failureMode: "closed" },
   login_ip_global: { limit: 50, windowSeconds: 10 * 60, failureMode: "closed" },
   signup_ip: { limit: 25, windowSeconds: 60 * 60, failureMode: "closed" },
   signup_email: { limit: 3, windowSeconds: 60 * 60, failureMode: "closed" },

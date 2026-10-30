@@ -24,8 +24,7 @@ function run(command, args) {
     env: {
       ...process.env,
       DATABASE_URL: databaseUrl,
-      NODE_ENV: "test",
-      THUNDERSTRUX_INTEGRATION_TEST: "1"
+      NODE_ENV: "test"
     },
     shell: false
   });

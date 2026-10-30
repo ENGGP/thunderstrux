@@ -427,7 +427,7 @@ checks.push(
     Prisma.sql`SELECT "id" FROM "MerchandiseVariant" WHERE "remaining" < 0`),
   sqlCheck("stale_ticket_hold_released", "lifecycle-risk", "The stale-order worker releases expired holds every minute; a day-old active hold means it isn't running.",
     Prisma.sql`SELECT "id" FROM "TicketReservation" WHERE "status" = 'active' AND "expiresAt" < now() - interval '1 day'`),
-  sqlCheck("stale_commerce_checkout_expired", "lifecycle-risk", "The checkout-recovery worker expires abandoned commerce checkouts; a day-old pending one means it isn't running.",
+  sqlCheck("stale_commerce_checkout_expired", "lifecycle-risk", "The stale-orders worker expires abandoned commerce checkouts; a day-old pending one means it isn't running.",
     Prisma.sql`SELECT "id" FROM "CommerceOrder" WHERE "status" = 'pending' AND "expiresAt" < now() - interval '1 day'`),
   sqlCheck("outbox_not_stuck", "lifecycle-risk", "A job processing for over an hour lost its worker; lease recovery requeues it.",
     Prisma.sql`SELECT "id" FROM "EmailOutbox" WHERE "status" = 'processing' AND "processingStartedAt" < now() - interval '1 hour' UNION ALL SELECT "id" FROM "NotificationOutbox" WHERE "status" = 'processing' AND "processingStartedAt" < now() - interval '1 hour'`),

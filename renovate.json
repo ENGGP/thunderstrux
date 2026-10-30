@@ -53,8 +53,7 @@
       "matchPackageNames": [
         "tailwindcss",
         "@tailwindcss/postcss",
-        "postcss",
-        "autoprefixer"
+        "postcss"
       ],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "groupName": "tailwind and postcss dependencies"

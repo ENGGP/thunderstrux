@@ -128,7 +128,9 @@ async function claimNextRefund(now = new Date()): Promise<ClaimedRefund | null> 
       }
     });
     const order = job.order;
-    const account = order.event.organisation.stripeAccountId;
+    // The account the order was paid to (DEBT-002), not whichever the society has now;
+    // orders from before seller snapshots fall back to the society's.
+    const account = order.sellerStripeAccountId ?? order.event.organisation.stripeAccountId;
     if (
       order.status !== "failed" ||
       !order.requiresCompensationReview ||
@@ -607,7 +609,7 @@ export async function confirmCompensationRefund(
     session.metadata?.orderId !== orderId ||
     session.amount_total !== existing.amount ||
     session.currency?.toLowerCase() !== existing.currency ||
-    destination !== existing.order.event.organisation.stripeAccountId ||
+    destination !== (existing.order.sellerStripeAccountId ?? existing.order.event.organisation.stripeAccountId) ||
     !latestCharge ||
     (refund.metadata?.orderId !== undefined && refund.metadata.orderId !== orderId)
   ) throw new CompensationRefundVerificationError("manual_refund_verification_failed");

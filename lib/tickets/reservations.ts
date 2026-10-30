@@ -50,27 +50,6 @@ export async function runReservationTransaction<T>(
   throw new Error("Reservation transaction retry limit exceeded");
 }
 
-export async function getActiveReservedQuantity(
-  tx: Prisma.TransactionClient,
-  ticketTypeId: string,
-  now = new Date()
-) {
-  const result = await tx.ticketReservation.aggregate({
-    where: {
-      ticketTypeId,
-      status: "active",
-      expiresAt: {
-        gt: now
-      }
-    },
-    _sum: {
-      quantity: true
-    }
-  });
-
-  return result._sum.quantity ?? 0;
-}
-
 export async function findActiveReservationForOrder(
   tx: Prisma.TransactionClient,
   orderId: string,

@@ -6,7 +6,7 @@ test("a check-in the server refuses says why on the card and admits no one", asy
   const order = await createOrder({ organisationId: data.organisation.id, eventId: data.event.id, ticketTypeId: data.ticket.id, userId: data.member.id, status: "paid", paidAt: new Date(), quantity: 1, unitPrice: 1500 });
   const ticket = await prisma.ticket.create({ data: { issueSequence: 1, orderId: order.id, eventId: data.event.id, ticketTypeId: data.ticket.id, organisationId: data.organisation.id } });
   await login(page, data.owner.email, `/dashboard/events/${data.event.id}/tickets`);
-  await page.route("**/api/tickets/*/check-in", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { code: "FORBIDDEN", message: "Forbidden", details: [] } }) }));
+  await page.route("**/api/tickets/*/check-in?eventId=*", (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: { code: "FORBIDDEN", message: "Forbidden", details: [] } }) }));
   await page.getByRole("button", { name: /^Check in / }).click();
   const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: /^Check in / }) });
   await expect(card.getByRole("alert")).toContainText("can't check people in");
@@ -48,7 +48,7 @@ test("check-in staff find a ticket on a phone, admit it once, see why others can
   await expect(page.getByText("1 of 2 checked in")).toBeVisible();
 
   // The check-in saves but its answer never arrives: the card says it doesn't know, then reloads the truth.
-  await page.route("**/api/tickets/*/check-in", async (route) => {
+  await page.route("**/api/tickets/*/check-in?eventId=*", async (route) => {
     await route.fetch();
     await route.abort("connectionreset");
   });
@@ -56,7 +56,7 @@ test("check-in staff find a ticket on a phone, admit it once, see why others can
   await results.getByRole("button", { name: /^Check in/ }).click();
   await expect(results.getByRole("listitem", { name: "Sam Lee, Status unknown" })).toBeVisible();
   await page.screenshot({ path: "test-results/check-in-unknown-390.png", fullPage: true });
-  await page.unroute("**/api/tickets/*/check-in");
+  await page.unroute("**/api/tickets/*/check-in?eventId=*");
   await results.getByRole("button", { name: "Reload ticket" }).click();
   await expect(results.getByRole("listitem", { name: "Sam Lee, Checked in" })).toBeVisible();
   expect(await prisma.auditLog.count({ where: { targetId: second.id, action: "ticket.checked_in" } })).toBe(1);

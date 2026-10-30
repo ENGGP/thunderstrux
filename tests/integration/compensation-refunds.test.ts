@@ -147,6 +147,23 @@ describe("compensation refunds", () => {
       .toMatchObject({ organisationId: fixture.organisation.id, actorUserId: null, metadata: { attempt: 1 } });
   });
 
+  // DEBT-002: the account the order was paid to, not whichever the society has connected since.
+  test("checks the payment against the order's seller account after the society reconnects", async () => {
+    const fixture = await automaticCompensationFixture();
+    const paidTo = fixture.organisation.stripeAccountId as string;
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { sellerStripeAccountId: paidTo } });
+    await prisma.organisation.update({ where: { id: fixture.organisation.id }, data: { stripeAccountId: `acct_reconnected_${fixture.organisation.id}` } });
+    configureEligibleStripe(fixture);
+    stripeMock.refunds.create.mockResolvedValue({
+      id: "re_compensation_snapshot", status: "succeeded", amount: fixture.order.totalAmount, currency: "aud", payment_intent: "pi_compensation",
+      metadata: { compensationRefundJobId: fixture.job.id, orderId: fixture.order.id }
+    });
+
+    await expect(processCompensationRefundBatch()).resolves.toMatchObject({ processed: 1 });
+    expect(stripeMock.refunds.create).toHaveBeenCalledTimes(1);
+    expect(await prisma.compensationRefundJob.findUniqueOrThrow({ where: { id: fixture.job.id } })).toMatchObject({ state: "refunded" });
+  });
+
   test("routes a pre-existing unrelated refund to review without another provider mutation", async () => {
     const fixture = await automaticCompensationFixture();
     configureEligibleStripe(fixture);

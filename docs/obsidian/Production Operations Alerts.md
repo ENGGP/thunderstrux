@@ -72,7 +72,6 @@ Every alert (`OperationalAlertName`). The engineering on-call owns all of them; 
 | `event_cancelled_after_release` | a cancelled event's refunds include sales older than 80 days, already released for payout (`amount`, `orders`; PAY-022) | Watch the society's balance in Stripe: what it no longer holds is debited from its bank. If debits fail, Stripe pauses its payouts and holds a reserve on the platform; contact the society. |
 | `commerce_webhook_identity_mismatch` | a commerce Session's family, society or order doesn't match, or a commerce Session arrived without a family | Nothing was fulfilled. Find the payment in Stripe; refund a stray charge there. |
 | `ticket_webhook_identity_mismatch` | a paid Session isn't the one bound to its ticket order (PAY-010) | Nothing was issued. If the order was paid on its own Session, refund the stray payment in Stripe; no order records it. |
-| `db_migration_failed`, `app_healthcheck_failed` | declared but never raised (DEBT-001) | Watch migration exit codes and deploy logs, and an external uptime check on `/api/health/ready`, instead. |
 
 ## Traps
 

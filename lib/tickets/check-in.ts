@@ -171,12 +171,13 @@ export async function getOrganisationEventTickets(
   };
 }
 
-// Check in or undo one ticket of the society's events. The ticket must still
+// Check in or undo one ticket of the event the door is checking (DEBT-002: a
+// ticket of the society's other events is not found). The ticket must still
 // admit (active); the conditional update means two staff at the door can't
 // both admit the same ticket, and the loser is told it is already checked in.
-async function setCheckIn(organisationId: string, ticketId: string, actorUserId: string, checkIn: boolean) {
+async function setCheckIn(organisationId: string, eventId: string, ticketId: string, actorUserId: string, checkIn: boolean) {
   const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
-  const scope = { id: ticketId, event: { organisationId, ...(authority.staffRole === "check_in_staff" ? { status: "published" as const } : {}) } };
+  const scope = { id: ticketId, eventId, event: { organisationId, ...(authority.staffRole === "check_in_staff" ? { status: "published" as const } : {}) } };
   return prisma.$transaction(async (tx) => {
     const existing = await tx.ticket.findFirst({ where: scope, select: { checkedInAt: true, validity: true, validityReason: true } });
     if (!existing) throw new OrganisationTicketAccessError();
@@ -196,8 +197,8 @@ async function setCheckIn(organisationId: string, ticketId: string, actorUserId:
   });
 }
 
-export const checkInOrganisationTicket = (organisationId: string, ticketId: string, actorUserId: string) =>
-  setCheckIn(organisationId, ticketId, actorUserId, true);
+export const checkInOrganisationTicket = (organisationId: string, eventId: string, ticketId: string, actorUserId: string) =>
+  setCheckIn(organisationId, eventId, ticketId, actorUserId, true);
 
-export const checkOutOrganisationTicket = (organisationId: string, ticketId: string, actorUserId: string) =>
-  setCheckIn(organisationId, ticketId, actorUserId, false);
+export const checkOutOrganisationTicket = (organisationId: string, eventId: string, ticketId: string, actorUserId: string) =>
+  setCheckIn(organisationId, eventId, ticketId, actorUserId, false);

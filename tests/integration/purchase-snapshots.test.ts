@@ -206,9 +206,9 @@ describe("purchase snapshots and ticket validity", () => {
     const door = await getOrganisationEventTickets(owner.organisation.id, event.id);
     expect(door.tickets.map((ticket) => ticket.id)).toEqual([valid.id]);
     expect(door.counts).toEqual({ total: 1, unused: 1, checkedIn: 0 });
-    await expect(checkInOrganisationTicket(owner.organisation.id, voided.id, owner.user.id)).rejects.toMatchObject({ validity: "void", validityReason: "refunded" });
-    await expect(checkInOrganisationTicket(owner.organisation.id, review.id, owner.user.id)).rejects.toBeInstanceOf(TicketNotValidError);
-    await expect(checkInOrganisationTicket(owner.organisation.id, valid.id, owner.user.id)).resolves.toMatchObject({ status: "checked-in" });
+    await expect(checkInOrganisationTicket(owner.organisation.id, event.id, voided.id, owner.user.id)).rejects.toMatchObject({ validity: "void", validityReason: "refunded" });
+    await expect(checkInOrganisationTicket(owner.organisation.id, event.id, review.id, owner.user.id)).rejects.toBeInstanceOf(TicketNotValidError);
+    await expect(checkInOrganisationTicket(owner.organisation.id, event.id, valid.id, owner.user.id)).resolves.toMatchObject({ status: "checked-in" });
   });
 
   test("only tickets issued in the last two minutes get the arrival entrance", () => {

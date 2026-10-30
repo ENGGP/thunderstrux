@@ -124,8 +124,9 @@ async function selectAlreadyExpiredReservationBackedOrderCandidates({
 
 type ExpiryReason = "reservation_expired" | "reservation_already_expired" | "legacy_pending_timeout";
 
-// The one place an unpaid ticket order expires: under its lock, only if it
-// still qualifies for the reason it was picked, with one history entry.
+// The stale-order job's expiry of an unpaid ticket order (the expiry webhook and
+// the buyer's cancel expire them too): under its lock, only if it still
+// qualifies for the reason it was picked, with one history entry.
 async function expirePendingOrder(orderId: string, reason: ExpiryReason, now: Date, legacyPendingCutoff: Date) {
   return prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, orderId))) return false;

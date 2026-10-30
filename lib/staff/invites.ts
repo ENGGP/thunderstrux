@@ -54,7 +54,9 @@ async function enqueueInvite(tx: Prisma.TransactionClient, invite: { id: string;
   link.hash = new URLSearchParams({ token }).toString();
   await enqueueNotification(tx, { eventKey: `staff-invite/${invite.id}/${invite.version}`, recipient: invite.email, template: "staff_invite",
     staffInviteId: invite.id, staffInviteVersion: invite.version, expiresAt: invite.expiresAt,
-    payload: { message: `You are invited to join ${organisationName} as ${invite.role.replace(/_/g, " ")}. Sign in with this email and verify it, then explicitly accept. This link expires in seven days. Existing active staff roles are preserved.`, link: link.toString() } });
+    // DEBT-002: the name is the society's own text going to any address, so it is quoted as
+    // theirs, on one line, and the email says how to ignore an invitation nobody expected.
+    payload: { message: `The society “${organisationName.replace(/\s+/g, " ").trim()}” on Thunderstrux invited you to its staff as ${invite.role.replace(/_/g, " ")}. Sign in with this email and verify it, then explicitly accept. This link expires in seven days. Existing active staff roles are preserved. If you weren't expecting this, ignore this email: nothing changes unless you accept.`, link: link.toString() } });
 }
 async function audit(tx: Prisma.TransactionClient, organisationId: string, actorId: string, inviteId: string, action: string, metadata: Prisma.InputJsonObject) {
   await tx.auditLog.create({ data: { organisationId, actorUserId: actorId, action, targetType: "OrganisationStaffInvite", targetId: inviteId, metadata } });

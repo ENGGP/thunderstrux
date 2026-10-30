@@ -60,8 +60,6 @@ Two account kinds (`User.accountRole`): `member` (a person) and `organisation` (
 | `merchandise:manage` | ✓ | ✓ | | | | product routes and pages, product photos |
 | `merchandise:fulfil` | ✓ | ✓ | | | | pickups and returns |
 | `audit:read` | ✓ | ✓ | | | | `/dashboard/history` ([[Audit Coverage#History]]) |
-| `members:manage` | ✓ | ✓ | | | | defined, used by nothing |
-| `openclaw:use` | ✓ | ✓ | ✓ | ✓ | | defined, used by nothing (OpenClaw is deferred) |
 
 Extra rules outside the matrix: only an `owner` may invite an owner, change an owner row or grant owner (`lib/staff/management.ts`); handover needs an `owner`; invitation issuers also need a verified email (`lib/staff/invite-authority.ts`).
 

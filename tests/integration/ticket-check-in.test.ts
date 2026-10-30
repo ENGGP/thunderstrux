@@ -6,6 +6,7 @@ import { POST as checkInTicket } from "@/app/api/tickets/[ticketId]/check-in/rou
 import { POST as checkOutTicket } from "@/app/api/tickets/[ticketId]/check-out/route";
 import { prisma } from "@/lib/db";
 import { ticketQrAttachments } from "@/lib/email/ticket-delivery";
+import { hasOrganisationPermission, organisationPermissions } from "@/lib/permissions";
 import { createTestRateLimitBackend, setRateLimitTestBackend, setRateLimitTestEnabled } from "@/lib/security/rate-limit";
 import { clearMockSession, selectMockContext, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
@@ -886,7 +887,7 @@ describe("ticket visibility and check-in API", () => {
   });
 
   // The attendee list as a CSV needs orders:read; the door list mustn't hand out the same emails.
-  test("roles without orders:read see buyer names but not emails, and can still find a buyer by email", async () => {
+  test("roles without orders:read see buyer names but not emails, and find a buyer by their whole email only", async () => {
     const { owner, event, buyer, ticket } = await doorFixture();
     expect((await search(event.id, "Sam")).tickets[0].buyerEmail).toBe(buyer.email);
     for (const role of ["check_in_staff", "event_manager"] as const) {
@@ -894,9 +895,16 @@ describe("ticket visibility and check-in API", () => {
       await createOrganisationStaff({ organisationId: owner.organisation.id, userId: staff.id, role });
       setMockSession({ userId: staff.id, email: staff.email, accountRole: "member" });
       selectMockContext({ mode: "staff", organisationId: owner.organisation.id });
-      expect((await search(event.id, buyer.email.slice(0, 8))).tickets, role).toEqual([expect.objectContaining({ id: ticket.id, buyerName: "Sam Lee", buyerEmail: null })]);
+      expect((await search(event.id, buyer.email.toUpperCase())).tickets, role).toEqual([expect.objectContaining({ id: ticket.id, buyerName: "Sam Lee", buyerEmail: null })]);
+      // A prefix would let them spell an address out letter by letter.
+      expect((await search(event.id, buyer.email.slice(0, 8))).tickets, role).toEqual([]);
       expect((await search(event.id, "")).tickets, role).toEqual([expect.objectContaining({ id: ticket.id, buyerEmail: null })]);
     }
+  });
+
+  // The exemption below (SEC-039) holds only while the role can do no more than this; widening it means revisiting MFA.
+  test("check-in-only staff can read events and check tickets in, nothing else", () => {
+    expect(organisationPermissions.filter((permission) => hasOrganisationPermission("check_in_staff", permission))).toEqual(["events:read", "tickets:check_in"]);
   });
 
   // Door volunteers are exempt from staff MFA, as at Humanitix and Luma; every other role still needs it.

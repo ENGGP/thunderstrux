@@ -207,7 +207,7 @@ export function renderTicketEmail(order: TicketDeliveryOrder, guestOrderLink?: s
     "Your tickets:",
     ticketIdLines || "- Not available",
     "",
-    "At the door, show your ticket's QR code (in this email or on your tickets page), or give your name or ticket reference.",
+    "At the door, show your ticket's QR code from this email, or give your name or ticket reference.",
     ...(contactLink ? ["", `Questions? Contact ${seller}: ${contactLink}`] : []),
     ...(memberLink ? ["", `View your tickets: ${memberLink}`] : []),
     ...(guestOrderLink ? ["", `Open your order (works once, for 24 hours; after that use Find your purchase): ${guestOrderLink}`] : [])

@@ -62,8 +62,11 @@ const personName = (user: { firstName: string | null; lastName: string | null; e
 
 // Search by name, email, order or ticket reference. Every word of a name must
 // match some name or email field; a reference matches anywhere in the id.
-function searchWhere(query: string): Prisma.TicketWhereInput {
+// Roles that can't see emails match only a whole address, so typing ever
+// longer prefixes can't spell out a buyer's email (SEC-038).
+function searchWhere(query: string, partialEmails: boolean): Prisma.TicketWhereInput {
   const text = (value: string) => ({ contains: value, mode: "insensitive" as const });
+  const email = (value: string) => (partialEmails ? text(value) : { equals: value, mode: "insensitive" as const });
   const words = query.split(/\s+/).filter(Boolean);
   return {
     OR: [
@@ -73,9 +76,9 @@ function searchWhere(query: string): Prisma.TicketWhereInput {
         AND: words.map((word) => ({
           order: {
             OR: [
-              { buyerEmailSnapshot: text(word) }, { buyerFirstNameSnapshot: text(word) }, { buyerLastNameSnapshot: text(word) },
-              { buyerDisplayNameSnapshot: text(word) }, { guestIdentity: { email: text(word) } },
-              { user: { OR: [{ email: text(word) }, { firstName: text(word) }, { lastName: text(word) }, { displayName: text(word) }] } }
+              { buyerEmailSnapshot: email(word) }, { buyerFirstNameSnapshot: text(word) }, { buyerLastNameSnapshot: text(word) },
+              { buyerDisplayNameSnapshot: text(word) }, { guestIdentity: { email: email(word) } },
+              { user: { OR: [{ email: email(word) }, { firstName: text(word) }, { lastName: text(word) }, { displayName: text(word) }] } }
             ]
           }
         }))
@@ -88,7 +91,7 @@ function searchWhere(query: string): Prisma.TicketWhereInput {
 // tickets that admit (oldest first, paged); a search of 2 or more characters
 // also finds void and under-review tickets so staff can see why they don't.
 // Buyer emails go only to roles that can read orders: the same list as a CSV
-// needs `orders:read`, a rate limit and an audit row. A search still matches emails.
+// needs `orders:read`, a rate limit and an audit row. Other roles can still find a buyer by their whole email.
 export async function getOrganisationEventTickets(
   organisationId: string,
   eventId: string,
@@ -113,7 +116,7 @@ export async function getOrganisationEventTickets(
       where: {
         ...scope,
         AND: [
-          search.length >= 2 ? searchWhere(search) : { validity: "active" as const },
+          search.length >= 2 ? searchWhere(search, showEmail) : { validity: "active" as const },
           ...(decoded ? [ascendingCursorWhere("createdAt", decoded, direction)] : [])
         ]
       },

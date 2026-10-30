@@ -342,8 +342,12 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
   }
 
   async function reload(ticketId: string) {
+    setChecking(true);
     const ticket = await readTicket(eventId, ticketId).catch(() => null);
-    if (ticket) setResult({ id: ++count.current, ticket, outcome: null });
+    setChecking(false);
+    setResult(ticket
+      ? { id: ++count.current, ticket, outcome: null }
+      : { ...noAnswer, detail: "Still no answer. Check the connection, then reload again before admitting.", ticketId, id: ++count.current });
   }
 
   return (
@@ -361,7 +365,7 @@ function ScanPanel({ eventId, timeZone }: { eventId: string; timeZone: string })
             <p className="text-sm font-semibold text-ink">{result.detail}</p>
             {result.ticketId ? (
               <div>
-                <button className={buttonClasses()} onClick={() => reload(result.ticketId!)} type="button">Reload ticket</button>
+                <button className={buttonClasses({ busy: checking })} disabled={checking} onClick={() => reload(result.ticketId!)} type="button">Reload ticket</button>
               </div>
             ) : null}
           </div>

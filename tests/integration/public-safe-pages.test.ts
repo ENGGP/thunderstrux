@@ -168,6 +168,7 @@ describe("public-safe pages and APIs", () => {
 
     const used = await renderPage(createElement(PublicTicketPurchase, { eventId: "event_member", memberPlan: "Full year", ticketTypes: [{ ...ticketType, price: 1500, standardPrice: undefined, memberPriced: undefined }] }));
     expect(used).toContain("Yours is used or in an open checkout");
+    expect(used).toContain('href="/purchases"');
     expect(used).toContain("Up to 10 per order");
   });
 

@@ -56,7 +56,8 @@ export default async function CheckoutPage({
 
   const listed = event.ticketTypes.find((type) => type.id === query.ticketTypeId);
   // A member account with the right membership is quoted the member price, one ticket per event; guests never are (T24b).
-  const memberPlan = listed && listed.memberPrice !== null && session?.user.emailVerifiedAt && (await memberPriceUnused(event.id, session.user.id)) ? await memberPricePlan(event.organisation.slug, session.user.id) : null;
+  const plan = listed && listed.memberPrice !== null && session?.user.emailVerifiedAt ? await memberPricePlan(event.organisation.slug, session.user.id) : null;
+  const memberPlan = plan && session && (await memberPriceUnused(event.id, session.user.id)) ? plan : null;
   const ticketType = listed ? priceWithTicketCode(priceForViewer([listed], memberPlan !== null), code)[0] : undefined;
   const quantity = Number(query.quantity);
   // Back to the event, with the code, so its page says why a hidden type isn't there.

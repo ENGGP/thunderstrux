@@ -272,7 +272,7 @@ export async function createEventCheckout({
         }
         // A price saved before the paid minimum existed; the page has no code to blame.
         if (isBelowPaidMinimum(unitPrice)) {
-          const message = `${ticketType.name} can't be sold at ${formatMoney(unitPrice)}: paid tickets start at ${formatMoney(minPaidPrice)}. Ask ${organisation.name} about it.`;
+          const message = `${ticketType.name} can't be sold at ${formatMoney(unitPrice)}: paid tickets start at ${formatMoney(minPaidPrice)}. Ask the society about it.`;
           throw new CheckoutCreationError("price_below_minimum", message, [{ path: ["ticketTypeId"], message }]);
         }
         const codeFacts = usedCode

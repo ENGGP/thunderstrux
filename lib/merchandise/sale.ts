@@ -96,10 +96,11 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
       }),
       heldByVariant(tx, ids, now),
       // A free basket completes at once, so the rule above never stops a repeat. Refunded,
-      // cancelled and closed orders give their units back, as voided free tickets do.
+      // cancelled and closed orders give their units back, as voided free tickets do; a refund
+      // still processing doesn't yet, as its tickets stay valid until it succeeds.
       tx.commerceOrderLine.groupBy({
         by: ["merchandiseVariantId"],
-        where: { merchandiseVariantId: { in: ids }, unitAmount: 0, order: { status: { in: ["pending", "paid"] }, cancelledAt: null, refundStatus: null, ...buyer } },
+        where: { merchandiseVariantId: { in: ids }, unitAmount: 0, order: { status: { in: ["pending", "paid"] }, cancelledAt: null, OR: [{ refundStatus: null }, { refundStatus: "processing" }], ...buyer } },
         _sum: { quantity: true }
       })
     ]);

@@ -645,10 +645,9 @@ export async function updateOrganisationEvent(
     }
 
     // Types with orders or tickets are kept for history even when omitted.
-    const removedTicketTypeIds = locked.ticketTypes
+    const removedTicketTypeIds = !input.ticketTypes ? [] : locked.ticketTypes
       .filter(
         (ticketType) =>
-          input.ticketTypes &&
           ticketType._count.orders === 0 &&
           ticketType._count.tickets === 0 &&
           !uniqueSubmittedIds.has(ticketType.id)

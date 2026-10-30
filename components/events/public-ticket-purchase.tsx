@@ -370,7 +370,12 @@ export function PublicTicketPurchase({
           Member price through your {membershipLabel(memberPlan)}. It covers one ticket for this event; extra tickets are the standard price in a second checkout.
         </p>
       ) : memberPlan && ticketTypes.some((ticketType) => ticketType.memberPrice != null && ticketType.memberPrice < (ticketType.standardPrice ?? ticketType.price)) ? (
-        <p className="text-sm text-ink-soft">Your member price covers one ticket for this event. Yours is used or in an open checkout, so these are the standard price.</p>
+        <p className="text-sm text-ink-soft">
+          Your member price covers one ticket for this event. Yours is used or in an open checkout, so these are the standard price.{" "}
+          <Link className="font-semibold text-brand underline underline-offset-4" href="/purchases">
+            See your purchases
+          </Link>
+        </p>
       ) : !memberPlan && societySlug && ticketTypes.some((ticketType) => ticketType.memberPrice != null) ? (
         <p className="text-sm text-ink-soft">
           {society} members pay less. Joining for free doesn&apos;t include member prices.{" "}

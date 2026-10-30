@@ -221,7 +221,9 @@ describe("merchandise sale", () => {
     const closed = await orderOf((await buy(organisation.id, other, [paidLine, freeLine(10)])).attemptId);
     await prisma.commerceOrder.update({ where: { id: closed }, data: { status: "expired" } });
     const refunded = await orderOf((await buy(organisation.id, other, [paidLine, freeLine(10)])).attemptId);
-    await prisma.commerceOrder.update({ where: { id: refunded }, data: { status: "paid", paidAt: new Date(), refundStatus: "refunded" } });
+    await prisma.commerceOrder.update({ where: { id: refunded }, data: { status: "paid", paidAt: new Date(), refundStatus: "processing" } });
+    await expect(buy(organisation.id, other, [freeLine(1)])).rejects.toMatchObject({ reason: "free_limit_reached", available: 0 });
+    await prisma.commerceOrder.update({ where: { id: refunded }, data: { refundStatus: "refunded" } });
     expect((await buy(organisation.id, other, [freeLine(10)])).status).toBe("fulfilled");
 
     // Units bought at a price don't count once the option turns free.

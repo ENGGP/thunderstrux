@@ -31,6 +31,7 @@ type Screen =
   | { kind: "sold_out" | "sales_closed" | "stripe_not_ready" | "still_confirming" }
   | { kind: "purchase_in_progress"; orderId?: string }
   | { kind: "free_limit_reached"; left: number }
+  | { kind: "code_unavailable"; message: string; left: number }
   | { kind: "error"; message: string };
 
 const pollIntervalMs = 2000;
@@ -50,6 +51,7 @@ function screenFor(failure: unknown): Screen {
   if (reason === "sold_out" || reason === "sales_closed" || reason === "stripe_not_ready") return { kind: reason };
   if (reason === "purchase_in_progress") return { kind: reason, orderId: detail?.id };
   if (reason === "free_limit_reached") return { kind: reason, left: value ?? 0 };
+  if (reason === "code_unavailable") return { kind: reason, message: detail?.message ?? "That code can't be used now.", left: value ?? 0 };
   if (reason === "quote_changed" && value !== undefined) return { kind: reason, unitPrice: value };
   if (reason === "insufficient_availability" && value) return { kind: reason, available: value };
   return { kind: "error", message: getClientErrorMessage(failure, "Checkout could not start. Please try again.") };
@@ -70,7 +72,8 @@ export function CheckoutAction({
   freeTicketsAvailable,
   label,
   backHref,
-  guestCsrf
+  guestCsrf,
+  code
 }: {
   eventId: string;
   eventTitle: string;
@@ -84,6 +87,8 @@ export function CheckoutAction({
   backHref: string;
   // Present for a guest checkout: the guest session's CSRF token.
   guestCsrf?: string;
+  // The ticket code this price came from.
+  code?: string;
 }) {
   const router = useRouter();
   const key = useRef<string | null>(null);
@@ -107,7 +112,7 @@ export function CheckoutAction({
       const data = await fetchJson<CheckoutResponse>("/api/payments/checkout/event", {
         method: "POST",
         headers: { "content-type": "application/json", ...(guestCsrf ? { "x-thunderstrux-guest-csrf": guestCsrf } : {}) },
-        body: JSON.stringify({ eventId, ticketTypeId, quantity: next.quantity, expectedUnitPrice: next.unitPrice, idempotencyKey: key.current })
+        body: JSON.stringify({ eventId, ticketTypeId, quantity: next.quantity, expectedUnitPrice: next.unitPrice, ...(code ? { code } : {}), idempotencyKey: key.current })
       });
       if ("kind" in data && data.kind === "fulfilled") return finished(data.orderId);
       if ("kind" in data && data.kind === "stripe") {
@@ -146,7 +151,7 @@ export function CheckoutAction({
 
   // A smaller quantity is a new selection: the address follows it, so the summary does too.
   function continueWith(available: number) {
-    router.replace(`/events/${eventId}/checkout?ticketTypeId=${ticketTypeId}&quantity=${available}`, { scroll: false });
+    router.replace(`/events/${eventId}/checkout?ticketTypeId=${ticketTypeId}&quantity=${available}${code ? `&code=${encodeURIComponent(code)}` : ""}`, { scroll: false });
     void submit({ ...selection, quantity: available });
   }
 
@@ -226,6 +231,17 @@ export function CheckoutAction({
         >
           Each person can hold up to {maxTicketsPerOrder} free tickets for {eventTitle}, so there are enough to go round.
           {guestCsrf ? " The tickets you already have are in your email." : " The tickets you already have are in My tickets."}
+        </StateScreen>
+      );
+    case "code_unavailable":
+      // A limit with tickets left offers them; any other refusal goes back, where the code can be removed.
+      return (
+        <StateScreen
+          actions={screen.left > 0 && screen.left < selection.quantity ? <><Button onClick={() => continueWith(screen.left)} type="button">Continue with {screen.left} {tickets(screen.left)}</Button>{changeTickets}</> : backTo("Back to ticket options")}
+          title={`Code ${code ?? ""} can't be used`}
+          tone="warning"
+        >
+          {screen.message} Nothing has been charged.
         </StateScreen>
       );
     case "still_confirming":

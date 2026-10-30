@@ -6,10 +6,11 @@ import type { BuyBoxViewer } from "@/components/events/public-ticket-purchase";
 import { appUrl } from "@/lib/app-url";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { formatDateTime } from "@/lib/format";
-import { getEventForViewer, priceForViewer } from "@/lib/events/public-events";
+import { getEventForViewer, priceForViewer, priceWithTicketCode } from "@/lib/events/public-events";
+import { codeForBuyer, describeCode } from "@/lib/events/ticket-codes";
 import { memberPricePlan } from "@/lib/memberships/offers";
 
-type Selection = { ticketTypeId?: string; quantity?: string };
+type Selection = { ticketTypeId?: string; quantity?: string; code?: string };
 
 type PublicEventPageProps = {
   params: Promise<{
@@ -19,9 +20,9 @@ type PublicEventPageProps = {
   searchParams?: Promise<Selection>;
 };
 
-async function readPage(eventId: string) {
+async function readPage(eventId: string, unlock: string | null = null) {
   const session = await getLiveSession();
-  return { session, access: await getEventForViewer(eventId, session?.user.id ?? null) };
+  return { session, access: await getEventForViewer(eventId, session?.user.id ?? null, unlock) };
 }
 
 // Members-only pages, gated or open, stay out of search engines and keep a
@@ -54,7 +55,9 @@ export async function generateMetadata({ params }: PublicEventPageProps): Promis
 // see the page as buyers do.
 export default async function PublicEventPage({ params, searchParams }: PublicEventPageProps) {
   const [{ eventId }, query] = await Promise.all([params, searchParams ?? Promise.resolve<Selection>({})]);
-  const { session, access } = await readPage(eventId);
+  // A code in the address (typed in the ticket box, or a shared link) may unlock a hidden type.
+  const buyerCode = await codeForBuyer(eventId, query.code);
+  const { session, access } = await readPage(eventId, buyerCode?.code?.ticketTypeId ?? null);
 
   if (!access) {
     notFound();
@@ -81,9 +84,17 @@ export default async function PublicEventPage({ params, searchParams }: PublicEv
     ? await memberPricePlan(event.organisation.slug, session.user.id)
     : null;
 
+  const code = buyerCode?.code ?? null;
+  const unlocked = code?.ticketTypeId ? event.ticketTypes.find((type) => type.id === code.ticketTypeId) : undefined;
   return (
     <main id="main" tabIndex={-1} className="bg-paper">
-      <PublicEventView event={{ ...event, ticketTypes: priceForViewer(event.ticketTypes, memberPlan !== null) }} memberPlan={memberPlan} selection={{ ticketTypeId: query.ticketTypeId, quantity: Number(query.quantity) }} viewer={viewer} />
+      <PublicEventView
+        code={buyerCode && { text: buyerCode.text, gives: code ? describeCode(code, unlocked?.name) : null, message: buyerCode.message }}
+        event={{ ...event, ticketTypes: priceWithTicketCode(priceForViewer(event.ticketTypes, memberPlan !== null), code) }}
+        memberPlan={memberPlan}
+        selection={{ ticketTypeId: query.ticketTypeId ?? unlocked?.id, quantity: Number(query.quantity) }}
+        viewer={viewer}
+      />
     </main>
   );
 }

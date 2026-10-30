@@ -6,6 +6,8 @@ import type { ExploreRange } from "@/lib/events/explore-filters";
 import { readEventInventory, readEventsInventory, sellableQuantity } from "@/lib/events/inventory";
 import { activeEntitlementGrant } from "@/lib/memberships/grants";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
+import { isBelowPaidMinimum } from "@/lib/stripe/fees";
+import { codeAppliesTo, priceWithCode, type UsableCode } from "@/lib/events/ticket-codes";
 import {
   ascendingCursorWhere,
   decodeTimestampCursor,
@@ -48,8 +50,12 @@ export type PublicEventTicketType = {
   price: number;
   // What members pay, when the type has a member price (T24b).
   memberPrice: number | null;
-  // Set when `price` is a member price: the standard price, for display.
+  // Set when `price` is a member or code price: the standard price, for display.
   standardPrice?: number | null;
+  // Shown only to a buyer whose access code names it.
+  hidden: boolean;
+  // Set when a ticket code lowered `price`.
+  codePrice?: boolean;
   quantity: number;
   // Advisory sellable stock: remaining minus live holds, within capacity.
   availableQuantity: number;
@@ -167,7 +173,8 @@ export async function listingAvailability(eventIds: string[], now = new Date()):
         saleState: true,
         salesCloseAt: true,
         organisation: { select: { stripeAccountId: true, stripeChargesEnabled: true } },
-        ticketTypes: { select: { id: true, price: true, quantity: true } }
+        // Cards price only what anyone can buy.
+        ticketTypes: { where: { hidden: false }, select: { id: true, price: true, quantity: true } }
       }
     }),
     readEventsInventory(prisma, eventIds, now)
@@ -226,14 +233,16 @@ const detailSelect = {
     }
   },
   ticketTypes: {
-    select: { id: true, name: true, price: true, memberPrice: true, quantity: true },
+    select: { id: true, name: true, price: true, memberPrice: true, quantity: true, hidden: true },
     orderBy: { createdAt: "asc" as const }
   }
 } satisfies Prisma.EventSelect;
 
 // One event page's data. Stock and per-type reasons are advisory (an unlocked
-// read that writes nothing); checkout decides again under its locks.
-async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEventDetail | null> {
+// read that writes nothing); checkout decides again under its locks. Hidden
+// types are left out, except the one a buyer's access code unlocks, or all of
+// them for the organiser's preview.
+async function readEventDetail(where: Prisma.EventWhereInput, unlock: string | null | "every" = null): Promise<PublicEventDetail | null> {
   const event = await prisma.event.findFirst({ where, select: detailSelect });
   if (!event) return null;
 
@@ -267,11 +276,13 @@ async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEve
       supportEmail: event.organisation.supportEmail,
       refundPolicy: event.organisation.refundPolicy
     },
-    ticketTypes: ticketTypes.map(({ sellable, ...ticketType }) => ({
-      ...ticketType,
-      availableQuantity: sellable,
-      unavailable: reasons.get(ticketType.id) ?? null
-    }))
+    ticketTypes: ticketTypes
+      .filter((ticketType) => !ticketType.hidden || unlock === "every" || ticketType.id === unlock)
+      .map(({ sellable, ...ticketType }) => ({
+        ...ticketType,
+        availableQuantity: sellable,
+        unavailable: reasons.get(ticketType.id) ?? null
+      }))
   };
 }
 
@@ -292,10 +303,28 @@ export function priceForViewer(ticketTypes: PublicEventTicketType[], member: boo
   );
 }
 
+// The prices a buyer's ticket code gives (lib/events/ticket-codes.ts), after
+// priceForViewer: its discount comes off the member price too. A price it would
+// leave under the paid minimum is not shown; checkout refuses that code.
+export function priceWithTicketCode(ticketTypes: PublicEventTicketType[], code: UsableCode | null): PublicEventTicketType[] {
+  if (!code) return ticketTypes;
+  return ticketTypes.map((ticketType) => {
+    const price = priceWithCode(ticketType.price, code);
+    if (!codeAppliesTo(code, ticketType) || price === ticketType.price || isBelowPaidMinimum(price)) return ticketType;
+    return {
+      ...ticketType,
+      price,
+      standardPrice: ticketType.standardPrice ?? ticketType.price,
+      codePrice: true,
+      unavailable: price === 0 && ticketType.unavailable === "payments_unavailable" ? null : ticketType.unavailable
+    };
+  });
+}
+
 // Public and link-only events are readable; drafts and members-only events
 // read as missing (the public API, and the first step of getEventForViewer).
-export function getPublishedEventDetail(eventId: string) {
-  return readEventDetail({ id: eventId, status: "published", visibility: { not: "members_only" } });
+export function getPublishedEventDetail(eventId: string, unlock: string | null = null) {
+  return readEventDetail({ id: eventId, status: "published", visibility: { not: "members_only" } }, unlock);
 }
 
 // Why a published members-only event is closed to this viewer (round B1).
@@ -315,13 +344,14 @@ export type ViewerEvent = { kind: "open"; event: PublicEventDetail } | { kind: "
 // only once the viewer's live membership of that society unlocks members-only
 // events (verified member account; unrevoked; inside its dates). Free joins,
 // staff, guests and other societies' members get the gate, which names only
-// the society. Cached per request so page and metadata decide once.
-export const getEventForViewer = cache(async (eventId: string, userId: string | null): Promise<ViewerEvent | null> => {
+// the society. Cached per request so page and metadata decide once. `unlock`
+// is the hidden ticket type a buyer's access code names.
+export const getEventForViewer = cache(async (eventId: string, userId: string | null, unlock: string | null = null): Promise<ViewerEvent | null> => {
   const head = await prisma.event.findFirst({ where: { id: eventId, status: "published" }, select: { visibility: true, organisationId: true } });
   if (!head) return null;
   if (head.visibility !== "members_only") {
     // Re-filtered, so an event turned members-only meanwhile reads as missing.
-    const event = await getPublishedEventDetail(eventId);
+    const event = await getPublishedEventDetail(eventId, unlock);
     return event && { kind: "open", event };
   }
 
@@ -329,7 +359,7 @@ export const getEventForViewer = cache(async (eventId: string, userId: string | 
   const user = userId ? await prisma.user.findUnique({ where: { id: userId }, select: { accountRole: true, emailVerifiedAt: true } }) : null;
   const verifiedMember = Boolean(user && user.accountRole === "member" && user.emailVerifiedAt);
   if (verifiedMember && (await activeEntitlementGrant(prisma, userId as string, head.organisationId, "members_only_events", now))) {
-    const event = await readEventDetail({ id: eventId, status: "published", visibility: "members_only", organisationId: head.organisationId });
+    const event = await readEventDetail({ id: eventId, status: "published", visibility: "members_only", organisationId: head.organisationId }, unlock);
     return event && { kind: "open", event };
   }
 
@@ -366,5 +396,5 @@ export function getBookedEventDetail(eventId: string) {
 // The organiser's preview of the same page, draft or published, scoped to the
 // caller's society.
 export function getEventPreviewDetail(organisationId: string, eventId: string) {
-  return readEventDetail({ id: eventId, organisationId });
+  return readEventDetail({ id: eventId, organisationId }, "every");
 }

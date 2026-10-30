@@ -43,10 +43,10 @@ describe("order exports", () => {
     // A byte-order mark first, so Excel reads names as UTF-8 (text() drops it).
     expect([...new Uint8Array(await response.clone().arrayBuffer()).slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const csv = await response.text();
-    expect(csv.split("\r\n")[0]).toBe("Order,Ordered,Event,Ticket type,Quantity,Total,Currency,Status,Paid,Buyer email");
+    expect(csv.split("\r\n")[0]).toBe("Order,Ordered,Event,Ticket type,Quantity,Total,Currency,Code,Discount,Status,Paid,Buyer email");
     expect(csv).toContain(`${orderReference(paid.id)},`);
     expect(csv).toContain(",Quiz night,");
-    expect(csv).toContain(",2,30.00,AUD,Paid,");
+    expect(csv).toContain(",2,30.00,AUD,,,Paid,");
     expect(csv).toContain(orderReference(expired.id));
     expect(csv).not.toContain(orderReference(theirs.id));
 

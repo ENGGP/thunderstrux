@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CreateEventForm } from "@/components/events/create-event-form";
 import { EventWorkspaceHeader } from "@/components/events/event-tabs";
 import { ReadinessChecklist } from "@/components/events/readiness-checklist";
+import { TicketCodesEditor } from "@/components/events/ticket-codes-editor";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
@@ -13,6 +14,7 @@ import {
   getDashboardEvent,
   getOrganisationEventForEditing
 } from "@/lib/events/event-lifecycle";
+import { describeCode, listEventTicketCodes } from "@/lib/events/ticket-codes";
 import { readChargeReadiness } from "@/lib/organisations/profile";
 
 export const metadata: Metadata = { title: "Edit event" };
@@ -30,14 +32,16 @@ export default async function EditEventPage({
   let chargesReady: boolean;
   let memberPrices: boolean;
   let membersOnly: boolean;
+  let codes: Awaited<ReturnType<typeof listEventTicketCodes>>;
 
   try {
-    [initialEvent, event, chargesReady, memberPrices, membersOnly] = await Promise.all([
+    [initialEvent, event, chargesReady, memberPrices, membersOnly, codes] = await Promise.all([
       getOrganisationEventForEditing(organisation.id, eventId),
       getDashboardEvent(organisation.id, eventId),
       readChargeReadiness(organisation.id),
       entitlementOnSale(organisation.id, "member_prices"),
-      entitlementOnSale(organisation.id, "members_only_events")
+      entitlementOnSale(organisation.id, "members_only_events"),
+      listEventTicketCodes(organisation.id, eventId)
     ]);
   } catch (error) {
     if (error instanceof EventLifecycleNotFoundError) {
@@ -89,6 +93,22 @@ export default async function EditEventPage({
         organisationId={organisation.id}
         orgSlug={organisation.slug}
         timeZone={event.timeZone}
+        after={
+          <TicketCodesEditor
+            codes={codes.map((code) => ({
+              id: code.id,
+              code: code.code,
+              gives: describeCode(code, code.ticketTypeName),
+              used: code.used,
+              maxUses: code.maxUses,
+              endsAt: code.endsAt?.toISOString() ?? null,
+              disabledAt: code.disabledAt?.toISOString() ?? null
+            }))}
+            eventId={eventId}
+            ticketTypes={initialEvent.ticketTypes}
+            timeZone={event.timeZone}
+          />
+        }
       />
     </DashboardShell>
   );

@@ -3,12 +3,12 @@ status: living
 last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[API Reference]]", "[[Ticket Check-in Implementation]]", "[[Memberships and Merchandise]]", "[[Society Profiles and Assets]]"]
-sources: [lib/events/event-lifecycle.ts, lib/events/event-cancellation.ts, lib/events/event-readiness.ts, lib/events/inventory.ts, lib/events/public-events.ts, lib/events/event-changes.ts, lib/validators/events.ts, components/events/create-event-form.tsx, app/api/events]
+sources: [lib/events/event-lifecycle.ts, lib/events/ticket-codes.ts, lib/events/event-cancellation.ts, lib/events/event-readiness.ts, lib/events/inventory.ts, lib/events/public-events.ts, lib/events/event-changes.ts, lib/validators/events.ts, components/events/create-event-form.tsx, app/api/events]
 ---
 
 # Event Lifecycle
 
-**Owns:** event statuses, visibility, sales open and close, capacity and ticket types, the event builder, publish and unpublish, the edit boundary, inventory locks, cancelling an event, delete rules and the public event reads.
+**Owns:** event statuses, visibility, sales open and close, capacity and ticket types, hidden types and ticket codes, the event builder, publish and unpublish, the edit boundary, inventory locks, cancelling an event, delete rules and the public event reads.
 **Read when:** changing how events are created, edited, published or sold, what stock means, or who can see an event.
 **Not here:** orders, holds and refunds ([[Payment Lifecycle]]); request and response shapes ([[API Reference]]); check-in ([[Ticket Check-in Implementation]]); member prices and members-only access ([[Memberships and Merchandise]]); image delivery ([[Society Profiles and Assets]]); event metrics ([[Analytics and Calendar]]); page guards ([[Frontend and Backend Flow]]).
 
@@ -22,13 +22,14 @@ sources: [lib/events/event-lifecycle.ts, lib/events/event-cancellation.ts, lib/e
 | Publish readiness and per-type buyability | `lib/events/event-readiness.ts`: `eventReadiness`, `salesOpen` |
 | Locks and sellable stock | `lib/events/inventory.ts`: `lockEventInventory`, `lockOrderInventory`, `readEventInventory` (one event), `readEventsInventory` (public lists), `sellableQuantity`, `returnTicketsToSale` |
 | Public reads | `lib/events/public-events.ts`: `getPublishedEvents`, `getPublishedEventDetail`, `getEventForViewer`, `getBookedEventDetail`, `getEventPreviewDetail`, `priceForViewer` |
+| Codes: lookup, price, uses, staff create and change | `lib/events/ticket-codes.ts`: `readTicketCode`, `priceWithCode`, `codeAppliesTo`, `ticketCodeUses`, `codeForBuyer`, `listEventTicketCodes`, `createEventTicketCode`, `updateEventTicketCode`; `POST /api/events/[eventId]/codes`, `PATCH /api/events/[eventId]/codes/[codeId]`; `components/events/ticket-codes-editor.tsx` |
 | Time and place change notices | `lib/events/event-changes.ts`: `recordEventChange`, `fanOutEventChanges` |
 | Validation | `lib/validators/events.ts`: `createEventSchema`, `updateEventSchema`, `eventPublicationSchema`, `eventSaleStateSchema`; prices `lib/validators/price.ts` |
 | Error mapping | `lib/events/http.ts`: `eventRouteRules` |
 | Routes | `POST /api/events`, `GET /api/events`, `GET`/`PATCH`/`DELETE /api/events/[eventId]`, `PATCH /api/events/[eventId]/publish`, `PATCH /api/events/[eventId]/sales`, `POST /api/events/[eventId]/cancel`, `GET /api/public/events`, `GET /api/public/events/[eventId]` |
 | Builder and actions | `components/events/create-event-form.tsx`, `components/events/event-actions.tsx`, `components/events/readiness-checklist.tsx` |
 | Pages | `/dashboard/events`, `/dashboard/events/new`, `/dashboard/events/[eventId]`, `/dashboard/events/[eventId]/edit`, `/dashboard/events/[eventId]/preview`, `/events/[eventId]` |
-| Tests | `tests/integration/event-lifecycle.test.ts`, `tests/integration/event-policy.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/event-hero.test.ts`, `tests/integration/dashboard-events.test.ts`, `tests/integration/public-event-pages.test.ts`, `tests/integration/members-only-events.test.ts`, `tests/integration/event-cancellation.test.ts` |
+| Tests | `tests/integration/event-lifecycle.test.ts`, `tests/integration/event-policy.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/event-hero.test.ts`, `tests/integration/dashboard-events.test.ts`, `tests/integration/public-event-pages.test.ts`, `tests/integration/members-only-events.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/integration/ticket-codes.test.ts` |
 
 ## States
 
@@ -141,6 +142,24 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 - **Places back on sale (PAY-043, product decision 2026-10-28, as Eventbrite and Humanitix do):** when a paid order's buyer gets the money back (a refund here or in Stripe, a staff "refunded outside Thunderstrux" mark, a lost dispute), `returnTicketsToSale` adds back the tickets that transaction voided, so a repeated event adds nothing. Each path takes `lockOrderInventory` (event, then the order's type) before it locks the order. A cancelled event gets nothing back; a ticket under dispute review keeps its place. A buyer releasing their own free registration also returns it (EVT-005); a staff free cancellation doesn't.
 - Holds count while `status = active` and `expiresAt` is after the transaction's single application-clock reading (not the database clock; tests drive it with fake timers). Hold lifetime: [[Payment Lifecycle#Holds]].
 - Checkout compares the buyer's `expectedUnitPrice` with the locked price and refuses a change with 409 before holding stock. Fulfilment rechecks capacity once; an order that would exceed it goes to compensation review.
+
+### Codes
+
+A `TicketCode` belongs to one event (product decision 2026-10-30, after Eventbrite, Humanitix and Luma; the reasoning is in the PR). Three uses, one model:
+- **Discount:** `percentOff` (1 to 100) or `amountOff` (cents) off each ticket, for one ticket type or, with `ticketTypeId` null, every type buyers can see. 100% off is a comp.
+- **Access:** a code naming a hidden type (`TicketType.hidden`, "Hidden" on the builder) unlocks it, with or without a discount. A code for every type never reaches a hidden one.
+- **Limits:** `maxUses` counts tickets, not orders: tickets not void on the code's orders plus live holds (`ticketCodeUses`). A refund, cancellation or lost dispute voids tickets, so the use comes back as the place goes back on sale; a lapsed hold stops counting at once. `endsAt` ends it; `disabledAt` turns it off.
+
+Rules:
+- **Case-blind**, 3 to 30 letters, digits or dashes, unique per event (`TicketCode_code_chk`). One code per order; codes never stack with each other.
+- **On the member price:** the discount comes off what this buyer otherwise pays, so a member with a code pays the member price less the code.
+- **Terms are fixed once made** (Luma): staff change only the limit, the last day and on/off, never delete. Orders keep `codeSnapshot` and `discountAmount`.
+- **Paid minimum:** a code that would leave a paid price from $0.01 to $1.99 is refused when staff add it (400 on `percentOff` or `amountOff`, checked against every price and member price it reaches) and, after a later price edit, at checkout (`code_unavailable`), never rounded to free: rounding would give away tickets staff priced.
+- **Checkout** reads the code under the event lock every checkout of the event takes, so a limit holds under a rush; a code that applies but is off, ended or used up is 409 `code_unavailable` (`value` = tickets left on the code when that is the reason). A code for another type is ignored. A hidden type without its code is 404 `ticket_type_not_found`. A $0 result takes the free path (`issueFreeOrder`). The fee and Stripe's charge use the discounted total, and refunds pay back at most `unitPrice` per ticket, the price actually paid ([[Payment Lifecycle Refunds and Disputes#Order refunds]]).
+- **Buyers** enter a code under "Have a code?" in the ticket box or open a link with `?code=`; the event and checkout pages read it with `codeForBuyer`, rate-limited by `ticket_code_check` (per address and event) so codes can't be found by trying. Public reads, cards and the public API leave hidden types out (`readEventDetail`, `listingAvailability`); the organiser's preview shows them.
+- **Staff** manage codes on the Edit tab's Codes card (`events:manage`), with Copy link, a suggested hard-to-guess code, and uses so far; the Summary's Codes table and the orders CSV show what each code sold ([[Analytics and Calendar]]). Audits `event.code_created` and `event.code_updated`.
+- **Not rechecked at fulfilment,** as a member price isn't: a payment whose hold lapsed and was re-taken may pass a code's limit by that order (EVT-007).
+- **Not built:** per-buyer code caps, codes for several events, bulk codes, and staff entering comps by email (Humanitix's manual order); comps go through a code, so each person's tickets land in their own account.
 
 ### Compensation refund mode
 

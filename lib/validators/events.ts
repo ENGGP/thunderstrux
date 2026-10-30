@@ -53,7 +53,9 @@ const createTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
   price: priceAmountSchema,
   memberPrice,
-  quantity: z.number().int().min(1).max(maxQuantity)
+  quantity: z.number().int().min(1).max(maxQuantity),
+  // Only buyers with an access code see it.
+  hidden: z.boolean().optional()
 });
 export const createTicketTypeSchema = createTicketTypeFieldsSchema.refine(withinPrice, withinPriceError);
 
@@ -61,7 +63,9 @@ const updateTicketTypeFieldsSchema = z.object({
   name: z.string().trim().min(1).max(120),
   price: priceAmountSchema,
   memberPrice,
-  quantity: z.number().int().min(0).max(maxQuantity)
+  quantity: z.number().int().min(0).max(maxQuantity),
+  // Omitted keeps what is saved.
+  hidden: z.boolean().optional()
 });
 
 // Events are always created as drafts; publishing is a separate, checked transition.
@@ -101,4 +105,29 @@ export const eventPublicationSchema = z.object({
 export const eventSaleStateSchema = z.object({
   saleState: z.enum(["open", "closed"]),
   version: versionSchema
+});
+
+// A discount, access or comp code (lib/events/ticket-codes.ts). Codes are case-blind.
+export const ticketCodeSchema = z
+  .object({
+    code: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{3,30}$/, "Use 3 to 30 letters, numbers or dashes"),
+    // One ticket type (it may be hidden), or null for every type buyers can see.
+    ticketTypeId: z.string().trim().min(1).max(64).nullable(),
+    percentOff: z.number().int().min(1, "At least 1%").max(100, "At most 100%").nullable().optional(),
+    amountOff: z.number().int().min(1, "At least $0.01").max(99_999_999).nullable().optional(),
+    // Tickets, not orders.
+    maxUses: z.number().int().min(1, "At least 1 ticket").max(maxQuantity).nullable().optional(),
+    endsAt: z.coerce.date().nullable().optional()
+  })
+  .refine((code) => code.percentOff == null || code.amountOff == null, { message: "Choose percent or dollars off, not both", path: ["amountOff"] })
+  .refine((code) => code.ticketTypeId !== null || code.percentOff != null || code.amountOff != null, {
+    message: "A code for every ticket needs a discount",
+    path: ["percentOff"]
+  });
+
+// What can change once a code exists: its terms stay as orders bought them.
+export const ticketCodeUpdateSchema = z.object({
+  maxUses: z.number().int().min(1, "At least 1 ticket").max(maxQuantity).nullable().optional(),
+  endsAt: z.coerce.date().nullable().optional(),
+  disabled: z.boolean().optional()
 });

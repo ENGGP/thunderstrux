@@ -19,6 +19,9 @@ type TicketType = {
   // What members pay; `standardPrice` is set when `price` already is it (T24b).
   memberPrice?: number | null;
   standardPrice?: number | null;
+  // Unlocked by the buyer's access code; `codePrice` when their code lowered `price`.
+  hidden?: boolean;
+  codePrice?: boolean;
   quantity: number;
   availableQuantity: number;
   unavailable?: "sold_out" | "payments_unavailable" | null;
@@ -26,6 +29,9 @@ type TicketType = {
 
 // Who is looking decides the action: a member buys, everyone else is told what to do first.
 export type BuyBoxViewer = "member" | "unverified" | "anonymous" | "society";
+
+// The ticket code in the page address: `gives` when it applies, `message` when it can't be used.
+export type BuyBoxCode = { text: string; gives: string | null; message: string | null };
 
 function isSoldOut(ticketType: TicketType) {
   return ticketType.quantity <= 0 || ticketType.availableQuantity <= 0 || ticketType.unavailable === "sold_out";
@@ -62,7 +68,8 @@ export function PublicTicketPurchase({
   societySlug,
   preview = false,
   initial,
-  holdMinutes = defaultHoldMinutes
+  holdMinutes = defaultHoldMinutes,
+  code = null
 }: {
   eventId: string;
   memberPlan?: string | null;
@@ -80,6 +87,7 @@ export function PublicTicketPurchase({
   initial?: { ticketTypeId?: string; quantity?: number };
   // The event's checkout hold (PAY-009).
   holdMinutes?: number;
+  code?: BuyBoxCode | null;
 }) {
   const router = useRouter();
   const kept = ticketTypes.find((ticketType) => ticketType.id === initial?.ticketTypeId && !isUnavailable(ticketType));
@@ -90,6 +98,8 @@ export function PublicTicketPurchase({
     kept && Number.isInteger(initial?.quantity) ? Math.max(1, Math.min(initial?.quantity ?? 1, kept.availableQuantity, maxTicketsPerOrder)) : 1
   );
   const [leaving, setLeaving] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(Boolean(code?.message));
+  const [codeText, setCodeText] = useState(code?.message ? code.text : "");
   // The phone bar shows only while the box's own button is still below the screen.
   const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
   useResetOnRestore(() => setLeaving(false));
@@ -98,12 +108,59 @@ export function PublicTicketPurchase({
   const paymentsUnavailable = ticketTypes.some((ticketType) => ticketType.unavailable === "payments_unavailable");
   const maxQuantity = Math.min(selected?.availableQuantity ?? 0, maxTicketsPerOrder);
   const free = selected?.price === 0;
-  const checkoutHref = selected ? `/events/${eventId}/checkout?ticketTypeId=${encodeURIComponent(selected.id)}&quantity=${quantity}` : "";
+  const codeQuery = code?.gives ? `&code=${encodeURIComponent(code.text)}` : "";
+  const checkoutHref = selected ? `/events/${eventId}/checkout?ticketTypeId=${encodeURIComponent(selected.id)}&quantity=${quantity}${codeQuery}` : "";
+  // The page reads the code from its address, so applying or removing one reloads it with the choice kept.
+  const withCode = (text: string) => {
+    const query = new URLSearchParams({ ...(text ? { code: text } : {}), ...(selected ? { ticketTypeId: selected.id, quantity: String(quantity) } : {}) });
+    router.push(`/events/${eventId}?${query}`, { scroll: false });
+  };
+
+  // Typed codes and shared links both land in the address; a hidden-only (invite) event has no ticket to show until one does.
+  const codeEntry = code?.gives ? (
+    <Notice tone="success">
+      <p>
+        Code {code.text}: {code.gives}.{" "}
+        <button className="font-semibold text-brand underline underline-offset-4" disabled={leaving} onClick={() => withCode("")} type="button">
+          Remove code
+        </button>
+      </p>
+    </Notice>
+  ) : codeOpen ? (
+    <form
+      className="flex items-start gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (codeText.trim()) withCode(codeText.trim());
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <TextInput
+          autoCapitalize="characters"
+          autoComplete="off"
+          error={code?.message && codeText === code.text ? code.message : undefined}
+          label="Code"
+          maxLength={30}
+          onChange={(event) => setCodeText(event.target.value)}
+          value={codeText}
+        />
+      </div>
+      {/* Level with the field (label line plus gap), with or without an error under it. */}
+      <Button className="mt-6.5" disabled={!codeText.trim()} type="submit" variant="secondary">
+        Apply
+      </Button>
+    </form>
+  ) : (
+    <button className="justify-self-start text-sm font-semibold text-brand underline underline-offset-4" onClick={() => setCodeOpen(true)} type="button">
+      Have a code?
+    </button>
+  );
 
   if (ticketTypes.length === 0) {
     return (
       <Box>
         <p className="text-sm text-ink-soft">Tickets aren&apos;t available for this event yet. Check back closer to the date.</p>
+        {preview || cancelled ? null : codeEntry}
       </Box>
     );
   }
@@ -280,7 +337,11 @@ export function PublicTicketPurchase({
                     : ticketType.unavailable === "payments_unavailable"
                       ? "Paid tickets unavailable right now"
                       : `${ticketType.availableQuantity} left`}
-                  {ticketType.standardPrice != null
+                  {ticketType.codePrice
+                    ? " · With your code"
+                    : ticketType.hidden
+                      ? " · Unlocked by your code"
+                      : ticketType.standardPrice != null
                     ? " · Member price"
                     : ticketType.memberPrice != null
                       ? ` · Members pay ${formatPrice(ticketType.memberPrice)}`
@@ -298,7 +359,9 @@ export function PublicTicketPurchase({
         })}
       </fieldset>
 
-      {memberPlan && ticketTypes.some((ticketType) => ticketType.standardPrice != null) ? (
+      {codeEntry}
+
+      {memberPlan && ticketTypes.some((ticketType) => ticketType.memberPrice != null && ticketType.standardPrice != null) ? (
         <p className="text-sm text-ink-soft">Member price through your {membershipLabel(memberPlan)}.</p>
       ) : !memberPlan && societySlug && ticketTypes.some((ticketType) => ticketType.memberPrice != null) ? (
         <p className="text-sm text-ink-soft">

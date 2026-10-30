@@ -42,6 +42,8 @@ type TicketTypeFormState = {
   // Optional member price (T24b); blank means none.
   memberPrice: string;
   quantity: string;
+  // Only buyers with an access code see it.
+  hidden: boolean;
   // Remaining stock when the form loaded; the server keeps sales made since.
   loadedQuantity?: number;
   ordersCount?: number;
@@ -73,6 +75,7 @@ type EventFormData = {
     price: number;
     memberPrice: number | null;
     quantity: number;
+    hidden: boolean;
     ordersCount: number;
     ticketsCount: number;
     sold: number;
@@ -80,7 +83,7 @@ type EventFormData = {
   }>;
 };
 
-const emptyTicketType: TicketTypeFormState = { name: "", price: "", memberPrice: "", quantity: "" };
+const emptyTicketType: TicketTypeFormState = { name: "", price: "", memberPrice: "", quantity: "", hidden: false };
 const imageTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxImageBytes = 5 * 1024 * 1024;
 const timeLabels: Record<TimeField, string> = {
@@ -137,6 +140,7 @@ function initialState(event: EventFormData | undefined, timeZone: string, startD
         price: formatMoneyInput(ticketType.price),
         memberPrice: ticketType.memberPrice === null ? "" : formatMoneyInput(ticketType.memberPrice),
         quantity: String(ticketType.quantity),
+        hidden: ticketType.hidden,
         loadedQuantity: ticketType.quantity,
         ordersCount: ticketType.ordersCount,
         ticketsCount: ticketType.ticketsCount,
@@ -164,6 +168,7 @@ function hasSales(ticketType: TicketTypeFormState) {
 
 export function CreateEventForm({
   aside,
+  after,
   eventId,
   initialEvent,
   mode = "create",
@@ -177,6 +182,8 @@ export function CreateEventForm({
 }: {
   // The readiness panel on the Edit page.
   aside?: ReactNode;
+  // Shown under the form in its column: the Edit page's Codes card.
+  after?: ReactNode;
   // Whether the society can take card payments now; paid tickets wait for it.
   chargesReady: boolean;
   // Whether a published membership plan unlocks member prices now (T24b).
@@ -363,7 +370,8 @@ export function CreateEventForm({
             name: ticketType.name,
             price: parseMoneyInput(ticketType.price),
             memberPrice: ticketType.memberPrice.trim() ? parseMoneyInput(ticketType.memberPrice) : null,
-            quantity: Number(ticketType.quantity)
+            quantity: Number(ticketType.quantity),
+            hidden: ticketType.hidden
           }))
       };
       const response = await fetchJson<{ event: { id: string } }>(mode === "edit" && eventId ? `/api/events/${eventId}` : "/api/events", {
@@ -602,6 +610,13 @@ export function CreateEventForm({
                       </p>
                     </Notice>
                   ) : null}
+                  <label className="flex min-h-11 items-start gap-3 text-sm text-ink">
+                    <input checked={ticketType.hidden} className="mt-0.5 size-4 accent-brand" onChange={(event) => setTicketType(index, { hidden: event.target.checked })} type="checkbox" />
+                    <span>
+                      <span className="font-semibold">Hidden</span>
+                      <span className="block text-ink-soft">Only people with an access code for it see it, such as committee, performers or a sponsor&apos;s guests. Add codes under Codes once the event is saved.</span>
+                    </span>
+                  </label>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-ink-soft">
                       {ticketType.id
@@ -737,6 +752,7 @@ export function CreateEventForm({
         </div>
       </form>
       {aside ? <aside aria-labelledby="ready-heading" className="lg:sticky lg:top-24">{aside}</aside> : null}
+      {after}
     </div>
   );
 }

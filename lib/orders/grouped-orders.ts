@@ -66,6 +66,9 @@ export type GroupedOrganisationOrder = {
   ticketType: string;
   quantity: number;
   totalAmount: number;
+  // The ticket code it was bought with, and what that took off the order.
+  code: string | null;
+  discountAmount: number;
   createdAt: Date;
   paidAt: Date | null;
   failedAt: Date | null;
@@ -176,6 +179,8 @@ export async function getGroupedOrganisationOrdersWithContext(
       purchasedTicketTypeName: true,
       quantity: true,
       totalAmount: true,
+      codeSnapshot: true,
+      discountAmount: true,
       createdAt: true,
       paidAt: true,
       failedAt: true,
@@ -234,6 +239,8 @@ export async function getGroupedOrganisationOrdersWithContext(
       ticketType: purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name),
       quantity: order.quantity,
       totalAmount: order.totalAmount,
+      code: order.codeSnapshot,
+      discountAmount: order.discountAmount,
       createdAt: order.createdAt,
       paidAt: order.paidAt,
       failedAt: order.failedAt,

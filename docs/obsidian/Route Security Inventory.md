@@ -115,6 +115,7 @@ There is no one universal order. Each family runs its checks in this order; a re
 | `staff_invite_email` | 3 / 1 h | closed | society, address | invite create, resend |
 | `data_export` | 20 / 1 h | closed | society, user | orders and attendee CSV downloads |
 | `society_enquiry` | 5 / 1 h | closed | IP and slug; then sender email | Contact {society} (required) |
+| `ticket_code_check` | 30 / 10 min | open | IP, event | a `?code=` read on the event and checkout pages (`codeForBuyer`), so codes can't be found by trying them; when limited the page says to wait |
 | `staff_mfa_setup` | 5 / 1 h | closed | user | MFA setup (not required) |
 | `staff_mfa_verify` | 10 / 10 min | closed | user | MFA confirm, verify and new recovery codes; every fresh-code action when a code is sent (not required) |
 | `asset_upload` | 20 / 1 h | closed | `actor`, user; and `tenant`, society (two buckets) | asset upload |
@@ -170,6 +171,7 @@ Methods in backticks; "ctx" is the selected dashboard context ([[Authentication 
 | `GET`/`POST` `/api/me/context` | signed in; staff selection `events:read` +MFA |
 | `GET` `/api/me/mfa/status`; `POST` `/api/me/mfa/setup`, `/api/me/mfa/confirm`, `/api/me/mfa/verify`, `/api/me/mfa/recovery-codes` | signed in, staff-eligible; writes: origin, MFA config, MFA limits |
 | `GET`/`POST` `/api/events`; `GET`/`PATCH`/`DELETE` `/api/events/[eventId]`; `PATCH` `/api/events/[eventId]/publish`, `/api/events/[eventId]/sales` | `events:manage` +MFA; writes: origin, ctx |
+| `POST` `/api/events/[eventId]/codes`; `PATCH` `/api/events/[eventId]/codes/[codeId]` | origin, ctx, `events:manage` +MFA; the event scoped to the selected society under its lock |
 | `POST` `/api/events/[eventId]/cancel` | origin, ctx, `events:manage` and `orders:refund` +MFA, typed title, fresh code (`staff_mfa_verify` when sent) |
 | `GET` `/api/events/[eventId]/tickets`; `POST` `/api/tickets/[ticketId]/check-in`, `/api/tickets/[ticketId]/check-out` (with `?eventId=`, DEBT-002) | ctx, `tickets:check_in` +MFA; writes: origin, `ticket_check_in_out` |
 | `GET` `/api/orders`, `/api/orders/[orderId]` | ctx, `orders:read` +MFA |

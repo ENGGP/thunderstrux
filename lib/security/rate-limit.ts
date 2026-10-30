@@ -38,7 +38,8 @@ export type RateLimitPolicy =
   | "guest_token_ip"
   | "guest_token_digest"
   | "data_export"
-  | "society_enquiry";
+  | "society_enquiry"
+  | "ticket_code_check";
 
 type RateLimitPolicyConfig = {
   limit: number;
@@ -107,7 +108,9 @@ const policies: Record<RateLimitPolicy, RateLimitPolicyConfig> = {
   // Spreadsheet downloads of orders and attendees carry buyer emails (UI-018).
   data_export: { limit: 20, windowSeconds: 60 * 60, failureMode: "closed" },
   // "Contact {society}" takes no session: per address and society, and per sender (DEBT-002).
-  society_enquiry: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" }
+  society_enquiry: { limit: 5, windowSeconds: 60 * 60, failureMode: "closed" },
+  // A ticket code read on the event or checkout page, per address and event, so codes can't be guessed by trying them.
+  ticket_code_check: { limit: 30, windowSeconds: 10 * 60, failureMode: "open" }
 };
 
 const REDIS_CONNECT_TIMEOUT_MS = 1_500;

@@ -43,6 +43,8 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 | `PATCH /api/events/[eventId]/publish` | same | `event.published`, `event.unpublished` | — |
 | `PATCH /api/events/[eventId]/sales` | same | `event.sales_closed`, `event.sales_reopened` | — |
 | `DELETE /api/events/[eventId]` | same | `event.deleted` (title) | — |
+| `POST /api/events/[eventId]/codes` | `lib/events/ticket-codes.ts` | `event.code_created` | code, what it gives, limit, end |
+| `PATCH /api/events/[eventId]/codes/[codeId]` | same | `event.code_updated` (only when something changed) | code; limit, end and on/off before and after |
 | `POST /api/events/[eventId]/cancel` | `lib/events/event-cancellation.ts` | `event.cancelled`, plus per order `order.refund_requested` or `order.free_cancelled` (`by: "event"`) | reason, refunds queued, free registrations cancelled, holders notified, skipped orders with why |
 | `POST /api/tickets/[ticketId]/check-in`, `check-out` | `lib/tickets/check-in.ts` | `ticket.checked_in`, `ticket.checked_out` | ticket reference |
 | `POST /api/orders/[orderId]/refunds` | `lib/payments/order-refunds.ts` | `order.refund_requested`; outcome below. $0 (DEBT-002): `order.tickets_cancelled` | amount, reason; ticket by ticket also `tickets` (references), `cancelsTickets`, `notifyBuyer` |

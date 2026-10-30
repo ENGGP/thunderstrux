@@ -250,6 +250,19 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
   } else if (a === "event.published" || a === "event.unpublished") sentence = [`${verbs[a.slice(6)]} `, event(row.targetId)];
   else if (a === "event.sales_closed") sentence = ["closed ticket sales for ", event(row.targetId)];
   else if (a === "event.sales_reopened") sentence = ["reopened ticket sales for ", event(row.targetId)];
+  else if (a === "event.code_created" || a === "event.code_updated") {
+    sentence = [a === "event.code_created" ? "added a ticket code to " : "changed a ticket code of ", event(row.targetId)];
+    const changes = (m.changes ?? {}) as Record<string, { to?: unknown }>;
+    const limit = (value: unknown) => (num(value) !== null ? `${value} tickets` : "No limit");
+    facts = [
+      ...(text(m.code) ? [{ label: "Code", value: text(m.code) as string }] : []),
+      ...(text(m.does) ? [{ label: "Gives", value: text(m.does) as string }] : []),
+      ...(a === "event.code_created" ? [{ label: "Limit", value: limit(m.maxUses) }, ...(text(m.endsAt) ? [{ label: "Ends", value: when(m.endsAt) }] : [])] : []),
+      ...("maxUses" in changes ? [{ label: "Limit", value: limit(changes.maxUses.to) }] : []),
+      ...("endsAt" in changes ? [{ label: "Ends", value: changes.endsAt.to ? when(changes.endsAt.to) : "Never" }] : []),
+      ...("on" in changes ? [{ label: "Status", value: changes.on.to ? "Turned on" : "Turned off" }] : [])
+    ];
+  }
   else if (a === "event.deleted") sentence = ["deleted the draft ", { text: text(m.title) ?? "event", href: null }];
   else if (a === "event.cancelled") {
     sentence = ["cancelled ", event(row.targetId)];
@@ -391,7 +404,8 @@ function eventChangeFact(change: Record<string, unknown>, when: (iso: unknown) =
       ...edited.flatMap((type) => [
         ...(type.price ? [{ label: `${type.name}, price`, value: formatPrice((type.price as number[])[1]), was: formatPrice((type.price as number[])[0]) }] : []),
         ...(type.quantity ? [{ label: `${type.name}, left`, value: String((type.quantity as number[])[1]), was: String((type.quantity as number[])[0]) }] : []),
-        ...(type.renamedFrom ? [{ label: "Ticket type renamed", value: String(type.name), was: String(type.renamedFrom) }] : [])
+        ...(type.renamedFrom ? [{ label: "Ticket type renamed", value: String(type.name), was: String(type.renamedFrom) }] : []),
+        ...(typeof type.hidden === "boolean" ? [{ label: `${type.name}, shown to`, value: type.hidden ? "Code holders only" : "Everyone" }] : [])
       ])
     ];
   }

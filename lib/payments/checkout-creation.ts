@@ -37,7 +37,8 @@ import { activeEntitlementGrant } from "@/lib/memberships/grants";
 import { appendOrderLifecycleEvent } from "@/lib/payments/order-lifecycle";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
-import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
+import { calculatePlatformFee, isBelowPaidMinimum, minPaidPrice, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
+import { codeAppliesTo, codeRefusalMessage, normaliseTicketCode, priceWithCode, readTicketCode } from "@/lib/events/ticket-codes";
 import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
 import { getReservationExpiry, runReservationTransaction } from "@/lib/tickets/reservations";
 
@@ -52,6 +53,7 @@ export type CheckoutCreationErrorKind =
   | "free_limit_reached"
   | "stripe_not_ready"
   | "quote_changed"
+  | "code_unavailable"
   | "idempotency_conflict";
 
 export { CheckoutCreationInternalError };
@@ -80,6 +82,8 @@ type CreateEventCheckoutInput = {
   ticketTypeId: string;
   quantity: number;
   expectedUnitPrice: number;
+  // A discount, access or comp code; checked again here under the event lock.
+  code?: string;
   // One key per purchase intent; a repeat with the same key returns the same attempt.
   idempotencyKey: string;
   // Where Stripe sends the buyer back: the trusted origin they bought from, else the app URL.
@@ -129,7 +133,7 @@ function lockedEventSelect(ticketTypeId: string) {
     },
     ticketTypes: {
       where: { id: ticketTypeId },
-      select: { id: true, name: true, price: true, memberPrice: true, quantity: true },
+      select: { id: true, name: true, price: true, memberPrice: true, quantity: true, hidden: true },
       take: 1
     }
   } satisfies Prisma.EventSelect;
@@ -154,11 +158,13 @@ export async function createEventCheckout({
   ticketTypeId,
   quantity,
   expectedUnitPrice,
+  code: codeInput,
   idempotencyKey,
   returnOrigin
 }: CreateEventCheckoutInput): Promise<EventCheckoutResult> {
   let pendingOrderId: string | null = null;
-  const requestHash = checkoutRequestHash({ eventId, ticketTypeId, quantity, expectedUnitPrice });
+  const codeText = codeInput?.trim() ? codeInput.trim().toUpperCase() : undefined;
+  const requestHash = checkoutRequestHash({ eventId, ticketTypeId, quantity, expectedUnitPrice, code: codeText });
   if (Boolean(userId) === Boolean(guest)) throw new Error("Checkout needs exactly one buyer");
   const actor: CheckoutActor = guest ? { kind: "guest", id: guest.grantId } : { kind: "user", id: userId as string };
 
@@ -211,12 +217,27 @@ export async function createEventCheckout({
 
         const organisation = event.organisation;
         const ticketType = event.ticketTypes[0];
+        // Read under the event lock every checkout of this event takes, so its uses count exactly.
+        const normalisedCode = codeText ? normaliseTicketCode(codeText) : null;
+        const lookup = normalisedCode ? await readTicketCode(tx, event.id, normalisedCode, reservationNow) : null;
+        const codeTerms = lookup?.ok ? lookup.code : lookup?.terms;
+        const codeApplies = Boolean(ticketType && codeTerms && codeAppliesTo(codeTerms, ticketType));
 
-        if (!ticketType) {
+        // A hidden type reads as missing without a code for it.
+        if (!ticketType || (ticketType.hidden && !codeApplies)) {
           throw new CheckoutCreationError(
             "ticket_type_not_found",
             "Ticket type was not found for this event"
           );
+        }
+        // A code that applies but can't be used now is refused; one for another type is ignored.
+        if (codeApplies && lookup && !lookup.ok) {
+          throw new CheckoutCreationError("code_unavailable", codeRefusalMessage[lookup.reason], [{ path: ["code"], message: codeRefusalMessage[lookup.reason], value: 0 }]);
+        }
+        const usedCode = codeApplies && lookup?.ok ? lookup.code : null;
+        if (usedCode && usedCode.remaining !== null && usedCode.remaining < quantity) {
+          const left = `That code has ${usedCode.remaining} ${usedCode.remaining === 1 ? "ticket" : "tickets"} left`;
+          throw new CheckoutCreationError("code_unavailable", left, [{ path: ["quantity"], message: left, value: usedCode.remaining }]);
         }
 
         // Lapsed holds don't count here; the stale-order job expires their orders.
@@ -232,7 +253,18 @@ export async function createEventCheckout({
         const grant = userId && ticketType.memberPrice !== null
           ? await activeEntitlementGrant(tx, userId, event.organisationId, "member_prices", reservationNow)
           : null;
-        const unitPrice = grant ? (ticketType.memberPrice as number) : ticketType.price;
+        // A code takes its discount off the price this buyer pays otherwise, the member price included.
+        const basePrice = grant ? (ticketType.memberPrice as number) : ticketType.price;
+        const unitPrice = usedCode ? priceWithCode(basePrice, usedCode) : basePrice;
+        // Decided 2026-10-30: refused rather than rounded to free, so a code never gives away
+        // more than staff chose; the code form refuses codes that would do this up front.
+        if (isBelowPaidMinimum(unitPrice)) {
+          const message = `That code can't be used on ${ticketType.name}: it leaves less than the ${formatMoney(minPaidPrice)} paid minimum. Ask ${organisation.name} about it.`;
+          throw new CheckoutCreationError("code_unavailable", message, [{ path: ["code"], message, value: 0 }]);
+        }
+        const codeFacts = usedCode
+          ? { ticketCodeId: usedCode.id, codeSnapshot: usedCode.code, discountAmount: (basePrice - unitPrice) * quantity }
+          : { ticketCodeId: null, codeSnapshot: null, discountAmount: 0 };
         const [eligibility] = eventReadiness(
           { ...event, ticketTypes: [{ ...ticketType, price: unitPrice, sellable }] },
           { chargesReady: isOrganisationStripeReady(organisation), now: reservationNow }
@@ -296,6 +328,7 @@ export async function createEventCheckout({
           }
           const free = await issueFreeOrder(tx, {
             membership: grant ? { grantId: grant.id, entitlementVersion: grant.entitlementVersion } : null,
+            code: codeFacts,
             userId: userId ?? null,
             guestIdentityId: guest?.guestIdentityId ?? null,
             buyer,
@@ -349,6 +382,7 @@ export async function createEventCheckout({
             unitPrice,
             membershipGrantId: grant?.id ?? null,
             membershipEntitlementVersion: grant?.entitlementVersion ?? null,
+            ...codeFacts,
             status: "pending",
             totalAmount,
             compensationRefundModeSnapshot: event.compensationRefundMode,
@@ -418,6 +452,7 @@ export async function createEventCheckout({
           platformFeeAmount,
           // The quoted price: the member price when a membership applied.
           unitPrice,
+          code: codeFacts.codeSnapshot,
           eventTitle: event.title,
           holdMinutes: event.checkoutHoldMinutes,
           holdEndsAt: holdEndsAt(reservationNow, event.checkoutHoldMinutes),
@@ -467,7 +502,7 @@ export async function createEventCheckout({
         {
           price_data: {
             currency: "aud",
-            product_data: { name: pendingOrder.eventTitle },
+            product_data: { name: pendingOrder.eventTitle, ...(pendingOrder.code ? { description: `Code ${pendingOrder.code}` } : {}) },
             unit_amount: pendingOrder.unitPrice
           },
           quantity

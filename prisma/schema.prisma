@@ -325,6 +325,7 @@ model Event {
   orders         Order[]
   reservations   TicketReservation[]
   changes        EventChange[]
+  codes          TicketCode[]
 
   @@index([organisationId])
   @@index([organisationId, status])
@@ -340,11 +341,14 @@ model TicketType {
   // What a member with the member_prices right pays (T24b); at most price.
   memberPrice Int?
   quantity  Int
+  // Only buyers with an access code for it see or buy it (committee, performers, sponsors).
+  hidden    Boolean  @default(false)
   createdAt DateTime @default(now())
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   tickets   Ticket[]
   orders    Order[]
   reservations TicketReservation[]
+  codes     TicketCode[]
 
   @@index([eventId])
 }
@@ -414,6 +418,11 @@ model Order {
   feeAmount               Int?
   feePolicyVersion        String?
   snapshotVersion         Int?
+  // The code this order was bought with, its text then, and what it took off the whole order.
+  ticketCodeId            String?
+  codeSnapshot            String?
+  discountAmount          Int          @default(0)
+  ticketCode      TicketCode?  @relation(fields: [ticketCodeId], references: [id], onDelete: Restrict)
   organisation    Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict)
   event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
   ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
@@ -439,6 +448,33 @@ model Order {
   @@index([guestIdentityId])
   @@index([status, createdAt], map: "Order_status_createdAt_idx")
   @@index([membershipGrantId])
+  @@index([ticketCodeId])
+}
+
+// A code for one event's tickets: a discount (percent or dollars off), access to
+// a hidden ticket type, or both; 100% off is a comp. Event-owned: its tenant is
+// Event.organisationId. Never deleted once made; staff turn it off instead.
+model TicketCode {
+  id           String    @id @default(cuid())
+  eventId      String
+  // Upper case, 3 to 30 letters, digits or dashes; unique per event.
+  code         String
+  // One ticket type, which may be hidden; null means every type buyers can see.
+  ticketTypeId String?
+  // At most one of these (TicketCode_discount_chk); neither is a pure access code.
+  percentOff   Int?
+  amountOff    Int?
+  // Tickets, not orders; a ticket stops counting once void.
+  maxUses      Int?
+  endsAt       DateTime?
+  disabledAt   DateTime?
+  createdAt    DateTime  @default(now())
+  event        Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  ticketType   TicketType? @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+  orders       Order[]
+
+  @@unique([eventId, code])
+  @@index([ticketTypeId])
 }
 
 // One durable record per intended checkout (database spec 6.1). The same actor

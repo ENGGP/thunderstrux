@@ -261,9 +261,9 @@ export async function requestCommerceRefund(input: {
 }
 
 // The charge this request refunds, checked against the purchase and the
-// snapshot of who was paid; and the request's own refund at Stripe, if one
-// exists. The payment's other refunds must be exactly those already recorded:
-// earlier ones made here (DEBT-002) and those made in Stripe.
+// snapshot of who was paid; the request's own refund at Stripe, if one exists;
+// what Stripe will still refund; and whether the payment's other refunds differ
+// from those already recorded: earlier ones made here (DEBT-002) and those made in Stripe.
 async function verifiedPayment(request: Purchase & { id: string; amount: number; currency: string; destinationAccountId: string | null }) {
   const select = { id: true, stripeSessionId: true, totalAmount: true, externalRefundedAmount: true } as const;
   const order = request.commerceOrderId
@@ -290,34 +290,45 @@ async function verifiedPayment(request: Purchase & { id: string; amount: number;
     .filter((refund) => refund !== own && refund.status !== "failed" && refund.status !== "canceled")
     .reduce((sum, refund) => sum + refund.amount, 0);
   const recorded = (await refundedSoFar(prisma, request, request.id)) + order.externalRefundedAmount;
-  if (!own && elsewhere !== recorded) {
-    throw new RefundVerificationError("existing_refund_requires_review");
-  }
-  return { stripe, intent, own: own ?? null };
+  return { stripe, intent, own: own ?? null, left: charge.amount - charge.amount_refunded, unrecorded: elsewhere !== recorded };
 }
+
+// A refund made in Stripe got there first, so the request has nothing left to send.
+const refundedElsewhere = "refunded_elsewhere";
 
 // Sends (or finds) the request's refund while holding its processing lease.
 async function sendRefund(requestId: string, token: string, source: "staff_action" | "refund_worker") {
   const request = await prisma.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
+  // An earlier attempt recorded the intent before creating, so this request's refund
+  // may already exist: a failed read proves nothing, and only Stripe's outcome settles it (SEC-011).
+  const mayExist = request.stripePaymentIntentId !== null;
   try {
-    const { stripe, intent, own } = await verifiedPayment(request);
-    const held = await prisma.refundRequest.updateMany({ where: { id: request.id, processingToken: token }, data: { stripePaymentIntentId: intent.id } });
+    const { stripe, intent, own, left, unrecorded } = await verifiedPayment(request);
+    // PAY-049: a refund made in Stripe after this one was queued leaves less to send. The buyer
+    // was promised this one and nobody is watching, so it sends what is left, or closes if that
+    // is nothing. Staff on screen confirmed their amount, so they review what Stripe has instead.
+    const short = !own && !mayExist && left < request.amount;
+    if (!own && unrecorded && (source === "staff_action" || !short)) throw new RefundVerificationError("existing_refund_requires_review");
+    if (short && left === 0) {
+      await fail(request.id, token, refundedElsewhere, source);
+      return { refundRequestId: request.id, status: "failed" as const };
+    }
+    // Stripe refuses a key sent again with another amount, so a lower amount needs its own.
+    const send = short ? { amount: left, operationKey: `${request.commerceOrderId ? "commerce" : "order"}-refund:${randomUUID()}` } : { amount: request.amount, operationKey: request.operationKey };
+    const held = await prisma.refundRequest.updateMany({ where: { id: request.id, processingToken: token }, data: { stripePaymentIntentId: intent.id, ...send } });
     if (held.count !== 1) return { refundRequestId: request.id, status: "pending" as const };
     if (request.commerceOrderId) await prisma.commerceOrder.update({ where: { id: request.commerceOrderId }, data: { stripePaymentIntentId: intent.id } });
     else await prisma.order.update({ where: { id: request.orderId as string }, data: { stripePaymentIntentId: intent.id } });
     const refund = own ?? await stripe.refunds.create({
       payment_intent: intent.id,
-      amount: request.amount,
+      amount: send.amount,
       reverse_transfer: true,
       refund_application_fee: true,
       metadata: refundMetadata(request.id, request)
-    }, { idempotencyKey: request.operationKey });
+    }, { idempotencyKey: send.operationKey });
     const status = await applyOutcome(request.id, refund, { source, token });
     return { refundRequestId: request.id, status };
   } catch (error) {
-    // An earlier attempt recorded the intent before creating, so this request's refund
-    // may already exist: a failed read proves nothing, and only Stripe's outcome settles it (SEC-011).
-    const mayExist = request.stripePaymentIntentId !== null;
     if (!mayExist && error instanceof RefundVerificationError) {
       await fail(request.id, token, error.code, source);
       throw new OrderRefundError("verification_failed", "Stripe's record of this payment doesn't match the order, so nothing was refunded");
@@ -338,6 +349,8 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
 
 // A refund that will not happen: the fence is lifted and nothing is voided or revoked.
 async function fail(requestId: string, token: string | null, code: string, source: "staff_action" | "refund_worker" = "staff_action") {
+  // A buyer already repaid in Stripe has nothing to hear, and nobody needs to act.
+  const tell = source !== "staff_action" && code !== refundedElsewhere;
   const failed = await prisma.$transaction(async (tx) => {
     const request = await tx.refundRequest.findUniqueOrThrow({ where: { id: requestId } });
     if (!(await lockPurchase(tx, request))) return null;
@@ -353,10 +366,10 @@ async function fail(requestId: string, token: string | null, code: string, sourc
       organisationId: request.organisationId, actorUserId: null, action: `${target.action}.refund_failed`, targetType: target.targetType, targetId: target.targetId,
       metadata: { refundRequestId: requestId, reason: code }
     } });
-    if (source !== "staff_action") await queueRefundTroubleNotice(tx, request, "failed");
+    if (tell) await queueRefundTroubleNotice(tx, request, "failed");
     return request;
   });
-  if (failed && source !== "staff_action") alertRefundFailed(failed, code);
+  if (failed && tell) alertRefundFailed(failed, code);
 }
 
 // PAY-026: staff see their own refund fail on screen; any other failure (the

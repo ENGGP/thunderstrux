@@ -44,6 +44,13 @@ async function paidOrder() {
 const providerRefund = (fixture: { intentId: string; order: { id: string } }, requestId: string, status = "succeeded") =>
   ({ id: unique("re"), status, amount: 3000, currency: "aud", payment_intent: fixture.intentId, metadata: { refundRequestId: requestId, orderId: fixture.order.id } }) as unknown as Stripe.Refund;
 
+// A refund made in Stripe's Dashboard: on the charge and in its refund list, not recorded here yet.
+async function refundInStripe(amount: number) {
+  const session = await stripe.retrieve();
+  stripe.retrieve.mockResolvedValue({ ...session, payment_intent: { ...session.payment_intent, latest_charge: { amount: 3000, amount_refunded: amount } } });
+  stripe.list.mockResolvedValue({ data: [{ id: unique("re_dashboard"), status: "succeeded", amount, metadata: {} }] });
+}
+
 const refundInput = (fixture: Awaited<ReturnType<typeof paidOrder>>, extra: Partial<{ confirmation: string }> = {}) => ({
   organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, actor: { id: fixture.owner.user.id },
   reason: "Event moved to a date the buyer can't attend.", confirmation: orderReference(fixture.order.id), ...extra
@@ -211,6 +218,14 @@ describe("whole-order refunds", () => {
     expect(await prisma.ticket.count({ where: { orderId: refused.order.id, validity: "active" } })).toBe(2);
   });
 
+  test("staff who confirmed an amount get a review, not a lower refund, when Stripe has one they don't know about (PAY-049)", async () => {
+    const fixture = await paidOrder();
+    await refundInStripe(1000);
+    await expect(requestOrderRefund(refundInput(fixture))).rejects.toMatchObject({ kind: "verification_failed" });
+    expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: fixture.order.id } })).toMatchObject({ status: "failed", amount: 3000, lastErrorCode: "existing_refund_requires_review" });
+    expect(stripe.create).not.toHaveBeenCalled();
+  });
+
   test("a refund Stripe already has from elsewhere stops the request for review; a charge whose dispute was won can be refunded", async () => {
     const fixture = await paidOrder();
     stripe.list.mockResolvedValue({ data: [{ id: "re_dashboard", status: "succeeded", metadata: {} }] });
@@ -369,6 +384,77 @@ describe("refunds that fail or come back", () => {
     stripe.create.mockReset().mockRejectedValue(Object.assign(new Error("insufficient funds"), { type: "StripeInvalidRequestError" }));
     await expect(requestOrderRefund(refundInput(staff))).rejects.toMatchObject({ kind: "provider_refused" });
     expect(alerts(error)).toHaveLength(1);
+  });
+
+  // PAY-049: the event-cancelled email has promised a refund, and a refund made in Stripe got there first.
+  const queueCancellationRefund = async (fixture: Awaited<ReturnType<typeof paidOrder>>) => {
+    await prisma.event.update({ where: { id: fixture.event.id }, data: { cancelledAt: new Date() } });
+    return prisma.$transaction((tx) => openOrderRefund(tx, { organisationId: fixture.owner.organisation.id, orderId: fixture.order.id, actor: { id: fixture.owner.user.id }, reason: "Event cancelled: storm" }));
+  };
+
+  test.each([
+    ["before the webhook has recorded it", 0],
+    ["after the webhook recorded it", 3000]
+  ])("a queued refund closes quietly when Stripe has already refunded everything, %s", async (_when, recorded) => {
+    const fixture = await paidOrder();
+    const request = await queueCancellationRefund(fixture);
+    await refundInStripe(3000);
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { externalRefundedAmount: recorded } });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await processOrderRefundBatch(25, new Date(Date.now() + 60_000));
+    expect(stripe.create).not.toHaveBeenCalled();
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } })).toMatchObject({ status: "failed", lastErrorCode: "refunded_elsewhere" });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: null });
+    expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: "refund-failed/" } } })).toBe(0);
+    expect(alerts(error)).toEqual([]);
+  });
+
+  test.each([
+    ["before the webhook has recorded it", 0],
+    ["after the webhook recorded it", 1000]
+  ])("a queued refund sends what is left under a new key when part was refunded in Stripe, %s", async (_when, recorded) => {
+    const fixture = await paidOrder();
+    const request = await queueCancellationRefund(fixture);
+    await refundInStripe(1000);
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { externalRefundedAmount: recorded } });
+    stripe.create.mockImplementation(async (params: { metadata: { refundRequestId: string } }) => ({ ...providerRefund(fixture, params.metadata.refundRequestId, "pending"), amount: 2000 }));
+
+    await processOrderRefundBatch(25, new Date(Date.now() + 60_000));
+    const lowered = await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(lowered).toMatchObject({ status: "pending", amount: 2000 });
+    expect(lowered.operationKey).not.toBe(request.operationKey);
+    const [params, options] = stripe.create.mock.calls[0];
+    expect(params).toMatchObject({ amount: 2000 });
+    expect(options).toEqual({ idempotencyKey: lowered.operationKey });
+
+    // Stripe's webhook for the lower amount matches the request, and the buyer hears that amount.
+    await reconcileOrderRefundEvent(refundEvent({ ...providerRefund(fixture, request.id), id: lowered.stripeRefundId as string, amount: 2000 }));
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ refundStatus: "refunded" });
+    const email = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `refund/${request.id}` } });
+    expect((decryptNotification(email.encryptedPayload, email.id) as { text: string }).text).toContain("$20.00 is on its way back");
+  });
+
+  test("a refund a lost answer may have made is never resized: the request stays open for Stripe's outcome (SEC-011)", async () => {
+    const fixture = await paidOrder();
+    const request = await queueCancellationRefund(fixture);
+    stripe.create.mockRejectedValueOnce(new Error("socket hang up"));
+    await processOrderRefundBatch(25, new Date(Date.now() + 60_000));
+    await refundInStripe(1000);
+    await processOrderRefundBatch(25, new Date(Date.now() + 2 * 60_000));
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } })).toMatchObject({ status: "uncertain", amount: 3000, operationKey: request.operationKey });
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("a queued refund that fits what is left still stops at a refund nobody recorded", async () => {
+    const fixture = await paidOrder();
+    const [ticket] = await prisma.ticket.findMany({ where: { orderId: fixture.order.id } });
+    const request = await prisma.$transaction((tx) => openOrderRefund(tx, { ...refundInput(fixture), selection: { ticketIds: [ticket.id], amount: 1500, cancelTickets: true, notifyBuyer: true } }));
+    await refundInStripe(1000);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await processOrderRefundBatch(25, new Date(Date.now() + 60_000));
+    expect(await prisma.refundRequest.findUniqueOrThrow({ where: { id: request.id } })).toMatchObject({ status: "failed", amount: 1500, lastErrorCode: "existing_refund_requires_review" });
+    expect(stripe.create).not.toHaveBeenCalled();
   });
 
   test("a pending refund Stripe later fails alerts, and a buyer whose event is still on isn't emailed", async () => {

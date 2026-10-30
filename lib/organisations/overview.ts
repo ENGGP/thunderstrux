@@ -112,10 +112,11 @@ export type RecentOrder = Awaited<ReturnType<typeof getOrganisationOverview>>["r
 
 // Check-in staff land on today's door (design round C1): published events on
 // today in the society's zone with their valid and checked-in tickets, then
-// the rest of the next seven days.
+// the rest of the next seven days. A cancelled event has no door (EVT-009).
 export async function getDoorDay(organisationId: string, timeZone: string, now = new Date()) {
   const today = toZonedInput(now, timeZone).slice(0, 10);
-  const { events } = await readCalendar(organisationId, "check_in_staff", { from: today, to: addDays(today, 6) }, timeZone);
+  const calendar = await readCalendar(organisationId, "check_in_staff", { from: today, to: addDays(today, 6) }, timeZone);
+  const events = calendar.events.filter((event) => !event.cancelledAt);
   const localDay = (date: Date) => toZonedInput(date, timeZone).slice(0, 10);
   const onToday = events.filter((event) => localDay(event.startTime) <= today && localDay(new Date(event.endTime.getTime() - 1)) >= today);
   const todayEvents = await Promise.all(onToday.map(async (event) => ({ ...event, attendance: await ticketAttendance(organisationId, { eventId: event.id }) })));

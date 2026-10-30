@@ -25,7 +25,7 @@ export function calendarRange(from: unknown, to: unknown) {
   return { from, to };
 }
 
-export type CalendarEvent = { id: string; title: string; location: string; status: "draft" | "published"; startTime: Date; endTime: Date };
+export type CalendarEvent = { id: string; title: string; location: string; status: "draft" | "published"; startTime: Date; endTime: Date; cancelledAt: Date | null };
 // One plan's members whose term has its last day on `lastDay` (local).
 export type MembershipEnd = { planId: string; name: string; lastDay: string; members: number };
 
@@ -34,7 +34,7 @@ export async function readCalendar(organisationId: string, staffRole: Organisati
   const published = hasOrganisationPermission(staffRole, "events:manage") ? Prisma.empty : Prisma.sql`AND "status" = 'published'`;
   const [events, membershipEnds] = await Promise.all([
     prisma.$queryRaw<CalendarEvent[]>`
-      SELECT "id", "title", "location", "status"::text AS "status", "startTime", "endTime"
+      SELECT "id", "title", "location", "status"::text AS "status", "startTime", "endTime", "cancelledAt"
       FROM "Event"
       WHERE "organisationId" = ${organisationId} AND "startTime" < ${endOf(window)} AND "endTime" > ${startOf(window)} ${published}
       ORDER BY "startTime", "id"

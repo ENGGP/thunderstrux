@@ -81,7 +81,7 @@ export function getGuestOrder(orderId: string) {
       externalRefundedAmount: true,
       externalRefundReviewedAt: true,
       isManuallyRefunded: true,
-      refundRequests: { where: { status: "succeeded" }, orderBy: { createdAt: "desc" }, take: 1, select: { amount: true, resolvedAt: true } },
+      refundRequests: { where: { status: "succeeded" }, orderBy: { createdAt: "desc" }, select: { amount: true, resolvedAt: true } },
       ticketType: { select: { name: true } },
       tickets: { where: { validity: "active" }, select: { id: true, issueSequence: true }, orderBy: { issueSequence: "asc" } },
       event: {

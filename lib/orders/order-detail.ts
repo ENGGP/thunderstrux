@@ -199,10 +199,14 @@ export async function markOrganisationOrderManuallyRefunded(
       throw new OrganisationOrderOperationError("The buyer has disputed this payment");
     }
     if (order.isManuallyRefunded) return;
+    // PAY-047: a checkout that didn't complete took no money, and the mark emails the buyer a refund.
+    if (order.status !== "paid") {
+      throw new OrganisationOrderOperationError("This checkout didn't complete, so there is no payment to mark as refunded");
+    }
     const updated = await tx.order.updateMany({
       where: {
         id: orderId,
-        status: { in: visibleOrderStatuses },
+        status: "paid",
         isManuallyRefunded: false
       },
       data: { isManuallyRefunded: true }

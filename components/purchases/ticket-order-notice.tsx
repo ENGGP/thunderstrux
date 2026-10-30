@@ -7,7 +7,8 @@ import { releasedByBuyer, ticketOrderProjection } from "@/lib/purchases/projecti
 type Order = Parameters<typeof ticketOrderProjection>[0] & Parameters<typeof releasedByBuyer>[0] & {
   totalAmount: number;
   externalRefundedAmount?: number;
-  event: { id: string; cancelledAt?: Date | null; organisation: { name: string } };
+  event: { id: string; cancelledAt?: Date | null; organisation: { name: string; timeZone: string } };
+  // Newest first.
   refundRequests: Array<{ amount: number; resolvedAt: Date | null }>;
 };
 
@@ -18,7 +19,10 @@ type Order = Parameters<typeof ticketOrderProjection>[0] & Parameters<typeof rel
 export function TicketOrderNotice({ order, processing, cancelled = false }: { order: Order; processing: ReactNode; cancelled?: boolean }) {
   const projection = ticketOrderProjection(order);
   const society = order.event.organisation.name;
+  const { timeZone } = order.event.organisation;
   const refund = order.refundRequests[0];
+  // Ticket by ticket there can be several, and part of it may have been refunded in Stripe.
+  const refunded = order.refundRequests.reduce((sum, request) => sum + request.amount, order.externalRefundedAmount ?? 0);
   if (projection === "processing") return processing;
   if (projection === "failed" || projection === "expired") {
     return <Notice title="This checkout didn't complete"><p>{cancelled ? "You cancelled it, so nothing was charged and the tickets are back on sale." : "Nothing was charged."} <Link className="font-semibold text-brand underline underline-offset-4" href={`/events/${order.event.id}`}>Back to the event</Link></p></Notice>;
@@ -27,7 +31,7 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
     return (
       <Notice title="Refunded">
         <p>
-          {refund ? `${formatMoney(refund.amount)} was refunded to your card${refund.resolvedAt ? ` on ${formatDate(refund.resolvedAt)}` : ""}.` : "This order was refunded in full."} Banks usually take 5 to 10 business days. The tickets are no longer valid.
+          {refund ? `${formatMoney(refunded)} was refunded to your card${refund.resolvedAt ? ` on ${formatDate(refund.resolvedAt, timeZone)}` : ""}.` : "This order was refunded in full."} Banks usually take 5 to 10 business days. The tickets are no longer valid.
         </p>
       </Notice>
     );

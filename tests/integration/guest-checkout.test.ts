@@ -191,7 +191,8 @@ describe("guest order access", () => {
 
     await prisma.order.update({ where: { id: order.id }, data: { refundStatus: "refunded" } });
     await prisma.ticket.updateMany({ where: { orderId: order.id }, data: { validity: "void", validityReason: "refunded", validityChangedAt: new Date() } });
-    await prisma.refundRequest.create({ data: { orderId: order.id, organisationId: fixture.organisation.id, amount: 3000, reason: "Buyer asked for a refund.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
+    // Ticket by ticket, so two refunds (PAY-048).
+    for (const amount of [1000, 2000]) await prisma.refundRequest.create({ data: { orderId: order.id, organisationId: fixture.organisation.id, amount, reason: "Buyer asked for a refund.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date() } });
     const refunded = await page();
     expect(refunded).toContain("$30.00 was refunded to your card");
     expect(refunded).not.toContain("Your tickets");

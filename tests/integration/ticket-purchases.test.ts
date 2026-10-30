@@ -8,6 +8,7 @@ import MyTicketsPage from "@/app/tickets/page";
 import { prisma } from "@/lib/db";
 import { ticketReference } from "@/lib/format";
 import { purchaseLinkForEmail, redeemGuestAccess } from "@/lib/guest/guest-access";
+import { TicketOrderNotice } from "@/components/purchases/ticket-order-notice";
 import { getOwnTicketPurchase, getWalletTickets } from "@/lib/purchases/ticket-purchases";
 import { StripeConfigurationError } from "@/lib/stripe";
 import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
@@ -47,6 +48,20 @@ async function fulfil(fixture: Awaited<ReturnType<typeof pendingPurchase>>) {
 }
 
 describe("purchases and order status", () => {
+  // PAY-048: refunded one ticket at a time, the page read only the last refund. 11:30 pm in Perth is already tomorrow in Brisbane.
+  test("the refund notice adds up every refund, here and in Stripe, and dates it in the society's zone", async () => {
+    const fixture = await pendingPurchase();
+    await fulfil(fixture);
+    await prisma.organisation.update({ where: { id: fixture.owner.organisation.id }, data: { timeZone: "Australia/Perth" } });
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { refundStatus: "refunded", externalRefundedAmount: 500 } });
+    for (const [amount, resolvedAt] of [[2000, "2026-10-29T02:00:00Z"], [2000, "2026-10-30T15:30:00Z"]] as const) {
+      await prisma.refundRequest.create({ data: { orderId: fixture.order.id, organisationId: fixture.owner.organisation.id, amount, reason: "One ticket at a time.", operationKey: unique("refund"), status: "succeeded", resolvedAt: new Date(resolvedAt) } });
+    }
+    const order = await getOwnTicketPurchase(fixture.buyer.id, fixture.order.id);
+    const notice = await renderPage(TicketOrderNotice({ order: order!, processing: null }));
+    expect(notice).toContain("$45.00 was refunded to your card on 30 Oct 2026.");
+  });
+
   test("only the buyer or the guest session that bought it can read an order; everyone else gets the same 404", async () => {
     const fixture = await pendingPurchase();
     clearMockSession();

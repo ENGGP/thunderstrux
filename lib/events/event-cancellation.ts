@@ -96,6 +96,9 @@ async function cancelInTransaction(
       where: { id: owned.id },
       data: { cancelledAt: now, cancellationReason: reason, saleState: "closed", version: { increment: 1 } }
     });
+    // EVT-008: the cancellation email replaces any change still waiting or part sent,
+    // which would tell holders "Your tickets are still valid".
+    await tx.eventChange.updateMany({ where: { eventId: owned.id, completedAt: null }, data: { completedAt: now, outcome: "superseded" } });
 
     const orders = await tx.order.findMany({
       where: { eventId: owned.id, status: "paid" },

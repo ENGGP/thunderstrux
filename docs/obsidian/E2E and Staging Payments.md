@@ -25,7 +25,7 @@ sources: [scripts/run-e2e.mjs, scripts/e2e-guards.mjs, scripts/staging-payments.
 | Notification fixture | `scripts/seed-notification-e2e.mjs` (called by `tests/e2e/notifications.spec.ts`; refuses outside an isolated run id) |
 | CI job summary | `scripts/e2e-ci-summary.mjs` (reads `summary-*.json` from `tests/e2e/summary-reporter.ts`) |
 | Specs | `tests/e2e/*.spec.ts`; projects `desktop` and `mobile` (Pixel 7, `mobile.spec.ts` only); every run emulates reduced motion (`playwright.config.ts`) |
-| Runner safety tests | `tests/runner/*.test.mjs` (`pnpm test:e2e:guards`), incl. `tests/runner/staging.test.mjs`, `tests/runner/guards.test.mjs`, `tests/runner/e2e-port.test.mjs` |
+| Runner safety tests | `tests/runner/*.test.mjs` (`pnpm test:e2e:guards`), incl. `tests/runner/staging.test.mjs`, `tests/runner/guards.test.mjs` |
 | Manual CI | `.github/workflows/e2e.yml` (guards, browser campaign, allowlisted counts) |
 
 ## Commands
@@ -42,9 +42,9 @@ The run id is also the Compose project and the evidence folder `tmp/e2e/<run-id>
 
 ## How a run works
 
-1. Validate the run id; refuse if `127.0.0.1:3100` is taken (an existing server is never reused).
+1. Validate the run id.
 2. Create `tmp/e2e/<run-id>/` (0700, `icacls` on Windows), `manifest.json` (`version`, `runId`, `project`, `staging`, `createdAt`) and `runtime.env` (0600): random `AUTH_SECRET`, `NOTIFICATION_ENCRYPTION_KEY`, `MFA_ENCRYPTION_KEY`; `MFA_ENFORCEMENT_MODE=enforce` for the browser campaign, `off` otherwise; `LEGACY_ORGANISATION_ACCESS_MODE=deny`; empty `STRIPE_SECRET_KEY`; synthetic webhook secrets; `E2E_RUN_ID`. Compose gets only this file (`--env-file`), never the developer's `.env`.
-3. Build `app`, `migration`, `tests`; record `manifest.release`: the release pair (`describeReleasePair`: revision, image ids and sizes within budget, required migration, chain digest) and `treeMatchesRevision` (`git diff --quiet HEAD`).
+3. Build `app`, `migration`, `tests`, tagged with the run id, and tag the tests image `thunderstrux-e2e-tests:local` for tools; a staging run then refuses if another staging run is up; record `manifest.release`: the release pair (`describeReleasePair`: revision, image ids and sizes within budget, required migration, chain digest) and `treeMatchesRevision` (`git diff --quiet HEAD`).
 4. Start `app` (pulls in `db`, `redis`, `migration`, `mail-capture`, `object-store`) and wait for `GET /api/public/events` to answer (90 s).
 5. Run the mode's steps, then mark `passed`, then clean up.
 
@@ -52,11 +52,11 @@ The run id is also the Compose project and the evidence folder `tmp/e2e/<run-id>
 | --- | --- | --- |
 | `db` | `postgres:16` | `thunderstrux_e2e_test`, user `e2e`, volume `test_database` |
 | `redis` | `redis:7-alpine` | rate limiting is on |
-| `migration` | `thunderstrux-e2e-ops:local` (`ops` stage) | `prisma migrate deploy` before the app starts, as in production |
-| `mail-capture` | `thunderstrux-e2e-ops:local` | captures email (`THUNDERSTRUX_MAIL_CAPTURE_URL`) |
+| `migration` | `thunderstrux-e2e-ops:<run-id>` (`ops` stage) | `prisma migrate deploy` before the app starts, as in production |
+| `mail-capture` | `thunderstrux-e2e-ops:<run-id>` | captures email (`THUNDERSTRUX_MAIL_CAPTURE_URL`) |
 | `object-store` | `thunderstrux-assets:local` | S3-compatible store, read-only root, volume `test_assets` |
-| `app` | `thunderstrux-e2e-app:local` (`web` stage) | `NODE_ENV=production`, origin `http://localhost:3100`, published on `127.0.0.1:3100` |
-| `tests` | `thunderstrux-e2e-tests:local` | profile `test`; shares the app's network namespace so Auth.js, server fetches and the browser use one origin; reports mount at `/app/test-results` |
+| `app` | `thunderstrux-e2e-app:<run-id>` (`web` stage) | `NODE_ENV=production`, origin `http://localhost:3100`; published on a host port Docker picks, which the runner reads with `compose port` |
+| `tests` | `thunderstrux-e2e-tests:<run-id>` | profile `test`; shares the app's network namespace so Auth.js, server fetches and the browser use one origin; reports mount at `/app/test-results` |
 | `stripe` | `stripe/stripe-cli` | profile `staging`; `listen --latest`, forwards the payments-webhook events only to `/api/payments/webhook` |
 
 No origin is passed at build time: the web image reads `NEXT_PUBLIC_APP_URL` at run time. Because the stack runs in production mode, `/success` can't fulfil an order; only signed webhooks do.
@@ -120,7 +120,8 @@ Unpaid Sessions are explicitly expired through Stripe; natural timeout is never 
 
 ## Traps
 
-- Port 3100 must be free; stop any other run first.
+- Two baseline or browser runs can go at once: every run has its own project, images and host port. Side by side on Docker's 15.6 GB they ran about 3 to 5% slower and left about 10.5 GB free. More than two hasn't been tried, and runs compete for CPU, so a timing failure beside another run needs a look before it counts. Staging stays one at a time.
+- A crashed run keeps its image tags until `pnpm test:e2e:cleanup -- <run-id>` removes them.
 - A paused or killed staging run keeps its database volume and manifest until Stripe cleanup succeeds; don't delete either by hand.
 - Evidence from `tmp/e2e/` is private: only allowlisted counts reach the GitHub job summary. Traces, cookies, Checkout URLs, raw provider payloads and private state are never uploaded; don't attach private staging files to a PR.
 

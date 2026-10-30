@@ -1,3 +1,5 @@
+# Each run has its own images and a host port Docker picks, so runs can't test each
+# other's code or collide. Inside the stack the app is always localhost:3100.
 services:
   db:
     image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
@@ -13,7 +15,7 @@ services:
       timeout: 3s
       retries: 30
   app:
-    image: thunderstrux-e2e-app:local
+    image: thunderstrux-e2e-app:${E2E_RUN_ID:?Run through pnpm test:e2e}
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -38,7 +40,7 @@ services:
       ASSET_STORAGE_ACCESS_KEY: test-assets
       ASSET_STORAGE_SECRET_KEY: disposable-test-storage-only
     ports:
-      - '127.0.0.1:3100:3100'
+      - '127.0.0.1::3100'
     command: [node, server.js]
     depends_on:
       db:
@@ -70,7 +72,7 @@ services:
     cap_drop: ["ALL"]
     tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000"]
   mail-capture:
-    image: thunderstrux-e2e-ops:local
+    image: thunderstrux-e2e-ops:${E2E_RUN_ID:?Run through pnpm test:e2e}
     command: [node, scripts/mail-capture.mjs]
     restart: "no"
   redis:
@@ -82,7 +84,7 @@ services:
       retries: 30
   # T43: migrations run from the ops image, as in production.
   migration:
-    image: thunderstrux-e2e-ops:local
+    image: thunderstrux-e2e-ops:${E2E_RUN_ID:?Run through pnpm test:e2e}
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -96,7 +98,7 @@ services:
       db:
         condition: service_healthy
   tests:
-    image: thunderstrux-e2e-tests:local
+    image: thunderstrux-e2e-tests:${E2E_RUN_ID:?Run through pnpm test:e2e}
     build:
       context: .
       dockerfile: docker/Dockerfile.e2e

@@ -171,8 +171,6 @@ WHERE slug = 'engineering-society';
 
 ## Tests
 
-**E2E run refuses: "Port 3100 is occupied; existing server will not be reused".** Stop whatever holds 3100; the runner never reuses a server.
-
 **Interrupted E2E or staging run.** Repeat `pnpm test:e2e:cleanup -- <run-id>` until it confirms cleanup; keep a payment recovery manifest and its volumes until recovery succeeds ([[E2E and Staging Payments]]).
 
 **`pnpm security:audit` fails.** Capture the advisory, version and every dependency path; update the parent or a reviewed override, then revalidate. Never suppress advisories ([[Dependency Automation]]).

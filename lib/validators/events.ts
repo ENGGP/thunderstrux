@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { maxHoldMinutes, minHoldMinutes } from "@/lib/checkout-hold";
 import { priceAmountSchema } from "@/lib/validators/price";
 
 const eventFieldsSchema = z
@@ -19,7 +20,14 @@ const eventFieldsSchema = z
     // A ready `event` image uploaded for this society; null removes it.
     heroAssetId: z.string().trim().min(1).max(64).nullable().optional(),
     // The image's description for screen readers; blank or null means decoration (UI-018).
-    heroAlt: z.string().trim().max(250).nullable().optional()
+    heroAlt: z.string().trim().max(250).nullable().optional(),
+    // PAY-009: how long a checkout holds tickets; 20 when omitted on create, kept on edit.
+    checkoutHoldMinutes: z
+      .number()
+      .int(`Whole minutes, ${minHoldMinutes} to ${maxHoldMinutes}`)
+      .min(minHoldMinutes, `At least ${minHoldMinutes} minutes`)
+      .max(maxHoldMinutes, `At most ${maxHoldMinutes} minutes`)
+      .optional()
   })
   .refine((data) => data.endTime > data.startTime, {
     message: "endTime must be after startTime",

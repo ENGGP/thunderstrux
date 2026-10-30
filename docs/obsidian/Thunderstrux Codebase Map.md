@@ -60,6 +60,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/db` | Prisma client and organisation scope helpers | `index.ts` (`prisma`), `organisation-scope.ts`, `organisation-drift.ts` |
 | `lib/email` | Ticket email, notification outbox, templates, encryption | `ticket-delivery.ts`, `ticket-email-outbox.ts`, `notification-outbox.ts`, `templates.ts`, `notification-crypto.ts` |
 | `lib/events` | Event lifecycle, inventory locks, readiness, public reads, calendar | `event-lifecycle.ts`, `event-cancellation.ts`, `inventory.ts`, `event-readiness.ts`, `public-events.ts`, `explore-filters.ts`, `calendar.ts`, `event-changes.ts`, `http.ts` |
+| `lib/checkout-hold.ts` | Checkout hold lengths (20 by default, 5 to 59 per event; PAY-009) and `holdEndsAt`; no server imports | |
 | `lib/format.ts` | Money, dates in a zone (default `Australia/Brisbane`), order references | |
 | `lib/guest` | Verified guest sessions, guest CSRF, claim into an account | `guest-access.ts`, `guest-csrf.ts`, `guest-claim.ts` |
 | `lib/memberships` | Plans, offers, grants, roster, revocation, reminders | `plans.ts`, `offers.ts`, `grants.ts`, `roster.ts`, `revocation.ts`, `reminders.ts`, `http.ts` |

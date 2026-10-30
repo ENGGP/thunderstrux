@@ -69,7 +69,7 @@ Fields, defaults and relations: `prisma/schema.prisma`. Amounts are integer cent
 
 | Model | Purpose and notable rules |
 | --- | --- |
-| `Event` | Owner `organisationId`; `status`, `visibility`, `saleState`, `salesCloseAt`, optional `capacity` (positive), `version` (compare-and-swap, positive), `compensationRefundMode`, optional `heroAssetId` through `(heroAssetId, organisationId)`, optional `cancelledAt` and `cancellationReason` (EVT-004), `latestEndTime` (the latest end it has had, for the payout hold; SEC-032) ([[Event Lifecycle]]). End after start (check). |
+| `Event` | Owner `organisationId`; `status`, `visibility`, `saleState`, `salesCloseAt`, optional `capacity` (positive), `version` (compare-and-swap, positive), `compensationRefundMode`, `checkoutHoldMinutes` (5 to 59, default 20; PAY-009), optional `heroAssetId` through `(heroAssetId, organisationId)`, optional `cancelledAt` and `cancellationReason` (EVT-004), `latestEndTime` (the latest end it has had, for the payout hold; SEC-032) ([[Event Lifecycle]]). End after start (check). |
 | `TicketType` | `price`, optional `memberPrice` (at most `price`, check), `quantity` = remaining stock (never original capacity; non-negative). |
 | `Ticket` | One admission. `issueSequence` unique per order and positive; `validity`, `validityReason`, `validityChangedAt` (set by refunds, disputes, cancellations); `checkedInAt` (check-in). |
 | `EventChange` | A time or place change to an event with active tickets: old and new start, end and location, unique `(eventId, eventVersion)`, fan-out `cursor`, `notifiedCount`, `completedAt` with `outcome` `sent` or `superseded` (both null or both set). |

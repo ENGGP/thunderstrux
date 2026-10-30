@@ -118,6 +118,7 @@ export function PublicEventView({
         <div className="lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <PublicTicketPurchase
             eventId={event.id}
+            holdMinutes={event.checkoutHoldMinutes}
             initial={selection}
             memberPlan={memberPlan}
             preview={preview}

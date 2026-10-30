@@ -98,8 +98,10 @@ describe("commerce checkout", () => {
     expect(order.checkoutAttempt).toMatchObject({ family: "merchandise", state: "provider_attached", stripeSessionId: order.stripeSessionId });
     const [request, options] = stripe.create.mock.calls[0];
     // Stripe's Session and the hold end together, at least 30 minutes after the call.
-    expect(order.expiresAt?.getTime()).toBe(request.expires_at * 1000);
+    // PAY-009: the order holds for 20 minutes; Stripe's page lasts at least 30 and is closed when the hold ends.
+    expect(Math.abs(order.expiresAt!.getTime() - order.createdAt.getTime() - 20 * 60_000)).toBeLessThan(5_000);
     expect(request.expires_at - Date.now() / 1000).toBeGreaterThan(30 * 60);
+    expect(request.custom_text?.submit?.message).toMatch(/^We're holding your order until \d{1,2}:\d{2} [ap]m Brisbane time\. After that it's released\.$/);
     expect(request).toMatchObject({
       integration_identifier: "thunderstrux-commerce-wpdlxneg",
       metadata: { family: "merchandise", commerceOrderId: order.id, organisationId: society.organisation.id },

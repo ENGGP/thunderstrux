@@ -96,6 +96,7 @@ export const eventSelect = {
   heroAssetId: true,
   heroAlt: true,
   compensationRefundMode: true,
+  checkoutHoldMinutes: true,
   createdAt: true,
   ticketTypes: {
     select: {
@@ -421,6 +422,7 @@ export async function createOrganisationEvent(
       visibility: input.visibility ?? "public",
       salesCloseAt: input.salesCloseAt ?? input.startTime,
       compensationRefundMode: input.compensationRefundMode,
+      checkoutHoldMinutes: input.checkoutHoldMinutes,
       ticketTypes: {
         create: input.ticketTypes.map((ticketType) => ({
           name: ticketType.name,
@@ -449,7 +451,7 @@ export async function createOrganisationEvent(
 
 type EventFacts = {
   title: string; description: string; startTime: Date; endTime: Date; location: string; capacity: number | null;
-  salesCloseAt: Date; visibility: string; heroAssetId: string | null; heroAlt: string | null;
+  salesCloseAt: Date; visibility: string; heroAssetId: string | null; heroAlt: string | null; checkoutHoldMinutes: number;
 };
 
 // What an edit changed, for History (T38): before and after for each field,
@@ -459,7 +461,7 @@ function eventChanges(
   after: EventFacts & { ticketTypes: Array<{ id?: string; name: string; price: number; quantity: number }>; removedTicketTypeIds: string[] }
 ): Prisma.InputJsonArray {
   const value = (fact: unknown) => (fact instanceof Date ? fact.toISOString() : (fact as string | number | null));
-  const fields = ["title", "startTime", "endTime", "location", "capacity", "salesCloseAt", "visibility"] as const;
+  const fields = ["title", "startTime", "endTime", "location", "capacity", "salesCloseAt", "visibility", "checkoutHoldMinutes"] as const;
   const changes: Prisma.InputJsonObject[] = fields
     .filter((field) => value(before[field]) !== value(after[field]))
     .map((field) => ({ field, before: value(before[field]), after: value(after[field]) }));
@@ -581,6 +583,7 @@ export async function updateOrganisationEvent(
         capacity: true,
         salesCloseAt: true,
         visibility: true,
+        checkoutHoldMinutes: true,
         ticketTypes: {
           select: { id: true, name: true, price: true, quantity: true, _count: { select: { orders: true, tickets: true } } }
         }
@@ -667,6 +670,7 @@ export async function updateOrganisationEvent(
         ...(input.visibility ? { visibility: input.visibility } : {}),
         ...(input.heroAssetId !== undefined ? { heroAssetId: input.heroAssetId } : {}),
         heroAlt,
+        ...(input.checkoutHoldMinutes !== undefined ? { checkoutHoldMinutes: input.checkoutHoldMinutes } : {}),
         version: { increment: 1 },
         ...(input.compensationRefundMode
           ? { compensationRefundMode: input.compensationRefundMode }
@@ -742,6 +746,7 @@ export async function updateOrganisationEvent(
             visibility: input.visibility ?? locked.visibility,
             heroAssetId,
             heroAlt,
+            checkoutHoldMinutes: input.checkoutHoldMinutes ?? locked.checkoutHoldMinutes,
             ticketTypes: input.ticketTypes.map((ticketType, index) => ({ id: ticketType.id, name: ticketType.name, price: ticketType.price, quantity: quantities[index] })),
             removedTicketTypeIds
           })

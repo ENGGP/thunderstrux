@@ -66,11 +66,14 @@ async function selectExpiredReservationCandidates({
   limit: number;
   now: Date;
 }) {
+  // A reservation runs the event's hold plus lateWebhookGraceMs: it is picked when
+  // the hold ends, so the Stripe check closes the page then (PAY-009). Without a
+  // Session, the order itself still waits for expiresAt (expirePendingOrder).
   return db.$queryRaw<ReservationCandidate[]>`
     SELECT "id", "orderId"
     FROM "TicketReservation"
     WHERE "status" = 'active'
-      AND "expiresAt" <= ${now}
+      AND "expiresAt" <= ${new Date(now.getTime() + lateWebhookGraceMs)}
     ORDER BY "expiresAt" ASC, "id" ASC
     LIMIT ${limit}
   `;
@@ -288,12 +291,13 @@ async function processStaleOrderCleanupBatchInternal({
   };
 }
 
-// Membership and merchandise orders whose Stripe Session has expired, with a
-// margin for a late webhook (T21): asked about at Stripe first (PAY-024), then
-// expired and their holds released.
-export async function expireStaleCommerceOrders({ now = new Date(), limit = 100, graceMs = lateWebhookGraceMs } = {}) {
+// Membership and merchandise orders whose hold has ended (PAY-009): asked about
+// at Stripe first (PAY-024), which closes a page still open, then expired and
+// their holds released. Stock stays counted for lateWebhookGraceMs past the hold
+// (lib/merchandise/sale.ts) only while Stripe can't be asked.
+export async function expireStaleCommerceOrders({ now = new Date(), limit = 100 } = {}) {
   const stale = await prisma.commerceOrder.findMany({
-    where: { status: "pending", paymentKind: "stripe", expiresAt: { lt: new Date(now.getTime() - graceMs) } },
+    where: { status: "pending", paymentKind: "stripe", expiresAt: { lt: now } },
     orderBy: { expiresAt: "asc" },
     take: Math.max(1, Math.min(limit, 500)),
     select: { id: true }

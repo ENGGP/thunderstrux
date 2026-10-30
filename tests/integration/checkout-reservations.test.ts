@@ -166,16 +166,16 @@ describe("checkout and reservation logic", () => {
       })
     ]);
 
-    // 30 minutes plus the margin for the trip to Stripe, which refuses anything shorter.
+    // Stripe's page: 30 minutes (Stripe refuses shorter) plus the margin for the trip there.
     const expectedExpiresAtSeconds =
       Math.ceil(new Date("2026-05-01T10:00:00.000Z").getTime() / 1000) + 30 * 60 + 60;
-    // The hold outlives the Session by 5 minutes, so a payment made just in time keeps it (DEF-033).
-    expect(order.reservation?.expiresAt.getTime()).toBe(
-      (expectedExpiresAtSeconds + 5 * 60) * 1000
-    );
+    // The seats: the event's 20-minute hold plus 5 minutes for a late webhook (PAY-009, DEF-033).
+    expect(order.reservation?.expiresAt.toISOString()).toBe("2026-05-01T10:25:00.000Z");
     expect(stripeMocks.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         expires_at: expectedExpiresAtSeconds,
+        // Stripe's page can't count down, so it names when the hold ends (10:20 UTC is 8:20 pm in Brisbane).
+        custom_text: { submit: { message: "We're holding your tickets until 8:20 pm Brisbane time. After that they go back on sale." } },
         customer_email: expect.stringContaining("@"),
         integration_identifier: "thunderstrux-tickets-qhzmvkra",
         metadata: expect.objectContaining({
@@ -359,7 +359,8 @@ describe("checkout and reservation logic", () => {
       }));
     };
 
-    // Stripe closed the pages at 10:31; this webhook lands two minutes later, after the stale-order job ran.
+    // The holds ended at 10:20 and Stripe's pages close at 10:31; the job can't ask
+    // Stripe here, so the seats wait out the margin. This webhook lands at 10:33.
     vi.setSystemTime(new Date("2026-05-01T10:33:00.000Z"));
     await processStaleOrderCleanupBatch();
     expect(await paid("cs_paid_in_time")).toMatchObject({ status: "fulfilled" });

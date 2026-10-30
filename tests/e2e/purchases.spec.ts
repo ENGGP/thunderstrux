@@ -85,6 +85,11 @@ test("an unpaid order says it is waiting for payment, reads To pay, and asks onc
   await expect(page.getByText("Waiting for payment").first()).toBeVisible();
   await expect(page.getByText("You haven't paid yet")).toBeVisible();
   await expect(page.getByText("We're holding 1 ticket for you until", { exact: false })).toBeVisible();
+  // PAY-009: the hold counts down (the seats' 20 minutes include the 5-minute webhook margin).
+  const countdown = page.getByText(/^1[45]:\d{2}$/);
+  await expect(countdown).toBeVisible();
+  const first = await countdown.textContent();
+  await expect(countdown).not.toHaveText(first ?? "", { timeout: 3000 });
   await expect(page.getByText("To pay", { exact: true })).toBeVisible();
   await expect(page.getByText("Paid", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel order" }).click();

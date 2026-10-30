@@ -123,11 +123,12 @@ Both flows build the request, store it on `CheckoutAttempt.providerRequest`, the
 | `metadata` (Session and PaymentIntent) | `orderId`, `eventId`, `organisationId`, `ticketTypeId`, `quantity` | `family`, `commerceOrderId`, `organisationId` |
 | `success_url` | member: `/success?session_id={CHECKOUT_SESSION_ID}`; guest: `/guest/orders/{orderId}` | `/memberships/orders/{id}` or `/merchandise/orders/{id}` |
 | `cancel_url` | `/cancel?order={orderId}` | the same order page with `?left=1` |
-| `expires_at` | `checkoutSessionExpiresAt()`: now + 30 minutes + 60 seconds | same |
+| `expires_at` | `checkoutSessionExpiresAt(holdMinutes)`: now + the hold or 30 minutes, the longer, + 60 seconds | same, with the 20-minute hold |
+| `custom_text.submit.message` | "We're holding your tickets until {time} {zone}. After that they go back on sale." | "We're holding your order until … After that it's released." |
 
 - URLs use the trusted origin the buyer bought from, else `getAppUrl()`. A guest's order page opens only with their session cookie, and the cancel page names the order only to its buyer.
 - **Card only:** a completed Session is then paid at once, so fulfilment needs no async payment events. API version `2026-09-30.endive` removed `payment_method_types`.
-- **Expiry:** Stripe refuses an `expires_at` under 30 minutes after creation. The 60-second margin covers the trip to Stripe and stays under the 2-minute recovery delay, so replaying a request Stripe never saw is refused and the hold is released.
+- **Expiry:** Stripe refuses an `expires_at` under 30 minutes after creation, so a shorter hold (PAY-009) is ended by the stale-order job closing the page (`checkout.sessions.expire`). The 60-second margin covers the trip to Stripe and stays under the 2-minute recovery delay, so replaying a request Stripe never saw is refused, or closed by the job, and the hold is released.
 - **Errors:** a definite Stripe refusal (`isDefiniteProviderFailure`: card, invalid request, authentication or permission error; a 429 is uncertain and retried, PAY-035) fails the order. Any other error leaves the attempt `provider_uncertain`, alerts `checkout_session_creation_failure` and answers 202. A Session without a `url` fails the order (`missing_redirect_url`). Ticket checkout also logs `checkout.session.create_started`, `checkout.session.created` and `checkout.session.create_failed`, with metric `checkout_session_create_failures_total`.
 
 ## Fees

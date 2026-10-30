@@ -25,8 +25,11 @@ test("a price changed while reviewing shows the new total and continues at it", 
     ticketTypes: [{ name: "General admission", price: 1500, quantity: 20 }]
   });
   const ticketType = event.ticketTypes[0];
+  await prisma.event.update({ where: { id: event.id }, data: { checkoutHoldMinutes: 10 } });
 
   await login(page, data.member.email, checkoutPath(event.id, ticketType.id, 2));
+  // PAY-009: the review page names the event's own hold.
+  await expect(page.getByText("We hold these tickets for 10 minutes while you pay.")).toBeVisible();
   await prisma.ticketType.update({ where: { id: ticketType.id }, data: { price: 1700 } });
   await page.getByRole("button", { name: "Pay A$30.00" }).click();
 

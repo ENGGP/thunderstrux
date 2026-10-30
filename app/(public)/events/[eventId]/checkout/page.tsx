@@ -15,7 +15,6 @@ import { memberPricePlan } from "@/lib/memberships/offers";
 import { guestCookieName, readGuestSession } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { formatDateTime, formatMoney, membershipLabel, payLabel } from "@/lib/format";
-import { reservationMinutes } from "@/lib/tickets/reservations";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -174,7 +173,7 @@ export default async function CheckoutPage({
         <Card>
           <h2 className="text-lg font-semibold text-ink">{free ? "Before you register" : "Before you pay"}</h2>
           <ul className="mt-2 grid gap-1.5 text-sm text-ink-soft [overflow-wrap:anywhere]">
-            {free ? null : <li>We hold these tickets for {reservationMinutes} minutes while you pay.</li>}
+            {free ? null : <li>We hold these tickets for {event.checkoutHoldMinutes} minutes while you pay.</li>}
             {policy.map((line) => (
               <li key={line}>{line}</li>
             ))}

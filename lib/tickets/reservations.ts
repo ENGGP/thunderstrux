@@ -1,17 +1,19 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { holdEndsAt } from "@/lib/checkout-hold";
 import { isTransactionConflict } from "@/lib/transaction-conflict";
 
-export const reservationMinutes = 30;
 export const maxReservationTransactionAttempts = 3;
 
-// A hold outlives its Stripe page by this much. Stripe takes no payment after
-// the page closes, but its webhook arrives later; a payment made in time still
-// finds its hold (DEF-033). Commerce's stale-order expiry waits the same.
+// Seats stay held this long past the hold's end (DEF-033, PAY-009). The stale-order
+// job closes the Stripe page when the hold ends and frees the seats on Stripe's
+// answer, so the margin only matters while Stripe can't be asked: a payment made
+// just in time still finds its seats. Commerce stock is counted the same way.
 export const lateWebhookGraceMs = 5 * 60 * 1000;
 
-export function getReservationExpiry(now = new Date()) {
-  return new Date(now.getTime() + reservationMinutes * 60 * 1000);
+// When a reservation started now lapses: the event's hold, then the margin.
+export function getReservationExpiry(now: Date, holdMinutes: number) {
+  return new Date(holdEndsAt(now, holdMinutes).getTime() + lateWebhookGraceMs);
 }
 
 // Purchases decide everything after locking the buyer, the Event and its ticket

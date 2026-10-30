@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { DateTimeField } from "@/components/ui/date-field";
 import { MoneyInput, Select, TextArea, TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
+import { defaultHoldMinutes, maxHoldMinutes, minHoldMinutes } from "@/lib/checkout-hold";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
 import { formatMoney, formatMoneyInput, parseMoneyInput } from "@/lib/format";
 import { calculatePlatformFee, isBelowPaidMinimum, paidPriceMinimum } from "@/lib/stripe/fees";
@@ -29,6 +30,7 @@ type FormState = {
   capacity: string;
   visibility: Visibility;
   compensationRefundMode: RefundMode;
+  checkoutHoldMinutes: string;
   heroAssetId: string | null;
   heroAlt: string;
 };
@@ -63,6 +65,7 @@ type EventFormData = {
   status: "draft" | "published";
   version: number;
   compensationRefundMode: RefundMode;
+  checkoutHoldMinutes: number;
   occupancy: number;
   ticketTypes: Array<{
     id: string;
@@ -99,6 +102,7 @@ function initialState(event: EventFormData | undefined, timeZone: string, startD
         capacity: event.capacity === null ? "" : String(event.capacity),
         visibility: event.visibility,
         compensationRefundMode: event.compensationRefundMode,
+        checkoutHoldMinutes: String(event.checkoutHoldMinutes),
         heroAssetId: event.heroAssetId,
         heroAlt: event.heroAlt ?? ""
       }
@@ -113,6 +117,7 @@ function initialState(event: EventFormData | undefined, timeZone: string, startD
         capacity: "",
         visibility: "public",
         compensationRefundMode: "automatic_full",
+        checkoutHoldMinutes: String(defaultHoldMinutes),
         heroAssetId: null,
         heroAlt: ""
       };
@@ -347,6 +352,8 @@ export function CreateEventForm({
         heroAssetId: form.heroAssetId,
         heroAlt: form.heroAssetId ? form.heroAlt.trim() || null : null,
         compensationRefundMode: form.compensationRefundMode,
+        // Blank means the default; anything else is checked by the server.
+        checkoutHoldMinutes: form.checkoutHoldMinutes.trim() ? Number(form.checkoutHoldMinutes) : defaultHoldMinutes,
         // The version this form loaded; the server refuses the save if the event changed since.
         ...(mode === "edit" && initialEvent ? { version: initialEvent.version } : {}),
         ticketTypes: ticketTypes
@@ -677,6 +684,15 @@ export function CreateEventForm({
               label="Event capacity (optional)"
               onChange={(event) => setField("capacity", event.target.value)}
               value={form.capacity}
+            />
+            <TextInput
+              error={errorFor(errors, "checkoutHoldMinutes")}
+              hint={`How long tickets stay held while someone pays: ${minHoldMinutes} to ${maxHoldMinutes} minutes, ${defaultHoldMinutes} if unsure. Shorter suits events that sell out.`}
+              id="checkoutHoldMinutes"
+              inputMode="numeric"
+              label="Checkout hold (minutes)"
+              onChange={(event) => setField("checkoutHoldMinutes", event.target.value)}
+              value={form.checkoutHoldMinutes}
             />
           </div>
         </Card>

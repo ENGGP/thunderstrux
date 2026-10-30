@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { reservationMinutes } from "@/lib/tickets/reservations";
 
 // One durable record per intended checkout (database spec 6.1). The same actor
 // and client key always answers with the same attempt; the provider key is sent
@@ -14,13 +13,15 @@ export const eventCheckoutOperation = "event_checkout";
 export const attemptReconcileDelayMs = 2 * 60 * 1000;
 
 // Stripe refuses a Session expiring under 30 minutes after it is created, so the
-// expiry is set just before the call with a margin for the trip there. The margin
-// stays under attemptReconcileDelayMs: a recovery replay of a request Stripe never
-// saw then carries an expiry Stripe refuses, which releases the hold.
+// page lasts the hold or 30 minutes, whichever is longer; the stale-order job
+// closes it when a shorter hold ends (PAY-009). The expiry is set just before the
+// call with a margin for the trip there. The margin stays under
+// attemptReconcileDelayMs: a recovery replay of a request Stripe never saw then
+// carries an expiry Stripe refuses, or one the job closes, which releases the hold.
 const sessionExpiryMarginSeconds = 60;
 
-export function checkoutSessionExpiresAt(now = Date.now()) {
-  return Math.ceil(now / 1000) + reservationMinutes * 60 + sessionExpiryMarginSeconds;
+export function checkoutSessionExpiresAt(holdMinutes: number, now = Date.now()) {
+  return Math.ceil(now / 1000) + Math.max(30, holdMinutes) * 60 + sessionExpiryMarginSeconds;
 }
 
 // Tags each checkout flow's Sessions in the Stripe Dashboard so the flows can be compared.

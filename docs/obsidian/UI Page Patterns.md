@@ -32,7 +32,7 @@ sources: [app/(dashboard)/dashboard/society-overview.tsx, app/(dashboard)/dashbo
 
 ## Checkout state screens
 
-The checkout page (`components/purchases/checkout-action.tsx`) shows tickets and total ("Free" and "No payment needed." for free; "No booking fee" for paid), who the tickets go to, the 30-minute hold for paid tickets, and the refund policy and support email when set. The action is `Confirm free registration` or `Pay A$X.XX` (`payLabel`, `lib/format.ts`; membership and merchandise checkouts too); it sends the price shown and one idempotency key per reviewed quote, and any server answer ends that key. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds.
+The checkout page (`components/purchases/checkout-action.tsx`) shows tickets and total ("Free" and "No payment needed." for free; "No booking fee" for paid), who the tickets go to, the event's checkout hold for paid tickets ("We hold these tickets for N minutes while you pay"), and the refund policy and support email when set. The action is `Confirm free registration` or `Pay A$X.XX` (`payLabel`, `lib/format.ts`; membership and merchandise checkouts too); it sends the price shown and one idempotency key per reviewed quote, and any server answer ends that key. A 202 shows `Confirming checkout...` while it polls the attempt for up to 30 seconds.
 
 A refusal replaces the action with a titled `Notice` (`role="alert"`) chosen from the API detail's `reason` and `value`, never by parsing the message. Every refusal says nothing has been charged.
 

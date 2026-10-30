@@ -51,7 +51,7 @@ sources: [prisma/schema.prisma, lib/permissions/index.ts, lib/tickets/reservatio
 | Order (tickets) | `Order` (`OrderStatus`: `pending`, `paid`, `failed`, `expired`); free orders are `paid` with `paymentKind` `free` | [[Payment Lifecycle]] |
 | Commerce order | `CommerceOrder` and `CommerceOrderLine`: one order type for memberships and merchandise | [[Payment Lifecycle]] |
 | Family | `CheckoutFamily`: `ticket`, `membership`, `merchandise`; commerce families are registered in `lib/commerce/families.ts` | [[Payment Lifecycle]] |
-| Hold, reservation | `TicketReservation` for tickets. It ends 5 minutes (`lateWebhookGraceMs`) after the Stripe page closes, so a late webhook still finds it | [[Payment Lifecycle#Holds]] |
+| Hold, reservation | `TicketReservation` for tickets. It lasts the event's checkout hold (5 to 59 minutes, default 20), when the Stripe page is closed, plus 5 minutes (`lateWebhookGraceMs`) while Stripe can't be asked | [[Payment Lifecycle#Holds]] |
 | Checkout attempt | `CheckoutAttempt`: one try at creating a Stripe Checkout Session, recovered by a worker if the answer was lost | [[Payment Lifecycle]] |
 | Fulfilment | The webhook marking an order paid and issuing its tickets or grants. It is never done from the browser's success page | [[Payment Lifecycle]] |
 | Purchase snapshot | Facts copied onto the order at purchase: ticket name, seller, fee, buyer contact | [[Payment Lifecycle]] |

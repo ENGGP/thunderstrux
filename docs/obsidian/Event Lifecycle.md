@@ -146,6 +146,8 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 
 `Event.compensationRefundMode` decides what happens to a payment that arrives when tickets can't be issued (sold out meanwhile, or paid after the hold lapsed). `createEventSchema` defaults it to `automatic_full`; the schema column defaults to `manual_review`, so events created outside the API (seed, tests, scripts) review manually. Checkout copies it to `Order.compensationRefundModeSnapshot`, and the order keeps that choice. Behaviour: [[Payment Lifecycle]].
 
+`Event.checkoutHoldMinutes` (PAY-009, as Humanitix hosts choose) is how long a checkout holds its tickets while the buyer pays: 5 to 59 minutes (`Event_checkoutHoldMinutes_chk`), 20 by default, set on the form's Access card ("Checkout hold (minutes)"; blank means 20). An edit that leaves it out keeps it; a change applies to new checkouts only, as each order keeps its own end, and is noted in History ("Checkout hold"). Shorter suits events that sell out. How the hold runs: [[Payment Lifecycle#Holds]].
+
 ### Hero image
 
 `Event.heroAssetId` references `(Asset.id, organisationId)`, so an event can only use its own society's image. Create and edit lock the Asset after the Event and accept only a ready, undeleted `event` asset (400 on `heroAssetId`: "That image is no longer available. Upload it again, then save."). Every change, and deleting the event, refreshes `unreferencedAt` on old and new images. Delivery and cleanup: [[Society Profiles and Assets]].

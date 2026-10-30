@@ -45,7 +45,7 @@ export async function cancelOrganisationEvent(
 // page, so nobody can pay for an event that won't happen (EVT-006); the order
 // then expires as when its page times out. A payment Stripe took first goes to
 // compensation at fulfilment. Stripe is called outside the transaction, as buyer
-// cancel does; a failed call is logged, and that page still lapses within 30 minutes.
+// cancel does; a failed call is logged, and the stale-order job closes that page when its hold ends.
 async function closeOpenCheckouts(eventId: string) {
   const pending = await prisma.order.findMany({ where: { eventId, status: "pending", stripeSessionId: { not: null } }, select: { id: true, stripeSessionId: true } });
   let closed = 0;

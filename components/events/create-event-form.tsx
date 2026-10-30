@@ -206,6 +206,8 @@ export function CreateEventForm({
   const [notice, setNotice] = useState<{ tone: "success" | "warning" | "danger"; title: string; text: string; reload?: string } | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // State updates too late to stop a fast double click.
+  const submitting = useRef(false);
   // Save sits in the bar at the bottom while the result shows at the top: a problem takes
   // focus, which scrolls it into view, so pressing Save never seems to do nothing.
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -336,6 +338,7 @@ export function CreateEventForm({
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
     const { found, times } = validate();
     setErrors(found);
 
@@ -344,6 +347,7 @@ export function CreateEventForm({
       return;
     }
 
+    submitting.current = true;
     setSaving(true);
     try {
       const payload = {
@@ -383,6 +387,7 @@ export function CreateEventForm({
       setDirty(false);
       editing.current = false;
       if (mode === "create") {
+        // Stays busy until the new page opens: a late click must not create it again.
         router.push(`/dashboard/events/${response.event.id}`);
         return;
       }
@@ -408,9 +413,9 @@ export function CreateEventForm({
       } else {
         setNotice({ tone: "danger", title: "Not saved", text: message });
       }
-    } finally {
-      setSaving(false);
     }
+    submitting.current = false;
+    setSaving(false);
   }
 
   function timeInput(field: TimeField, hint?: string) {

@@ -17,6 +17,7 @@ import { redirectLegacyOrganisationPage } from "@/lib/auth/page-access";
 import { resolveAuthSecret } from "@/lib/auth/secret";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { getGroupedOrganisationOrdersWithContext, OrganisationOrderEventAccessError } from "@/lib/orders/grouped-orders";
 import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
 import { listOrganisationStaff, listPastStaffInvites } from "@/lib/staff/management";
@@ -281,7 +282,7 @@ describe("dashboard read services", () => {
     expect(past).toHaveLength(25);
     expect(past.map((row) => row.id)).toEqual(revoked.slice(1).reverse().map((row) => row.id));
     // The staff screen lists them apart from who has access now.
-    const html = await renderPage(createElement(StaffManagement, { canManageOwners: true, initialInvites: [], initialStaff: staff, orgSlug: organisation.slug, pastInvites: [] }));
+    const html = await renderPage(createElement(StaffManagement, { canManageOwners: true, initialInvites: [], initialStaff: staff, orgSlug: organisation.slug, pastInvites: [], timeZone: "Australia/Brisbane" }));
     expect(html).toContain("Past staff");
     expect(html).toContain("The 25 most recently revoked.");
     expect(html.match(/Revoke access for /g)).toHaveLength(1);
@@ -338,5 +339,33 @@ describe("dashboard read services", () => {
     });
     expect(orders).not.toHaveBeenCalled();
     expect(commerce).not.toHaveBeenCalled();
+  });
+
+  test("the orders list reads one page of the society's orders without loading its events", async () => {
+    const owner = await createOrganisationAccount();
+    const other = await createOrganisationAccount();
+    const first = await createEvent({ organisationId: owner.organisation.id, title: "First night" });
+    const second = await createEvent({ organisationId: owner.organisation.id, title: "Second night" });
+    const foreign = await createEvent({ organisationId: other.organisation.id });
+    const order = (event: typeof first, minutesAgo: number) =>
+      createOrder({ organisationId: event.organisationId, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "paid", paidAt: new Date(), createdAt: new Date(Date.now() - minutesAgo * 60_000) });
+    const older = await order(first, 3);
+    const newest = await order(second, 1);
+    await order(foreign, 2);
+    const events = vi.spyOn(prisma.event, "findMany");
+
+    const page = await getGroupedOrganisationOrdersWithContext(owner.organisation.id, "all", undefined, { limit: 1 });
+    expect(events).not.toHaveBeenCalled();
+    expect(page.groups).toEqual([expect.objectContaining({ eventId: second.id, eventTitle: "Second night", orders: [expect.objectContaining({ id: newest.id })] })]);
+    const next = await getGroupedOrganisationOrdersWithContext(owner.organisation.id, "all", undefined, { limit: 1, cursor: page.pageInfo.nextCursor! });
+    // The other society's order sits between these two by time, and never shows.
+    expect(next.groups.flatMap((group) => group.orders.map((row) => row.id))).toEqual([older.id]);
+    expect(next.pageInfo.hasNextPage).toBe(false);
+
+    const filtered = await getGroupedOrganisationOrdersWithContext(owner.organisation.id, "all", first.id);
+    expect(filtered.event).toEqual({ id: first.id, title: "First night" });
+    expect(filtered.groups.map((group) => group.eventId)).toEqual([first.id]);
+    await expect(getGroupedOrganisationOrdersWithContext(owner.organisation.id, "all", foreign.id)).rejects.toBeInstanceOf(OrganisationOrderEventAccessError);
+    expect((await getGroupedOrganisationOrdersWithContext(owner.organisation.id, "failed")).groups).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { createMembershipGrant } from "@/tests/helpers/test-data";
-import { test, expect, login, prisma, selectStaffContext } from "./fixtures";
+import { test, expect, login, prisma, selectStaffContext, submitTwice } from "./fixtures";
 
 // T22: an owner drafts, fixes, publishes and archives a membership plan; staff
 // without memberships:manage never see it. The society has no Stripe, so a
@@ -20,7 +20,7 @@ test("an owner drafts a plan, sees the publish check, publishes it free and arch
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(`Semester 1 ${year}`);
   await page.getByLabel("Price", { exact: true }).fill("25");
   await expect(page.getByText("your society receives $23.17")).toBeVisible();
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await submitTwice(page, page.locator("form").filter({ has: page.getByRole("button", { name: "Save draft" }) }), `/api/orgs/${data.organisation.slug}/memberships`);
 
   await expect(page.getByRole("heading", { name: `Semester 1 ${year}`, level: 1 })).toBeVisible();
   await expect(page.getByText("Set up payments to sell a paid plan.")).toBeVisible();

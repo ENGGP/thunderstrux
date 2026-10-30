@@ -41,7 +41,7 @@ const listSelect = {
   purchasedTicketTypeName: true,
   createdAt: true,
   ticketType: { select: { name: true } },
-  event: { select: { id: true, title: true, organisation: { select: { name: true } } } }
+  event: { select: { id: true, title: true, organisation: { select: { name: true, timeZone: true } } } }
 } satisfies Prisma.OrderSelect;
 
 // The member's ticket orders, newest first; checkouts that didn't complete only when asked.

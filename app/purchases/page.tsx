@@ -39,7 +39,7 @@ function PurchaseTotal({ order }: { order: Payable }) {
 const rowLink = "font-semibold text-brand underline-offset-4 hover:underline [overflow-wrap:anywhere]";
 
 // One purchase row: the name, a line under it, then the family's columns (T29a).
-function Row({ href, title, detail, columns, date, total, grid }: { href: string; title: string; detail: string; columns: ReactNode[]; date: Date; total: ReactNode; grid: string }) {
+function Row({ href, title, detail, columns, date, timeZone, total, grid }: { href: string; title: string; detail: string; columns: ReactNode[]; date: Date; timeZone: string; total: ReactNode; grid: string }) {
   return (
     <li className={`grid gap-1.5 border-t border-line px-4 py-3.5 first:border-t-0 md:items-center md:gap-4 md:px-5 md:first:border-t ${grid}`}>
       <div className="min-w-0">
@@ -51,7 +51,7 @@ function Row({ href, title, detail, columns, date, total, grid }: { href: string
         </div>
         <p className="text-sm text-ink-soft [overflow-wrap:anywhere]">
           {detail}
-          <span className="md:hidden"> · {formatDateTime(date)}</span>
+          <span className="md:hidden"> · {formatDateTime(date, { timeZone })}</span>
         </p>
       </div>
       {columns.map((column, index) => (
@@ -60,7 +60,7 @@ function Row({ href, title, detail, columns, date, total, grid }: { href: string
         </span>
       ))}
       <span className="hidden tabular-nums md:block">{total}</span>
-      <span className="hidden text-sm text-ink-soft md:block">{formatDateTime(date)}</span>
+      <span className="hidden text-sm text-ink-soft md:block">{formatDateTime(date, { timeZone })}</span>
     </li>
   );
 }
@@ -179,6 +179,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
               <Row
                 columns={[<StatusBadge key="status" label={badge.label} status={badge.status} />]}
                 date={order.createdAt}
+                timeZone={order.event.organisation.timeZone}
                 detail={`${order.quantity} × ${purchasedTicketTypeLabel(order.purchasedTicketTypeName, order.ticketType.name)} · ${order.event.organisation.name}`}
                 grid="md:grid-cols-[minmax(0,1fr)_170px_110px_150px]"
                 href={`/purchases/tickets/${order.id}`}
@@ -197,6 +198,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
               <Row
                 columns={[<PaymentBadge key="payment" order={order} />]}
                 date={order.createdAt}
+                timeZone={order.organisation.timeZone}
                 detail={`${order.organisation.name}${line?.termStartsAt && line.termEndsAt ? ` · ${formatTerm(line.termStartsAt, line.termEndsAt, order.organisation.timeZone)}` : ""}`}
                 grid="md:grid-cols-[minmax(0,1fr)_170px_110px_150px]"
                 href={`/memberships/orders/${order.id}`}
@@ -213,6 +215,7 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
             <Row
               columns={[<PaymentBadge key="payment" order={order} />, <Pickup key="pickup" order={order} />]}
               date={order.createdAt}
+              timeZone={order.organisation.timeZone}
               detail={`${order.organisation.name} · Order ${orderReference(order.id)}`}
               grid="md:grid-cols-[minmax(0,1fr)_150px_160px_100px_150px]"
               href={`/merchandise/orders/${order.id}`}

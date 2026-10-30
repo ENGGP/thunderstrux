@@ -50,7 +50,7 @@ type ConnectStatus = {
   payouts?: PayoutSummaryView;
 };
 
-function stateContent(status: ConnectStatus | null): {
+function stateContent(status: ConnectStatus | null, timeZone: string): {
   title: string;
   description: string;
   badge: [Status, string];
@@ -100,7 +100,7 @@ function stateContent(status: ConnectStatus | null): {
     return {
       title: "Stripe needs more details",
       description: status.current_deadline
-        ? `Send them by ${formatDate(status.current_deadline)}, or Stripe may pause card payments or payouts.`
+        ? `Send them by ${formatDate(status.current_deadline, timeZone)}, or Stripe may pause card payments or payouts.`
         : "Send them to keep card payments and payouts on.",
       badge: ["pending", "Needs details"],
       tone: "warning"
@@ -115,9 +115,9 @@ function payoutsPaused(status: ConnectStatus | null) {
   return Boolean(status && !status.payouts_enabled && status.details_submitted && ![...status.currently_due, ...status.eventually_due].includes("external_account"));
 }
 
-function readinessBadge(status: ConnectStatus | null): [Status, string] {
+function readinessBadge(status: ConnectStatus | null, timeZone: string): [Status, string] {
   if (status?.state === "READY" && !status.currently_due.length) return status.payouts_enabled ? ["active", "Ready"] : ["pending", payoutsPaused(status) ? "Payouts paused" : "Payouts not set up"];
-  return stateContent(status)?.badge ?? ["draft", "Not connected"];
+  return stateContent(status, timeZone)?.badge ?? ["draft", "Not connected"];
 }
 
 function formatRequirement(requirement: string) {
@@ -125,7 +125,7 @@ function formatRequirement(requirement: string) {
 }
 
 
-export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
+export function StripeConnectSettings({ orgSlug, timeZone }: { orgSlug: string; timeZone: string }) {
   const [organisation, setOrganisation] = useState<Organisation | null>(null);
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -391,8 +391,8 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
     );
   }
 
-  const content = stateContent(status);
-  const badge = readinessBadge(status);
+  const content = stateContent(status, timeZone);
+  const badge = readinessBadge(status, timeZone);
   const requirements = status?.currently_due ?? [];
   const isConnected = Boolean(status?.connected);
   const isPlatformNotReady = status?.state === "PLATFORM_NOT_READY";
@@ -459,7 +459,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
   return (
     <>
       {isConnected && status?.payouts?.failed ? (
-        <PayoutFailedNotice action={dashboardButton("Check bank details in Stripe", "primary")} failed={status.payouts.failed} />
+        <PayoutFailedNotice action={dashboardButton("Check bank details in Stripe", "primary")} failed={status.payouts.failed} timeZone={timeZone} />
       ) : null}
 
       <Card>
@@ -563,6 +563,7 @@ export function StripeConnectSettings({ orgSlug }: { orgSlug: string }) {
           payoutsEnabled={status.payouts_enabled}
           payoutsPaused={payoutsPaused(status)}
           seeAll={status.dashboard_available ? <div>{dashboardButton("See every payout in Stripe", "secondary")}</div> : null}
+          timeZone={timeZone}
         />
       ) : null}
 

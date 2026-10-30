@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { StaffManagement } from "@/components/settings/staff-management";
 import { requireManagementPage } from "@/lib/auth/page-access";
 import { requireAuthenticatedUser } from "@/lib/auth/access";
+import { readTimeZone } from "@/lib/organisations/profile";
 import { listHandoverTargets, listOrganisationStaff, listPastStaffInvites } from "@/lib/staff/management";
 import { StaffHandover } from "@/components/settings/staff-handover";
 
@@ -13,9 +14,10 @@ export default async function StaffSettingsPage() {
   const organisation = await requireManagementPage("staff:manage", "/dashboard/settings/staff");
   const actor = await requireAuthenticatedUser();
   const handoverTargets = organisation.staffRole === "owner" ? await listHandoverTargets(organisation.id, actor.id) : [];
-  const [{ staff, invites }, pastInvites] = await Promise.all([
+  const [{ staff, invites }, pastInvites, timeZone] = await Promise.all([
     listOrganisationStaff(organisation.id),
-    listPastStaffInvites(organisation.id)
+    listPastStaffInvites(organisation.id),
+    readTimeZone(organisation.id)
   ]);
 
   return (
@@ -30,6 +32,7 @@ export default async function StaffSettingsPage() {
         initialStaff={staff}
         pastInvites={pastInvites}
         orgSlug={organisation.slug}
+        timeZone={timeZone}
       />
       {organisation.staffRole === "owner" && <StaffHandover orgSlug={organisation.slug} orgName={organisation.name}
         targets={handoverTargets.map(item => ({ id: item.id, email: item.user.email }))} />}

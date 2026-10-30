@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
-import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/purchases/phone-action-bar";
+import { PhoneActionBar, useActionBelow } from "@/components/purchases/phone-action-bar";
 import { ClientApiError, fetchJson, getClientErrorMessage } from "@/lib/client/api";
-import { newKey, waitForAttempt, type CommerceCheckoutResponse } from "@/lib/client/checkout";
+import { useCheckout, type CheckoutResponse } from "@/lib/client/checkout";
 import { formatMoney } from "@/lib/format";
 
 const linkClass = "inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4";
@@ -29,49 +29,21 @@ export function MembershipCheckoutAction({
   backHref: string;
 }) {
   const router = useRouter();
-  const key = useRef<string | null>(null);
-  const [state, setState] = useState<"idle" | "busy" | "confirming">("idle");
   const [actionRef, actionBelow] = useActionBelow<HTMLDivElement>();
-  useResetOnRestore(() => setState("idle"));
   const [refusal, setRefusal] = useState<{ title: string; body: string; link?: { href: string; label: string } } | null>(null);
+  const { state, start } = useCheckout({
+    finished: (orderId) => router.push(`/memberships/orders/${encodeURIComponent(orderId)}`),
+    slow: () => setRefusal({ title: "Still confirming", body: "Stripe hasn't answered yet. You won't be charged twice; try again in a minute.", link: { href: "/memberships", label: "View my memberships" } }),
+    refused: (failure) => setRefusal(refusalFor(failure))
+  });
 
-  const finished = (orderId: string) => router.push(`/memberships/orders/${encodeURIComponent(orderId)}`);
-
-  async function buy() {
+  function buy() {
     setRefusal(null);
-    setState("busy");
-    key.current ??= newKey();
-    try {
-      const data = await fetchJson<CommerceCheckoutResponse>("/api/payments/checkout/membership", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ organisationId, selection: { planId }, expectedTotal: total, idempotencyKey: key.current })
-      });
-      if ("kind" in data && data.kind === "fulfilled") return finished(data.commerceOrderId);
-      if ("kind" in data && data.kind === "stripe") {
-        window.location.href = data.url;
-        return;
-      }
-      await waitForCheckout(data.attemptId);
-    } catch (failure) {
-      setState("idle");
-      // A server answer settles this intent; a lost response keeps the key so a retry finds the same checkout.
-      if (failure instanceof ClientApiError) key.current = null;
-      setRefusal(refusalFor(failure));
-    }
-  }
-
-  // Stripe's answer was not known when checkout returned: poll the attempt.
-  async function waitForCheckout(attemptId: string) {
-    setState("confirming");
-    const outcome = await waitForAttempt(attemptId);
-    if (outcome !== "slow" && "url" in outcome) {
-      window.location.href = outcome.url;
-      return;
-    }
-    if (outcome !== "slow") return finished(outcome.orderId);
-    setState("idle");
-    setRefusal({ title: "Still confirming", body: "Stripe hasn't answered yet. You won't be charged twice; try again in a minute.", link: { href: "/memberships", label: "View my memberships" } });
+    return start((idempotencyKey) => fetchJson<CheckoutResponse>("/api/payments/checkout/membership", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ organisationId, selection: { planId }, expectedTotal: total, idempotencyKey })
+    }));
   }
 
   function refusalFor(failure: unknown) {

@@ -121,7 +121,8 @@ export async function fetchWithCsrf(url: string, init?: RequestInit) {
   async function attempt() {
     const csrfResponse = await fetch("/api/security/csrf", {
       credentials: "same-origin",
-      cache: "no-store"
+      cache: "no-store",
+      signal: init?.signal
     });
     if (!csrfResponse.ok) return csrfResponse;
     const payload = (await csrfResponse.json()) as { token: string };

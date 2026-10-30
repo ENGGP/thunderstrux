@@ -66,6 +66,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - `.claude/worktrees` is out of the Docker build context and the type check.
   - A failed sign-in took the same time for a real and an unknown address on dev (7 to 17 ms apart, inside the spread between runs), so that audit item needed no fix.
 - 2026-10-30: #235 lets two full test runs go at once. Each run tags its images with its run id, so it can't test another run's code, and Docker picks its host port. Staging stays one at a time, with its own check, because the old port check was what kept those runs apart. No app code changes.
+- 2026-10-31: the preview was deployed at `961dbaf` (#235; backup `ops-preview-2026-10-30T14-42-34-273Z.dump` first; 73 migrations, adding #231's `20261124010000_ticket_codes`). Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers run the release's ops image with no failures, and the stale-order and refunds jobs have `EMAIL_FROM`, the notification key and the app URL (DEF-065). The Accounts v2 event destination is enabled with the right URL and all seven events; only a test event's 200 can prove its secret. `MFA_ENFORCEMENT_MODE` is still `off`.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -79,7 +80,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - The dev database now has all 73 migrations and the `pnpm seed:demo` data; the dev folder serves main.
 
 **Public preview**
-- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `d133734` (#226; 72 migrations), Stripe test mode, and no image bucket yet.
+- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `961dbaf` (#235; 73 migrations), Stripe test mode, and no image bucket yet.
 - It listens on loopback port 3090 behind the Cloudflare Tunnel, uses `cf-connecting-ip` for client addresses and denies legacy access. MFA enforcement is `off` for now at the owner's request; set it back to `enforce` and redeploy before anyone else uses it.
 - The dev stack (port 3080) is loopback-only and is never tunnelled.
 - Preview reachability satisfies no release gate. See [[Production Operations]].
@@ -156,10 +157,10 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 
    The compensation engine merge is debt, due before PAY-002's campaign. Product changes follow: no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions, then the O-Week flow.
 2. **Preview (owner).**
-   - Send a test event from each Stripe test-mode webhook destination and confirm a 200.
+   - Send a test event from each Stripe test-mode webhook destination and confirm a 200. For the Accounts v2 destination this also proves `STRIPE_ACCOUNTS_WEBHOOK_SECRET`.
    - Add an `ASSET_STORAGE_*` bucket for image uploads.
    - Set `MFA_ENFORCEMENT_MODE` back to `enforce` in `.env.preview`, and redeploy.
-   - Once the preview runs #232 or later (it runs `d133734`, from before scanning), scan a batch of tickets in Safari on an iPhone, which has no `BarcodeDetector`, from a second phone's screen and from the ticket email (DEF-064).
+   - Scan a batch of tickets in Safari on an iPhone, which has no `BarcodeDetector`, from a second phone's screen and from the ticket email (DEF-064).
    - Never point the tunnel at the dev stack again.
    - The dev database was public twice on 2026-10-26, so re-password or disable its seeded `@example.com` accounts (and the `@demo.example.com` ones, if it is ever exposed again).
 3. **Dev database:** it has every migration on main, so keep the dev folder on main or a branch built from it; older code's client can't read the newer columns.
@@ -167,7 +168,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
    - Create both Stripe webhook endpoints on `2026-09-30.endive` with the restricted key and the event lists in [[Production Operations]]. The key needs Disputes **write**, so each dispute gets its staged draft answer, and Radar early fraud warnings **read**; the payments endpoint also subscribes to `radar.early_fraud_warning.created` and the Connect endpoint to `payout.created`.
    - Pass PAY-002 on the hosted endpoint.
 5. **When hosting is chosen,** give `stale-order-worker` and `compensation-worker` the `stripe_secret_key` and `notification_encryption_key` secrets, and every worker `EMAIL_FROM` and `NEXT_PUBLIC_APP_URL` (PAY-024, DEF-065; `pnpm docker:hosted:check` refuses them without these), and run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
-6. **Stripe settings (owner, each sandbox and later live):** before deploying #228, create the Accounts v2 event destination and set `STRIPE_ACCOUNTS_WEBHOOK_SECRET` (dev: the `stripe-accounts-listener` secret; [[Production Operations#Stripe webhook endpoints and keys]]), then drop `account.updated` from each Connect endpoint (PAY-023). In Connect's Express settings, stop accounts editing their payout schedule and using Instant Payouts (PAY-028); add `account.external_account.created` and `account.external_account.updated` to each Connect webhook endpoint (SEC-033; done on the preview), and `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` to each payments endpoint (PAY-030; done on the preview).
+6. **Stripe settings (owner, each sandbox and later live):** before deploying #228 anywhere new, create the Accounts v2 event destination (the preview has one) and set `STRIPE_ACCOUNTS_WEBHOOK_SECRET` (dev: the `stripe-accounts-listener` secret; [[Production Operations#Stripe webhook endpoints and keys]]), then drop `account.updated` from each Connect endpoint (PAY-023). In Connect's Express settings, stop accounts editing their payout schedule and using Instant Payouts (PAY-028); add `account.external_account.created` and `account.external_account.updated` to each Connect webhook endpoint (SEC-033; done on the preview), and `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` to each payments endpoint (PAY-030; done on the preview).
 7. **Before activating account lifecycle:**
    - get an independent security and migration review, which also covers #167's payment and sign-in changes and #197's payout-hold, refund and staff-security changes, and #198's bulk refunds on event cancellation;
    - provision the notification key and back it up separately;

@@ -3,7 +3,7 @@ status: living
 last-reviewed: 2026-10-27
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[E2E and Staging Payments]]", "[[Production Operations]]", "[[Troubleshooting]]"]
-sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, lib/stripe/version.ts, lib/stripe/connect.ts, lib/stripe/fees.ts, lib/stripe/http.ts, lib/payouts/payouts.ts, lib/payouts/release.ts, lib/payments/checkout-creation.ts, lib/commerce/checkout.ts, app/api/payments/webhook/route.ts, app/api/stripe/connect/webhook/route.ts]
+sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, lib/stripe/version.ts, lib/stripe/connect.ts, lib/stripe/fees.ts, lib/stripe/http.ts, lib/payouts/payouts.ts, lib/payouts/release.ts, lib/payments/checkout-creation.ts, lib/commerce/checkout.ts, app/api/payments/webhook/route.ts, app/api/stripe/connect/webhook/route.ts, app/api/stripe/accounts/webhook/route.ts]
 ---
 
 # Stripe Payments and Connect
@@ -16,7 +16,7 @@ sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, 
 
 | Concern | Where |
 | --- | --- |
-| Client, live-key fence, webhook secrets | `lib/stripe/index.ts`: `getStripe`, `isLiveStripeKey`, `getStripeWebhookSecret`, `getStripeConnectWebhookSecret`, `StripeConfigurationError` |
+| Client, live-key fence, webhook secrets | `lib/stripe/index.ts`: `getStripe`, `isLiveStripeKey`, `getStripeWebhookSecret`, `getStripeConnectWebhookSecret`, `getStripeAccountsWebhookSecret`, `StripeConfigurationError` |
 | API version pin and mismatch alert | `lib/stripe/version.ts`: `stripeApiVersion`, `warnOnVersionMismatch` |
 | Connect accounts, status, dashboard link, disconnect | `lib/stripe/connect.ts` |
 | Connect error to HTTP mapping | `lib/stripe/http.ts`: `connectRouteRules` |
@@ -28,7 +28,7 @@ sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, 
 | Commerce Checkout Session | `lib/commerce/checkout.ts`: `createCommerceCheckout` |
 | Session expiry, integration ids, definite-failure test | `lib/payments/checkout-attempts.ts` |
 | Payment destination read before fulfilment | `lib/payments/checkout-fulfilment-orchestrator.ts` |
-| Webhook endpoints | `app/api/payments/webhook/route.ts`, `app/api/stripe/connect/webhook/route.ts` |
+| Webhook endpoints | `app/api/payments/webhook/route.ts`, `app/api/stripe/connect/webhook/route.ts`, `app/api/stripe/accounts/webhook/route.ts` |
 | UI | `components/settings/stripe-connect-settings.tsx`, `components/settings/payouts-card.tsx` on `/dashboard/settings` |
 | Tests | `tests/integration/stripe-connect-service.test.ts`, `tests/integration/connect-safety.test.ts`, `tests/integration/stripe-dashboard-link.test.ts`, `tests/integration/society-payouts.test.ts`, `tests/integration/payments-webhook.test.ts`, `tests/e2e/webhooks.spec.ts` |
 
@@ -41,7 +41,7 @@ sources: [components/settings/stripe-connect-settings.tsx, lib/stripe/index.ts, 
 
 ## Connect accounts
 
-Each society has at most one Express account, stored on `Organisation`: `stripeAccountId`, `stripeAccountStatus`, `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted`.
+Each society has at most one account, an Accounts v2 account with the Express Dashboard (PAY-023; accounts made under v1 read the same way), stored on `Organisation`: `stripeAccountId`, `stripeAccountStatus`, `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted`.
 
 | Route | Does | Notable answers |
 | --- | --- | --- |
@@ -54,8 +54,8 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 - **Authority:** every route needs `stripe:manage` on the target society (`requireStripeConnectCapability`, then `requireOrganisationStripeConnectAccess`). The body or query names `organisationId`; it is authorised, never trusted ([[Authentication and Dashboard Access#Roles and permissions]]).
 - **Guards:** the four POSTs check the trusted origin and rate limit `stripe_connect_mutation` per society and action, and apply `staff_mfa_verify` per user when a code is sent ([[Route Security Inventory#Rate limits]]).
 - **Errors** (`connectRouteRules`): a missing or unreachable society is 404, permission is 403, a bad `organisationId` is 400, `MfaRequiredError` 403, a bad code 400, MFA misconfiguration 503, `StripeConfigurationError` 503 "Stripe is not configured." (no server setting named), and a disconnect Stripe couldn't answer 503 (`StripeDisconnectUnavailableError`). Provider messages never reach the client.
-- **Account creation** (`createExpressAccount`): `type: "express"`, capabilities `card_payments` (needed by `on_behalf_of`) and `transfers` (destination charges), and `settings: manualPayoutSettings` (see Payouts). The idempotency key is `connect-account:<orgId>:<n>`, where `n` counts earlier `stripe_connect.account_created` audit rows: a double click returns the same account, a reconnect after disconnect gets a new one. The account carries `metadata.organisationId`. Success stores the id only on a society still without one (`updateMany` where `stripeAccountId` is null), with `CONNECTED_INCOMPLETE` and all flags false, and writes `stripe_connect.account_created`; a concurrent request that lost uses the winner's account and logs `stripe_connect.account_orphaned` (SEC-034). `Organisation.stripeAccountId` is unique, so one account can't serve two societies (SEC-035).
-- **Onboarding links:** `accountLinks.create` (`account_onboarding`); return and refresh URLs are `/dashboard/settings` on the trusted origin the request came from, else the app URL. Onboarding collects the bank account payouts go to, so `onboard` and `continue` need a fresh authenticator code unless staff MFA is `off` (`mfaCode` in the body, as the dashboard link).
+- **Account creation** (`createExpressAccount`): `v2.core.accounts.create` with `dashboard: "express"`, `fees_collector` and `losses_collector` `application` (what v1 Express was), AU and AUD, the `merchant` configuration with `card_payments` (needed by `on_behalf_of`) and `recipient` with `stripe_balance.stripe_transfers` (destination charges). Manual payouts follow (`keepStripePayoutsManual`, see Payouts); a failure logs `stripe_connect.manual_payouts_not_set` and the payouts worker sets them within the hour. The idempotency key is `connect-account:<orgId>:<n>`, where `n` counts earlier `stripe_connect.account_created` audit rows: a double click returns the same account, a reconnect after disconnect gets a new one. The account carries `metadata.organisationId`. Success stores the id only on a society still without one (`updateMany` where `stripeAccountId` is null), with `CONNECTED_INCOMPLETE` and all flags false, and writes `stripe_connect.account_created`; a concurrent request that lost uses the winner's account and logs `stripe_connect.account_orphaned` (SEC-034). `Organisation.stripeAccountId` is unique, so one account can't serve two societies (SEC-035).
+- **Onboarding links:** v1 `accountLinks.create` (`account_onboarding`), which onboards v2 accounts; the v2 call refuses merchant and recipient accounts in Stripe's shared test mode; return and refresh URLs are `/dashboard/settings` on the trusted origin the request came from, else the app URL. Onboarding collects the bank account payouts go to, so `onboard` and `continue` need a fresh authenticator code unless staff MFA is `off` (`mfaCode` in the body, as the dashboard link).
 - **Status:** with an account, the response adds `openObligations` (orders that block disconnect) and `payouts` (`payoutSummary`). `dashboard_available` is `details_submitted`.
 - **Express dashboard:** needs a fresh authenticator code unless staff MFA is `off`, because the dashboard can change where payouts go. It calls `accounts.createLoginLink` per click and writes `stripe_connect.dashboard_opened`. The platform's own view (`dashboard.stripe.com/connect/accounts/...`) never opens for a society.
 - **Disconnect:** a fresh authenticator code unless MFA is `off`. Open obligations are counted first, then held money: while `heldMoney` is above zero, the account is kept on manual payouts (`keepStripePayoutsManual`) and disconnect is refused (`heldMoneyBlocksDisconnect`), because Stripe's daily schedule would pay out money the society may still have to refund (PAY-018). An account out of reach is still unlinked, since nothing can be paid out of it. If neither blocks, the account goes back to Stripe's daily payouts (`restoreStripePayoutSchedule`). If Stripe answers that this platform's key can't see the account (a 403 `StripePermissionError`: made under another platform key, or deleted), there's no schedule to give back and the account is unlinked anyway, logged `stripe_connect.disconnect_account_out_of_reach` (PAY-015); any other Stripe failure is a 503 and nothing changes. Then, under the `Organisation` row lock, they are counted again. The local Stripe fields are cleared and `stripe_connect.disconnected` records the previous account id. With no account (for example `PLATFORM_NOT_READY`) only the local state resets. The Stripe account is never deleted, and past orders keep it as their seller snapshot.
@@ -69,14 +69,15 @@ Each society has at most one Express account, stored on `Organisation`: `stripeA
 | --- | --- | --- |
 | `NOT_CONNECTED` | No `stripeAccountId` | Connect Stripe |
 | `PLATFORM_NOT_READY` | No account; Stripe refused to create one because the platform's Connect profile is unfinished (detected from the error's message only; a network failure, `StripeConnectionError`, is rethrown and changes nothing) | Open Stripe Platform Settings (`stripePlatformProfileUrl`), Retry after completion, Disconnect |
-| `CONNECTED_INCOMPLETE` | `details_submitted` is false | Continue Stripe setup |
-| `RESTRICTED` | Details submitted, but `charges_enabled` false or the `transfers` capability not `active` (destination charges pay the society by transfer) | Fix in Stripe |
-| `READY` | `charges_enabled` true and `transfers` active | Add a bank account in Stripe while `payouts_enabled` is false (badge "Payouts not set up") |
+| `CONNECTED_INCOMPLETE` | Stripe's terms not yet accepted (`identity.attestations.terms_of_service.account.date`, the end of hosted onboarding, v1's `details_submitted`) | Continue Stripe setup |
+| `RESTRICTED` | Details submitted, but merchant `card_payments` or recipient `stripe_transfers` not `active` (destination charges pay the society by transfer) | Fix in Stripe |
+| `READY` | Both active | Add a bank account in Stripe while `payouts_enabled` is false (badge "Payouts not set up") |
 | `ERROR` | The last refresh couldn't reach Stripe. Flags keep their last values; the response says Thunderstrux couldn't reach Stripe and the provider message stays in the log. A 403 for an account this platform can no longer reach (`isAccountOutOfReach`) clears both flags, so paid sales and payouts stop, and alerts `society_account_unreachable` once (PAY-034) | Try again; out of reach: disconnect and connect again |
 
+- Read with `v2.core.accounts.retrieve` including `configuration.merchant`, `configuration.recipient`, `identity` and `requirements`: `currently_due` and `eventually_due` are entries awaiting the user (past due counts as due), named by v2 field (`external_account`, `defaults.profile.business_url`); `current_deadline` is `requirements.summary.minimum_deadline.time`; `disabled_reason` the first status code of an inactive capability; payouts are `stripe_balance.payouts`.
 - Settings shows two rows, **Can take payments** (charges) and **Can receive payouts** (payouts), so a society with no bank account keeps selling.
-- **Selling depends on flags, not the state:** `isOrganisationStripeReady` is `stripeAccountId && stripeChargesEnabled`, saved as `charges_enabled` with `transfers` active (`canTakePayments`). In `ERROR` sales follow the last known flags until a refresh succeeds.
-- **The `account.updated` webhook** re-reads the account (`refreshConnectedAccount`) for an account some society uses, and persists the same flags and state; an out-of-reach 403 is recorded as above and answered 200, not retried. An account no society uses logs `stripe_connect.webhook.ignored` (`stripe_account_not_found`) without calling Stripe.
+- **Selling depends on flags, not the state:** `isOrganisationStripeReady` is `stripeAccountId && stripeChargesEnabled`, saved from `canTakePayments` (both capabilities active). In `ERROR` sales follow the last known flags until a refresh succeeds.
+- **Accounts v2 events** (thin, `/api/stripe/accounts/webhook`) re-read the account (`refreshConnectedAccount`) for an account some society uses, and persists the same flags and state; an out-of-reach 403 is recorded as above and answered 200, not retried. An account no society uses logs `stripe_accounts.webhook.ignored` (`stripe_account_not_found`) without calling Stripe.
 - **One write path:** the webhook and a Settings refresh both save through `persistConnectedAccountStatus`, which reads the previous flags under the society's row lock, so two saves at once email a transition once. A refresh that read Stripe before a newer webhook can still save the older flags afterwards (as before), and the next correction may email again. In the same transaction it emails (`business_notice`, linked to `/dashboard/<slug>/settings`, which opens that society) every active staff member whose role has `stripe:manage`:
   - when card payments go from on to off (key `stripe-charges-paused/<orgId>/<time>`), and alerts `society_charges_paused` after commit;
   - while card payments are on, once per deadline Stripe sets for `currently_due` details (`requirements.current_deadline`; key `stripe-deadline/<orgId>/<deadline>`, which the outbox keeps once). The deadline may pause card payments or payouts.
@@ -166,9 +167,10 @@ A free price completes without reading any Stripe configuration. Commerce checko
 | Endpoint | Secret | Events handled |
 | --- | --- | --- |
 | `POST /api/payments/webhook` | `STRIPE_WEBHOOK_SECRET` | `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` (PAY-030), `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `radar.early_fraud_warning.created` |
-| `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.updated`, `account.external_account.created`, `account.external_account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
+| `POST /api/stripe/accounts/webhook` | `STRIPE_ACCOUNTS_WEBHOOK_SECRET` | Thin events (`parseEventNotification`): `v2.core.account.closed`, `v2.core.account[identity]`, `[requirements]` and `[configuration.merchant]`/`[configuration.recipient]` `.updated`, and those configurations' `.capability_status_updated`; others are ignored |
+| `POST /api/stripe/connect/webhook` | `STRIPE_CONNECT_WEBHOOK_SECRET` | `account.external_account.created`, `account.external_account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` |
 
-Both endpoints run the same checks, in order:
+All three run the same checks, in order (the accounts route logs `stripe_accounts.*`, verifies with `parseEventNotification` and skips step 5: thin events carry no API version):
 
 1. No `stripe-signature` header: 400, log `stripe.webhook.signature_failed` (`stripe_connect.webhook.signature_failed` on Connect), metric `stripe_webhook_signature_failures_total`, alert `stripe_webhook_signature_failure`.
 2. Read the raw body with `request.text()`. A missing key or secret is 503, log `stripe.webhook.configuration_error` (`stripe_connect.webhook.configuration_error`).
@@ -197,7 +199,7 @@ What each handler does to orders, and its checks (amount, currency, metadata, de
 **Idempotency.** Stripe may deliver twice and out of order.
 - Checkout events go through `settleCheckoutSession` (`lib/payments/checkout-settlement.ts`), the same path the reconciliation sweep uses, and are idempotent through order state under row locks.
 - Refund and dispute events are journalled once by event id in `StripeRefundWebhookEvent`, and project Stripe's current state as re-read.
-- `account.updated` and `payout.*` re-read the object from Stripe, so a late event can't restore an older state.
+- Account events and `payout.*` re-read the object from Stripe, so a late event can't restore an older state.
 - Every order transition stores `stripeEventId` in the order history.
 
 Handlers do their work before answering 2xx (PAY-007, accepted risk). The hosted endpoints must subscribe to every event above ([[Production Operations]]); refund and dispute subscription is part of the PAY-002 gate.
@@ -206,17 +208,19 @@ Handlers do their work before answering 2xx (PAY-007, accepted risk). The hosted
 
 ## Local Stripe CLI
 
-Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` ([[Environment Variables]]). The dev stack has this listener as the opt-in `stripe-listener` service (`--profile stripe`, [[Development Workflow#Stripe on the dev app]]); on the host:
+Use test-mode keys in `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`, `STRIPE_ACCOUNTS_WEBHOOK_SECRET` ([[Environment Variables]]). The dev stack has these listeners as the opt-in `stripe-listener` and `stripe-accounts-listener` services (`--profile stripe`, [[Development Workflow#Stripe on the dev app]]); on the host:
 
 ```bash
 stripe login
 stripe listen --latest \
-  --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.updated,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated \
+  --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,refund.created,refund.updated,refund.failed,charge.dispute.created,charge.dispute.updated,charge.dispute.closed,radar.early_fraud_warning.created,account.external_account.created,account.external_account.updated,payout.created,payout.paid,payout.failed,payout.canceled,payout.updated \
   --forward-to localhost:3000/api/payments/webhook \
   --forward-connect-to localhost:3000/api/stripe/connect/webhook
 ```
 
-- Put the printed `whsec_...` in both webhook secrets; it belongs to this listener only, not to a Dashboard endpoint. `--latest` sends events on the pinned version; without it events use the account's default version and raise `stripe_webhook_version_mismatch`.
+Account events are thin and go to another URL, so a second `stripe listen --events <the v2 events above> --forward-to localhost:3000/api/stripe/accounts/webhook` runs beside it.
+
+- Put the printed `whsec_...` in all three webhook secrets; it belongs to this listener only, not to a Dashboard endpoint. `--latest` sends events on the pinned version; without it events use the account's default version and raise `stripe_webhook_version_mismatch`.
 - `.env` changes need `pnpm docker:restart` (it recreates the app; a plain restart keeps old env). Check the loaded secret without printing it: `docker compose -f docker-compose.yml -f docker-compose.dev.yml exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"`.
 - **End to end:** connect a test Express account until it can take payments, buy from a published event's checkout button, then check `/tickets`, `/dashboard/orders` and the ticket type's remaining stock. A paid checkout logs `stripe.webhook.received`, then "Stripe checkout order matched", "Stripe checkout reconciliation validation passed", "Stripe checkout inventory updated" and "Stripe checkout tickets created".
 - `stripe trigger checkout.session.completed` only tests signature plumbing: its Session has none of this app's metadata, so reconciliation logs order not found and changes nothing.
@@ -231,7 +235,7 @@ stripe listen --latest \
 - Checkout readiness is the charges flag, not `READY`. Don't gate selling on the state.
 - A fee change without a new `PLATFORM_FEE_POLICY_VERSION` makes old and new orders indistinguishable.
 - A new handled event type must also be subscribed on the hosted endpoint and added to the staging listener's `--events`.
-- Destination charges need the society's account to keep `transfers` and `card_payments`; Express creation requests both, and readiness checks both (`canTakePayments`).
+- Destination charges need the society's account to keep `transfers` and `card_payments`; account creation requests both, and readiness checks both (`canTakePayments`).
 
 ## Failure and recovery
 

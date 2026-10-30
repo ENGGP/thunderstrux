@@ -107,12 +107,13 @@ State meanings, payouts and disconnect safety: [[Stripe Payments and Connect]].
 
 ## Webhooks
 
-Both read the raw body (`request.text()`), verify `stripe-signature`, use Stripe's response contract and have no origin check or rate limit. Processing: [[Stripe Payments and Connect#Webhooks]].
+All three read the raw body (`request.text()`), verify `stripe-signature`, use Stripe's response contract and have no origin check or rate limit. Processing: [[Stripe Payments and Connect#Webhooks]].
 
 | Route | Answers | Events |
 | --- | --- | --- |
 | `POST /api/payments/webhook` | 400 missing or bad signature (alert `stripe_webhook_signature_failure`); 503 webhook not configured; 200 `{received: true, ignored: "mode_mismatch"}` when the event's livemode differs from the key (alert `stripe_webhook_mode_mismatch`); 200 `{received: true}`; 200 `Ignored` for other types; an exception is a 500, so Stripe retries | `checkout.session.completed` and `checkout.session.expired` (a Session with `metadata.family` goes to commerce; a commerce order's Session without one is ignored with alert `commerce_webhook_identity_mismatch`); `refund.created`, `refund.updated`, `refund.failed` (by metadata: `refundRequestId` → staff refund, `compensationRefundJobId` → compensation, neither → an outside refund, commerce first); `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` (commerce first, then ticket) |
-| `POST /api/stripe/connect/webhook` | same signature, config and mode answers; else 200 `{received: true}` | `account.updated` (re-read and persist flags; a failed read is a 500 so Stripe retries, except an out-of-reach 403, recorded and answered 200; an unknown account is logged and ignored); `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` (`lib/payouts/payouts.ts`); `account.external_account.created`, `account.external_account.updated` (emails the society's Stripe managers, `lib/stripe/connect.ts`) |
+| `POST /api/stripe/accounts/webhook` | same signature, config and mode answers; else 200 `{received: true}` | Accounts v2 thin events (PAY-023): account closed, identity, requirements and configuration changes re-read and persist flags; a failed read is a 500 so Stripe retries, except an out-of-reach 403, recorded and answered 200; an unknown account is logged and ignored |
+| `POST /api/stripe/connect/webhook` | same signature, config and mode answers; else 200 `{received: true}` | `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` (`lib/payouts/payouts.ts`); `account.external_account.created`, `account.external_account.updated` (emails the society's Stripe managers, `lib/stripe/connect.ts`) |
 
 ## Traps
 

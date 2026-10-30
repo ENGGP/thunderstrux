@@ -91,6 +91,7 @@ try {
     stripe_secret_key: "sk_test_rehearsal_placeholder",
     stripe_webhook_secret: "whsec_rehearsal_placeholder",
     stripe_connect_webhook_secret: "whsec_rehearsal_connect_placeholder",
+    stripe_accounts_webhook_secret: "whsec_rehearsal_accounts_placeholder",
     resend_api_key: "re_rehearsal_placeholder",
     // Unreachable on purpose: alert delivery is best effort and must not affect a deploy.
     alert_webhook_url: "http://127.0.0.1:9/alerts",

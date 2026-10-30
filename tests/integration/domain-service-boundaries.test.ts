@@ -18,7 +18,8 @@ const routeFiles = [
   "app/api/stripe/connect/continue/route.ts",
   "app/api/stripe/connect/dashboard/route.ts",
   "app/api/stripe/connect/disconnect/route.ts",
-  "app/api/stripe/connect/webhook/route.ts"
+  "app/api/stripe/connect/webhook/route.ts",
+  "app/api/stripe/accounts/webhook/route.ts"
 ] as const;
 
 async function source(path: string) {

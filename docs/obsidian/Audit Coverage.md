@@ -110,7 +110,7 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 | `orgs/[orgSlug]/join`, `leave` | A member's free join; the roster shows it |
 | `stripe/connect/continue` | Opens Stripe's hosted onboarding; nothing changes until Stripe reports back |
 | `payments/checkout/*`, `merchandise/quote`, `guest/email/*`, `guest/recover`, buyer cancel | Buyer actions; orders keep lifecycle journals |
-| `payments/webhook`, `stripe/connect/webhook` | The services they call write their own rows; webhook tables keep idempotency |
+| `payments/webhook`, `stripe/connect/webhook`, `stripe/accounts/webhook` | The services they call write their own rows; webhook tables keep idempotency |
 
 OpenClaw actions are deferred and write nothing.
 

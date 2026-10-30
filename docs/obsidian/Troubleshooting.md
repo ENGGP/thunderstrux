@@ -156,7 +156,7 @@ WHERE slug = 'engineering-society';
   (`DC exec db psql -U thunderstrux -d thunderstrux`.) This writes no audit row. To re-link a known old account instead, set its `acct_…` with status `CONNECTED_INCOMPLETE` and press Refresh status.
 
 **Webhooks return 400 "Invalid Stripe signature"; orders stay pending.**
-- Cause: the app's `STRIPE_WEBHOOK_SECRET` isn't the secret of the running `stripe listen` or Dashboard endpoint. `/api/stripe/connect/webhook` uses `STRIPE_CONNECT_WEBHOOK_SECRET`.
+- Cause: the app's `STRIPE_WEBHOOK_SECRET` isn't the secret of the running `stripe listen` or Dashboard endpoint. `/api/stripe/connect/webhook` uses `STRIPE_CONNECT_WEBHOOK_SECRET`, and `/api/stripe/accounts/webhook` `STRIPE_ACCOUNTS_WEBHOOK_SECRET`.
 - Fix: `stripe listen --forward-to 127.0.0.1:3080/api/payments/webhook`, copy its `whsec_…` into `.env`, `pnpm docker:restart`, then compare without printing it: `DC exec app node -e "const s=process.env.STRIPE_WEBHOOK_SECRET; console.log(s ? s.slice(0,12)+'... len='+s.length : 'missing')"`. A valid event logs `stripe.webhook.received`; unrelated types answer 200 `Ignored`. Missing secret is 503.
 
 **Webhook answers 200 with `ignored: "mode_mismatch"`.** A test-mode event reached a live-key deployment or the reverse; it is ignored and alerts `stripe_webhook_mode_mismatch`. Point the endpoint at the matching deployment.

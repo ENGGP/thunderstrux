@@ -8,7 +8,7 @@ import { formatDate } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { organisationRolesWithPermission } from "@/lib/permissions";
 import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
-import { keepStripePayoutsManual, manualPayoutSettings, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
+import { keepStripePayoutsManual, payoutSummary, restoreStripePayoutSchedule, type PayoutSummary } from "@/lib/payouts/payouts";
 import { heldMoney } from "@/lib/payouts/release";
 import { logWarn } from "@/lib/ops/logger";
 import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
@@ -92,11 +92,20 @@ export class StripeDisconnectUnavailableError extends Error {
 }
 
 // Stripe answers 403 for an account this platform's key can't see: one made
-// under another platform key, or deleted (PAY-015).
+// under another platform key, or deleted (PAY-015). Accounts v2 says "forbidden".
 function isAccountOutOfReach(error: unknown) {
   const failure = error as { type?: unknown; code?: unknown; message?: unknown } | null;
-  return failure?.type === "StripePermissionError" && (failure.code === "account_invalid" || /does not have access to account/i.test(String(failure.message)));
+  return failure?.type === "StripePermissionError" &&
+    (failure.code === "account_invalid" || /does not have (access to|permission to access) account/i.test(String(failure.message)));
 }
+
+// PAY-023: societies' accounts are Accounts v2 (accounts made under v1 read the
+// same way). The society stays the seller (on_behalf_of, as Humanitix hosts own
+// refunds), so each has the merchant configuration (card_payments) and the
+// recipient one (stripe_transfers, for destination charges).
+type ConnectedAccount = Stripe.V2.Core.Account;
+const accountInclude: Array<"configuration.merchant" | "configuration.recipient" | "identity" | "requirements"> = ["configuration.merchant", "configuration.recipient", "identity", "requirements"];
+const retrieveConnectedAccount = (accountId: string) => getStripe().v2.core.accounts.retrieve(accountId, { include: accountInclude });
 
 // Orders that still depend on the connected account: being paid, under review,
 // being refunded or disputed. Pre-T10 orders have no seller snapshot.
@@ -159,40 +168,47 @@ function settingsUrl(returnOrigin?: string) {
   return new URL("/dashboard/settings", returnOrigin ?? getAppUrl()).toString();
 }
 
-// Destination charges pay the society through a transfer, so selling needs the
-// transfers capability as well as card payments (charges_enabled).
-function canTakePayments(account: Stripe.Account) {
-  return Boolean(account.charges_enabled) && account.capabilities?.transfers === "active";
+// Selling needs card payments (on_behalf_of) and transfers (destination charges)
+// both active, read capability by capability as Stripe asks of v2.
+function capabilities(account: ConnectedAccount) {
+  const merchant = account.configuration?.merchant?.capabilities;
+  const recipient = account.configuration?.recipient?.capabilities;
+  return {
+    cardPayments: merchant?.card_payments,
+    transfers: recipient?.stripe_balance?.stripe_transfers,
+    payouts: merchant?.stripe_balance?.payouts ?? recipient?.stripe_balance?.payouts
+  };
 }
 
-function mapAccountState(account: Stripe.Account): StripeConnectState {
-  if (!account.details_submitted) {
-    return "CONNECTED_INCOMPLETE";
-  }
-
-  if (!canTakePayments(account)) {
-    return "RESTRICTED";
-  }
-
-  return "READY";
+function canTakePayments(account: ConnectedAccount) {
+  const { cardPayments, transfers } = capabilities(account);
+  return cardPayments?.status === "active" && transfers?.status === "active";
 }
 
-function statusFromAccount(account: Stripe.Account): StripeConnectStatus {
-  const state = mapAccountState(account);
+function statusFromAccount(account: ConnectedAccount): StripeConnectStatus {
+  const { cardPayments, transfers, payouts } = capabilities(account);
+  // Stripe's hosted onboarding ends with the terms of service, the moment v1 called details_submitted.
+  const detailsSubmitted = Boolean(account.identity?.attestations?.terms_of_service?.account?.date);
+  const chargesEnabled = canTakePayments(account);
+  const state: StripeConnectState = !detailsSubmitted ? "CONNECTED_INCOMPLETE" : chargesEnabled ? "READY" : "RESTRICTED";
+  // What the society has to send, by v2 field name; past due is still due.
+  const owed = (account.requirements?.entries ?? []).filter((entry) => entry.awaiting_action_from === "user");
+  const due = (...statuses: string[]) => owed.filter((entry) => statuses.includes(entry.minimum_deadline.status)).map((entry) => entry.description);
+  const blocked = [cardPayments, transfers].find((capability) => capability && capability.status !== "active");
 
   return {
     accountId: account.id,
     connected: true,
     state,
     ready: state === "READY",
-    charges_enabled: canTakePayments(account),
-    payouts_enabled: Boolean(account.payouts_enabled),
-    details_submitted: Boolean(account.details_submitted),
-    currently_due: account.requirements?.currently_due ?? [],
-    eventually_due: account.requirements?.eventually_due ?? [],
-    disabled_reason: account.requirements?.disabled_reason ?? null,
-    current_deadline: account.requirements?.current_deadline ? new Date(account.requirements.current_deadline * 1000).toISOString() : null,
-    dashboard_available: Boolean(account.details_submitted)
+    charges_enabled: chargesEnabled,
+    payouts_enabled: payouts?.status === "active",
+    details_submitted: detailsSubmitted,
+    currently_due: due("currently_due", "past_due"),
+    eventually_due: due("eventually_due"),
+    disabled_reason: blocked?.status_details[0]?.code ?? null,
+    current_deadline: account.requirements?.summary?.minimum_deadline?.time ?? null,
+    dashboard_available: detailsSubmitted
   };
 }
 
@@ -287,17 +303,23 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
   const earlierAccounts = await prisma.auditLog.count({
     where: { organisationId: organisation.id, action: "stripe_connect.account_created" }
   });
-  let account: Stripe.Account;
+  let account: ConnectedAccount;
 
   try {
-    account = await stripe.accounts.create(
+    account = await stripe.v2.core.accounts.create(
       {
-        type: "express",
-        // on_behalf_of makes the society the settlement merchant, which needs card_payments;
-        // destination charges need transfers.
-        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-        // PAY-005: Thunderstrux sends the money once each event is over.
-        settings: manualPayoutSettings,
+        display_name: organisation.name,
+        // The Express Dashboard, with Thunderstrux paying Stripe's fees and owning
+        // negative balances: what a v1 Express account was.
+        dashboard: "express",
+        identity: { country: "au" },
+        defaults: { currency: "aud", responsibilities: { fees_collector: "application", losses_collector: "application" } },
+        configuration: {
+          // on_behalf_of makes the society the settlement merchant, which needs card_payments;
+          // destination charges need transfers.
+          merchant: { capabilities: { card_payments: { requested: true } } },
+          recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } }
+        },
         // SEC-034: an account left over by a race can still be traced to its society.
         metadata: { organisationId: organisation.id }
       },
@@ -363,6 +385,14 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
       organisationId: organisation.id,
       stripeAccountId: account.id
     });
+    // PAY-005: Thunderstrux sends the money once each event is over. v2 accounts
+    // are created on Stripe's daily schedule; the payouts worker repairs a miss
+    // hourly, before any sale money could be available.
+    try {
+      await keepStripePayoutsManual(account.id);
+    } catch (error) {
+      logWarn("stripe_connect.manual_payouts_not_set", { organisationId: organisation.id, stripeAccountId: account.id, error });
+    }
   }
 
   return {
@@ -371,6 +401,8 @@ export async function createExpressAccount(orgId: string, actorUserId: string) {
   };
 }
 
+// A v1 account link onboards a v2 account too. The v2 one refuses merchant and
+// recipient accounts in Stripe's shared test mode, which dev, preview and staging use.
 export async function createOnboardingLink(accountId: string, orgSlug: string, returnOrigin?: string) {
   const stripe = getStripe();
   const accountLink = await stripe.accountLinks.create({
@@ -389,11 +421,10 @@ export async function createOnboardingLink(accountId: string, orgSlug: string, r
 }
 
 export async function getAccountStatus(accountId: string) {
-  const stripe = getStripe();
   console.info("Stripe account status fetch started", {
     stripeAccountId: accountId
   });
-  const account = await stripe.accounts.retrieve(accountId);
+  const account = await retrieveConnectedAccount(accountId);
   const status = statusFromAccount(account);
   await persistConnectedAccountStatus(account);
 
@@ -408,14 +439,14 @@ export async function getAccountStatus(accountId: string) {
   return status;
 }
 
-// account.updated: Stripe doesn't promise event order, so a society's account is
-// re-read rather than taken from the event; an account no society uses is ignored.
+// v2 account events are thin, and Stripe doesn't promise their order, so a
+// society's account is re-read; an account no society uses is ignored.
 export async function refreshConnectedAccount(accountId: string) {
   const known = await prisma.organisation.count({ where: { stripeAccountId: accountId } });
   if (known === 0) return { count: 0 };
-  let account: Stripe.Account;
+  let account: ConnectedAccount;
   try {
-    account = await getStripe().accounts.retrieve(accountId);
+    account = await retrieveConnectedAccount(accountId);
   } catch (error) {
     // Retrying a 403 forever helps nobody: the webhook answers 200 once it is recorded.
     if (!isAccountOutOfReach(error)) throw error;
@@ -471,7 +502,7 @@ export async function notifyPayoutAccountChanged(event: Stripe.Event) {
 // The webhook and a Settings refresh both save through here, so a transition
 // they save at the same time is emailed once. Staff who manage Stripe hear when
 // Stripe pauses card payments, and once per deadline Stripe sets for more details.
-export async function persistConnectedAccountStatus(account: Stripe.Account) {
+export async function persistConnectedAccountStatus(account: ConnectedAccount) {
   const status = statusFromAccount(account);
   const now = new Date();
 

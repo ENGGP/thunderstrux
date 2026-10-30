@@ -67,6 +67,8 @@ export type PublicEventDetail = {
   heroAssetId: string | null;
   // The image's description for the hero's alt text; empty means decoration (UI-018).
   heroAlt: string | null;
+  // PAY-009: how long a checkout holds its tickets, in minutes.
+  checkoutHoldMinutes: number;
   organisation: {
     name: string;
     slug: string;
@@ -206,6 +208,7 @@ const detailSelect = {
   location: true,
   heroAssetId: true,
   heroAlt: true,
+  checkoutHoldMinutes: true,
   status: true,
   visibility: true,
   saleState: true,
@@ -250,6 +253,7 @@ async function readEventDetail(where: Prisma.EventWhereInput): Promise<PublicEve
     location: event.location,
     heroAssetId: event.heroAssetId,
     heroAlt: event.heroAlt,
+    checkoutHoldMinutes: event.checkoutHoldMinutes,
     status: event.status,
     membersOnly: event.visibility === "members_only",
     salesOpen: salesOpen(event, now),

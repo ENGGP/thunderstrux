@@ -31,17 +31,18 @@ vi.mock("@/lib/stripe", () => {
 });
 
 const minutes = (count: number) => new Date(Date.now() + count * 60_000);
-// The hold is the Session's 30 minutes plus its margin, plus 5 minutes for a late webhook (DEF-033).
+// Past the event's 20-minute hold and its 5-minute webhook margin (PAY-009, DEF-033).
 const afterHold = () => minutes(37);
 const missing = () => Object.assign(new Error("No such checkout.session"), { code: "resource_missing" });
 const alertCount = (spy: { mock: { calls: unknown[][] } }, name: string) => spy.mock.calls.filter(([line]) => String(line).includes(`"event":"${name}"`)).length;
 
 // A member's pending ticket checkout with its Stripe Session bound, as after the redirect.
-async function pendingCheckout() {
+async function pendingCheckout(holdMinutes?: number) {
   vi.spyOn(console, "info").mockImplementation(() => {});
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   const { organisation } = await createOrganisationAccount({ stripeReady: true });
   const event = await createEvent({ organisationId: organisation.id, status: "published" });
+  if (holdMinutes) await prisma.event.update({ where: { id: event.id }, data: { checkoutHoldMinutes: holdMinutes } });
   const member = await createMember();
   const sessionId = unique("cs_sweep");
   stripe.createSession.mockReset().mockResolvedValueOnce({ id: sessionId, url: "https://checkout.stripe.test/sweep" });
@@ -59,7 +60,8 @@ async function pendingCheckout() {
       payment_intent: { id: unique("pi"), transfer_data: { destination: organisation.stripeAccountId } },
       ...overrides
     }) as Stripe.Checkout.Session;
-  return { orderId: order.id, sessionId, session, errors };
+  const request = stripe.createSession.mock.calls[0][0] as Stripe.Checkout.SessionCreateParams;
+  return { orderId: order.id, sessionId, session, errors, request };
 }
 
 const state = (orderId: string) =>
@@ -228,5 +230,49 @@ describe("checkout reconciliation sweep: tickets", () => {
     const order = await prisma.order.findFirstOrThrow({ where: { eventId: event.id } });
     expect(order).toMatchObject({ status: "pending", stripeSessionId: null });
     expect(await prisma.checkoutAttempt.findFirstOrThrow({ where: { orderId: order.id } })).toMatchObject({ state: "failed", lastOutcome: "event_cancelled_at_attach" });
+  });
+});
+
+describe("checkout holds (PAY-009)", () => {
+  test("an event's hold decides when its seats free up and what Stripe's page says; the page lasts at least 30 minutes", async () => {
+    for (const [hold, page] of [[5, 30], [59, 59]] as const) {
+      const before = Date.now();
+      const { orderId, request } = await pendingCheckout(hold);
+      const after = Date.now();
+      const { reservation } = await state(orderId);
+      // The seats: the hold, then 5 minutes for a late webhook.
+      expect(reservation!.expiresAt.getTime()).toBeGreaterThanOrEqual(before + (hold + 5) * 60_000);
+      expect(reservation!.expiresAt.getTime()).toBeLessThanOrEqual(after + (hold + 5) * 60_000);
+      // Stripe's page: the hold or Stripe's 30-minute minimum, whichever is longer, plus the trip there.
+      expect(request.expires_at).toBeGreaterThanOrEqual(Math.ceil(before / 1000) + page * 60 + 60);
+      expect(request.expires_at).toBeLessThanOrEqual(Math.ceil(after / 1000) + page * 60 + 60);
+      expect((request.custom_text?.submit as { message?: string } | undefined)?.message).toMatch(/^We're holding your tickets until \d{1,2}:\d{2} [ap]m Brisbane time\. After that they go back on sale\.$/);
+    }
+  });
+
+  test("the job closes Stripe's page when the hold ends, and the seats go back on sale; not before", async () => {
+    const { orderId, sessionId, session } = await pendingCheckout(10);
+    stripe.retrieve.mockResolvedValue(session({ status: "open", payment_status: "unpaid" }));
+    stripe.expire.mockResolvedValue(session({ status: "expired", payment_status: "unpaid" }));
+
+    await processStaleOrderCleanupBatch({ now: minutes(9) });
+    expect(stripe.retrieve).not.toHaveBeenCalled();
+    expect(await state(orderId)).toMatchObject({ status: "pending", reservation: { status: "active" } });
+
+    // A minute past the hold, well before Stripe's own 31 minutes.
+    await processStaleOrderCleanupBatch({ now: minutes(11) });
+    expect(stripe.expire).toHaveBeenCalledWith(sessionId);
+    expect(await state(orderId)).toMatchObject({ status: "expired", reservation: { status: "expired" } });
+  });
+
+  test("a buyer who paid as the hold ended gets their tickets, and Stripe isn't reported down", async () => {
+    const { orderId, session } = await pendingCheckout(10);
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stripe.retrieve.mockResolvedValueOnce(session({ status: "open", payment_status: "unpaid" })).mockResolvedValue(session());
+    stripe.expire.mockRejectedValue(Object.assign(new Error("This Checkout Session is complete"), { type: "StripeInvalidRequestError" }));
+
+    await processStaleOrderCleanupBatch({ now: minutes(11) });
+    expect(await state(orderId)).toMatchObject({ status: "paid", reservation: { status: "confirmed" } });
+    expect(warnings.mock.calls.some(([line]) => String(line).includes("checkout.sweep.stripe_unavailable"))).toBe(false);
   });
 });

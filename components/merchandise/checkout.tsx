@@ -1,5 +1,6 @@
 "use client";
 
+import { commerceHoldMinutes } from "@/lib/checkout-hold";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -117,7 +118,7 @@ export function MerchandiseCheckout({
   function refusalFor(failure: unknown): Refusal {
     const detail = failure instanceof ClientApiError ? failure.payload?.error?.details?.[0] : undefined;
     // A member opens the open order to pay or cancel it; a guest's may belong to an earlier email link.
-    if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: "Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing has been charged.", openOrder: guestCsrf ? undefined : detail.id };
+    if (detail?.reason === "purchase_in_progress") return { title: "You already have a checkout in progress", body: `Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after ${commerceHoldMinutes} minutes. Nothing has been charged.`, openOrder: guestCsrf ? undefined : detail.id };
     if (detail?.reason === "unavailable") return { title: "An item is no longer sold", body: "Remove it from your basket to continue. Nothing has been charged.", toBasket: true };
     if (detail?.reason === "sold_out" || detail?.reason === "not_enough" || detail?.reason === "quote_changed" || detail?.path?.[0] === "expectedTotal") {
       return { title: "Some items changed", body: "A price or stock level changed while you were checking out. Nothing has been charged.", toBasket: true };
@@ -324,7 +325,7 @@ export function MerchandiseCheckout({
         <div className="grid gap-2">
           <h2 className="text-lg font-semibold text-ink">Before you {free ? "confirm" : "pay"}</h2>
           <ul className="grid list-disc gap-1.5 pl-5 text-ui text-ink-soft">
-            {free ? null : <li>We hold these items for 30 minutes while you pay.</li>}
+            {free ? null : <li>We hold these items for {commerceHoldMinutes} minutes while you pay.</li>}
             {quote.refundPolicy ? <li className="whitespace-pre-wrap [overflow-wrap:anywhere]">Refund policy: {quote.refundPolicy}</li> : null}
             {quote.supportEmail ? (
               <li className="[overflow-wrap:anywhere]">

@@ -1,3 +1,4 @@
+import { HoldCountdown } from "@/components/purchases/hold-countdown";
 import { ContactSocietyLink } from "@/components/organisations/contact-society-link";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -79,7 +80,7 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
                 <StatusBadge label="Waiting for payment" status="processing" />
               </div>
               <p className="text-ink">
-                {left === "1" ? "You left Stripe before paying, so nothing was charged. " : ""}We&apos;re holding your {plan} for you until {formatTime(checkout.holdEndsAt, zone)}. Pay on Stripe to get it, or cancel the order. Nothing has been charged.
+                {left === "1" ? "You left Stripe before paying, so nothing was charged. " : ""}We&apos;re holding your {plan} for you until {formatTime(checkout.holdEndsAt, zone)}: <HoldCountdown endsAt={checkout.holdEndsAt.toISOString()} /> Pay on Stripe to get it, or cancel the order. Nothing has been charged.
               </p>
               <UnpaidOrderActions cancelUrl={`/api/commerce/orders/${order.id}/cancel`} confirmText={`Your ${plan} with ${order.sellerName} won't be bought.`} paymentUrl={checkout.paymentUrl} stacked title="Cancel this order?" />
             </>

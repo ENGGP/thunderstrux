@@ -49,6 +49,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-29: #221 adds staff batch tools: Mark several pickups ready, send several failed emails again with one reason, Download CSV on every Orders tab and the attendee list (owners and admins; rate-limited and audited), and a required reason on Mark as refunded.
 - 2026-10-29: #222 adds an optional image description to events (`Event.heroAlt`, additive migration `20261121010000_event_hero_alt`), read out as the event page hero's alt text, and resolves UI-018. Apply it with `prisma migrate deploy` on each database; the dev database has it.
 - 2026-10-29: #224 resolves UI-004 and UI-025 and four DEBT-002 items: phone filters fold, one date formatter, every capped list pages both ways, Change tickets keeps the choice, one set of ticket steps, sold counts valid tickets, and "Contact {society}" emails the society (a new public route, `society_enquiry` limit and template; no migration). Checkout holds (PAY-009) and per-ticket refunds follow as their own PRs.
+- 2026-10-30: #225 resolves PAY-009: per-event checkout holds (`Event.checkoutHoldMinutes`, additive migration `20261122010000_event_checkout_hold`; apply it with `prisma migrate deploy` on each database), closed by the stale-order job when they end, with the end on Stripe's page and a countdown on order pages.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -80,7 +81,7 @@ Pointers only; each linked note owns its rule.
 - **Tenant:** `Event.organisationId` is the canonical owner of event-owned records. Live `OrganisationStaff` authority grants management; `OrganisationMember` is join state only. [[Database and Multi Tenancy#Tenant boundary]]
 - **Payment truth:** Stripe is payment truth, and fulfilment is webhook-driven and idempotent. An order is never marked paid from a success page. [[Payment Lifecycle]]
 - **Purchases under load (DEF-032):** checkout, free registration, commerce checkout and fulfilment run at READ COMMITTED (`lockedPurchaseTransactionOptions`) and decide everything after their row locks. Don't move them back to SERIALIZABLE: its snapshot predates the lock wait, so queued buyers fail.
-- **Holds (DEF-033, PAY-009):** a ticket hold outlives its Stripe page by 5 minutes (`lateWebhookGraceMs`), and pages show Stripe's closing time. New events default to `automatic_full` compensation. [[Payment Lifecycle#Holds]]
+- **Holds (PAY-009, DEF-033):** each event holds tickets for its `checkoutHoldMinutes` (5 to 59, default 20; shop and memberships 20). The stale-order job closes the Stripe page then; seats stay 5 more minutes only while Stripe can't be asked. Stripe's page names the end and order pages count down. New events default to `automatic_full` compensation. [[Payment Lifecycle#Holds]]
 - **Payouts (PAY-005, DEF-034, PAY-022):** ticket money is held until 2 days after the event and membership and merchandise money for 7 days after payment (never past 80 days), then paid at most once per society per UTC day to any society whose payouts are enabled. [[Stripe Payments and Connect]]
 - **Disputes:** the platform operator answers every dispute in Stripe from the staged draft before its due date. [[Production Operations]]
 - **Accounts:**
@@ -142,7 +143,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
    - Pass PAY-002 on the hosted endpoint.
 5. **When hosting is chosen,** give `stale-order-worker` the `stripe_secret_key` and `notification_encryption_key` secrets and `NEXT_PUBLIC_APP_URL` (PAY-024; `pnpm docker:hosted:check` refuses it without them), and run every worker each minute (`docker-compose.schedules.yml` or the platform scheduler), including `checkout-recovery-worker` and `monitor-worker`. Add an uptime or heartbeat check that covers the monitor (OPS-002).
 6. **Stripe settings (owner, each sandbox and later live):** in Connect's Express settings, stop accounts editing their payout schedule and using Instant Payouts (PAY-028); add `account.external_account.created` and `account.external_account.updated` to each Connect webhook endpoint (SEC-033; done on the preview), and `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` to each payments endpoint (PAY-030; done on the preview).
-7. **PAY-009 next:** per-event checkout holds (5 to 59 minutes, default 20, as Humanitix), made by closing the Stripe page early from the stale-order job; then per-ticket refunds.
+7. **Per-ticket refunds next** (DEBT-002's last planned item), as Humanitix: pick tickets, a lowerable amount, cancel and email as separate choices.
 8. **Before activating account lifecycle:**
    - get an independent security and migration review, which also covers #167's payment and sign-in changes and #197's payout-hold, refund and staff-security changes, and #198's bulk refunds on event cancellation;
    - provision the notification key and back it up separately;

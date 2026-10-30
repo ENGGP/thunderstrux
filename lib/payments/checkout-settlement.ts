@@ -117,7 +117,14 @@ async function lookUp(order: PendingCheckout, { now, closeIfOpen }: { now: Date;
         await markChecked(order, now);
         return "open";
       }
-      session = await getStripe().checkout.sessions.expire(session.id);
+      // Paid, or closed, a moment ago fails the close: Stripe's state now decides,
+      // so a buyer who paid just in time isn't reported as Stripe being down (PAY-009).
+      const sessionId = session.id;
+      session = await getStripe().checkout.sessions.expire(sessionId).catch(async (error: unknown) => {
+        const latest = await getStripe().checkout.sessions.retrieve(sessionId, { expand: ["payment_intent"] });
+        if (latest.status === "open") throw error;
+        return latest;
+      });
     }
     const settled = await settleCheckoutSession(session, { completed: session.status === "complete" && !unpaid, source: "reconciliation_sweep" });
     const outcome = settled.result.status;

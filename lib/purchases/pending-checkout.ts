@@ -4,6 +4,7 @@ import { failPendingCommerceOrder } from "@/lib/commerce/binding";
 import { logWarn } from "@/lib/ops/logger";
 import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
 import { getStripe } from "@/lib/stripe";
+import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
 
 // Design round E1: an unpaid order says so, offers its Stripe payment page
 // again while the hold lasts, and lets the buyer cancel. Stripe decides which:
@@ -22,7 +23,9 @@ type Purchase = { kind: "ticket" | "commerce"; id: string };
 export async function pendingCheckoutFacts({ kind, id }: Purchase) {
   if (kind === "ticket") {
     const order = await prisma.order.findUnique({ where: { id }, select: { status: true, stripeSessionId: true, reservation: { select: { expiresAt: true } }, event: { select: { cancelledAt: true } } } });
-    return order?.status === "pending" ? { stripeSessionId: order.stripeSessionId, holdEndsAt: order.reservation?.expiresAt ?? null, eventCancelled: order.event.cancelledAt !== null } : null;
+    // A reservation runs past the hold by the webhook margin; the buyer's deadline is the hold (PAY-009).
+    const reservationEnds = order?.reservation?.expiresAt;
+    return order?.status === "pending" ? { stripeSessionId: order.stripeSessionId, holdEndsAt: reservationEnds ? new Date(reservationEnds.getTime() - lateWebhookGraceMs) : null, eventCancelled: order.event.cancelledAt !== null } : null;
   }
   const order = await prisma.commerceOrder.findUnique({ where: { id }, select: { status: true, stripeSessionId: true, expiresAt: true } });
   return order?.status === "pending" ? { stripeSessionId: order.stripeSessionId, holdEndsAt: order.expiresAt, eventCancelled: false } : null;
@@ -38,8 +41,8 @@ export async function pendingCheckoutState(purchase: Purchase, now = new Date())
     const session = await getStripe().checkout.sessions.retrieve(facts.stripeSessionId);
     if (session.status === "complete" || session.payment_status === "paid") return { state: "confirming" };
     if (session.status === "expired" || !held) return { state: "ended" };
-    // The buyer's deadline is when Stripe closes the page; a ticket hold lasts a few minutes longer for its webhook.
-    return { state: "waiting", holdEndsAt: new Date(session.expires_at * 1000), paymentUrl: session.url ?? null };
+    // The hold ends first: the stale-order job closes Stripe's page then.
+    return { state: "waiting", holdEndsAt: held, paymentUrl: session.url ?? null };
   } catch (error) {
     // Without Stripe's answer, the hold decides; the payment page can't be offered.
     logWarn("checkout.pending_state_unavailable", { kind: purchase.kind, orderId: purchase.id, error });

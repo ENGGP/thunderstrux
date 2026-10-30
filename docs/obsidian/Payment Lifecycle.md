@@ -91,7 +91,7 @@ Checkout writes what was bought, and later edits never change it: `paymentKind` 
 2. In one transaction (`runReservationTransaction`): lock the buyer, then `lockEventInventory`, then decide visibility, status, sale state, price (member price via an active `member_prices` grant), stock and Stripe readiness under those locks.
 3. **Free price:** the buyer's `active` free tickets on the event plus this order stay within `maxTicketsPerOrder`, else 409 `free_limit_reached` with the number left as `value` (SEC-030), so one account can't claim a free event. Then `issueFreeOrder` writes a `paid` free order (`paidAt = fulfilledAt`, unit price, total and fee 0, no seller account), decrements stock once, numbers the tickets, appends `order_created` and `free_fulfilled`, creates the attempt and queues the automatic ticket email. No hold, no fee, no Stripe call; the answer is `fulfilled`.
 4. **Paid price:** the SEC-005 hold cap is checked (its 409 `purchase_in_progress` names the buyer's own open order as the detail `id`, so the page links to it), then a `pending` order with its snapshots, an `active` hold, `order_created` and a `created` attempt are committed.
-5. Outside the transaction: store the Session request on the attempt and move the hold's end to the Session's `expires_at` + `lateWebhookGraceMs`, then create the Session. Bind it with `attachStripeSession` (`stripe_session_attached`) and answer `redirect`.
+5. Outside the transaction: store the Session request on the attempt, then create the Session. Bind it with `attachStripeSession` (`stripe_session_attached`) and answer `redirect`.
 
 A definite Stripe refusal fails the order, its attempt and the hold (`failPendingOrder`, `order_failed`). An uncertain error, or a Session that can't be bound, leaves the attempt `provider_uncertain` and answers 202 with the attempt id.
 
@@ -102,14 +102,13 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 | | Tickets | Memberships and merchandise |
 | --- | --- | --- |
 | Row | `TicketReservation` | the family's own holds, plus `CommerceOrder.expiresAt` |
-| Ends | Session `expires_at` + `lateWebhookGraceMs` (5 min), set in `lib/payments/checkout-creation.ts`; created first as `getReservationExpiry` (30 min, `reservationMinutes`) | `CommerceOrder.expiresAt` is the Session's `expires_at` (set in `lib/commerce/checkout.ts`); `heldByVariant` counts the hold until `lateWebhookGraceMs` past it, as tickets do (PAY-020) |
-| Expired by | stale-order job, expiry webhook, buyer cancel | the same; the stale job waits the same 5 minutes past `expiresAt` |
+| Ends | the hold (`Event.checkoutHoldMinutes`, 5 to 59, default 20) + `lateWebhookGraceMs` (5 min): `getReservationExpiry` | `CommerceOrder.expiresAt` = 20 min (`commerceHoldMinutes`); `heldByVariant` counts it to `lateWebhookGraceMs` past, as tickets do (PAY-020) |
+| Expired by | stale-order job, expiry webhook, buyer cancel | the same |
 
-- The Session lives 30 minutes + 60 s (`checkoutSessionExpiresAt`). Stripe takes no payment after its page closes, but the webhook may come later; the grace lets a payment made in time still find its hold (DEF-033). Order pages show Stripe's closing time as the deadline.
+- PAY-009, as Humanitix: the Session lives the hold or Stripe's minimum 30 minutes, the longer, + 60 s (`checkoutSessionExpiresAt`); the stale-order job closes it when the hold ends. The grace keeps seats only while Stripe can't be asked (DEF-033). Its `custom_text` names the hold's end; order pages count down (`HoldCountdown`).
 - Stock: `sellableQuantity` = max(0, min(type remaining − that type's live holds, capacity − (tickets not void + all live holds))); the capacity term applies only when `Event.capacity` is set. `TicketType.quantity` is remaining stock and drops only at fulfilment.
 - A lapsed hold stops counting at once, whether or not its order has expired yet. Checkout never expires other buyers' holds (DEF-032).
 - One buyer's live paid holds on an event stay within `maxTicketsPerOrder` (10): members by account, guests by identity (SEC-005). Free tickets have the same cap on the tickets the buyer holds (SEC-030).
-- Hold length is longer than Eventbrite's and Humanitix's defaults (PAY-009, open).
 
 ## Fulfilment
 
@@ -146,7 +145,7 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 
 | Path | Tickets | Commerce |
 | --- | --- | --- |
-| Stale-order job | An active hold past `expiresAt` → hold and order `expired`; a pending order whose hold already expired; a pending order with no hold older than `stalePreCheckoutOrderMinutes` (30) | Pending Stripe orders whose `expiresAt` is more than `lateWebhookGraceMs` past → `expired` (`hold_expired`), family holds released |
+| Stale-order job | An active hold past its hold's end (`expiresAt` − grace): Stripe closes an open page, then hold and order `expired` (no Session: at `expiresAt`); a pending order whose hold already expired; a pending order with no hold older than `stalePreCheckoutOrderMinutes` (30) | Pending Stripe orders past `expiresAt` → `expired` (`hold_expired`), holds released |
 
 Either stale-order path asks Stripe about an order's Session before expiring it ([[#Reconciliation sweep (PAY-024)]]).
 | `checkout.session.expired` | A `pending` order → `expired`, hold `expired`; paid, failed and expired orders unchanged; an order bound to another Session ignored | `failPendingCommerceOrder` (`checkout_expired`) |

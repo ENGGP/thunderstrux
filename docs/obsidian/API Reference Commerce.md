@@ -37,7 +37,7 @@ Buyer authority: a verified `member` account, or, with a guest cookie and no liv
 Effects:
 
 - Every rule is checked again under the buyer, event and ticket-type locks: publication, sale state and close time, readiness, sellable stock, and the member price (a member whose running membership carries member prices pays `memberPrice`).
-- A paid ticket creates a pending `Order`, a `TicketReservation` and a Stripe Checkout Session ending 30 minutes plus 60 s later; the hold lasts until that `expires_at` plus a 5-minute grace ([[Payment Lifecycle#Holds]]). Returns: success `/success?session_id={CHECKOUT_SESSION_ID}` (a guest gets `/guest/orders/[orderId]`), cancel `/cancel?order=[orderId]`, on the trusted request origin.
+- A paid ticket creates a pending `Order`, a `TicketReservation` and a Stripe Checkout Session lasting the event's hold or 30 minutes, the longer, plus 60 s; the seats are held for the event's hold (5 to 59 minutes, default 20) plus a 5-minute grace, and the stale-order job closes the page when the hold ends ([[Payment Lifecycle#Holds]]). Returns: success `/success?session_id={CHECKOUT_SESSION_ID}` (a guest gets `/guest/orders/[orderId]`), cancel `/cancel?order=[orderId]`, on the trusted request origin.
 - A free ticket reads no Stripe settings and holds nothing: one transaction makes a paid `free` order, its tickets, the stock decrement, lifecycle `order_created` and `free_fulfilled`, and the ticket email; if the email can't be queued nothing is created.
 - Commerce returns to `/memberships/orders/[orderId]` or `/merchandise/orders/[orderId]` (cancel adds `?left=1`).
 - Only the signed webhook fulfils a paid order; no return page marks anything paid.

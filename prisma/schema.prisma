@@ -307,6 +307,8 @@ model Event {
   // Compare-and-swap version for edits, publication and sales changes.
   version        Int         @default(1)
   compensationRefundMode CompensationRefundMode @default(manual_review)
+  // PAY-009: minutes a checkout holds tickets, 5 to 59 (Event_checkoutHoldMinutes_chk).
+  checkoutHoldMinutes    Int                    @default(20)
   // EVT-004: a published event the society cancelled. Sales are closed and its
   // paid orders refunded through the refund worker; the event stays for history.
   cancelledAt        DateTime?

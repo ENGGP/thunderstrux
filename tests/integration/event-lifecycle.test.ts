@@ -107,6 +107,34 @@ describe("event lifecycle", () => {
     });
   });
 
+  // PAY-009: an event chooses its checkout hold, 5 to 59 minutes, as Humanitix hosts do.
+  test("an event's checkout hold is 20 minutes by default, 5 to 59, kept when an edit leaves it out, and named in History", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const create = (extra: Record<string, unknown>) => createEventRoute(jsonRequest("http://localhost/api/events", { ...eventPayload(organisation.id), ...extra }));
+    expect((await create({ checkoutHoldMinutes: 4 })).status).toBe(400);
+    expect((await create({ checkoutHoldMinutes: 60 })).status).toBe(400);
+    expect((await create({ checkoutHoldMinutes: 12.5 })).status).toBe(400);
+    const { event } = await parseJsonResponse(await create({}));
+    expect(event.checkoutHoldMinutes).toBe(20);
+
+    const update = async (version: number, extra: Record<string, unknown>) => {
+      const payload = eventPayload(organisation.id, {
+        version,
+        ticketTypes: [{ id: event.ticketTypes[0].id, name: event.ticketTypes[0].name, price: event.ticketTypes[0].price, quantity: event.ticketTypes[0].quantity, expectedQuantity: event.ticketTypes[0].quantity }]
+      });
+      const response = await updateEventRoute(jsonRequest(`http://localhost/api/events/${event.id}`, { ...payload, ...extra }, { method: "PATCH" }), routeContext({ eventId: event.id }));
+      expect(response.status).toBe(200);
+      return (await parseJsonResponse(response)).event;
+    };
+    const shorter = await update(event.version, { checkoutHoldMinutes: 10 });
+    expect(shorter.checkoutHoldMinutes).toBe(10);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "event.updated", targetId: event.id }, orderBy: { createdAt: "desc" } });
+    expect((audit.metadata as { changes: unknown[] }).changes).toContainEqual({ field: "checkoutHoldMinutes", before: 20, after: 10 });
+    // Left out of an edit, the hold stays.
+    expect((await update(shorter.version, { title: "Renamed" })).checkoutHoldMinutes).toBe(10);
+  });
+
   test("missing and cross-tenant event read and update return the same safe 404", async () => {
     const owned = await createOrganisationAccount();
     const other = await createOrganisationAccount();

@@ -113,7 +113,7 @@ describe("checkout attempt recovery", () => {
 
   test("an order that expired before recovery stays expired and keeps the Session on record", async () => {
     const { orderId } = await uncertainCheckout();
-    // The hold is 30 minutes plus the Session expiry margin, plus 5 minutes for a late webhook (DEF-033).
+    // Past the 20-minute hold and its 5-minute margin for a late webhook (PAY-009, DEF-033).
     const afterHold = new Date(Date.now() + 37 * 60 * 1000);
     await processStaleOrderCleanupBatch({ now: afterHold });
     const sessionId = unique("cs_after_expiry");

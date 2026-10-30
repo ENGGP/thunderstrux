@@ -36,6 +36,9 @@ test("organisers build an event in the society's time zone with a dollar price a
   await page.getByLabel("Name", { exact: true }).fill("General");
   await page.getByLabel("Price", { exact: true }).fill("15.5");
   await page.getByLabel("Quantity", { exact: true }).fill("40");
+  // PAY-009: a busy event holds tickets for less than the 20-minute default.
+  await expect(page.getByLabel("Checkout hold (minutes)")).toHaveValue("20");
+  await page.getByLabel("Checkout hold (minutes)").fill("10");
   // Rounded with the same fee function checkout uses; the seeded society has no Stripe yet.
   await expect(page.getByText("For one ticket you receive $14.03", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "set up payments" })).toBeVisible();
@@ -64,7 +67,7 @@ test("organisers build an event in the society's time zone with a dollar price a
     include: { ticketTypes: true }
   });
   const [start] = zonedCandidates(`${day}T18:00`, "Australia/Sydney");
-  expect(event).toMatchObject({ visibility: "unlisted", startTime: start, salesCloseAt: start, status: "draft" });
+  expect(event).toMatchObject({ visibility: "unlisted", startTime: start, salesCloseAt: start, status: "draft", checkoutHoldMinutes: 10 });
   expect(event.heroAssetId).not.toBeNull();
   expect(event.heroAlt).toBe("Teal banner with the society logo");
   expect(event.ticketTypes[0]).toMatchObject({ price: 1550, quantity: 40 });

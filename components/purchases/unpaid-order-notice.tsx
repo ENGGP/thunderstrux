@@ -1,3 +1,4 @@
+import { HoldCountdown } from "@/components/purchases/hold-countdown";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { formatTime } from "@/components/calendar/layout";
@@ -32,7 +33,7 @@ export function UnpaidOrderNotice({ checkout, cancelUrl, held, title, backHref, 
   return (
     <Notice title={title ?? "You haven't paid yet"} tone="warning">
       <p>
-        We&apos;re holding {held.what} for you until {formatTime(checkout.holdEndsAt, timeZone)}. Pay on Stripe to get {held.many ? "them" : "it"}, or cancel and {held.many ? "they go" : "it goes"} back on sale. Nothing has been charged.
+        We&apos;re holding {held.what} for you until {formatTime(checkout.holdEndsAt, timeZone)}: <HoldCountdown endsAt={checkout.holdEndsAt.toISOString()} /> Pay on Stripe to get {held.many ? "them" : "it"}, or cancel and {held.many ? "they go" : "it goes"} back on sale. Nothing has been charged.
       </p>
       <div className="mt-3">
         <UnpaidOrderActions cancelUrl={cancelUrl} guestCsrf={guestCsrf} confirmText={`The ${held.what} you're holding for ${held.event} ${held.many ? "go" : "goes"} back on sale.`} paymentUrl={checkout.paymentUrl} stacked={stacked} title="Cancel this order?" />

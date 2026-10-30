@@ -14,7 +14,10 @@ import { attemptReconcileDelayMs, checkoutIntegrationIdentifiers, checkoutSessio
 import { getAppUrl, getStripe } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
-import { reservationMinutes, runReservationTransaction } from "@/lib/tickets/reservations";
+import { commerceHoldMinutes, holdEndsAt } from "@/lib/checkout-hold";
+import { formatClock } from "@/lib/format";
+import { runReservationTransaction } from "@/lib/tickets/reservations";
+import { zoneCity } from "@/lib/zoned-time";
 
 // Membership and merchandise checkout (T21), the commerce twin of ticket
 // checkout (database spec 6.1-6.3): a locked transaction quotes through the
@@ -139,7 +142,7 @@ export async function createCommerceCheckout(input: {
         return { kind: "free" as const, attemptId: freeAttempt.id, commerceOrderId: order.id };
       }
 
-      const seller = await tx.organisation.findUniqueOrThrow({ where: { id: input.organisationId }, select: { stripeAccountId: true, stripeChargesEnabled: true } });
+      const seller = await tx.organisation.findUniqueOrThrow({ where: { id: input.organisationId }, select: { stripeAccountId: true, stripeChargesEnabled: true, timeZone: true } });
       if (!isOrganisationStripeReady(seller)) {
         throw new CommerceCheckoutError("stripe_not_ready", "This society can't take payments yet", [{ path: ["organisationId"], message: "The society must finish connecting Stripe" }]);
       }
@@ -148,13 +151,14 @@ export async function createCommerceCheckout(input: {
       const feeAmount = calculatePlatformFee(totalAmount);
       const order = await createCommerceOrder(tx, {
         ...common, paymentKind: "stripe", feeAmount, feePolicyVersion: PLATFORM_FEE_POLICY_VERSION,
-        expiresAt: new Date(now.getTime() + reservationMinutes * 60 * 1000)
+        // The hold (PAY-009): the stale-order job closes the Stripe page when it ends.
+        expiresAt: holdEndsAt(now, commerceHoldMinutes)
       });
       const paidAttempt = await tx.checkoutAttempt.create({
         data: { ...attempt, commerceOrderId: order.id, reconcileDueAt: new Date(now.getTime() + attemptReconcileDelayMs) },
         select: { id: true, providerOperationKey: true }
       });
-      return { kind: "created" as const, order, lines, attempt: paidAttempt, stripe, appUrl, feeAmount, destination: seller.stripeAccountId as string };
+      return { kind: "created" as const, order, lines, attempt: paidAttempt, stripe, appUrl, feeAmount, destination: seller.stripeAccountId as string, timeZone: seller.timeZone };
     });
   } catch (error) {
     const raced = isUniqueViolation(error) ? await findCommerceAttempt(prisma, actor, input.family, input.idempotencyKey) : null;
@@ -169,8 +173,9 @@ export async function createCommerceCheckout(input: {
   }
 
   const { order, attempt, stripe } = created;
-  // The hold ends when Stripe's Session does, set just before the call.
-  const expiresAt = checkoutSessionExpiresAt();
+  // Stripe's page outlasts the hold; the stale-order job closes it when the hold ends.
+  const expiresAt = checkoutSessionExpiresAt(commerceHoldMinutes);
+  const holdEnd = order.expiresAt as Date;
   const metadata = { family: input.family, commerceOrderId: order.id, organisationId: order.organisationId };
   const sessionRequest: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
@@ -194,13 +199,13 @@ export async function createCommerceCheckout(input: {
     success_url: `${created.appUrl}/${input.family === "membership" ? "memberships" : "merchandise"}/orders/${order.id}`,
     cancel_url: `${created.appUrl}/${input.family === "membership" ? "memberships" : "merchandise"}/orders/${order.id}?left=1`,
     expires_at: expiresAt,
+    custom_text: {
+      submit: { message: `We're holding your order until ${formatClock(holdEnd, created.timeZone)} ${zoneCity(created.timeZone)}. After that it's released.` }
+    },
     metadata
   };
   // Recovery replays exactly this request with the same key.
-  await prisma.$transaction([
-    prisma.commerceOrder.update({ where: { id: order.id }, data: { expiresAt: new Date(expiresAt * 1000) } }),
-    prisma.checkoutAttempt.update({ where: { id: attempt.id }, data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue } })
-  ]);
+  await prisma.checkoutAttempt.update({ where: { id: attempt.id }, data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue } });
 
   let session: Stripe.Checkout.Session;
   try {

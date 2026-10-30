@@ -8,6 +8,7 @@ import { PhoneActionBar, useActionBelow, useResetOnRestore } from "@/components/
 import { TextInput } from "@/components/ui/input";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { defaultHoldMinutes } from "@/lib/checkout-hold";
 import { formatPrice, membershipLabel } from "@/lib/format";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
 
@@ -60,7 +61,8 @@ export function PublicTicketPurchase({
   memberPlan = null,
   societySlug,
   preview = false,
-  initial
+  initial,
+  holdMinutes = defaultHoldMinutes
 }: {
   eventId: string;
   memberPlan?: string | null;
@@ -76,6 +78,8 @@ export function PublicTicketPurchase({
   preview?: boolean;
   // The choice a buyer brought back from checkout's "Change tickets", kept while it can still be bought.
   initial?: { ticketTypeId?: string; quantity?: number };
+  // The event's checkout hold (PAY-009).
+  holdMinutes?: number;
 }) {
   const router = useRouter();
   const kept = ticketTypes.find((ticketType) => ticketType.id === initial?.ticketTypeId && !isUnavailable(ticketType));
@@ -308,7 +312,7 @@ export function PublicTicketPurchase({
         <p className="text-sm text-ink-soft">{society} can&apos;t take card payments at the moment. Free tickets are still available.</p>
       ) : null}
       {allSoldOut ? (
-        <p className="text-sm text-ink-soft">Tickets held in someone&apos;s checkout may come back within 30 minutes.</p>
+        <p className="text-sm text-ink-soft">Tickets held in someone&apos;s checkout may come back within {holdMinutes} minutes.</p>
       ) : null}
 
       {selected ? (

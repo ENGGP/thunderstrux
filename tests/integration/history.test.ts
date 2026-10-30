@@ -235,12 +235,14 @@ describe("History (T38)", () => {
     expect(facts("event.updated", { changes: [
       { field: "ticketTypes", added: ["Student"], removed: ["Early bird"], changed: [{ name: "General", renamedFrom: "Standard", price: [1500, 1800], quantity: [10, 8] }] },
       { field: "description" }, { field: "heroAssetId", after: null }, { field: "heroAlt" }, { field: "visibility", before: "public", after: "members_only" },
-      { field: "startTime", before: "2026-11-01T08:00:00.000Z", after: null }, { field: "capacity", before: 100, after: 80 }
+      { field: "startTime", before: "2026-11-01T08:00:00.000Z", after: null }, { field: "capacity", before: 100, after: 80 },
+      { field: "checkoutHoldMinutes", before: 20, after: 10 }
     ] })).toEqual([
       { label: "Ticket type added", value: "Student" }, { label: "Ticket type removed", value: "Early bird" },
       { label: "General, price", value: "$18.00", was: "$15.00" }, { label: "General, left", value: "8", was: "10" }, { label: "Ticket type renamed", value: "General", was: "Standard" },
       { label: "Description", value: "Changed" }, { label: "Image", value: "Removed" }, { label: "Image description", value: "Changed" }, { label: "Visibility", value: "Members only", was: "Public" },
-      { label: "Starts", value: "None", was: "Sun 1 Nov, 6:00 pm" }, { label: "Capacity", value: "80", was: "100" }
+      { label: "Starts", value: "None", was: "Sun 1 Nov, 6:00 pm" }, { label: "Capacity", value: "80", was: "100" },
+      { label: "Checkout hold", value: "10 minutes", was: "20 minutes" }
     ]);
     expect(facts("staff.updated", { previousRole: "event_manager", nextRole: "admin", previousStatus: "invited", nextStatus: "active" }))
       .toEqual([{ label: "Role", value: "Admin", was: "Event manager" }, { label: "Access", value: "Active", was: "Invited" }]);

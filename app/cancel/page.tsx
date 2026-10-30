@@ -1,3 +1,4 @@
+import { HoldCountdown } from "@/components/purchases/hold-countdown";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -63,6 +64,9 @@ export default async function CancelPage({ searchParams }: { searchParams: Promi
         description={`You left Stripe before paying, so nothing was charged. We're holding your ${what} until ${formatTime(checkout.holdEndsAt, own.event.organisation.timeZone)}.`}
         title="You haven't paid yet"
       >
+        <p className="text-ink">
+          Time left on your hold: <HoldCountdown endsAt={checkout.holdEndsAt.toISOString()} />
+        </p>
         <UnpaidOrderActions
           cancelUrl={`/api/purchases/tickets/${own.id}/cancel`}
           guestCsrf={!own.userId && sessionId ? guestCsrfToken(sessionId) : undefined}

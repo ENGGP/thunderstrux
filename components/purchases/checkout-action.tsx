@@ -213,7 +213,7 @@ export function CheckoutAction({
         : guestCsrf ? backTo("Back to ticket options") : <Link className={linkClass} href="/purchases">Go to Purchases</Link>;
       return (
         <StateScreen actions={open} title="You already have a checkout in progress" tone="warning">
-          Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own after about 30 minutes. Nothing has been charged.
+          Finish paying for it or cancel it, then try again. An unpaid checkout ends on its own when its hold runs out. Nothing has been charged.
         </StateScreen>
       );
     }

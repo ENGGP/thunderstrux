@@ -9,7 +9,9 @@ import { logError, logInfo } from "@/lib/ops/logger";
 import { emitMetric } from "@/lib/ops/metrics";
 import { eventReadiness, salesOpen } from "@/lib/events/event-readiness";
 import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/events/inventory";
-import { formatMoney } from "@/lib/format";
+import { holdEndsAt } from "@/lib/checkout-hold";
+import { formatClock, formatMoney } from "@/lib/format";
+import { zoneCity } from "@/lib/zoned-time";
 import { maxTicketsPerOrder } from "@/lib/validators/payments";
 import {
   attachStripeSession,
@@ -37,7 +39,7 @@ import { getAppUrl, getStripe, StripeConfigurationError } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
 import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import { PURCHASE_SNAPSHOT_VERSION } from "@/lib/purchases/projection";
-import { getReservationExpiry, lateWebhookGraceMs, runReservationTransaction } from "@/lib/tickets/reservations";
+import { getReservationExpiry, runReservationTransaction } from "@/lib/tickets/reservations";
 
 export type CheckoutCreationErrorKind =
   | "event_not_found"
@@ -120,9 +122,10 @@ function lockedEventSelect(ticketTypeId: string) {
     saleState: true,
     salesCloseAt: true,
     compensationRefundMode: true,
+    checkoutHoldMinutes: true,
     organisationId: true,
     organisation: {
-      select: { id: true, name: true, stripeAccountId: true, stripeChargesEnabled: true }
+      select: { id: true, name: true, timeZone: true, stripeAccountId: true, stripeChargesEnabled: true }
     },
     ticketTypes: {
       where: { id: ticketTypeId },
@@ -164,7 +167,6 @@ export async function createEventCheckout({
     if (earlier) return replayAttempt(earlier, requestHash);
 
     const reservationNow = new Date();
-    const reservationExpiresAt = getReservationExpiry(reservationNow);
 
     // Every check reads state under the buyer (User or GuestIdentity), Event and
     // TicketType locks, so an edit, close or reprice cannot land between the
@@ -378,7 +380,8 @@ export async function createEventCheckout({
             ticketTypeId: ticketType.id,
             userId: userId ?? null,
             quantity,
-            expiresAt: reservationExpiresAt
+            // The event's hold (PAY-009); the job closes the Stripe page when it ends.
+            expiresAt: getReservationExpiry(reservationNow, event.checkoutHoldMinutes)
           }
         });
 
@@ -416,6 +419,9 @@ export async function createEventCheckout({
           // The quoted price: the member price when a membership applied.
           unitPrice,
           eventTitle: event.title,
+          holdMinutes: event.checkoutHoldMinutes,
+          holdEndsAt: holdEndsAt(reservationNow, event.checkoutHoldMinutes),
+          timeZone: organisation.timeZone,
           organisationId: event.organisationId,
           // Payment eligibility above guarantees a connected account.
           stripeAccountId: organisation.stripeAccountId as string,
@@ -449,7 +455,7 @@ export async function createEventCheckout({
     });
 
     pendingOrderId = pendingOrder.id;
-    const stripeExpiresAt = checkoutSessionExpiresAt();
+    const stripeExpiresAt = checkoutSessionExpiresAt(pendingOrder.holdMinutes);
     const sessionRequest: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       // Card only, so a completed Session is paid at once; delayed methods' async
@@ -484,6 +490,10 @@ export async function createEventCheckout({
       // The cancel page names the order only to whoever bought it.
       cancel_url: `${pendingOrder.appUrl}/cancel?order=${pendingOrder.id}`,
       expires_at: stripeExpiresAt,
+      // Humanitix shows its hold at checkout; Stripe's page can't count down, so it names the end.
+      custom_text: {
+        submit: { message: `We're holding your tickets until ${formatClock(pendingOrder.holdEndsAt, pendingOrder.timeZone)} ${zoneCity(pendingOrder.timeZone)}. After that they go back on sale.` }
+      },
       metadata: {
         orderId: pendingOrder.id,
         eventId,
@@ -494,18 +504,11 @@ export async function createEventCheckout({
     };
 
     // Recovery (T14b) replays exactly this request with the same key, so Stripe
-    // returns the original Session instead of treating it as a new one. The hold
-    // outlives the Session, so a payment made just before it closes finds its hold.
-    await prisma.$transaction([
-      prisma.ticketReservation.update({
-        where: { orderId: pendingOrder.id },
-        data: { expiresAt: new Date(stripeExpiresAt * 1000 + lateWebhookGraceMs) }
-      }),
-      prisma.checkoutAttempt.update({
-        where: { id: pendingOrder.attemptId },
-        data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue }
-      })
-    ]);
+    // returns the original Session instead of treating it as a new one.
+    await prisma.checkoutAttempt.update({
+      where: { id: pendingOrder.attemptId },
+      data: { providerRequest: sessionRequest as unknown as Prisma.InputJsonValue }
+    });
 
     let session;
     try {

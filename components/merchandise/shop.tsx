@@ -1,5 +1,6 @@
 "use client";
 
+import { commerceHoldMinutes } from "@/lib/checkout-hold";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -434,7 +435,7 @@ export function BasketView({ society }: { society: string }) {
               Checkout merchandise
             </Link>
           )}
-          <p className="text-sm text-ink-soft">Prices and stock are checked again when you check out. We hold your items for 30 minutes while you pay.</p>
+          <p className="text-sm text-ink-soft">Prices and stock are checked again when you check out. We hold your items for {commerceHoldMinutes} minutes while you pay.</p>
           {quote.refundPolicy ? <p className="whitespace-pre-wrap text-sm text-ink-soft [overflow-wrap:anywhere]">Refund policy: {quote.refundPolicy}</p> : null}
         </aside>
       </div>

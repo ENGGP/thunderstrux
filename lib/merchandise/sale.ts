@@ -18,7 +18,7 @@ import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
 // deadlock.
 //
 // A hold is not a row of its own: the lines of a pending Stripe order that
-// has not passed its `expiresAt` (30 minutes, the Session's own expiry) plus
+// has not passed its `expiresAt` (the hold, PAY-009: the job closes its Stripe page then) plus
 // `lateWebhookGraceMs` hold their stock. Paying, failing or expiring the order ends its hold, so the
 // two can never disagree.
 

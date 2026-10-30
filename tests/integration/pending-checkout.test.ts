@@ -29,15 +29,17 @@ async function unpaidTicketOrder(holdMinutes = 20) {
   const event = await createEvent({ organisationId: society.organisation.id, status: "published", ticketTypes: [{ name: "Standard", price: 1500, quantity: 10 }] });
   const buyer = await createMember();
   const order = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id, quantity: 2, unitPrice: 1500 });
-  await prisma.ticketReservation.create({ data: { orderId: order.id, organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id, quantity: 2, expiresAt: new Date(Date.now() + holdMinutes * minute) } });
-  // Stripe's page closes 5 minutes before the hold ends (DEF-033).
-  const closesAt = Math.floor((Date.now() + (holdMinutes - 5) * minute) / 1000);
+  // PAY-009: the reservation runs the hold plus the 5-minute webhook margin, and
+  // Stripe's page lasts at least 30 minutes; the job closes it when the hold ends.
+  const holdEndsAt = new Date(Date.now() + holdMinutes * minute);
+  await prisma.ticketReservation.create({ data: { orderId: order.id, organisationId: society.organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, userId: buyer.id, quantity: 2, expiresAt: new Date(holdEndsAt.getTime() + 5 * minute) } });
+  const closesAt = Math.floor((Date.now() + 31 * minute) / 1000);
   const session = (status: string, paymentStatus = "unpaid") => ({
     id: order.stripeSessionId, status, payment_status: paymentStatus, url: "https://checkout.stripe.com/c/pay/test", expires_at: closesAt,
     metadata: { orderId: order.id, eventId: event.id, organisationId: society.organisation.id, ticketTypeId: event.ticketTypes[0].id, quantity: "2" }
   });
   setMockSession({ userId: buyer.id, email: buyer.email, accountRole: "member" });
-  return { society, event, buyer, order, session, closesAt };
+  return { society, event, buyer, order, session, holdEndsAt };
 }
 
 const cancel = (orderId: string, init: RequestInit = {}) =>
@@ -48,8 +50,8 @@ describe("unpaid orders", () => {
     const fixture = await unpaidTicketOrder();
     const state = () => pendingCheckoutState({ kind: "ticket", id: fixture.order.id });
     stripe.retrieve.mockResolvedValue(fixture.session("open"));
-    // The buyer is told Stripe's deadline, not the hold's few extra minutes.
-    expect(await state()).toEqual({ state: "waiting", holdEndsAt: new Date(fixture.closesAt * 1000), paymentUrl: "https://checkout.stripe.com/c/pay/test" });
+    // The buyer is told when the hold ends, not Stripe's later page close or the webhook margin.
+    expect(await state()).toEqual({ state: "waiting", holdEndsAt: fixture.holdEndsAt, paymentUrl: "https://checkout.stripe.com/c/pay/test" });
     stripe.retrieve.mockResolvedValue(fixture.session("complete", "paid"));
     expect(await state()).toEqual({ state: "confirming" });
     stripe.retrieve.mockResolvedValue(fixture.session("expired"));
@@ -57,7 +59,8 @@ describe("unpaid orders", () => {
     // Without Stripe's answer the hold decides, and no payment page is offered.
     stripe.retrieve.mockRejectedValue(new Error("Stripe unavailable"));
     expect(await state()).toMatchObject({ state: "waiting", paymentUrl: null });
-    await prisma.ticketReservation.update({ where: { orderId: fixture.order.id }, data: { expiresAt: new Date(Date.now() - minute) } });
+    // Past the hold, inside the webhook margin: the hold is over for the buyer.
+    await prisma.ticketReservation.update({ where: { orderId: fixture.order.id }, data: { expiresAt: new Date(Date.now() + 2 * minute) } });
     stripe.retrieve.mockResolvedValue(fixture.session("open"));
     expect(await state()).toEqual({ state: "ended" });
   });

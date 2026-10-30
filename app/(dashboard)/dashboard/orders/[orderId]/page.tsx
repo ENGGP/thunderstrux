@@ -117,7 +117,8 @@ export default async function OrganisationOrderDetailPage({
         </Notice>
       ) : null}
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+      {/* Manage spans both rows and its extra height goes to the 1fr row, so Tickets sits right under Summary. */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 lg:grid-rows-[auto_1fr]">
         <Card>
           <h2 className="text-lg font-semibold text-ink">Summary</h2>
           <dl className="mt-3 grid gap-x-6 gap-y-3 text-ui sm:grid-cols-[max-content_minmax(0,1fr)]">
@@ -160,7 +161,7 @@ export default async function OrganisationOrderDetailPage({
           </dl>
         </Card>
 
-        <Card>
+        <Card className="lg:row-span-2">
           <h2 className="text-lg font-semibold text-ink">Manage this order</h2>
           <p className="mt-1 text-sm text-ink-soft">Only a refund through Stripe moves money; the other actions here don&apos;t.</p>
           <OrderDetailActions

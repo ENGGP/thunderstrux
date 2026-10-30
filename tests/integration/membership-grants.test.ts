@@ -209,6 +209,23 @@ describe("membership grants", () => {
     expect(await prisma.commerceOrder.count()).toBe(0);
   });
 
+  test("a plan that ends while a checkout queues for the society's lock can't be bought", async () => {
+    const { organisation, plan } = await society();
+    await member();
+    const ending = await plan({ endsAt: new Date(Date.now() + 1000) });
+    // Not awaited inside: the checkout can only finish once this transaction commits.
+    const queued = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Organisation" WHERE "id" = ${organisation.id} FOR UPDATE`;
+      const checkout = buy(organisation.id, ending.id);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return { checkout };
+    });
+    const refused = await queued.checkout;
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.details[0]).toMatchObject({ reason: "plan_unavailable" });
+    expect(await prisma.membershipGrant.count({ where: { membershipProductId: ending.id } })).toBe(0);
+  });
+
   test("state follows the clock and revocation exactly at the term's edges", () => {
     const startsAt = new Date("2027-01-01T00:00:00Z");
     const endsAt = new Date("2027-07-01T00:00:00Z");

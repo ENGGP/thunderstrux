@@ -80,15 +80,16 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
   // Under the buyer and option locks: every option still on sale in this
   // society, enough left after other checkouts' holds, and the prices the
   // buyer reviewed. Nothing is lowered here; the basket re-quotes instead.
-  async quote(tx, { organisationId, buyer, selection: { items, quoteVersion: version }, now }) {
+  async quote(tx, { organisationId, buyer, selection: { items, quoteVersion: version } }) {
+    const ids = items.map((item) => item.variantId);
+    await lockVariants(tx, ids);
+    const now = new Date();
     // One unpaid basket per buyer per society holds stock at a time (SEC-010). Checkout has already locked the buyer.
     const open = await tx.commerceOrder.findFirst({
       where: { organisationId, kind: "merchandise", status: "pending", paymentKind: "stripe", expiresAt: { gt: now }, ...buyer },
       select: { id: true }
     });
     if (open) throw new MerchandiseUnavailableError("purchase_in_progress", "You already have a checkout in progress. Finish or cancel it first.", undefined, undefined, open.id);
-    const ids = items.map((item) => item.variantId);
-    await lockVariants(tx, ids);
     const [options, held, ownFree] = await Promise.all([
       tx.merchandiseVariant.findMany({
         where: { id: { in: ids }, organisationId, archivedAt: null, product: { status: "published" } },

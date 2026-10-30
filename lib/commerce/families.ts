@@ -19,9 +19,10 @@ export type CommerceFamilyAdapter<Selection = unknown> = {
   selection: z.ZodType<Selection>;
   // Merchandise may be bought by a verified guest; memberships never.
   guests: boolean;
-  // Under the family's locks: validate the selection against live products,
-  // place any hold, and return the lines to buy at today's prices.
-  quote(tx: Prisma.TransactionClient, input: { organisationId: string; buyer: CommerceBuyer; selection: Selection; now: Date }): Promise<{ lines: CommerceLineInput[] }>;
+  // Takes the family's locks, then reads the clock, since the queue for them can
+  // be long. Under them: validate the selection against live products, place
+  // any hold, and return the lines to buy at today's prices.
+  quote(tx: Prisma.TransactionClient, input: { organisationId: string; buyer: CommerceBuyer; selection: Selection }): Promise<{ lines: CommerceLineInput[] }>;
   // Takes the family's locks for an existing order, before the order lock.
   lock(tx: Prisma.TransactionClient, order: CommerceOrderForHooks): Promise<void>;
   // Under the order lock, after the payment is verified: grant the membership

@@ -77,12 +77,12 @@ export const membershipFamily: CommerceFamilyAdapter<z.infer<typeof selection>> 
   selection,
   guests: false,
 
-  async quote(tx, { organisationId, buyer, selection: { planId }, now }) {
+  async quote(tx, { organisationId, buyer, selection: { planId } }) {
     if (!("userId" in buyer)) throw new MembershipUnavailableError("plan_unavailable", "Memberships need a member account");
     // Checkout has already locked the buyer.
     await tx.$queryRaw`SELECT "id" FROM "Organisation" WHERE "id" = ${organisationId} FOR UPDATE`;
     const plan = await tx.membershipProduct.findFirst({
-      where: { id: planId, organisationId, status: "published", endsAt: { gt: now } },
+      where: { id: planId, organisationId, status: "published", endsAt: { gt: new Date() } },
       select: { id: true, name: true, priceAmount: true, startsAt: true, endsAt: true }
     });
     if (!plan) throw new MembershipUnavailableError("plan_unavailable", "This membership is no longer on sale");

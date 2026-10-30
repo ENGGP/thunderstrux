@@ -15,6 +15,8 @@ import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { cancelFreeMerchandiseOrder } from "@/lib/merchandise/after-sale";
 import { updateProduct } from "@/lib/merchandise/catalogue";
 import { quoteVersion } from "@/lib/merchandise/sale";
+import { commerceHoldMinutes, holdEndsAt } from "@/lib/checkout-hold";
+import { lateWebhookGraceMs } from "@/lib/tickets/reservations";
 import { quoteBasket, shopProduct } from "@/lib/merchandise/shop";
 import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
 import { guestSession } from "@/tests/helpers/guest";
@@ -239,6 +241,27 @@ describe("merchandise sale", () => {
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect((results.find((result) => result.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ reason: "free_limit_reached", available: 4 });
     expect(await stock(variants[0].id)).toMatchObject({ remaining: 34 });
+  });
+
+  test("a checkout that queued for an option's lock decides with the clock it got through at", async () => {
+    const { organisation, variants } = await shop([{ priceAmount: 3000, remaining: 1 }]);
+    const items = [{ variantId: variants[0].id, quantity: 1, unitPrice: 3000 }];
+    const lapsing = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
+    const buyer = await member();
+    // That hold still counts when the next checkout joins the queue, and has lapsed by the time it gets through.
+    await prisma.commerceOrder.update({ where: { id: lapsing }, data: { expiresAt: new Date(Date.now() - lateWebhookGraceMs + 600) } });
+    let lockReleasedAt = 0;
+    // Not awaited inside: the checkout can only finish once this transaction commits.
+    const queued = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MerchandiseVariant" WHERE "id" = ${variants[0].id} FOR UPDATE`;
+      const checkout = buy(organisation.id, buyer, items);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      lockReleasedAt = Date.now();
+      return { checkout };
+    });
+    const { attemptId } = await queued.checkout;
+    const order = await prisma.commerceOrder.findUniqueOrThrow({ where: { id: await orderOf(attemptId) } });
+    expect((order.expiresAt as Date).getTime()).toBeGreaterThanOrEqual(holdEndsAt(new Date(lockReleasedAt), commerceHoldMinutes).getTime());
   });
 
   test("a tampered amount, an expired hold paid late and a hold that lapsed before its payment landed all go to review without taking stock", async () => {

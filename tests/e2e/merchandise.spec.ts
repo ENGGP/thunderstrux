@@ -172,7 +172,7 @@ test("a guest checks out free merchandise, a member reviews a paid basket, and t
   await basket(paid.id, 1);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Review your order" })).toBeVisible();
-  await expect(page.getByText("We hold these items for 30 minutes while you pay.")).toBeVisible();
+  await expect(page.getByText("We hold these items for 20 minutes while you pay.")).toBeVisible();
   await shoot(page, "review");
   await page.getByRole("button", { name: "Pay A$45.00" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Checkout didn't start" })).toContainText("Nothing has been charged.");

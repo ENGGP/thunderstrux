@@ -97,7 +97,7 @@ export function MemberOrganisationsList({
               </div>
               {organisation.joinedAt ? (
                 <p className="mt-1 text-sm text-ink-muted">
-                  Joined {formatDate(organisation.joinedAt)}
+                  Joined {formatDate(organisation.joinedAt, organisation.timeZone ?? undefined)}
                 </p>
               ) : null}
               <div className="mt-4 flex flex-wrap gap-2">

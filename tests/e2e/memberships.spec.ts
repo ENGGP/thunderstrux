@@ -1,6 +1,6 @@
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { createMembershipGrant } from "@/tests/helpers/test-data";
-import { test, expect, login, prisma, selectStaffContext } from "./fixtures";
+import { test, expect, login, prisma, selectStaffContext, submitTwice } from "./fixtures";
 
 // T22: an owner drafts, fixes, publishes and archives a membership plan; staff
 // without memberships:manage never see it. The society has no Stripe, so a
@@ -20,7 +20,7 @@ test("an owner drafts a plan, sees the publish check, publishes it free and arch
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(`Semester 1 ${year}`);
   await page.getByLabel("Price", { exact: true }).fill("25");
   await expect(page.getByText("your society receives $23.17")).toBeVisible();
-  await page.getByRole("button", { name: "Save draft" }).click();
+  await submitTwice(page, page.locator("form").filter({ has: page.getByRole("button", { name: "Save draft" }) }), `/api/orgs/${data.organisation.slug}/memberships`);
 
   await expect(page.getByRole("heading", { name: `Semester 1 ${year}`, level: 1 })).toBeVisible();
   await expect(page.getByText("Set up payments to sell a paid plan.")).toBeVisible();
@@ -36,7 +36,7 @@ test("an owner drafts a plan, sees the publish check, publishes it free and arch
 
   for (const [path, name] of [["/dashboard/memberships", "list"], [page.url().replace("http://localhost:3100", ""), "plan"]] as const) {
     await page.goto(path);
-    for (const width of [390, 1280]) {
+    for (const width of [390, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: `test-results/memberships-${name}-${width}.png`, fullPage: true });
@@ -82,7 +82,7 @@ test("a member buys a free membership through checkout and the owner finds them 
   await login(page, data.owner.email, "/dashboard/memberships/members");
   await expect(page.getByRole("link", { name: "Members", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Active 1" })).toBeVisible();
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/memberships-roster-${width}.png`, fullPage: true });
@@ -90,7 +90,7 @@ test("a member buys a free membership through checkout and the owner finds them 
   await page.getByRole("link", { name: "Robin Member" }).first().click();
   await expect(page.getByRole("heading", { name: "Robin Member", level: 1 })).toBeVisible();
   await expect(page.getByText("Members-only events", { exact: true })).toBeVisible();
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/memberships-member-${width}.png`, fullPage: true });
@@ -127,7 +127,7 @@ test("a paid membership offers a refund that names the amount and asks for the o
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Refund $15.00 to Sam Paid?" })).toBeVisible();
   await expect(dialog.getByLabel(`Type ${order.id.slice(-6).toUpperCase()} to confirm`)).toBeVisible();
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.screenshot({ path: `test-results/memberships-refund-dialog-${width}.png` });
   }
@@ -155,7 +155,7 @@ test("a member finds a membership on the society page, gets it free through the 
   await login(page, data.member.email, memberships);
   await expect(page.getByText("Joined", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/^Member until/)).toHaveCount(0);
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/memberships-offers-${width}.png`, fullPage: true });
@@ -164,7 +164,7 @@ test("a member finds a membership on the society page, gets it free through the 
   await page.getByRole("link", { name: "Get free membership" }).click();
   await expect(page.getByRole("heading", { name: "Confirm your membership", level: 1 })).toBeVisible();
   await expect(page.getByText("No automatic renewal")).toBeVisible();
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/memberships-review-${width}.png`, fullPage: true });
@@ -176,7 +176,7 @@ test("a member finds a membership on the society page, gets it free through the 
   await page.getByRole("link", { name: "View my memberships" }).click();
   await expect(page.getByRole("heading", { name: "My memberships", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Semester 2 open" })).toBeVisible();
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/memberships-mine-${width}.png`, fullPage: true });
@@ -214,7 +214,7 @@ test("an event's member price shows to a member with member prices, and everyone
   await page.reload();
   await expect(page.getByText(/Member price$/).first()).toBeVisible();
   await expect(page.getByText("Member price through your Member price plan membership.")).toBeVisible();
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/member-price-event-${width}.png`, fullPage: true });
@@ -257,7 +257,7 @@ test("a members-only event shows anyone without access a gate with nothing about
   await expect(page).toHaveTitle(`Members-only event · ${data.organisation.name} · Thunderstrux`);
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
   expect(await page.content()).not.toContain(sentinel);
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/members-only-gate-${width}.png`, fullPage: true });
@@ -267,7 +267,7 @@ test("a members-only event shows anyone without access a gate with nothing about
   await page.reload();
   await expect(page.getByRole("heading", { name: `${sentinel}-title`, level: 1 })).toBeVisible();
   await expect(page.getByText(`You can see this because your ${data.organisation.name} membership includes members-only events.`)).toBeVisible();
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/members-only-event-${width}.png`, fullPage: true });

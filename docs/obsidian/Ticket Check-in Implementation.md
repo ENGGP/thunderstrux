@@ -62,7 +62,7 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 - After any server answer the card re-reads its ticket (`?q={ticketId}`) and the page refreshes the counts.
 - Every state has one detail line ("Not checked in yet." while valid), so admitting someone never pushes the button down. A check-in this card made reads "Checked in just now." and its button slot shows a still "Checked in" for 2 seconds, so a second tap can't land on Undo; then Undo check-in is a small link at the slot's end. A 409 `already_checked_in` reads "Already used" (warning): "Checked in at {time} by {name}. Don't admit twice." A ticket already in when the list loaded reads "Checked in at {time} by {name}."
 - 401, 403 and 429 save nothing and say nothing about the ticket, so the card keeps its state and shows why on the card (sign in again, no check-in access, wait) as an alert; `fetchWithCsrf` returns these rather than throwing.
-- With no answer in 10 seconds the card shows "Status unknown" and Reload ticket. It never claims a check-in it can't confirm, and a reload of one that did save shows it as checked in.
+- With no answer in 10 seconds, the CSRF token fetch included, the card shows "Status unknown" and Reload ticket. It never claims a check-in it can't confirm, and a reload of one that did save shows it as checked in.
 
 ## Scanning
 

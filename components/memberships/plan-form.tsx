@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DateField } from "@/components/ui/date-field";
@@ -93,6 +93,8 @@ export function PlanForm({
   const [conflict, setConflict] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // State updates too late to stop a fast double click.
+  const submitting = useRef(false);
   const dirty = JSON.stringify(form) !== saved;
   const fixed = locked || archived;
 
@@ -116,6 +118,7 @@ export function PlanForm({
 
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (submitting.current) return;
     const priceAmount = parseMoneyInput(form.price);
     if (priceAmount === null) {
       setErrors({ priceAmount: "Enter an amount like 25.00. Use 0 for a free membership." });
@@ -125,6 +128,7 @@ export function PlanForm({
       setErrors({ priceAmount: paidPriceMinimum });
       return;
     }
+    submitting.current = true;
     setBusy(true);
     setErrors({});
     setError("");
@@ -151,16 +155,18 @@ export function PlanForm({
         setMessage("Plan saved.");
         router.refresh();
       } else {
+        // Stays busy until the new page opens: a late click must not create it again.
         router.push(`/dashboard/memberships/${response.plan.id}`);
+        return;
       }
     } catch (failure) {
       const details = failure instanceof ClientApiError ? (failure.payload?.error?.details ?? []) : [];
       setErrors(Object.fromEntries(details.filter((detail) => detail.path?.length).map((detail) => [detail.path![0], detail.message])));
       setConflict(failure instanceof ClientApiError && failure.status === 409 && /changed since you opened it/.test(failure.payload?.error?.message ?? ""));
       setError(getClientErrorMessage(failure, "Unable to save the plan."));
-    } finally {
-      setBusy(false);
     }
+    submitting.current = false;
+    setBusy(false);
   }
 
   const cents = parseMoneyInput(form.price);

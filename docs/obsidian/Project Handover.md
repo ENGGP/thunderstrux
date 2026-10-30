@@ -70,6 +70,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-10-31: the preview was deployed at `961dbaf` (#235; backup `ops-preview-2026-10-30T14-42-34-273Z.dump` first; 73 migrations, adding #231's `20261124010000_ticket_codes`). Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers run the release's ops image with no failures, and the stale-order and refunds jobs have `EMAIL_FROM`, the notification key and the app URL (DEF-065). The Accounts v2 event destination is enabled with the right URL and all seven events, and Stripe's test ping passed its signature check, which proves `STRIPE_ACCOUNTS_WEBHOOK_SECRET`. `MFA_ENFORCEMENT_MODE` is still `off`.
 - 2026-10-31: DEF-064 is resolved: the owner scanned three tickets with the camera in Safari on an iPhone against the preview, so the fallback reader has now worked on a real phone.
 - 2026-10-31: #237 fixes the audit's email and job findings (16, 17; DEF-067 to DEF-070, SEC-043). Both email jobs send for up to 45 seconds a run, sign-in and guest links go first, and a 429 uses no attempt and ends the run. Finished notifications are deleted after 30 days, except a Stripe deadline notice, which stays until 30 days after its deadline. A failed step in the notification job alerts `notification_step_failed`, and a timed-out run keeps its lease until it lapses. The tests prove the queues drain, not how fast real email goes. No migration.
+- 2026-10-31: #240 fixes the audit's checkout and forms items (finding 14, DEF-071 to DEF-074, UI-026). A failed attempt no longer sticks to Pay, and all three buttons share `useCheckout`; the create forms send one request; the door's 10-second timeout covers the token fetch; the orders list stops loading every event; society dates missing their zone now pass it. Registers DEF-075 (a doubled sentence in two refusals). No migration.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -154,7 +155,6 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
    - money and cancellation (findings 4 to 8 and 13);
    - sales rules (9, 10, 12);
    - emails and jobs (16, 17);
-   - checkout and forms (14);
    - stale docs;
    - lean (18, 20, dead code), which waits for the first two.
 

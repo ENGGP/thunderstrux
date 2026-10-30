@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
-import { test, expect, prisma, login } from "./fixtures";
+import { test, expect, prisma, login, submitTwice } from "./fixtures";
 import { formatDayInput } from "@/lib/date-input";
 import { toZonedInput, zonedCandidates } from "@/lib/zoned-time";
 import { createOrder } from "@/tests/helpers/test-data";
@@ -60,7 +60,7 @@ test("organisers build an event in the society's time zone with a dollar price a
     await page.screenshot({ path: `test-results/event-builder-${width}.png`, fullPage: true });
   }
 
-  await page.getByRole("button", { name: "Create event", exact: true }).click();
+  await submitTwice(page, page.getByRole("form", { name: "Event details" }), "/api/events");
   await page.waitForURL((url) => /^\/dashboard\/events\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith("/new"));
   const event = await prisma.event.findFirstOrThrow({
     where: { organisationId: data.organisation.id, title: "Builder Night" },

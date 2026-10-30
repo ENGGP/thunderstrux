@@ -15,7 +15,7 @@ test("the Payments page explains connecting, fees and what free tickets need", a
   await expect(fees.getByText("$1.64")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Disconnect Stripe" })).toHaveCount(0);
 
-  for (const width of [390, 1280]) {
+  for (const width of [390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/payments-${width}.png`, fullPage: true });

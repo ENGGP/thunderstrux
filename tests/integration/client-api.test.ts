@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, expect, test, vi, type Mock } from "vitest";
 import { ClientApiError, fetchJson, fetchWithCsrf, getClientErrorMessage, type ApiErrorPayload } from "@/lib/client/api";
-import { waitForAttempt } from "@/lib/client/checkout";
+import { useCheckout, waitForAttempt } from "@/lib/client/checkout";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -41,6 +43,13 @@ describe("client CSRF refresh", () => {
     vi.stubGlobal("fetch", fetchMock);
     expect((await fetchWithCsrf("/api/events", { method: "POST", body: "{}" })).status).toBe(403);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("a caller's timeout also stops the token fetch, so the door never hangs on it", async () => {
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    })));
+    await expect(fetchWithCsrf("/api/tickets/ticket-1/check-in", { method: "POST", signal: AbortSignal.timeout(1) })).rejects.toMatchObject({ name: "TimeoutError" });
   });
 });
 
@@ -105,5 +114,75 @@ describe("checkout attempt polling", () => {
     await vi.runAllTimersAsync();
     expect(await slow).toBe("slow");
     expect(processing).toHaveBeenCalledTimes(15);
+  });
+});
+
+describe("a Pay button's run", () => {
+  // Rendered once on the server, where the key's ref works and state updates do nothing.
+  function button(failedMessage?: string) {
+    const outcome = { finished: vi.fn(), slow: vi.fn(), refused: vi.fn() };
+    let start!: ReturnType<typeof useCheckout>["start"];
+    renderToStaticMarkup(createElement(function Button() {
+      ({ start } = useCheckout({ ...outcome, failedMessage }));
+      return null;
+    }));
+    return { ...outcome, press: async (post: Mock) => {
+      const run = start(post);
+      await vi.runAllTimersAsync();
+      await run;
+    } };
+  }
+  const attemptAnswers = (status: string) => vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ status }))));
+  const processing = { attemptId: "attempt-1", status: "processing" };
+  const keys = (post: Mock) => post.mock.calls.map(([key]) => key);
+
+  test("a lost response keeps the key, so a retry finds the same checkout; a refusal ends the intent", async () => {
+    vi.useFakeTimers();
+    const pay = button();
+    const post = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(new ClientApiError("Sold out", 409, null))
+      .mockResolvedValueOnce({ kind: "fulfilled", orderId: "order-1" });
+    await pay.press(post);
+    await pay.press(post);
+    await pay.press(post);
+    const [lost, retried, next] = keys(post);
+    expect(retried).toBe(lost);
+    expect(next).not.toBe(lost);
+    expect(pay.refused).toHaveBeenCalledTimes(2);
+    expect(pay.finished).toHaveBeenCalledWith("order-1");
+  });
+
+  test("a failed attempt after Stripe timed out ends the intent, so the next press doesn't replay it", async () => {
+    vi.useFakeTimers();
+    attemptAnswers("failed");
+    const pay = button("Ticket wording.");
+    const post = vi.fn().mockResolvedValue(processing);
+    await pay.press(post);
+    await pay.press(post);
+    expect(keys(post)[1]).not.toBe(keys(post)[0]);
+    expect(pay.refused.mock.calls[0][0]).toMatchObject({ message: "Ticket wording." });
+  });
+
+  test("a slow Stripe keeps the key: nothing is known yet, and trying again must find the same checkout", async () => {
+    vi.useFakeTimers();
+    attemptAnswers("processing");
+    const pay = button();
+    const post = vi.fn().mockResolvedValue(processing);
+    await pay.press(post);
+    await pay.press(post);
+    expect(pay.slow).toHaveBeenCalledTimes(2);
+    expect(pay.refused).not.toHaveBeenCalled();
+    expect(keys(post)[1]).toBe(keys(post)[0]);
+  });
+
+  test("Stripe's page opens, and a free order finishes under either family's id", async () => {
+    vi.useFakeTimers();
+    const pay = button();
+    vi.stubGlobal("window", { location: { href: "" } });
+    await pay.press(vi.fn().mockResolvedValue({ kind: "stripe", url: "https://checkout.stripe.com/c/pay/cs_test" }));
+    expect(window.location.href).toBe("https://checkout.stripe.com/c/pay/cs_test");
+    await pay.press(vi.fn().mockResolvedValue({ kind: "fulfilled", commerceOrderId: "commerce-1" }));
+    expect(pay.finished).toHaveBeenCalledWith("commerce-1");
   });
 });

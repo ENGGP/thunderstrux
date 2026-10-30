@@ -54,7 +54,7 @@ Thunderstrux is a Docker-first Next.js App Router app for student societies: eve
 | `lib/assets` | Image upload, sanitising, S3 storage, references, maintenance | `service.ts`, `image.ts`, `storage.ts`, `references.ts`, `maintenance.ts` |
 | `lib/audit` | Society History from `AuditLog` rows | `history.ts` (`readHistory`, `historyCategories`) |
 | `lib/auth` | Sessions, guards, account lifecycle, context selection | `access.ts`, `page-access.ts`, `live-session.ts`, `context.ts`, `account-lifecycle.ts`, `account-closure.ts`, `account-settings.ts`, `email-change.ts`, `credentials.ts`, `secret.ts` |
-| `lib/client` | Browser fetch helpers | `api.ts` (`fetchJson`, `fetchWithCsrf`), `checkout.ts` (`waitForAttempt`), `orgs.ts`, `sign-out.ts` |
+| `lib/client` | Browser fetch helpers | `api.ts` (`fetchJson`, `fetchWithCsrf`), `checkout.ts` (`useCheckout`, `waitForAttempt`), `orgs.ts`, `sign-out.ts` |
 | `lib/commerce` | Membership and merchandise orders, checkout, webhooks, family registry | `orders.ts`, `checkout.ts`, `families.ts`, `reconciliation.ts`, `binding.ts`, `payment-recovery.ts`, `http.ts` |
 | `lib/date-input.ts` | Parsing and formatting for the house date picker | |
 | `lib/db` | Prisma client and organisation scope helpers | `index.ts` (`prisma`), `organisation-scope.ts`, `organisation-drift.ts` |

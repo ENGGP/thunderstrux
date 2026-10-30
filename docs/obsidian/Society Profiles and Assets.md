@@ -51,7 +51,7 @@ sources: [lib/assets/service.ts, lib/assets/storage.ts, lib/assets/image.ts, lib
 - **Save** (`PATCH /api/orgs/[orgSlug]/profile`): trusted origin, rate bucket `organisation_profile`, 80,000-byte body cap, then under User, Organisation and sorted Asset locks it rechecks live authority and MFA, compares `profileVersion` (409 on a stale one), and accepts a logo or cover only if it is a ready, undeleted asset of this society with the matching `kind`. Audits `organisation.profile_updated` with the changed field names.
 - **Pickup details:** a society can't clear `pickupPolicy` while any merchandise product is published (400), because buyers must always see them.
 - **Conflict UI:** a stale save keeps the editor's values and offers Save my version (re-reads the latest `profileVersion` and saves over it) or Reload latest profile (discards after confirmation).
-- `timeZone` (default `Australia/Brisbane`) drives every society date: events, plans, analytics, the calendar.
+- `timeZone` (default `Australia/Brisbane`) drives every society date: events, plans, orders and purchases, payouts, staff lists, analytics, the calendar.
 
 ## Public profile and directory
 

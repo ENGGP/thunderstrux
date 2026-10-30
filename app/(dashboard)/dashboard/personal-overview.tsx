@@ -52,12 +52,12 @@ export async function PersonalOverview({ userId }: { userId: string }) {
   }
   const [next, ...also] = plans;
   const purchases = [
-    ...tickets.items.map((order) => ({ key: `t-${order.id}`, createdAt: order.createdAt, title: order.event.title, kind: "Ticket", society: order.event.organisation.name, href: `/purchases/tickets/${order.id}`, order, pickup: null })),
+    ...tickets.items.map((order) => ({ key: `t-${order.id}`, createdAt: order.createdAt, title: order.event.title, kind: "Ticket", society: order.event.organisation.name, timeZone: order.event.organisation.timeZone, href: `/purchases/tickets/${order.id}`, order, pickup: null })),
     ...commerce.items.map((order) => {
       const [first, ...rest] = order.lines;
       const merchandise = order.kind === "merchandise";
       return {
-        key: `c-${order.id}`, createdAt: order.createdAt, order, society: order.organisation.name,
+        key: `c-${order.id}`, createdAt: order.createdAt, order, society: order.organisation.name, timeZone: order.organisation.timeZone,
         title: merchandise ? (first ? (rest.length ? `${first.nameSnapshot} and ${rest.length} more` : first.nameSnapshot) : "Order") : (first?.nameSnapshot ?? "Membership"),
         kind: merchandise ? "Merchandise" : "Membership",
         href: merchandise ? `/merchandise/orders/${order.id}` : `/memberships/orders/${order.id}`,
@@ -151,7 +151,7 @@ export async function PersonalOverview({ userId }: { userId: string }) {
                     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line py-3.5 first:border-0" key={purchase.key}>
                       <div className="grid min-w-0 flex-[1_1_12rem] gap-0.5">
                         <Link className={titleLink} href={purchase.href}>{purchase.title}</Link>
-                        <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{purchase.kind} · {purchase.society} · {formatDate(purchase.createdAt)}</span>
+                        <span className="text-sm text-ink-soft [overflow-wrap:anywhere]">{purchase.kind} · {purchase.society} · {formatDate(purchase.createdAt, purchase.timeZone)}</span>
                       </div>
                       <span className="text-sm font-semibold tabular-nums text-ink">{purchase.order.paymentKind === "free" ? "Free" : formatPrice(purchase.order.totalAmount)}</span>
                       {purchase.pickup ? <StatusBadge status={purchase.pickup === "ready" ? "ready-to-collect" : "preparing"} /> : <StatusBadge label={badge.label} status={badge.status} />}

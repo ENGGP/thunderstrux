@@ -78,13 +78,15 @@ export function StaffManagement({
   initialStaff,
   initialInvites,
   pastInvites,
-  canManageOwners
+  canManageOwners,
+  timeZone
 }: {
   canManageOwners: boolean;
   orgSlug: string;
   initialStaff: StaffRow[];
   initialInvites: InviteRow[];
   pastInvites: PastInvite[];
+  timeZone: string;
 }) {
   const router = useRouter();
   const [staff, setStaff] = useState(initialStaff);
@@ -303,7 +305,7 @@ export function StaffManagement({
                 <div className="min-w-0">
                   <p className="font-semibold text-ink [overflow-wrap:anywhere]">{invite.email}</p>
                   <p className="text-sm text-ink-soft">
-                    {roleLabels[invite.role]} · expires {formatDate(invite.expiresAt)}
+                    {roleLabels[invite.role]} · expires {formatDate(invite.expiresAt, timeZone)}
                   </p>
                 </div>
                 {(canManageOwners || invite.role !== "owner") && (
@@ -337,7 +339,7 @@ export function StaffManagement({
                   <span className="block text-sm text-ink-soft [overflow-wrap:anywhere]">{row.user.email}</span>
                 </span>
                 <span className="shrink-0 text-sm text-ink-soft">
-                  {roleLabels[row.role]}{row.revokedAt ? ` · revoked ${formatDate(row.revokedAt)}` : ""}
+                  {roleLabels[row.role]}{row.revokedAt ? ` · revoked ${formatDate(row.revokedAt, timeZone)}` : ""}
                 </span>
               </li>
             ))}
@@ -365,7 +367,7 @@ export function StaffManagement({
                     <td className="md:py-3 md:pr-4 text-ink [overflow-wrap:anywhere]">{invite.email}</td>
                     <td className="md:py-3 md:pr-4 text-ink-soft">{roleLabels[invite.role]}</td>
                     <td className="md:py-3 md:pr-4"><StatusBadge status={invite.state} /></td>
-                    <td className="text-ink-soft md:py-3">{formatDate(invite.createdAt)}</td>
+                    <td className="text-ink-soft md:py-3">{formatDate(invite.createdAt, timeZone)}</td>
                   </tr>
                 ))}
               </tbody>

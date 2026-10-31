@@ -266,7 +266,7 @@ export function OrderDetailActions({
         <div className={block}>
           <p className="font-semibold text-ink">Refund through Stripe</p>
           <p className="text-sm text-ink-soft">
-            After refunding the buyer in Stripe, enter the refund ID so Thunderstrux can check it.
+            Refund the buyer in Stripe and this review closes by itself. If it doesn&apos;t, enter the refund ID so Thunderstrux can check it.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-full sm:w-64">

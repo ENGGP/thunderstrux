@@ -321,7 +321,7 @@ describe("merchandise sale", () => {
     const { organisation, variants } = await shop([{ priceAmount: 3000, remaining: 2 }]);
     const items = [{ variantId: variants[0].id, quantity: 1, unitPrice: 3000 }];
     const refunded = await orderOf((await buy(organisation.id, await member(), items)).attemptId);
-    await prisma.commerceOrder.update({ where: { id: refunded }, data: { externalRefundedAmount: 3000 } });
+    await prisma.commerceOrder.update({ where: { id: refunded }, data: { externalRefundedAmount: 1000 } });
     await deliverPaid(refunded);
     expect(await prisma.commerceOrder.findUniqueOrThrow({ where: { id: refunded } })).toMatchObject({ status: "failed", requiresCompensationReview: true, reviewReason: "refunded_or_disputed_before_fulfilment" });
     expect(await stock(variants[0].id)).toMatchObject({ remaining: 2 });

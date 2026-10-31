@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Prisma, RefundRequestStatus } from "@prisma/client";
+import type { OrderLifecycleSource, Prisma, RefundRequestStatus } from "@prisma/client";
 import type Stripe from "stripe";
 import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
@@ -10,6 +10,7 @@ import { formatMoney, orderReference, ticketReference } from "@/lib/format";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { isDefiniteProviderFailure } from "@/lib/payments/checkout-attempts";
+import { queueCommerceReviewClosedNotice, queueTicketReviewClosedNotice } from "@/lib/payments/compensation-notices";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -61,8 +62,8 @@ export type TicketSelection = { ticketIds: string[]; amount: number; cancelTicke
 type RefundSource = "staff_action" | "refund_worker" | "stripe_webhook";
 type Purchase = { orderId: string | null; commerceOrderId: string | null };
 type HistoryEntry = {
-  type: "refund_requested" | "refund_pending" | "refunded" | "refund_failed";
-  source: RefundSource;
+  type: "compensation_required" | "refund_requested" | "refund_pending" | "refunded" | "refund_failed";
+  source: OrderLifecycleSource;
   actorUserId?: string | null;
   stripeEventId?: string;
   reason?: string;
@@ -278,8 +279,8 @@ export async function openCommerceRefund(tx: Prisma.TransactionClient, input: {
 }
 
 // A payment that couldn't be filled goes back on its own (PAY-003), as a ticketing
-// platform does with an order it can't complete. Nothing left to refund, or a dispute
-// (PAY-036), leaves the order under review; winning the dispute comes back here (PAY-056).
+// platform does with an order it can't complete. A dispute (PAY-036) leaves the order
+// under review, and winning it comes back here (PAY-056).
 export async function openCommerceCompensation(tx: Prisma.TransactionClient, order: { id: string; organisationId: string }, reason: string) {
   try {
     await openCommerceRefund(tx, {
@@ -290,6 +291,65 @@ export async function openCommerceCompensation(tx: Prisma.TransactionClient, ord
     if (!(error instanceof OrderRefundError)) throw error;
     logWarn("commerce.compensation_refund.not_opened", { commerceOrderId: order.id, reason: error.kind });
   }
+}
+
+// PAY-057: a payment under review that is already back with the buyer, through lost
+// disputes or refunds made in Stripe, leaves nothing to refund or decide. The review
+// closes, its job ends and the buyer hears how. Short of the whole payment it stays with
+// a person, as closing would strand the rest; a refund in flight settles the order itself.
+// Called with the purchase locked. True when it closed.
+export async function closeRepaidReview(tx: Prisma.TransactionClient, purchase: Purchase & { organisationId: string }, history: { source: OrderLifecycleSource; stripeEventId?: string }) {
+  const { orderId, commerceOrderId, organisationId } = purchase;
+  const select = { totalAmount: true, externalRefundedAmount: true, requiresCompensationReview: true, refundStatus: true } as const;
+  const order = commerceOrderId
+    ? await tx.commerceOrder.findUniqueOrThrow({ where: { id: commerceOrderId }, select })
+    : await tx.order.findUniqueOrThrow({ where: { id: orderId as string }, select });
+  if (!order.requiresCompensationReview || order.refundStatus === "processing") return false;
+  const lost = await tx.purchaseDispute.aggregate({ where: { ...(commerceOrderId ? { commerceOrderId } : { orderId: orderId as string }), providerStatus: "lost" }, _sum: { amount: true } });
+  const returnedByBank = lost._sum.amount ?? 0;
+  if (order.externalRefundedAmount + returnedByBank < order.totalAmount) return false;
+  // A lost dispute keeps refundStatus clear: payouts hold the sale until its reversal settles.
+  const data = { requiresCompensationReview: false, ...(returnedByBank ? {} : { refundStatus: "refunded" as const }) };
+  if (commerceOrderId) {
+    await tx.commerceOrder.update({ where: { id: commerceOrderId }, data });
+  } else {
+    await tx.order.update({ where: { id: orderId as string }, data });
+    await tx.compensationRefundJob.updateMany({
+      where: { orderId: orderId as string },
+      // No refund id: Stripe fails a refund still pending on a disputed charge, and that isn't one the bank sent back (PAY-025).
+      data: { state: "refunded", stripeRefundId: null, resolvedAt: new Date(), processingToken: null, processingStartedAt: null, lastErrorCode: null, lastErrorAt: null }
+    });
+  }
+  const reason = returnedByBank ? "dispute_lost" : "refunded_outside";
+  await appendHistory(tx, purchase, { type: "refunded", ...history, reason, facts: { amount: order.totalAmount, compensationReview: false } });
+  const target = auditTarget(purchase);
+  await tx.auditLog.create({ data: { organisationId, actorUserId: null, action: `${target.action}.compensation_review_closed`, targetType: target.targetType, targetId: target.targetId, metadata: { reason } } });
+  if (commerceOrderId) await queueCommerceReviewClosedNotice(tx, commerceOrderId, returnedByBank > 0);
+  else await queueTicketReviewClosedNotice(tx, orderId as string, returnedByBank > 0);
+  return true;
+}
+
+// PAY-057: a lost dispute can still turn to won, on a late win or a late withdrawal, and
+// the bank takes back what closed the review, so the buyer is owed again. A failed order
+// that was paid and carries no refund can only have closed this way. A ticket job goes
+// back as the dispute left it, so the win resumes an automatic one and alerts on the rest.
+export async function reopenRepaidReview(tx: Prisma.TransactionClient, purchase: Purchase, stripeEventId: string) {
+  const { orderId, commerceOrderId } = purchase;
+  const closed = { status: "failed", paidAt: { not: null }, requiresCompensationReview: false, refundStatus: null } as const;
+  if (commerceOrderId) {
+    const reopened = await tx.commerceOrder.updateMany({ where: { id: commerceOrderId, ...closed }, data: { requiresCompensationReview: true } });
+    if (reopened.count !== 1) return false;
+  } else {
+    const order = await tx.order.findFirst({ where: { id: orderId as string, ...closed, isManuallyRefunded: false }, select: { compensationRefundModeSnapshot: true } });
+    if (!order) return false;
+    await tx.order.update({ where: { id: orderId as string }, data: { requiresCompensationReview: true } });
+    await tx.compensationRefundJob.updateMany({
+      where: { orderId: orderId as string },
+      data: { state: "review_required", resolvedAt: null, lastErrorCode: order.compensationRefundModeSnapshot === "automatic_full" ? "local_state_not_eligible" : null }
+    });
+  }
+  await appendHistory(tx, purchase, { type: "compensation_required", source: "stripe_webhook", stripeEventId, reason: "dispute_won" });
+  return true;
 }
 
 // The charge this request refunds, checked against the purchase and the

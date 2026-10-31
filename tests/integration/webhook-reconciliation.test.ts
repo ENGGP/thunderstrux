@@ -1105,8 +1105,8 @@ describe("webhook reconciliation", () => {
   test("a refund or dispute Stripe recorded before a late paid webhook sends the order to review instead of issuing tickets", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const refunded = await pendingWithHold();
-    // Staff refunded the buyer in Stripe's dashboard while the paid webhook kept failing.
-    await prisma.order.update({ where: { id: refunded.order.id }, data: { externalRefundedAmount: refunded.order.totalAmount } });
+    // Staff refunded part of it in Stripe's dashboard while the paid webhook kept failing.
+    await prisma.order.update({ where: { id: refunded.order.id }, data: { externalRefundedAmount: 1 } });
     expect(await reconcileCompletedCheckoutSession(refunded.session())).toEqual({ status: "compensation_required", orderId: refunded.order.id, reason: "refunded_or_disputed_before_fulfilment" });
     expect(await refunded.state()).toMatchObject({ status: "failed", requiresCompensationReview: true, tickets: [], reservation: { status: "released" } });
 
@@ -1114,6 +1114,45 @@ describe("webhook reconciliation", () => {
     await prisma.order.update({ where: { id: disputed.order.id }, data: { disputeStatus: "open" } });
     expect(await reconcileCompletedCheckoutSession(disputed.session())).toMatchObject({ status: "compensation_required", reason: "refunded_or_disputed_before_fulfilment" });
     expect(await disputed.state()).toMatchObject({ tickets: [] });
+  });
+
+  // PAY-057: the buyer already has the money, so nothing is owed and no person is needed.
+  test("a late paid webhook after the money went back closes the review it opened, and says so once", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const asked = () => error.mock.calls.filter(([line]) => String(line).includes('"event":"paid_but_unfulfilled_compensation_required"'));
+    const closed = async (orderId: string) => {
+      expect(await prisma.notificationOutbox.count({ where: { eventKey: `payment-review/${orderId}` } })).toBe(0);
+      const [row, ...more] = await prisma.notificationOutbox.findMany({ where: { eventKey: `payment-review-closed/${orderId}` } });
+      expect(more).toEqual([]);
+      return JSON.stringify(decryptNotification(row.encryptedPayload, row.id));
+    };
+    const refunded = await pendingWithHold();
+    const buyer = await createMember();
+    await prisma.order.update({ where: { id: refunded.order.id }, data: { userId: buyer.id, compensationRefundModeSnapshot: "automatic_full", externalRefundedAmount: refunded.order.totalAmount } });
+    expect(await reconcileCompletedCheckoutSession(refunded.session())).toEqual({ status: "compensation_required", orderId: refunded.order.id, reason: "refunded_or_disputed_before_fulfilment" });
+    expect(await refunded.state()).toMatchObject({
+      status: "failed", paidAt: expect.any(Date), requiresCompensationReview: false, refundStatus: "refunded", tickets: [], reservation: { status: "released" }, compensationRefundJob: { state: "refunded" }
+    });
+    expect(await closed(refunded.order.id)).toContain("refunded to your card");
+
+    const lost = await pendingWithHold();
+    await prisma.order.update({ where: { id: lost.order.id }, data: { userId: buyer.id, disputeStatus: "lost" } });
+    await prisma.purchaseDispute.create({ data: {
+      orderId: lost.order.id, organisationId: lost.order.organisationId, stripeDisputeId: `dp_${lost.order.id}`, stripeChargeId: `ch_${lost.order.id}`,
+      amount: lost.order.totalAmount, currency: "aud", reason: "fraudulent", providerStatus: "lost", closedAt: new Date()
+    } });
+    await reconcileCompletedCheckoutSession(lost.session());
+    expect(await lost.state()).toMatchObject({ requiresCompensationReview: false, refundStatus: null, disputeStatus: "lost", compensationRefundJob: { state: "refunded" } });
+    expect(await closed(lost.order.id)).toContain("returned the payment to you");
+
+    // Every way into review closes the same way, and a replay changes nothing.
+    const late = await pendingWithHold();
+    await prisma.order.update({ where: { id: late.order.id }, data: { userId: buyer.id, status: "expired", externalRefundedAmount: late.order.totalAmount } });
+    await reconcileCompletedCheckoutSession(late.session());
+    await reconcileCompletedCheckoutSession(late.session());
+    expect(await late.state()).toMatchObject({ status: "failed", requiresCompensationReview: false, compensationRefundJob: { state: "refunded" } });
+    expect(await closed(late.order.id)).toContain("refunded to your card");
+    expect(asked()).toEqual([]);
   });
 
   // PAY-056: neither mode can refund during a dispute, and a lost one is already back with the buyer.
@@ -1134,7 +1173,8 @@ describe("webhook reconciliation", () => {
     const manual = await notice("manual_review", "open");
     expect(manual).toContain("Your bank has disputed this payment");
     expect(manual).toContain("will review it and refund you");
-    expect(await notice("automatic_full", "lost")).toContain("returned the payment to you");
+    // No dispute row covers the payment here, so part of it is still owed.
+    expect(await notice("automatic_full", "lost")).toContain("returned part of this payment");
     // A won dispute holds nothing back.
     expect(await notice("automatic_full", "won")).toContain("being refunded in full");
   });

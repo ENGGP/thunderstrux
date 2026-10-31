@@ -7,7 +7,7 @@ import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { queueCommerceReviewNotice } from "@/lib/payments/compensation-notices";
 import { logInfo, logWarn } from "@/lib/ops/logger";
-import { openCommerceCompensation } from "@/lib/payments/order-refunds";
+import { closeRepaidReview, openCommerceCompensation } from "@/lib/payments/order-refunds";
 import { getStripe } from "@/lib/stripe";
 
 // Who applied a Session: the signed webhook, or the reconciliation sweep (PAY-024).
@@ -65,6 +65,7 @@ async function paymentDestination(session: Stripe.Checkout.Session) {
   return { intentId: paymentIntent.id, destination: idOf(paymentIntent.transfer_data?.destination) };
 }
 
+// True when the money was already back, so the review closed with nothing owed (PAY-057).
 async function requireCompensation(
   tx: Prisma.TransactionClient,
   order: CommerceOrderForHooks,
@@ -83,8 +84,10 @@ async function requireCompensation(
   await appendCommerceLifecycleEvent(tx, {
     commerceOrderId: order.id, type: "compensation_required", source: facts.source, stripeEventId: facts.stripeEventId, reason, fromStatus: facts.fromStatus, toStatus: "failed"
   });
+  if (await closeRepaidReview(tx, { orderId: null, commerceOrderId: order.id, organisationId: order.organisationId }, { source: facts.source, stripeEventId: facts.stripeEventId })) return true;
   await queueCommerceReviewNotice(tx, order.id);
   await openCommerceCompensation(tx, order, reason);
+  return false;
 }
 
 export async function reconcileCommerceCheckoutSession(
@@ -103,11 +106,11 @@ export async function reconcileCommerceCheckoutSession(
     const now = new Date();
     const current = await tx.commerceOrder.findUniqueOrThrow({
       where: { id: order.id },
-      select: { status: true, requiresCompensationReview: true, totalAmount: true, currency: true, sellerStripeAccountId: true, stripeSessionId: true, externalRefundedAmount: true, disputeStatus: true }
+      select: { status: true, requiresCompensationReview: true, paidAt: true, totalAmount: true, currency: true, sellerStripeAccountId: true, stripeSessionId: true, externalRefundedAmount: true, disputeStatus: true }
     });
-    // A replay, or a payment already under review: nothing more to do.
+    // A replay, or a payment already under review or past it (paid but never filled): nothing more to do.
     if (current.status === "paid") return { status: "already_fulfilled" as const };
-    if (current.requiresCompensationReview) return { status: "compensation_required" as const, alreadyRecorded: true };
+    if (current.requiresCompensationReview || current.paidAt) return { status: "compensation_required" as const, settled: true };
     if (!paid) {
       return current.status === "pending" ? { status: "unpaid" as const } : { status: "ignored" as const, reason: "order_closed_unpaid" };
     }
@@ -121,14 +124,12 @@ export async function reconcileCommerceCheckoutSession(
               : current.externalRefundedAmount > 0 || current.disputeStatus ? "refunded_or_disputed_before_fulfilment"
                 : null;
     if (mismatch) {
-      await requireCompensation(tx, order, mismatch, facts);
-      return { status: "compensation_required" as const, reason: mismatch };
+      return { status: "compensation_required" as const, reason: mismatch, settled: await requireCompensation(tx, order, mismatch, facts) };
     }
     const adapter = commerceFamilies[order.kind];
     const result = adapter ? await adapter.fulfil(tx, order, now) : { fulfilled: false as const, reason: "family_unavailable" };
     if (!result.fulfilled) {
-      await requireCompensation(tx, order, result.reason, facts);
-      return { status: "compensation_required" as const, reason: result.reason };
+      return { status: "compensation_required" as const, reason: result.reason, settled: await requireCompensation(tx, order, result.reason, facts) };
     }
     await tx.commerceOrder.update({
       where: { id: order.id },
@@ -146,7 +147,7 @@ export async function reconcileCommerceCheckoutSession(
     logInfo("commerce.checkout.payment_processing", { commerceOrderId, stripeSessionId: session.id });
     return { status: "ignored", reason: "payment_processing", commerceOrderId };
   }
-  if (outcome.status === "compensation_required" && !("alreadyRecorded" in outcome)) {
+  if (outcome.status === "compensation_required" && !outcome.settled) {
     emitOperationalAlert("paid_but_unfulfilled_compensation_required", { commerceOrderId, stripeSessionId: session.id, reason: outcome.reason, family: resolved.order.kind });
   }
   if (outcome.status === "ignored") return { status: "ignored", reason: outcome.reason, commerceOrderId };

@@ -115,7 +115,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
           </Notice>
         ) : order.requiresCompensationReview ? (
           <Notice title="Payment review" tone="warning">
-            <p className="mt-0.5">Don&apos;t hand this over. Stripe took a payment that couldn&apos;t be filled ({order.reviewReason ?? "under review"}). {order.disputeStatus === "open" ? "Stripe refuses a refund during a dispute: if the buyer wins, their bank returns the money, and if the society wins, Thunderstrux refunds it in full." : "Thunderstrux refunds it in full and emails the buyer; if Stripe refuses, finance sorts it out in Stripe."}</p>
+            <p className="mt-0.5">Don&apos;t hand this over. Stripe took a payment that couldn&apos;t be filled ({order.reviewReason ?? "under review"}). {order.disputeStatus === "open" ? "Stripe refuses a refund during a dispute: if the buyer wins, their bank returns the money, and if the society wins, Thunderstrux refunds it in full." : order.disputeStatus === "lost" ? "The buyer's bank returned part of it, so finance refunds the rest in Stripe." : "Thunderstrux refunds it in full and emails the buyer; if Stripe refuses, finance sorts it out in Stripe."}</p>
           </Notice>
         ) : null}
         <StripeReviewNotice canAct={can("orders:refund")} kind="merchandise" orderId={order.id} review={{ ...order, dispute: order.disputes[0] ?? null }} timeZone={timeZone} />
@@ -183,7 +183,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
                     <span className="text-sm text-ink-soft">
                       {when(event.createdAt)}
                       {name(event.actor) ? ` · ${name(event.actor)}` : ""}
-                      {event.reason && event.type !== "compensation_required" ? ` · “${event.reason}”` : ""}
+                      {event.reason && event.type !== "compensation_required" ? ` · “${/^[a-z0-9_]+$/.test(event.reason) ? event.reason.replaceAll("_", " ") : event.reason}”` : ""}
                     </span>
                   </li>
                 ))}

@@ -145,11 +145,14 @@ describe("History (T38)", () => {
 
   test("steps Thunderstrux takes itself without a person read as Thunderstrux, not Stripe (AUD-002)", async () => {
     const { organisation } = await createOrganisationAccount();
-    for (const [action, targetType] of [["commerce_order.compensation_refund_queued", "CommerceOrder"], ["order.compensation_review_required", "Order"]]) {
-      await prisma.auditLog.create({ data: { organisationId: organisation.id, action, targetType, targetId: `cm${action}` } });
+    for (const [action, targetType] of [["commerce_order.compensation_refund_queued", "CommerceOrder"], ["order.compensation_review_required", "Order"], ["order.compensation_review_closed", "Order"], ["commerce_order.compensation_review_closed", "CommerceOrder"]]) {
+      await prisma.auditLog.create({ data: { organisationId: organisation.id, action, targetType, targetId: `cm${action}`, metadata: { reason: "dispute_lost" } } });
     }
     const { entries } = await readHistory(organisation.id, {}, zone);
-    expect(entries.map((entry) => entry.actor.kind)).toEqual(["thunderstrux", "thunderstrux"]);
+    expect(entries.map((entry) => entry.actor.kind)).toEqual(["thunderstrux", "thunderstrux", "thunderstrux", "thunderstrux"]);
+    expect(entries.filter((entry) => entry.sentence[0] === "closed the payment review of ").map((entry) => entry.facts)).toEqual([
+      [{ label: "Why", value: "The buyer's bank had returned the payment." }], [{ label: "Why", value: "The buyer's bank had returned the payment." }]
+    ]);
     expect((await readHistory(organisation.id, { who: "stripe" }, zone)).entries).toEqual([]);
   });
 
@@ -167,6 +170,7 @@ describe("History (T38)", () => {
     ]),
     "order.manual_refund_marked", "order.dispute_resolved", "order.free_cancelled", "order.tickets_cancelled", "order.guest_claimed", "order.ticket_email_queued",
     "order.compensation_refund_review_required", "order.compensation_refund_started", "order.compensation_refund_confirmed",
+    "order.compensation_review_closed", "commerce_order.compensation_review_closed",
     ...["refunded", "refund_failed", "refund_pending", "review_required"].map((state) => `order.compensation_${state}`),
     "email_outbox.requeued", "notification.requeued", "order.list_exported", "order.attendees_exported",
     ...["created", "updated", "published", "archived"].map((step) => `membership_plan.${step}`),

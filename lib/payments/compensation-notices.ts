@@ -6,16 +6,16 @@ import { reviewDisputeWords } from "@/lib/purchases/projection";
 
 // Buyer emails for a payment that could not be honoured (T30, readiness plan
 // §5): one when the order goes to payment review, one when Stripe confirms
-// its compensation refund. Neither promises tickets or items, and neither
-// carries provider detail. Each is keyed to its transition, so a replayed
-// webhook queues nothing twice.
+// its compensation refund or the money was already back (PAY-057). None
+// promises tickets or items or carries provider detail. Each is keyed to its
+// transition, so a replayed webhook queues nothing twice.
 
 // A ticket order newly in payment review; `automatic` when its event refunds in full on its own.
 export async function queueTicketReviewNotice(tx: Prisma.TransactionClient, orderId: string, automatic: boolean) {
   const order = await tx.order.findUniqueOrThrow({
     where: { id: orderId },
     select: {
-      id: true, organisationId: true, totalAmount: true, sellerName: true, disputeStatus: true, ...buyerIdentitySelect,
+      id: true, organisationId: true, totalAmount: true, sellerName: true, disputeStatus: true, requiresCompensationReview: true, ...buyerIdentitySelect,
       user: { select: { email: true, firstName: true, lastName: true, displayName: true } },
       event: { select: { title: true, organisation: { select: { name: true } } } }
     }
@@ -24,7 +24,7 @@ export async function queueTicketReviewNotice(tx: Prisma.TransactionClient, orde
   if (!recipient) return;
   const seller = order.sellerName ?? order.event.organisation.name;
   // A queued job would stop at the worker's claim, so `automatic` promises nothing during a dispute.
-  const held = reviewDisputeWords(order.disputeStatus, automatic ? undefined : `${seller} will review it and refund you`);
+  const held = reviewDisputeWords(order, automatic ? undefined : `${seller} will review it and refund you`);
   await enqueueNotification(tx, {
     eventKey: `payment-review/${order.id}`, recipient, template: "business_notice", organisationId: order.organisationId,
     payload: {
@@ -40,15 +40,53 @@ export async function queueTicketReviewNotice(tx: Prisma.TransactionClient, orde
 export async function queueCommerceReviewNotice(tx: Prisma.TransactionClient, commerceOrderId: string) {
   const order = await tx.commerceOrder.findUniqueOrThrow({
     where: { id: commerceOrderId },
-    select: { id: true, organisationId: true, kind: true, totalAmount: true, sellerName: true, buyerEmailSnapshot: true, disputeStatus: true }
+    select: { id: true, organisationId: true, kind: true, totalAmount: true, sellerName: true, buyerEmailSnapshot: true, disputeStatus: true, requiresCompensationReview: true }
   });
   const what = order.kind === "membership" ? "your membership" : "your items";
-  const held = reviewDisputeWords(order.disputeStatus);
+  const held = reviewDisputeWords(order);
   await enqueueNotification(tx, {
     eventKey: `payment-review/${order.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: order.organisationId,
     payload: {
       subject: `We're checking your payment to ${order.sellerName}`.slice(0, 200),
       message: `We received your payment of ${formatMoney(order.totalAmount)} for order ${orderReference(order.id)}, but we couldn't confirm ${what}${held ? `. ${held.message}` : ", so we're refunding the full amount to your card. We'll email you when the refund is done."} Contact ${order.sellerName} if you have questions.`
+    }
+  });
+}
+
+// PAY-057: how the money reached a buyer whose review closed, with no refund from here to wait for.
+const repaidWords = (byBank: boolean, amount: number) =>
+  byBank ? "Your bank upheld your dispute and returned the payment to you." : `${formatMoney(amount)} was refunded to your card. Banks usually take 5 to 10 business days.`;
+
+export async function queueTicketReviewClosedNotice(tx: Prisma.TransactionClient, orderId: string, byBank: boolean) {
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      id: true, organisationId: true, totalAmount: true, sellerName: true, ...buyerIdentitySelect,
+      user: { select: { email: true, firstName: true, lastName: true, displayName: true } },
+      event: { select: { title: true, organisation: { select: { name: true } } } }
+    }
+  });
+  const recipient = retainedBuyerIdentity(order)?.email;
+  if (!recipient) return;
+  await enqueueNotification(tx, {
+    eventKey: `payment-review-closed/${order.id}`, recipient, template: "business_notice", organisationId: order.organisationId,
+    payload: {
+      subject: `Your payment for ${order.event.title}`.slice(0, 200),
+      message: `We couldn't issue your tickets for ${order.event.title}, so you don't have tickets for this order. ${repaidWords(byBank, order.totalAmount)} Contact ${order.sellerName ?? order.event.organisation.name} if you have questions.`
+    }
+  });
+}
+
+export async function queueCommerceReviewClosedNotice(tx: Prisma.TransactionClient, commerceOrderId: string, byBank: boolean) {
+  const order = await tx.commerceOrder.findUniqueOrThrow({
+    where: { id: commerceOrderId },
+    select: { id: true, organisationId: true, kind: true, totalAmount: true, sellerName: true, buyerEmailSnapshot: true }
+  });
+  await enqueueNotification(tx, {
+    eventKey: `payment-review-closed/${order.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: order.organisationId,
+    payload: {
+      subject: `Your payment to ${order.sellerName}`.slice(0, 200),
+      message: `We couldn't confirm ${order.kind === "membership" ? "your membership" : "your items"} for order ${orderReference(order.id)}. ${repaidWords(byBank, order.totalAmount)} Contact ${order.sellerName} if you have questions.`
     }
   });
 }

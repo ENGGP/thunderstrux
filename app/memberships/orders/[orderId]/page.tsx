@@ -45,7 +45,9 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
   const projection = ticketOrderProjection(order);
   const closed = !grant && (projection === "failed" || projection === "expired" || checkout?.state === "ended");
   const plan = line ? membershipLabel(line.nameSnapshot) : "membership";
-  const held = reviewDisputeWords(order.disputeStatus);
+  const held = reviewDisputeWords(order);
+  // PAY-057: the bank returned a payment that never became a membership.
+  const returned = !grant && order.disputeStatus === "lost" ? held : null;
 
   const title = closed
     ? "No payment taken"
@@ -61,7 +63,7 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
             ? "You're a member"
             : order.refundStatus === "refunded" && !grant
               ? "Refunded"
-              : "Your membership";
+              : returned?.title ?? "Your membership";
 
   return (
     <CheckoutShell lead="Buying from" backHref={back} backLabel="Back to memberships" current={grant ? 2 : 1} society={order.sellerName} steps={["Review", "Pay with Stripe", "Membership"]} title={title}>
@@ -123,6 +125,8 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
             </>
           ) : order.refundStatus === "refunded" ? (
             <p className="text-ink">Your payment was refunded to your card. Banks usually take 5 to 10 business days.</p>
+          ) : returned ? (
+            <p className="text-ink">{returned.message}</p>
           ) : (
             <p className="text-ink">See My memberships for where this stands.</p>
           )}

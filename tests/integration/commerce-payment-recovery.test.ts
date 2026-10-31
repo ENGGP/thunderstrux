@@ -430,7 +430,7 @@ describe("commerce compensation", () => {
     const lost = await heldByDispute();
     await disputeIs(lost, "lost", "charge.dispute.closed");
     expect(await requests(lost)).toEqual([]);
-    expect(await order(lost.order.id)).toMatchObject({ disputeStatus: "lost", refundStatus: null, requiresCompensationReview: true });
+    expect(await order(lost.order.id)).toMatchObject({ disputeStatus: "lost", refundStatus: null, requiresCompensationReview: false });
 
     // Queued before the dispute opened: the fence keeps it to one refund.
     const queued = await paid("merchandise");
@@ -463,9 +463,181 @@ describe("commerce compensation", () => {
       if (settled.grantId) await prisma.membershipGrant.delete({ where: { id: settled.grantId } });
       const session = await pendingWith(settled, { disputeStatus: "lost" });
       await reconcileCommerceCheckoutSession(session, { stripeEventId: unique("evt") });
-      expect(await reviewNotice(settled)).toContain("returned the payment to you");
+      // No dispute row covers the payment here, so part of it is still owed.
+      expect(await reviewNotice(settled)).toContain("returned part of this payment");
       expect(await reviewNotice(settled)).not.toContain("refunding");
     }
+  });
+
+  const closedNotices = (fixture: Fixture) => prisma.notificationOutbox.findMany({ where: { eventKey: `payment-review-closed/${fixture.order.id}` } });
+  const closedNotice = async (fixture: Fixture) => {
+    const [row, ...more] = await closedNotices(fixture);
+    expect(more).toEqual([]);
+    return JSON.stringify(decryptNotification(row.encryptedPayload, row.id));
+  };
+  const closures = (fixture: Fixture) => prisma.auditLog.findMany({ where: { targetId: fixture.order.id, action: "commerce_order.compensation_review_closed" }, select: { actorUserId: true, metadata: true } });
+  const refundedRows = (fixture: Fixture) => prisma.commerceLifecycleEvent.findMany({ where: { commerceOrderId: fixture.order.id, type: "refunded" }, select: { reason: true, source: true } });
+  const partAlerts = () => vi.mocked(console.error).mock.calls.filter(([line]) => String(line).includes('"reason":"dispute_lost_for_part"'));
+  const askedForAPerson = (error: { mock: { calls: unknown[][] } }) => error.mock.calls.filter(([line]) => String(line).includes('"event":"paid_but_unfulfilled_compensation_required"'));
+  const replayed = (fixture: Fixture) => ({
+    id: fixture.order.stripeSessionId, payment_status: "paid", amount_total: fixture.order.totalAmount, currency: "aud",
+    metadata: { family: fixture.order.kind, commerceOrderId: fixture.order.id, organisationId: fixture.society.organisation.id },
+    payment_intent: { id: fixture.intentId, transfer_data: { destination: fixture.society.organisation.stripeAccountId } }
+  }) as unknown as Stripe.Checkout.Session;
+
+  // PAY-057: the bank returned the money, so nothing is owed and the review has nothing left to decide.
+  test("a lost dispute closes the review, once, and the buyer and staff read what happened", async () => {
+    for (const kind of ["merchandise", "membership"] as const) {
+      const fixture = await heldByDispute(kind);
+      stripe.dispute.mockResolvedValue(dispute(fixture, "lost"));
+      const lost = signedEvent("charge.dispute.closed", dispute(fixture, "lost"));
+      await Promise.all([postSigned(lost), postSigned(signedEvent("charge.dispute.updated", dispute(fixture, "lost")))]);
+      await postSigned(lost);
+      expect(await order(fixture.order.id)).toMatchObject({ status: "failed", requiresCompensationReview: false, disputeStatus: "lost", refundStatus: null });
+      expect(await requests(fixture)).toEqual([]);
+      expect(await closedNotice(fixture)).toContain("returned the payment to you");
+      expect(await closures(fixture)).toEqual([{ actorUserId: null, metadata: { reason: "dispute_lost" } }]);
+      expect(await refundedRows(fixture)).toEqual([{ reason: "dispute_lost", source: "stripe_webhook" }]);
+      expect(partAlerts()).toEqual([]);
+      const page = await buyerPage(fixture);
+      expect(page).toContain("Refunded by your bank");
+      expect(page).toContain("returned the payment to you");
+      expect(page).not.toContain("This order is closed");
+      expect(page).not.toContain("See My memberships");
+      expect(page).not.toContain("No payment taken");
+      if (kind === "merchandise") {
+        setMockSession({ userId: fixture.society.user.id, email: fixture.society.user.email, accountRole: "organisation" });
+        const staff = await renderPage(await StaffMerchandiseOrderPage({ params: Promise.resolve({ orderId: fixture.order.id }) }));
+        expect(staff).toContain("dispute lost");
+        expect(staff).not.toContain("dispute_lost");
+      }
+    }
+  });
+
+  // Its outcome decides the order: Stripe's success ends the review, and its refusal reaches a person.
+  test("a lost dispute leaves a compensation refund already in flight to finish", async () => {
+    const fixture = await paid("merchandise");
+    await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { status: "failed", fulfilledAt: null, pickupStatus: null, requiresCompensationReview: true, reviewReason: "sold_out" } });
+    await prisma.$transaction((tx) => openCommerceRefund(tx, compensation(fixture)));
+    await disputeIs(fixture, "lost", "charge.dispute.closed");
+    expect(await order(fixture.order.id)).toMatchObject({ requiresCompensationReview: true, refundStatus: "processing", disputeStatus: "lost" });
+    expect(await closedNotices(fixture)).toEqual([]);
+  });
+
+  // Stripe: a lost dispute can still turn to won, on a late win or a withdrawal long after the loss.
+  test("a dispute that turns from lost to won reopens the closed review and refunds the buyer, once", async () => {
+    const fixture = await heldByDispute();
+    await disputeIs(fixture, "lost", "charge.dispute.closed");
+    expect(await order(fixture.order.id)).toMatchObject({ requiresCompensationReview: false, disputeStatus: "lost" });
+    stripe.dispute.mockResolvedValue(dispute(fixture, "won"));
+    const won = signedEvent("charge.dispute.updated", dispute(fixture, "won"));
+    await Promise.all([postSigned(won), postSigned(signedEvent("charge.dispute.closed", dispute(fixture, "won")))]);
+    await postSigned(won);
+    expect(await order(fixture.order.id)).toMatchObject({ requiresCompensationReview: true, reviewReason: "refunded_or_disputed_before_fulfilment", disputeStatus: null, refundStatus: "processing" });
+    expect(await requests(fixture)).toEqual([expect.objectContaining({ amount: 3000, status: "pending" })]);
+    expect(await buyerPage(fixture)).toContain("We&#x27;re refunding your payment");
+
+    refundSucceeds(fixture);
+    await processOrderRefundBatch();
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+    expect(await order(fixture.order.id)).toMatchObject({ requiresCompensationReview: false, refundStatus: "refunded" });
+  });
+
+  test("a won dispute never reopens an order a refund settled", async () => {
+    const outside = await paid("merchandise");
+    await prisma.commerceOrder.update({ where: { id: outside.order.id }, data: { externalRefundedAmount: 3000 } });
+    await reconcileCommerceCheckoutSession(await pendingWith(outside), { stripeEventId: unique("evt") });
+    await disputeIs(outside, "won", "charge.dispute.closed");
+    expect(await order(outside.order.id)).toMatchObject({ requiresCompensationReview: false, refundStatus: "refunded" });
+    expect(await requests(outside)).toEqual([]);
+
+    const finished = await paid("merchandise");
+    await reconcileCommerceCheckoutSession(await pendingWith(finished, { disputeStatus: "won" }), { stripeEventId: unique("evt") });
+    refundSucceeds(finished);
+    await processOrderRefundBatch();
+    await disputeIs(finished, "won", "charge.dispute.closed");
+    expect(await order(finished.order.id)).toMatchObject({ requiresCompensationReview: false, refundStatus: "refunded" });
+    expect(await requests(finished)).toHaveLength(1);
+  });
+
+  // Banks can dispute part of a charge, and the rest of the buyer's money is still owed.
+  test("a dispute lost for part of the payment stays under review until a refund in Stripe covers the rest", async () => {
+    const fixture = await heldByDispute();
+    const part = { ...dispute(fixture, "lost"), amount: 2000 };
+    stripe.dispute.mockResolvedValue(part);
+    await postSigned(signedEvent("charge.dispute.closed", part));
+    expect(await order(fixture.order.id)).toMatchObject({ requiresCompensationReview: true, disputeStatus: "lost" });
+    expect(await closedNotices(fixture)).toEqual([]);
+    expect(partAlerts()).toHaveLength(1);
+    const page = await buyerPage(fixture);
+    expect(page).toContain("Partly refunded by your bank");
+    expect(page).toContain("returned part of this payment");
+    expect(page).not.toContain("returned the payment to you");
+    setMockSession({ userId: fixture.society.user.id, email: fixture.society.user.email, accountRole: "organisation" });
+    const staff = await renderPage(await StaffMerchandiseOrderPage({ params: Promise.resolve({ orderId: fixture.order.id }) }));
+    expect(staff).toContain("finance refunds the rest in Stripe");
+    expect(staff).not.toContain("Thunderstrux refunds it in full");
+
+    const rest = outsideRefund(fixture, 1000);
+    stripe.refunds.mockResolvedValue({ data: [rest] });
+    await postSigned(signedEvent("refund.created", rest));
+    expect(await order(fixture.order.id)).toMatchObject({ requiresCompensationReview: false, disputeStatus: "lost", refundStatus: null, externalRefundedAmount: 1000 });
+    expect(await closedNotice(fixture)).toContain("returned the payment to you");
+  });
+
+  test("a full refund in Stripe before the late paid webhook closes the review it opens, and says so once", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const kind of ["merchandise", "membership"] as const) {
+      const fixture = await paid(kind);
+      if (fixture.grantId) await prisma.membershipGrant.delete({ where: { id: fixture.grantId } });
+      await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { externalRefundedAmount: fixture.order.totalAmount } });
+      const session = await pendingWith(fixture);
+      expect(await reconcileCommerceCheckoutSession(session, { stripeEventId: unique("evt") })).toMatchObject({ status: "compensation_required" });
+      expect(await order(fixture.order.id)).toMatchObject({ status: "failed", paidAt: expect.any(Date), requiresCompensationReview: false, refundStatus: "refunded", reviewReason: "refunded_or_disputed_before_fulfilment" });
+      expect(await prisma.notificationOutbox.count({ where: { eventKey: `payment-review/${fixture.order.id}` } })).toBe(0);
+      expect(await closedNotice(fixture)).toContain("refunded to your card");
+      expect(await refundedRows(fixture)).toEqual([{ reason: "refunded_outside", source: "stripe_webhook" }]);
+      expect(await buyerPage(fixture)).toContain("Your payment was refunded to your card");
+      // Nothing is left to send, so nothing says it couldn't send.
+      expect(await requests(fixture)).toEqual([]);
+    }
+    expect(askedForAPerson(error)).toEqual([]);
+    expect(warn.mock.calls.filter(([line]) => String(line).includes("commerce.compensation_refund.not_opened"))).toEqual([]);
+  });
+
+  test("a full refund in Stripe during review keeps the email the review promised", async () => {
+    const fixture = await paid("merchandise");
+    await reconcileCommerceCheckoutSession(await pendingWith(fixture, { disputeStatus: "won" }), { stripeEventId: unique("evt") });
+    await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { refundStatus: null } });
+    await prisma.refundRequest.deleteMany({ where: { commerceOrderId: fixture.order.id } });
+    expect(await reviewNotice(fixture)).toContain("We&#x27;ll email you when the refund is done".replaceAll("&#x27;", "'"));
+    const full = outsideRefund(fixture, 3000);
+    stripe.refunds.mockResolvedValue({ data: [full] });
+    await postSigned(signedEvent("refund.created", full));
+    await postSigned(signedEvent("refund.updated", full));
+    expect(await order(fixture.order.id)).toMatchObject({ requiresCompensationReview: false, refundStatus: "refunded" });
+    expect(await closedNotice(fixture)).toContain("refunded to your card");
+    expect(await closures(fixture)).toEqual([{ actorUserId: null, metadata: { reason: "refunded_outside" } }]);
+  });
+
+  // Stripe redelivers paid events, and each goes through settlement again.
+  test("a replayed paid event doesn't reopen a closed review or a finished compensation refund", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const lost = await heldByDispute();
+    await disputeIs(lost, "lost", "charge.dispute.closed");
+    error.mockClear();
+    expect(await reconcileCommerceCheckoutSession(replayed(lost), { stripeEventId: unique("evt") })).toMatchObject({ status: "compensation_required" });
+    expect(await order(lost.order.id)).toMatchObject({ status: "failed", requiresCompensationReview: false });
+    expect(askedForAPerson(error)).toEqual([]);
+
+    const finished = await heldByDispute();
+    await disputeIs(finished, "won", "charge.dispute.closed");
+    refundSucceeds(finished);
+    await processOrderRefundBatch();
+    expect(await order(finished.order.id)).toMatchObject({ requiresCompensationReview: false, refundStatus: "refunded" });
+    await reconcileCommerceCheckoutSession(replayed(finished), { stripeEventId: unique("evt") });
+    expect(await order(finished.order.id)).toMatchObject({ requiresCompensationReview: false, refundStatus: "refunded" });
   });
 
   // A payment under review is a payment taken, whichever page the buyer lands on.

@@ -4,10 +4,10 @@ import { apiError, badRequest, forbidden, mapRouteError, notFound, routeErrorRul
 import { authenticationRule, staleSessionRule } from "@/lib/api/route-rules";
 import { OrganisationAccessError, requireAuthenticatedUser, requireCurrentOrganisationAccount, requireOrganisationPermission } from "@/lib/auth/access";
 import { FreeCancellationError, cancelFreePurchase } from "@/lib/payments/free-cancellation";
-import { mfaGrantDigest } from "@/lib/security/csrf";
+import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { validateJson } from "@/lib/validators";
 
 type RouteContext = { params: Promise<{ orderId: string }> };
@@ -31,12 +31,7 @@ export async function POST(request: Request, context: RouteContext) {
       const codeLimit = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [actor.id] });
       if (codeLimit) return codeLimit;
     }
-    if (mfaEnforcementMode() !== "off") {
-      if (!body.data.mfaCode) throw new MfaInputError("Enter your authenticator code to cancel this registration");
-      const digest = mfaGrantDigest(actor.mfaSessionId);
-      if (!digest) throw new MfaRequiredError();
-      await verifyStaffMfa(actor.id, body.data.mfaCode, digest);
-    }
+    await requireFreshStaffMfa(actor, body.data.mfaCode, "Enter your authenticator code to cancel this registration");
     const { orderId } = await context.params;
     const result = await cancelFreePurchase({ organisationId: organisation.id, orderId, actor: { id: actor.id }, reason: body.data.reason });
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });

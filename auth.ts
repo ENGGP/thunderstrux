@@ -71,7 +71,7 @@ const authRuntime = NextAuth({
   }
 });
 
-export const { auth, signIn, signOut } = authRuntime;
+export const { auth } = authRuntime;
 export const handlers = {
   POST: authRuntime.handlers.POST,
   async GET(request: import("next/server").NextRequest) {

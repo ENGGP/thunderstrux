@@ -188,8 +188,5 @@ export const merchandiseFamily: CommerceFamilyAdapter<z.infer<typeof selection>>
       });
     }
     return { fulfilled: true };
-  },
-
-  // A hold is the pending order itself, so failing or expiring it releases the stock.
-  async release() {}
+  }
 };

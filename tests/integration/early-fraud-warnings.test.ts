@@ -143,6 +143,47 @@ describe("early fraud warnings", () => {
     await warn(collected);
     expect(await prisma.refundRequest.count({ where: { commerceOrderId: collected.order.id } })).toBe(0);
     expect(alerts(error).at(-1)).toMatchObject({ commerceOrderId: collected.order.id, outcome: "used" });
+
+    // Used comes first, as it does for a scanned ticket.
+    const contested = await commerceOrder("merchandise", { pickupStatus: "collected" });
+    await prisma.commerceOrder.update({ where: { id: contested.order.id }, data: { disputeStatus: "open" } });
+    await warn(contested);
+    expect(alerts(error).at(-1)).toMatchObject({ commerceOrderId: contested.order.id, outcome: "used" });
+  });
+
+  test("a commerce fraud refund is left to the worker, with its own history and audit row", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { order, ...payment } = await commerceOrder("merchandise");
+    await warn(payment);
+    const request = await prisma.refundRequest.findFirstOrThrow({ where: { commerceOrderId: order.id } });
+    expect(request).toMatchObject({ amount: order.totalAmount, attempts: 0, processingToken: null, actorUserId: null, operationKey: expect.stringMatching(/^commerce-refund:/) });
+    expect(await prisma.commerceLifecycleEvent.findFirstOrThrow({ where: { commerceOrderId: order.id, type: "refund_requested" } })).toMatchObject({ source: "stripe_webhook", actorUserId: null, reason: fraudRefundReason, facts: { amount: order.totalAmount } });
+    expect(await prisma.auditLog.findFirstOrThrow({ where: { targetId: order.id, action: "commerce_order.refund_requested" } })).toMatchObject({ actorUserId: null, targetType: "CommerceOrder", metadata: { refundRequestId: request.id, amount: order.totalAmount, reason: fraudRefundReason } });
+  });
+
+  // PAY-036: the one dispute rule. Only an open or lost dispute stops the refund.
+  test("a commerce order's refusals reach the alert as before; a won dispute no longer stops the refund", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ["disputed", { disputeStatus: "open" }],
+      ["disputed", { disputeStatus: "lost" }],
+      ["already_refunded", { refundStatus: "refunded" }],
+      ["in_progress", { refundStatus: "processing" }],
+      ["not_refundable", { requiresCompensationReview: true }],
+      ["not_refundable", { externalRefundedAmount: 1500 }]
+    ];
+    for (const [outcome, data] of cases) {
+      const fixture = await commerceOrder("membership");
+      await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data });
+      await warn(fixture);
+      expect(await prisma.refundRequest.count({ where: { commerceOrderId: fixture.order.id } }), outcome).toBe(0);
+      expect(alerts(error).at(-1)).toMatchObject({ commerceOrderId: fixture.order.id, outcome });
+    }
+    const won = await commerceOrder("membership");
+    await prisma.commerceOrder.update({ where: { id: won.order.id }, data: { disputeStatus: "won" } });
+    await warn(won);
+    expect(await prisma.refundRequest.count({ where: { commerceOrderId: won.order.id } })).toBe(1);
+    expect(alerts(error).at(-1)).toMatchObject({ commerceOrderId: won.order.id, outcome: "refund_queued" });
   });
 
   test("a warning on a payment that isn't an order's, or on another charge, alerts and changes nothing", async () => {

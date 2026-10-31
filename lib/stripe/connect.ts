@@ -48,11 +48,6 @@ export type StripeConnectStatus = {
   payouts?: PayoutSummary;
 };
 
-type ConnectOrganisation = Pick<
-  Organisation,
-  "id" | "name" | "slug" | "stripeAccountId"
->;
-
 export class StripeConnectPlatformNotReadyError extends Error {
   state = "PLATFORM_NOT_READY" as const;
   actionRequired = "Complete Stripe Connect platform profile";

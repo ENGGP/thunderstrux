@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Notice } from "@/components/ui/notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AuthenticationRequiredError, requireAuthenticatedUser } from "@/lib/auth/access";
-import { formatDate, formatDateRange, formatMoney, formatPrice, ticketReference } from "@/lib/format";
+import { formatDateRange, formatPrice, ticketReference } from "@/lib/format";
 import { buyerPurchaseBadge, justIssued, purchasedTicketTypeLabel, ticketOrderProjection } from "@/lib/purchases/projection";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
 import { getOwnTicketPurchase } from "@/lib/purchases/ticket-purchases";

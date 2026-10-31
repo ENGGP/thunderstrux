@@ -6,7 +6,8 @@ import { POST as archiveRoute } from "@/app/api/orgs/[orgSlug]/memberships/[plan
 import { defaultTerm } from "@/components/memberships/plan-form";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { prisma } from "@/lib/db";
-import { daysFromTerm, listPlans, publicPlans, readPlan } from "@/lib/memberships/plans";
+import { membershipOffers } from "@/lib/memberships/offers";
+import { daysFromTerm, listPlans, readPlan } from "@/lib/memberships/plans";
 import { clearMockSession, setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, parseJsonResponse, routeContext } from "@/tests/helpers/http";
 import { createMember, createOrganisationAccount, createOrganisationStaff } from "@/tests/helpers/test-data";
@@ -213,7 +214,7 @@ describe("membership plans", () => {
     expect((await archive(organisation.slug, plan.id, 1)).status).toBe(200);
     expect((await publish(organisation.slug, plan.id, 3)).status).toBe(409);
     expect((await update(organisation.slug, plan.id, { ...semester1, description: "x", expectedVersion: 3 })).status).toBe(409);
-    expect(await publicPlans(organisation.id)).toEqual([]);
+    expect((await membershipOffers(organisation.id, null)).offers).toEqual([]);
     expect(await prisma.commerceOrderLine.count({ where: { membershipProductId: plan.id } })).toBe(1);
     expect((await prisma.auditLog.findMany({ where: { targetId: plan.id }, orderBy: { createdAt: "asc" }, select: { action: true } })).map((row) => row.action))
       .toEqual(["membership_plan.created", "membership_plan.published", "membership_plan.archived"]);
@@ -233,9 +234,9 @@ describe("membership plans", () => {
     signIn(other.user);
     await create(other.organisation.slug, semester2).then(async (result) => publish(other.organisation.slug, result.body.plan.id, 1));
 
-    const visible = await publicPlans(organisation.id);
+    const { offers: visible } = await membershipOffers(organisation.id, null);
     expect(visible.map((plan) => plan.id)).toEqual([live.id]);
-    expect(Object.keys(visible[0]).sort()).toEqual(["currency", "description", "endsAt", "entitlements", "id", "name", "priceAmount", "startsAt"]);
+    expect(Object.keys(visible[0]).sort()).toEqual(["description", "endsAt", "entitlements", "id", "name", "priceAmount", "startsAt", "state"]);
 
     const staff = await listPlans(organisation.id);
     expect(Object.fromEntries(staff.plans.map((plan) => [plan.id, plan.standing]))).toEqual({ [draft.id]: "draft", [live.id]: "published", [ended.id]: "ended" });

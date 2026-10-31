@@ -15,7 +15,7 @@ export const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)
 
 // Stripe's answer was not known when checkout returned: poll the attempt for
 // about half a minute. `slow` means it is still confirming.
-export async function waitForAttempt(attemptId: string, failedMessage = "Checkout didn't start. Nothing has been charged."): Promise<{ url: string } | { orderId: string } | "slow"> {
+export async function waitForAttempt(attemptId: string, failedMessage = "We couldn't open the payment page. Please try again."): Promise<{ url: string } | { orderId: string } | "slow"> {
   for (let poll = 0; poll < pollAttempts; poll += 1) {
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     const attempt = await fetchJson<AttemptStatus>(`/api/payments/checkout/attempts/${attemptId}`);

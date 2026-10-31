@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { test, expect, prisma, login, selectStaffContext, createEvent, createOrganisationAccount, createMember, createOrganisationStaff } from './fixtures';
+import { test, expect, prisma, login, selectStaffContext, createEvent, createOrganisationAccount, createOrganisationStaff } from './fixtures';
 import { createOrder } from '@/tests/helpers/test-data';
 
 test('finance staff can page order history while another tenant cannot read it', async ({ page, data }) => {

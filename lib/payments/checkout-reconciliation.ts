@@ -1,7 +1,5 @@
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
-import { prisma } from "@/lib/db";
-import { isTransactionConflict } from "@/lib/transaction-conflict";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
 import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/events/inventory";
 import { queueTicketReviewNotice } from "@/lib/payments/compensation-notices";
@@ -17,12 +15,11 @@ import {
   expireReservationForOrder,
   findActiveReservationForOrder,
   lateWebhookGraceMs,
-  lockedPurchaseTransactionOptions,
-  releaseReservationForOrder
+  releaseReservationForOrder,
+  runReservationTransaction
 } from "@/lib/tickets/reservations";
 
 const expectedCurrency = "aud";
-const maxTransactionAttempts = 3;
 
 type CompensationAlertPayload = {
   orderId: string;
@@ -56,26 +53,6 @@ function parseMetadataQuantity(quantity: string | undefined) {
   return Number.isInteger(parsedQuantity) && parsedQuantity > 0
     ? parsedQuantity
     : null;
-}
-
-export async function runCheckoutReconciliationTransaction(
-  operation: (tx: Prisma.TransactionClient) => Promise<void>
-) {
-  for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
-    try {
-      await prisma.$transaction(operation, lockedPurchaseTransactionOptions);
-      return;
-    } catch (error) {
-      if (attempt < maxTransactionAttempts && isTransactionConflict(error)) {
-        console.info("Retrying Stripe webhook transaction after write conflict", {
-          attempt
-        });
-        continue;
-      }
-
-      throw error;
-    }
-  }
 }
 
 export async function findOrderForCheckoutSession(
@@ -123,7 +100,7 @@ export async function reconcileExpiredCheckoutSession(
     reason: "not_reconciled"
   };
 
-  await runCheckoutReconciliationTransaction(async (tx) => {
+  await runReservationTransaction(async (tx) => {
     const resolution = await findOrderForCheckoutSession(session, tx);
 
     if (resolution.ambiguous) {
@@ -215,21 +192,6 @@ export async function reconcileExpiredCheckoutSession(
               orderId: order.id,
               reason: order.failureReason ?? "order_already_failed"
             };
-      return;
-    }
-
-    if (order.status !== "pending") {
-      logError("stripe.webhook.reconciliation_failed", {
-        message: "Expired Stripe session order is not pending",
-        orderId: order.id,
-        stripeSessionId: session.id,
-        status: order.status
-      });
-      result = {
-        status: "ignored",
-        orderId: order.id,
-        reason: "order_not_pending"
-      };
       return;
     }
 
@@ -325,7 +287,7 @@ export async function reconcileCompletedCheckoutSession(
   };
   let compensationAlert: CompensationAlertPayload | null = null;
 
-  await runCheckoutReconciliationTransaction(async (tx) => {
+  await runReservationTransaction(async (tx) => {
     compensationAlert = null;
     const orderSelect = {
       id: true,
@@ -344,16 +306,12 @@ export async function reconcileCompletedCheckoutSession(
       requiresCompensationReview: true,
       fulfilmentFailedAt: true,
       fulfilmentFailureReason: true,
-      isManuallyRefunded: true,
       externalRefundedAmount: true,
       disputeStatus: true,
       compensationRefundModeSnapshot: true,
       membershipGrantId: true,
       userId: true,
       createdAt: true,
-      compensationRefundJob: {
-        select: { id: true, state: true }
-      },
       reservation: {
         select: { status: true }
       },
@@ -495,41 +453,37 @@ export async function reconcileCompletedCheckoutSession(
         }
       });
 
-      if (!localOrder.requiresCompensationReview) {
-        const automatic =
-          localOrder.compensationRefundModeSnapshot === "automatic_full";
-        await tx.compensationRefundJob.createMany({
-          data: [{
-            orderId: localOrder.id,
-            state: automatic ? "auto_queued" : "review_required",
-            amount: localOrder.totalAmount,
-            currency: expectedCurrency
-          }],
-          skipDuplicates: true
-        });
-        await tx.auditLog.create({
-          data: {
-            organisationId: localOrder.event.organisationId,
-            actorUserId: null,
-            action: automatic
-              ? "order.compensation_refund_queued"
-              : "order.compensation_refund_review_required",
-            targetType: "Order",
-            targetId: localOrder.id,
-            metadata: { reason }
-          }
-        });
-      }
-
-      if (!localOrder.requiresCompensationReview) {
-        compensationAlert = {
+      const automatic =
+        localOrder.compensationRefundModeSnapshot === "automatic_full";
+      await tx.compensationRefundJob.createMany({
+        data: [{
           orderId: localOrder.id,
-          stripeSessionId: session.id,
-          eventId: localOrder.eventId,
-          reason
-        };
-        await queueTicketReviewNotice(tx, localOrder.id, localOrder.compensationRefundModeSnapshot === "automatic_full");
-      }
+          state: automatic ? "auto_queued" : "review_required",
+          amount: localOrder.totalAmount,
+          currency: expectedCurrency
+        }],
+        skipDuplicates: true
+      });
+      await tx.auditLog.create({
+        data: {
+          organisationId: localOrder.event.organisationId,
+          actorUserId: null,
+          action: automatic
+            ? "order.compensation_refund_queued"
+            : "order.compensation_refund_review_required",
+          targetType: "Order",
+          targetId: localOrder.id,
+          metadata: { reason }
+        }
+      });
+
+      compensationAlert = {
+        orderId: localOrder.id,
+        stripeSessionId: session.id,
+        eventId: localOrder.eventId,
+        reason
+      };
+      await queueTicketReviewNotice(tx, localOrder.id, automatic);
 
       if (releaseActiveReservation) {
         await releaseReservationForOrder(tx, localOrder.id, reason, now);
@@ -537,73 +491,13 @@ export async function reconcileCompletedCheckoutSession(
         await expireReservationForOrder(tx, localOrder.id, reason, now);
       }
 
-      if (!localOrder.requiresCompensationReview) {
-        const resultingReservation = await tx.ticketReservation.findUnique({
-          where: { orderId: localOrder.id },
-          select: { status: true }
-        });
-        await appendOrderLifecycleEvent(tx, {
-          orderId: localOrder.id,
-          type: "compensation_required",
-          source: reconciliationLifecycleSource(source),
-          stripeEventId,
-          stripeSessionId: session.id,
-          reason,
-          fromOrderStatus: localOrder.status,
-          toOrderStatus: "failed",
-          fromReservationStatus: localOrder.reservation?.status ?? null,
-          toReservationStatus: resultingReservation?.status ?? null,
-          facts: { compensationReview: true },
-          baseline: {
-            orderStatus: localOrder.status,
-            reservationStatus: localOrder.reservation?.status,
-            compensationReview: localOrder.requiresCompensationReview
-          }
-        });
-        if (localOrder.compensationRefundModeSnapshot === "automatic_full") {
-          await appendOrderLifecycleEvent(tx, {
-            orderId: localOrder.id,
-            type: "compensation_refund_queued",
-            source: reconciliationLifecycleSource(source),
-            stripeEventId,
-            stripeSessionId: session.id,
-            reason,
-            fromOrderStatus: "failed",
-            toOrderStatus: "failed",
-            facts: { compensationReview: true }
-          });
-        }
-      }
-
-      result = {
-        status: "compensation_required",
-        orderId: localOrder.id,
-        reason
-      };
-    }
-
-    async function failOrder(reason: string, details: Record<string, unknown>) {
-      reconciliationError(reason, {
-        source,
-        orderId: localOrder.id,
-        stripeSessionId: session.id,
-        ...details
+      const resultingReservation = await tx.ticketReservation.findUnique({
+        where: { orderId: localOrder.id },
+        select: { status: true }
       });
-
-      await tx.order.update({
-        where: { id: localOrder.id },
-        data: {
-          status: "failed",
-          stripeSessionId: localOrder.stripeSessionId ?? session.id,
-          failedAt: new Date(),
-          failureReason: reason
-        }
-      });
-
-      await releaseReservationForOrder(tx, localOrder.id, reason);
       await appendOrderLifecycleEvent(tx, {
         orderId: localOrder.id,
-        type: "order_failed",
+        type: "compensation_required",
         source: reconciliationLifecycleSource(source),
         stripeEventId,
         stripeSessionId: session.id,
@@ -611,18 +505,30 @@ export async function reconcileCompletedCheckoutSession(
         fromOrderStatus: localOrder.status,
         toOrderStatus: "failed",
         fromReservationStatus: localOrder.reservation?.status ?? null,
-        toReservationStatus:
-          localOrder.reservation?.status === "active"
-            ? "released"
-            : localOrder.reservation?.status,
+        toReservationStatus: resultingReservation?.status ?? null,
+        facts: { compensationReview: true },
         baseline: {
           orderStatus: localOrder.status,
           reservationStatus: localOrder.reservation?.status,
           compensationReview: localOrder.requiresCompensationReview
         }
       });
+      if (automatic) {
+        await appendOrderLifecycleEvent(tx, {
+          orderId: localOrder.id,
+          type: "compensation_refund_queued",
+          source: reconciliationLifecycleSource(source),
+          stripeEventId,
+          stripeSessionId: session.id,
+          reason,
+          fromOrderStatus: "failed",
+          toOrderStatus: "failed",
+          facts: { compensationReview: true }
+        });
+      }
+
       result = {
-        status: "failed",
+        status: "compensation_required",
         orderId: localOrder.id,
         reason
       };
@@ -646,95 +552,26 @@ export async function reconcileCompletedCheckoutSession(
       return;
     }
 
-    const ordinaryFailedOrder =
-      localOrder.status === "failed" && !localOrder.requiresCompensationReview;
-
-    if (localOrder.status === "failed") {
-      if (localOrder.requiresCompensationReview) {
-        // PAY-001: a replay reports the existing compensation state, so a replay
-        // whose metadata no longer matches the order is logged on its own.
-        if (
-          !hasRequiredMetadata || orderId !== localOrder.id || eventId !== localOrder.eventId || ticketTypeId !== localOrder.ticketTypeId ||
-          organisationId !== localOrder.event.organisationId || metadataQuantity !== localOrder.quantity
-        ) {
-          logWarn("stripe.webhook.compensation_replay_mismatch", {
-            source, stripeEventId, orderId: localOrder.id, stripeSessionId: session.id, metadataOrderId: orderId, metadataQuantity
-          });
-        }
-        console.info("Retrying compensation-required checkout reconciliation", {
-          source,
-          orderId: localOrder.id,
-          stripeSessionId: session.id,
-          failureReason: localOrder.fulfilmentFailureReason
+    // Every way into review ends the hold (markCompensationRequired's callers), so
+    // a replay has nothing left to fulfil and the payment stays under review.
+    if (localOrder.status === "failed" && localOrder.requiresCompensationReview) {
+      // PAY-001: a replay reports the existing compensation state, so a replay
+      // whose metadata no longer matches the order is logged on its own.
+      if (
+        !hasRequiredMetadata || orderId !== localOrder.id || eventId !== localOrder.eventId || ticketTypeId !== localOrder.ticketTypeId ||
+        organisationId !== localOrder.event.organisationId || metadataQuantity !== localOrder.quantity
+      ) {
+        logWarn("stripe.webhook.compensation_replay_mismatch", {
+          source, stripeEventId, orderId: localOrder.id, stripeSessionId: session.id, metadataOrderId: orderId, metadataQuantity
         });
-        if (localOrder.isManuallyRefunded) {
-          result = {
-            status: "compensation_required",
-            orderId: localOrder.id,
-            reason:
-              localOrder.fulfilmentFailureReason ?? "compensation_review_required"
-          };
-          return;
-        }
-        if (
-          localOrder.compensationRefundJob &&
-          localOrder.compensationRefundJob.state !== "review_required"
-        ) {
-          result = {
-            status: "compensation_required",
-            orderId: localOrder.id,
-            reason:
-              localOrder.fulfilmentFailureReason ?? "compensation_review_required"
-          };
-          return;
-        }
-        const retryReservation = await findActiveReservationForOrder(
-          tx,
-          localOrder.id,
-          new Date()
-        );
-
-        if (!retryReservation) {
-          result = {
-            status: "compensation_required",
-            orderId: localOrder.id,
-            reason:
-              localOrder.fulfilmentFailureReason ??
-              localOrder.failureReason ??
-              "compensation_review_required"
-          };
-          return;
-        }
-      } else if (session.payment_status !== "paid") {
-        result = {
-          status: "failed",
-          orderId: localOrder.id,
-          reason: localOrder.failureReason ?? "order_already_failed"
-        };
-        return;
       }
-    }
-
-    if (
-      localOrder.status !== "pending" &&
-      localOrder.status !== "expired" &&
-      !ordinaryFailedOrder &&
-      !(
-        localOrder.status === "failed" &&
-        localOrder.requiresCompensationReview
-      )
-    ) {
-      reconciliationError("Order is not pending", {
-        source,
-        orderId: localOrder.id,
-        status: localOrder.status,
-        stripeSessionId: session.id,
-        failureReason: localOrder.failureReason
-      });
       result = {
-        status: "ignored",
+        status: "compensation_required",
         orderId: localOrder.id,
-        reason: "order_not_pending"
+        reason:
+          localOrder.fulfilmentFailureReason ??
+          localOrder.failureReason ??
+          "compensation_review_required"
       };
       return;
     }
@@ -859,7 +696,7 @@ export async function reconcileCompletedCheckoutSession(
       return;
     }
 
-    if (ordinaryFailedOrder) {
+    if (localOrder.status === "failed") {
       await markCompensationRequired(
         "paid_session_received_after_order_failed",
         { mismatchReason: "Paid session arrived after local checkout failure" },
@@ -1046,24 +883,12 @@ export async function reconcileCompletedCheckoutSession(
     });
 
     const claimedOrder = await tx.order.updateMany({
-      where: {
-        id: localOrder.id,
-        OR: [
-          { status: "pending" },
-          {
-            status: "failed",
-            requiresCompensationReview: true
-          }
-        ]
-      },
+      where: { id: localOrder.id, status: "pending" },
       data: {
         status: "paid",
         stripeSessionId: session.id,
         paidAt: now,
-        fulfilledAt: now,
-        failedAt: null,
-        failureReason: null,
-        requiresCompensationReview: false
+        fulfilledAt: now
       }
     });
 
@@ -1160,24 +985,6 @@ export async function reconcileCompletedCheckoutSession(
       }))
     });
 
-    if (localOrder.requiresCompensationReview) {
-      const recovered = await tx.compensationRefundJob.updateMany({
-        where: {
-          orderId: localOrder.id,
-          state: "review_required"
-        },
-        data: {
-          state: "recovered",
-          resolvedAt: now,
-          processingToken: null,
-          processingStartedAt: null
-        }
-      });
-      if (recovered.count !== 1) {
-        throw new Error("Compensation state changed while fulfilment was recovering");
-      }
-    }
-
     console.info("Stripe checkout tickets created", {
       source,
       orderId: localOrder.id,
@@ -1186,9 +993,7 @@ export async function reconcileCompletedCheckoutSession(
 
     await appendOrderLifecycleEvent(tx, {
       orderId: localOrder.id,
-      type: localOrder.requiresCompensationReview
-        ? "compensation_recovered"
-        : "payment_fulfilled",
+      type: "payment_fulfilled",
       source: reconciliationLifecycleSource(source),
       stripeEventId,
       stripeSessionId: session.id,

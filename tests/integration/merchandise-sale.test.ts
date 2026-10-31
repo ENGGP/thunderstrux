@@ -10,7 +10,7 @@ import { expireStaleCommerceOrders } from "@/lib/orders/stale-orders";
 import { prisma } from "@/lib/db";
 import { decryptNotification } from "@/lib/email/notification-crypto";
 import { processNotificationClaim } from "@/lib/email/notification-outbox";
-import { GuestAccessError, guestCookieName, readGuestSession, redeemGuestAccess, requestGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
+import { GuestAccessError, guestCookieName, readGuestSession, redeemGuestAccess, requestGuestRecovery } from "@/lib/guest/guest-access";
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { cancelFreeMerchandiseOrder } from "@/lib/merchandise/after-sale";
 import { updateProduct } from "@/lib/merchandise/catalogue";

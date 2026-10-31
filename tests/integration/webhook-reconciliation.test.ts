@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { reconcileCompletedCheckoutSessionWithSideEffects } from "@/lib/payments/checkout-fulfilment-orchestrator";
 import { reconcileCompletedCheckoutSession, reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconciliation";
+import { decryptNotification } from "@/lib/email/notification-crypto";
 import { setAutomaticOutboxEnqueueTestFailure } from "@/lib/email/ticket-email-outbox";
 import {
   createEvent,
@@ -813,6 +814,8 @@ describe("webhook reconciliation", () => {
     // The buyer hears once that the payment is in review, with no ticket promise (T30).
     await expect(prisma.notificationOutbox.findMany({ where: { eventKey: `payment-review/${order.id}` } }))
       .resolves.toEqual([expect.objectContaining({ recipient: member.email, organisationId: organisation.id })]);
+    const notice = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `payment-review/${order.id}` } });
+    expect(JSON.stringify(decryptNotification(notice.encryptedPayload, notice.id))).not.toMatch(/either issue/);
     expect(fetchMock).not.toHaveBeenCalled();
     const alertCalls = operationalAlertCalls(error);
     expect(alertCalls).toHaveLength(1);
@@ -828,97 +831,6 @@ describe("webhook reconciliation", () => {
     expect(JSON.stringify(alertCalls)).not.toContain(member.email);
     expect(JSON.stringify(alertCalls)).not.toContain("stripe-signature");
     expect(JSON.stringify(alertCalls)).not.toContain("metadata");
-  });
-
-  test("future retry can clear compensation warning when active reservation naturally remains recoverable", async () => {
-    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const restoreEmailEnv = configureEmailEnv();
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    try {
-      const { organisation } = await createOrganisationAccount({ stripeReady: true });
-      const member = await createMember({ email: "retry-recovery@example.com" });
-      const event = await createEvent({
-        organisationId: organisation.id,
-        status: "published",
-        ticketTypes: [{ name: "General", price: 1000, quantity: 3 }]
-      });
-      const ticketType = event.ticketTypes[0];
-      const failedAt = new Date("2026-05-01T11:55:00.000Z");
-      const order = await createOrder({
-        organisationId: organisation.id,
-        eventId: event.id,
-        ticketTypeId: ticketType.id,
-        userId: member.id,
-        status: "failed",
-        quantity: 1,
-        unitPrice: ticketType.price,
-        stripeSessionId: "cs_compensation_retry",
-        paidAt: failedAt,
-        failedAt,
-        failureReason: "reservation_confirm_failed_after_payment",
-        requiresCompensationReview: true,
-        fulfilmentFailedAt: failedAt,
-        fulfilmentFailureReason: "reservation_confirm_failed_after_payment"
-      });
-      await createReservation({
-        orderId: order.id,
-        organisationId: organisation.id,
-        eventId: event.id,
-        ticketTypeId: ticketType.id,
-        userId: member.id,
-        quantity: 1,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000)
-      });
-
-      await prisma.compensationRefundJob.create({
-        data: {
-          orderId: order.id,
-          state: "review_required",
-          amount: order.totalAmount,
-          currency: "aud"
-        }
-      });
-
-      const result = await reconcileCompletedCheckoutSessionWithSideEffects(
-        checkoutSession({
-          id: "cs_compensation_retry",
-          orderId: order.id,
-          eventId: event.id,
-          organisationId: organisation.id,
-          ticketTypeId: ticketType.id,
-          quantity: 1,
-          amountTotal: 1000
-        })
-      );
-
-      const recovered = await prisma.order.findUniqueOrThrow({
-        where: { id: order.id },
-        include: { reservation: true, tickets: true, emailOutboxJobs: true }
-      });
-      expect(result).toEqual({ status: "fulfilled", orderId: order.id });
-      expect(recovered.status).toBe("paid");
-      expect(recovered.requiresCompensationReview).toBe(false);
-      expect(recovered.failedAt).toBeNull();
-      expect(recovered.failureReason).toBeNull();
-      expect(recovered.fulfilmentFailedAt).toEqual(failedAt);
-      expect(recovered.fulfilmentFailureReason).toBe(
-        "reservation_confirm_failed_after_payment"
-      );
-      expect(recovered.reservation?.status).toBe("confirmed");
-      expect(recovered.tickets).toHaveLength(1);
-      expect(recovered.emailOutboxJobs).toHaveLength(1);
-      expect(recovered.emailOutboxJobs[0]).toMatchObject({
-        mode: "automatic",
-        status: "pending"
-      });
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(operationalAlertCalls(error)).toHaveLength(0);
-    } finally {
-      restoreEmailEnv();
-    }
   });
 
   test("already-paid order with ticket mismatch is not mutated into compensation review", async () => {

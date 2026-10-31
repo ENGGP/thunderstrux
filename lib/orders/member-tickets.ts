@@ -1,33 +1,5 @@
 import { prisma } from "@/lib/db";
 
-// The caller's nearest paid orders for events that have not started yet.
-export async function getUpcomingTicketOrders(userId: string, take = 3) {
-  return prisma.order.findMany({
-    where: {
-      userId,
-      status: "paid",
-      event: { is: { startTime: { gte: new Date() } } }
-    },
-    orderBy: [{ event: { startTime: "asc" } }, { id: "asc" }],
-    take,
-    select: {
-      id: true,
-      quantity: true,
-      purchasedTicketTypeName: true,
-      ticketType: { select: { name: true } },
-      event: {
-        select: {
-          id: true,
-          title: true,
-          startTime: true,
-          location: true,
-          organisation: { select: { name: true, timeZone: true } }
-        }
-      }
-    }
-  });
-}
-
 // One of the caller's own fulfilled orders, for the confirmation page; another
 // member's order reads as missing.
 export function getMemberTicketOrder(userId: string, eventId: string, orderId: string) {

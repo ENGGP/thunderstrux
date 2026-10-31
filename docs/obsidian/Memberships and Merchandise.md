@@ -16,8 +16,8 @@ sources: [lib/memberships/plans.ts, lib/memberships/grants.ts, lib/memberships/o
 
 | Concern | Where |
 | --- | --- |
-| Family registry (quote, lock, fulfil, release hooks) | `lib/commerce/families.ts`: `commerceFamilies` |
-| Plans | `lib/memberships/plans.ts`: `planFieldsSchema`, `planReadiness`, `termFromDays`, `daysFromTerm`, `publicPlans` |
+| Family registry (quote, lock, fulfil hooks) | `lib/commerce/families.ts`: `commerceFamilies` |
+| Plans | `lib/memberships/plans.ts`: `planFieldsSchema`, `planReadiness`, `termFromDays`, `daysFromTerm` |
 | Grants and the membership family | `lib/memberships/grants.ts`: `membershipFamily`, `grantState`, `activeEntitlementGrant`, `memberPriceTicketCount` |
 | What members see | `lib/memberships/offers.ts`: `membershipOffers`, `myMemberships`, `entitlementOnSale`, `memberPriceUnused` |
 | Roster | `lib/memberships/roster.ts` |
@@ -38,7 +38,7 @@ A plan (`MembershipProduct`) is one fixed term a society sells: name (1 to 120),
 
 - **Prices** (plans and merchandise options): `priceAmountSchema`, 0 (free) or $2.00 (so the society keeps more than half after the fee) to $999,999.99, in cents.
 - **Dates:** staff enter a first and last day. The term runs from midnight starting the first day to midnight after the last, in the society's zone (`termFromDays`; `daysFromTerm` reverses it). A day with no midnight in the zone is a field error. Saving the days the form shows keeps the stored term, so changing the society's zone moves no plan (EVT-010). Presets Semester 1 (1 Jan to 30 Jun), Semester 2 (1 Jul to 31 Dec) and Full year fill both days; all stay editable.
-- **States:** `draft`, `published`, `archived`; shown as Draft, Published, Ended (published but past its last day) and Archived. Only published plans not yet ended are on sale (`publicPlans`). Archive is one way: the plan stops selling and can't be republished; holders keep their terms. Plans are never deleted.
+- **States:** `draft`, `published`, `archived`; shown as Draft, Published, Ended (published but past its last day) and Archived. Only published plans not yet ended are on sale. Archive is one way: the plan stops selling and can't be republished; holders keep their terms. Plans are never deleted.
 - **Publish check** (`planReadiness`, one rule for button and API; 409 with `reason`): `term_past` (must end in the future); `overlap` (no other published plan of the society overlaps; back-to-back terms are fine because terms are half-open); `payments_unavailable` (a paid plan needs payments; a free one doesn't). Saving a published plan reruns it for anything but a description edit.
 - **Sold plans:** once any order line names the plan (pending or paid), name, term, price and rights are locked; only the description changes. `MembershipProduct_preserve_sold` enforces this and never lets a plan change society. Next year is a new plan.
 - **Concurrency:** every change holds User, Organisation, then the plan row, with a version check (409 when stale). Checkout locks the Organisation before reading a plan, so it never quotes a plan mid-edit.

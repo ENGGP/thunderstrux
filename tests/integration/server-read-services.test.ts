@@ -18,7 +18,6 @@ import { resolveAuthSecret } from "@/lib/auth/secret";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { getGroupedOrganisationOrdersWithContext, OrganisationOrderEventAccessError } from "@/lib/orders/grouped-orders";
-import { getUpcomingTicketOrders } from "@/lib/orders/member-tickets";
 import { getOrganisationOverview } from "@/lib/organisations/overview";
 import { listOrganisationStaff, listPastStaffInvites } from "@/lib/staff/management";
 import { selectMockContext, setMockSession } from "@/tests/helpers/auth";
@@ -246,25 +245,6 @@ describe("error contract for routes on the shared mapper", () => {
 });
 
 describe("dashboard read services", () => {
-  test("upcoming tickets are the caller's own paid orders for future events", async () => {
-    const { organisation } = await createOrganisationAccount();
-    const member = await createMember();
-    const other = await createMember();
-    const event = await createEvent({ organisationId: organisation.id, status: "published" });
-    const base = { organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id };
-    const paid = await createOrder({ ...base, userId: member.id, status: "paid", paidAt: new Date() });
-    await createOrder({ ...base, userId: member.id, status: "pending" });
-    await createOrder({ ...base, userId: other.id, status: "paid", paidAt: new Date() });
-
-    expect((await getUpcomingTicketOrders(member.id)).map((order) => order.id)).toEqual([paid.id]);
-
-    await prisma.event.update({
-      where: { id: event.id },
-      data: { startTime: new Date(Date.now() - 2 * 86400000), endTime: new Date(Date.now() - 86400000) }
-    });
-    expect(await getUpcomingTicketOrders(member.id)).toEqual([]);
-  });
-
   // UI-019: revoked staff come after current staff, only the 25 most recent.
   test("revoked staff are listed after current staff and capped at the 25 most recent", async () => {
     const { organisation } = await createOrganisationAccount();

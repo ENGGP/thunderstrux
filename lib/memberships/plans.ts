@@ -349,13 +349,3 @@ export async function listPlans(organisationId: string, now = new Date(), page: 
     previousCursor: pageInfo.previousCursor
   };
 }
-
-// What anyone may see: published plans that have not ended. No counts, no
-// drafts, no archive (T24a shows these on the society page).
-export async function publicPlans(organisationId: string, now = new Date()) {
-  return prisma.membershipProduct.findMany({
-    where: { organisationId, status: "published", endsAt: { gt: now } },
-    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-    select: { id: true, name: true, description: true, priceAmount: true, currency: true, startsAt: true, endsAt: true, entitlements: true }
-  });
-}

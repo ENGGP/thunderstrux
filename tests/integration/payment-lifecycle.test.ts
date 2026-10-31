@@ -263,7 +263,7 @@ describe("formal payment lifecycle", () => {
     });
   });
 
-  test("isolates tenant history and blocks verified refunded recovery", async () => {
+  test("isolates tenant history, and a replay leaves a refunded compensation in review", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const fixture = await paymentFixture("cs_refunded_compensation");
     const other = await createOrganisationAccount();
@@ -278,14 +278,6 @@ describe("formal payment lifecycle", () => {
         fulfilmentFailedAt: new Date(),
         fulfilmentFailureReason: "inventory_unavailable_after_payment"
       }
-    });
-    await createReservation({
-      orderId: fixture.order.id,
-      organisationId: fixture.organisation.id,
-      eventId: fixture.event.id,
-      ticketTypeId: fixture.ticketType.id,
-      userId: fixture.member.id,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000)
     });
     await prisma.$transaction(async (tx) => {
       await tx.order.update({

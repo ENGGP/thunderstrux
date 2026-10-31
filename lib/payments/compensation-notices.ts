@@ -27,7 +27,7 @@ export async function queueTicketReviewNotice(tx: Prisma.TransactionClient, orde
     payload: {
       subject: `We're checking your payment for ${order.event.title}`.slice(0, 200),
       message: `We received your payment of ${formatMoney(order.totalAmount)} for ${order.event.title}, but we couldn't issue your tickets, so you don't have tickets for this order. ${
-        automatic ? "It is being refunded in full, and we'll email you when the refund is confirmed." : `${seller} will review it and either issue your tickets or refund you.`
+        automatic ? "It is being refunded in full, and we'll email you when the refund is confirmed." : `${seller} will review it and refund you.`
       } Contact ${seller} if you have questions.`
     }
   });

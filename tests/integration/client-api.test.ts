@@ -105,7 +105,8 @@ describe("checkout attempt polling", () => {
     expect(await completed).toEqual({ orderId: "order-1" });
 
     answers({ status: "failed" });
-    const failed = expect(waitForAttempt("attempt-3")).rejects.toThrow("Checkout didn't start. Nothing has been charged.");
+    // DEF-075: the refusal's title already says it didn't start, and its body adds that nothing was charged.
+    const failed = expect(waitForAttempt("attempt-3")).rejects.toThrow(new Error("We couldn't open the payment page. Please try again."));
     await vi.runAllTimersAsync();
     await failed;
 

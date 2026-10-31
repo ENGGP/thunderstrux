@@ -1,11 +1,11 @@
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
-import { queueCommerceFraudRefund, verifiedCommercePayment } from "@/lib/commerce/payment-recovery";
+import { verifiedCommercePayment } from "@/lib/commerce/payment-recovery";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { lockOrder } from "@/lib/payments/order-lifecycle";
-import { OrderRefundError, openOrderRefund } from "@/lib/payments/order-refunds";
+import { OrderRefundError, openCommerceRefund, openOrderRefund } from "@/lib/payments/order-refunds";
 import { journal, journalled, verifiedOrderPayment } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
@@ -61,16 +61,22 @@ export async function reconcileEarlyFraudWarning(event: Stripe.Event) {
 
   const outcome = await prisma.$transaction(async (tx) => {
     if (!(await journal(tx, event))) return null;
-    if ("commerceOrderId" in purchase) {
-      if (!(await lockCommerceOrderForFamily(tx, purchase.commerceOrderId))) return "not_found";
-      return warning.actionable ? queueCommerceFraudRefund(tx, purchase.commerceOrderId, fraudRefundReason) : "not_actionable";
-    }
-    const order = await tx.order.findUnique({ where: { id: purchase.orderId }, select: { event: { select: { organisationId: true } } } });
-    if (!order || !(await lockOrder(tx, purchase.orderId, order.event.organisationId))) return "not_found";
-    if (!warning.actionable) return "not_actionable";
-    // A scanned ticket was used, so the society keeps the sale and a person decides.
-    if (await tx.ticket.count({ where: { orderId: purchase.orderId, checkedInAt: { not: null } } })) return "used";
     try {
+      if ("commerceOrderId" in purchase) {
+        const order = await lockCommerceOrderForFamily(tx, purchase.commerceOrderId);
+        if (!order) return "not_found";
+        if (!warning.actionable) return "not_actionable";
+        // Collected merchandise was used, as a scanned ticket is below.
+        const { pickupStatus } = await tx.commerceOrder.findUniqueOrThrow({ where: { id: order.id }, select: { pickupStatus: true } });
+        if (pickupStatus === "collected") return "used";
+        await openCommerceRefund(tx, { organisationId: order.organisationId, commerceOrderId: order.id, actor: null, reason: fraudRefundReason });
+        return "refund_queued";
+      }
+      const order = await tx.order.findUnique({ where: { id: purchase.orderId }, select: { event: { select: { organisationId: true } } } });
+      if (!order || !(await lockOrder(tx, purchase.orderId, order.event.organisationId))) return "not_found";
+      if (!warning.actionable) return "not_actionable";
+      // A scanned ticket was used, so the society keeps the sale and a person decides.
+      if (await tx.ticket.count({ where: { orderId: purchase.orderId, checkedInAt: { not: null } } })) return "used";
       await openOrderRefund(tx, { organisationId: order.event.organisationId, orderId: purchase.orderId, actor: null, reason: fraudRefundReason });
       return "refund_queued";
     } catch (error) {

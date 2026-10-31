@@ -10,9 +10,9 @@ import { MembershipRevocationError } from "@/lib/memberships/revocation";
 import { OrderRefundError } from "@/lib/payments/order-refunds";
 import { StripeConfigurationError } from "@/lib/stripe";
 import type { OrganisationPermission } from "@/lib/permissions";
-import { mfaGrantDigest } from "@/lib/security/csrf";
+import { requireFreshStaffMfa } from "@/lib/security/fresh-staff-mfa";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
-import { MfaConfigurationError, MfaInputError, MfaRequiredError, mfaEnforcementMode, verifyStaffMfa } from "@/lib/security/staff-mfa";
+import { MfaConfigurationError, MfaInputError, MfaRequiredError } from "@/lib/security/staff-mfa";
 import { organisationActor } from "@/lib/organisations/http";
 import { enforceTrustedMutationRequest } from "@/lib/security/request-guard";
 import { validateJson } from "@/lib/validators";
@@ -118,12 +118,7 @@ export async function staffEndRoute(
       const limited = await enforceRateLimit({ policy: "staff_mfa_verify", request, keyParts: [actor.id] });
       if (limited) return limited;
     }
-    if (mfaEnforcementMode() !== "off") {
-      if (!body.data.mfaCode) throw new MfaInputError("Enter your authenticator code to continue");
-      const digest = mfaGrantDigest(actor.mfaSessionId);
-      if (!digest) throw new MfaRequiredError();
-      await verifyStaffMfa(actor.id, body.data.mfaCode, digest);
-    }
+    await requireFreshStaffMfa(actor, body.data.mfaCode, "Enter your authenticator code to continue");
     const result = await run(organisationId, { id: actor.id }, body.data);
     return NextResponse.json(result, { status: status(result), headers: noStore });
   } catch (error) {

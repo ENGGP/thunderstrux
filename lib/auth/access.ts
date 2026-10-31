@@ -49,14 +49,6 @@ async function requireCurrentStaffMfa(user: { id: string; mfaSessionId?: string 
   }
 }
 
-export type OrganisationManagementContext = {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: Date;
-  staffRole: OrganisationStaffRole;
-};
-
 export async function requireAuthenticatedUser() {
   const session = await getLiveSession();
   const userId = session?.user?.id;

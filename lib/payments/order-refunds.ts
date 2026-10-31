@@ -217,47 +217,64 @@ export async function requestCommerceRefund(input: {
   confirmation: string;
 }) {
   // The caller has verified the staff member's authenticator code (see the route).
-  const reason = input.reason.trim();
   const token = randomUUID();
-  const now = new Date();
-
-  const request = await prisma.$transaction(async (tx) => {
-    const found = await tx.commerceOrder.findFirst({ where: { id: input.commerceOrderId, organisationId: input.organisationId }, select: { id: true } });
-    if (!found || !(await lockCommerceOrderForFamily(tx, found.id))) throw new OrderRefundError("not_found", "Order was not found");
-    const order = await tx.commerceOrder.findUniqueOrThrow({ where: { id: found.id } });
-    if (input.confirmation.trim().toUpperCase() !== orderReference(order.id)) {
-      throw new OrderRefundError("confirmation_mismatch", `Type ${orderReference(order.id)} to confirm`);
-    }
-    if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
-    if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
-    // PAY-036: only an open or lost dispute fences a refund; the society kept a won one.
-    if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
-    const amount = order.totalAmount - order.externalRefundedAmount;
-    if (
-      order.paymentKind !== "stripe" || order.status !== "paid" || !order.fulfilledAt || order.requiresCompensationReview ||
-      !order.stripeSessionId || !order.sellerStripeAccountId || amount <= 0
-    ) {
-      throw new OrderRefundError("not_refundable", "This order can't be refunded here");
-    }
-    await tx.commerceOrder.update({ where: { id: order.id }, data: { refundStatus: "processing" } });
-    const created = await tx.refundRequest.create({
-      data: {
-        commerceOrderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
-        actorUserId: input.actor.id, operationKey: `commerce-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
-        attempts: 1, processingToken: token, processingStartedAt: now
-      }
-    });
-    await appendCommerceLifecycleEvent(tx, {
-      commerceOrderId: order.id, type: "refund_requested", source: "staff_action", actorUserId: input.actor.id, reason, facts: { amount }
-    });
-    await tx.auditLog.create({ data: {
-      organisationId: input.organisationId, actorUserId: input.actor.id, action: "commerce_order.refund_requested", targetType: "CommerceOrder", targetId: order.id,
-      metadata: { refundRequestId: created.id, amount, reason }
-    } });
-    return created;
-  });
-
+  const request = await prisma.$transaction((tx) => openCommerceRefund(tx, { ...input, processing: { token, now: new Date() } }));
   return sendRefund(request.id, token, "staff_action");
+}
+
+// openOrderRefund for a commerce order: its checks under the order's locks, the
+// refund fence and the request. Without `processing` the refund worker sends it. A
+// null actor is Thunderstrux itself, on an early fraud warning or `compensation`.
+export async function openCommerceRefund(tx: Prisma.TransactionClient, input: {
+  organisationId: string;
+  commerceOrderId: string;
+  actor: Actor | null;
+  reason: string;
+  confirmation?: string;
+  processing?: { token: string; now: Date };
+  // Why a payment couldn't be filled. That order is failed, unfulfilled and under
+  // review, so the checks on a sale would keep the buyer's money.
+  compensation?: string;
+}) {
+  const reason = input.reason.trim();
+  const found = await tx.commerceOrder.findFirst({ where: { id: input.commerceOrderId, organisationId: input.organisationId }, select: { id: true } });
+  if (!found || !(await lockCommerceOrderForFamily(tx, found.id))) throw new OrderRefundError("not_found", "Order was not found");
+  const order = await tx.commerceOrder.findUniqueOrThrow({ where: { id: found.id } });
+  if (input.confirmation !== undefined && input.confirmation.trim().toUpperCase() !== orderReference(order.id)) {
+    throw new OrderRefundError("confirmation_mismatch", `Type ${orderReference(order.id)} to confirm`);
+  }
+  if (order.refundStatus === "refunded") throw new OrderRefundError("already_refunded", "This order has already been refunded");
+  if (order.refundStatus === "processing") throw new OrderRefundError("in_progress", "A refund for this order is already in progress");
+  // PAY-036: only an open or lost dispute fences a refund; the society kept a won one.
+  if (order.disputeStatus === "open" || order.disputeStatus === "lost") throw new OrderRefundError("disputed", "The buyer has disputed this payment, so it can't be refunded here");
+  // PAY-038: only what isn't already back with the buyer.
+  const amount = order.totalAmount - order.externalRefundedAmount;
+  const compensating = input.compensation !== undefined;
+  if (
+    order.paymentKind !== "stripe" || amount <= 0 ||
+    (!compensating && (order.status !== "paid" || !order.fulfilledAt || order.requiresCompensationReview || !order.stripeSessionId || !order.sellerStripeAccountId))
+  ) {
+    throw new OrderRefundError("not_refundable", "This order can't be refunded here");
+  }
+  await tx.commerceOrder.update({ where: { id: order.id }, data: { refundStatus: "processing" } });
+  const created = await tx.refundRequest.create({
+    data: {
+      commerceOrderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
+      actorUserId: input.actor?.id ?? null, operationKey: compensating ? `commerce-compensation:${order.id}:${randomUUID()}` : `commerce-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
+      ...(input.processing ? { attempts: 1, processingToken: input.processing.token, processingStartedAt: input.processing.now } : {})
+    }
+  });
+  await appendCommerceLifecycleEvent(tx, {
+    commerceOrderId: order.id, type: "refund_requested", source: input.actor ? "staff_action" : "stripe_webhook", actorUserId: input.actor?.id ?? null,
+    reason: compensating ? "compensation" : reason, facts: { amount }
+  });
+  await tx.auditLog.create({ data: {
+    organisationId: input.organisationId, actorUserId: input.actor?.id ?? null, targetType: "CommerceOrder", targetId: order.id,
+    ...(compensating
+      ? { action: "commerce_order.compensation_refund_queued", metadata: { amount, reason: input.compensation } }
+      : { action: "commerce_order.refund_requested", metadata: { refundRequestId: created.id, amount, reason } })
+  } });
+  return created;
 }
 
 // The charge this request refunds, checked against the purchase and the

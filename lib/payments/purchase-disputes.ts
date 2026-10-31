@@ -5,7 +5,7 @@ import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { markCommerceExternalRefundReviewed } from "@/lib/commerce/payment-recovery";
 import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
 import { ticketReference } from "@/lib/format";
-import { refundedSoFar } from "@/lib/payments/order-refunds";
+import { closeRepaidReview, refundedSoFar, reopenRepaidReview } from "@/lib/payments/order-refunds";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { alertNeedsReview, resumeCompensationRefund } from "@/lib/payments/compensation-refunds";
@@ -86,8 +86,8 @@ export async function verifiedOrderPayment(stripe: Stripe, paymentIntentId: stri
 
 // charge.dispute.created / updated / closed. The first verified event puts the
 // order's valid tickets under review and fences refunds, resends and
-// compensation; a lost dispute voids them; a won one waits for staff to restore
-// them, and releases a compensation refund it held.
+// compensation; a lost dispute voids them and closes a review it repaid; a won one
+// waits for staff to restore them, and releases a compensation refund it held.
 export async function reconcileDisputeEvent(event: Stripe.Event) {
   const dispute = event.data.object as Stripe.Dispute;
   if (await journalled(event.id)) return;
@@ -104,12 +104,13 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
   const orderId = payment.order.id;
   const now = new Date();
   let forAPerson = null as Awaited<ReturnType<typeof resumeCompensationRefund>>;
+  let partReturned = false as boolean;
   const opened = await prisma.$transaction(async (tx) => {
     if (!(await journal(tx, event))) return false;
     // A lost dispute puts the places back on sale: event and ticket type before the order.
     if (outcome === "lost") await lockOrderInventory(tx, orderId);
     if (!(await lockOrder(tx, orderId))) return false;
-    const { event: owner } = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { event: { select: { organisationId: true } } } });
+    const { event: owner, requiresCompensationReview } = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { requiresCompensationReview: true, event: { select: { organisationId: true } } } });
     const existing = await tx.purchaseDispute.findUnique({ where: { stripeDisputeId: current.id } });
     // Restored by staff: later events are history only.
     if (existing?.resolvedAt) return false;
@@ -147,15 +148,26 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
       organisationId: owner.organisationId, actorUserId: null, action: `order.dispute_${existing ? outcome : "opened"}`, targetType: "Order", targetId: orderId,
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
-    if (worst === "won") forAPerson = await resumeCompensationRefund(tx, { id: orderId, organisationId: owner.organisationId }, event.id);
+    if (worst === "won") {
+      await reopenRepaidReview(tx, { orderId, commerceOrderId: null }, event.id);
+      forAPerson = await resumeCompensationRefund(tx, { id: orderId, organisationId: owner.organisationId }, event.id);
+    }
+    if (outcome === "lost") partReturned = !(await closeRepaidReview(tx, { orderId, commerceOrderId: null, organisationId: owner.organisationId }, { source: "stripe_webhook", stripeEventId: event.id })) && requiresCompensationReview;
     return !existing;
   });
   if (forAPerson) alertNeedsReview(forAPerson, "review_required", "dispute_won");
+  if (partReturned) alertPartReturned({ orderId });
   if (opened) {
     emitOperationalAlert("purchase_dispute_opened", { orderId, disputeId: current.id, evidenceDueBy: current.evidence_details?.due_by ?? null });
     await stageDisputeEvidence(current, { orderId });
   }
   logInfo("stripe.dispute.reconciled", { stripeEventId: event.id, orderId, providerStatus: current.status });
+}
+
+// PAY-057: a lost dispute returned only part of a payment under review, and it fences
+// the refund of the rest, so a person has to send that.
+export function alertPartReturned(purchase: { orderId: string } | { commerceOrderId: string }) {
+  emitOperationalAlert("paid_but_unfulfilled_compensation_required", { ...purchase, reason: "dispute_lost_for_part" });
 }
 
 // Staff restore the tickets of a dispute Stripe closed in the society's favour.
@@ -215,12 +227,12 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
     if (!(await lockOrder(tx, orderId))) return false;
     const order = await tx.order.findUniqueOrThrow({
       where: { id: orderId },
-      select: { status: true, totalAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, event: { select: { organisationId: true } } }
+      select: { status: true, totalAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, requiresCompensationReview: true, event: { select: { organisationId: true } } }
     });
     if (outside === order.externalRefundedAmount && unreversed === order.externalUnreversedAmount) return false;
     // shortcut: a later drop (a refund that failed after succeeding) is recorded but voided tickets stay void; staff review it in Stripe.
     const refundedHere = await refundedSoFar(tx, { orderId, commerceOrderId: null });
-    const full = outside + refundedHere >= order.totalAmount && order.status === "paid";
+    const full = outside + refundedHere >= order.totalAmount && (order.status === "paid" || order.requiresCompensationReview);
     await tx.order.update({
       where: { id: orderId },
       data: { externalRefundedAmount: outside, externalUnreversedAmount: unreversed, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded" } : {}) }
@@ -236,6 +248,7 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
       organisationId: order.event.organisationId, actorUserId: null, action: "order.external_refund_recorded", targetType: "Order", targetId: orderId,
       metadata: { refundId: refund.id, refundedOutside: outside, totalAmount: order.totalAmount, notReversed: unreversed }
     } });
+    await closeRepaidReview(tx, { orderId, commerceOrderId: null, organisationId: order.event.organisationId }, { source: "stripe_webhook", stripeEventId: event.id });
     return true;
   });
   if (recorded && unreversed > 0) alertOutsideRefundNotReversed({ orderId }, unreversed);

@@ -7,8 +7,8 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
 import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
-import { openCommerceCompensation } from "@/lib/payments/order-refunds";
-import { alertOutsideRefundNotReversed, isInquiry, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
+import { closeRepaidReview, openCommerceCompensation, reopenRepaidReview } from "@/lib/payments/order-refunds";
+import { alertOutsideRefundNotReversed, alertPartReturned, isInquiry, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
 // PAY-003: what Stripe reports about a membership or merchandise payment that
@@ -49,8 +49,9 @@ async function endMemberships(tx: Prisma.TransactionClient, commerceOrderId: str
 }
 
 // charge.dispute.*: an open dispute pauses refunds and hand-over; a lost one
-// ends memberships and cancels an uncollected pickup; a won one clears the
-// order, which keeps the dispute in its history, and opens a held compensation refund.
+// ends memberships, cancels an uncollected pickup and closes a review it repaid; a
+// won one clears the order, which keeps the dispute in its history, and opens a held
+// compensation refund.
 export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
   const dispute = event.data.object as Stripe.Dispute;
   const intentId = idOf(dispute.payment_intent);
@@ -68,6 +69,7 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
   const outcome = outcomeOf(current.status);
   const { id: commerceOrderId, organisationId } = payment.order;
   const now = new Date();
+  let partReturned = false as boolean;
   const opened = await prisma.$transaction(async (tx) => {
     if (!(await journal(tx, event)) || !(await lockCommerceOrderForFamily(tx, commerceOrderId))) return false;
     const existing = await tx.purchaseDispute.findUnique({ where: { stripeDisputeId: current.id } });
@@ -100,11 +102,13 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
     // PAY-056: the last dispute holding this order's compensation refund went the society's way.
-    if (worst === "won" && review.requiresCompensationReview) {
+    if (worst === "won" && ((await reopenRepaidReview(tx, { orderId: null, commerceOrderId }, event.id)) || review.requiresCompensationReview)) {
       await openCommerceCompensation(tx, { id: commerceOrderId, organisationId }, review.reviewReason ?? "compensation_review_required");
     }
+    if (outcome === "lost") partReturned = !(await closeRepaidReview(tx, { orderId: null, commerceOrderId, organisationId }, { source: "stripe_webhook", stripeEventId: event.id })) && review.requiresCompensationReview;
     return !existing;
   });
+  if (partReturned) alertPartReturned({ commerceOrderId });
   if (opened) {
     emitOperationalAlert("purchase_dispute_opened", { commerceOrderId, disputeId: current.id, evidenceDueBy: current.evidence_details?.due_by ?? null });
     await stageDisputeEvidence(current, { commerceOrderId });
@@ -148,7 +152,7 @@ export async function reconcileCommerceExternalRefundEvent(event: Stripe.Event) 
     const full = outside >= order.totalAmount && (order.status === "paid" || order.requiresCompensationReview) && order.refundStatus !== "refunded";
     await tx.commerceOrder.update({
       where: { id: commerceOrderId },
-      data: { externalRefundedAmount: outside, externalUnreversedAmount: unreversed, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded", requiresCompensationReview: false } : {}) }
+      data: { externalRefundedAmount: outside, externalUnreversedAmount: unreversed, externalRefundReviewedAt: null, stripePaymentIntentId: intentId, ...(full ? { refundStatus: "refunded" } : {}) }
     });
     const ended = full ? await endMemberships(tx, commerceOrderId, "Refunded in Stripe", now) : 0;
     await appendCommerceLifecycleEvent(tx, {
@@ -158,6 +162,7 @@ export async function reconcileCommerceExternalRefundEvent(event: Stripe.Event) 
       organisationId, actorUserId: null, action: "commerce_order.external_refund_recorded", targetType: "CommerceOrder", targetId: commerceOrderId,
       metadata: { refundId: refund.id, refundedOutside: outside, totalAmount: order.totalAmount, notReversed: unreversed }
     } });
+    await closeRepaidReview(tx, { orderId: null, commerceOrderId, organisationId }, { source: "stripe_webhook", stripeEventId: event.id });
     return true;
   });
   if (recorded && unreversed > 0) alertOutsideRefundNotReversed({ commerceOrderId }, unreversed);

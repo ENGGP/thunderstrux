@@ -1,14 +1,14 @@
 ---
 status: living
-last-reviewed: 2026-10-27
+last-reviewed: 2026-10-31
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[API Reference]]", "[[Ticket Check-in Implementation]]", "[[Memberships and Merchandise]]", "[[Society Profiles and Assets]]"]
-sources: [lib/events/event-lifecycle.ts, lib/events/ticket-codes.ts, lib/events/event-cancellation.ts, lib/events/event-readiness.ts, lib/events/inventory.ts, lib/events/public-events.ts, lib/events/event-changes.ts, lib/validators/events.ts, components/events/create-event-form.tsx, app/api/events]
+sources: [lib/events/event-lifecycle.ts, lib/events/ticket-codes.ts, lib/events/event-cancellation.ts, lib/events/event-readiness.ts, lib/events/inventory.ts, lib/events/public-events.ts, lib/events/event-changes.ts, lib/payments/free-cancellation.ts, lib/validators/events.ts, components/events/create-event-form.tsx, app/api/events]
 ---
 
 # Event Lifecycle
 
-**Owns:** event statuses, visibility, sales open and close, capacity and ticket types, hidden types and ticket codes, the event builder, publish and unpublish, the edit boundary, inventory locks, cancelling an event, delete rules and the public event reads.
+**Owns:** event statuses, visibility, sales open and close, capacity and ticket types, hidden types and ticket codes, the event builder, publish and unpublish, the edit boundary, inventory locks, cancelling an event, free cancellation, delete rules and the public event reads.
 **Read when:** changing how events are created, edited, published or sold, what stock means, or who can see an event.
 **Not here:** orders, holds and refunds ([[Payment Lifecycle]]); request and response shapes ([[API Reference]]); check-in ([[Ticket Check-in Implementation]]); member prices and members-only access ([[Memberships and Merchandise]]); image delivery ([[Society Profiles and Assets]]); event metrics ([[Analytics and Calendar]]); page guards ([[Frontend and Backend Flow]]).
 
@@ -24,12 +24,13 @@ sources: [lib/events/event-lifecycle.ts, lib/events/ticket-codes.ts, lib/events/
 | Public reads | `lib/events/public-events.ts`: `getPublishedEvents`, `getPublishedEventDetail`, `getEventForViewer`, `getBookedEventDetail`, `getEventPreviewDetail`, `priceForViewer` |
 | Codes: lookup, price, uses, staff create and change | `lib/events/ticket-codes.ts`: `readTicketCode`, `priceWithCode`, `codeAppliesTo`, `ticketCodeUses`, `codeForBuyer`, `listEventTicketCodes`, `createEventTicketCode`, `updateEventTicketCode`; `POST /api/events/[eventId]/codes`, `PATCH /api/events/[eventId]/codes/[codeId]`; `components/events/ticket-codes-editor.tsx` |
 | Time and place change notices | `lib/events/event-changes.ts`: `recordEventChange`, `fanOutEventChanges` |
+| Free ticket cancellation | `lib/payments/free-cancellation.ts`: `cancelFreeOrder`, `cancelFreePurchase`, `releaseFreeRegistration` |
 | Validation | `lib/validators/events.ts`: `createEventSchema`, `updateEventSchema`, `eventPublicationSchema`, `eventSaleStateSchema`; prices `lib/validators/price.ts` |
 | Error mapping | `lib/events/http.ts`: `eventRouteRules` |
 | Routes | `POST /api/events`, `GET /api/events`, `GET`/`PATCH`/`DELETE /api/events/[eventId]`, `PATCH /api/events/[eventId]/publish`, `PATCH /api/events/[eventId]/sales`, `POST /api/events/[eventId]/cancel`, `GET /api/public/events`, `GET /api/public/events/[eventId]` |
 | Builder and actions | `components/events/create-event-form.tsx`, `components/events/event-actions.tsx`, `components/events/readiness-checklist.tsx` |
 | Pages | `/dashboard/events`, `/dashboard/events/new`, `/dashboard/events/[eventId]`, `/dashboard/events/[eventId]/edit`, `/dashboard/events/[eventId]/preview`, `/events/[eventId]` |
-| Tests | `tests/integration/event-lifecycle.test.ts`, `tests/integration/event-policy.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/event-hero.test.ts`, `tests/integration/dashboard-events.test.ts`, `tests/integration/public-event-pages.test.ts`, `tests/integration/members-only-events.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/integration/ticket-codes.test.ts` |
+| Tests | `tests/integration/free-cancellation.test.ts`, `tests/integration/event-lifecycle.test.ts`, `tests/integration/event-policy.test.ts`, `tests/integration/inventory-locks.test.ts`, `tests/integration/event-hero.test.ts`, `tests/integration/dashboard-events.test.ts`, `tests/integration/public-event-pages.test.ts`, `tests/integration/members-only-events.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/integration/ticket-codes.test.ts` |
 
 ## States
 
@@ -195,6 +196,25 @@ Rules:
 - `/dashboard/events/[eventId]/preview` (`events:manage`) renders a draft as the public page under "Draft preview" with buying off; a published event redirects to its public page.
 - `components/events/event-actions.tsx` shows Publish, Unpublish and Delete with confirmation and the reason an action is disabled; the routes still enforce the rules. On the event's own page, staff who may also refund see "Cancel event" (typed title, message, code; `cancelBlocker` says why it's unavailable). A cancelled event shows no actions.
 - Legacy `/dashboard/[orgSlug]/events/...` pages redirect to the slugless routes.
+
+## Free cancellation
+
+`cancelFreeOrder` runs inside the caller's transaction for a confirmed free ticket order (`paymentKind = free`, `paid`, fulfilled). Three callers:
+
+| Caller | Who | Stock | Buyer email |
+| --- | --- | --- | --- |
+| `cancelFreePurchase` (`POST /api/orders/[orderId]/cancel`) | staff, with a fresh code | not restored | `cancellation/{orderId}`: cancelled by the society |
+| `releaseFreeRegistration` (`POST /api/purchases/tickets/[orderId]/cancel-registration`) | the buyer, before the event starts (EVT-005) | the voided tickets go back to `TicketType.quantity`, under the event and type locks taken before the order's | `cancellation/{orderId}`: you cancelled |
+| `cancelOrganisationEvent` | staff cancelling the event | not restored (nothing sells again) | none of its own; the event's `event_cancelled` notice |
+
+- Records `cancelledAt`, `cancelledByUserId` (the staff member or member buyer; null for a guest buyer) and `cancellationReason`; tickets `void` (`cancelled`, check-ins kept); `free_cancelled` with source `staff_action` or `buyer_action`; audit `order.free_cancelled` with `by`.
+- Buyer pages tell a buyer's own release apart (`releasedByBuyer` in `lib/purchases/projection.ts`): staff cancellations always record who did it.
+- It is never a refund: no `RefundRequest`, `status` stays `paid`, fulfilment stays.
+- Why a buyer's release restores stock and staff's doesn't: the buyer gave the place up, so it should sell again (Luma and Humanitix free the spot); a staff cancellation may remove someone who shouldn't have had it, and the organiser decides whether to add stock.
+- A repeat answers `already_cancelled` and changes nothing. The database refuses a cancellation on a non-free order or without a reason.
+- Read models show Cancelled first, resends are refused, and the guest order page says the registration was cancelled.
+
+Free memberships and free merchandise orders cancel the same way through their own routes ([[Memberships and Merchandise]]).
 
 ## Traps
 

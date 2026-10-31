@@ -35,7 +35,7 @@ const prefixes: Record<HistoryCategory, string[]> = {
 // Outcomes Stripe reports (refunds settling, disputes closing) stay Stripe's even when a worker reads them.
 const automaticActions = [
   "order.compensation_refund_queued", "order.compensation_refund_review_required", "order.compensation_refund_started", "order.compensation_review_required",
-  "commerce_order.compensation_refund_queued", "order.dispute_funds_recovered", "commerce_order.dispute_funds_recovered", "asset.orphan_removed",
+  "order.compensation_review_closed", "commerce_order.compensation_review_closed", "commerce_order.compensation_refund_queued", "order.dispute_funds_recovered", "commerce_order.dispute_funds_recovered", "asset.orphan_removed",
   // Without a person: the refund an early fraud warning starts (lib/payments/fraud-warnings.ts).
   "order.refund_requested", "commerce_order.refund_requested"
 ];
@@ -337,6 +337,10 @@ export function describe(row: Row, targets: Targets, timeZone: string): HistoryE
     facts = [{ label: "Why", value: `${reviewReasons[text(m.reason) ?? ""] ?? "Paid, but what they bought couldn't be issued."} Decide on it in Orders.` }];
   } else if (a === "order.compensation_refund_started") sentence = ["started the automatic refund of ", ...order()];
   else if (a === "order.compensation_refund_confirmed") sentence = ["confirmed the refund of ", ...order(), " in payment review"];
+  else if (a === "order.compensation_review_closed" || a === "commerce_order.compensation_review_closed") {
+    sentence = ["closed the payment review of ", ...anyOrder()];
+    facts = [{ label: "Why", value: text(m.reason) === "dispute_lost" ? "The buyer's bank had returned the payment." : "The payment had been refunded in Stripe." }];
+  }
   else if (a.startsWith("order.compensation_")) sentence = [a.endsWith("refunded") ? "confirmed the automatic refund of " : "reports a problem with the automatic refund of ", ...order()];
   else if (a.startsWith("membership_plan.")) {
     sentence = [`${verbs[a.slice(16)] ?? "changed"} the membership plan `, plan()];

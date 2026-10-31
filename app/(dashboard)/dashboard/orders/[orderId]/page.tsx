@@ -313,6 +313,9 @@ function RefundNotice({ order, timeZone }: { order: Awaited<ReturnType<typeof ge
 // in the Stripe dashboard. A dispute is not a refund.
 function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<typeof getOrganisationOrderDetail>>; canAct: boolean; timeZone: string }) {
   const dispute = order.latestDispute;
+  // A payment that never became an order has no tickets to restore or call invalid (PAY-056, PAY-057).
+  const ticketless = order.status !== "paid";
+  const ended = ticketless ? "No tickets were issued for this order." : "The tickets are no longer valid.";
   if (order.disputeStatus && dispute) {
     const link = (
       <a className="inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4" href={`https://dashboard.stripe.com/${isLiveStripeKey() ? "" : "test/"}disputes/${dispute.stripeDisputeId}`} rel="noreferrer" target="_blank">
@@ -332,8 +335,6 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
       );
     }
     if (order.disputeStatus === "won") {
-      // A compensation order has no tickets to restore (PAY-056).
-      const ticketless = Boolean(order.compensationRefundJob);
       return (
         <Notice action={canAct && !ticketless ? <OrderReviewActions action="restore_tickets" orderId={order.id} /> : undefined} title="Stripe closed the dispute in the society's favour">
           <p>{ticketless ? "No tickets were issued for this order, and the dispute no longer holds its refund." : "The tickets stay under review until an owner or finance manager restores them with a reason. Restoring doesn't move money."}</p>
@@ -343,7 +344,7 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
     }
     return (
       <Notice title="The buyer won the dispute" tone="danger">
-        <p>Their bank returned {formatMoney(dispute.amount)} to them{dispute.closedAt ? ` on ${formatDate(dispute.closedAt, timeZone)}` : ""}. The tickets are no longer valid.</p>
+        <p>Their bank returned {formatMoney(dispute.amount)} to them{dispute.closedAt ? ` on ${formatDate(dispute.closedAt, timeZone)}` : ""}. {ended}</p>
         {link}
       </Notice>
     );
@@ -352,7 +353,7 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
   if (order.refundStatus === "refunded" && order.externalRefundedAmount >= order.totalAmount) {
     return (
       <Notice title="Fully refunded in Stripe">
-        <p>{formatMoney(order.externalRefundedAmount)} was refunded from the Stripe dashboard. The tickets are no longer valid.</p>
+        <p>{formatMoney(order.externalRefundedAmount)} was refunded from the Stripe dashboard. {ended}</p>
       </Notice>
     );
   }

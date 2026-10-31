@@ -62,15 +62,17 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
   // Failed or expired only when no money is in play: a refund, a dispute or a review means a payment was taken.
   const projection = ticketOrderProjection(order);
   const closed = projection === "failed" || projection === "expired" || checkout?.state === "ended";
-  const held = reviewDisputeWords(order.disputeStatus);
+  const held = reviewDisputeWords(order);
   const paid = order.status === "paid";
+  // PAY-057: the bank returned a payment that never became an order.
+  const returned = !paid && order.disputeStatus === "lost" ? held : null;
   const count = order.lines.reduce((total, line) => total + line.quantity, 0);
   const what = `${count} ${count === 1 ? "item" : "items"} from ${order.sellerName}`;
   // A refund or a free cancellation ends the pickup unless it was already collected (T28b).
   const ended = order.refundStatus === "refunded" || order.cancelledAt !== null;
   const tracked = !ended || order.pickupStatus === "collected";
   const collectedAt = order.lifecycleEvents.findLast((event) => event.type === "pickup_collected")?.createdAt;
-  const title = closed ? "No payment taken" : order.requiresCompensationReview ? held?.title ?? "We're refunding your payment" : checkout?.state === "waiting" ? "You haven't paid yet" : waiting ? "Confirming your payment" : order.refundStatus === "refunded" ? "Refunded" : paid ? (order.cancelledAt ? "Cancelled" : pickupTitle[order.pickupStatus ?? "pending"]) : "Your order";
+  const title = closed ? "No payment taken" : order.requiresCompensationReview ? held?.title ?? "We're refunding your payment" : checkout?.state === "waiting" ? "You haven't paid yet" : waiting ? "Confirming your payment" : order.refundStatus === "refunded" ? "Refunded" : paid ? (order.cancelledAt ? "Cancelled" : pickupTitle[order.pickupStatus ?? "pending"]) : returned?.title ?? "Your order";
   const steps = [...(guest ? ["Your email"] : []), "Review", ...(free ? [] : ["Pay with Stripe"]), "Pickup"];
 
   return (
@@ -184,6 +186,8 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
             </>
           ) : order.refundStatus === "refunded" ? (
             <p className="text-ink">Your payment was refunded to your card. Banks usually take 5 to 10 business days.</p>
+          ) : returned ? (
+            <p className="text-ink">{returned.message}</p>
           ) : (
             <p className="text-ink">This order is closed. Ask {order.sellerName} if you have a question about it.</p>
           )}

@@ -78,11 +78,28 @@ describe("purchases and order status", () => {
     expect(open).toContain("Your bank has disputed this payment");
     expect(open).not.toContain("under review");
     const lost = await notice("lost");
-    expect(lost).toContain("Refunded by your bank");
+    expect(lost).toContain("Partly refunded by your bank");
     expect(lost).not.toContain("no longer valid");
     const won = await notice("won");
     expect(won).toContain("will sort it out");
     expect(won).not.toContain("under review");
+  });
+
+  // PAY-057: no tickets were issued, so a closed review has none to call invalid.
+  test("a payment already back with the buyer says so, without tickets it never had", async () => {
+    const fixture = await pendingPurchase();
+    const notice = async (data: { disputeStatus?: "lost"; refundStatus?: "refunded"; externalRefundedAmount?: number }) => {
+      await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "failed", paidAt: new Date(), failedAt: new Date(), requiresCompensationReview: false, fulfilmentFailedAt: new Date(), fulfilmentFailureReason: "sold_out", disputeStatus: null, refundStatus: null, ...data } });
+      return renderPage(TicketOrderNotice({ order: (await getOwnTicketPurchase(fixture.buyer.id, fixture.order.id))!, processing: null }));
+    };
+    const lost = await notice({ disputeStatus: "lost" });
+    expect(lost).toContain("Refunded by your bank");
+    expect(lost).toContain("No tickets were issued");
+    expect(lost).not.toContain("no longer valid");
+    const refunded = await notice({ refundStatus: "refunded", externalRefundedAmount: fixture.order.totalAmount });
+    expect(refunded).toContain("This order was refunded in full");
+    expect(refunded).toContain("No tickets were issued");
+    expect(refunded).not.toContain("no longer valid");
   });
 
   test("only the buyer or the guest session that bought it can read an order; everyone else gets the same 404", async () => {

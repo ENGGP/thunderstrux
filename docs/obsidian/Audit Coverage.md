@@ -85,6 +85,7 @@ sources: [lib/audit/history.ts, app/(dashboard)/dashboard/history/page.tsx, pris
 | Compensation refunds worker (`lib/payments/compensation-refunds.ts`) | `order.compensation_refund_started`; `order.compensation_refund_review_required` when it gives up; `order.compensation_review_required` when a refund stays pending past its tries | Thunderstrux |
 | Compensation outcome, worker or webhook (`` order.compensation_${state} ``) | `order.compensation_refunded`, `order.compensation_refund_failed`, `order.compensation_refund_pending` | Stripe |
 | Paid but unfulfilled commerce order (`lib/payments/order-refunds.ts`) | `commerce_order.compensation_refund_queued` | Thunderstrux |
+| Review closed, the money already back (`closeRepaidReview`) | `order.compensation_review_closed`, `commerce_order.compensation_review_closed` | Thunderstrux |
 | Unused image cleanup (`lib/assets/maintenance.ts`) | `asset.orphan_removed` | Thunderstrux |
 
 ### Templated actions
@@ -133,7 +134,7 @@ OpenClaw actions are deferred and write nothing.
 | Payments setup | `stripe_connect.` |
 | Society profile | `organisation.`, `asset.` |
 
-- **Who:** a person (up to 200 distinct actors in the list), `thunderstrux` (null actor and an action in `automaticActions`: `order.compensation_refund_queued`, `order.compensation_refund_review_required`, `order.compensation_refund_started`, `order.dispute_funds_recovered`, `commerce_order.dispute_funds_recovered`, `asset.orphan_removed`) or `stripe` (any other null-actor row).
+- **Who:** a person (up to 200 distinct actors in the list), `thunderstrux` (null actor and an action in `automaticActions`: `order.compensation_refund_queued`, `order.compensation_refund_review_required`, `order.compensation_refund_started`, `order.compensation_review_closed`, `commerce_order.compensation_review_closed`, `order.dispute_funds_recovered`, `commerce_order.dispute_funds_recovered`, `asset.orphan_removed`) or `stripe` (any other null-actor row).
 - **Actor shown:** display name, else first and last name, else the account email; a closed account shows "A former staff member"; the role label comes from `actorRole`.
 - **Targets** are looked up live and always inside the society: event titles, order references (linked unless the order is pending), member names, plan and product names, staff names, invite addresses, ticket references, image kinds. A deleted event shows its stored title or "a deleted event".
 - **Safe facts:** each action names its facts in `describe`, as in the tables above. Compensation review reasons map `sold_out`, `capacity`, `sales_closed` to sentences. An unknown action renders as "recorded" plus its name.

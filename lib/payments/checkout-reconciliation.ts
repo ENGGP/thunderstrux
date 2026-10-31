@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { enqueueAutomaticTicketEmailForOrder } from "@/lib/email/ticket-email-outbox";
 import { lockEventInventory, readEventInventory, sellableQuantity } from "@/lib/events/inventory";
 import { queueTicketReviewNotice } from "@/lib/payments/compensation-notices";
+import { closeRepaidReview } from "@/lib/payments/order-refunds";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import {
@@ -477,14 +478,6 @@ export async function reconcileCompletedCheckoutSession(
         }
       });
 
-      compensationAlert = {
-        orderId: localOrder.id,
-        stripeSessionId: session.id,
-        eventId: localOrder.eventId,
-        reason
-      };
-      await queueTicketReviewNotice(tx, localOrder.id, automatic);
-
       if (releaseActiveReservation) {
         await releaseReservationForOrder(tx, localOrder.id, reason, now);
       } else if (expireActiveReservation) {
@@ -527,6 +520,18 @@ export async function reconcileCompletedCheckoutSession(
         });
       }
 
+      // PAY-057: money already back owes nothing, so no person is called and nothing is promised.
+      const repaid = await closeRepaidReview(tx, { orderId: localOrder.id, commerceOrderId: null, organisationId: localOrder.event.organisationId }, { source: reconciliationLifecycleSource(source), stripeEventId });
+      if (!repaid) {
+        compensationAlert = {
+          orderId: localOrder.id,
+          stripeSessionId: session.id,
+          eventId: localOrder.eventId,
+          reason
+        };
+        await queueTicketReviewNotice(tx, localOrder.id, automatic);
+      }
+
       result = {
         status: "compensation_required",
         orderId: localOrder.id,
@@ -553,8 +558,9 @@ export async function reconcileCompletedCheckoutSession(
     }
 
     // Every way into review ends the hold (markCompensationRequired's callers), so
-    // a replay has nothing left to fulfil and the payment stays under review.
-    if (localOrder.status === "failed" && localOrder.requiresCompensationReview) {
+    // a replay has nothing left to fulfil. A failed order that was paid has been
+    // through review, and one that left it stays out: its money is back (PAY-057).
+    if (localOrder.status === "failed" && (localOrder.requiresCompensationReview || localOrder.paidAt)) {
       // PAY-001: a replay reports the existing compensation state, so a replay
       // whose metadata no longer matches the order is logged on its own.
       if (

@@ -73,12 +73,41 @@ describe("dashboard orders page", () => {
     await dispute(sold.id);
     expect(await detail(sold.id)).toContain("Restore tickets");
 
+    // An older order whose fulfilment recovered has tickets, whatever its job says.
+    const recovered = await order("paid");
+    await prisma.compensationRefundJob.create({ data: { orderId: recovered.id, state: "recovered", amount: recovered.totalAmount } });
+    await dispute(recovered.id);
+    expect(await detail(recovered.id)).toContain("Restore tickets");
+
     const unfilled = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "failed", paidAt: new Date(), failedAt: new Date(), requiresCompensationReview: true, fulfilmentFailedAt: new Date(), fulfilmentFailureReason: "sold_out" });
     await prisma.compensationRefundJob.create({ data: { orderId: unfilled.id, state: "auto_queued", amount: unfilled.totalAmount } });
     await dispute(unfilled.id);
     const page = await detail(unfilled.id);
     expect(page).toContain("the dispute no longer holds its refund");
     expect(page).not.toContain("Restore tickets");
+  });
+
+  // PAY-057: staff read how a closed review ended, and a compensation order has no tickets.
+  test("a review the money closed says how, without tickets it never had", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+    const closed = async (data: { disputeStatus?: "lost"; refundStatus?: "refunded" }) => {
+      const order = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "failed", paidAt: new Date(), failedAt: new Date() });
+      await prisma.order.update({ where: { id: order.id }, data: { ...data, externalRefundedAmount: data.refundStatus ? order.totalAmount : 0 } });
+      await prisma.compensationRefundJob.create({ data: { orderId: order.id, state: "refunded", amount: order.totalAmount } });
+      if (data.disputeStatus) await prisma.purchaseDispute.create({ data: { orderId: order.id, organisationId: organisation.id, stripeDisputeId: `dp_${order.id}`, stripeChargeId: `ch_${order.id}`, amount: order.totalAmount, currency: "aud", reason: "fraudulent", providerStatus: "lost", closedAt: new Date() } });
+      return renderPage(await OrganisationOrderDetailPage({ params: Promise.resolve({ orderId: order.id }), searchParams: Promise.resolve({}) }));
+    };
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const lost = await closed({ disputeStatus: "lost" });
+    expect(lost).toContain("The buyer won the dispute");
+    expect(lost).toContain("No tickets were issued");
+    expect(lost).not.toContain("no longer valid");
+    expect(lost).not.toContain("Payment received, tickets not issued");
+    const refunded = await closed({ refundStatus: "refunded" });
+    expect(refunded).toContain("Fully refunded in Stripe");
+    expect(refunded).toContain("No tickets were issued");
+    expect(refunded).not.toContain("no longer valid");
   });
 
   test("ticket order times show in the society's zone, the zone its date filters use", async () => {

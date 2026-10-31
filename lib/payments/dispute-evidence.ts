@@ -52,7 +52,8 @@ async function ticketEvidence(orderId: string): Promise<Evidence | null> {
   const checkedIn = order.tickets.filter((ticket) => ticket.checkedInAt);
   const refunds: Refunded[] = order.refundRequests.map((refund) => ({ amount: refund.amount, stripeRefundId: refund.stripeRefundId, at: refund.resolvedAt ?? refund.createdAt }));
   const job = order.compensationRefundJob;
-  if (job?.state === "refunded") refunds.push({ amount: job.amount, stripeRefundId: job.stripeRefundId });
+  // A job a refund made in Stripe closed (PAY-057) names no refund, and refundLines counts that one.
+  if (job?.state === "refunded" && job.stripeRefundId) refunds.push({ amount: job.amount, stripeRefundId: job.stripeRefundId });
   return {
     customer_name: buyerName(buyer),
     customer_email_address: buyer?.email,

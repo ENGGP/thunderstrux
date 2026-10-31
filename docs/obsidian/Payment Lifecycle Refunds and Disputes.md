@@ -3,31 +3,30 @@ status: living
 last-reviewed: 2026-10-31
 owner: engineering
 related: ["[[Payment Lifecycle]]", "[[Stripe Payments and Connect]]", "[[Memberships and Merchandise]]", "[[Audit Coverage]]"]
-sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, lib/payments/purchase-disputes.ts, lib/payments/dispute-evidence.ts, lib/payments/fraud-warnings.ts, lib/payments/dispute-reversals.ts, lib/payments/free-cancellation.ts, lib/commerce/payment-recovery.ts, lib/orders/order-detail.ts]
+sources: [lib/payments/order-refunds.ts, lib/payments/compensation-refunds.ts, lib/payments/purchase-disputes.ts, lib/payments/dispute-evidence.ts, lib/payments/fraud-warnings.ts, lib/payments/dispute-reversals.ts, lib/commerce/payment-recovery.ts, lib/orders/order-detail.ts]
 ---
 
 # Payment Lifecycle Refunds and Disputes
 
-**Owns:** money going back after a sale, for tickets and for memberships and merchandise: whole-order refunds and "refund the rest", compensation refunds of payments that couldn't be honoured, the "refunded outside Thunderstrux" mark, refunds made in Stripe's dashboard, disputes, early fraud warnings, lost-dispute transfer reversals, and free cancellation.
+**Owns:** money going back after a sale, for tickets and for memberships and merchandise: whole-order refunds and "refund the rest", compensation refunds of payments that couldn't be honoured, the "refunded outside Thunderstrux" mark, refunds made in Stripe's dashboard, disputes, early fraud warnings and lost-dispute transfer reversals.
 **Read when:** changing a refund, dispute or cancellation path, the refunds worker, or what any of them does to orders and tickets.
-**Not here:** order, ticket and hold states, fulfilment and compensation entry ([[Payment Lifecycle]]); webhook routing, payouts and the Stripe calls' parameters ([[Stripe Payments and Connect]]); membership revocation and merchandise returns ([[Memberships and Merchandise]]); refund and cancellation emails ([[Email Delivery Implementation]]).
+**Not here:** order, ticket and hold states, fulfilment and compensation entry ([[Payment Lifecycle]]); free cancellation ([[Event Lifecycle]]); webhook routing, payouts and the Stripe calls' parameters ([[Stripe Payments and Connect]]); membership revocation and merchandise returns ([[Memberships and Merchandise]]); refund and cancellation emails ([[Email Delivery Implementation]]).
 
 ## Code
 
 | Concern | Where |
 | --- | --- |
-| Whole-order refunds, worker, webhook | `lib/payments/order-refunds.ts`: `requestOrderRefund`, `openOrderRefund`, `requestCommerceRefund`, `openCommerceRefund`, `openCommerceCompensation`, `processOrderRefundBatch`, `reconcileOrderRefundEvent` |
+| Whole-order refunds, worker, webhook | `lib/payments/order-refunds.ts`: `requestOrderRefund`, `openOrderRefund`, `requestCommerceRefund`, `openCommerceRefund`, `openCommerceCompensation`, `closeRepaidReview`, `reopenRepaidReview`, `processOrderRefundBatch`, `reconcileOrderRefundEvent` |
 | Ticket compensation refunds | `lib/payments/compensation-refunds.ts`: `processCompensationRefundBatch`, `resumeCompensationRefund`, `reconcileRefundEvent`, `confirmCompensationRefund` |
 | Ticket disputes and outside refunds | `lib/payments/purchase-disputes.ts`: `reconcileDisputeEvent`, `reconcileExternalRefundEvent`, `restoreDisputedTickets`, `markExternalRefundReviewed` |
 | Commerce disputes, outside refunds | `lib/commerce/payment-recovery.ts` |
 | A dispute's draft answer, staged in Stripe | `lib/payments/dispute-evidence.ts`: `stageDisputeEvidence` |
 | Early fraud warnings | `lib/payments/fraud-warnings.ts`: `reconcileEarlyFraudWarning`, `fraudRefundReason` |
 | Lost-dispute reversals; what a refund didn't take back | `lib/payments/dispute-reversals.ts`: `queueDisputeReversal`, `processDisputeReversalBatch`, `unreversedRefundAmount` |
-| Free ticket cancellation | `lib/payments/free-cancellation.ts`: `cancelFreeOrder`, `cancelFreePurchase`, `releaseFreeRegistration` |
 | Event cancellation (refund every order) | `lib/events/event-cancellation.ts`: `cancelOrganisationEvent` ([[Event Lifecycle#Cancelling]]) |
 | Manual refund mark, resend refusals | `lib/orders/order-detail.ts`: `markOrganisationOrderManuallyRefunded` |
 | Worker | `scripts/process-compensation-refunds.ts` (`pnpm compensation-refunds:process`) |
-| Tests | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts`, `tests/integration/purchase-disputes.test.ts`, `tests/integration/commerce-payment-recovery.test.ts`, `tests/integration/membership-refunds.test.ts`, `tests/integration/merchandise-after-sale.test.ts`, `tests/integration/free-cancellation.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/integration/early-fraud-warnings.test.ts`, `tests/e2e/order-refunds.spec.ts` |
+| Tests | `tests/integration/order-refunds.test.ts`, `tests/integration/compensation-refunds.test.ts`, `tests/integration/purchase-disputes.test.ts`, `tests/integration/commerce-payment-recovery.test.ts`, `tests/integration/membership-refunds.test.ts`, `tests/integration/merchandise-after-sale.test.ts`, `tests/integration/event-cancellation.test.ts`, `tests/integration/early-fraud-warnings.test.ts`, `tests/e2e/order-refunds.spec.ts` |
 
 ## Staff routes
 
@@ -101,7 +100,9 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
 - **Staff confirmation** (`confirmCompensationRefund`): staff paste the Stripe refund id of a refund made in the dashboard. It must have succeeded for the job's amount on the order's payment, and the payment must still verify. Stripe must also show the society's transfer reversed (`unreversedRefundAmount` is 0) and the application fee refunded, or it answers 409 asking for both (PAY-027). It needs a fresh authenticator code unless staff MFA is `off` (SEC-036). Allowed from `review_required`, `refund_pending` or `refund_failed`; it ends `refunded` with the same effects and audit `order.compensation_refund_confirmed`.
 - **Held by a dispute (PAY-056):** Stripe refuses a refund during a dispute, and a lost one is already back with the buyer, so the claim stops the job. Once every dispute has closed won, `resumeCompensationRefund` returns a job the dispute stopped to `auto_queued` (`compensation_refund_queued`, `dispute_won`), and the claim and checks run as usual. Any other stopped job, so every `manual_review` one, stays with a person and alerts `reason: dispute_won`: nothing else says it can now be refunded.
 
-**Commerce** has no compensation mode or job: `requireCompensation` calls `openCommerceCompensation`, which is `openCommerceRefund` with `compensation`: it queues a system `RefundRequest` for what isn't already back with the buyer (`totalAmount − externalRefundedAmount`, nothing at 0; PAY-038) (no actor, key `commerce-compensation:<id>:<uuid>`) under the usual fence, through the order refund path above. The order is failed, unfulfilled and under review, so the checks on a sale don't apply. An open or lost dispute does (PAY-036): no request opens and the order stays in review, until the last dispute closes won and `reconcileCommerceDisputeEvent` opens it under the same locks (PAY-056). A verification mismatch fails the request and leaves the order in review for staff. A full refund made in Stripe also settles it.
+**Commerce** has no compensation mode or job: `requireCompensation` calls `openCommerceCompensation`, which is `openCommerceRefund` with `compensation`: it queues a system `RefundRequest` for what isn't already back with the buyer (`totalAmount − externalRefundedAmount`, nothing at 0; PAY-038) (no actor, key `commerce-compensation:<id>:<uuid>`) under the usual fence, through the order refund path above. The order is failed, unfulfilled and under review, so the checks on a sale don't apply. An open dispute does (PAY-036): no request opens and the order stays in review, until the last dispute closes won and `reconcileCommerceDisputeEvent` opens it under the same locks (PAY-056). A verification mismatch fails the request and leaves the order in review for staff.
+
+**Closing a review (PAY-057):** once lost disputes and refunds made in Stripe cover the whole payment, nothing is owed, so `closeRepaidReview` clears the review, ends a ticket job (`refunded`, no `stripeRefundId`), appends `refunded` (`dispute_lost` or `refunded_outside`), writes audit `compensation_review_closed` and emails `payment-review-closed/{id}`. It runs on the dispute and refund events and at the late paid webhook, which then sends no `payment-review/` notice and no alert. A refund in Stripe also sets `refundStatus`; a lost dispute doesn't, so payouts keep holding for its reversal. Short of the whole payment it stays with a person, who gets `paid_but_unfulfilled_compensation_required` (`reason: dispute_lost_for_part`); a commerce refund in flight settles the order itself. A dispute that turns from lost to won (a late win or withdrawal) takes the money back from the buyer, so `reopenRepaidReview` reopens the review and the win's path above refunds it; if the reversal already ran, that refund can fail and alerts `refund_failed`. A paid replay leaves a failed order with `paidAt` alone, so a closed review stays closed.
 
 **What the buyer reads:** while a dispute holds the refund, the `payment-review/{id}` notice and order pages (`reviewDisputeWords`) say the bank decides how the money comes back, never that a refund is coming.
 
@@ -112,7 +113,7 @@ A payment Stripe took that the order couldn't honour ([[Payment Lifecycle#Fulfil
 **Refunds made in the Stripe dashboard** (a `refund.*` event naming neither a request nor a job): commerce is asked first, by PaymentIntent (stored on the order, or Stripe's Session with `family` metadata).
 - The event's PaymentIntent must resolve to an order whose Session names it, in the same currency, paid to the seller snapshot (orders without a snapshot skip that check). Anything else changes nothing and logs `stripe.refund.unmatched`.
 - `externalRefundedAmount` becomes the total of the payment's **succeeded** refunds that Thunderstrux didn't make; pending ones count for nothing. Each change clears `externalRefundReviewedAt` and appends `external_refund_recorded`.
-- Full amount on a `paid` ticket order, counting refunds made here too: `refundStatus = refunded`, tickets `void` (`refunded_outside`, places back on sale). Commerce: also when the order is under review; memberships end and review clears.
+- Full amount on a `paid` order or one under review (tickets count refunds made here too): `refundStatus = refunded`, tickets `void` (`refunded_outside`, places back on sale), memberships end. A review closes as above.
 - Partial: tickets stay valid and the order reads Payment review until staff `mark_reviewed` (`external_refund_reviewed`), picking the tickets it covered (`void` `refunded_outside`, back on sale; none keeps all valid; DEBT-002), or a refund here takes the rest.
 - A later drop (a refund that failed after succeeding) is recorded, but voided tickets and ended memberships stay so.
 - **Not taken back from the society (PAY-027):** `externalUnreversedAmount` records what Stripe shows refunded on the payment but not reversed from its transfer (`unreversedRefundAmount`: the charge's `amount_refunded` less the transfer's `amount_reversed`). Above 0 it alerts `outside_refund_not_reversed`, and the payout hold keeps the sale's share until Stripe shows it reversed; the payout worker re-reads it before each run, so a reversal made by hand is seen within the hour.
@@ -167,25 +168,6 @@ On destination charges Stripe takes a lost dispute's amount and fee from the pla
 
 `processDisputeReversalBatch` runs after the refund batches. It claims a row with a 10-minute lease, reads the charge's transfer, and looks for its own reversal (metadata `disputeId`) before creating one. It reverses min(dispute amount, transfer amount − already reversed), with metadata `disputeId` plus `orderId` or `commerceOrderId` and key `dispute-reversal:<disputeId>`. It doesn't touch the application fee. After 6 unknown outcomes it alerts `dispute_reversal_unresolved` and keeps looking the reversal up hourly; payouts hold the amount until it settles or the 80-day cap.
 
-## Free cancellation
-
-`cancelFreeOrder` runs inside the caller's transaction for a confirmed free ticket order (`paymentKind = free`, `paid`, fulfilled). Three callers:
-
-| Caller | Who | Stock | Buyer email |
-| --- | --- | --- | --- |
-| `cancelFreePurchase` (`POST /api/orders/[orderId]/cancel`) | staff, with a fresh code | not restored | `cancellation/{orderId}`: cancelled by the society |
-| `releaseFreeRegistration` (`POST /api/purchases/tickets/[orderId]/cancel-registration`) | the buyer, before the event starts (EVT-005) | the voided tickets go back to `TicketType.quantity`, under the event and type locks taken before the order's | `cancellation/{orderId}`: you cancelled |
-| `cancelOrganisationEvent` | staff cancelling the event | not restored (nothing sells again) | none of its own; the event's `event_cancelled` notice |
-
-- Records `cancelledAt`, `cancelledByUserId` (the staff member or member buyer; null for a guest buyer) and `cancellationReason`; tickets `void` (`cancelled`, check-ins kept); `free_cancelled` with source `staff_action` or `buyer_action`; audit `order.free_cancelled` with `by`.
-- Buyer pages tell a buyer's own release apart (`releasedByBuyer` in `lib/purchases/projection.ts`): staff cancellations always record who did it.
-- It is never a refund: no `RefundRequest`, `status` stays `paid`, fulfilment stays.
-- Why a buyer's release restores stock and staff's doesn't: the buyer gave the place up, so it should sell again (Luma and Humanitix free the spot); a staff cancellation may remove someone who shouldn't have had it, and the organiser decides whether to add stock.
-- A repeat answers `already_cancelled` and changes nothing. The database refuses a cancellation on a non-free order or without a reason.
-- Read models show Cancelled first, resends are refused, and the guest order page says the registration was cancelled.
-
-Free memberships and free merchandise orders cancel the same way through their own routes ([[Memberships and Merchandise]]).
-
 ## Traps
 
 - Set the fence (`refundStatus = processing`) under the purchase lock before calling Stripe, and never call Stripe inside the transaction.
@@ -197,7 +179,7 @@ Free memberships and free merchandise orders cancel the same way through their o
 
 - **`order_refund_unresolved`:** the request is still uncertain after 6 tries and the fence stays; the worker keeps asking Stripe hourly. Check Stripe for a refund with that `refundRequestId`; there is no tool to settle it by hand.
 - **`dispute_reversal_unresolved`:** reverse the transfer in Stripe's Dashboard, or decide not to.
-- **Compensation `refund_failed` or `review_required`** (`compensation_refund_needs_review`): during a dispute, wait: Stripe refuses the refund, and `reason: dispute_won` says when it can go. Otherwise refund in Stripe's Dashboard with **Reverse transfer** and **Refund application fee** ticked, then confirm the refund id on the order page. Any Dashboard refund needs both ticked, or the society keeps money Thunderstrux paid back.
+- **Compensation `refund_failed` or `review_required`** (`compensation_refund_needs_review`): during a dispute, wait: Stripe refuses the refund, and `reason: dispute_won` says when it can go. Otherwise refund in Stripe's Dashboard with **Reverse transfer** and **Refund application fee** ticked: its webhook closes the review, and only if that doesn't arrive do you confirm the refund id on the order page. Any Dashboard refund needs both ticked, or the society keeps money Thunderstrux paid back.
 - **`refund_failed`:** a failed refund can be sent again from the order page. One that came back from the bank (`returned_by_bank`) is in Thunderstrux's balance; repay the buyer another way.
 - **`outside_refund_not_reversed`:** reverse the transfer by `unreversed` in Stripe (Connect, Transfers) and refund the application fee.
 - **`purchase_dispute_unmatched`:** the dispute's payment didn't verify as any order's; investigate in Stripe.

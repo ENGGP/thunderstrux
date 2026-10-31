@@ -140,7 +140,7 @@ A definite Stripe refusal fails the order, its attempt and the hold (`failPendin
 
 8. Success, in one transaction: order `paid` with `paidAt` and `fulfilledAt`, hold `confirmed`, `TicketType.quantity` decremented, tickets `1..quantity` created with `organisationId` from the event, `payment_fulfilled`, and the automatic ticket email queued. A failed email insert rolls the whole fulfilment back.
 
-**Compensation** (`markCompensationRequired`): the order becomes `failed` with `requiresCompensationReview`, keeps or sets `paidAt`, clears `fulfilledAt`, and writes `fulfilmentFailedAt` and `fulfilmentFailureReason` once. It also creates the `CompensationRefundJob` from `compensationRefundModeSnapshot`, writes the audit row, queues the buyer's `payment-review/{orderId}` notice, appends `compensation_required` (and `compensation_refund_queued` when automatic), and after commit alerts `paid_but_unfulfilled_compensation_required`. A replay changes nothing. What happens next: [[Payment Lifecycle Refunds and Disputes]].
+**Compensation** (`markCompensationRequired`): the order becomes `failed` with `requiresCompensationReview`, keeps or sets `paidAt`, clears `fulfilledAt`, and writes `fulfilmentFailedAt` and `fulfilmentFailureReason` once. It also creates the `CompensationRefundJob` from `compensationRefundModeSnapshot`, writes the audit row, queues the buyer's `payment-review/{orderId}` notice, appends `compensation_required` (and `compensation_refund_queued` when automatic), and after commit alerts `paid_but_unfulfilled_compensation_required`. Money already back closes the review instead, with no notice or alert (PAY-057). A replay changes nothing. What happens next: [[Payment Lifecycle Refunds and Disputes]].
 
 ## Expiry and buyer cancel
 

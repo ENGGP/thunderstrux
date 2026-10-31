@@ -23,6 +23,8 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
   const refund = order.refundRequests[0];
   // Ticket by ticket there can be several, and part of it may have been refunded in Stripe.
   const refunded = order.refundRequests.reduce((sum, request) => sum + request.amount, order.externalRefundedAmount ?? 0);
+  // A payment that went back from review never had tickets (PAY-057).
+  const issued = order.status === "paid";
   if (projection === "processing") return processing;
   if (projection === "failed" || projection === "expired") {
     return <Notice title="This checkout didn't complete"><p>{cancelled ? "You cancelled it, so nothing was charged and the tickets are back on sale." : "Nothing was charged."} <Link className="font-semibold text-brand underline underline-offset-4" href={`/events/${order.event.id}`}>Back to the event</Link></p></Notice>;
@@ -31,7 +33,7 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
     return (
       <Notice title="Refunded">
         <p>
-          {refund ? `${formatMoney(refunded)} was refunded to your card${refund.resolvedAt ? ` on ${formatDate(refund.resolvedAt, timeZone)}` : ""}.` : "This order was refunded in full."} Banks usually take 5 to 10 business days. The tickets are no longer valid.
+          {refund ? `${formatMoney(refunded)} was refunded to your card${refund.resolvedAt ? ` on ${formatDate(refund.resolvedAt, timeZone)}` : ""}.` : "This order was refunded in full."} Banks usually take 5 to 10 business days. {issued ? "The tickets are no longer valid." : "No tickets were issued for this order."}
         </p>
       </Notice>
     );
@@ -43,10 +45,10 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
     return <Notice title={order.event.cancelledAt ? "Event cancelled" : "Cancelled by the society"}><p>{society} cancelled this {order.event.cancelledAt ? "event" : "free registration"}. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p></Notice>;
   }
   // PAY-056: a payment under review has no tickets, so a dispute on it is about the money.
-  const held = order.requiresCompensationReview ? reviewDisputeWords(order.disputeStatus, `${society} will sort it out; contact them if you haven't heard back`) : null;
+  const held = order.requiresCompensationReview ? reviewDisputeWords(order, `${society} will sort it out; contact them if you haven't heard back`) : null;
   if (held) return <Notice title={held.title} tone={order.disputeStatus === "open" ? "warning" : undefined}><p>We couldn&apos;t issue your tickets after your payment went through. {held.message}</p></Notice>;
   // Stripe's "lost" is the buyer's win: their bank returned the payment, and the tickets were voided.
-  if (projection === "disputed" && order.disputeStatus === "lost") return <Notice title="Refunded by your bank"><p>Your bank upheld your dispute and returned the payment to you, so the tickets are no longer valid.</p></Notice>;
+  if (projection === "disputed" && order.disputeStatus === "lost") return <Notice title="Refunded by your bank"><p>Your bank upheld your dispute and returned the payment to you{issued ? ", so the tickets are no longer valid." : ". No tickets were issued for this order."}</p></Notice>;
   if (projection === "disputed" && !order.requiresCompensationReview) return <Notice title="Payment disputed" tone="warning"><p>Your bank has disputed this payment, so the tickets are under review. Contact {society} before the event.</p></Notice>;
   if (projection === "review" || order.requiresCompensationReview) {
     return order.requiresCompensationReview ? (

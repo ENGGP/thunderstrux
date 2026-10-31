@@ -426,11 +426,10 @@ export async function processCompensationRefund(job: ClaimedRefund) {
 }
 
 // PAY-056: the last dispute holding this order's refund went the society's way, so
-// Stripe takes it now. A job the claim stopped (only the worker's claim writes that
-// code, and it only takes automatic jobs) goes back to the worker, which checks the
-// order and payment again. Any other stopped job is a person's: it is returned for
-// the caller to alert once this commits, as nothing has told them it can be
-// refunded, and disputes run for weeks.
+// Stripe takes it now. A job the claim stopped (a code only automatic jobs get) goes
+// back to the worker, which checks the order and payment again. Any other stopped job
+// is a person's: it is returned for the caller to alert once this commits, as nothing
+// has told them it can be refunded, and disputes run for weeks.
 export async function resumeCompensationRefund(tx: Prisma.TransactionClient, order: { id: string; organisationId: string }, stripeEventId: string) {
   const job = await tx.compensationRefundJob.findUnique({ where: { orderId: order.id }, select: { id: true, orderId: true, state: true, lastErrorCode: true } });
   if (job?.state !== "review_required") return null;

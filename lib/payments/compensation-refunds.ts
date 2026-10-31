@@ -38,7 +38,7 @@ export class CompensationRefundVerificationError extends Error {
 
 // PAY-026: a compensation refund that stopped for a person (runbook in Payment
 // Lifecycle Refunds and Disputes). Raised after the state change commits.
-function alertNeedsReview(job: { id: string; orderId: string }, state: CompensationRefundState, reason: string) {
+export function alertNeedsReview(job: { id: string; orderId: string }, state: CompensationRefundState, reason: string) {
   emitOperationalAlert("compensation_refund_needs_review", {
     compensationRefundJobId: job.id, orderId: job.orderId, state, reason, dedupeKey: `compensation_refund_needs_review:${job.id}:${state}:${reason}`
   });
@@ -136,7 +136,9 @@ async function claimNextRefund(now = new Date()): Promise<ClaimedRefund | null> 
       !order.requiresCompensationReview ||
       order.isManuallyRefunded ||
       order.refundStatus !== null ||
-      order.disputeStatus !== null ||
+      // PAY-036: the society kept a won dispute, which a ticket order keeps until staff restore it.
+      order.disputeStatus === "open" ||
+      order.disputeStatus === "lost" ||
       order.compensationRefundModeSnapshot !== "automatic_full" ||
       order.tickets.length !== 0 ||
       !order.stripeSessionId ||
@@ -367,7 +369,7 @@ async function retrieveEligiblePayment(job: ClaimedRefund) {
     intent.currency.toLowerCase() !== expectedCurrency ||
     intent.metadata.orderId !== job.orderId ||
     destination !== job.stripeAccountId ||
-    // Not `disputed`, which stays true after a dispute closes; the claim already refuses a disputed order.
+    // Not `disputed`, which stays true after a dispute closes; the claim already refuses an open or lost one.
     !latestCharge
   ) {
     throw new CompensationRefundVerificationError("provider_identity_not_eligible");
@@ -421,6 +423,24 @@ export async function processCompensationRefund(job: ClaimedRefund) {
       state: job.attempts >= maxAttempts ? "refund_failed" as const : "auto_queued" as const
     };
   }
+}
+
+// PAY-056: the last dispute holding this order's refund went the society's way, so
+// Stripe takes it now. A job the claim stopped (only the worker's claim writes that
+// code, and it only takes automatic jobs) goes back to the worker, which checks the
+// order and payment again. Any other stopped job is a person's: it is returned for
+// the caller to alert once this commits, as nothing has told them it can be
+// refunded, and disputes run for weeks.
+export async function resumeCompensationRefund(tx: Prisma.TransactionClient, order: { id: string; organisationId: string }, stripeEventId: string) {
+  const job = await tx.compensationRefundJob.findUnique({ where: { orderId: order.id }, select: { id: true, orderId: true, state: true, lastErrorCode: true } });
+  if (job?.state !== "review_required") return null;
+  if (job.lastErrorCode !== "local_state_not_eligible") return job;
+  await tx.compensationRefundJob.update({ where: { id: job.id }, data: { state: "auto_queued", attempts: 0, lastErrorCode: null, lastErrorAt: null } });
+  await appendOrderLifecycleEvent(tx, { orderId: order.id, type: "compensation_refund_queued", source: "stripe_webhook", stripeEventId, reason: "dispute_won", facts: { compensationReview: true } });
+  await tx.auditLog.create({ data: {
+    organisationId: order.organisationId, actorUserId: null, action: "order.compensation_refund_queued", targetType: "Order", targetId: order.id, metadata: { reason: "dispute_won" }
+  } });
+  return null;
 }
 
 export async function processCompensationRefundBatch(limit = 25) {

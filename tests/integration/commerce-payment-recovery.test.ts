@@ -1,17 +1,23 @@
 import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import StaffMerchandiseOrderPage from "@/app/(dashboard)/dashboard/merchandise/orders/[orderId]/page";
 import { POST as reviewRoute } from "@/app/api/orders/[orderId]/review/route";
 import { POST as pickupRoute } from "@/app/api/orgs/[orgSlug]/merchandise/pickups/[orderId]/route";
 import { POST as webhookRoute } from "@/app/api/payments/webhook/route";
+import MembershipOrderPage from "@/app/memberships/orders/[orderId]/page";
+import MerchandiseOrderPage from "@/app/merchandise/orders/[orderId]/page";
+import { StripeReviewNotice } from "@/components/commerce/stripe-review-notice";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { reconcileCommerceCheckoutSession } from "@/lib/commerce/reconciliation";
 import { prisma } from "@/lib/db";
+import { decryptNotification } from "@/lib/email/notification-crypto";
 import { listPickups } from "@/lib/merchandise/pickups";
 import { processDisputeReversalBatch } from "@/lib/payments/dispute-reversals";
 import { openCommerceRefund, orderReference, processOrderRefundBatch, requestCommerceRefund } from "@/lib/payments/order-refunds";
 import { ticketOrderProjection } from "@/lib/purchases/projection";
 import { setMockSession } from "@/tests/helpers/auth";
 import { jsonRequest, routeContext } from "@/tests/helpers/http";
+import { renderPage } from "@/tests/helpers/render";
 import { createMember, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 // PAY-003: disputes and refunds made in the Stripe dashboard on membership and
@@ -37,6 +43,8 @@ vi.mock("@/lib/stripe", async () => {
     })
   };
 });
+
+vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), usePathname: () => "/dashboard/merchandise/orders", useRouter: () => ({ refresh: () => undefined }) }));
 
 beforeEach(() => { vi.stubEnv("MFA_ENFORCEMENT_MODE", "off"); });
 afterEach(() => { for (const mock of Object.values(stripe)) mock.mockReset(); });
@@ -262,7 +270,7 @@ describe("commerce compensation", () => {
     organisationId: fixture.society.organisation.id, commerceOrderId: fixture.order.id, actor: null, reason: "Paid but couldn't be filled (sold_out)", compensation: "sold_out"
   });
   // A paid Session for an order still pending, as a late webhook finds it.
-  const pendingWith = async (fixture: Fixture, data: { disputeStatus: "open" | "lost" | "won" }) => {
+  const pendingWith = async (fixture: Fixture, data: { disputeStatus?: "open" | "lost" | "won" } = {}) => {
     await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { status: "pending", paidAt: null, fulfilledAt: null, pickupStatus: null, ...data } });
     return {
       id: fixture.order.stripeSessionId, payment_status: "paid", amount_total: fixture.order.totalAmount, currency: "aud",
@@ -313,6 +321,164 @@ describe("commerce compensation", () => {
     await reconcileCommerceCheckoutSession(await pendingWith(won, { disputeStatus: "won" }), { stripeEventId: unique("evt") });
     expect(await prisma.refundRequest.count({ where: { commerceOrderId: won.order.id } })).toBe(1);
     expect(await order(won.order.id)).toMatchObject({ requiresCompensationReview: true, refundStatus: "processing" });
+  });
+
+  // PAY-056: a dispute that reached the order before its late paid webhook, as Stripe delivers them.
+  const heldByDispute = async (kind: "membership" | "merchandise" = "merchandise") => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await paid(kind);
+    if (fixture.grantId) await prisma.membershipGrant.delete({ where: { id: fixture.grantId } });
+    const session = await pendingWith(fixture);
+    await disputeIs(fixture, "needs_response", "charge.dispute.created");
+    expect(await reconcileCommerceCheckoutSession(session, { stripeEventId: unique("evt") })).toMatchObject({ status: "compensation_required" });
+    return fixture;
+  };
+  const requests = (fixture: Fixture) => prisma.refundRequest.findMany({ where: { commerceOrderId: fixture.order.id } });
+  const refundSucceeds = (fixture: Fixture) => stripe.create.mockImplementation(async (params: { amount: number; metadata: Record<string, string> }) => ({ id: unique("re"), status: "succeeded", amount: params.amount, currency: "aud", payment_intent: fixture.intentId, metadata: params.metadata }));
+  const reviewNotice = async (fixture: Fixture) => {
+    const notice = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `payment-review/${fixture.order.id}` } });
+    return JSON.stringify(decryptNotification(notice.encryptedPayload, notice.id));
+  };
+  // The buyer's order page, signed in as that buyer.
+  const buyerPage = async (fixture: Fixture) => {
+    setMockSession({ userId: fixture.buyer.id, email: fixture.buyer.email, accountRole: "member" });
+    const props = { params: Promise.resolve({ orderId: fixture.order.id }), searchParams: Promise.resolve({}) };
+    return renderPage(await (fixture.order.kind === "membership" ? MembershipOrderPage(props) : MerchandiseOrderPage(props)));
+  };
+
+  // What staff read about a dispute: the notice as the order page fills it.
+  const staffNotice = async (fixture: Fixture) => {
+    const [current, row] = await Promise.all([order(fixture.order.id), prisma.purchaseDispute.findFirstOrThrow({ where: { commerceOrderId: fixture.order.id } })]);
+    return renderPage(StripeReviewNotice({ orderId: fixture.order.id, kind: "merchandise", canAct: false, review: { ...current, dispute: row } }));
+  };
+
+  test("a charge the bank is disputing or that was refunded never reads as nothing charged", async () => {
+    for (const kind of ["merchandise", "membership"] as const) {
+      const fixture = await paid(kind);
+      if (fixture.grantId) await prisma.membershipGrant.delete({ where: { id: fixture.grantId } });
+      await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { status: "expired", fulfilledAt: null, pickupStatus: null, disputeStatus: "open" } });
+      expect(await buyerPage(fixture)).not.toContain("No payment taken");
+      await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { disputeStatus: null, externalRefundedAmount: 500 } });
+      expect(await buyerPage(fixture)).not.toContain("No payment taken");
+      // The same order with nothing on it took no money.
+      await prisma.commerceOrder.update({ where: { id: fixture.order.id }, data: { externalRefundedAmount: 0 } });
+      expect(await buyerPage(fixture)).toContain("No payment taken");
+    }
+  });
+
+  test("the staff review notice says what a dispute means for a payment under review", async () => {
+    const fixture = await heldByDispute();
+    setMockSession({ userId: fixture.society.user.id, email: fixture.society.user.email, accountRole: "organisation" });
+    const staffPage = async () => renderPage(await StaffMerchandiseOrderPage({ params: Promise.resolve({ orderId: fixture.order.id }) }));
+    const open = await staffPage();
+    expect(open).toContain("Stripe refuses a refund during a dispute");
+    expect(open).not.toContain("finance sorts it out");
+    // The refund it held is on its way.
+    await disputeIs(fixture, "won", "charge.dispute.closed");
+    expect(await staffPage()).not.toContain("Stripe refuses a refund during a dispute");
+  });
+
+  test("winning the dispute opens the refund it held, once, and the worker sends it", async () => {
+    const fixture = await heldByDispute();
+    expect(await requests(fixture)).toEqual([]);
+
+    const won = signedEvent("charge.dispute.closed", dispute(fixture, "won"));
+    stripe.dispute.mockResolvedValue(dispute(fixture, "won"));
+    // Two of Stripe's events at once, then one of them again.
+    await Promise.all([postSigned(won), postSigned(signedEvent("charge.dispute.updated", dispute(fixture, "won")))]);
+    await postSigned(won);
+    expect(await requests(fixture)).toEqual([expect.objectContaining({ amount: 3000, status: "pending", actorUserId: null, operationKey: expect.stringMatching(/^commerce-compensation:/) })]);
+    expect(await order(fixture.order.id)).toMatchObject({ disputeStatus: null, requiresCompensationReview: true, refundStatus: "processing" });
+    expect(await buyerPage(fixture)).toContain("We&#x27;re refunding your payment");
+    expect(await staffNotice(fixture)).toContain("closed the dispute in the society");
+    expect(await staffNotice(fixture)).not.toContain("kept the payment");
+
+    refundSucceeds(fixture);
+    await processOrderRefundBatch();
+    expect(stripe.create).toHaveBeenCalledTimes(1);
+    expect(stripe.create.mock.calls[0][0]).toMatchObject({ amount: 3000, reverse_transfer: true, refund_application_fee: true });
+    expect(await order(fixture.order.id)).toMatchObject({ status: "failed", requiresCompensationReview: false, refundStatus: "refunded" });
+    expect(await historyOf(fixture.order.id)).toEqual(["order_created", "dispute_opened", "compensation_required", "dispute_closed", "refund_requested", "refunded"]);
+    expect(await prisma.auditLog.count({ where: { targetId: fixture.order.id, action: "commerce_order.compensation_refund_queued" } })).toBe(1);
+    // The buyer paid and was repaid: the end of this path never reads as nothing charged.
+    for (const kind of [fixture, await heldByDispute("membership")]) {
+      if (kind !== fixture) {
+        await disputeIs(kind, "won", "charge.dispute.closed");
+        refundSucceeds(kind);
+        await processOrderRefundBatch();
+      }
+      const refunded = await buyerPage(kind);
+      expect(refunded).toContain("refunded to your card");
+      expect(refunded).not.toContain("No payment taken");
+    }
+  });
+
+  test("a won dispute opens nothing while another dispute is open, after a lost one, or beside a refund already queued", async () => {
+    const two = await heldByDispute();
+    const second = { ...dispute(two, "needs_response"), id: `dp_second_${two.order.id}` };
+    stripe.dispute.mockResolvedValue(second);
+    await postSigned(signedEvent("charge.dispute.created", second));
+    await disputeIs(two, "won", "charge.dispute.closed");
+    expect(await requests(two)).toEqual([]);
+    expect(await order(two.order.id)).toMatchObject({ disputeStatus: "open", refundStatus: null, requiresCompensationReview: true });
+    // The last dispute closing the society's way releases it.
+    stripe.dispute.mockResolvedValue({ ...second, status: "won" });
+    await postSigned(signedEvent("charge.dispute.closed", { ...second, status: "won" }));
+    expect(await requests(two)).toHaveLength(1);
+
+    const lost = await heldByDispute();
+    await disputeIs(lost, "lost", "charge.dispute.closed");
+    expect(await requests(lost)).toEqual([]);
+    expect(await order(lost.order.id)).toMatchObject({ disputeStatus: "lost", refundStatus: null, requiresCompensationReview: true });
+
+    // Queued before the dispute opened: the fence keeps it to one refund.
+    const queued = await paid("merchandise");
+    await prisma.commerceOrder.update({ where: { id: queued.order.id }, data: { status: "failed", fulfilledAt: null, pickupStatus: null, requiresCompensationReview: true, reviewReason: "sold_out" } });
+    await prisma.$transaction((tx) => openCommerceRefund(tx, compensation(queued)));
+    await disputeIs(queued, "needs_response", "charge.dispute.created");
+    await disputeIs(queued, "won", "charge.dispute.closed");
+    expect(await requests(queued)).toHaveLength(1);
+    expect(await order(queued.order.id)).toMatchObject({ refundStatus: "processing", disputeStatus: null });
+  });
+
+  // No refund can open during a dispute, and a lost one is already back with the buyer.
+  test("a buyer whose refund a dispute holds isn't told one is coming, on the notice or the order page", async () => {
+    for (const kind of ["merchandise", "membership"] as const) {
+      const open = await heldByDispute(kind);
+      expect(await reviewNotice(open)).toContain("Your bank has disputed this payment");
+      expect(await reviewNotice(open)).not.toContain("refunding");
+      const page = await buyerPage(open);
+      expect(page).toContain("Your bank has disputed this payment");
+      expect(page).not.toContain("refunding");
+      expect(page).not.toContain("No payment taken");
+
+      const lost = await heldByDispute(kind);
+      await disputeIs(lost, "lost", "charge.dispute.closed");
+      const returned = await buyerPage(lost);
+      expect(returned).toContain("Refunded by your bank");
+      expect(returned).not.toContain("refunding");
+
+      const settled = await paid(kind);
+      if (settled.grantId) await prisma.membershipGrant.delete({ where: { id: settled.grantId } });
+      const session = await pendingWith(settled, { disputeStatus: "lost" });
+      await reconcileCommerceCheckoutSession(session, { stripeEventId: unique("evt") });
+      expect(await reviewNotice(settled)).toContain("returned the payment to you");
+      expect(await reviewNotice(settled)).not.toContain("refunding");
+    }
+  });
+
+  // A payment under review is a payment taken, whichever page the buyer lands on.
+  test("a refund on its way reads as one on both order pages", async () => {
+    for (const kind of ["merchandise", "membership"] as const) {
+      const fixture = await paid(kind);
+      if (fixture.grantId) await prisma.membershipGrant.delete({ where: { id: fixture.grantId } });
+      await reconcileCommerceCheckoutSession(await pendingWith(fixture, { disputeStatus: "won" }), { stripeEventId: unique("evt") });
+      const page = await buyerPage(fixture);
+      expect(page).toContain("We&#x27;re refunding your payment");
+      expect(page).not.toContain("No payment taken");
+      expect(await reviewNotice(fixture)).toContain("refunding the full amount");
+    }
   });
 
   test("a staff refund keeps its lease, actor, history and audit row", async () => {

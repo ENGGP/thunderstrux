@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-28
+last-reviewed: 2026-10-31
 owner: engineering
 related: ["[[Environment Variables]]", "[[Stripe Payments and Connect]]", "[[Payment Lifecycle]]", "[[Database and Multi Tenancy]]", "[[Pre-hosting Candidate]]", "[[Troubleshooting]]"]
 sources: [docker/Dockerfile, docker/entrypoint.sh, docker-compose.hosted.yml, docker-compose.schedules.yml, deploy/droplet/docker-compose.droplet.yml, scripts/droplet.mjs, scripts/operations.mjs, scripts/release-pair.mjs, lib/ops/worker.ts, lib/ops/readiness.ts]
@@ -92,7 +92,10 @@ Subscribe only these; the Connect endpoint no longer needs `account.updated`. If
 
 **Key:** a restricted key (`rk_live_…`) with only what the code calls: Checkout Sessions write (create, retrieve, list, expire); PaymentIntents and Charges read; Refunds write; Disputes write (read, and staging each dispute's draft answer); Radar early fraud warnings read; Connect accounts (v1 and v2), account links and login links write; on connected accounts Balance Settings write; Transfers write (reversals; also retrieve and list reversals); on connected accounts Balance read and Payouts write. Prove it in test mode with the staging campaign first: a 403 in Workbench request logs names the missing permission. Store it as the `stripe_secret_key` secret; roll it when someone with access leaves.
 
-**Disputes:** on destination charges the platform answers every dispute, because it is on the platform's account and societies can't see it. The platform operator owns them; an unanswered dispute is lost. Stripe takes the amount and dispute fee from the platform; once lost, the refunds worker reverses the society's transfer by the disputed amount (PAY-004); the dispute fee stays with the platform. How to answer one: [[Payment Lifecycle Refunds and Disputes#Answering a dispute]].
+**Disputes:** on destination charges the platform answers every dispute, because it is on the platform's account and societies can't see it. The platform operator owns them; an unanswered dispute is lost. Stripe takes the amount and dispute fee from the platform; once lost, the refunds worker reverses the society's transfer by the disputed amount (PAY-004); the dispute fee stays with the platform. To answer one:
+1. `purchase_dispute_opened` names the dispute and its due date. Open it in Stripe's Dashboard (the staff order page links to it).
+2. Review the staged draft, add anything the society tells you (for example messages with the buyer), and submit before the due date. Thunderstrux keeps only the current refund policy, so remove it if the society changed it after the sale. A buyer refunded and disputing anyway: submit with the refund lines.
+3. `dispute_evidence_not_staged`: nothing was staged (often a key without Disputes write). Fill the same facts in from the staff order page.
 Optionally the edge may accept webhook requests only from Stripe's published IP ranges; signatures stay the real protection.
 
 ## Workers and schedules

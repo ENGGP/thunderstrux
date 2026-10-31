@@ -58,6 +58,29 @@ describe("dashboard orders page", () => {
     expect(closedPage).not.toContain("The tickets are still valid");
   });
 
+  // PAY-056: a compensation order has no tickets, so a won dispute leaves nothing to restore.
+  test("a won dispute offers Restore tickets only on an order that has tickets", async () => {
+    const { user, organisation } = await createOrganisationAccount();
+    const event = await createEvent({ organisationId: organisation.id });
+    const order = (status: "paid" | "failed") => createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status, paidAt: new Date() });
+    const dispute = (orderId: string) => prisma.$transaction([
+      prisma.order.update({ where: { id: orderId }, data: { disputeStatus: "won" } }),
+      prisma.purchaseDispute.create({ data: { orderId, organisationId: organisation.id, stripeDisputeId: `dp_${orderId}`, stripeChargeId: `ch_${orderId}`, amount: 1200, currency: "aud", reason: "fraudulent", providerStatus: "won", closedAt: new Date() } })
+    ]);
+    const detail = async (orderId: string) => renderPage(await OrganisationOrderDetailPage({ params: Promise.resolve({ orderId }), searchParams: Promise.resolve({}) }));
+    setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
+    const sold = await order("paid");
+    await dispute(sold.id);
+    expect(await detail(sold.id)).toContain("Restore tickets");
+
+    const unfilled = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "failed", paidAt: new Date(), failedAt: new Date(), requiresCompensationReview: true, fulfilmentFailedAt: new Date(), fulfilmentFailureReason: "sold_out" });
+    await prisma.compensationRefundJob.create({ data: { orderId: unfilled.id, state: "auto_queued", amount: unfilled.totalAmount } });
+    await dispute(unfilled.id);
+    const page = await detail(unfilled.id);
+    expect(page).toContain("the dispute no longer holds its refund");
+    expect(page).not.toContain("Restore tickets");
+  });
+
   test("ticket order times show in the society's zone, the zone its date filters use", async () => {
     const { user, organisation } = await createOrganisationAccount();
     await prisma.organisation.update({ where: { id: organisation.id }, data: { timeZone: "Australia/Perth" } });

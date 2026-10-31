@@ -332,9 +332,11 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
       );
     }
     if (order.disputeStatus === "won") {
+      // A compensation order has no tickets to restore (PAY-056).
+      const ticketless = Boolean(order.compensationRefundJob);
       return (
-        <Notice action={canAct ? <OrderReviewActions action="restore_tickets" orderId={order.id} /> : undefined} title="Stripe closed the dispute in the society's favour">
-          <p>The tickets stay under review until an owner or finance manager restores them with a reason. Restoring doesn&apos;t move money.</p>
+        <Notice action={canAct && !ticketless ? <OrderReviewActions action="restore_tickets" orderId={order.id} /> : undefined} title="Stripe closed the dispute in the society's favour">
+          <p>{ticketless ? "No tickets were issued for this order, and the dispute no longer holds its refund." : "The tickets stay under review until an owner or finance manager restores them with a reason. Restoring doesn't move money."}</p>
           {link}
         </Notice>
       );

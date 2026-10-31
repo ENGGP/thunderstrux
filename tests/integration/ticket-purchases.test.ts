@@ -67,6 +67,24 @@ describe("purchases and order status", () => {
     expect(partly).toContain("$45.00 of");
   });
 
+  // PAY-056: no tickets were issued, so a dispute on a payment under review is about the money.
+  test("a disputed payment under review says what happens to the money, not to tickets", async () => {
+    const fixture = await pendingPurchase();
+    const notice = async (disputeStatus: "open" | "lost" | "won") => {
+      await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "failed", paidAt: new Date(), failedAt: new Date(), requiresCompensationReview: true, fulfilmentFailedAt: new Date(), fulfilmentFailureReason: "sold_out", disputeStatus } });
+      return renderPage(TicketOrderNotice({ order: (await getOwnTicketPurchase(fixture.buyer.id, fixture.order.id))!, processing: null }));
+    };
+    const open = await notice("open");
+    expect(open).toContain("Your bank has disputed this payment");
+    expect(open).not.toContain("under review");
+    const lost = await notice("lost");
+    expect(lost).toContain("Refunded by your bank");
+    expect(lost).not.toContain("no longer valid");
+    const won = await notice("won");
+    expect(won).toContain("will sort it out");
+    expect(won).not.toContain("under review");
+  });
+
   test("only the buyer or the guest session that bought it can read an order; everyone else gets the same 404", async () => {
     const fixture = await pendingPurchase();
     clearMockSession();

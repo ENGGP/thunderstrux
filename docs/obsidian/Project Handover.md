@@ -67,7 +67,6 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - A failed sign-in took the same time for a real and an unknown address on dev (7 to 17 ms apart, inside the spread between runs), so that audit item needed no fix.
 - 2026-10-30: #235 lets two full test runs go at once. Each run tags its images with its run id, so it can't test another run's code, and Docker picks its host port. Staging stays one at a time, with its own check, because the old port check was what kept those runs apart. No app code changes.
 - 2026-10-31: the stale-docs PR of the 2026-10-30 audit corrects claims that no longer matched the code (no `openclaw:use` permission, the merchandise hold is 20 minutes, fulfilment rechecks members-only access, the Events list counts active tickets, PAY-008's refund cost and what Humanitix returns) and the `/fees` refund wording now covers per-ticket refunds. No migration.
-- 2026-10-31: the preview was deployed at `961dbaf` (#235; backup `ops-preview-2026-10-30T14-42-34-273Z.dump` first; 73 migrations, adding #231's `20261124010000_ticket_codes`). Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers run the release's ops image with no failures, and the stale-order and refunds jobs have `EMAIL_FROM`, the notification key and the app URL (DEF-065). The Accounts v2 event destination is enabled with the right URL and all seven events, and Stripe's test ping passed its signature check, which proves `STRIPE_ACCOUNTS_WEBHOOK_SECRET`. `MFA_ENFORCEMENT_MODE` is still `off`.
 - 2026-10-31: DEF-064 is resolved: the owner scanned three tickets with the camera in Safari on an iPhone against the preview, so the fallback reader has now worked on a real phone.
 - 2026-10-31: #237 fixes the audit's email and job findings (16, 17; DEF-067 to DEF-070, SEC-043). Both email jobs send for up to 45 seconds a run, sign-in and guest links go first, and a 429 uses no attempt and ends the run. Finished notifications are deleted after 30 days, except a Stripe deadline notice, which stays until 30 days after its deadline. A failed step in the notification job alerts `notification_step_failed`, and a timed-out run keeps its lease until it lapses. The tests prove the queues drain, not how fast real email goes. No migration.
 - 2026-10-31: #240 fixes the audit's checkout and forms items (finding 14, DEF-071 to DEF-074, UI-026). A failed attempt no longer sticks to Pay, and all three buttons share `useCheckout`; the create forms send one request; the door's 10-second timeout covers the token fetch; the orders list stops loading every event; society dates missing their zone now pass it. Registers DEF-075 (a doubled sentence in two refusals). No migration.
@@ -81,6 +80,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - The four MFA copies use `requireFreshStaffMfa`, the empty commerce `release` hook is gone, and so are `publicPlans`, `getUpcomingTicketOrders` and other dead code. DEF-075 is closed; DEBT-003 and PAY-056 are registered.
 - 2026-10-31: #245 resolves PAY-056 and DEF-077: buyers whose refund a dispute holds read that the bank decides, not that a refund is coming, and winning the dispute releases it (commerce opens the refund; an automatic ticket job goes back to the worker; a manual one alerts a person). A paid membership under review no longer reads "No payment taken". Registers PAY-057. No migration.
 - 2026-10-31: #246 resolves PAY-057 and DEF-078: a compensation order whose money is already back closes its review and tells the buyer, a lost dispute that turns to won reopens it, and a paid replay no longer reopens a settled order. Registers PAY-058. No migration.
+- 2026-11-01: the preview was deployed at `2df7769` (#246; backup `ops-preview-2026-10-31T16-34-37-265Z.dump` first; 73 migrations, none new), so it now has every fix of the 2026-10-30 audit. Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers ran on the release's ops image with exit 0, and `MFA_ENFORCEMENT_MODE` is still `off`.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
@@ -94,7 +94,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - The dev database now has all 73 migrations and the `pnpm seed:demo` data; the dev folder serves main.
 
 **Public preview**
-- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `961dbaf` (#235; 73 migrations), Stripe test mode, and no image bucket yet.
+- `https://thunderstrux.mistayu.com` runs the production build through `pnpm ops:deploy` as project `ops-preview`: release `2df7769` (#246; 73 migrations), Stripe test mode, and no image bucket yet.
 - It listens on loopback port 3090 behind the Cloudflare Tunnel, uses `cf-connecting-ip` for client addresses and denies legacy access. MFA enforcement is `off` for now at the owner's request; set it back to `enforce` and redeploy before anyone else uses it.
 - The dev stack (port 3080) is loopback-only and is never tunnelled.
 - Preview reachability satisfies no release gate. See [[Production Operations]].
@@ -161,7 +161,7 @@ The PRs of 2026-10-25 to 2026-10-27; later ones are in the dated entries under C
 
 ## Next safe actions
 
-1. **After the 2026-10-30 audit's fixes:** an end-to-end check on main, then a preview deploy.
+1. **The 2026-10-30 audit's fixes are done:** #246's full runs cover main, and the preview has them. #245's and #246's dispute paths have only run with Stripe mocked, so PAY-002's campaign has to prove them.
 
    The compensation engine merge (DEBT-003) is due before PAY-002's campaign. Product changes follow: no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions, then the O-Week flow.
 2. **Preview (owner).**

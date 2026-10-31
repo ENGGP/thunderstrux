@@ -19,6 +19,7 @@ import { canOpenGuestCommerceOrder, guestCookieName, readGuestSession } from "@/
 import { guestCsrfToken } from "@/lib/guest/guest-csrf";
 import { orderReference } from "@/lib/payments/order-refunds";
 import { cancelledByBuyer, pendingCheckoutState } from "@/lib/purchases/pending-checkout";
+import { reviewDisputeWords, ticketOrderProjection } from "@/lib/purchases/projection";
 
 export const dynamic = "force-dynamic";
 const pickupTitle = { pending: "Order confirmed", ready: "Ready to collect", collected: "Collected" } as const;
@@ -58,7 +59,10 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
     waiting ? pendingCheckoutState({ kind: "commerce", id: order.id }) : null,
     order.status === "expired" ? cancelledByBuyer({ kind: "commerce", id: order.id }) : false
   ]);
-  const closed = !order.requiresCompensationReview && (order.status === "failed" || order.status === "expired" || checkout?.state === "ended");
+  // Failed or expired only when no money is in play: a refund, a dispute or a review means a payment was taken.
+  const projection = ticketOrderProjection(order);
+  const closed = projection === "failed" || projection === "expired" || checkout?.state === "ended";
+  const held = reviewDisputeWords(order.disputeStatus);
   const paid = order.status === "paid";
   const count = order.lines.reduce((total, line) => total + line.quantity, 0);
   const what = `${count} ${count === 1 ? "item" : "items"} from ${order.sellerName}`;
@@ -66,7 +70,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
   const ended = order.refundStatus === "refunded" || order.cancelledAt !== null;
   const tracked = !ended || order.pickupStatus === "collected";
   const collectedAt = order.lifecycleEvents.findLast((event) => event.type === "pickup_collected")?.createdAt;
-  const title = closed ? "No payment taken" : order.requiresCompensationReview ? "We're refunding your payment" : checkout?.state === "waiting" ? "You haven't paid yet" : waiting ? "Confirming your payment" : paid ? (order.refundStatus === "refunded" ? "Refunded" : order.cancelledAt ? "Cancelled" : pickupTitle[order.pickupStatus ?? "pending"]) : "Your order";
+  const title = closed ? "No payment taken" : order.requiresCompensationReview ? held?.title ?? "We're refunding your payment" : checkout?.state === "waiting" ? "You haven't paid yet" : waiting ? "Confirming your payment" : order.refundStatus === "refunded" ? "Refunded" : paid ? (order.cancelledAt ? "Cancelled" : pickupTitle[order.pickupStatus ?? "pending"]) : "Your order";
   const steps = [...(guest ? ["Your email"] : []), "Review", ...(free ? [] : ["Pay with Stripe"]), "Pickup"];
 
   return (
@@ -83,7 +87,7 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
               </div>
             </>
           ) : order.requiresCompensationReview ? (
-            <p className="text-ink">Stripe took a payment for {what} that we couldn&apos;t fill, for example because it sold out first, so we&apos;re refunding it in full. We&apos;ll email you when it&apos;s done.</p>
+            <p className="text-ink">Stripe took a payment for {what} that we couldn&apos;t fill, for example because it sold out first{held ? `. ${held.message}` : ", so we're refunding it in full. We'll email you when it's done."}</p>
           ) : checkout?.state === "waiting" ? (
             <>
               <div>
@@ -178,6 +182,8 @@ export default async function MerchandiseOrderPage({ params, searchParams }: { p
                 </p>
               ) : null}
             </>
+          ) : order.refundStatus === "refunded" ? (
+            <p className="text-ink">Your payment was refunded to your card. Banks usually take 5 to 10 business days.</p>
           ) : (
             <p className="text-ink">This order is closed. Ask {order.sellerName} if you have a question about it.</p>
           )}

@@ -277,6 +277,21 @@ export async function openCommerceRefund(tx: Prisma.TransactionClient, input: {
   return created;
 }
 
+// A payment that couldn't be filled goes back on its own (PAY-003), as a ticketing
+// platform does with an order it can't complete. Nothing left to refund, or a dispute
+// (PAY-036), leaves the order under review; winning the dispute comes back here (PAY-056).
+export async function openCommerceCompensation(tx: Prisma.TransactionClient, order: { id: string; organisationId: string }, reason: string) {
+  try {
+    await openCommerceRefund(tx, {
+      organisationId: order.organisationId, commerceOrderId: order.id, actor: null,
+      reason: `Paid but couldn't be filled (${reason})`.slice(0, 500), compensation: reason
+    });
+  } catch (error) {
+    if (!(error instanceof OrderRefundError)) throw error;
+    logWarn("commerce.compensation_refund.not_opened", { commerceOrderId: order.id, reason: error.kind });
+  }
+}
+
 // The charge this request refunds, checked against the purchase and the
 // snapshot of who was paid; the request's own refund at Stripe, if one exists;
 // what Stripe will still refund; and whether the payment's other refunds differ

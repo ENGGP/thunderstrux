@@ -1116,6 +1116,29 @@ describe("webhook reconciliation", () => {
     expect(await disputed.state()).toMatchObject({ tickets: [] });
   });
 
+  // PAY-056: neither mode can refund during a dispute, and a lost one is already back with the buyer.
+  test("a dispute before a late paid webhook changes what the review notice promises", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const notice = async (compensationRefundModeSnapshot: "automatic_full" | "manual_review", disputeStatus: "open" | "lost" | "won") => {
+      const { order, session } = await pendingWithHold();
+      const buyer = await createMember();
+      await prisma.order.update({ where: { id: order.id }, data: { userId: buyer.id, compensationRefundModeSnapshot, disputeStatus } });
+      await reconcileCompletedCheckoutSession(session());
+      const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `payment-review/${order.id}` } });
+      return JSON.stringify(decryptNotification(row.encryptedPayload, row.id));
+    };
+    const automatic = await notice("automatic_full", "open");
+    expect(automatic).toContain("Your bank has disputed this payment");
+    expect(automatic).toContain("we'll refund you");
+    expect(automatic).not.toContain("being refunded");
+    const manual = await notice("manual_review", "open");
+    expect(manual).toContain("Your bank has disputed this payment");
+    expect(manual).toContain("will review it and refund you");
+    expect(await notice("automatic_full", "lost")).toContain("returned the payment to you");
+    // A won dispute holds nothing back.
+    expect(await notice("automatic_full", "won")).toContain("being refunded in full");
+  });
+
   test("a paid session for an event whose capacity fell below its holds goes to compensation review", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { order, session, state } = await pendingWithHold(2, { capacity: 2 });

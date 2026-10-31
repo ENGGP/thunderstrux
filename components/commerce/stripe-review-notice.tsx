@@ -47,7 +47,7 @@ export function StripeReviewNotice({ orderId, kind, review, canAct, timeZone }: 
   if (!review.disputeStatus && dispute?.closedAt && dispute.providerStatus !== "lost") {
     return (
       <Notice title="Stripe closed the dispute in the society's favour">
-        <p>The dispute closed on {date(dispute.closedAt)} and the society kept the payment. Nothing else changed.</p>
+        <p>The dispute closed on {date(dispute.closedAt)}{review.refundStatus ? "." : " and the society kept the payment. Nothing else changed."}</p>
         {link}
       </Notice>
     );

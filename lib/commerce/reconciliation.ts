@@ -7,7 +7,7 @@ import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { queueCommerceReviewNotice } from "@/lib/payments/compensation-notices";
 import { logInfo, logWarn } from "@/lib/ops/logger";
-import { OrderRefundError, openCommerceRefund } from "@/lib/payments/order-refunds";
+import { openCommerceCompensation } from "@/lib/payments/order-refunds";
 import { getStripe } from "@/lib/stripe";
 
 // Who applied a Session: the signed webhook, or the reconciliation sweep (PAY-024).
@@ -84,17 +84,7 @@ async function requireCompensation(
     commerceOrderId: order.id, type: "compensation_required", source: facts.source, stripeEventId: facts.stripeEventId, reason, fromStatus: facts.fromStatus, toStatus: "failed"
   });
   await queueCommerceReviewNotice(tx, order.id);
-  // PAY-003: refunded in full automatically, as a ticketing platform does with an order it can't complete.
-  try {
-    await openCommerceRefund(tx, {
-      organisationId: order.organisationId, commerceOrderId: order.id, actor: null,
-      reason: `Paid but couldn't be filled (${reason})`.slice(0, 500), compensation: reason
-    });
-  } catch (error) {
-    // Nothing left to refund, or a dispute (PAY-036): the order stays under review for a person.
-    if (!(error instanceof OrderRefundError)) throw error;
-    logWarn("commerce.compensation_refund.not_opened", { commerceOrderId: order.id, reason: error.kind });
-  }
+  await openCommerceCompensation(tx, order, reason);
 }
 
 export async function reconcileCommerceCheckoutSession(

@@ -8,6 +8,7 @@ import { ticketReference } from "@/lib/format";
 import { refundedSoFar } from "@/lib/payments/order-refunds";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
+import { alertNeedsReview, resumeCompensationRefund } from "@/lib/payments/compensation-refunds";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
 import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
@@ -85,7 +86,8 @@ export async function verifiedOrderPayment(stripe: Stripe, paymentIntentId: stri
 
 // charge.dispute.created / updated / closed. The first verified event puts the
 // order's valid tickets under review and fences refunds, resends and
-// compensation; a lost dispute voids them; a won one waits for staff to restore them.
+// compensation; a lost dispute voids them; a won one waits for staff to restore
+// them, and releases a compensation refund it held.
 export async function reconcileDisputeEvent(event: Stripe.Event) {
   const dispute = event.data.object as Stripe.Dispute;
   if (await journalled(event.id)) return;
@@ -101,6 +103,7 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
   const outcome = outcomeOf(current.status);
   const orderId = payment.order.id;
   const now = new Date();
+  let forAPerson = null as Awaited<ReturnType<typeof resumeCompensationRefund>>;
   const opened = await prisma.$transaction(async (tx) => {
     if (!(await journal(tx, event))) return false;
     // A lost dispute puts the places back on sale: event and ticket type before the order.
@@ -122,7 +125,8 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
     });
     if (existing && outcomeOf(existing.providerStatus) === outcome && isInquiry(existing.providerStatus) === isInquiry(current.status)) return false;
     const all = await tx.purchaseDispute.findMany({ where: { orderId }, select: { providerStatus: true } });
-    await tx.order.update({ where: { id: orderId }, data: { disputeStatus: worstOutcome(all.map((row) => row.providerStatus)), stripePaymentIntentId: intentId } });
+    const worst = worstOutcome(all.map((row) => row.providerStatus));
+    await tx.order.update({ where: { id: orderId }, data: { disputeStatus: worst, stripePaymentIntentId: intentId } });
     // Tickets go under review once there is a chargeback, not for an inquiry.
     if (!isInquiry(current.status) && (!existing || isInquiry(existing.providerStatus))) {
       await tx.ticket.updateMany({ where: { orderId, validity: "active" }, data: { validity: "refund_review", validityReason: "disputed", validityChangedAt: now } });
@@ -143,8 +147,10 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
       organisationId: owner.organisationId, actorUserId: null, action: `order.dispute_${existing ? outcome : "opened"}`, targetType: "Order", targetId: orderId,
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
+    if (worst === "won") forAPerson = await resumeCompensationRefund(tx, { id: orderId, organisationId: owner.organisationId }, event.id);
     return !existing;
   });
+  if (forAPerson) alertNeedsReview(forAPerson, "review_required", "dispute_won");
   if (opened) {
     emitOperationalAlert("purchase_dispute_opened", { orderId, disputeId: current.id, evidenceDueBy: current.evidence_details?.due_by ?? null });
     await stageDisputeEvidence(current, { orderId });

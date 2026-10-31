@@ -163,7 +163,7 @@ export function ownMembershipOrder(userId: string, orderId: string) {
   return prisma.commerceOrder.findFirst({
     where: { id: orderId, userId, kind: "membership" },
     select: {
-      id: true, status: true, requiresCompensationReview: true, sellerName: true,
+      id: true, status: true, paymentKind: true, requiresCompensationReview: true, disputeStatus: true, refundStatus: true, externalRefundedAmount: true, externalRefundReviewedAt: true, cancelledAt: true, sellerName: true,
       organisation: { select: { slug: true, timeZone: true } },
       lines: { take: 1, select: { nameSnapshot: true, membershipGrant: { select: { startsAt: true, endsAt: true, revokedAt: true } } } }
     }

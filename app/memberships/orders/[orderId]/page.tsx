@@ -15,6 +15,7 @@ import { getLiveSession } from "@/lib/auth/live-session";
 import { formatDate, membershipLabel } from "@/lib/format";
 import { grantState } from "@/lib/memberships/grants";
 import { ownMembershipOrder } from "@/lib/memberships/offers";
+import { reviewDisputeWords, ticketOrderProjection } from "@/lib/purchases/projection";
 import { zoneCity } from "@/lib/zoned-time";
 
 export const dynamic = "force-dynamic";
@@ -40,13 +41,16 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
     waiting ? pendingCheckoutState({ kind: "commerce", id: order.id }) : null,
     order.status === "expired" ? cancelledByBuyer({ kind: "commerce", id: order.id }) : false
   ]);
-  const closed = !grant && (order.status === "failed" || order.status === "expired" || checkout?.state === "ended");
+  // Failed or expired only when no money is in play: a refund, a dispute or a review means a payment was taken.
+  const projection = ticketOrderProjection(order);
+  const closed = !grant && (projection === "failed" || projection === "expired" || checkout?.state === "ended");
   const plan = line ? membershipLabel(line.nameSnapshot) : "membership";
+  const held = reviewDisputeWords(order.disputeStatus);
 
   const title = closed
     ? "No payment taken"
     : order.requiresCompensationReview
-      ? "We're refunding your payment"
+      ? held?.title ?? "We're refunding your payment"
       : checkout?.state === "waiting"
         ? "You haven't paid yet"
         : waiting
@@ -55,7 +59,9 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
           ? `You're a member from ${formatDate(grant!.startsAt, zone)}`
           : state === "active"
             ? "You're a member"
-            : "Your membership";
+            : order.refundStatus === "refunded" && !grant
+              ? "Refunded"
+              : "Your membership";
 
   return (
     <CheckoutShell lead="Buying from" backHref={back} backLabel="Back to memberships" current={grant ? 2 : 1} society={order.sellerName} steps={["Review", "Pay with Stripe", "Membership"]} title={title}>
@@ -73,7 +79,7 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
               </div>
             </>
           ) : order.requiresCompensationReview ? (
-            <p className="text-ink">Stripe took a payment we couldn&apos;t turn into a membership, so we&apos;re refunding it in full. We&apos;ll email you when it&apos;s done.</p>
+            <p className="text-ink">Stripe took a payment we couldn&apos;t turn into a membership{held ? `. ${held.message}` : ", so we're refunding it in full. We'll email you when it's done."}</p>
           ) : checkout?.state === "waiting" ? (
             <>
               <div>
@@ -115,6 +121,8 @@ export default async function MembershipOrderPage({ params, searchParams }: { pa
                 </Link>
               </div>
             </>
+          ) : order.refundStatus === "refunded" ? (
+            <p className="text-ink">Your payment was refunded to your card. Banks usually take 5 to 10 business days.</p>
           ) : (
             <p className="text-ink">See My memberships for where this stands.</p>
           )}

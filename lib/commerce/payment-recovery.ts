@@ -7,6 +7,7 @@ import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
 import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
+import { openCommerceCompensation } from "@/lib/payments/order-refunds";
 import { alertOutsideRefundNotReversed, isInquiry, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
 
@@ -49,7 +50,7 @@ async function endMemberships(tx: Prisma.TransactionClient, commerceOrderId: str
 
 // charge.dispute.*: an open dispute pauses refunds and hand-over; a lost one
 // ends memberships and cancels an uncollected pickup; a won one clears the
-// order, which keeps the dispute in its history.
+// order, which keeps the dispute in its history, and opens a held compensation refund.
 export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
   const dispute = event.data.object as Stripe.Dispute;
   const intentId = idOf(dispute.payment_intent);
@@ -82,7 +83,9 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
     });
     if (existing && outcomeOf(existing.providerStatus) === outcome && isInquiry(existing.providerStatus) === isInquiry(current.status)) return false;
     const worst = worstOutcome((await tx.purchaseDispute.findMany({ where: { commerceOrderId }, select: { providerStatus: true } })).map((row) => row.providerStatus));
-    await tx.commerceOrder.update({ where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId } });
+    const review = await tx.commerceOrder.update({
+      where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId }, select: { requiresCompensationReview: true, reviewReason: true }
+    });
     if (!existing) {
       await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "dispute_opened", source: "stripe_webhook", stripeEventId: event.id, reason: current.reason, facts: { amount: current.amount } });
     }
@@ -96,6 +99,10 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
       organisationId, actorUserId: null, action: `commerce_order.dispute_${existing ? outcome : "opened"}`, targetType: "CommerceOrder", targetId: commerceOrderId,
       metadata: { disputeId: current.id, providerStatus: current.status, amount: current.amount }
     } });
+    // PAY-056: the last dispute holding this order's compensation refund went the society's way.
+    if (worst === "won" && review.requiresCompensationReview) {
+      await openCommerceCompensation(tx, { id: commerceOrderId, organisationId }, review.reviewReason ?? "compensation_review_required");
+    }
     return !existing;
   });
   if (opened) {

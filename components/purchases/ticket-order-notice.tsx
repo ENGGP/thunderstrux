@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Notice } from "@/components/ui/notice";
 import { formatDate, formatMoney } from "@/lib/format";
-import { releasedByBuyer, ticketOrderProjection } from "@/lib/purchases/projection";
+import { releasedByBuyer, reviewDisputeWords, ticketOrderProjection } from "@/lib/purchases/projection";
 
 type Order = Parameters<typeof ticketOrderProjection>[0] & Parameters<typeof releasedByBuyer>[0] & {
   totalAmount: number;
@@ -42,10 +42,13 @@ export function TicketOrderNotice({ order, processing, cancelled = false }: { or
     if (releasedByBuyer(order)) return <Notice title="You cancelled this registration"><p>Your place went back to {society} for someone else, and the tickets are no longer valid.</p></Notice>;
     return <Notice title={order.event.cancelledAt ? "Event cancelled" : "Cancelled by the society"}><p>{society} cancelled this {order.event.cancelledAt ? "event" : "free registration"}. Nothing was charged, so there is nothing to refund, and the tickets are no longer valid.</p></Notice>;
   }
+  // PAY-056: a payment under review has no tickets, so a dispute on it is about the money.
+  const held = order.requiresCompensationReview ? reviewDisputeWords(order.disputeStatus, `${society} will sort it out; contact them if you haven't heard back`) : null;
+  if (held) return <Notice title={held.title} tone={order.disputeStatus === "open" ? "warning" : undefined}><p>We couldn&apos;t issue your tickets after your payment went through. {held.message}</p></Notice>;
   // Stripe's "lost" is the buyer's win: their bank returned the payment, and the tickets were voided.
   if (projection === "disputed" && order.disputeStatus === "lost") return <Notice title="Refunded by your bank"><p>Your bank upheld your dispute and returned the payment to you, so the tickets are no longer valid.</p></Notice>;
-  if (projection === "disputed") return <Notice title="Payment disputed" tone="warning"><p>Your bank has disputed this payment, so the tickets are under review. Contact {society} before the event.</p></Notice>;
-  if (projection === "review") {
+  if (projection === "disputed" && !order.requiresCompensationReview) return <Notice title="Payment disputed" tone="warning"><p>Your bank has disputed this payment, so the tickets are under review. Contact {society} before the event.</p></Notice>;
+  if (projection === "review" || order.requiresCompensationReview) {
     return order.requiresCompensationReview ? (
       <Notice title="Payment received, tickets not issued" tone="warning"><p>We couldn&apos;t issue your tickets after your payment went through. {society} will sort it out; contact them if you haven&apos;t heard back.</p></Notice>
     ) : (

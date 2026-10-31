@@ -1,6 +1,6 @@
 ---
 status: current
-last-reviewed: 2026-10-30
+last-reviewed: 2026-10-31
 owner: engineering
 aliases: [Current Handover]
 related: ["[[Documentation Index]]", "[[Engineering Delivery Workflow]]", "[[Issue and Defect Register]]", "[[Pre-hosting Candidate]]", "[[Evidence Ledger]]", "[[Project Handover 2026-10-25]]"]
@@ -79,6 +79,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
   - The three commerce refund openers are one `openCommerceRefund`, and every refund follows PAY-036: only an open or lost dispute blocks. Compensation no longer opens a refund during a dispute (the order stays under review), and a fraud refund no longer stops at a won one.
   - A paid replay never fulfils a ticket order under review: every way into review ends the hold, so the recovery path and `failOrder` are gone. `recovered` and `compensation_recovered` stay in the schema for old rows; nothing writes them.
   - The four MFA copies use `requireFreshStaffMfa`, the empty commerce `release` hook is gone, and so are `publicPlans`, `getUpcomingTicketOrders` and other dead code. DEF-075 is closed; DEBT-003 and PAY-056 are registered.
+- 2026-10-31: #245 resolves PAY-056 and DEF-077: buyers whose refund a dispute holds read that the bank decides, not that a refund is coming, and winning the dispute releases it (commerce opens the refund; an automatic ticket job goes back to the worker; a manual one alerts a person). A paid membership under review no longer reads "No payment taken". Registers PAY-057. No migration.
 
 **Snapshot at `0288810`.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.

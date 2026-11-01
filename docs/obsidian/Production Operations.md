@@ -67,7 +67,7 @@ Deploy: take `tmp/operations/<project>/deploy.lock` → build `app` and `migrati
      up -d --no-deps email-worker notification-worker stale-order-worker compensation-worker checkout-recovery-worker monitor-worker
    ```
 
-3. Point the Cloudflare Tunnel's public hostname at `http://127.0.0.1:3090` only (never the dev stack's 3080). Send a test event from each Stripe test-mode webhook destination and check for 200.
+3. Point the Cloudflare Tunnel's public hostname at `http://127.0.0.1:3090` only (never the dev stack's 3080). Send a test event from each Stripe test-mode webhook destination that allows one and check for 200. Snapshot destinations can't be pinged, so make one real test-mode payment and confirm its webhook settles it.
 4. Optional demo content: `node prisma/seed.mjs` in the preview's `migration` service with `SEED_DEMO_PASSWORD` (16+ characters); the seed refuses a public origin without it, and every demo account then uses it ([[Seeding and Data]]).
 
 Staff enrol an authenticator on first sign-in.
@@ -88,7 +88,7 @@ Create both in Stripe Workbench (live for production, test for staging) as **sna
 | `https://<app>/api/stripe/accounts/webhook` | your account; an **event destination** with **thin** payloads (PAY-023) | `v2.core.account.closed`, `v2.core.account[identity].updated`, `v2.core.account[requirements].updated`, `v2.core.account[configuration.merchant].updated`, `v2.core.account[configuration.merchant].capability_status_updated`, `v2.core.account[configuration.recipient].updated`, `v2.core.account[configuration.recipient].capability_status_updated` | `STRIPE_ACCOUNTS_WEBHOOK_SECRET` |
 | `https://<app>/api/stripe/connect/webhook` | connected accounts | `account.external_account.created`, `account.external_account.updated`, `payout.created`, `payout.paid`, `payout.failed`, `payout.canceled`, `payout.updated` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 
-Subscribe only these; the Connect endpoint no longer needs `account.updated`. If creating a society's account answers `accounts_v2_access_blocked`, enable Accounts v2 for the platform in Stripe first. Check the endpoint list shows the pinned version, then send a test event to each and confirm HTTP 200 under Event deliveries.
+Subscribe only these; the Connect endpoint no longer needs `account.updated`. If creating a society's account answers `accounts_v2_access_blocked`, enable Accounts v2 for the platform in Stripe first. Check the endpoint list shows the pinned version, then confirm HTTP 200 under Event deliveries: send a test event where the destination allows one, and otherwise make one test-mode payment.
 
 **Key:** a restricted key (`rk_live_…`) with only what the code calls: Checkout Sessions write (create, retrieve, list, expire); PaymentIntents and Charges read; Refunds write; Disputes write (read, and staging each dispute's draft answer); Radar early fraud warnings read; Connect accounts (v1 and v2), account links and login links write; on connected accounts Balance Settings write; Transfers write (reversals; also retrieve and list reversals); on connected accounts Balance read and Payouts write. Prove it in test mode with the staging campaign first: a 403 in Workbench request logs names the missing permission. Store it as the `stripe_secret_key` secret; roll it when someone with access leaves.
 

@@ -266,6 +266,7 @@ describe("disputes", () => {
     });
 
     test("leaves an event still on, an order staff marked refunded, and a lost dispute alone", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
       const running = await paidOrder();
       disputeNow(running, "needs_response");
       await reconcileDisputeEvent(signedEvent("charge.dispute.created", disputeObject(running, "needs_response")));
@@ -277,6 +278,7 @@ describe("disputes", () => {
       disputeNow(lost, "lost");
       await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(lost, "lost")));
       expect(await prisma.refundRequest.count({ where: { orderId: { in: [running.order.id, marked.order.id, lost.order.id] } } })).toBe(0);
+      expect(alerted(error, "refund_failed")).toEqual([]);
     });
 
     test("tells a person when the refund can't open, unless the money is already on its way", async () => {

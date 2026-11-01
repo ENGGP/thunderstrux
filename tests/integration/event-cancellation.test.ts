@@ -219,7 +219,7 @@ describe("cancelling an event (EVT-004)", () => {
   test("a \"still valid\" email already queued never goes out, whatever state it is in", async () => {
     const { society, event } = await societyEvent();
     await heldOrder(society, event, { paymentKind: "stripe" });
-    const other = await societyEvent();
+    const other = await createEvent({ organisationId: society.organisation.id, status: "published" });
     const queued = async (organisationId: string, eventId: string, name: string, status: "pending" | "processing" | "failed" | "sent") => {
       await prisma.$transaction((tx) => enqueueNotification(tx, {
         eventKey: `event-change/${eventId}/7/${name}`, recipient: `${unique("holder")}@example.com`, template: "business_notice", organisationId,
@@ -230,7 +230,7 @@ describe("cancelling an event (EVT-004)", () => {
     };
     const held = [await queued(society.organisation.id, event.id, "a", "pending"), await queued(society.organisation.id, event.id, "b", "processing"), await queued(society.organisation.id, event.id, "c", "failed")];
     const sent = await queued(society.organisation.id, event.id, "d", "sent");
-    const elsewhere = await queued(other.society.organisation.id, other.event.id, "e", "pending");
+    const elsewhere = await queued(society.organisation.id, other.id, "e", "pending");
 
     expect((await cancel(society, event.id, { reason, confirmation: event.title })).status).toBe(200);
     for (const row of held) {

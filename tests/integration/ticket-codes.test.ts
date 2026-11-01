@@ -217,6 +217,11 @@ describe("ticket codes", () => {
     const member = await createMember();
     const grant = await createMembershipGrant(fixture.owner.organisation.id, member.id, member.email);
 
+    const usable = await prisma.$transaction((tx) => readTicketCode(tx, fixture.event.id, "ALMOST", new Date()));
+    if (!usable.ok) throw new Error("code unusable");
+    const detail = await getPublishedEventDetail(fixture.event.id);
+    expect(priceWithTicketCode(priceForViewer(detail!.ticketTypes, true), usable.code).find((type) => type.id === fixture.general.id)).toMatchObject({ price: 0, memberPriced: true });
+
     await expect(buy(member.id, fixture, fixture.general.id, 2, 0, "ALMOST")).rejects.toMatchObject({ kind: "member_price_limit" });
     expect(await buy(member.id, fixture, fixture.general.id, 1, 0, "ALMOST")).toMatchObject({ status: "fulfilled" });
     expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id, userId: member.id } })).toMatchObject({ membershipGrantId: grant.id });
@@ -232,6 +237,15 @@ describe("ticket codes", () => {
 
     await prisma.ticketType.update({ where: { id: fixture.general.id }, data: { price: 2000 } });
     expect(await buy(member.id, fixture, fixture.general.id, 1, 1000, "ONCE")).toMatchObject({ status: "redirect" });
+  });
+
+  test("a code that only unlocks a hidden type changes no price, and still counts against its limit", async () => {
+    const fixture = await codedEvent();
+    await addCode(fixture, { code: "CREWONLY", ticketTypeId: fixture.crew.id, maxUses: 1 });
+    const member = await createMember();
+    expect(await buy(member.id, fixture, fixture.crew.id, 1, 3000, "CREWONLY")).toMatchObject({ status: "redirect" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id } })).toMatchObject({ codeSnapshot: "CREWONLY" });
+    await expect(buy((await createMember()).id, fixture, fixture.crew.id, 1, 3000, "CREWONLY")).rejects.toMatchObject({ kind: "code_unavailable" });
   });
 
   test("a repeated ?code= in the URL reads as no code", async () => {

@@ -877,7 +877,7 @@ describe("a dispute holding a compensation refund", () => {
     expect(wonAlerts(error)).toHaveLength(1);
   });
 
-  // PAY-061: sending it again would meet the failed refund and the same key, so a person sends it, and now hears they can.
+  // PAY-064: sending it again would meet the failed refund and the same key, so a person sends it, and now hears they can.
   test("a refund that failed stays with a person, who is told when the society wins", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const fixture = await stoppedByDispute();

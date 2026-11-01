@@ -15,6 +15,8 @@ Rows moved here unchanged from the register on 2026-10-26. File paths and run ID
 
 | ID | Resolved | Defect and root cause | Fix and evidence |
 | --- | --- | --- | --- |
+| DEF-094 | 2026-11-02 | The staging driver's guest step never filled the first and last name the form now requires, so `guest` stopped at Email me a link. | The driver fills them. #252. |
+| DEF-093 | 2026-11-02 | Each staging scenario makes a society on the run's one connected account, and `Organisation.stripeAccountId` has been unique since 2026-10-28, so a full run stopped at its second scenario. Only single-scenario runs had passed since. | Each society takes the account over from the last. #252. |
 | SEC-044 | 2026-11-02 | Who checked a ticket in fell back to that person's email, and names are optional, so a door volunteer could read a colleague's address. | Only roles that can read emails get the fallback. #251. |
 | EVT-013 | 2026-11-02 | A cancelled event's paid ticket stays `active` until its refund lands, and check-in never read `cancelledAt`, so it scanned as valid. | Check-in treats a cancelled event as not found, and the console says Don't admit. #251. |
 | UI-030 | 2026-11-02 | Header links and Sign out could wrap to two lines at tablet widths. | They stay on one line. #251. |

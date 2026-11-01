@@ -17,7 +17,9 @@ const instructions = {
   compensation: `${card} The order has already expired locally, so the app refunds it automatically.`,
   'commerce-dispute': 'Pay using Stripe dispute test card 4000 0000 0000 0259, any future expiry, any CVC. Stripe opens a dispute; the run then loses it.',
   'commerce-outside-refund': `${card} The run then refunds part of it from outside Thunderstrux, and the app refunds the rest.`,
-  'commerce-compensation': `${card} This merchandise order has already expired locally, so the app refunds it automatically.`
+  'commerce-compensation': `${card} This merchandise order has already expired locally, so the app refunds it automatically.`,
+  'compensation-dispute-won': 'Pay using Stripe dispute test card 4000 0000 0000 0259, any future expiry, any CVC. This ticket order has already expired locally; the run wins the dispute and the app then refunds it.',
+  'commerce-compensation-dispute-lost': 'Pay using Stripe dispute test card 4000 0000 0000 0259, any future expiry, any CVC. This merchandise order has already expired locally; the run loses the dispute, so the bank repays it.'
 };
 
 // Someone who can't type into this terminal, such as an agent paying on the Checkout

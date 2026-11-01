@@ -58,6 +58,7 @@ sources: [docs/MVP_READINESS_PLAN.md, docs/THUNDERSTRUX_PRD.md, tests/e2e/journe
 | | Decline, cancel, expiry | Card payments are declined inside Stripe's page; the buyer retries or leaves. e2e `webhooks` (expiry releases the hold), integration `ticket-purchases` (the cancel page names the order only to its buyer) |
 | | Wallet, email, replay | e2e `purchases` (wallet of ticket faces), `webhooks` (replay fulfils once, one email job); integration `email-outbox` |
 | | Void ticket denied at check-in | e2e `check-in` (refunded ticket shows Don't admit), **`journeys`** |
+| | Code, member price, one refund, then the event cancelled | **e2e `journeys`**: seeded paid orders through signed webhooks; the pages quote the code and the member price, one ticket is refunded, the staff page cancels, the door says Don't admit, the held figure stays until each refund lands, and the calendar says Cancelled. This spec has no Stripe: the same journey ran on dev with real Checkout pages (PR evidence). The sent payout is not proven |
 | Membership relationship | Free join distinct from term purchase | e2e `memberships` (a join alone is not a membership), **`journeys`** (a join gives no member price) |
 | | Future, current, renew, expiry | integration `membership-offers`, `membership-grants` |
 | | Member-only | e2e `memberships` (members-only gate) |

@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
 import Stripe from "stripe";
 import type { APIRequestContext, Browser } from "@playwright/test";
-import { test, expect, prisma, login, selectStaffContext, createEvent } from "./fixtures";
+import { test, expect, prisma, login, selectStaffContext, createEvent, createMember } from "./fixtures";
+import { localDay } from "@/components/calendar/layout";
 import { createCommerceOrder } from "@/lib/commerce/orders";
+import { heldMoney } from "@/lib/payouts/release";
+import { createMembershipGrant } from "@/tests/helpers/test-data";
 
 // T44a: connected section 7 journeys against the release images (web for the
 // app, ops for migrations and workers). Each one fills a gap the per-feature
@@ -200,4 +203,104 @@ test("a member's free join gives no member price, a paid membership does and sur
   await page.goto("/memberships?view=revoked");
   await expect(page.getByRole("heading", { name: "Gala Season Membership" })).toBeVisible();
   await quotes(false);
+});
+
+test("a society sells with a code and a member price, refunds one ticket, cancels the event, and holds the money until each refund lands", async ({ page, data, browser }) => {
+  const organisationId = data.organisation.id;
+  const account = "acct_e2e_cancelled";
+  await prisma.organisation.update({ where: { id: organisationId }, data: { stripeAccountId: account, stripeChargesEnabled: true, stripePayoutsEnabled: true } });
+  const event = await createEvent({ organisationId, status: "published", title: "Harbour Cruise", ticketTypes: [{ name: "Standard", price: 2000, quantity: 20, memberPrice: 1200 }] });
+  const ticketType = event.ticketTypes[0];
+  const code = await prisma.ticketCode.create({ data: { eventId: event.id, code: "SPONSOR", percentOff: 25 } });
+  const checkout = (query: string) => `/events/${event.id}/checkout?ticketTypeId=${ticketType.id}&${query}`;
+
+  // The Session each checkout would open (this campaign has no Stripe), held, then paid: Stripe's signed webhook fulfils it.
+  const pay = async (buyer: { id: string; email: string }, quantity: number, unitPrice: number, feeAmount: number, terms: object = {}) => {
+    const id = crypto.randomUUID();
+    const order = await prisma.order.create({ data: {
+      organisationId, eventId: event.id, ticketTypeId: ticketType.id, userId: buyer.id, quantity, unitPrice, totalAmount: quantity * unitPrice, feeAmount, status: "pending",
+      stripeSessionId: `cs_e2e_${id}`, stripePaymentIntentId: `pi_e2e_${id}`, paymentKind: "stripe", compensationRefundModeSnapshot: "manual_review", purchasedTicketTypeName: "Standard",
+      sellerName: data.organisation.name, sellerStripeAccountId: account, buyerEmailSnapshot: buyer.email, buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "purchase", ...terms
+    } });
+    await prisma.ticketReservation.create({ data: { orderId: order.id, organisationId, eventId: event.id, ticketTypeId: ticketType.id, userId: buyer.id, quantity, expiresAt: new Date(Date.now() + 30 * 60000) } });
+    const session = { id: order.stripeSessionId, object: "checkout.session", payment_status: "paid", amount_total: order.totalAmount, currency: "aud", payment_intent: { id: order.stripePaymentIntentId, transfer_data: { destination: account } }, metadata: { orderId: order.id, organisationId, eventId: event.id, ticketTypeId: ticketType.id, quantity: String(quantity) } };
+    expect((await signedEvent(page.request, "checkout.session.completed", session)).status()).toBe(200);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("paid");
+    return order;
+  };
+  const refunded = (request: { id: string; amount: number; orderId: string | null }, intent: string | null) =>
+    signedEvent(page.request, "refund.updated", { id: `re_e2e_${request.id}`, object: "refund", amount: request.amount, currency: "aud", status: "succeeded", payment_intent: intent, metadata: { refundRequestId: request.id, orderId: request.orderId } });
+
+  // 1. A buyer with a code sees it on the event and at checkout.
+  await login(page, data.member.email, `/events/${event.id}?code=SPONSOR`);
+  await expect(page.getByText("$15.00").first()).toBeVisible();
+  await page.goto(checkout("quantity=1&code=SPONSOR"));
+  await expect(page.getByText("Standard (code SPONSOR)")).toBeVisible();
+  const coded = await pay(data.member, 1, 1500, 100, { ticketCodeId: code.id, codeSnapshot: "SPONSOR", discountAmount: 500 });
+
+  const memberContext = await otherBrowser(browser);
+  const ownerContext = await otherBrowser(browser);
+  try {
+    // 2. A member buys twice: their one ticket at the member price, then two at the standard price.
+    const member = await createMember();
+    const grant = await createMembershipGrant(organisationId, member.id, member.email);
+    const memberPage = await memberContext.newPage();
+    await login(memberPage, member.email, checkout("quantity=1"));
+    await expect(memberPage.getByText("Standard (member price)")).toBeVisible();
+    const memberPriced = await pay(member, 1, 1200, 100, { membershipGrantId: grant.id, membershipEntitlementVersion: grant.entitlementVersion });
+    await memberPage.goto(`/events/${event.id}`);
+    await expect(memberPage.getByText("Yours is used or in an open checkout", { exact: false })).toBeVisible();
+    await memberPage.goto(checkout("quantity=2"));
+    await expect(memberPage.getByRole("button", { name: "Pay A$40.00" })).toBeVisible();
+    const pair = await pay(member, 2, 2000, 200);
+
+    // 3. One of the pair is refunded: Stripe's signed event voids that ticket alone.
+    const [gone, kept] = await prisma.ticket.findMany({ where: { orderId: pair.id }, orderBy: { issueSequence: "asc" } });
+    const one = await prisma.refundRequest.create({ data: {
+      orderId: pair.id, organisationId, amount: 2000, reason: "One friend can no longer come.", actorUserId: data.owner.id, ticketIds: [gone.id],
+      operationKey: `order-refund:e2e-${pair.id}`, status: "pending", stripePaymentIntentId: pair.stripePaymentIntentId
+    } });
+    await prisma.order.update({ where: { id: pair.id }, data: { refundStatus: "processing" } });
+    expect((await refunded(one, pair.stripePaymentIntentId)).status()).toBe(200);
+    expect(await prisma.ticket.findUniqueOrThrow({ where: { id: gone.id } })).toMatchObject({ validity: "void", validityReason: "refunded" });
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: kept.id } })).validity).toBe("active");
+    const shares = 1500 - 100 + (1200 - 100) + (4000 - 200 - 1900);
+    expect((await heldMoney(organisationId, account)).total).toBe(shares);
+
+    // 4. The owner cancels from the event's page. Every order is refunded for what is left, and the door turns it away meanwhile.
+    const owner = await ownerContext.newPage();
+    await login(owner, data.owner.email, `/dashboard/events/${event.id}`);
+    await owner.getByRole("button", { name: "More actions for Harbour Cruise" }).click();
+    await owner.getByRole("button", { name: /^Cancel event/ }).click();
+    const dialog = owner.getByRole("dialog");
+    await dialog.getByLabel("Message to ticket holders").fill("The harbour is closed for storm repairs.");
+    await dialog.getByLabel("Type Harbour Cruise to confirm").fill("Harbour Cruise");
+    await dialog.getByRole("button", { name: "Cancel event" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).cancelledAt).not.toBeNull();
+    const requests = await prisma.refundRequest.findMany({ where: { organisationId, status: "pending" }, orderBy: { amount: "asc" } });
+    expect(requests.map((request) => [request.orderId, request.amount])).toEqual([[memberPriced.id, 1200], [coded.id, 1500], [pair.id, 2000]]);
+
+    await owner.goto(`/dashboard/events/${event.id}/tickets`);
+    await owner.getByLabel("Find a ticket").fill(kept.id.slice(-6).toUpperCase());
+    const results = owner.getByRole("list", { name: "Matching tickets" });
+    await expect(results.getByRole("listitem", { name: /Don't admit/ })).toContainText("This event is cancelled.");
+    await expect(results.getByRole("button", { name: /^Check in/ })).toHaveCount(0);
+
+    // 5. Its money stays held until each refund lands, then none does.
+    expect((await heldMoney(organisationId, account)).total).toBe(shares);
+    for (const request of requests) {
+      const intent = (await prisma.order.findUniqueOrThrow({ where: { id: request.orderId as string } })).stripePaymentIntentId;
+      await prisma.refundRequest.update({ where: { id: request.id }, data: { stripePaymentIntentId: intent } });
+      expect((await refunded(request, intent)).status()).toBe(200);
+    }
+    expect((await heldMoney(organisationId, account)).total).toBe(0);
+    expect(await prisma.ticket.count({ where: { eventId: event.id, validity: { not: "void" } } })).toBe(0);
+
+    // 6. The calendar says it is off.
+    await owner.goto(`/dashboard/calendar?date=${localDay(event.startTime, "Australia/Brisbane")}`);
+    await expect(owner.getByRole("link", { name: /Harbour Cruise/ }).first()).toContainText("Cancelled");
+  } finally {
+    await Promise.all([memberContext.close(), ownerContext.close()]);
+  }
 });

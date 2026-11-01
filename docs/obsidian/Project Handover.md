@@ -46,10 +46,10 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-11-02: #250 closes the refund gaps that review found: a won dispute on a failed refund alerts a person (PAY-064), a kept application fee alerts finance (PAY-062), a staff refund is never resized (PAY-063), merchandise tabs place a closed review under Refunded (UI-028), a refund in flight that fails closes a review a lost dispute left to it (PAY-058, narrowed), a second closing email can send (DEF-082), queued "still valid" emails stop at cancellation (DEF-083), and winning a dispute on a cancelled event opens the refund (EVT-012). Its browser run also caught calendar links whose names dropped their visible words (DEF-084). No migration.
 - 2026-11-02: #251 settles comp codes (PAY-065: a code that makes the standard price free ignores the member price), refuses commerce totals under $2.00 (PAY-066), and fixes what the opening review of #230 to #232 found: the door card after a failed re-read (DEF-085), cancelled events admitting (EVT-013), and smaller items. It also closes the named test gaps. No migration.
 
-**Snapshot after #250.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
+**Snapshot after #251.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
 - Migrations: 73, ending in `20261124010000_ticket_codes`. Models: 40.
-- Latest full baseline: `baseline-11dff83dc18d75d2101ed536` (#250), 1022 integration tests in 118 files.
+- Latest full baseline: `baseline-c4a09cccc3edbabd00bea812` (#251), 1037 integration tests in 118 files.
 
 **Local development**
 - The dev app runs all migrations. It serves this folder's working tree, so keep the folder on main or a branch built from it.

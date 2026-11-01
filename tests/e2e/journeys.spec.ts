@@ -223,7 +223,7 @@ test("a society sells with a code and a member price, refunds one ticket, cancel
       sellerName: data.organisation.name, sellerStripeAccountId: account, buyerEmailSnapshot: buyer.email, buyerIdentityCapturedAt: new Date(), buyerIdentityProvenance: "purchase", ...terms
     } });
     await prisma.ticketReservation.create({ data: { orderId: order.id, organisationId, eventId: event.id, ticketTypeId: ticketType.id, userId: buyer.id, quantity, expiresAt: new Date(Date.now() + 30 * 60000) } });
-    const session = { id: order.stripeSessionId, object: "checkout.session", payment_status: "paid", amount_total: order.totalAmount, currency: "aud", metadata: { orderId: order.id, organisationId, eventId: event.id, ticketTypeId: ticketType.id, quantity: String(quantity) } };
+    const session = { id: order.stripeSessionId, object: "checkout.session", payment_status: "paid", amount_total: order.totalAmount, currency: "aud", payment_intent: { id: order.stripePaymentIntentId, transfer_data: { destination: account } }, metadata: { orderId: order.id, organisationId, eventId: event.id, ticketTypeId: ticketType.id, quantity: String(quantity) } };
     expect((await signedEvent(page.request, "checkout.session.completed", session)).status()).toBe(200);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("paid");
     return order;

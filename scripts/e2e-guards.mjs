@@ -3,8 +3,11 @@
 export const runIdPattern = /^(baseline|browser|staging)-[a-f0-9]{24}$/;
 
 // The Stripe API version the app pins (lib/stripe/version.ts). Staging checks that
-// every event the app received was shaped for it.
+// every event the app received was shaped for its release: Stripe's monthly versions
+// within a named release have no breaking changes, and the listener's --latest moves
+// with them, so the date can differ and the name can't.
 export const stripeApiVersion = '2026-09-30.endive';
+export const isPinnedStripeRelease = version => version?.split('.')[1] === stripeApiVersion.split('.')[1];
 
 export function assertRunId(value) {
   if (!runIdPattern.test(value ?? '')) throw new Error('Invalid E2E run ID');
@@ -15,6 +18,13 @@ export function assertRunId(value) {
 export function assertOnlyStagingRun(projects, runId) {
   const other = projects.find(project => project.startsWith('staging-') && project !== runId);
   if (other) throw new Error(`Staging run ${other} is still running; staging runs one at a time`);
+}
+
+// Two full runs fit Docker's memory side by side; more hasn't been tried. `projects` has
+// one line per container, and a run still building has none, so its caller checks twice.
+export function assertRoomForFullRun(projects, runId) {
+  const others = new Set(projects.filter(project => /^(baseline|browser)-/.test(project) && project !== runId));
+  if (others.size >= 2) throw new Error(`Two full runs are already going (${[...others].join(', ')}); wait for one to finish`);
 }
 
 export function assertTestDatabase(value) {

@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { createInterface } from 'node:readline/promises';
-import { assertTestKey, cardScenarios, stagingScenarios, stripeApiVersion } from './e2e-guards.mjs';
+import { assertTestKey, cardScenarios, isPinnedStripeRelease, stagingScenarios, stripeApiVersion } from './e2e-guards.mjs';
 
 const card = 'Pay using Stripe test card 4242 4242 4242 4242, any future expiry, any CVC.';
 // What the person at the terminal does on each scenario's Checkout page.
@@ -20,10 +20,24 @@ const instructions = {
   'commerce-compensation': `${card} This merchandise order has already expired locally, so the app refunds it automatically.`
 };
 
+// Someone who can't type into this terminal, such as an agent paying on the Checkout
+// page, attests by writing the same word to a file in the run's own folder.
+async function answerFromFile(path, signal) {
+  console.log(`Write confirmed to ${path} after completing this step.`);
+  for (const deadline = Date.now() + 15 * 60_000; Date.now() < deadline;) {
+    signal.throwIfAborted();
+    const answer = await readFile(path, 'utf8').catch(() => null);
+    if (answer !== null) return answer;
+    await new Promise(done => setTimeout(done, 1000));
+  }
+  throw new Error('Manual scenario was not confirmed in time');
+}
+
 export async function runStaging({ compose, capture, ready, runtimeFile, directory, runId, manifest, save, signal = new AbortController().signal, recovery = false }) {
   signal.throwIfAborted();
   const scenarios = stagingScenarios(process.argv);
   const localKey = process.argv.includes('--use-local-test-key');
+  const answersInFiles = process.argv.includes('--answers-in-files');
   const source = parseEnv(await readFile(resolve(localKey ? '.env' : '.env.staging.local'), 'utf8'));
   const values = localKey ? {
     STRIPE_TEST_SECRET_KEY: source.STRIPE_SECRET_KEY,
@@ -56,7 +70,7 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
       if (!providers.some(line => line.startsWith('E2E_RESEND_API_KEY='))) manifest.blocked.push('email');
       await save();
       const manual = scenarios.some(scenario => cardScenarios.includes(scenario));
-      if (manual && !process.stdin.isTTY) throw new Error('Run pnpm test:payments:staging in an interactive terminal for manual test-card acceptance');
+      if (manual && !answersInFiles && !process.stdin.isTTY) throw new Error('Run pnpm test:payments:staging in an interactive terminal for manual test-card acceptance');
       // Capture, never stream listener startup: it contains the signing secret.
       await capture('--profile', 'staging', 'up', '-d', 'stripe');
       let signingSecret;
@@ -78,7 +92,7 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
       if (storage.status === 'blocked') manifest.blocked.push('storage');
       await save();
       console.log(`storage: ${storage.status}${storage.missing ? ` (${storage.missing.join(', ')} not set)` : ''}`);
-      if (manual) input = createInterface({input: process.stdin, output: process.stdout});
+      if (manual && !answersInFiles) input = createInterface({input: process.stdin, output: process.stdout});
       for (const scenario of scenarios) {
         signal.throwIfAborted();
         manifest.stripeResourcesPossible = true;
@@ -90,7 +104,9 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
           const privateState = JSON.parse(handoff.split('\n').find(line => line.startsWith('E2E_PRIVATE:')).slice('E2E_PRIVATE:'.length));
           console.log(`\n${scenario.toUpperCase()}: open this test Checkout URL privately:\n${privateState.url}`);
           console.log(instructions[scenario]);
-          const answer = await input.question('Type confirmed after completing this step: ', {signal: AbortSignal.any([signal, AbortSignal.timeout(15 * 60_000)])});
+          const answer = answersInFiles
+            ? await answerFromFile(resolve(directory, `answer-${scenario}`), signal)
+            : await input.question('Type confirmed after completing this step: ', {signal: AbortSignal.any([signal, AbortSignal.timeout(15 * 60_000)])});
           signal.throwIfAborted();
           if (answer.trim() !== 'confirmed') throw new Error('Manual scenario was not confirmed');
         }
@@ -105,8 +121,8 @@ export async function runStaging({ compose, capture, ready, runtimeFile, directo
           if (!listenerLog.split('\n').some(line => line.includes(eventId) && line.includes('[200]')) || !appLog.includes(eventId)) {
             throw new Error(`No correlated successful Stripe delivery and app receipt found for ${scenario}`);
           }
-          if (!appLog.split('\n').some(line => line.includes(eventId) && line.includes(`"apiVersion":"${stripeApiVersion}"`))) {
-            throw new Error(`Webhook API version differs from application for ${scenario}; the listener must forward ${stripeApiVersion} events`);
+          if (!appLog.split('\n').some(line => line.includes(eventId) && isPinnedStripeRelease(line.match(/"apiVersion":"([^"]+)"/)?.[1]))) {
+            throw new Error(`Webhook API release differs from application for ${scenario}; the listener must forward events of the ${stripeApiVersion} release`);
           }
         }
         manifest[scenario] = {...evidence, deliveryVerified: evidence.eventIds.length > 0};

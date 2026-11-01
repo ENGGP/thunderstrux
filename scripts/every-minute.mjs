@@ -4,7 +4,8 @@
 // or as soon as it finishes if it ran longer. The command keeps its own
 // timeout and database lease (lib/ops/worker.ts); this loop also kills a run
 // that outlives that timeout by a minute. SIGTERM stops the loop after the
-// current run, so a stop never cuts a batch short.
+// current run, if that ends within the stop's wait: 60 seconds on a deploy, 30 on a
+// plain `docker compose stop`. A cut run's items come back through their lease.
 import { spawn } from "node:child_process";
 
 const [command, ...args] = process.argv.slice(2);

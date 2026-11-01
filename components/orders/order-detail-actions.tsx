@@ -288,7 +288,7 @@ export function OrderDetailActions({
           </div>
           {result("verify")}
         </div>
-      ) : disputed ? null : (
+      ) : disputed && !refund ? null : (
         <>
         {refund ? (
           <div className={block}>

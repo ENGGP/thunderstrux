@@ -71,7 +71,10 @@ describe("dashboard orders page", () => {
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const sold = await order("paid");
     await dispute(sold.id);
-    expect(await detail(sold.id)).toContain("Restore tickets");
+    const won = await detail(sold.id);
+    expect(won).toContain("Restore tickets");
+    // PAY-036: a won dispute doesn't fence a refund, so staff can still send one.
+    expect(won).toContain("can still be refunded");
 
     // An older order whose fulfilment recovered has tickets, whatever its job says.
     const recovered = await order("paid");

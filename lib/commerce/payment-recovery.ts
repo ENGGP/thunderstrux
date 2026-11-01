@@ -6,7 +6,7 @@ import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
-import { outsideRefundKeptFee, queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
+import { outsideRefundOwed, queueDisputeReversal } from "@/lib/payments/dispute-reversals";
 import { closeRepaidReview, openCommerceCompensation, reopenRepaidReview } from "@/lib/payments/order-refunds";
 import { alertOutsideRefundNotReversed, alertPartReturned, isInquiry, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
@@ -138,8 +138,7 @@ export async function reconcileCommerceExternalRefundEvent(event: Stripe.Event) 
     .filter((item) => item.status === "succeeded" && !item.metadata?.refundRequestId)
     .reduce((sum, item) => sum + item.amount, 0);
   // PAY-027: payouts hold what a refund didn't take back from the society.
-  const unreversed = await unreversedRefundAmount(stripe, intentId);
-  const feeKept = await outsideRefundKeptFee(stripe, intentId);
+  const { unreversed, feeKept } = await outsideRefundOwed(stripe, intentId);
   const { id: commerceOrderId, organisationId } = payment.order;
   const now = new Date();
   const recorded = await prisma.$transaction(async (tx) => {

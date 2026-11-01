@@ -48,15 +48,18 @@ export async function keptApplicationFee(stripe: Stripe, charge: Stripe.Charge) 
   return Math.max(0, fee.amount - fee.amount_refunded);
 }
 
-// The same for a refund made in Stripe, read before its transaction. Null when Stripe
-// won't say, as with a key lacking Application Fees read: the refund must still be recorded.
-export async function outsideRefundKeptFee(stripe: Stripe, paymentIntentId: string) {
+// What refunds made in Stripe left with the society, read before their transaction.
+// `feeKept` is null when Stripe won't show the fee, as with a key lacking Application
+// Fees read: the refund must still be recorded.
+export async function outsideRefundOwed(stripe: Stripe, paymentIntentId: string) {
+  const charge = (await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] })).latest_charge;
+  if (!charge || typeof charge === "string") return { unreversed: 0, feeKept: 0 };
+  const unreversed = await unreversedRefundAmount(stripe, charge);
   try {
-    const charge = (await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] })).latest_charge;
-    return charge && typeof charge !== "string" ? await keptApplicationFee(stripe, charge) : 0;
+    return { unreversed, feeKept: await keptApplicationFee(stripe, charge) };
   } catch {
     logWarn("stripe.refund.fee_unread", { paymentIntentId });
-    return null;
+    return { unreversed, feeKept: null };
   }
 }
 

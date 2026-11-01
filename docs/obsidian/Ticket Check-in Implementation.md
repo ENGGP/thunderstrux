@@ -41,6 +41,8 @@ Whether a ticket admits is `Ticket.validity`, which payments code sets ([[Paymen
 
 ## Rules
 
+- **Cancelled event:** its tickets stay `active` until each refund lands, but check-in treats the event as not found and the console says Don't admit (EVT-013).
+- **Who checked in:** by name. Only a role that can read emails falls back to the address (SEC-044).
 - **Authority:** `tickets:check_in` on the selected dashboard context, for all three routes. Missing permission or staff authority is 403 (`organisationAccessRule`). `check_in_staff` needs no staff authenticator, as at Humanitix and Luma; every other role does ([[Authentication and Dashboard Access#Staff MFA]]).
 - **Buyer emails:** `buyerEmail` is `null` unless the role has `orders:read` (owners and admins), because the same list as a CSV needs that permission, a rate limit and an audit row. Check-in staff and event managers see names and can find a buyer by their whole email (case-insensitive), not by part of one, so prefixes can't spell an address out.
 - **Tenant:** every read and write is scoped by `Ticket.event.organisationId`. `Ticket.organisationId` is stored (issuance copies `Event.organisationId`) but is never used for access. Another society's ticket is 404, the same as a missing one, so ids can't be probed.

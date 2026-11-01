@@ -117,7 +117,7 @@ sources: [lib/analytics/range.ts, lib/analytics/metrics.ts, app/(dashboard)/dash
 - Managers get "New event" in the header and on each day from today (on hover or focus), opening the builder with that day, 6 to 8 pm (`/dashboard/events/new?date=`).
 
 **Time** (`components/calendar/layout.ts`): every day and time is the society's zone, read with `Intl`, never the server's or browser's.
-- An event shorter than 24 hours, even past midnight, sits on its start day with the end day named ("10:00 pm to 2:00 am Sun").
+- An event shorter than 24 hours on the clock, even past midnight or across a clock change, sits on its start day with the end day named ("10:00 pm to 2:00 am Sun").
 - Longer events span each day they touch, split at week edges with "continues" and "until", and use the all-day row in the week.
 - The small hours belong to the night before: a day an event reaches only before 6:00 am doesn't count. A workshop from Wednesday 1:00 am to Thursday 3:00 am sits on Wednesday alone, in the month and in Wednesday's grid from 1 am.
 - Month chips carry the full name and times as a tooltip.

@@ -1122,7 +1122,7 @@ describe("webhook reconciliation", () => {
     const asked = () => error.mock.calls.filter(([line]) => String(line).includes('"event":"paid_but_unfulfilled_compensation_required"'));
     const closed = async (orderId: string) => {
       expect(await prisma.notificationOutbox.count({ where: { eventKey: `payment-review/${orderId}` } })).toBe(0);
-      const [row, ...more] = await prisma.notificationOutbox.findMany({ where: { eventKey: `payment-review-closed/${orderId}` } });
+      const [row, ...more] = await prisma.notificationOutbox.findMany({ where: { eventKey: { startsWith: `payment-review-closed/${orderId}/` } } });
       expect(more).toEqual([]);
       return JSON.stringify(decryptNotification(row.encryptedPayload, row.id));
     };

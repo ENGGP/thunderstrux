@@ -6,7 +6,7 @@ import { appendCommerceLifecycleEvent } from "@/lib/commerce/orders";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
-import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
+import { outsideRefundOwed, queueDisputeReversal } from "@/lib/payments/dispute-reversals";
 import { closeRepaidReview, openCommerceCompensation, reopenRepaidReview } from "@/lib/payments/order-refunds";
 import { alertOutsideRefundNotReversed, alertPartReturned, isInquiry, journal, journalled, outcomeOf, worstOutcome } from "@/lib/payments/purchase-disputes";
 import { getStripe } from "@/lib/stripe";
@@ -86,7 +86,7 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
     if (existing && outcomeOf(existing.providerStatus) === outcome && isInquiry(existing.providerStatus) === isInquiry(current.status)) return false;
     const worst = worstOutcome((await tx.purchaseDispute.findMany({ where: { commerceOrderId }, select: { providerStatus: true } })).map((row) => row.providerStatus));
     const review = await tx.commerceOrder.update({
-      where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId }, select: { requiresCompensationReview: true, reviewReason: true }
+      where: { id: commerceOrderId }, data: { disputeStatus: worst === "won" ? null : worst, stripePaymentIntentId: intentId }, select: { requiresCompensationReview: true, reviewReason: true, refundStatus: true }
     });
     if (!existing) {
       await appendCommerceLifecycleEvent(tx, { commerceOrderId, type: "dispute_opened", source: "stripe_webhook", stripeEventId: event.id, reason: current.reason, facts: { amount: current.amount } });
@@ -105,7 +105,7 @@ export async function reconcileCommerceDisputeEvent(event: Stripe.Event) {
     if (worst === "won" && ((await reopenRepaidReview(tx, { orderId: null, commerceOrderId }, event.id)) || review.requiresCompensationReview)) {
       await openCommerceCompensation(tx, { id: commerceOrderId, organisationId }, review.reviewReason ?? "compensation_review_required");
     }
-    if (outcome === "lost") partReturned = !(await closeRepaidReview(tx, { orderId: null, commerceOrderId, organisationId }, { source: "stripe_webhook", stripeEventId: event.id })) && review.requiresCompensationReview;
+    if (outcome === "lost") partReturned = !(await closeRepaidReview(tx, { orderId: null, commerceOrderId, organisationId }, { source: "stripe_webhook", stripeEventId: event.id })) && review.requiresCompensationReview && review.refundStatus !== "processing";
     return !existing;
   });
   if (partReturned) alertPartReturned({ commerceOrderId });
@@ -138,7 +138,7 @@ export async function reconcileCommerceExternalRefundEvent(event: Stripe.Event) 
     .filter((item) => item.status === "succeeded" && !item.metadata?.refundRequestId)
     .reduce((sum, item) => sum + item.amount, 0);
   // PAY-027: payouts hold what a refund didn't take back from the society.
-  const unreversed = await unreversedRefundAmount(stripe, intentId);
+  const { unreversed, feeKept } = await outsideRefundOwed(stripe, intentId);
   const { id: commerceOrderId, organisationId } = payment.order;
   const now = new Date();
   const recorded = await prisma.$transaction(async (tx) => {
@@ -165,7 +165,7 @@ export async function reconcileCommerceExternalRefundEvent(event: Stripe.Event) 
     await closeRepaidReview(tx, { orderId: null, commerceOrderId, organisationId }, { source: "stripe_webhook", stripeEventId: event.id });
     return true;
   });
-  if (recorded && unreversed > 0) alertOutsideRefundNotReversed({ commerceOrderId }, unreversed);
+  if (recorded && (unreversed > 0 || feeKept !== 0)) alertOutsideRefundNotReversed({ commerceOrderId }, unreversed, feeKept);
   return true;
 }
 

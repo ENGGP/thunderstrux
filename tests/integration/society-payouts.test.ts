@@ -213,6 +213,11 @@ describe("payouts worker", () => {
     expect(stripe.create).toHaveBeenCalledTimes(3);
   });
 
+  test("nothing is paid out when pending money can't cover what is held", async () => {
+    expect(await societyHolding3672(1000, 1000)).toBeUndefined();
+    expect(stripe.create).not.toHaveBeenCalled();
+  });
+
   test("pays out what is available less what is held, once a day per society, and checks each society at most hourly", async () => {
     const fixture = await society();
     await ticketSale(fixture, 10 * day); // $18.36 held

@@ -1,6 +1,6 @@
 ---
 status: living
-last-reviewed: 2026-10-27
+last-reviewed: 2026-11-02
 owner: engineering
 related: ["[[UI Architecture Rules]]", "[[Engineering Delivery Workflow]]", "[[Frontend and Backend Flow]]"]
 sources: [tests/e2e/accessibility.spec.ts, playwright.config.ts, app/layout.tsx, app/globals.css, components/ui/confirm-dialog.tsx, components/ui/responsive-table.tsx, components/ui/input.tsx, components/analytics/bar-chart.tsx, scripts/run-e2e.mjs]
@@ -62,6 +62,7 @@ Scans and scripted keys don't prove real people can use the product. Open for th
 ## Traps
 
 - An axe or Playwright upgrade can add rules (axe-core 4.14 added `label-content-name-mismatch`); it needs a browser campaign before merge ([[Engineering Delivery Workflow]]).
+- A scan only checks what today's data puts on the page: a page that shows a date range needs a fixed `date`, as the calendar's scans have (DEF-084).
 - Screen-reader-only text positioned outside a non-`relative` control escapes `overflow` containers and causes sideways scroll at 768px.
 
 ## Related

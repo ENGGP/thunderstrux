@@ -15,7 +15,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 
 ## Current state
 
-**2026-11-02, after #247.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
+**2026-11-02, after #250.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
 - T01 to T46 are delivered and locally qualified, apart from the assistant (T35 to T37), which the founder deferred. [[Pre-hosting Candidate]] is the candidate record.
 - 2026-10-30: #234 starts the fixes from the 2026-10-30 audit, the first of seven PRs. No migration.
   - The stale-order and refunds jobs get `EMAIL_FROM`, the notification key and the app URL from one shared settings block in each compose file, and the config check refuses them without these (DEF-065).
@@ -43,11 +43,12 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-11-01: the preview was deployed at `2df7769` (#246; backup `ops-preview-2026-10-31T16-34-37-265Z.dump` first; 73 migrations, none new), so it now has every fix of the 2026-10-30 audit. Readiness answers 200 locally and on `thunderstrux.mistayu.com`, the six workers ran on the release's ops image with exit 0, and `MFA_ENFORCEMENT_MODE` is still `off`.
 - 2026-11-02: a review of #234 to #247 against the audit's plan found them consolidated: every task landed, no PR overwrote another, and no path refunds twice. It also found that the plan's four end-to-end journeys were never run (#247 wrongly implied they were), that #235 left staging's return pages dead, and ten defects. #248 corrects the docs and tracks what nobody tracked. The fixes follow in order.
 - 2026-11-02: #249 makes staging work again: it publishes port 3100 for the browser's return from Stripe (DEF-079), and checks Stripe's named release rather than its date, since Stripe released `2026-10-28.endive` (DEF-081, PAY-061). A third full run is now refused, and `--answers-in-files` lets someone who can't type in the terminal confirm a step. Two baselines on different commits ran side by side, proving #235's claim, and exposed a flaky test (DEF-080). No migration.
+- 2026-11-02: #250 closes the refund gaps that review found: a won dispute on a failed refund alerts a person (PAY-064), a kept application fee alerts finance (PAY-062), a staff refund is never resized (PAY-063), merchandise tabs place a closed review under Refunded (UI-028), a refund in flight that fails closes a review a lost dispute left to it (PAY-058, narrowed), a second closing email can send (DEF-082), queued "still valid" emails stop at cancellation (DEF-083), and winning a dispute on a cancelled event opens the refund (EVT-012). Its browser run also caught calendar links whose names dropped their visible words (DEF-084). No migration.
 
-**Snapshot after #247.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
+**Snapshot after #250.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
 - Migrations: 73, ending in `20261124010000_ticket_codes`. Models: 40.
-- Latest full baseline: `baseline-2ba14945979b5ffed3df5785` (#246), 1001 integration tests in 118 files.
+- Latest full baseline: `baseline-11dff83dc18d75d2101ed536` (#250), 1022 integration tests in 118 files.
 
 **Local development**
 - The dev app runs all migrations. It serves this folder's working tree, so keep the folder on main or a branch built from it.

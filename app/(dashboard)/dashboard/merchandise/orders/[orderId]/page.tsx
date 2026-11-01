@@ -103,7 +103,7 @@ export default async function MerchandiseOrderPage({ params }: { params: Promise
               {order.pickupStatus === "collected" ? "It had been collected; record a return if the items come back." : "The pickup was cancelled."}
             </p>
           </Notice>
-        ) : refund?.status === "failed" && !order.refundStatus ? (
+        ) : refund?.status === "failed" && !order.refundStatus && !(order.disputeStatus === "lost" && !order.requiresCompensationReview) ? (
           <Notice title="Couldn't refund" tone="danger">
             <p className="mt-0.5">Stripe turned the refund down. Nothing was refunded and the order is unchanged.</p>
           </Notice>

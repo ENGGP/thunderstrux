@@ -236,6 +236,73 @@ describe("disputes", () => {
     expect((await reviewAs(fixture, { action: "restore_tickets", reason: "Stripe closed it in our favour." })).status).toBe(409);
   });
 
+  // EVT-012: the cancellation told this buyer a refund would follow if the society won.
+  describe("a win on a cancelled event's order", () => {
+    async function disputedThenCancelled() {
+      const fixture = await paidOrder();
+      disputeNow(fixture, "needs_response");
+      await reconcileDisputeEvent(signedEvent("charge.dispute.created", disputeObject(fixture, "needs_response")));
+      await prisma.event.update({ where: { id: fixture.event.id }, data: { cancelledAt: new Date(), cancellationReason: "The venue flooded." } });
+      return fixture;
+    }
+    const win = async (fixture: Fixture) => {
+      disputeNow(fixture, "won");
+      const closed = signedEvent("charge.dispute.closed", disputeObject(fixture, "won"));
+      await reconcileDisputeEvent(closed);
+      await reconcileDisputeEvent(closed);
+      await reconcileDisputeEvent(signedEvent("charge.dispute.updated", disputeObject(fixture, "won")));
+    };
+    const alerted = (error: { mock: { calls: unknown[][] } }, name: string) => error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes(`"event":"${name}"`)).map((line) => JSON.parse(line));
+
+    test("opens the refund once, and its tickets can't be restored beside it", async () => {
+      const fixture = await disputedThenCancelled();
+      await win(fixture);
+      const [request, ...more] = await prisma.refundRequest.findMany({ where: { orderId: fixture.order.id } });
+      expect(more).toEqual([]);
+      expect(request).toMatchObject({ amount: 3000, status: "pending", actorUserId: null, reason: "Event cancelled: The venue flooded." });
+      expect(await orderState(fixture.order.id)).toMatchObject({ refundStatus: "processing", disputeStatus: "won" });
+      expect((await reviewAs(fixture, { action: "restore_tickets", reason: "Stripe closed it in our favour." })).status).toBe(409);
+      expect((await orderState(fixture.order.id)).tickets.every((ticket) => ticket.validity === "refund_review")).toBe(true);
+    });
+
+    test("leaves an event still on, an order staff marked refunded, and a lost dispute alone", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const running = await paidOrder();
+      disputeNow(running, "needs_response");
+      await reconcileDisputeEvent(signedEvent("charge.dispute.created", disputeObject(running, "needs_response")));
+      await win(running);
+      const marked = await disputedThenCancelled();
+      await prisma.order.update({ where: { id: marked.order.id }, data: { isManuallyRefunded: true } });
+      await win(marked);
+      const lost = await disputedThenCancelled();
+      disputeNow(lost, "lost");
+      await reconcileDisputeEvent(signedEvent("charge.dispute.closed", disputeObject(lost, "lost")));
+      expect(await prisma.refundRequest.count({ where: { orderId: { in: [running.order.id, marked.order.id, lost.order.id] } } })).toBe(0);
+      expect(alerted(error, "refund_failed")).toEqual([]);
+    });
+
+    test("tells a person when the refund can't open, unless the money is already on its way", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const refused = await disputedThenCancelled();
+      await prisma.order.update({ where: { id: refused.order.id }, data: { sellerStripeAccountId: null } });
+      await win(refused);
+      expect(alerted(error, "refund_failed")).toEqual([expect.objectContaining({ orderId: refused.order.id, reason: "not_refundable" })]);
+
+      const refunded = await disputedThenCancelled();
+      await prisma.order.update({ where: { id: refunded.order.id }, data: { refundStatus: "refunded" } });
+      await win(refunded);
+      expect(alerted(error, "refund_failed")).toHaveLength(1);
+    });
+
+    test("names money already released for payout, as cancelling does (PAY-022)", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const fixture = await disputedThenCancelled();
+      await prisma.order.update({ where: { id: fixture.order.id }, data: { paidAt: new Date(Date.now() - 81 * 86_400_000) } });
+      await win(fixture);
+      expect(alerted(error, "event_cancelled_after_release")).toEqual([expect.objectContaining({ eventId: fixture.event.id, orders: 1 })]);
+    });
+  });
+
   test("with two disputes on one charge, the order shows the worse one and restores only when both closed in the society's favour (SEC-024)", async () => {
     const twoDisputes = async () => {
       const fixture = await paidOrder();

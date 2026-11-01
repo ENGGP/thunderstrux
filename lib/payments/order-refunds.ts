@@ -191,7 +191,7 @@ export async function openOrderRefund(tx: Prisma.TransactionClient, input: {
   const created = await tx.refundRequest.create({
     data: {
       orderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
-      actorUserId: input.actor?.id ?? null, operationKey: `order-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
+      actorUserId: input.actor?.id ?? null, operationKey: `order-refund:${input.processing ? "staff:" : ""}${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
       ticketIds: tickets, cancelsTickets: selection?.cancelTickets ?? true, notifyBuyer: selection?.notifyBuyer ?? true, buyerMessage: selection?.buyerMessage?.trim() || null,
       ...(input.processing ? { attempts: 1, processingToken: input.processing.token, processingStartedAt: input.processing.now } : {})
     }
@@ -261,7 +261,7 @@ export async function openCommerceRefund(tx: Prisma.TransactionClient, input: {
   const created = await tx.refundRequest.create({
     data: {
       commerceOrderId: order.id, organisationId: input.organisationId, amount, currency: order.currency, reason,
-      actorUserId: input.actor?.id ?? null, operationKey: compensating ? `commerce-compensation:${order.id}:${randomUUID()}` : `commerce-refund:${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
+      actorUserId: input.actor?.id ?? null, operationKey: compensating ? `commerce-compensation:${order.id}:${randomUUID()}` : `commerce-refund:${input.processing ? "staff:" : ""}${randomUUID()}`, destinationAccountId: order.sellerStripeAccountId,
       ...(input.processing ? { attempts: 1, processingToken: input.processing.token, processingStartedAt: input.processing.now } : {})
     }
   });
@@ -398,9 +398,10 @@ async function sendRefund(requestId: string, token: string, source: "staff_actio
     const { stripe, intent, own, left, unrecorded } = await verifiedPayment(request);
     // PAY-049: a refund made in Stripe after this one was queued leaves less to send. The buyer
     // was promised this one and nobody is watching, so it sends what is left, or closes if that
-    // is nothing. Staff on screen confirmed their amount, so they review what Stripe has instead.
+    // is nothing. Staff confirmed their amount, so they review what Stripe has instead, even if
+    // the worker is the one retrying it (PAY-063): their key says so, however the first try ended.
     const short = !own && !mayExist && left < request.amount;
-    if (short ? source === "staff_action" : !own && unrecorded) throw new RefundVerificationError("existing_refund_requires_review");
+    if (short ? request.operationKey.includes(":staff:") : !own && unrecorded) throw new RefundVerificationError("existing_refund_requires_review");
     if (short && left === 0) {
       await fail(request.id, token, refundedElsewhere, source);
       return { refundRequestId: request.id, status: "failed" as const };
@@ -459,8 +460,10 @@ async function fail(requestId: string, token: string | null, code: string, sourc
       organisationId: request.organisationId, actorUserId: null, action: `${target.action}.refund_failed`, targetType: target.targetType, targetId: target.targetId,
       metadata: { refundRequestId: requestId, reason: code }
     } });
-    if (tell) await queueRefundTroubleNotice(tx, request, "failed");
-    return request;
+    // PAY-058: a lost dispute left closing to this refund. With the money back, nobody needs telling it failed.
+    const closed = await closeRepaidReview(tx, request, { source });
+    if (tell && !closed) await queueRefundTroubleNotice(tx, request, "failed");
+    return closed ? null : request;
   });
   if (failed && tell) alertRefundFailed(failed, code);
 }
@@ -666,7 +669,7 @@ async function applyOutcome(
     if (status === "failed") {
       await liftFence(tx, request);
       await appendHistory(tx, request, { type: "refund_failed", source, stripeEventId, reason: "provider_refund_failed" });
-      if (source !== "staff_action") {
+      if (!(await closeRepaidReview(tx, request, { source, stripeEventId })) && source !== "staff_action") {
         await queueRefundTroubleNotice(tx, request, "failed");
         alert = { request, reason: "provider_refund_failed", code: refund.failure_reason };
       }

@@ -71,13 +71,24 @@ describe("dashboard orders page", () => {
     setMockSession({ userId: user.id, email: user.email, accountRole: "organisation" });
     const sold = await order("paid");
     await dispute(sold.id);
-    expect(await detail(sold.id)).toContain("Restore tickets");
+    const won = await detail(sold.id);
+    expect(won).toContain("Restore tickets");
+    // PAY-036: a won dispute doesn't fence a refund, so staff can still send one.
+    expect(won).toContain("can still be refunded");
 
     // An older order whose fulfilment recovered has tickets, whatever its job says.
     const recovered = await order("paid");
     await prisma.compensationRefundJob.create({ data: { orderId: recovered.id, state: "recovered", amount: recovered.totalAmount } });
     await dispute(recovered.id);
     expect(await detail(recovered.id)).toContain("Restore tickets");
+
+    // EVT-012: a refund voids these tickets, so Restore goes.
+    const refunding = await order("paid");
+    await dispute(refunding.id);
+    await prisma.order.update({ where: { id: refunding.id }, data: { refundStatus: "processing" } });
+    const refundingPage = await detail(refunding.id);
+    expect(refundingPage).not.toContain("Restore tickets");
+    expect(refundingPage).toContain("This order has a refund");
 
     const unfilled = await createOrder({ organisationId: organisation.id, eventId: event.id, ticketTypeId: event.ticketTypes[0].id, status: "failed", paidAt: new Date(), failedAt: new Date(), requiresCompensationReview: true, fulfilmentFailedAt: new Date(), fulfilmentFailureReason: "sold_out" });
     await prisma.compensationRefundJob.create({ data: { orderId: unfilled.id, state: "auto_queued", amount: unfilled.totalAmount } });

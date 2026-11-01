@@ -13,19 +13,19 @@ test("an owner reads the calendar by month, week and agenda and starts an event 
   await page.getByRole("link", { name: "Calendar", exact: true }).first().click();
   await expect(page.getByRole("heading", { level: 1, name: "Calendar" })).toBeVisible();
   await expect(page.getByText("Brisbane time (AEST)")).toBeVisible();
-  const chip = page.getByRole("link", { name: /^Engineering Mixer, / }).first();
+  const chip = page.getByRole("link", { name: /Engineering Mixer/ }).first();
   await expect(chip).toBeVisible();
   await expect(chip).toContainText("6:00 pm");
 
   await page.getByRole("navigation", { name: "Calendar view" }).getByRole("link", { name: "Week" }).click();
   await expect(page).toHaveURL(/view=week/);
-  await expect(page.getByRole("link", { name: /^Engineering Mixer, / }).first()).toContainText("6:00 pm to 9:00 pm");
+  await expect(page.getByRole("link", { name: /Engineering Mixer/ }).first()).toContainText("6:00 pm to 9:00 pm");
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.screenshot({ path: "test-results/calendar-week-1280.png", fullPage: true });
 
   await page.getByRole("navigation", { name: "Calendar view" }).getByRole("link", { name: "Month" }).click();
   await expect(page).not.toHaveURL(/view=/);
-  await expect(page.getByRole("link", { name: /^Engineering Mixer, / }).first()).toContainText("6:00 pm Engineering Mixer");
+  await expect(page.getByRole("link", { name: /Engineering Mixer/ }).first()).toContainText("6:00 pm Engineering Mixer");
   await page.screenshot({ path: "test-results/calendar-month-1280.png", fullPage: true });
   await page.getByRole("link", { name: `New event on ${formatDay(today, true)}` }).focus();
   await page.keyboard.press("Enter");
@@ -58,7 +58,7 @@ test("an overnight event stays on the day it starts in the month and in the week
   await login(page, data.owner.email, `/dashboard/calendar?date=${wednesday}`);
   await page.setViewportSize({ width: 1280, height: 1000 });
 
-  const chip = page.getByRole("link", { name: /^Overnight Draft Workshop, / }).first();
+  const chip = page.getByRole("link", { name: /Overnight Draft Workshop/ }).first();
   await expect(chip).toContainText("1:00 am Overnight Draft Workshop");
   // One column: Wednesday's, never Thursday's.
   expect(await chip.evaluate((element) => (element as HTMLElement).style.gridColumn)).toBe("3 / span 1");
@@ -66,7 +66,7 @@ test("an overnight event stays on the day it starts in the month and in the week
 
   await page.goto(`/dashboard/calendar?view=week&date=${wednesday}`);
   await expect(page.getByText("All day")).toHaveCount(0);
-  const block = page.getByRole("link", { name: /^Overnight Draft Workshop, / }).first();
+  const block = page.getByRole("link", { name: /Overnight Draft Workshop/ }).first();
   await expect(block).toContainText("1:00 am to 3:00 am Thu");
   // In Wednesday's column (the third day), and its top sits at the 1 am line.
   const [blockBox, tuesdayHeader, thursdayHeader] = await Promise.all([

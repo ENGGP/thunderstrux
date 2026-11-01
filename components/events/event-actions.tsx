@@ -327,7 +327,7 @@ export function EventActions({
               <li>Every paid order is refunded in full, Thunderstrux fee included, from the society&apos;s Stripe balance. Refunds go out over the next few minutes.</li>
               <li>Free registrations are cancelled.</li>
               <li>Every ticket holder is emailed your message.</li>
-              <li>Disputed orders are left for you to settle in Orders.</li>
+              <li>Disputed orders wait for their dispute: if the society wins, the refund goes out by itself.</li>
               <li>This can&apos;t be undone.</li>
             </ul>
             <TextArea hint="Emailed to every ticket holder and kept in History. 8 to 500 characters." label="Message to ticket holders" maxLength={500} onChange={(change) => setCancelForm({ ...cancelForm, reason: change.target.value })} rows={3} value={cancelForm.reason} />

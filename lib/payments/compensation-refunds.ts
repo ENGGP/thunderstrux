@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logError, logInfo, logWarn } from "@/lib/ops/logger";
 import { queueCompensationRefundNotice, queueCompensationRefundReturnedNotice } from "@/lib/payments/compensation-notices";
-import { unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
+import { keptApplicationFee, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
 import { getStripe } from "@/lib/stripe";
 
@@ -429,11 +429,12 @@ export async function processCompensationRefund(job: ClaimedRefund) {
 // Stripe takes it now. A job the claim stopped (a code only automatic jobs get) goes
 // back to the worker, which checks the order and payment again. Any other stopped job
 // is a person's: it is returned for the caller to alert once this commits, as nothing
-// has told them it can be refunded, and disputes run for weeks.
+// has told them it can be refunded, and disputes run for weeks. That includes a failed
+// job: sending it again would meet its failed refund and the same idempotency key.
 export async function resumeCompensationRefund(tx: Prisma.TransactionClient, order: { id: string; organisationId: string }, stripeEventId: string) {
   const job = await tx.compensationRefundJob.findUnique({ where: { orderId: order.id }, select: { id: true, orderId: true, state: true, lastErrorCode: true } });
-  if (job?.state !== "review_required") return null;
-  if (job.lastErrorCode !== "local_state_not_eligible") return job;
+  if (job?.state !== "review_required" && job?.state !== "refund_failed") return null;
+  if (job.state === "refund_failed" || job.lastErrorCode !== "local_state_not_eligible") return job;
   await tx.compensationRefundJob.update({ where: { id: job.id }, data: { state: "auto_queued", attempts: 0, lastErrorCode: null, lastErrorAt: null } });
   await appendOrderLifecycleEvent(tx, { orderId: order.id, type: "compensation_refund_queued", source: "stripe_webhook", stripeEventId, reason: "dispute_won", facts: { compensationReview: true } });
   await tx.auditLog.create({ data: {
@@ -634,10 +635,7 @@ export async function confirmCompensationRefund(
   ) throw new CompensationRefundVerificationError("manual_refund_verification_failed");
   // PAY-027: a Dashboard refund is only settled once the society's transfer and
   // Thunderstrux's fee came back with it, as they do with the refunds Thunderstrux sends.
-  const fee = latestCharge.application_fee
-    ? typeof latestCharge.application_fee === "string" ? await stripe.applicationFees.retrieve(latestCharge.application_fee) : latestCharge.application_fee
-    : null;
-  if ((await unreversedRefundAmount(stripe, latestCharge)) > 0 || (fee && fee.amount_refunded < fee.amount)) {
+  if ((await unreversedRefundAmount(stripe, latestCharge)) > 0 || (await keptApplicationFee(stripe, latestCharge)) > 0) {
     throw new CompensationRefundVerificationError(
       "manual_refund_not_reversed",
       "Stripe shows the refund, but the society's transfer wasn't reversed or the Thunderstrux fee wasn't refunded. Reverse the transfer and refund the application fee in Stripe, then confirm again."

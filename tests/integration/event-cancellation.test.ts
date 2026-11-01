@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } fro
 import { POST as cancelRoute } from "@/app/api/events/[eventId]/cancel/route";
 import { POST as releaseRoute } from "@/app/api/purchases/tickets/[orderId]/cancel-registration/route";
 import { prisma } from "@/lib/db";
+import { decryptNotification } from "@/lib/email/notification-crypto";
+import { enqueueNotification } from "@/lib/email/notification-outbox";
 import { eventChangeDelayMs, fanOutEventChanges } from "@/lib/events/event-changes";
 import { setOrganisationEventSaleState } from "@/lib/events/event-lifecycle";
 import { getPublishedEvents } from "@/lib/events/public-events";
@@ -212,6 +214,47 @@ describe("cancelling an event (EVT-004)", () => {
     expect(await fanOutEventChanges(new Date(Date.now() + eventChangeDelayMs + 1000))).toBe(0);
     expect(await prisma.notificationOutbox.count({ where: { eventKey: { startsWith: `event-change/${event.id}/` } } })).toBe(0);
     expect(await prisma.notificationOutbox.count({ where: { eventKey: `event-cancelled/${event.id}/${holder.id}` } })).toBe(1);
+  });
+
+  test("a \"still valid\" email already queued never goes out, whatever state it is in", async () => {
+    const { society, event } = await societyEvent();
+    await heldOrder(society, event, { paymentKind: "stripe" });
+    const other = await createEvent({ organisationId: society.organisation.id, status: "published" });
+    const queued = async (organisationId: string, eventId: string, name: string, status: "pending" | "processing" | "failed" | "sent") => {
+      await prisma.$transaction((tx) => enqueueNotification(tx, {
+        eventKey: `event-change/${eventId}/7/${name}`, recipient: `${unique("holder")}@example.com`, template: "business_notice", organisationId,
+        payload: { message: "Your tickets are still valid." }
+      }));
+      const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `event-change/${eventId}/7/${name}` } });
+      return prisma.notificationOutbox.update({ where: { id: row.id }, data: { status, ...(status === "processing" ? { processingToken: "claimed", processingStartedAt: new Date() } : {}) } });
+    };
+    const held = [await queued(society.organisation.id, event.id, "a", "pending"), await queued(society.organisation.id, event.id, "b", "processing"), await queued(society.organisation.id, event.id, "c", "failed")];
+    const sent = await queued(society.organisation.id, event.id, "d", "sent");
+    const elsewhere = await queued(society.organisation.id, other.id, "e", "pending");
+
+    expect((await cancel(society, event.id, { reason, confirmation: event.title })).status).toBe(200);
+    for (const row of held) {
+      expect(await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ status: "cancelled", lastError: "event_cancelled", processingToken: null });
+    }
+    expect(await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: sent.id } })).toMatchObject({ status: "sent" });
+    expect(await prisma.notificationOutbox.findUniqueOrThrow({ where: { id: elsewhere.id } })).toMatchObject({ status: "pending" });
+  });
+
+  // EVT-012: an open dispute can still go the society's way, and the refund then opens.
+  test("a buyer in a dispute reads what happens next: an open one may still be refunded, a lost one is settled", async () => {
+    const { society, event } = await societyEvent();
+    const open = await heldOrder(society, event, { paymentKind: "stripe" });
+    const lost = await heldOrder(society, event, { paymentKind: "stripe" });
+    await prisma.order.update({ where: { id: open.id }, data: { disputeStatus: "open" } });
+    await prisma.order.update({ where: { id: lost.id }, data: { disputeStatus: "lost" } });
+    expect((await cancel(society, event.id, { reason, confirmation: event.title })).status).toBe(200);
+    const email = async (orderId: string) => {
+      const row = await prisma.notificationOutbox.findFirstOrThrow({ where: { eventKey: `event-cancelled/${event.id}/${orderId}` } });
+      return JSON.stringify(decryptNotification(row.encryptedPayload, row.id));
+    };
+    expect(await email(open.id)).toContain("If your bank decides for you, it returns the money. If it doesn't, we'll refund you");
+    expect(await email(lost.id)).toContain("settled through that dispute");
+    expect(await email(lost.id)).not.toContain("we'll refund you");
   });
 
   test("the longest message still fits each order's own reason", async () => {

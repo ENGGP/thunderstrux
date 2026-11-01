@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { StatusBadge, statusLabel } from "@/components/ui/status-badge";
 import { formatDateRange, membershipLabel } from "@/lib/format";
 import { addDays } from "@/lib/analytics/range";
-import type { CalendarEvent } from "@/lib/events/calendar";
+import type { CalendarEvent, MembershipEnd } from "@/lib/events/calendar";
 import {
   formatDay,
   formatTime,
@@ -46,11 +46,16 @@ const tone = (item: CalendarItem) =>
           ? "border-dashed border-ink-muted bg-surface text-ink"
           : "border-brand-200 bg-brand-tint text-brand-ink hover:border-brand";
 
+// What a link can't fit, for its tooltip and read after its visible words: a
+// link's name must contain what sighted people see (WCAG 2.5.3).
+const eventDates = (event: CalendarEvent, timeZone: string) => `, ${formatDateRange(event.startTime, event.endTime, timeZone)}`;
+const termDetail = (end: MembershipEnd) => `: last day for ${members(end.members)}, ${formatDay(end.lastDay, true)}`;
+
 function itemLabel(item: CalendarItem, timeZone: string) {
   if (item.kind === "clock") return item.label;
-  if (item.kind === "term") return `${membershipLabel(item.end.name)} ends: last day for ${members(item.end.members)}, ${formatDay(item.end.lastDay, true)}`;
+  if (item.kind === "term") return `${membershipLabel(item.end.name)} ends${termDetail(item.end)}`;
   const status = mark(item.event);
-  return `${item.event.title}${status ? `, ${status}` : ""}, ${formatDateRange(item.event.startTime, item.event.endTime, timeZone)}`;
+  return `${item.event.title}${status ? `, ${status}` : ""}${eventDates(item.event, timeZone)}`;
 }
 const members = (count: number) => `${count} ${count === 1 ? "member" : "members"}`;
 
@@ -75,8 +80,9 @@ function Chip({ segment, timeZone, eventHref, style }: { segment: Segment; timeZ
   const className = `${chipBase} ${tone(item)} ${before ? "ml-0" : "ml-1.5 rounded-l-md border-l"} ${after ? "mr-0" : "mr-1.5 rounded-r-md border-r"}`;
   if (item.kind === "clock") return <span className={className} style={style}>{item.label}</span>;
   return (
-    <Link aria-label={itemLabel(item, timeZone)} className={className} href={item.kind === "term" ? termHref : eventHref(item.event.id)} style={style} title={itemLabel(item, timeZone)}>
+    <Link className={className} href={item.kind === "term" ? termHref : eventHref(item.event.id)} style={style} title={itemLabel(item, timeZone)}>
       {chipText(segment, timeZone)}
+      <span className="sr-only">{item.kind === "term" ? termDetail(item.end) : eventDates(item.event, timeZone)}</span>
     </Link>
   );
 }
@@ -190,7 +196,6 @@ export function WeekGrid({ days, now, ...props }: ViewProps & { days: string[]; 
               const endDay = localDay(event.endTime, props.timeZone);
               return (
                 <Link
-                  aria-label={itemLabel({ kind: "event", key: event.id, event, firstDay: day, lastDay: day, multiDay: false }, props.timeZone)}
                   className={`absolute overflow-hidden border px-2 py-1.5 text-caption leading-snug no-underline ${tone({ kind: "event", key: event.id, event, firstDay: day, lastDay: day, multiDay: false })} ${entry.clipped ? "rounded-t-control" : "rounded-control"}`}
                   href={props.eventHref(event.id)}
                   key={event.id}
@@ -203,6 +208,7 @@ export function WeekGrid({ days, now, ...props }: ViewProps & { days: string[]; 
                 >
                   <b className="block font-semibold">{status ? `${statusLabel(status)} · ${event.title}` : event.title}</b>
                   {formatTime(event.startTime, props.timeZone)} to {end}{endDay !== day ? ` ${shortWeekday(endDay)}` : ""}
+                  <span className="sr-only">{eventDates(event, props.timeZone)}</span>
                 </Link>
               );
             })}
@@ -266,7 +272,7 @@ function AgendaRow({ day, item, timeZone, eventHref }: ViewProps & { day: string
   const end = formatTime(event.endTime, timeZone);
   const until = endDay === day ? end : endDay === addDays(day, 1) ? `${end} ${shortWeekday(endDay)}` : `${formatDay(endDay)}, ${end}`;
   return (
-    <Link aria-label={itemLabel(item, timeZone)} className={`${row} bg-surface ${event.status === "draft" ? "border-dashed border-ink-muted" : "border-line"}`} href={eventHref(event.id)}>
+    <Link className={`${row} bg-surface ${event.status === "draft" ? "border-dashed border-ink-muted" : "border-line"}`} href={eventHref(event.id)}>
       <span className="text-sm font-semibold tabular-nums">{item.firstDay === day ? formatTime(event.startTime, timeZone) : "Ongoing"}</span>
       <span className="grid min-w-0 gap-0.5">
         <strong className={`text-ui font-semibold [overflow-wrap:anywhere] ${event.cancelledAt ? "text-ink-soft" : "text-brand-ink"}`}>{event.title}</strong>

@@ -237,8 +237,7 @@ export async function createEventCheckout({
         if (codeApplies && lookup && !lookup.ok) {
           throw new CheckoutCreationError("code_unavailable", codeRefusalMessage[lookup.reason], [{ path: ["code"], message: codeRefusalMessage[lookup.reason], value: 0 }]);
         }
-        // A discount that changes nothing here (a free ticket) doesn't use up the code's limit.
-        const usedCode = codeApplies && lookup?.ok && (ticketType.hidden || priceWithCode(ticketType.price, lookup.code) !== ticketType.price) ? lookup.code : null;
+        const usedCode = codeApplies && lookup?.ok ? lookup.code : null;
         if (usedCode && usedCode.remaining !== null && usedCode.remaining < quantity) {
           const left = `That code has ${usedCode.remaining} ${usedCode.remaining === 1 ? "ticket" : "tickets"} left`;
           throw new CheckoutCreationError("code_unavailable", left, [{ path: ["quantity"], message: left, value: usedCode.remaining }]);
@@ -278,7 +277,8 @@ export async function createEventCheckout({
           const message = `${ticketType.name} can't be sold at ${formatMoney(unitPrice)}: paid tickets start at ${formatMoney(minPaidPrice)}. Ask the society about it.`;
           throw new CheckoutCreationError("price_below_minimum", message, [{ path: ["ticketTypeId"], message }]);
         }
-        const codeFacts = usedCode
+        // A discount that changes nothing for this buyer (a free ticket) doesn't use up the code's limit.
+        const codeFacts = usedCode && (ticketType.hidden || unitPrice !== basePrice)
           ? { ticketCodeId: usedCode.id, codeSnapshot: usedCode.code, discountAmount: (basePrice - unitPrice) * quantity }
           : { ticketCodeId: null, codeSnapshot: null, discountAmount: 0 };
         const [eligibility] = eventReadiness(

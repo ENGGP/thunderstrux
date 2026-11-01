@@ -188,7 +188,10 @@ describe("member prices", () => {
     expect(comped).not.toContain("1 at the member price");
     expect(comped).toContain("Up to 10 per order");
     expect(comped).not.toContain("Yours is used");
-    expect(await renderPage(await CheckoutPage({ params: Promise.resolve({ eventId }), searchParams: Promise.resolve({ ticketTypeId, quantity: "2", code: "COMPED" }) }))).toContain("Confirm your free tickets");
+    const review = await renderPage(await CheckoutPage({ params: Promise.resolve({ eventId }), searchParams: Promise.resolve({ ticketTypeId, quantity: "2", code: "COMPED" }) }));
+    expect(review).toContain("Confirm your free tickets");
+    expect(review).toContain("down from $15.00");
+    expect(review).not.toContain("Member price through");
 
     await buy(fixture, member.id, 1000, 1);
     expect(await eventPage("TENOFF")).toContain("Yours is used or in an open checkout");

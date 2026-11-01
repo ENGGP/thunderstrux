@@ -102,7 +102,7 @@ export async function getOrganisationEventTickets(
   const showEmail = hasOrganisationPermission(authority.staffRole, "orders:read");
   const event = await prisma.event.findFirst({
     where: { id: eventId, organisationId, ...publishedOnly },
-    select: { id: true, title: true }
+    select: { id: true, title: true, cancelledAt: true }
   });
   if (!event) throw new OrganisationEventTicketsAccessError();
 
@@ -152,7 +152,7 @@ export async function getOrganisationEventTickets(
   for (const entry of checkIns) if (entry.targetId && !checkedInBy.has(entry.targetId)) checkedInBy.set(entry.targetId, personName(entry.actor, showEmail));
 
   return {
-    event,
+    event: { id: event.id, title: event.title },
     tickets: page.items.map((ticket) => {
       const buyer = retainedBuyerIdentity(ticket.order);
       return {
@@ -164,6 +164,7 @@ export async function getOrganisationEventTickets(
         validity: ticket.validity,
         validityReason: ticket.validityReason,
         validityChangedAt: ticket.validityChangedAt,
+        eventCancelled: event.cancelledAt !== null,
         issueSequence: ticket.issueSequence,
         orderQuantity: ticket.order.quantity,
         ticketTypeName: purchasedTicketTypeLabel(ticket.order.purchasedTicketTypeName, ticket.ticketType.name),

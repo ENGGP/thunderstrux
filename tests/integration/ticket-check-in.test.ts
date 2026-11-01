@@ -809,6 +809,8 @@ describe("ticket visibility and check-in API", () => {
     await prisma.event.update({ where: { id: event.id }, data: { cancelledAt: new Date() } });
     expect((await post(checkInTicket, ticket)).status).toBe(404);
     expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ validity: "active", checkedInAt: null });
+    // The console says why, rather than going back to Valid.
+    expect((await search(event.id, ticket.id.slice(-6).toUpperCase())).tickets[0]).toMatchObject({ validity: "active", eventCancelled: true });
   });
 
   test("door staff see who checked a ticket in by name, never by email", async () => {

@@ -62,6 +62,8 @@ function verdict(ticket: ConsoleTicket, timeZone: string, outcome: Outcome) {
           : "This ticket is no longer valid.";
     return { tone: "danger", label: "Don't admit", detail };
   }
+  // Active until its refund lands, which can take a while, and check-in refuses it.
+  if (ticket.eventCancelled) return { tone: "danger", label: "Don't admit", detail: "This event is cancelled." };
   if (ticket.checkedInAt) {
     const time = formatClock(ticket.checkedInAt, timeZone);
     const by = ticket.checkedInBy ? ` by ${ticket.checkedInBy}` : "";
@@ -146,6 +148,7 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
     router.refresh();
   }
 
+  const admits = ticket.validity === "active" && !ticket.eventCancelled;
   const name = ticket.buyerName ?? ticket.buyerEmail ?? "Unknown buyer";
   const state = unknown ? { tone: "unknown", label: "Status unknown", detail: "We didn't hear back, so we can't say whether that saved." } : verdict(ticket, timeZone, outcome);
   const tone = tones[state.tone];
@@ -170,10 +173,10 @@ function CheckInCard({ eventId, timeZone, initial, initialOutcome = null }: { ev
         <strong className={`hidden md:block ${tone.label}`}>{state.label}</strong>
         {detail ? <p className={`text-sm font-semibold ${refusal || state.tone === "danger" ? "text-danger" : "text-ink"}`} role={refusal ? "alert" : unknown ? "status" : undefined}>{detail}</p> : null}
       </div>
-      <div className={ticket.validity === "active" || unknown ? "flex min-h-14 items-center justify-end md:min-h-11" : undefined}>
+      <div className={admits || unknown ? "flex min-h-14 items-center justify-end md:min-h-11" : undefined}>
         {unknown ? (
           <button className={buttonClasses({ className: big })} disabled={busy} onClick={reload} type="button">Reload ticket</button>
-        ) : ticket.validity !== "active" ? null : ticket.checkedInAt && locked ? (
+        ) : !admits ? null : ticket.checkedInAt && locked ? (
           <span aria-hidden="true" className={`inline-flex items-center justify-center rounded-control border border-success-border bg-surface px-4 font-semibold text-success ${big}`}>
             Checked in
           </span>

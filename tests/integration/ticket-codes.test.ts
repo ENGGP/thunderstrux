@@ -239,6 +239,15 @@ describe("ticket codes", () => {
     expect(await buy(member.id, fixture, fixture.general.id, 1, 1000, "ONCE")).toMatchObject({ status: "redirect" });
   });
 
+  test("a discount that changes nothing on a free member price doesn't use up the limit either", async () => {
+    const fixture = await codedEvent({ memberPrice: 0 });
+    await addCode(fixture, { code: "ONCE", percentOff: 50, maxUses: 1 });
+    const member = await createMember();
+    await createMembershipGrant(fixture.owner.organisation.id, member.id, member.email);
+    expect(await buy(member.id, fixture, fixture.general.id, 1, 0, "ONCE")).toMatchObject({ status: "fulfilled" });
+    expect(await prisma.order.findFirstOrThrow({ where: { eventId: fixture.event.id } })).toMatchObject({ ticketCodeId: null, codeSnapshot: null });
+  });
+
   test("a code that only unlocks a hidden type changes no price, and still counts against its limit", async () => {
     const fixture = await codedEvent();
     await addCode(fixture, { code: "CREWONLY", ticketTypeId: fixture.crew.id, maxUses: 1 });

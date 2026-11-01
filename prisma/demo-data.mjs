@@ -504,8 +504,13 @@ const issuedStates = new Set(["paid", "refunded", "refund_processing", "dispute_
 const voidReasons = { refunded: "refunded", dispute_lost: "dispute_lost", cancelled: "cancelled", released: "cancelled" };
 const reviewReason = "Payment arrived after the reservation expired and the tickets had sold out.";
 
+// A member gets one ticket per event at the member price, as checkout allows.
+const memberTickets = new Set();
+
 async function ticketOrder({ society, event, type, buyer, quantity, state, at }) {
-  const grant = type.memberPrice !== null ? activeGrant(buyer, society, "member_prices", at) : null;
+  const memberTicket = `${event.id}:${buyer.userId}`;
+  const grant = type.memberPrice !== null && quantity === 1 && !memberTickets.has(memberTicket) ? activeGrant(buyer, society, "member_prices", at) : null;
+  if (grant) memberTickets.add(memberTicket);
   const unitPrice = grant ? type.memberPrice : type.price;
   const total = unitPrice * quantity;
   const free = total === 0;

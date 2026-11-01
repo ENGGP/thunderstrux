@@ -34,17 +34,17 @@ export default function Navbar() {
     : [];
   const signOutButton = (
     <button
-      className={buttonClasses({ variant: "secondary", size: "sm" })}
+      className={buttonClasses({ variant: "secondary", size: "sm", className: "whitespace-nowrap" })}
       onClick={() => signOutTo("/")}
       type="button"
     >
       Sign out
     </button>
   );
-  const linkClass = "inline-flex h-full items-center text-ink-soft transition-colors hover:text-brand";
+  const linkClass = "inline-flex h-full items-center whitespace-nowrap text-ink-soft transition-colors hover:text-brand";
   // The current section: ink text and a brand rule along the header's bottom edge (artboard ExploreEventsA2).
   const navClass = (href: string) =>
-    isActive(href) ? "inline-flex h-full items-center font-semibold text-brand-ink shadow-[inset_0_-3px_0_0_var(--ts-brand)]" : linkClass;
+    isActive(href) ? "inline-flex h-full items-center whitespace-nowrap font-semibold text-brand-ink shadow-[inset_0_-3px_0_0_var(--ts-brand)]" : linkClass;
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-[60px] border-b border-line bg-surface md:h-[72px]">

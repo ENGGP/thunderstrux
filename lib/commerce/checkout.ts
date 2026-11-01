@@ -13,9 +13,9 @@ import { logInfo } from "@/lib/ops/logger";
 import { attemptReconcileDelayMs, checkoutIntegrationIdentifiers, checkoutSessionExpiresAt, isDefiniteProviderFailure, markAttemptUncertain, newProviderOperationKey, type CheckoutActor } from "@/lib/payments/checkout-attempts";
 import { getAppUrl, getStripe } from "@/lib/stripe";
 import { isOrganisationStripeReady } from "@/lib/stripe/connect";
-import { calculatePlatformFee, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
+import { calculatePlatformFee, isBelowPaidMinimum, minPaidPrice, PLATFORM_FEE_POLICY_VERSION } from "@/lib/stripe/fees";
 import { commerceHoldMinutes, holdEndsAt } from "@/lib/checkout-hold";
-import { formatClock } from "@/lib/format";
+import { formatClock, formatMoney } from "@/lib/format";
 import { runReservationTransaction } from "@/lib/tickets/reservations";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -129,6 +129,10 @@ export async function createCommerceCheckout(input: {
         throw new CommerceCheckoutError("quote_changed", "The price has changed", [
           { path: ["expectedTotal"], message: "The total has changed. Review it before buying.", value: totalAmount }
         ]);
+      }
+      // On the total, as commerce's fee is per order; tickets' is per item.
+      if (isBelowPaidMinimum(totalAmount)) {
+        throw new CommerceCheckoutError("unavailable", `Paid orders start at ${formatMoney(minPaidPrice)}. Ask the society about this one.`, [{ path: ["selection"], message: "This total is below the paid minimum" }]);
       }
       const attempt = { family: input.family, actorKind: actor.kind, actorId: actor.id, operationType: commerceCheckoutOperation, clientIdempotencyKey: input.idempotencyKey, requestHash, providerOperationKey: newProviderOperationKey() };
       const common = { organisationId: input.organisationId, kind: input.family, buyer, buyerEmail: account.email, buyerName: [account.firstName, account.lastName].filter(Boolean).join(" ") || null, lines, source: "checkout" as const, actorUserId: guest ? null : actor.id };

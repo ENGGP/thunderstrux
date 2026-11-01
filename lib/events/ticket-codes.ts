@@ -82,8 +82,9 @@ export type BuyerCode = { text: string; code: UsableCode | null; message: string
 // The code a buyer typed or followed a link with, for the event page and checkout.
 // Advisory: checkout decides again under the event lock. Limited per address and
 // event, so short codes can't be guessed by trying them.
-export async function codeForBuyer(eventId: string, input: string | undefined): Promise<BuyerCode | null> {
-  if (!input?.trim()) return null;
+export async function codeForBuyer(eventId: string, input: string | string[] | undefined): Promise<BuyerCode | null> {
+  // A repeated ?code= arrives as a list, and the URL is the buyer's to write.
+  if (typeof input !== "string" || !input.trim()) return null;
   const text = input.trim().toUpperCase().slice(0, 30);
   const request = new Request("http://thunderstrux.invalid/", { headers: await headers() });
   if (await enforceRateLimit({ policy: "ticket_code_check", request, keyParts: [getRateLimitClientIp(request), eventId] })) {

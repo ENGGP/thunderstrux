@@ -174,6 +174,27 @@ describe("member prices", () => {
     expect(review).toContain("Pay A$30.00");
   });
 
+  test("the pages agree on a comp code: no limit of one, and a smaller code still says why the member price has gone", async () => {
+    const fixture = await society();
+    const member = await createMember();
+    await membership(fixture.organisation.id, member.id, member.email);
+    setMockSession({ userId: member.id, email: member.email, accountRole: "member" });
+    const eventId = fixture.event.id;
+    const ticketTypeId = fixture.ticketType.id;
+    await prisma.ticketCode.createMany({ data: [{ eventId, code: "COMPED", percentOff: 100 }, { eventId, code: "TENOFF", percentOff: 10 }] });
+    const eventPage = async (code: string) => renderPage(await PublicEventPage({ params: Promise.resolve({ eventId }), searchParams: Promise.resolve({ code }) }));
+
+    const comped = await eventPage("COMPED");
+    expect(comped).not.toContain("1 at the member price");
+    expect(comped).toContain("Up to 10 per order");
+    expect(comped).not.toContain("Yours is used");
+    expect(await renderPage(await CheckoutPage({ params: Promise.resolve({ eventId }), searchParams: Promise.resolve({ ticketTypeId, quantity: "2", code: "COMPED" }) }))).toContain("Confirm your free tickets");
+
+    await buy(fixture, member.id, 1000, 1);
+    expect(await eventPage("TENOFF")).toContain("Yours is used or in an open checkout");
+    expect(await eventPage("COMPED")).not.toContain("Yours is used");
+  });
+
   test("racing checkouts can't both get the member price, paid or free", async () => {
     for (const memberPrice of [1000, 0]) {
       const fixture = await society({ memberPrice });
@@ -206,6 +227,23 @@ describe("member prices", () => {
     expect(await prisma.ticket.findFirstOrThrow({ where: { orderId: order.id } })).toMatchObject({ validity: "void" });
     expect(await memberPriceUnused(fixture.event.id, member.id)).toBe(true);
     expect(await buy(fixture, member.id, 1000, 1)).toMatchObject({ status: "redirect" });
+  });
+
+  test("a hold that ended gives the member ticket back: cancelled, or failed at Stripe", async () => {
+    const fixture = await society();
+    const member = await createMember();
+    await membership(fixture.organisation.id, member.id, member.email);
+
+    stripe.create.mockRejectedValueOnce(Object.assign(new Error("Refused"), { type: "StripeInvalidRequestError", statusCode: 400 }));
+    await expect(buy(fixture, member.id, 1000, 1)).rejects.toThrow();
+    expect(await prisma.order.findFirstOrThrow({ where: { userId: member.id } })).toMatchObject({ status: "failed" });
+    expect(await memberPriceUnused(fixture.event.id, member.id)).toBe(true);
+
+    await buy(fixture, member.id, 1000, 1);
+    const held = await prisma.order.findFirstOrThrow({ where: { userId: member.id, status: "pending" } });
+    expect(await memberPriceUnused(fixture.event.id, member.id)).toBe(false);
+    await prisma.ticketReservation.update({ where: { orderId: held.id }, data: { status: "released" } });
+    expect(await memberPriceUnused(fixture.event.id, member.id)).toBe(true);
   });
 
   test("a free member ticket follows the same rule, and releasing it gives it back", async () => {

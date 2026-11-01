@@ -207,6 +207,15 @@ describe("commerce checkout", () => {
     expect(stripe.create).not.toHaveBeenCalled();
   });
 
+  test("a total from $0.01 to $1.99 is refused, nothing is recorded, and $2.00 sells", async () => {
+    family.price = 50;
+    const { checkout } = await shop();
+    await expect(checkout({ selection: { variant: "M", quantity: 3 }, expectedTotal: 150 })).rejects.toMatchObject({ kind: "unavailable" });
+    expect(await prisma.commerceOrder.count()).toBe(0);
+    expect(stripe.create).not.toHaveBeenCalled();
+    expect(await checkout({ selection: { variant: "M", quantity: 4 }, expectedTotal: 200 })).toMatchObject({ status: "redirect" });
+  });
+
   test("a lost Stripe answer leaves the attempt uncertain; recovery replays the same key and binds the Session", async () => {
     const { checkout } = await shop();
     stripe.create.mockRejectedValueOnce(new Error("socket hang up"));

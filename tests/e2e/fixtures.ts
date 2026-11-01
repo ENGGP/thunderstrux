@@ -59,10 +59,21 @@ export async function submitTwice(page: Page, form: Locator, path: string) {
   let sent = 0;
   const count = (request: Request) => { if (posted(request)) sent += 1; };
   page.on('request', count);
+  // The new page is held back: a late click while it loads must not create a second one (DEF-072).
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let opening = () => {};
+  const opened = new Promise<void>((resolve) => { opening = resolve; });
+  const nextPage = (url: URL) => url.searchParams.has('_rsc');
+  await page.route(nextPage, async (route) => { opening(); await held; await route.continue(); });
   await Promise.all([
     page.waitForResponse((response) => posted(response.request())),
     form.evaluate((element: HTMLFormElement) => { element.requestSubmit(); element.requestSubmit(); })
   ]);
+  await opened;
+  await expect(form.locator('button[aria-busy="true"]')).toBeDisabled();
+  release();
+  await page.unroute(nextPage);
   page.off('request', count);
   expect(sent).toBe(1);
 }

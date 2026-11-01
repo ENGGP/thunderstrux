@@ -310,15 +310,18 @@ export function priceForViewer(ticketTypes: PublicEventTicketType[], member: boo
 
 // The prices a buyer's ticket code gives (lib/events/ticket-codes.ts), after
 // priceForViewer: its discount comes off the member price too. A price it would
-// leave under the paid minimum is not shown; checkout refuses that code.
+// leave under the paid minimum is not shown; checkout refuses that code. One that
+// makes the standard price free is a comp, not a member price: no limit of one.
 export function priceWithTicketCode(ticketTypes: PublicEventTicketType[], code: UsableCode | null): PublicEventTicketType[] {
   if (!code) return ticketTypes;
   return ticketTypes.map((ticketType) => {
     const price = priceWithCode(ticketType.price, code);
-    if (!codeAppliesTo(code, ticketType) || price === ticketType.price || isBelowPaidMinimum(price)) return ticketType;
+    const comp = ticketType.memberPriced && codeAppliesTo(code, ticketType) && priceWithCode(ticketType.standardPrice as number, code) === 0;
+    if (!comp && (!codeAppliesTo(code, ticketType) || price === ticketType.price || isBelowPaidMinimum(price))) return ticketType;
     return {
       ...ticketType,
       price,
+      memberPriced: ticketType.memberPriced && !comp,
       standardPrice: ticketType.standardPrice ?? ticketType.price,
       codePrice: true,
       unavailable: price === 0 && ticketType.unavailable === "payments_unavailable" ? null : ticketType.unavailable

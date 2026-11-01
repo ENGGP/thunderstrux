@@ -5,7 +5,7 @@ import { processStaleOrderCleanupBatch } from "@/lib/orders/stale-orders";
 import { createEventCheckout } from "@/lib/payments/checkout-creation";
 import { settleCheckoutSession, sweepPendingCheckouts } from "@/lib/payments/checkout-settlement";
 import { checkoutSession } from "@/tests/helpers/stripe-mocks";
-import { createEvent, createMember, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
+import { createEvent, createMember, createOrder, createOrganisationAccount, unique } from "@/tests/helpers/test-data";
 
 // PAY-024: the reconciliation sweep asks Stripe about pending ticket checkouts,
 // so a payment whose webhook was lost is confirmed, never expired.
@@ -162,6 +162,30 @@ describe("checkout reconciliation sweep: tickets", () => {
     await expect(processStaleOrderCleanupBatch({ now: afterHold(), limit: 1 })).resolves.toMatchObject({ stripeDeferred: 0 });
     expect(await state(stuck.orderId)).toMatchObject({ status: "pending", reservation: { status: "active" } });
     expect(await state(next.orderId)).toMatchObject({ status: "expired", reservation: { status: "expired" } });
+  });
+
+  test("the legacy and already-expired picks also take the order Stripe was asked about longest ago first", async () => {
+    const society = await createOrganisationAccount({ stripeReady: true });
+    const event = await createEvent({ organisationId: society.organisation.id, status: "published" });
+    const buyer = await createMember();
+    const ticketTypeId = event.ticketTypes[0].id;
+    const days = (count: number) => new Date(Date.now() - count * 86_400_000);
+    const order = async (createdAt: Date, stripeCheckedAt: Date | null, reservation: boolean) => {
+      const created = await createOrder({ organisationId: society.organisation.id, eventId: event.id, ticketTypeId, userId: buyer.id, stripeSessionId: null, createdAt });
+      await prisma.order.update({ where: { id: created.id }, data: { stripeCheckedAt } });
+      if (reservation) await prisma.ticketReservation.create({ data: { orderId: created.id, organisationId: society.organisation.id, eventId: event.id, ticketTypeId, userId: buyer.id, quantity: 1, status: "expired", expiresAt: createdAt } });
+      return created.id;
+    };
+    for (const reservation of [true, false]) {
+      // The older one was asked about already, so it waits behind the one never asked.
+      const asked = await order(days(3), days(1), reservation);
+      const never = await order(days(2), null, reservation);
+      await processStaleOrderCleanupBatch({ limit: 1 });
+      expect((await state(never)).status).toBe("expired");
+      expect((await state(asked)).status).toBe("pending");
+      await prisma.order.update({ where: { id: asked }, data: { stripeCheckedAt: new Date() } });
+      await processStaleOrderCleanupBatch({ limit: 1 });
+    }
   });
 
   test("a failed look is stamped and alerts; a local error is told apart from Stripe being unreachable", async () => {

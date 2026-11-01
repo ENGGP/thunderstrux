@@ -237,7 +237,8 @@ export async function createEventCheckout({
         if (codeApplies && lookup && !lookup.ok) {
           throw new CheckoutCreationError("code_unavailable", codeRefusalMessage[lookup.reason], [{ path: ["code"], message: codeRefusalMessage[lookup.reason], value: 0 }]);
         }
-        const usedCode = codeApplies && lookup?.ok ? lookup.code : null;
+        // A discount that changes nothing here (a free ticket) doesn't use up the code's limit.
+        const usedCode = codeApplies && lookup?.ok && (ticketType.hidden || priceWithCode(ticketType.price, lookup.code) !== ticketType.price) ? lookup.code : null;
         if (usedCode && usedCode.remaining !== null && usedCode.remaining < quantity) {
           const left = `That code has ${usedCode.remaining} ${usedCode.remaining === 1 ? "ticket" : "tickets"} left`;
           throw new CheckoutCreationError("code_unavailable", left, [{ path: ["quantity"], message: left, value: usedCode.remaining }]);
@@ -256,8 +257,10 @@ export async function createEventCheckout({
         // A member gets one ticket per event at this price; the count runs under
         // the buyer lock, so racing checkouts can't both get it, and later
         // tickets pay the standard price. A member price that saves nothing
-        // neither limits a member nor uses that ticket up.
-        const memberGrant = userId && ticketType.memberPrice !== null && ticketType.memberPrice < ticketType.price
+        // neither limits a member nor uses that ticket up, and nor does a code
+        // that makes the standard price free: a comp is the society's gift.
+        const comp = usedCode !== null && priceWithCode(ticketType.price, usedCode) === 0;
+        const memberGrant = userId && !comp && ticketType.memberPrice !== null && ticketType.memberPrice < ticketType.price
           ? await activeEntitlementGrant(tx, userId, event.organisationId, "member_prices", reservationNow)
           : null;
         const grant = memberGrant && (await memberPriceTicketCount(tx, actor.id, event.id, reservationNow)) === 0 ? memberGrant : null;

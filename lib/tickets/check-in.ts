@@ -57,8 +57,8 @@ function buyerName(user: { firstName: string | null; lastName: string | null; di
   return user.displayName ?? (fullName || null);
 }
 
-const personName = (user: { firstName: string | null; lastName: string | null; email: string } | null) =>
-  user ? [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email : null;
+const personName = (user: { firstName: string | null; lastName: string | null; email: string } | null, showEmail: boolean) =>
+  user ? [user.firstName, user.lastName].filter(Boolean).join(" ") || (showEmail ? user.email : null) : null;
 
 // Search by name, email, order or ticket reference. Every word of a name must
 // match some name or email field; a reference matches anywhere in the id.
@@ -149,7 +149,7 @@ export async function getOrganisationEventTickets(
       })
     : [];
   const checkedInBy = new Map<string, string | null>();
-  for (const entry of checkIns) if (entry.targetId && !checkedInBy.has(entry.targetId)) checkedInBy.set(entry.targetId, personName(entry.actor));
+  for (const entry of checkIns) if (entry.targetId && !checkedInBy.has(entry.targetId)) checkedInBy.set(entry.targetId, personName(entry.actor, showEmail));
 
   return {
     event,
@@ -184,7 +184,8 @@ export async function getOrganisationEventTickets(
 // both admit the same ticket, and the loser is told it is already checked in.
 async function setCheckIn(organisationId: string, eventId: string, ticketId: string, actorUserId: string, checkIn: boolean) {
   const authority = await requireOrganisationPermission(organisationId, "tickets:check_in");
-  const scope = { id: ticketId, eventId, event: { organisationId, ...(authority.staffRole === "check_in_staff" ? { status: "published" as const } : {}) } };
+  // Not a cancelled event: its tickets stay active until each refund lands, but nobody is at that door.
+  const scope = { id: ticketId, eventId, event: { organisationId, cancelledAt: null, ...(authority.staffRole === "check_in_staff" ? { status: "published" as const } : {}) } };
   return prisma.$transaction(async (tx) => {
     const existing = await tx.ticket.findFirst({ where: scope, select: { checkedInAt: true, validity: true, validityReason: true } });
     if (!existing) throw new OrganisationTicketAccessError();

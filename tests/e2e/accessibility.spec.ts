@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { test, expect, prisma, login, createMember } from "./fixtures";
+import { localDay } from "@/components/calendar/layout";
 import { createCommerceOrder } from "@/lib/commerce/orders";
 import { createMembershipGrant, createOrder, unique } from "@/tests/helpers/test-data";
 
@@ -78,9 +79,11 @@ test.describe("accessibility scans", () => {
     }));
     await prisma.commerceOrder.update({ where: { id: merch.id }, data: { status: "paid", paidAt: new Date(), fulfilledAt: new Date(), stripeSessionId: unique("cs"), pickupStatus: "pending" } });
     await login(page, data.owner.email, "/dashboard");
+    // On the event's own day, or whether its chips are scanned depends on today's date.
+    const eventDay = localDay(data.event.startTime, "Australia/Brisbane");
     await auditAll(page, "organiser", [
       "/dashboard", "/dashboard/events", "/dashboard/events/new", `/dashboard/events/${data.event.id}`, `/dashboard/events/${data.event.id}/edit`,
-      `/dashboard/events/${data.event.id}/tickets`, "/dashboard/calendar", "/dashboard/calendar?view=week", "/dashboard/calendar?view=agenda",
+      `/dashboard/events/${data.event.id}/tickets`, `/dashboard/calendar?date=${eventDay}`, `/dashboard/calendar?view=week&date=${eventDay}`, `/dashboard/calendar?view=agenda&date=${eventDay}`,
       "/dashboard/orders", `/dashboard/orders/${order.id}`, "/dashboard/analytics", "/dashboard/history",
       "/dashboard/memberships", `/dashboard/memberships/${grant.membershipProductId}`, "/dashboard/memberships/members", `/dashboard/memberships/members/${grant.id}`,
       "/dashboard/merchandise", `/dashboard/merchandise/${product.id}`, "/dashboard/merchandise/pickups", `/dashboard/merchandise/orders/${merch.id}`,

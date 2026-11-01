@@ -65,13 +65,14 @@ export async function submitTwice(page: Page, form: Locator, path: string) {
   let opening = () => {};
   const opened = new Promise<void>((resolve) => { opening = resolve; });
   const nextPage = (url: URL) => url.searchParams.has('_rsc');
-  await page.route(nextPage, async (route) => { opening(); await held; await route.continue(); });
+  await page.route(nextPage, async (route) => { opening(); await held; await route.continue().catch(() => undefined); });
   await Promise.all([
     page.waitForResponse((response) => posted(response.request())),
     form.evaluate((element: HTMLFormElement) => { element.requestSubmit(); element.requestSubmit(); })
   ]);
   await opened;
-  await expect(form.locator('button[aria-busy="true"]')).toBeDisabled();
+  // On the page: the two plain forms are found by a button whose name changes while it is busy.
+  await expect(page.locator('button[aria-busy="true"]')).toBeDisabled();
   release();
   await page.unroute(nextPage);
   page.off('request', count);

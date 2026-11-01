@@ -80,7 +80,7 @@ export default async function OrganisationOrderDetailPage({
   const left = order.totalAmount - order.refundedAmount - order.externalRefundedAmount;
   const valid = order.tickets.filter((ticket) => ticket.validity === "active");
   const refundable = order.paymentKind === "stripe" && order.status === "paid" && !order.requiresCompensationReview &&
-    !order.refundStatus && !order.disputeStatus && !order.isManuallyRefunded && (left > 0 || valid.length > 0);
+    !order.refundStatus && order.disputeStatus !== "open" && order.disputeStatus !== "lost" && !order.isManuallyRefunded && (left > 0 || valid.length > 0);
   const buyer = order.user
     ? {
         email: order.user.email,
@@ -336,8 +336,8 @@ function ReviewNotice({ order, canAct, timeZone }: { order: Awaited<ReturnType<t
     }
     if (order.disputeStatus === "won") {
       return (
-        <Notice action={canAct && !ticketless ? <OrderReviewActions action="restore_tickets" orderId={order.id} /> : undefined} title="Stripe closed the dispute in the society's favour">
-          <p>{ticketless ? "No tickets were issued for this order, and the dispute no longer holds its refund." : "The tickets stay under review until an owner or finance manager restores them with a reason. Restoring doesn't move money."}</p>
+        <Notice action={canAct && !ticketless && !order.refundStatus ? <OrderReviewActions action="restore_tickets" orderId={order.id} /> : undefined} title="Stripe closed the dispute in the society's favour">
+          <p>{ticketless ? "No tickets were issued for this order, and the dispute no longer holds its refund." : order.refundStatus ? "This order has a refund, so its tickets can't be restored." : "The tickets stay under review until an owner or finance manager restores them with a reason. Restoring doesn't move money."}</p>
           {link}
         </Notice>
       );

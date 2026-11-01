@@ -39,6 +39,27 @@ export async function unreversedRefundAmount(stripe: Stripe, payment: Stripe.Cha
   return transfer ? Math.max(0, charge.amount_refunded - transfer.amount_reversed) : 0;
 }
 
+// PAY-062: what Thunderstrux still holds of its fee on a fully refunded payment, which
+// leaves the society paying for a sale it gave back. Stripe returns a fee pro rata, so a
+// partly refunded payment has nothing to report.
+export async function keptApplicationFee(stripe: Stripe, charge: Stripe.Charge) {
+  if (charge.amount_refunded < charge.amount || !charge.application_fee) return 0;
+  const fee = typeof charge.application_fee === "string" ? await stripe.applicationFees.retrieve(charge.application_fee) : charge.application_fee;
+  return Math.max(0, fee.amount - fee.amount_refunded);
+}
+
+// The same for a refund made in Stripe, read before its transaction. Null when Stripe
+// won't say, as with a key lacking Application Fees read: the refund must still be recorded.
+export async function outsideRefundKeptFee(stripe: Stripe, paymentIntentId: string) {
+  try {
+    const charge = (await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] })).latest_charge;
+    return charge && typeof charge !== "string" ? await keptApplicationFee(stripe, charge) : 0;
+  } catch {
+    logWarn("stripe.refund.fee_unread", { paymentIntentId });
+    return null;
+  }
+}
+
 // Called with the purchase locked, when Stripe has just closed the dispute as lost.
 export async function queueDisputeReversal(tx: Prisma.TransactionClient, stripeDisputeId: string, now: Date) {
   await tx.purchaseDispute.updateMany({

@@ -5,13 +5,14 @@ import { lockCommerceOrderForFamily } from "@/lib/commerce/binding";
 import { markCommerceExternalRefundReviewed } from "@/lib/commerce/payment-recovery";
 import { lockOrderInventory, returnTicketsToSale } from "@/lib/events/inventory";
 import { ticketReference } from "@/lib/format";
-import { closeRepaidReview, refundedSoFar, reopenRepaidReview } from "@/lib/payments/order-refunds";
+import { OrderRefundError, closeRepaidReview, openOrderRefund, refundedSoFar, reopenRepaidReview } from "@/lib/payments/order-refunds";
 import { emitOperationalAlert } from "@/lib/ops/alerts";
 import { logInfo, logWarn } from "@/lib/ops/logger";
 import { alertNeedsReview, resumeCompensationRefund } from "@/lib/payments/compensation-refunds";
 import { stageDisputeEvidence } from "@/lib/payments/dispute-evidence";
-import { queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
+import { outsideRefundKeptFee, queueDisputeReversal, unreversedRefundAmount } from "@/lib/payments/dispute-reversals";
 import { appendOrderLifecycleEvent, lockOrder } from "@/lib/payments/order-lifecycle";
+import { releasedEarlyShare, shareRefundsSelect } from "@/lib/payouts/release";
 import { getStripe } from "@/lib/stripe";
 
 // Disputes and refunds made outside Thunderstrux (T18b). Both arrive as signed
@@ -87,7 +88,8 @@ export async function verifiedOrderPayment(stripe: Stripe, paymentIntentId: stri
 // charge.dispute.created / updated / closed. The first verified event puts the
 // order's valid tickets under review and fences refunds, resends and
 // compensation; a lost dispute voids them and closes a review it repaid; a won one
-// waits for staff to restore them, and releases a compensation refund it held.
+// waits for staff to restore them, releases a compensation refund it held, and on a
+// cancelled event opens the refund the cancellation couldn't.
 export async function reconcileDisputeEvent(event: Stripe.Event) {
   const dispute = event.data.object as Stripe.Dispute;
   if (await journalled(event.id)) return;
@@ -105,12 +107,18 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
   const now = new Date();
   let forAPerson = null as Awaited<ReturnType<typeof resumeCompensationRefund>>;
   let partReturned = false as boolean;
+  // EVT-012: why a cancelled event's refund didn't open, and any of it already paid out.
+  let refused = null as string | null;
+  let releasedEarly = null as { organisationId: string; eventId: string; amount: number } | null;
   const opened = await prisma.$transaction(async (tx) => {
     if (!(await journal(tx, event))) return false;
     // A lost dispute puts the places back on sale: event and ticket type before the order.
     if (outcome === "lost") await lockOrderInventory(tx, orderId);
     if (!(await lockOrder(tx, orderId))) return false;
-    const { event: owner, requiresCompensationReview } = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { requiresCompensationReview: true, event: { select: { organisationId: true } } } });
+    const { event: owner, requiresCompensationReview, status, paymentKind, isManuallyRefunded } = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { requiresCompensationReview: true, status: true, paymentKind: true, isManuallyRefunded: true, event: { select: { id: true, organisationId: true, cancelledAt: true, cancellationReason: true } } }
+    });
     const existing = await tx.purchaseDispute.findUnique({ where: { stripeDisputeId: current.id } });
     // Restored by staff: later events are history only.
     if (existing?.resolvedAt) return false;
@@ -151,12 +159,26 @@ export async function reconcileDisputeEvent(event: Stripe.Event) {
     if (worst === "won") {
       await reopenRepaidReview(tx, { orderId, commerceOrderId: null }, event.id);
       forAPerson = await resumeCompensationRefund(tx, { id: orderId, organisationId: owner.organisationId }, event.id);
+      // EVT-012: the event is off, so the buyer is owed this, as their cancellation email said.
+      if (owner.cancelledAt && status === "paid" && paymentKind === "stripe" && !isManuallyRefunded) {
+        try {
+          await openOrderRefund(tx, { organisationId: owner.organisationId, orderId, actor: null, reason: `Event cancelled: ${owner.cancellationReason ?? ""}`.slice(0, 500) });
+          const sale = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { paidAt: true, totalAmount: true, feeAmount: true, externalRefundedAmount: true, externalUnreversedAmount: true, ...shareRefundsSelect } });
+          const amount = releasedEarlyShare(sale, now);
+          if (amount > 0) releasedEarly = { organisationId: owner.organisationId, eventId: owner.id, amount };
+        } catch (error) {
+          if (!(error instanceof OrderRefundError)) throw error;
+          if (error.kind !== "already_refunded" && error.kind !== "in_progress") refused = error.kind;
+        }
+      }
     }
     if (outcome === "lost") partReturned = !(await closeRepaidReview(tx, { orderId, commerceOrderId: null, organisationId: owner.organisationId }, { source: "stripe_webhook", stripeEventId: event.id })) && requiresCompensationReview;
     return !existing;
   });
-  if (forAPerson) alertNeedsReview(forAPerson, "review_required", "dispute_won");
+  if (forAPerson) alertNeedsReview(forAPerson, forAPerson.state, "dispute_won");
   if (partReturned) alertPartReturned({ orderId });
+  if (refused) emitOperationalAlert("refund_failed", { orderId, reason: refused, dedupeKey: `refund_failed:${orderId}:${refused}` });
+  if (releasedEarly) emitOperationalAlert("event_cancelled_after_release", { ...releasedEarly, orders: 1 });
   if (opened) {
     emitOperationalAlert("purchase_dispute_opened", { orderId, disputeId: current.id, evidenceDueBy: current.evidence_details?.due_by ?? null });
     await stageDisputeEvidence(current, { orderId });
@@ -176,8 +198,10 @@ export async function restoreDisputedTickets(input: { organisationId: string; or
   const now = new Date();
   await prisma.$transaction(async (tx) => {
     if (!(await lockOrder(tx, input.orderId, input.organisationId))) throw new PurchaseReviewError("not_found", "Order was not found");
-    const order = await tx.order.findFirst({ where: { id: input.orderId, event: { organisationId: input.organisationId } }, select: { disputeStatus: true } });
+    const order = await tx.order.findFirst({ where: { id: input.orderId, event: { organisationId: input.organisationId } }, select: { disputeStatus: true, refundStatus: true } });
     if (!order) throw new PurchaseReviewError("not_found", "Order was not found");
+    // EVT-012: a refund voids these tickets, so a stale page mustn't bring them back beside it.
+    if (order.refundStatus) throw new PurchaseReviewError("not_allowed", "This order has a refund, so its tickets can't be restored");
     // Every dispute still on the order must have closed in the society's favour; all of them are resolved together.
     const disputes = await tx.purchaseDispute.findMany({ where: { orderId: input.orderId, resolvedAt: null }, select: { id: true, stripeDisputeId: true, providerStatus: true } });
     if (order.disputeStatus !== "won" || !disputes.length || worstOutcome(disputes.map((row) => row.providerStatus)) !== "won") {
@@ -218,6 +242,7 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
     .reduce((sum, item) => sum + item.amount, 0);
   // PAY-027: payouts hold what a refund didn't take back from the society.
   const unreversed = await unreversedRefundAmount(stripe, intentId);
+  const feeKept = await outsideRefundKeptFee(stripe, intentId);
   const orderId = payment.order.id;
   const now = new Date();
   const recorded = await prisma.$transaction(async (tx) => {
@@ -251,14 +276,15 @@ export async function reconcileExternalRefundEvent(event: Stripe.Event) {
     await closeRepaidReview(tx, { orderId, commerceOrderId: null, organisationId: order.event.organisationId }, { source: "stripe_webhook", stripeEventId: event.id });
     return true;
   });
-  if (recorded && unreversed > 0) alertOutsideRefundNotReversed({ orderId }, unreversed);
+  if (recorded && (unreversed > 0 || feeKept !== 0)) alertOutsideRefundNotReversed({ orderId }, unreversed, feeKept);
 }
 
 // PAY-027: a refund made in Stripe's Dashboard that didn't reverse the transfer.
 // Thunderstrux paid the buyer; the society's share stays held until Stripe shows it taken back.
-export function alertOutsideRefundNotReversed(purchase: { orderId: string } | { commerceOrderId: string }, unreversed: number) {
+// PAY-062: also a full one that kept Thunderstrux's fee (`feeKept`; null when Stripe wouldn't say).
+export function alertOutsideRefundNotReversed(purchase: { orderId: string } | { commerceOrderId: string }, unreversed: number, feeKept: number | null) {
   const id = "orderId" in purchase ? purchase.orderId : purchase.commerceOrderId;
-  emitOperationalAlert("outside_refund_not_reversed", { ...purchase, unreversed, dedupeKey: `outside_refund_not_reversed:${id}:${unreversed}` });
+  emitOperationalAlert("outside_refund_not_reversed", { ...purchase, unreversed, feeKept, dedupeKey: `outside_refund_not_reversed:${id}:${unreversed}:${feeKept}` });
 }
 
 // Staff confirm they have looked at a partial refund made outside

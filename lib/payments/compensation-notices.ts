@@ -69,7 +69,7 @@ export async function queueTicketReviewClosedNotice(tx: Prisma.TransactionClient
   const recipient = retainedBuyerIdentity(order)?.email;
   if (!recipient) return;
   await enqueueNotification(tx, {
-    eventKey: `payment-review-closed/${order.id}`, recipient, template: "business_notice", organisationId: order.organisationId,
+    eventKey: `payment-review-closed/${order.id}/${byBank ? "bank" : "refund"}`, recipient, template: "business_notice", organisationId: order.organisationId,
     payload: {
       subject: `Your payment for ${order.event.title}`.slice(0, 200),
       message: `We couldn't issue your tickets for ${order.event.title}, so you don't have tickets for this order. ${repaidWords(byBank, order.totalAmount)} Contact ${order.sellerName ?? order.event.organisation.name} if you have questions.`
@@ -83,7 +83,7 @@ export async function queueCommerceReviewClosedNotice(tx: Prisma.TransactionClie
     select: { id: true, organisationId: true, kind: true, totalAmount: true, sellerName: true, buyerEmailSnapshot: true }
   });
   await enqueueNotification(tx, {
-    eventKey: `payment-review-closed/${order.id}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: order.organisationId,
+    eventKey: `payment-review-closed/${order.id}/${byBank ? "bank" : "refund"}`, recipient: order.buyerEmailSnapshot, template: "business_notice", organisationId: order.organisationId,
     payload: {
       subject: `Your payment to ${order.sellerName}`.slice(0, 200),
       message: `We couldn't confirm ${order.kind === "membership" ? "your membership" : "your items"} for order ${orderReference(order.id)}. ${repaidWords(byBank, order.totalAmount)} Contact ${order.sellerName} if you have questions.`

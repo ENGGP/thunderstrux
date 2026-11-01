@@ -448,6 +448,29 @@ describe("refunds that fail or come back", () => {
     expect((decryptNotification(email.encryptedPayload, email.id) as { text: string }).text).toContain("$20.00 is on its way back");
   });
 
+  // PAY-063: staff confirmed an amount, so it stands however their own attempt ended.
+  test("a staff refund the worker has to finish stops for review rather than change the confirmed amount", async () => {
+    const later = () => new Date(Date.now() + 60 * 60_000);
+    // Their first read of Stripe got no answer, so nothing was sent.
+    const unanswered = await paidOrder();
+    stripe.retrieve.mockRejectedValueOnce(new Error("socket hang up"));
+    await requestOrderRefund(refundInput(unanswered));
+    await refundInStripe(1000);
+    await processOrderRefundBatch(25, later());
+    expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: unanswered.order.id } })).toMatchObject({ status: "failed", amount: 3000, lastErrorCode: "existing_refund_requires_review" });
+
+    // Or the request died with the server, and the worker found the lease it left.
+    const crashed = await paidOrder();
+    await prisma.$transaction((tx) => openOrderRefund(tx, {
+      organisationId: crashed.owner.organisation.id, orderId: crashed.order.id, actor: { id: crashed.owner.user.id }, reason: "Refund started, then the server stopped.",
+      processing: { token: "gone", now: new Date() }
+    }));
+    await refundInStripe(1000);
+    await processOrderRefundBatch(25, later());
+    expect(await prisma.refundRequest.findFirstOrThrow({ where: { orderId: crashed.order.id } })).toMatchObject({ status: "failed", amount: 3000, lastErrorCode: "existing_refund_requires_review" });
+    expect(stripe.create).not.toHaveBeenCalled();
+  });
+
   test("a refund a lost answer may have made is never resized: the request stays open for Stripe's outcome (SEC-011)", async () => {
     const fixture = await paidOrder();
     const request = await queueCancellationRefund(fixture);

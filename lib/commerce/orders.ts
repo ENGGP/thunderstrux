@@ -212,14 +212,17 @@ export async function getOwnCommerceOrders(userId: string, { limit, cursor, dire
 export const commerceOrderFilters = ["all", "paid", "free", "refunded", "review", "expired"] as const;
 export type CommerceOrderFilter = (typeof commerceOrderFilters)[number];
 
+// A payment that couldn't be filled and is back with the buyer: a closed review (PAY-057).
+const repaid = { status: "failed", paidAt: { not: null }, requiresCompensationReview: false } as const;
+
 const filterWhere: Record<CommerceOrderFilter, Prisma.CommerceOrderWhereInput> = {
   all: { status: { not: "pending" } },
   paid: { status: "paid", paymentKind: "stripe", refundStatus: null, requiresCompensationReview: false, disputeStatus: null },
   free: { status: "paid", paymentKind: "free", cancelledAt: null },
-  refunded: { refundStatus: { not: null } },
+  refunded: { OR: [{ refundStatus: { not: null } }, repaid] },
   // Payment review, a dispute, or a partial refund made in Stripe nobody has reviewed (PAY-003).
-  review: { OR: [{ requiresCompensationReview: true }, { disputeStatus: { not: null } }, { externalRefundedAmount: { gt: 0 }, externalRefundReviewedAt: null, refundStatus: null }] },
-  expired: { status: { in: ["expired", "failed"] }, requiresCompensationReview: false }
+  review: { OR: [{ requiresCompensationReview: true }, { disputeStatus: { not: null } }, { externalRefundedAmount: { gt: 0 }, externalRefundReviewedAt: null, refundStatus: null }], NOT: repaid },
+  expired: { status: { in: ["expired", "failed"] }, requiresCompensationReview: false, paidAt: null }
 };
 
 export async function listOrganisationCommerceOrders(

@@ -72,10 +72,12 @@ export function releasedByBuyer(order: { cancelledByUserId?: string | null; user
 // PAY-056: a payment under review whose refund a bank dispute holds (PAY-036). An open
 // dispute decides how the money comes back, and `otherwise` is what follows if the
 // society wins it; a lost one is back with the buyer. All of it closes the review
-// (PAY-057), so one still under review returned part. Null when none holds it.
-export function reviewDisputeWords(order: { disputeStatus?: OrderDisputeStatus | null; requiresCompensationReview: boolean }, otherwise = "we'll refund you and email you when that's done") {
+// (PAY-057), so one still under review returned part, unless a refund already in flight
+// has to finish before anyone can say (PAY-058). Null when none holds it.
+export function reviewDisputeWords(order: { disputeStatus?: OrderDisputeStatus | null; requiresCompensationReview: boolean; refundStatus?: OrderRefundStatus | null }, otherwise = "we'll refund you and email you when that's done") {
   if (order.disputeStatus === "open") return { title: "Payment disputed", message: `Your bank has disputed this payment, so it can't be refunded for now. If your bank decides for you, it returns the money. If it doesn't, ${otherwise}.` };
   if (order.disputeStatus !== "lost") return null;
+  if (order.refundStatus === "processing") return { title: "Your bank upheld your dispute", message: "Your bank upheld your dispute. We're finishing this order and will email you when it's done." };
   return order.requiresCompensationReview
     ? { title: "Partly refunded by your bank", message: `Your bank upheld your dispute and returned part of this payment. For the rest, ${otherwise}.` }
     : { title: "Refunded by your bank", message: "Your bank upheld your dispute and returned the payment to you." };

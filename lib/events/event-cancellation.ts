@@ -11,6 +11,7 @@ import { reconcileExpiredCheckoutSession } from "@/lib/payments/checkout-reconci
 import { cancelFreeOrder } from "@/lib/payments/free-cancellation";
 import { OrderRefundError, openOrderRefund, type RefundFailureKind } from "@/lib/payments/order-refunds";
 import { releasedEarlyShare, shareRefundsSelect } from "@/lib/payouts/release";
+import { reviewDisputeWords } from "@/lib/purchases/projection";
 import { getStripe } from "@/lib/stripe";
 import { zoneCity } from "@/lib/zoned-time";
 
@@ -99,12 +100,17 @@ async function cancelInTransaction(
     // EVT-008: the cancellation email replaces any change still waiting or part sent,
     // which would tell holders "Your tickets are still valid".
     await tx.eventChange.updateMany({ where: { eventId: owned.id, completedAt: null }, data: { completedAt: now, outcome: "superseded" } });
+    // Including those already queued: a claimed one that fails would go back to pending, and staff can requeue a failed one.
+    await tx.notificationOutbox.updateMany({
+      where: { organisationId, eventKey: { startsWith: `event-change/${owned.id}/` }, status: { in: ["pending", "processing", "failed"] } },
+      data: { status: "cancelled", lastError: "event_cancelled", processingToken: null, processingStartedAt: null }
+    });
 
     const orders = await tx.order.findMany({
       where: { eventId: owned.id, status: "paid" },
       orderBy: { id: "asc" },
       select: {
-        id: true, paymentKind: true, cancelledAt: true, totalAmount: true, externalRefundedAmount: true, feeAmount: true, paidAt: true, sellerName: true, ...buyerIdentitySelect, ...shareRefundsSelect,
+        id: true, paymentKind: true, cancelledAt: true, disputeStatus: true, requiresCompensationReview: true, totalAmount: true, externalRefundedAmount: true, feeAmount: true, paidAt: true, sellerName: true, ...buyerIdentitySelect, ...shareRefundsSelect,
         user: { select: { email: true, firstName: true, lastName: true, displayName: true } },
         _count: { select: { tickets: { where: { validity: { not: "void" } } } } }
       }
@@ -139,8 +145,10 @@ async function cancelInTransaction(
         } catch (error) {
           if (!(error instanceof OrderRefundError)) throw error;
           skipped.push({ orderId: order.id, reason: error.kind });
+          const settled = "Your bank is handling a dispute about this payment, so your money is settled through that dispute.";
           outcome = error.kind === "disputed"
-            ? "Your bank is handling a dispute about this payment, so your money is settled through that dispute."
+            // EVT-012: an open dispute may yet go the society's way, and the refund then opens. A lost one may only cover part.
+            ? order.disputeStatus === "open" ? reviewDisputeWords(order)?.message ?? settled : settled
             : error.kind === "already_refunded"
               ? "Your payment has already been refunded in full."
               : `${seller(order.sellerName)} will contact you about your payment.`;

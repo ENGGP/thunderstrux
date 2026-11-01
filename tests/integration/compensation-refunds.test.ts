@@ -741,9 +741,9 @@ describe("a dispute holding a compensation refund", () => {
   }
   const job = (fixture: Fixture) => prisma.compensationRefundJob.findUniqueOrThrow({ where: { id: fixture.job.id } });
   const requeued = (fixture: Fixture) => prisma.orderLifecycleEvent.count({ where: { orderId: fixture.order.id, type: "compensation_refund_queued" } });
-  const closedNotices = (fixture: Fixture) => prisma.notificationOutbox.count({ where: { eventKey: `payment-review-closed/${fixture.order.id}` } });
+  const closedNotices = (fixture: Fixture) => prisma.notificationOutbox.count({ where: { eventKey: { startsWith: `payment-review-closed/${fixture.order.id}/` } } });
   const closedNotice = async (fixture: Fixture) => {
-    const [row, ...more] = await prisma.notificationOutbox.findMany({ where: { eventKey: `payment-review-closed/${fixture.order.id}` } });
+    const [row, ...more] = await prisma.notificationOutbox.findMany({ where: { eventKey: { startsWith: `payment-review-closed/${fixture.order.id}/` } } });
     expect(more).toEqual([]);
     return JSON.stringify(decryptNotification(row.encryptedPayload, row.id));
   };
@@ -877,6 +877,66 @@ describe("a dispute holding a compensation refund", () => {
     expect(wonAlerts(error)).toHaveLength(1);
   });
 
+  // PAY-061: sending it again would meet the failed refund and the same key, so a person sends it, and now hears they can.
+  test("a refund that failed stays with a person, who is told when the society wins", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await stoppedByDispute();
+    await prisma.compensationRefundJob.update({ where: { id: fixture.job.id }, data: { state: "refund_failed", lastErrorCode: "provider_refund_failed" } });
+    const queued = await requeued(fixture);
+    await disputeIs(fixture, "won", "charge.dispute.closed");
+    expect(await job(fixture)).toMatchObject({ state: "refund_failed", lastErrorCode: "provider_refund_failed" });
+    expect(await requeued(fixture)).toBe(queued);
+    expect(wonAlerts(error).map(([line]) => JSON.parse(String(line)))).toEqual([expect.objectContaining({ orderId: fixture.order.id, state: "refund_failed" })]);
+  });
+
+  const notReversed = (error: MockInstance) => error.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('"event":"outside_refund_not_reversed"')).map((line) => JSON.parse(line));
+  async function refundableInStripe() {
+    stripeMock.applicationFees.retrieve.mockReset();
+    const fixture = await automaticCompensationFixture();
+    configureEligibleStripe(fixture);
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { stripePaymentIntentId: "pi_compensation" } });
+    return fixture;
+  }
+  const chargeShows = (fixture: Fixture, refunded: number) => stripeMock.paymentIntents.retrieve.mockResolvedValue({
+    latest_charge: { amount: fixture.order.totalAmount, amount_refunded: refunded, application_fee: "fee_dashboard", transfer: { amount_reversed: refunded } }
+  });
+
+  // PAY-062: the buyer has their money, so the review closes, but the society paid a fee on a sale that never happened.
+  test("a full refund in Stripe that kept Thunderstrux's fee closes the review and tells finance; a partial one says nothing", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await refundableInStripe();
+    stripeMock.applicationFees.retrieve.mockResolvedValue({ id: "fee_dashboard", amount: 100, amount_refunded: 0 });
+    chargeShows(fixture, 500);
+    await reconcileExternalRefundEvent(outsideRefund(fixture, 500));
+    expect(stripeMock.applicationFees.retrieve).not.toHaveBeenCalled();
+    expect(notReversed(error)).toEqual([]);
+
+    chargeShows(fixture, fixture.order.totalAmount);
+    await reconcileExternalRefundEvent(outsideRefund(fixture, fixture.order.totalAmount));
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ requiresCompensationReview: false, refundStatus: "refunded" });
+    expect(notReversed(error)).toEqual([expect.objectContaining({ orderId: fixture.order.id, unreversed: 0, feeKept: 100 })]);
+  });
+
+  test("a fee refunded with the payment says nothing", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const clean = await refundableInStripe();
+    chargeShows(clean, clean.order.totalAmount);
+    stripeMock.applicationFees.retrieve.mockResolvedValue({ id: "fee_dashboard", amount: 100, amount_refunded: 100 });
+    await reconcileExternalRefundEvent(outsideRefund(clean, clean.order.totalAmount));
+    expect(stripeMock.applicationFees.retrieve).toHaveBeenCalledTimes(1);
+    expect(notReversed(error)).toEqual([]);
+  });
+
+  test("a fee Stripe won't show never stops the refund being recorded", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const unread = await refundableInStripe();
+    chargeShows(unread, unread.order.totalAmount);
+    stripeMock.applicationFees.retrieve.mockRejectedValue(Object.assign(new Error("no permission"), { statusCode: 403 }));
+    await reconcileExternalRefundEvent(outsideRefund(unread, unread.order.totalAmount));
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: unread.order.id } })).toMatchObject({ requiresCompensationReview: false, externalRefundedAmount: unread.order.totalAmount });
+    expect(notReversed(error)).toEqual([expect.objectContaining({ orderId: unread.order.id, feeKept: null })]);
+  });
+
   // PAY-036: a ticket order keeps `won` until staff restore its tickets, and a compensation order has none.
   test("a won dispute doesn't stop a queued automatic refund", async () => {
     const fixture = await automaticCompensationFixture();
@@ -992,6 +1052,46 @@ describe("a dispute holding a compensation refund", () => {
     expect(stripeMock.refunds.create).toHaveBeenCalledTimes(1);
     expect(await job(fixture)).toMatchObject({ state: "refunded", stripeRefundId: "re_late_win" });
     expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ requiresCompensationReview: false, isManuallyRefunded: true });
+  });
+
+  test("a review that closes a second way tells the buyer that way too", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await stoppedByDispute();
+    await disputeIs(fixture, "lost", "charge.dispute.closed");
+    expect(await closedNotice(fixture)).toContain("returned the payment");
+    await disputeIs(fixture, "won", "charge.dispute.closed");
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: null });
+    await reconcileExternalRefundEvent(outsideRefund(fixture, fixture.order.totalAmount));
+    expect(await job(fixture)).toMatchObject({ state: "refunded" });
+    const rows = await prisma.notificationOutbox.findMany({ where: { eventKey: { startsWith: `payment-review-closed/${fixture.order.id}/` } }, orderBy: { eventKey: "asc" } });
+    expect(rows.map((row) => row.eventKey.split("/").at(-1))).toEqual(["bank", "refund"]);
+    expect(JSON.stringify(decryptNotification(rows[1].encryptedPayload, rows[1].id))).toContain("refunded to your card");
+  });
+
+  test("a review closed by a refund in Stripe and a part-lost dispute reopens on a win, and stops for a person rather than refund twice", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await stoppedByDispute();
+    const part = Math.floor(fixture.order.totalAmount / 2);
+    const rest = fixture.order.totalAmount - part;
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: null });
+    await reconcileExternalRefundEvent(outsideRefund(fixture, part));
+    await disputeIs(fixture, "lost", "charge.dispute.closed", undefined, rest);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ requiresCompensationReview: false, refundStatus: null });
+
+    await disputeIs(fixture, "won", "charge.dispute.closed", undefined, rest);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ requiresCompensationReview: true });
+    await processCompensationRefundBatch();
+    expect(stripeMock.refunds.create).not.toHaveBeenCalled();
+    expect(await job(fixture)).toMatchObject({ state: "review_required", lastErrorCode: "existing_refund_requires_review" });
+  });
+
+  test("a won dispute never reopens a failed order nobody paid for", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fixture = await stoppedByDispute();
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { requiresCompensationReview: false, paidAt: null } });
+    await disputeIs(fixture, "won", "charge.dispute.closed");
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } })).toMatchObject({ requiresCompensationReview: false });
+    expect(await prisma.orderLifecycleEvent.count({ where: { orderId: fixture.order.id, type: "compensation_required", reason: "dispute_won" } })).toBe(0);
   });
 
   test("a manual order reopened by a late win goes to a person", async () => {

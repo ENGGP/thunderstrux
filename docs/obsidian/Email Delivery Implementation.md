@@ -145,7 +145,7 @@ One email per ticket order with every `active` ticket. Text and HTML, with each 
 | Payout bank account added or made default, to each `stripe:manage` staff member (SEC-033) | `stripe-payout-account/{organisationId}/{stripeEventId}` | `business_notice` | `tests/integration/stripe-connect-service.test.ts` |
 | Free ticket registration cancelled | `cancellation/{orderId}` | `business_notice` | `tests/integration/free-cancellation.test.ts` |
 | Payment review (ticket or commerce) | `payment-review/{orderId}` | `business_notice` | `tests/integration/webhook-reconciliation.test.ts`, `tests/integration/commerce-checkout.test.ts` |
-| Payment review closed, the money already back (ticket or commerce) | `payment-review-closed/{orderId}` | `business_notice` | `tests/integration/compensation-refunds.test.ts`, `tests/integration/commerce-payment-recovery.test.ts` |
+| Payment review closed, the money already back (ticket or commerce) | `payment-review-closed/{orderId}/{bank\|refund}` | `business_notice` | `tests/integration/compensation-refunds.test.ts`, `tests/integration/commerce-payment-recovery.test.ts` |
 | Event cancelled (one per holder; each refund then sends its own `refund/{requestId}`) | `event-cancelled/{eventId}/{orderId}` | `event_cancelled` | `tests/integration/event-cancellation.test.ts` |
 | Contact {society}, one per recipient | `enquiry/{uuid}` | `society_enquiry` | `tests/integration/society-enquiries.test.ts`, `tests/e2e/polish.spec.ts` |
 | Buyer released a free registration | `cancellation/{orderId}` | `business_notice` | `tests/integration/event-cancellation.test.ts` |
@@ -163,7 +163,8 @@ A key stops a repeat only while its row exists, so each one needs something else
 | Keys | What stops a repeat once the row is gone |
 | --- | --- |
 | `auth/`, `guest/`, `account-security/`, `enquiry/`, `tickets-cancelled/`, `membership-receipt/`, `staff-invite/` | A new id (or invite version) per send; nothing issues an old one again |
-| `refund/`, `refund-returned/`, `refund-failed/`, `compensation-refund/`, `compensation-refund-returned/`, `payment-review-closed/`, `refund-marked/`, `cancellation/`, `merchandise-cancelled/`, `merchandise-receipt/`, `merchandise-ready/`, `merchandise-collected/`, `membership-ended/`, `event-cancelled/` | One state change that can't happen twice on the request, job, order, grant or event |
+| `refund/`, `refund-returned/`, `refund-failed/`, `compensation-refund/`, `compensation-refund-returned/`, `refund-marked/`, `cancellation/`, `merchandise-cancelled/`, `merchandise-receipt/`, `merchandise-ready/`, `merchandise-collected/`, `membership-ended/`, `event-cancelled/` | One state change that can't happen twice on the request, job, order, grant or event |
+| `payment-review-closed/` | One email per way the money came back: a review can reopen and close the other way, and that buyer needs telling |
 | `event-change/` | `EventChange.cursor` and `completedAt` |
 | `stripe-charges-paused/`, `stripe-payouts-paused/` | The flag going from on to off; the key holds the time, so it never deduped |
 | `stripe-payout-account/` | An audit row per Stripe event |

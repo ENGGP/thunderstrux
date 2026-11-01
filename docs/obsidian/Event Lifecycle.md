@@ -108,7 +108,7 @@ An event has four independent settings ([[Database and Multi Tenancy#Models]]):
 `POST /api/events/[eventId]/cancel` (`cancelOrganisationEvent`) cancels a published event that hasn't ended. It needs `events:manage` and `orders:refund`, the event title typed back, a message to ticket holders, and one fresh authenticator code for the whole event.
 
 - **One transaction under the event lock** (all ticket types, then each order), so no checkout, fulfilment or edit interleaves: `cancelledAt`, `cancellationReason`, `saleState = closed`, `version` + 1.
-- **Waiting change notices:** every open `EventChange`, sent in part or not at all, closes as `superseded`, because the cancellation email replaces it and it would say "Your tickets are still valid" (EVT-008).
+- **Waiting change notices:** every open `EventChange`, sent in part or not at all, closes as `superseded`, because the cancellation email replaces it and it would say "Your tickets are still valid" (EVT-008). Such notices already queued, claimed or failed are cancelled too, or one could still send or be requeued.
 - **Paid Stripe orders:** each gets a `RefundRequest` through `openOrderRefund` for everything left (a partly refunded order gets the rest), the same checks and fence as a staff refund, left `pending` for the refunds worker ([[Payment Lifecycle Refunds and Disputes#Order refunds]]). Tickets stay valid until Stripe confirms each refund, then are voided as with any refund. Orders it can't refund are skipped and returned in `skipped` with the reason: `disputed` (the bank settles it), `already_refunded` (the buyer's email says so, for an order refunded in full whose tickets were kept valid), `in_progress`, `not_refundable` (in compensation or marked refunded outside Thunderstrux).
 - **Free registrations** are cancelled with `cancelFreeOrder` (no stock back: nothing sells again).
 - **Holders:** every order that still had a valid ticket gets one `event_cancelled` email with the society's message and what happens to their money ([[Email Delivery Implementation]]).
@@ -231,7 +231,7 @@ Free memberships and free merchandise orders cancel the same way through their o
 | 409 on save | Stale `version`, or stock moved while editing | Reload; the form keeps the edits on screen |
 | Publish 400 with blockers | Readiness failed | Fix each `field` named; paid-only events need payments set up |
 | Can't unpublish or delete | Orders or tickets exist | Close sales instead, or Cancel event to refund everyone |
-| Cancel event reports skipped orders | Disputed, already refunded, or in compensation | Settle each in Orders; a dispute is settled by the bank |
+| Cancel event reports skipped orders | Disputed, already refunded, or in compensation | Settle each in Orders. A lost dispute is settled by the bank; if the society wins an open one, `reconcileDisputeEvent` opens the refund (EVT-012), and `refund_failed` says if it can't |
 
 ## Related
 

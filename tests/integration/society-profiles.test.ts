@@ -130,8 +130,9 @@ test("profiles use optimistic versions, derive completion and preserve private/p
   expect(current.slug).toBe(own.organisation.slug);
   expect(current.accountUserId).toBe(own.user.id);
   expect(current.stripeAccountId).toBe(own.organisation.stripeAccountId);
+  // Either racer can win, so this save keeps the winner's name and changes only the description.
   await updateProfile(own.user, own.organisation.id, {
-    ...input(),
+    ...input(current.name),
     description: "",
     expectedProfileVersion: 2,
   });

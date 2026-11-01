@@ -136,8 +136,8 @@ async function confirmGuest(page, email) {
   await page.getByRole('button', {name: 'Continue'}).click();
 }
 
-async function poll(check, what = 'Stripe webhook reconciliation') {
-  const deadline = Date.now() + 120_000;
+async function poll(check, what = 'Stripe webhook reconciliation', timeout = 120_000) {
+  const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const value = await check();
     if (value) return value;
@@ -221,6 +221,12 @@ async function ticketEmail(orderId) {
   const job = await db.emailOutbox.findFirstOrThrow({where: {orderId}});
   assert(job.status === 'sent' && job.providerMessageId, `Resend did not accept the ticket email (${job.status})`);
   return {status: 'accepted', provider: 'resend', messageId: job.providerMessageId};
+}
+// The dispute Stripe opened on a payment, once the app has staged its draft answer: an
+// answer submitted first would leave the app nothing to stage.
+async function stagedDispute(intentId) {
+  const { id } = await poll(async () => (await stripe.disputes.list({payment_intent: intentId, limit: 1})).data[0], 'Dispute');
+  return poll(async () => { const current = await stripe.disputes.retrieve(id); return current.evidence_details.has_evidence ? current : null; }, 'Staged dispute evidence');
 }
 async function paidTicket(data) {
   const order = await poll(async () => { const item = await orderState(data.orderId); return item.status === 'paid' ? item : null; });
@@ -323,7 +329,10 @@ const prepare = {
     expireWithoutStripe();
     assert((await commerceState(data.commerceOrderId)).status === 'expired', 'The order did not expire locally');
     return data;
-  }
+  },
+  // The same two orders, paid with the dispute card.
+  async 'compensation-dispute-won'(name) { return prepare.compensation(name); },
+  async 'commerce-compensation-dispute-lost'(name) { return prepare['commerce-compensation'](name); }
 };
 
 const verify = {
@@ -437,6 +446,50 @@ const verify = {
     const stock = await db.merchandiseVariant.findMany({where: {id: {in: data.variants}}});
     assert(stock.every(item => item.remaining === 5), 'An unfilled order changed stock');
     return {eventId: event.id, fee: intent.application_fee_amount, refund: await providerRefund(intent.id, data.amount)};
+  },
+  // PAY-056: a dispute holds the automatic refund, whichever webhook lands first, and winning it releases the refund.
+  async 'compensation-dispute-won'(data) {
+    const order = await poll(async () => { const item = await orderState(data.orderId); return item.requiresCompensationReview && item.compensationRefundJob && item.disputeStatus === 'open' ? item : null; }, 'Review and dispute');
+    assert(order.tickets.length === 0 && order.emailOutboxJobs.length === 0, 'A paid-after-expiry order issued tickets');
+    const intent = await destinationCharge(data.sessionId, data.amount, order.feeAmount);
+    const event = await eventFor(data.sessionId, ['checkout.session.completed']);
+    assertLifecycle(order, ['order_created', 'stripe_session_attached', 'order_expired', 'compensation_required'], event);
+    const dispute = await stagedDispute(intent.id);
+    const opened = await eventFor(dispute.id, ['charge.dispute.created']);
+    worker('process-compensation-refunds');
+    const held = (await orderState(order.id)).compensationRefundJob;
+    assert(held.state === 'review_required' && held.lastErrorCode === 'local_state_not_eligible', `The worker didn't leave the refund to the dispute (${held.state})`);
+    // Stripe test mode closes a dispute as won when given this evidence.
+    await stripe.disputes.update(dispute.id, {evidence: {uncategorized_text: 'winning_evidence'}});
+    await poll(async () => (await orderState(order.id)).compensationRefundJob.state === 'auto_queued', 'Won dispute reconciliation', 300_000);
+    const closed = await eventFor(dispute.id, ['charge.dispute.closed']);
+    worker('process-compensation-refunds');
+    await poll(async () => (await orderState(order.id)).compensationRefundJob.state === 'refunded', 'Compensation refund');
+    return {eventId: event.id, fee: intent.application_fee_amount, disputeId: dispute.id, refund: await providerRefund(intent.id, data.amount), moreEventIds: [opened.id, closed.id]};
+  },
+  // PAY-057 and PAY-058: a lost dispute repays the buyer, so the review closes with no refund on top.
+  // A refund may already have been opened, as the two webhooks race; the evidence records which happened.
+  async 'commerce-compensation-dispute-lost'(data) {
+    const order = await poll(async () => { const item = await commerceState(data.commerceOrderId); return (item.requiresCompensationReview || item.refundStatus) && item.disputeStatus === 'open' ? item : null; }, 'Review and dispute');
+    assert(!order.fulfilledAt && order.status === 'failed', 'A paid-after-expiry order was fulfilled');
+    const intent = await destinationCharge(data.sessionId, data.amount, order.feeAmount);
+    const event = await eventFor(data.sessionId, ['checkout.session.completed']);
+    const dispute = await stagedDispute(intent.id);
+    const opened = await eventFor(dispute.id, ['charge.dispute.created']);
+    await stripe.disputes.update(dispute.id, {evidence: {uncategorized_text: 'losing_evidence'}});
+    await poll(async () => (await commerceState(order.id)).disputeStatus === 'lost', 'Lost dispute reconciliation');
+    const closed = await eventFor(dispute.id, ['charge.dispute.closed']);
+    worker('process-compensation-refunds');
+    await poll(async () => { const item = await commerceState(order.id); return !item.requiresCompensationReview && item.refundStatus !== 'processing'; }, 'Closed review');
+    const refunds = (await stripe.refunds.list({payment_intent: intent.id, limit: 10})).data;
+    assert(refunds.every(item => item.status !== 'succeeded'), 'A refund went out on top of the lost dispute');
+    assert(await db.notificationOutbox.findFirst({where: {eventKey: `payment-review-closed/${order.id}/bank`}}), 'The buyer was not told the review closed');
+    const recovered = await poll(async () => { const row = await db.purchaseDispute.findUnique({where: {stripeDisputeId: dispute.id}}); return row?.reversalStatus === 'succeeded' ? row : null; }, 'Dispute transfer reversal');
+    assert(recovered.reversalAmount === dispute.amount, 'The lost dispute was not taken back from the society');
+    const stock = await db.merchandiseVariant.findMany({where: {id: {in: data.variants}}});
+    assert(stock.every(item => item.remaining === 5), 'An unfilled order changed stock');
+    const attempt = await db.refundRequest.findFirst({where: {commerceOrderId: order.id}, select: {status: true}});
+    return {eventId: event.id, fee: intent.application_fee_amount, disputeId: dispute.id, refundAttempt: attempt?.status ?? 'none', moreEventIds: [opened.id, closed.id]};
   }
 };
 function assertLifecycleTypes(order, types) {

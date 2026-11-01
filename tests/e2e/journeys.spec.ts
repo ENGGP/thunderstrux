@@ -206,7 +206,6 @@ test("a member's free join gives no member price, a paid membership does and sur
 });
 
 test("a society sells with a code and a member price, refunds one ticket, cancels the event, and holds the money until each refund lands", async ({ page, data, browser }) => {
-  test.setTimeout(150_000);
   const organisationId = data.organisation.id;
   const account = "acct_e2e_cancelled";
   await prisma.organisation.update({ where: { id: organisationId }, data: { stripeAccountId: account, stripeChargesEnabled: true, stripePayoutsEnabled: true } });

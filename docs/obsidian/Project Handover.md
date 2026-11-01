@@ -15,7 +15,7 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 
 ## Current state
 
-**2026-11-02, after #251.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
+**2026-11-02, after #252.** Dated entries below run oldest first, from the 2026-10-30 audit on. Everything earlier is in [[Project Handover 2026-11-02]].
 - T01 to T46 are delivered and locally qualified, apart from the assistant (T35 to T37), which the founder deferred. [[Pre-hosting Candidate]] is the candidate record.
 - 2026-10-30: #234 starts the fixes from the 2026-10-30 audit, the first of seven PRs. No migration.
   - The stale-order and refunds jobs get `EMAIL_FROM`, the notification key and the app URL from one shared settings block in each compose file, and the config check refuses them without these (DEF-065).
@@ -45,11 +45,12 @@ sources: [package.json, prisma/schema.prisma, config/schema-contract.json]
 - 2026-11-02: #249 makes staging work again: it publishes port 3100 for the browser's return from Stripe (DEF-079), and checks Stripe's named release rather than its date, since Stripe released `2026-10-28.endive` (DEF-081, PAY-061). A third full run is now refused, and `--answers-in-files` lets someone who can't type in the terminal confirm a step. Two baselines on different commits ran side by side, proving #235's claim, and exposed a flaky test (DEF-080). No migration.
 - 2026-11-02: #250 closes the refund gaps that review found: a won dispute on a failed refund alerts a person (PAY-064), a kept application fee alerts finance (PAY-062), a staff refund is never resized (PAY-063), merchandise tabs place a closed review under Refunded (UI-028), a refund in flight that fails closes a review a lost dispute left to it (PAY-058, narrowed), a second closing email can send (DEF-082), queued "still valid" emails stop at cancellation (DEF-083), and winning a dispute on a cancelled event opens the refund (EVT-012). Its browser run also caught calendar links whose names dropped their visible words (DEF-084). No migration.
 - 2026-11-02: #251 settles comp codes (PAY-065: a code that makes the standard price free ignores the member price), refuses commerce totals under $2.00 (PAY-066), and fixes what the opening review of #230 to #232 found: the door card after a failed re-read (DEF-085), cancelled events admitting (EVT-013), and smaller items. It also closes the named test gaps. No migration.
+- 2026-11-02: #252 is the audit's proof. A browser journey runs a code, a member price, one refund, a cancellation and the held figure. Staging gained `compensation-dispute-won` and `commerce-compensation-dispute-lost`, and all 14 scenarios passed on real Stripe test mode for the first time since accounts became unique to a society (DEF-093, DEF-094). The four journeys passed on dev with real Checkout pages, including a lost webhook settled by the sweep in 168 seconds. No app code changed.
 
-**Snapshot after #251.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
+**Snapshot after #252.** Re-derive these from `package.json`, `prisma/migrations/` and `config/schema-contract.json` before relying on them.
 - Pins: Node 22.23.4, pnpm 10.34.7, Next.js 16.4.2, Prisma 6.19.3, stripe 23.0.1 on API `2026-09-30.endive`.
 - Migrations: 73, ending in `20261124010000_ticket_codes`. Models: 40.
-- Latest full baseline: `baseline-c4a09cccc3edbabd00bea812` (#251), 1037 integration tests in 118 files.
+- Latest full baseline: `baseline-68c7c6f0951482a66e855e4e` (#252), 1037 integration tests in 118 files.
 
 **Local development**
 - The dev app runs all migrations. It serves this folder's working tree, so keep the folder on main or a branch built from it.
@@ -92,7 +93,7 @@ Pointers only; each linked note owns its rule.
 
 ## Next safe actions
 
-1. **Finish the 2026-10-30 audit.** Its planned fixes are merged and on the preview, and #246's full suites pass on that code, but the suites don't replace the plan's four end-to-end journeys, which have not been run: buying with a code and as a member twice; a lost webhook completed by the sweep; refunding one ticket, then cancelling the event; the payout amount and the cancelled mark. Fix staging's return pages and the review's ten defects first, then run the journeys and staging against real Stripe test mode. #245's and #246's dispute paths have only run with Stripe mocked, so they need the same proof.
+1. **Deploy the audit's last fixes, on the owner's go-ahead.** #250 to #252 are on main but not on the preview, which is still at `2df7769`. Back up first, and keep `.env.preview` at `MFA_ENFORCEMENT_MODE=off`. The plan's four end-to-end journeys are done: on dev in real test mode (#252), and in the browser journey. Only the sent payout amount stays unproven, because the test account's available balance was $0.
 
    The compensation engine merge (DEBT-003) is due before PAY-002's campaign. Product changes follow ([[THUNDERSTRUX_PRD#What comes next]]): no email step for guest checkout, buyer pays the fee, several ticket types per order, checkout questions with attendee names and the student number in the export, then the O-Week flow.
 2. **Preview (owner).**

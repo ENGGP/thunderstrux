@@ -128,6 +128,8 @@ async function asStaff(organisationId, name) {
 async function confirmGuest(page, email) {
   await page.getByRole('button', {name: 'Continue as guest'}).click();
   await page.getByLabel('Email').fill(email);
+  await page.getByLabel('First name').fill('Staging');
+  await page.getByLabel('Last name').fill('Guest');
   await page.getByRole('button', {name: 'Email me a link'}).click();
   await page.getByRole('status').filter({hasText: email}).waitFor();
   worker('process-notifications');

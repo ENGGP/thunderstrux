@@ -67,7 +67,7 @@ services:
   # Opt-in Stripe webhooks for dev: `docker compose -f docker-compose.yml
   # -f docker-compose.dev.yml --profile stripe up -d`. Put the whsec_ it logs in
   # all three webhook secrets in .env, then `pnpm docker:restart`.
-  # --latest: events on the app's pinned API version.
+  # --latest: events on Stripe's latest version, in the app's pinned release.
   stripe-listener:
     image: stripe/stripe-cli:v1.53.1@sha256:11c46caeead82e329f14823dd622d494b4cc8c1b9766f724d122d2af42c97540
     profiles: ["stripe"]

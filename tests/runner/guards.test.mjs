@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { assertOnlyStagingRun, assertRoomForFullRun, assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
+import { assertOnlyStagingRun, assertRoomForFullRun, assertRunId, isPinnedStripeRelease, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
 
 test('cleanup accepts only generated project identifiers', () => {
   for (const value of ['main', '../thunderstrux', 'thunderstrux', 'browser-', 'run-aaaaaaaaaaaaaaaaaaaaaaaa', '']) {
@@ -20,6 +20,11 @@ test('each run has its own images and a host port Docker picks, so two runs cann
 test('only staging asks for a fixed host port, as a browser returns from Stripe to localhost:3100', () => {
   const runner = readFileSync('scripts/run-e2e.mjs', 'utf8');
   assert.match(runner, /mode === 'staging' \? 'E2E_APP_PORT=3100\\n' : ''/);
+});
+test('staging accepts Stripe\'s monthly versions of the pinned release, and no other release', () => {
+  assert.equal(isPinnedStripeRelease('2026-09-30.endive'), true);
+  assert.equal(isPinnedStripeRelease('2026-10-28.endive'), true);
+  for (const version of ['2026-03-25.dahlia', '2026-10-28.preview', 'endive', '', undefined]) assert.equal(isPinnedStripeRelease(version), false, version);
 });
 test('a third full run is refused, counting projects and not their containers', () => {
   const run = `browser-${'a'.repeat(24)}`;

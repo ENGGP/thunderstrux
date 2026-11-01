@@ -91,7 +91,7 @@ Real Stripe test mode through the app, with a person paying on Stripe's Checkout
 5. Per scenario: set `stripeResourcesPossible`; `prepare` (one run-owned society `<run-id>-<scenario>` with a finance manager, ownership written before any Session); for card scenarios print the private Checkout URL and what to do, and wait up to 15 minutes for `confirmed`; `verify` (polls up to 120 s for reconciliation; writes `payment-<scenario>.json`); then every Stripe event the scenario relied on must show listener `[200]` and appear in the app log with `"apiVersion"` equal to `stripeApiVersion`.
 6. Always `cleanup`: expire open Sessions it owns, including ones found by a bounded metadata search (10 pages of 100) for Sessions created before the order recorded them; set `stripeCleanupComplete`.
 
-Events fetched back from Stripe's API carry the account's default version, so only the app's own log proves what was delivered. `stripeApiVersion` in `scripts/e2e-guards.mjs` must equal `lib/stripe/version.ts` (`tests/runner/guards.test.mjs` checks it). The listener's `--latest` forwards the newest version its CLI build knows; a CLI upgrade can change it.
+Events fetched back from Stripe's API carry the account's default version, so only the app's own log proves what was delivered. The run accepts any version of the pinned named release (`isPinnedStripeRelease`): the listener's `--latest` follows Stripe's monthly versions, which have no breaking changes. `stripeApiVersion` in `scripts/e2e-guards.mjs` must equal `lib/stripe/version.ts` (`tests/runner/guards.test.mjs` checks it). The listener's `--latest` forwards the newest version its CLI build knows; a CLI upgrade can change it.
 
 | Scenario (`allStagingScenarios`, run order) | Proves |
 | --- | --- |

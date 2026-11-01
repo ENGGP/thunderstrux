@@ -36,7 +36,7 @@ sources: [scripts/run-e2e.mjs, scripts/e2e-guards.mjs, scripts/staging-payments.
 | `pnpm test:e2e:guards` | runner safety tests on the host (Node only) | — |
 | `node scripts/run-e2e.mjs baseline` | typecheck, integration suite, audit inside the stack | `baseline-<24 hex>` |
 | `pnpm test:e2e` | browser campaign | `browser-<24 hex>` |
-| `pnpm test:payments:staging [-- --scenario=<name>] [-- --use-local-test-key]` | real Stripe test mode | `staging-<24 hex>` |
+| `pnpm test:payments:staging [-- --scenario=<name>] [-- --use-local-test-key] [-- --answers-in-files]` | real Stripe test mode. `--answers-in-files` is for whoever pays but can't type in the terminal: write `confirmed` to `tmp/e2e/<run-id>/answer-<scenario>` | `staging-<24 hex>` |
 | `pnpm test:e2e:cleanup -- <run-id>` | finish an interrupted run's cleanup | the run's id |
 | `pnpm docker:cleanup [--apply]` | after testing: see or remove what runs left behind, and cap the build cache | none |
 
@@ -84,7 +84,7 @@ Real Stripe test mode through the app, with a person paying on Stripe's Checkout
 **Credentials:** an ignored `.env.staging.local` with `STRIPE_TEST_SECRET_KEY` (must match `sk_test_`) and `STRIPE_TEST_CONNECTED_ACCOUNT` (a ready `acct_` test account), optionally `RESEND_TEST_API_KEY` + `RESEND_TEST_FROM` and `SPACES_TEST_ENDPOINT` (https), `SPACES_TEST_BUCKET`, `SPACES_TEST_ACCESS_KEY`, `SPACES_TEST_SECRET_KEY` ([[Environment Variables]]). `--use-local-test-key` instead reads only `STRIPE_SECRET_KEY` from `.env` and takes the account from the `STRIPE_TEST_CONNECTED_ACCOUNT` environment variable; it never loads `.env` into Compose. Provider values must be single-line with no `$`.
 
 **Flow** (`runStaging`):
-1. Record scenarios and `blocked` (`email` without Resend values). Card scenarios need an interactive terminal.
+1. Record scenarios and `blocked` (`email` without Resend values). Card scenarios need an interactive terminal, or `--answers-in-files`.
 2. Start the `stripe` listener; read the fresh signing secret from its log (never streamed, never reused) into `runtime.env`; start the app.
 3. `preflight`: the key is test mode, the platform identity is saved (later runs and cleanup must match it), and the connected account has charges, details, `card_payments` and `transfers` active.
 4. `storage`: with all four Spaces values, put, head, get and delete one object under `t45/<run-id>/` through `lib/assets/storage.ts`; otherwise `blocked` with the missing names. A blocked provider doesn't fail the run.

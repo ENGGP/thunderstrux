@@ -497,6 +497,18 @@ The product is not intended to be:
 
 Thunderstrux should integrate or interoperate with external services where appropriate, while keeping the core product focused on society operations.
 
+### What comes next
+
+The order after the 2026-10-30 audit, set by what depends on what. Each item gets its own short plan.
+
+1. No email step before guest checkout. Stripe already collects the address, so tickets and a signed order link go there; the email check stays for finding a purchase and claiming it.
+2. Buyer pays the fee, as an option, shown in the first price.
+3. Several ticket types per order. It replaces the two checkouts a member and a friend need today.
+4. Checkout questions, attendee names, and the student number in the roster and export.
+5. O-Week: guests can buy a membership, and members show a card on their phone.
+
+Later: a buyer refund request button, a waitlist, messaging attendees, wallet passes, early payout release, and a second look at what is over-built for this stage (MFA on every staff page, the steps a small refund takes, per-event settings for compensation mode and hold length, and the size of these docs).
+
 ## 14. Codex Session Guidance
 
 This document should be used as the stable product guide for Codex sessions working on Thunderstrux.

@@ -49,7 +49,7 @@ The Obsidian vault is `docs/`. The living notes are `docs/obsidian/*.md`; dated 
 - **Domain:** [[Authentication and Dashboard Access]] · [[Event Lifecycle]] · [[Ticket Check-in Implementation]] · [[Payment Lifecycle]] · [[Payment Lifecycle Refunds and Disputes]] · [[Stripe Payments and Connect]] · [[Stripe Payments and Connect Payouts]] · [[Memberships and Merchandise]] · [[Society Profiles and Assets]] · [[Analytics and Calendar]] · [[Email Delivery Implementation]] · [[Audit Coverage]]
 - **Interfaces:** [[API Reference]] · [[Route Security Inventory]] · [[Frontend and Backend Flow]] · [[UI Architecture Rules]] · [[UI Page Patterns]] · [[Accessibility Review]]
 - **Operations:** [[Environment Variables]] · [[Development Workflow]] · [[Troubleshooting]] · [[Seeding and Data]] · [[Production Operations]] · [[Production Operations Alerts]] · [[Production Operations Hosting]] · [[Pre-hosting Candidate]] · [[Dependency Automation]] · [[E2E and Staging Payments]] · [[Journey Qualification]]
-- **History** (dated; read only for evidence): [[Resolved Defects]] · [[Evidence Ledger]] · [[Project Handover 2026-10-25]] · [[Project Handover 2026-10-15]] · [[Project Handover 2026-10-12]] · [[Docker Architecture Assessment 2026-09-29]] · [[Production Readiness Verification 2026-09-22]] · [[Dependency Advisory Triage 2026-09-18]]
+- **History** (dated; read only for evidence): [[Resolved Defects]] · [[Evidence Ledger]] · [[Project Handover 2026-11-02]] · [[Project Handover 2026-10-25]] · [[Project Handover 2026-10-15]] · [[Project Handover 2026-10-12]] · [[Docker Architecture Assessment 2026-09-29]] · [[Production Readiness Verification 2026-09-22]] · [[Dependency Advisory Triage 2026-09-18]]
 
 ## Specs and plans outside the living notes
 

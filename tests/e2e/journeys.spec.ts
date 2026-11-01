@@ -271,7 +271,8 @@ test("a society sells with a code and a member price, refunds one ticket, cancel
     // 4. The owner cancels from the event's page. Every order is refunded for what is left, and the door turns it away meanwhile.
     const owner = await ownerContext.newPage();
     await login(owner, data.owner.email, `/dashboard/events/${event.id}`);
-    await owner.getByRole("button", { name: "Cancel event" }).click();
+    await owner.getByRole("button", { name: "More actions for Harbour Cruise" }).click();
+    await owner.getByRole("button", { name: /^Cancel event/ }).click();
     const dialog = owner.getByRole("dialog");
     await dialog.getByLabel("Message to ticket holders").fill("The harbour is closed for storm repairs.");
     await dialog.getByLabel("Type Harbour Cruise to confirm").fill("Harbour Cruise");

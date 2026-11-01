@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
-import { assertRunId, assertOnlyStagingRun, assertOwnedManifest } from './e2e-guards.mjs';
+import { assertRunId, assertOnlyStagingRun, assertOwnedManifest, assertRoomForFullRun } from './e2e-guards.mjs';
 import { removeUntaggedRunImages } from './docker-cleanup.mjs';
 import { describeReleasePair, gitRevision } from './release-pair.mjs';
 
@@ -54,7 +54,7 @@ const capture = (...args) => command([...composeArgs, ...args], true);
 const step = (name, ...args) => compose('run', '--name', `${runId}-${name}`, '--no-deps', 'tests', ...args);
 async function save() { await writeFile(manifestFile, JSON.stringify(manifest, null, 2)); }
 async function createRuntime() {
-  await writeFile(runtimeFile, `AUTH_SECRET=${randomBytes(32).toString('hex')}\nNOTIFICATION_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nMFA_ENFORCEMENT_MODE=${mode === 'test' ? 'enforce' : 'off'}\nMFA_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nLEGACY_ORGANISATION_ACCESS_MODE=deny\nSTRIPE_SECRET_KEY=\nSTRIPE_WEBHOOK_SECRET=whsec_e2e_synthetic\nSTRIPE_CONNECT_WEBHOOK_SECRET=whsec_e2e_connect\nSTRIPE_ACCOUNTS_WEBHOOK_SECRET=whsec_e2e_accounts\nE2E_RUN_ID=${runId}\n`, {mode: 0o600});
+  await writeFile(runtimeFile, `AUTH_SECRET=${randomBytes(32).toString('hex')}\nNOTIFICATION_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nMFA_ENFORCEMENT_MODE=${mode === 'test' ? 'enforce' : 'off'}\nMFA_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}\nLEGACY_ORGANISATION_ACCESS_MODE=deny\nSTRIPE_SECRET_KEY=\nSTRIPE_WEBHOOK_SECRET=whsec_e2e_synthetic\nSTRIPE_CONNECT_WEBHOOK_SECRET=whsec_e2e_connect\nSTRIPE_ACCOUNTS_WEBHOOK_SECRET=whsec_e2e_accounts\nE2E_RUN_ID=${runId}\n${mode === 'staging' ? 'E2E_APP_PORT=3100\n' : ''}`, {mode: 0o600});
 }
 async function retainRecovery() {
   assertOwnedManifest(manifest, runId);
@@ -90,8 +90,9 @@ async function cleanup() {
   await save();
   await unlink(runtimeFile).catch(error => { if (error.code !== 'ENOENT') throw error; });
 }
+const runningProjects = async () => (await command(['ps', '--format', '{{.Label "com.docker.compose.project"}}'], true)).split(/\s+/);
 async function checkOnlyStagingRun() {
-  assertOnlyStagingRun((await command(['ps', '--format', '{{.Label "com.docker.compose.project"}}'], true)).split(/\s+/), runId);
+  assertOnlyStagingRun(await runningProjects(), runId);
 }
 async function ready() {
   for (let n = 0; n < 90; n++) {
@@ -135,6 +136,7 @@ try {
     await save();
     await createRuntime();
     console.log(`E2E run: ${runId}`);
+    if (mode !== 'staging') assertRoomForFullRun(await runningProjects(), runId);
     await compose('build', 'app', 'migration', 'tests');
     // Tools default to this image and any recent build serves them, so the run doesn't need it:
     // two runs tagging at the same moment collide, and that mustn't fail either run.
@@ -150,6 +152,8 @@ try {
       const { runStaging } = await import('./staging-payments.mjs');
       await runStaging({ compose, capture, ready, runtimeFile, directory, runId, manifest, save, signal: cancellation.signal });
     } else {
+      // Again now the build is done: a run that was building had no containers to count.
+      assertRoomForFullRun(await runningProjects(), runId);
       await compose('up', '-d', 'app');
       await ready();
       if (mode === 'baseline') {

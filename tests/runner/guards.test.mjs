@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { assertOnlyStagingRun, assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
+import { assertOnlyStagingRun, assertRoomForFullRun, assertRunId, assertTestDatabase, assertTestKey, assertOwnedManifest, assertStripeIdentity, stagingScenarios } from '../../scripts/e2e-guards.mjs';
 
 test('cleanup accepts only generated project identifiers', () => {
   for (const value of ['main', '../thunderstrux', 'thunderstrux', 'browser-', 'run-aaaaaaaaaaaaaaaaaaaaaaaa', '']) {
@@ -15,7 +15,18 @@ test('each run has its own images and a host port Docker picks, so two runs cann
   const compose = readFileSync('docker-compose.e2e.yml', 'utf8');
   assert.doesNotMatch(compose, /thunderstrux-e2e-\w+:local/);
   assert.equal(compose.match(/thunderstrux-e2e-\w+:\$\{E2E_RUN_ID:\?/g).length, 4);
-  assert.match(compose, /- '127\.0\.0\.1::3100'/);
+  assert.match(compose, /- '127\.0\.0\.1:\$\{E2E_APP_PORT:-\}:3100'/);
+});
+test('only staging asks for a fixed host port, as a browser returns from Stripe to localhost:3100', () => {
+  const runner = readFileSync('scripts/run-e2e.mjs', 'utf8');
+  assert.match(runner, /mode === 'staging' \? 'E2E_APP_PORT=3100\\n' : ''/);
+});
+test('a third full run is refused, counting projects and not their containers', () => {
+  const run = `browser-${'a'.repeat(24)}`;
+  const one = `baseline-${'b'.repeat(24)}`;
+  const two = `browser-${'c'.repeat(24)}`;
+  assertRoomForFullRun(['', 'thunderstrux', 'ops-preview', `staging-${'d'.repeat(24)}`, run, one, one, one], run);
+  assert.throws(() => assertRoomForFullRun([one, two, two, ''], run), /Two full runs/);
 });
 test('a staging run refuses to share Stripe test mode with another; other runs may run beside it', () => {
   const run = `staging-${'a'.repeat(24)}`;

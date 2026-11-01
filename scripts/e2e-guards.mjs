@@ -17,6 +17,13 @@ export function assertOnlyStagingRun(projects, runId) {
   if (other) throw new Error(`Staging run ${other} is still running; staging runs one at a time`);
 }
 
+// Two full runs fit Docker's memory side by side; more hasn't been tried. `projects` has
+// one line per container, and a run still building has none, so its caller checks twice.
+export function assertRoomForFullRun(projects, runId) {
+  const others = new Set(projects.filter(project => /^(baseline|browser)-/.test(project) && project !== runId));
+  if (others.size >= 2) throw new Error(`Two full runs are already going (${[...others].join(', ')}); wait for one to finish`);
+}
+
 export function assertTestDatabase(value) {
   const url = new URL(value);
   if (url.protocol !== 'postgresql:' || url.hostname !== 'db' ||

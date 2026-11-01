@@ -124,7 +124,7 @@ test("untagged images go only if a run made them and no container uses them", ()
   assert.deepEqual(untaggedRunImages([untagged, used], [container("x", { image: "sha256:orphan" })]).map((item) => item.Id), ["sha256:used"]);
 });
 
-test("nothing is ever forced or pruned, and an unknown kind is refused", () => {
+test("no removal is forced or a prune, and an unknown kind is refused", () => {
   const items = [{ kind: "container", target: "a" }, { kind: "network", target: "b" }, { kind: "volume", target: "c" }, { kind: "image", target: "d" }];
   assert.deepEqual(items.map(removalArgs), [["rm", "-v", "a"], ["network", "rm", "b"], ["volume", "rm", "c"], ["image", "rm", "d"]]);
   for (const args of items.map(removalArgs)) assert.ok(!args.some((arg) => /^(?:-f|--force|prune)$/.test(arg)), args.join(" "));

@@ -4,8 +4,10 @@
 //   pnpm docker:cleanup --apply    removes it, and caps the build cache
 //
 // This Docker also holds the dev stack, the preview and other projects' data, so
-// this never prunes: `docker volume prune` would delete another project's database.
-// It removes only what a test run or rehearsal made, by exact name and never by force.
+// nothing that holds data is ever pruned: `docker volume prune` would delete another
+// project's database. It removes only what a test run or rehearsal made, by exact name
+// and never by force. The one prune is `--apply`'s cap on the host's build cache, which
+// holds no data and only makes later builds slower.
 // Deployed release images stay out of it: a rollback needs them.
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";

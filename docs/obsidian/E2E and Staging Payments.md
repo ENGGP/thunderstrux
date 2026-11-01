@@ -57,7 +57,7 @@ The run id is also the Compose project and the evidence folder `tmp/e2e/<run-id>
 | `migration` | `thunderstrux-e2e-ops:<run-id>` (`ops` stage) | `prisma migrate deploy` before the app starts, as in production |
 | `mail-capture` | `thunderstrux-e2e-ops:<run-id>` | captures email (`THUNDERSTRUX_MAIL_CAPTURE_URL`) |
 | `object-store` | `thunderstrux-assets:local` | S3-compatible store, read-only root, volume `test_assets` |
-| `app` | `thunderstrux-e2e-app:<run-id>` (`web` stage) | `NODE_ENV=production`, origin `http://localhost:3100`; published on a host port Docker picks, which the runner reads with `compose port` |
+| `app` | `thunderstrux-e2e-app:<run-id>` (`web` stage) | `NODE_ENV=production`, origin `http://localhost:3100`; published on a host port Docker picks, which the runner reads with `compose port`. Staging alone publishes `E2E_APP_PORT=3100`, because a person's browser returns from Stripe's Checkout to that address, and only one staging run goes at a time |
 | `tests` | `thunderstrux-e2e-tests:<run-id>` | profile `test`; shares the app's network namespace so Auth.js, server fetches and the browser use one origin; reports mount at `/app/test-results` |
 | `stripe` | `stripe/stripe-cli` | profile `staging`; `listen --latest`, forwards the payments-webhook events only to `/api/payments/webhook` |
 
@@ -122,7 +122,7 @@ Unpaid Sessions are explicitly expired through Stripe; natural timeout is never 
 
 ## Traps
 
-- Two baseline or browser runs can go at once: every run has its own project, images and host port. Side by side on Docker's 15.6 GB they ran about 3 to 5% slower and left about 10.5 GB free. More than two hasn't been tried, and runs compete for CPU, so a timing failure beside another run needs a look before it counts. Staging stays one at a time.
+- Two baseline or browser runs can go at once: every run has its own project, images and host port. Side by side on Docker's 15.6 GB they ran about 3 to 5% slower and left about 10.5 GB free. `assertRoomForFullRun` refuses a third, checking before the build and again before the app starts, because more than two hasn't been tried. Runs compete for CPU, so a timing failure beside another run needs a look before it counts. Staging stays one at a time.
 - A crashed run keeps its image tags until `pnpm test:e2e:cleanup -- <run-id>` removes them, or `pnpm docker:cleanup --apply` once the run is 2 hours old.
 - A paused or killed staging run keeps its database volume and manifest until Stripe cleanup succeeds; don't delete either by hand.
 - Evidence from `tmp/e2e/` is private: only allowlisted counts reach the GitHub job summary. Traces, cookies, Checkout URLs, raw provider payloads and private state are never uploaded; don't attach private staging files to a PR.
@@ -135,7 +135,7 @@ Unpaid Sessions are explicitly expired through Stripe; natural timeout is never 
 
 ## Docker cleanup
 
-`pnpm docker:cleanup` is a dry run that lists what would go and what stays, with the reason. `--apply` acts. It is the only sweep, because this Docker also holds the dev stack, the preview and other projects' data. It reads `docker inspect` and removes by exact name, never forced, so Docker itself refuses anything in use.
+`pnpm docker:cleanup` is a dry run that lists what would go and what stays, with the reason. `--apply` acts. It is the only sweep, because this Docker also holds the dev stack, the preview and other projects' data. It reads `docker inspect` and removes by exact name, never forced, so Docker itself refuses anything in use. Nothing that holds data is pruned; the only prune is the build-cache cap below.
 
 **Removes:**
 - A run's or rehearsal's containers, network, volumes and image tags, when its project id matches exactly (`baseline-`, `browser-`, `ops-`, `droplet-`), nothing in it is running, and nothing in it is under 2 hours old. A run in its build phase has tags but no containers, so an idle project can be a live one; the age is why that's safe. Image age is the tag's `LastTagTime`: a cached build keeps an old creation date.
